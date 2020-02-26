@@ -57,7 +57,7 @@ namespace client {
 namespace {
 
 YB_STRONGLY_TYPED_BOOL(Child);
-YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased));
+YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSealed));
 
 } // namespace
 
@@ -228,10 +228,6 @@ class YBTransaction::Impl final {
         }
       }
 
-      if (initial) {
-        running_requests_ += ops.size();
-      }
-
       if (defer) {
         if (waiter) {
           waiters_.push_back(std::move(waiter));
@@ -262,6 +258,11 @@ class YBTransaction::Impl final {
     return true;
   }
 
+  void ExpectOperations(size_t count) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    running_requests_ += count;
+  }
+
   void Flushed(
       const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
       const Status& status) {
@@ -272,6 +273,7 @@ class YBTransaction::Impl final {
       std::this_thread::sleep_for(FLAGS_TEST_transaction_inject_flushed_delay_ms * 1ms);
     }
 
+    boost::optional<Status> notify_commit_status;
     bool abort = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -316,6 +318,15 @@ class YBTransaction::Impl final {
         }
         SetError(status, &lock);
       }
+
+      if (running_requests_ == 0 && commit_replicated_) {
+        notify_commit_status = status_;
+      }
+    }
+
+    if (notify_commit_status) {
+      VLOG_WITH_PREFIX(4) << "Sealing done: " << *notify_commit_status;
+      commit_callback_(*notify_commit_status);
     }
 
     if (abort && !child_) {
@@ -323,16 +334,17 @@ class YBTransaction::Impl final {
     }
   }
 
-  void Commit(CoarseTimePoint deadline, CommitCallback callback) {
+  void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback) {
     auto transaction = transaction_->shared_from_this();
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      auto status = CheckCouldCommit(&lock);
+      auto status = CheckCouldCommit(seal_only, &lock);
       if (!status.ok()) {
         callback(status);
         return;
       }
-      state_.store(TransactionState::kCommitted, std::memory_order_release);
+      state_.store(seal_only ? TransactionState::kSealed : TransactionState::kCommitted,
+                   std::memory_order_release);
       commit_callback_ = std::move(callback);
       if (!ready_) {
         // If we have not written any intents and do not even have a transaction status tablet,
@@ -340,18 +352,20 @@ class YBTransaction::Impl final {
         //
         // See https://github.com/yugabyte/yugabyte-db/issues/3105 for details -- we might be able
         // to remove this special case if it turns out there is a bug elsewhere.
-        if (tablets_.empty()) {
+        if (tablets_.empty() && running_requests_ == 0) {
+          VLOG_WITH_PREFIX(4) << "Committed empty transaction";
           commit_callback_(Status::OK());
           return;
         }
 
-        waiters_.emplace_back(std::bind(&Impl::DoCommit, this, deadline, _1, transaction));
+        waiters_.emplace_back(std::bind(
+            &Impl::DoCommit, this, deadline, seal_only, _1, transaction));
         lock.unlock();
         RequestStatusTablet(deadline);
         return;
       }
     }
-    DoCommit(deadline, Status::OK(), transaction);
+    DoCommit(deadline, seal_only, Status::OK(), transaction);
   }
 
   void Abort(CoarseTimePoint deadline) {
@@ -455,6 +469,7 @@ class YBTransaction::Impl final {
     for (const auto& tablet : tablets_) {
       auto& out = *tablets.Add();
       out.set_tablet_id(tablet.first);
+      out.set_num_batches(tablet.second.num_batches);
       out.set_metadata_state(
           tablet.second.has_metadata ? InvolvedTabletMetadataState::EXIST
                                      : InvolvedTabletMetadataState::MISSING);
@@ -556,7 +571,7 @@ class YBTransaction::Impl final {
 
   CHECKED_STATUS CheckRunning(std::unique_lock<std::mutex>* lock) {
     if (state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
-      auto status = error_;
+      auto status = status_;
       lock->unlock();
       if (status.ok()) {
         status = STATUS(IllegalState, "Transaction already completed");
@@ -567,11 +582,14 @@ class YBTransaction::Impl final {
   }
 
   void DoCommit(
-      CoarseTimePoint deadline, const Status& status, const YBTransactionPtr& transaction) {
+      CoarseTimePoint deadline, SealOnly seal_only, const Status& status,
+      const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1)
-        << Format("Commit, tablets: $0, status: $1", tablets_, status);
+        << Format("Commit, seal_only: $0, tablets: $1, status: $2",
+                  seal_only, tablets_, status);
 
     if (!status.ok()) {
+      VLOG_WITH_PREFIX(4) << "Commit failed: " << status;
       commit_callback_(status);
       return;
     }
@@ -579,6 +597,7 @@ class YBTransaction::Impl final {
     // If we don't have any tablets that have intents written to them, just abort it.
     // But notify caller that commit was successful, so it is transparent for him.
     if (tablets_.empty()) {
+      VLOG_WITH_PREFIX(4) << "Committed empty";
       DoAbort(deadline, transaction);
       commit_callback_(Status::OK());
       return;
@@ -589,10 +608,13 @@ class YBTransaction::Impl final {
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
-    state.set_status(TransactionStatus::COMMITTED);
+    state.set_status(seal_only ? TransactionStatus::SEALED : TransactionStatus::COMMITTED);
     state.mutable_tablets()->Reserve(tablets_.size());
     for (const auto& tablet : tablets_) {
       state.add_tablets(tablet.first);
+      if (seal_only) {
+        state.add_tablet_batches(tablet.second.num_batches);
+      }
     }
 
     manager_->rpcs().RegisterAndStart(
@@ -649,13 +671,24 @@ class YBTransaction::Impl final {
   }
 
   void CommitDone(const Status& status,
-                  HybridTime propagated_hybrid_time,
+                  const tserver::UpdateTransactionResponsePB& response,
                   const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1) << "Committed: " << status;
 
-    manager_->UpdateClock(propagated_hybrid_time);
+    UpdateClock(response, manager_);
     manager_->rpcs().Unregister(&commit_handle_);
-    commit_callback_(status.IsAlreadyPresent() ? Status::OK() : status);
+
+    Status actual_status = status.IsAlreadyPresent() ? Status::OK() : status;
+    if (state_.load(std::memory_order_acquire) != TransactionState::kCommitted &&
+        actual_status.ok()) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      commit_replicated_ = true;
+      if (running_requests_ != 0) {
+        return;
+      }
+    }
+    VLOG_WITH_PREFIX(4) << "Commit done: " << actual_status;
+    commit_callback_(actual_status);
   }
 
   void AbortDone(const Status& status,
@@ -768,17 +801,15 @@ class YBTransaction::Impl final {
     }
 
     auto current_state = state_.load(std::memory_order_acquire);
-    bool allow_heartbeat =
-        current_state == TransactionState::kRunning ||
-        (current_state == TransactionState::kReleased && status == TransactionStatus::CREATED);
-    if (!allow_heartbeat) {
+
+    if (!AllowHeartbeat(current_state, status)) {
       VLOG_WITH_PREFIX(1) << " Send heartbeat cancelled: " << yb::ToString(transaction);
       return;
     }
 
     if (status != TransactionStatus::CREATED &&
         GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
-      HeartbeatDone(Status::OK(), HybridTime::kInvalid, status, transaction);
+      HeartbeatDone(Status::OK(), tserver::UpdateTransactionResponsePB(), status, transaction);
       return;
     }
 
@@ -798,11 +829,25 @@ class YBTransaction::Impl final {
         &heartbeat_handle_);
   }
 
+  static bool AllowHeartbeat(TransactionState current_state, TransactionStatus status) {
+    switch (current_state) {
+      case TransactionState::kRunning:
+        return true;
+      case TransactionState::kReleased: FALLTHROUGH_INTENDED;
+      case TransactionState::kSealed:
+        return status == TransactionStatus::CREATED;
+      case TransactionState::kAborted: FALLTHROUGH_INTENDED;
+      case TransactionState::kCommitted:
+        return false;
+    }
+    FATAL_INVALID_ENUM_VALUE(TransactionState, current_state);
+  }
+
   void HeartbeatDone(const Status& status,
-                     HybridTime propagated_hybrid_time,
+                     const tserver::UpdateTransactionResponsePB& response,
                      TransactionStatus transaction_status,
                      const YBTransactionPtr& transaction) {
-    manager_->UpdateClock(propagated_hybrid_time);
+    UpdateClock(response, manager_);
     manager_->rpcs().Unregister(&heartbeat_handle_);
 
     if (status.ok()) {
@@ -848,8 +893,8 @@ class YBTransaction::Impl final {
       SetError(status, &new_lock);
       return;
     }
-    if (error_.ok()) {
-      error_ = status;
+    if (status_.ok()) {
+      status_ = status;
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
   }
@@ -873,7 +918,7 @@ class YBTransaction::Impl final {
     callback(data);
   }
 
-  CHECKED_STATUS CheckCouldCommit(std::unique_lock<std::mutex>* lock) {
+  CHECKED_STATUS CheckCouldCommit(SealOnly seal_only, std::unique_lock<std::mutex>* lock) {
     RETURN_NOT_OK(CheckRunning(lock));
     if (child_) {
       return STATUS(IllegalState, "Commit of child transaction is not allowed");
@@ -882,7 +927,7 @@ class YBTransaction::Impl final {
       return STATUS(
           IllegalState, "Commit of transaction that requires restart is not allowed");
     }
-    if (running_requests_ > 0) {
+    if (!seal_only && running_requests_ > 0) {
       return STATUS(IllegalState, "Commit of transaction with running requests");
     }
 
@@ -907,7 +952,7 @@ class YBTransaction::Impl final {
   bool child_had_read_time_ = false;
   bool ready_ = false;
   CommitCallback commit_callback_;
-  Status error_;
+  Status status_;
   rpc::Rpcs::Handle heartbeat_handle_;
   rpc::Rpcs::Handle commit_handle_;
   rpc::Rpcs::Handle abort_handle_;
@@ -929,6 +974,8 @@ class YBTransaction::Impl final {
   std::promise<TransactionMetadata> metadata_promise_;
   std::shared_future<TransactionMetadata> metadata_future_;
   size_t running_requests_ = 0;
+  // Set to true after commit record is replicated. Used only during transaction sealing.
+  bool commit_replicated_ = false;
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -978,13 +1025,18 @@ bool YBTransaction::Prepare(const internal::InFlightOps& ops,
       ops, force_consistent_read, deadline, initial, std::move(waiter), metadata);
 }
 
+void YBTransaction::ExpectOperations(size_t count) {
+  impl_->ExpectOperations(count);
+}
+
 void YBTransaction::Flushed(
     const internal::InFlightOps& ops, const ReadHybridTime& used_read_time, const Status& status) {
   impl_->Flushed(ops, used_read_time, status);
 }
 
-void YBTransaction::Commit(CoarseTimePoint deadline, CommitCallback callback) {
-  impl_->Commit(AdjustDeadline(deadline), std::move(callback));
+void YBTransaction::Commit(
+    CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback) {
+  impl_->Commit(AdjustDeadline(deadline), seal_only, std::move(callback));
 }
 
 const TransactionId& YBTransaction::id() const {
@@ -1003,9 +1055,10 @@ ConsistentReadPoint& YBTransaction::read_point() {
   return impl_->read_point();
 }
 
-std::future<Status> YBTransaction::CommitFuture(CoarseTimePoint deadline) {
-  return MakeFuture<Status>([this, deadline](auto callback) {
-    impl_->Commit(AdjustDeadline(deadline), std::move(callback));
+std::future<Status> YBTransaction::CommitFuture(
+    CoarseTimePoint deadline, SealOnly seal_only) {
+  return MakeFuture<Status>([this, deadline, seal_only](auto callback) {
+    impl_->Commit(AdjustDeadline(deadline), seal_only, std::move(callback));
   });
 }
 

@@ -492,11 +492,14 @@ DocRowwiseIterator::~DocRowwiseIterator() {
 }
 
 Status DocRowwiseIterator::Init() {
-  auto query_id = rocksdb::kDefaultQueryId;
-
   db_iter_ = CreateIntentAwareIterator(
-      doc_db_, BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      boost::none /* user_key_for_filter */, query_id, txn_op_context_, deadline_, read_time_);
+      doc_db_,
+      BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      boost::none /* user_key_for_filter */,
+      rocksdb::kDefaultQueryId,
+      txn_op_context_,
+      deadline_,
+      read_time_);
 
   DocKeyEncoder(&iter_key_).Schema(schema_);
   row_key_ = iter_key_;
@@ -702,7 +705,13 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       // SubDocument.
     }
 
-    GetSubDocumentData data = { sub_doc_key, &row_, &doc_found, TableTTL(schema_) };
+    GetSubDocumentData data = {
+      sub_doc_key,
+      &row_,
+      &doc_found,
+      TableTTL(schema_),
+      &table_tombstone_time_,
+    };
     data.deadline_info = deadline_info_.get_ptr();
     has_next_status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
     RETURN_NOT_OK(has_next_status_);

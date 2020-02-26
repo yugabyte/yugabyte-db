@@ -97,7 +97,7 @@ ln -sfT "$linuxbrew_dir" "$BREW_HOME"
 
 find "$distribution_dir" \( \
    -type f -and \
-   -not -path "$distribution_dir/yugabyte-logs/*" -and \
+   -not -path "$distribution_dir/var/*" -and \
    -not -name "post_install.sh" \
 \) -exec sed -i --binary "s%$ORIG_BREW_HOME%$BREW_HOME%g" {} \;
 

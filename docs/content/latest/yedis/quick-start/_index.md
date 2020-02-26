@@ -7,6 +7,7 @@ aliases:
   - /quick-start/test-redis/
   - /latest/quick-start/test-redis/
   - /latest/quick-start/test-yedis/
+  - /latest/yedis/quick-start/test-redis/
   - /latest/api/yedis/quick-start/
 menu:
   latest:

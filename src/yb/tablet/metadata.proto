@@ -186,6 +186,11 @@ message RaftGroupReplicaSuperBlockPB {
 
   // True if the raft group is for a colocated tablet.
   optional bool colocated = 25 [ default = false ];
+
+  // Minimum replicated op id index for cdc streams. This value is used to retain log files
+  // that contain any entries with indices larger than this one. By default max int64 to avoid
+  // retaining any log files unnecessarily.
+  optional int64 cdc_min_replicated_index = 26 [ default = 9223372036854775807 ];
 }
 
 message FilePB {

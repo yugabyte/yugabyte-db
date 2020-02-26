@@ -61,6 +61,7 @@ class CDCTabletMetrics {
   // Info about ID last read by CDC Consumer.
   scoped_refptr<AtomicGauge<int64_t> > last_read_opid_term;
   scoped_refptr<AtomicGauge<int64_t> > last_read_opid_index;
+  scoped_refptr<AtomicGauge<int64_t> > last_checkpoint_opid_index;
   scoped_refptr<AtomicGauge<uint64_t> > last_read_hybridtime;
   scoped_refptr<AtomicGauge<uint64_t> > last_read_physicaltime;
 

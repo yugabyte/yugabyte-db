@@ -197,6 +197,8 @@ class MasterFailoverTestIndexCreation : public MasterFailoverTest {
  public:
   MasterFailoverTestIndexCreation() {
     opts_.extra_tserver_flags.push_back("--allow_index_table_read_write=true");
+    opts_.extra_tserver_flags.push_back(
+        "--index_backfill_upperbound_for_user_enforced_txn_duration_ms=100");
     opts_.extra_master_flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=50");
     opts_.extra_master_flags.push_back("--disable_index_backfill=false");
     // Sometimes during master failover we have the create index kick in before the tservers have
@@ -324,12 +326,12 @@ TEST_F(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
                                    << yb::ToString(index_info_pb);
 
       ASSERT_TRUE(index_info_pb.has_index_permissions());
-    } while (index_info_pb.index_permissions() !=
+    } while (index_info_pb.index_permissions() <
                  IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE &&
              CoarseMonoClock::Now() < deadline);
 
-    ASSERT_EQ(
-        index_info_pb.index_permissions(), IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+    EXPECT_EQ(index_info_pb.index_permissions(),
+              IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 
     LOG(INFO) << "All good for iteration " << i;
     ASSERT_OK(client_->DeleteIndexTable(index_table_name, nullptr, /* wait */ true));

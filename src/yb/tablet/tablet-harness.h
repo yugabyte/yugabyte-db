@@ -148,7 +148,7 @@ class TabletHarness {
   CHECKED_STATUS Open() {
     RETURN_NOT_OK(tablet_->Open());
     tablet_->MarkFinishedBootstrapping();
-    return tablet_->EnableCompactions();
+    return tablet_->EnableCompactions(/* operation_pause */ nullptr);
   }
 
   Result<TabletPtr> OpenTablet(const TabletId& tablet_id) {
@@ -172,7 +172,7 @@ class TabletHarness {
         TransactionsEnabled::kFalse);
     RETURN_NOT_OK(tablet->Open());
     tablet->MarkFinishedBootstrapping();
-    RETURN_NOT_OK(tablet->EnableCompactions());
+    RETURN_NOT_OK(tablet->EnableCompactions(/* operation_pause */ nullptr));
     return tablet;
   }
 

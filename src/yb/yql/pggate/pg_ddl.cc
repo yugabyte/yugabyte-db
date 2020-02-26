@@ -288,13 +288,11 @@ PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& base_table_id,
                              bool is_shared_index,
                              bool is_unique_index,
-                             bool if_not_exist,
-                             bool colocated)
+                             bool if_not_exist)
     : PgCreateTable(pg_session, database_name, schema_name, index_name, index_id,
                     is_shared_index, if_not_exist, false /* add_primary_key */),
       base_table_id_(base_table_id),
       is_unique_index_(is_unique_index) {
-  SetColocated(colocated);
 }
 
 PgCreateIndex::~PgCreateIndex() {

@@ -737,9 +737,9 @@ void MemTracker::GcTcmalloc() {
 #endif
 }
 
-string MemTracker::LogUsage(const string& prefix) const {
+string MemTracker::LogUsage(const string& prefix, size_t usage_threshold, int indent) const {
   stringstream ss;
-  ss << prefix << id_ << ":";
+  ss << prefix << std::string(indent, ' ') << id_ << ":";
   if (CheckLimitExceeded()) {
     ss << " memory limit exceeded.";
   }
@@ -754,9 +754,9 @@ string MemTracker::LogUsage(const string& prefix) const {
   std::lock_guard<std::mutex> lock(child_trackers_mutex_);
   for (const auto& p : child_trackers_) {
     auto child = p.second.lock();
-    if (child) {
+    if (child && child->consumption() >= usage_threshold) {
       ss << std::endl;
-      ss << child->LogUsage(prefix);
+      ss << child->LogUsage(prefix, usage_threshold, indent + 2);
     }
   }
   return ss.str();
@@ -780,7 +780,10 @@ shared_ptr<MemTracker> MemTracker::GetRootTracker() {
 void MemTracker::SetMetricEntity(
     const MetricEntityPtr& metric_entity, const std::string& name_suffix) {
   if (metrics_) {
-    LOG(DFATAL) << "SetMetricEntity while " << ToString() << " already has metric entity";
+    LOG_IF(DFATAL, metric_entity->id() != metrics_->metric_entity_->id())
+        << "SetMetricEntity (" << metric_entity->id() << ") while "
+        << ToString() << " already has a different metric entity "
+        << metrics_->metric_entity_->id();
     return;
   }
   metrics_ = std::make_unique<TrackerMetrics>(metric_entity);
@@ -842,6 +845,26 @@ std::string DumpMemoryUsage() {
   }
   out << "Memory usage: \n" << DumpMemTrackers();
   return out.str();
+}
+
+bool CheckMemoryPressureWithLogging(
+    const MemTrackerPtr& mem_tracker, double score, const char* error_prefix) {
+  const auto soft_limit_exceeded_result = mem_tracker->AnySoftLimitExceeded(score);
+  if (!soft_limit_exceeded_result.exceeded) {
+    return true;
+  }
+
+  const std::string msg = StringPrintf(
+      "Soft memory limit exceeded (at %.2f%% of capacity), score: %.2f",
+      soft_limit_exceeded_result.current_capacity_pct, score);
+  if (soft_limit_exceeded_result.current_capacity_pct >=
+      FLAGS_memory_limit_warn_threshold_percentage) {
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << error_prefix << msg << THROTTLE_MSG;
+  } else {
+    YB_LOG_EVERY_N_SECS(INFO, 1) << error_prefix << msg << THROTTLE_MSG;
+  }
+
+  return false;
 }
 
 } // namespace yb

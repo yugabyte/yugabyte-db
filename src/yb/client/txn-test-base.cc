@@ -30,7 +30,7 @@
 using namespace std::literals;
 
 DECLARE_double(transaction_max_missed_heartbeat_periods);
-DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(transaction_status_tablet_log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
 DECLARE_double(transaction_ignore_applying_probability_in_tests);
@@ -95,7 +95,7 @@ void DisableTransactionTimeout() {
 
 void TransactionTestBase::SetUp() {
   FLAGS_combine_batcher_errors = true;
-  FLAGS_log_segment_size_bytes = log_segment_size_bytes();
+  FLAGS_transaction_status_tablet_log_segment_size_bytes = log_segment_size_bytes();
   FLAGS_log_min_seconds_to_retain = 5;
   FLAGS_intents_flush_max_delay_ms = 250;
 

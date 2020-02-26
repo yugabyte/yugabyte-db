@@ -22,4 +22,3 @@ menu:
     {{% includeMarkdown "yedis/cpp.md" /%}}
   </div>
 </div>
-

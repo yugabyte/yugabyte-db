@@ -2,7 +2,6 @@
 title: Two data center deployments
 linkTitle: Two data center (2DC) deployments
 description: Two data center (2DC) deployments
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: architecture

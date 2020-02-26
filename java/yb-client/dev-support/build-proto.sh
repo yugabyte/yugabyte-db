@@ -39,6 +39,11 @@
 
 . "${BASH_SOURCE%/*}/../../../build-support/common-build-env.sh"
 
+if [[ -z ${BUILD_ROOT:-} ]]; then
+  set_cmake_build_type_and_compiler_type
+  set_build_root
+fi
+
 find_or_download_thirdparty
 
 if is_mac; then

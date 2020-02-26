@@ -62,5 +62,4 @@ yugabyte=# DROP OPERATOR @#@ (NONE, int8);
 ## See also
 
 - [`CREATE OPERATOR`](../ddl_create_operator)
-
-[postgresql-docs-drop-operator]: https://www.postgresql.org/docs/current/sql-dropoperator.html
+- [postgresql-docs-drop-operator](https://www.postgresql.org/docs/current/sql-dropoperator.html)

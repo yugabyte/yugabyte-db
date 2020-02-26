@@ -17,7 +17,9 @@
 #include <string>
 
 #include "yb/rocksdb/db.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/util/statistics.h"
 
 #include "yb/common/hybrid_time.h"
@@ -1935,6 +1937,109 @@ SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 2000 }]) -> "v3"; ttl: 0.000s
       )#");
 }
 
+// Test table tombstones for colocated tables.
+TEST_F(DocDBTest, TableTombstoneCompaction) {
+  constexpr PgTableOid pgtable_id(0x4001);
+  HybridTime t = 1000_usec_ht;
+
+  // Simulate SQL:
+  //   INSERT INTO t VALUES ("r1"), ("r2"), ("r3");
+  for (int i = 1; i <= 3; ++i) {
+    DocKey doc_key;
+    std::string range_key_str = Format("r$0", i);
+
+    doc_key.set_pgtable_id(pgtable_id);
+    doc_key.ResizeRangeComponents(1);
+    doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
+    ASSERT_OK(SetPrimitive(
+        DocPath(doc_key.Encode(), PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+        Value(PrimitiveValue()),
+        t));
+    t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
+  }
+  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#");
+
+  // Simulate SQL (set table tombstone):
+  //   TRUNCATE TABLE t;
+  {
+    DocKey doc_key(pgtable_id);
+    ASSERT_OK(SetPrimitive(
+        DocPath(doc_key.Encode()),
+        Value(PrimitiveValue::kTombstone),
+        t));
+    t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
+  }
+  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#");
+
+  // Simulate SQL:
+  //  INSERT INTO t VALUES ("r1"), ("r2");
+  for (int i = 1; i <= 2; ++i) {
+    DocKey doc_key;
+    std::string range_key_str = Format("r$0", i);
+
+    doc_key.set_pgtable_id(pgtable_id);
+    doc_key.ResizeRangeComponents(1);
+    doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
+    ASSERT_OK(SetPrimitive(
+        DocPath(doc_key.Encode(), PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+        Value(PrimitiveValue()),
+        t));
+    t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
+  }
+  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#");
+
+  // Simulate SQL:
+  //  DELETE FROM t WHERE c = "r2";
+  {
+    DocKey doc_key;
+    std::string range_key_str = Format("r$0", 2);
+
+    doc_key.set_pgtable_id(pgtable_id);
+    doc_key.ResizeRangeComponents(1);
+    doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
+    ASSERT_OK(SetPrimitive(
+        DocPath(doc_key.Encode()),
+        Value(PrimitiveValue::kTombstone),
+        t));
+    t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
+  }
+  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [HT{ physical: 7000 }]) -> DEL
+SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#");
+
+  // Major compact.
+  FullyCompactHistoryBefore(10000_usec_ht);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(PgTableId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+      )#");
+}
+
 TEST_F(DocDBTest, MinorCompactionNoDeletions) {
   ASSERT_OK(DisableCompactions());
   const DocKey doc_key(PrimitiveValues("k"));
@@ -3290,6 +3395,48 @@ TEST_F(DocDBTest, DISABLED_DumpDB) {
   }
 
   LOG(INFO) << "TXN meta: " << txn_meta << ", rev key: " << rev_key << ", intents: " << intent;
+}
+
+TEST_F(DocDBTest, SetHybridTimeFilter) {
+  auto dwb = MakeDocWriteBatch();
+  for (int i = 1; i <= 4; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  ASSERT_OK(FlushRocksDbAndWait());
+
+  CloseRocksDB();
+
+  RocksDBPatcher patcher(rocksdb_dir_, rocksdb_options_);
+
+  ASSERT_OK(patcher.Load());
+  ASSERT_OK(patcher.SetHybridTimeFilter(HybridTime::FromMicros(2000)));
+
+  ASSERT_OK(OpenRocksDB());
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+  )#");
+
+  ASSERT_OK(WriteSimple(5));
+
+  for (int j = 0; j < 3; ++j) {
+    SCOPED_TRACE(Format("Iteration $0", j));
+
+    ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+      SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 5000 }]) -> 5
+    )#");
+
+    if (j == 0) {
+      ASSERT_OK(FlushRocksDbAndWait());
+    } else if (j == 1) {
+      ForceRocksDBCompact(rocksdb());
+    }
+  }
+
 }
 
 }  // namespace docdb

@@ -308,6 +308,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Returns the wal retention time for the primary table.
   uint32_t wal_retention_secs() const;
 
+  CHECKED_STATUS set_cdc_min_replicated_index(int64 cdc_min_replicated_index);
+
+  int64_t cdc_min_replicated_index() const;
+
   // Returns the data root dir for this Raft group, for example:
   // /mnt/d0/yb-data/tserver/data
   // TODO(#79): rework when we have more than one KV-store (and data roots) per Raft group.
@@ -491,6 +495,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   // True if the raft group is for a colocated tablet.
   bool colocated_;
+
+  // The minimum index that has been replicated by the cdc service.
+  int64_t cdc_min_replicated_index_ = std::numeric_limits<int64_t>::max();
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

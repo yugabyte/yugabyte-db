@@ -23,7 +23,8 @@ ConsensusFrontier::~ConsensusFrontier() {
 
 bool ConsensusFrontier::Equals(const UserFrontier& pre_rhs) const {
   const ConsensusFrontier& rhs = down_cast<const ConsensusFrontier&>(pre_rhs);
-  return op_id_ == rhs.op_id_ && ht_ == rhs.ht_ && history_cutoff_ == rhs.history_cutoff_;
+  return op_id_ == rhs.op_id_ && ht_ == rhs.ht_ && history_cutoff_ == rhs.history_cutoff_ &&
+         hybrid_time_filter_ == rhs.hybrid_time_filter_;
 }
 
 void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
@@ -31,6 +32,9 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   op_id_.ToPB(pb.mutable_op_id());
   pb.set_hybrid_time(ht_.ToUint64());
   pb.set_history_cutoff(history_cutoff_.ToUint64());
+  if (hybrid_time_filter_.is_valid()) {
+    pb.set_hybrid_time_filter(hybrid_time_filter_.ToUint64());
+  }
   any->PackFrom(pb);
 }
 
@@ -40,6 +44,11 @@ void ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   op_id_ = OpId::FromPB(pb.op_id());
   ht_ = HybridTime(pb.hybrid_time());
   history_cutoff_ = NormalizeHistoryCutoff(HybridTime(pb.history_cutoff()));
+  if (pb.has_hybrid_time_filter()) {
+    hybrid_time_filter_ = HybridTime(pb.hybrid_time_filter());
+  } else {
+    hybrid_time_filter_ = HybridTime();
+  }
 }
 
 void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {
@@ -48,8 +57,8 @@ void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {
 
 std::string ConsensusFrontier::ToString() const {
   return yb::Format(
-      "{ op_id: $0 hybrid_time: $1 history_cutoff: $2 }",
-      op_id_, ht_, history_cutoff_);
+      "{ op_id: $0 hybrid_time: $1 history_cutoff: $2 hybrid_time_filter: $3 }",
+      op_id_, ht_, history_cutoff_, hybrid_time_filter_);
 }
 
 namespace {
@@ -95,6 +104,14 @@ void ConsensusFrontier::Update(
   UpdateField(&op_id_, rhs.op_id_, update_type);
   UpdateField(&ht_, rhs.ht_, update_type);
   UpdateField(&history_cutoff_, rhs.history_cutoff_, update_type);
+  // Reset filter after compaction.
+  hybrid_time_filter_ = HybridTime();
+}
+
+Slice ConsensusFrontier::Filter() const {
+  return hybrid_time_filter_.is_valid()
+      ? Slice(pointer_cast<const char*>(&hybrid_time_filter_), sizeof(hybrid_time_filter_))
+      : Slice();
 }
 
 bool ConsensusFrontier::IsUpdateValid(

@@ -1,7 +1,7 @@
 ---
-title: Simple Value
+title: Simple expressions
 summary: Columns, constants, and null.
-description: Simple Expressions
+description: Simple expressions
 menu:
   latest:
     parent: api-cassandra
@@ -41,4 +41,4 @@ null_expression ::= NULL
 
 ## See also
 
-[All Expressions](..#expressions)
+- [All Expressions](..#expressions)

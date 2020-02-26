@@ -149,7 +149,7 @@ class PostgresBuilder:
 
     def parse_args(self):
         parser = argparse.ArgumentParser(
-            description='A tool for building the PostgreSQL code subtree in YugaByte DB codebase')
+            description='A tool for building the PostgreSQL code subtree in YugabyteDB codebase')
         parser.add_argument('--build_root',
                             default=os.environ.get('BUILD_ROOT'),
                             help='YugaByte build root directory. The PostgreSQL build/install '
@@ -330,7 +330,9 @@ class PostgresBuilder:
 
         self.set_env_var(
             'YB_REMOTE_COMPILATION',
-            '1' if self.remote_compilation_allowed and self.build_uses_remote_compilation else '0'
+            '1' if (self.remote_compilation_allowed and
+                    self.build_uses_remote_compilation and
+                    step == 'make') else '0'
         )
 
         self.set_env_var('YB_BUILD_TYPE', self.build_type)

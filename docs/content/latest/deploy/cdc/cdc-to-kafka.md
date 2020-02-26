@@ -2,7 +2,7 @@
 title: CDC to Kafka
 linkTitle: CDC to Kafka
 description: Change data capture (CDC) to Kafka
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: cdc
@@ -13,13 +13,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Follow the steps below to connect a YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../architecture/cdc-architecture).
+Follow the steps below to connect a YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
 
 ## Prerequisites
 
 ### YugabyteDB
 
-Create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../manual-deployment/).
+Create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../../manual-deployment/).
 
 ### Java
 

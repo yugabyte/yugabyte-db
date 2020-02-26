@@ -280,7 +280,7 @@ Status TabletSnapshots::RestoreCheckpoint(
             << ", restored=" << regular_db().GetLatestSequenceNumber();
 
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = tablet().EnableCompactions();
+  s = tablet().EnableCompactions(&op_pause);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
     return s;

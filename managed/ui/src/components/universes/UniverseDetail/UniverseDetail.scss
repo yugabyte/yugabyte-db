@@ -33,7 +33,7 @@
 
 .universe-detail-btn-group .dropdown {
   padding: 0;
-  
+
   .dropdown-menu-right {
     min-width: 235px;
   }
@@ -129,7 +129,7 @@
     &, &:hover, &:focus, &:active {
       border: none;
       color: $YB_ORANGE;
-      font-weight: 600;
+      font-weight: 500;
       padding: 5px 8px 7px;
       margin-left: 5px;
       margin-right: 10px;
@@ -142,6 +142,9 @@
       }
     }
   }
+}
+.sidebar-hidden .universe-detail-status-container {
+  display: none;
 }
 .universe-detail {
   .content-title {
@@ -261,6 +264,9 @@
     margin-left: 15px;
   }
 }
+.sidebar-hidden .content-title {
+  left: 30px;
+}
 
 h2 {
   a {
@@ -273,7 +279,7 @@ h2 {
   span {
     font-size: 21px;
     color: $YB_DARK_GRAY;
-    
+
     a {
       color: $YB_DARK_GRAY;
 
@@ -331,12 +337,12 @@ h2 {
     }
     .yb-node-status-cell {
       .text-green, .text-red {
-        font-weight: 900;
+        font-weight: 500;
         font-size: 14px;
       }
     }
     .node-name-field a {
-      font-weight: 900;
+      font-weight: 500;
       font-size: 14px;
     }
   }
@@ -369,7 +375,7 @@ h2 {
       }
     }
 
-   
+
     .yb-resource-count {
       text-align: left;
       margin-left: 0;
@@ -387,7 +393,7 @@ h2 {
       .yb-resource-count-size {
         font-size: 28px;
         line-height: 30px;
-        font-weight: 600;
+        font-weight: 500;
         color: #44518b;
         @media (max-width: 991px) {
           font-size: 22px;
@@ -445,7 +451,7 @@ h2 {
     content: 'Costs';
     transform: rotate(-90deg);
     color: $YB_DARK_GRAY;
-    font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
+    font-family: 'Rubik', 'Helvetica Neue', sans-serif;
     font-weight: 500;
     font-size: 16px;
     position: absolute;
@@ -465,7 +471,7 @@ h2 {
   .overview-widget-database {
     .dl-stack {
       margin-top: 10px;
-      
+
       .btn-copy-round {
         position: absolute;
         top: -2px;
@@ -580,7 +586,7 @@ h2 {
       animation: pulse 15s infinite linear;
     }
   }
-  
+
   #health-droplet {
     position: absolute;
     top: 15px;

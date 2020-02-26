@@ -29,6 +29,12 @@ showAsideToc: true
       YugabyteDB operator
     </a>
   </li>
+  <li >
+    <a href="/latest/deploy/kubernetes/oss/operator-hub" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Operator Hub
+    </a>
+  </li>
   <li>
     <a href="/latest/deploy/kubernetes/oss/rook-operator" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
@@ -38,7 +44,7 @@ showAsideToc: true
 </ul>
 
 
-Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [Yugabyte k8s operator repository](https://github.com/yugaByte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#Configuration-options).
+Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [Yugabyte k8s operator repository](https://github.com/yugaByte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#configuration-options).
 
 ## Prerequisites
 
@@ -46,7 +52,13 @@ Clone [yugabyte-k8s-operator](https://github.com/yugaByte/yugabyte-k8s-operator/
 
 ## Deploy a YugabyteDB cluster with this operator
 
-To create a YugabyteDB cluster, first we need to setup RBAC for operator and create the operator itself. Run the following command, from root of the repository, to do the same.
+To create a YugabyteDB cluster, first we need to register the custom resource that would represent YugabyteDB cluster: `ybclusters.yugabyte.com`.
+
+```sh
+kubectl create -f deploy/crds/yugabyte_v1alpha1_ybcluster_crd.yaml
+```
+
+Setup RBAC for operator and create the operator itself. Run the following command, from root of the repository, to do the same.
 
 ```sh
 kubectl create -f deploy/operator.yaml
@@ -56,12 +68,6 @@ After a few seconds the operator should be up & running. Verify the operator sta
 
 ```sh
 kubectl -n yb-operator get po,deployment
-```
-
-Register the custom resource that would represent YugabyteDB cluster: `ybclusters.yugabyte.com`.
-
-```sh
-kubectl create -f deploy/crds/yugabyte_v1alpha1_ybcluster_crd.yaml
 ```
 
 Finally create an instance of the custom resource with which the operator would create a YugabyteDB cluster.
@@ -144,11 +150,11 @@ Specify storage configurations viz. Storage `count`, `size` & `storageClass` of 
 
 #### resources
 
-Specify resource `requests` & `limits` under `resources` attribute. The resources to be specified are `cpu` & `memory`. The `resource` property in itself is optional & it won't be applied to created `StatefulSets`, if omitted. You may also choose to specify either `resource.requests` or `resource.limits` or both.
+Specify resource `requests` & `limits` under `resources` attribute. The resources to be specified are `cpu` & `memory`. The `resource` property in itself is optional & it won't be applied to created `StatefulSets`, if omitted. You may also choose to specify either `resource.requests` or `resource.limits`, or both.
 
 #### gflags
 
-Specify list of configuration options (gflags) for additional control of the YugabyteDB cluster. For available configuration options, see [YB-Master configuration options](../../../reference/configuration/yb-master) and [YB-TServer configuration options](../../../reference/configuration/yb-tserver/).
+Specify list of configuration options (gflags) for additional control of the YugabyteDB cluster. For available configuration options, see [YB-Master configuration options](../../../../reference/configuration/yb-master) and [YB-TServer configuration options](../../../../reference/configuration/yb-tserver/).
 
 If you have enabled TLS encryption, then you can set:
 - `use_node_to_node_encryption` flag to enable node to node encryption

@@ -194,6 +194,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   size_t DynamicMemoryUsage() const override;
 
+  const CallData& request_data() const { return request_data_; }
+
  protected:
   void NotifyTransferred(const Status& status, Connection* conn) override;
 

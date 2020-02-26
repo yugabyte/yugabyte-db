@@ -94,6 +94,14 @@ class CDCServiceImpl : public CDCServiceIf {
                                 UpdateCdcReplicatedIndexResponsePB* resp,
                                 rpc::RpcContext rpc) override;
 
+  void GetLatestEntryOpId(const GetLatestEntryOpIdRequestPB* req,
+                          GetLatestEntryOpIdResponsePB* resp,
+                          rpc::RpcContext context) override;
+
+  void BootstrapProducer(const BootstrapProducerRequestPB* req,
+                         BootstrapProducerResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+
   void Shutdown() override;
 
   // Used in cdc_service-int-test.cc.
@@ -115,7 +123,8 @@ class CDCServiceImpl : public CDCServiceIf {
   CHECKED_STATUS UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
                                   const OpId& sent_op_id,
                                   const OpId& commit_op_id,
-                                  const std::shared_ptr<client::YBSession>& session);
+                                  const std::shared_ptr<client::YBSession>& session,
+                                  uint64_t last_record_hybrid_time);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);
@@ -137,6 +146,8 @@ class CDCServiceImpl : public CDCServiceIf {
                                  GetCheckpointResponsePB* resp,
                                  rpc::RpcContext* context,
                                  const std::shared_ptr<tablet::TabletPeer>& peer);
+
+  Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);

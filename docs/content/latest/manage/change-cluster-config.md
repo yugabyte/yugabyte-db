@@ -19,7 +19,7 @@ Sometimes there might be a need to move a YugabyteDB universe deployed on a set 
 - updating the instance images on a regular basis (for example, AMI rehydration in AWS).
 - moving to a different set of zones, regions, or data centers.
 
-This page provides the steps needed to perform such a data move in an online manner from the initial setup to the final setup as described below. This tutorial assumes that you are familiar with the [YugabyteDB process architecture](../../../../architecture/concepts/universe/).
+This page provides the steps needed to perform such a data move in an online manner from the initial setup to the final setup as described below. This tutorial assumes that you are familiar with the [YugabyteDB process architecture](../../architecture/concepts/universe/).
 
 ## Example scenario
 

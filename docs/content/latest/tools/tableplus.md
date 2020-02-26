@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: tableplus
     parent: tools
-    weight: 2810
+    weight: 2750
 isTocNested: true
 showAsideToc: true
 ---

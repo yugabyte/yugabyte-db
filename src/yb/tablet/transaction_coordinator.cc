@@ -26,6 +26,7 @@
 #include <boost/uuid/uuid_io.hpp>
 
 #include "yb/client/client.h"
+#include "yb/client/transaction_cleanup.h"
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/entity_ids.h"
@@ -67,6 +68,10 @@ DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interv
 DEFINE_uint64(transaction_resend_applying_interval_usec, 5000000,
               "Transaction resend applying interval in usec.");
 
+DEFINE_int64(avoid_abort_after_sealing_ms, 20,
+             "If transaction was only sealed, we will try to abort it not earlier than this "
+                 "period in milliseconds.");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -87,6 +92,21 @@ struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
   HybridTime commit_time;
+  bool sealed;
+
+  std::string ToString() const {
+    return Format("{ tablet: $0 transaction: $1 commit_time: $2 sealed: $3}",
+                  tablet, transaction, commit_time, sealed);
+  }
+};
+
+struct ExpectedTabletBatches {
+  TabletId tablet;
+  size_t batches;
+
+  std::string ToString() const {
+    return Format("{ tablet: $0 batches: $1 }", tablet, batches);
+  }
 };
 
 // Context for transaction state. I.e. access to external facilities required by
@@ -165,12 +185,12 @@ class TransactionState {
     return Format("{ id: $0 last_touch: $1 status: $2 unnotified_tablets: $3 replicating: $4 "
                   " request_queue: $5 }",
                   to_string(id_), last_touch_, TransactionStatus_Name(status_),
-                  unnotified_tablets_, replicating_, request_queue_);
+                  involved_tablets_, replicating_, request_queue_);
   }
 
   // Whether this transaction expired at specified time.
   bool ExpiredAt(HybridTime now) const {
-    if (ShouldBeCommitted()) {
+    if (ShouldBeCommitted() || ShouldBeInStatus(TransactionStatus::SEALED)) {
       return false;
     }
     const int64_t passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
@@ -211,6 +231,7 @@ class TransactionState {
           break;
         case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+        case TransactionStatus::SEALED: FALLTHROUGH_INTENDED;
         case TransactionStatus::COMMITTED: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
@@ -250,30 +271,67 @@ class TransactionState {
     NotifyAbortWaiters(status);
   }
 
-  TransactionStatusResult GetStatus() const {
-    if (status_ == TransactionStatus::COMMITTED ||
-        status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
-      return {TransactionStatus::COMMITTED, commit_time_};
+  // Used only during transaction sealing.
+  void ReplicatedAllBatchesAt(const TabletId& tablet, HybridTime last_time) {
+    auto it = involved_tablets_.find(tablet);
+    // We could be notified several times, so avoid double handling.
+    if (it == involved_tablets_.end() || it->second.all_batches_replicated) {
+      return;
     }
 
-    if (status_ == TransactionStatus::ABORTED) {
-      return {TransactionStatus::ABORTED, HybridTime::kMax};
-    }
+    // If transaction was sealed, then its commit time is max of seal record time and intent
+    // replication times from all participating tablets.
+    commit_time_ = std::max(commit_time_, last_time);
+    --tablets_with_not_replicated_batches_;
+    it->second.all_batches_replicated = true;
 
-    CHECK_EQ(TransactionStatus::PENDING, status_);
-    HybridTime status_ht = context_.coordinator_context().clock().Now();
-    if (replicating_) {
-      auto replicating_status = replicating_->request()->status();
-      if (replicating_status == TransactionStatus::COMMITTED ||
-          replicating_status == TransactionStatus::ABORTED) {
-        auto replicating_ht = replicating_->hybrid_time_even_if_unset();
-        if (replicating_ht.is_valid()) {
-          status_ht = replicating_ht;
+    if (tablets_with_not_replicated_batches_ == 0) {
+      StartApply();
+    }
+  }
+
+  Result<TransactionStatusResult> GetStatus(
+      std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
+    switch (status_) {
+      case TransactionStatus::COMMITTED: FALLTHROUGH_INTENDED;
+      case TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
+        return TransactionStatusResult{TransactionStatus::COMMITTED, commit_time_};
+      case TransactionStatus::SEALED:
+        if (tablets_with_not_replicated_batches_ == 0) {
+          return TransactionStatusResult{TransactionStatus::COMMITTED, commit_time_};
         }
+        FillExpectedTabletBatches(expected_tablet_batches);
+        return TransactionStatusResult{TransactionStatus::SEALED, commit_time_};
+      case TransactionStatus::ABORTED:
+        return TransactionStatusResult{TransactionStatus::ABORTED, HybridTime::kMax};
+      case TransactionStatus::PENDING: {
+        HybridTime status_ht = context_.coordinator_context().clock().Now();
+        if (replicating_) {
+          auto replicating_status = replicating_->request()->status();
+          if (replicating_status == TransactionStatus::COMMITTED ||
+              replicating_status == TransactionStatus::ABORTED) {
+            auto replicating_ht = replicating_->hybrid_time_even_if_unset();
+            if (replicating_ht.is_valid()) {
+              status_ht = replicating_ht;
+            }
+          }
+        }
+        status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
+        return TransactionStatusResult{TransactionStatus::PENDING, status_ht.Decremented()};
       }
+      case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
+      case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
+      case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
+      case TransactionStatus::CLEANUP:
+        return STATUS_FORMAT(Corruption, "Transaction has unexpected status: $0",
+                             TransactionStatus_Name(status_));
     }
-    status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
-    return {TransactionStatus::PENDING, status_ht.Decremented()};
+    FATAL_INVALID_ENUM_VALUE(TransactionStatus, status_);
+  }
+
+  void Aborted() {
+    status_ = TransactionStatus::ABORTED;
+    NotifyAbortWaiters(TransactionStatusResult::Aborted());
   }
 
   TransactionStatusResult Abort(TransactionAbortCallback* callback) {
@@ -330,20 +388,30 @@ class TransactionState {
     return log_prefix_;
   }
 
-  // now_physical is just optimization to avoid taking time multiple times.
+  // now_physical is just optimization to avoid querying the current time multiple times.
   void Poll(bool leader, MonoTime now_physical) {
-    if (status_ == TransactionStatus::COMMITTED) {
-      if (unnotified_tablets_.empty()) {
-        if (leader && !ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS)) {
-          SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
-        }
-      } else if (now_physical >= resend_applying_time_) {
-        for (auto& tablet : unnotified_tablets_) {
-          context_.NotifyApplying({tablet, id_, commit_time_});
-        }
-        resend_applying_time_ = now_physical +
-            std::chrono::microseconds(FLAGS_transaction_resend_applying_interval_usec);
+    if (status_ != TransactionStatus::COMMITTED &&
+        (status_ != TransactionStatus::SEALED || tablets_with_not_replicated_batches_ != 0)) {
+      return;
+    }
+    if (tablets_with_not_applied_intents_ == 0) {
+      if (leader && !ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS)) {
+        SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
       }
+    } else if (now_physical >= resend_applying_time_) {
+      if (leader) {
+        for (auto& tablet : involved_tablets_) {
+          if (!tablet.second.all_intents_applied) {
+            context_.NotifyApplying({
+                .tablet = tablet.first,
+                .transaction = id_,
+                .commit_time = commit_time_,
+                .sealed = status_ == TransactionStatus::SEALED });
+          }
+        }
+      }
+      resend_applying_time_ = now_physical +
+          std::chrono::microseconds(FLAGS_transaction_resend_applying_interval_usec);
     }
   }
 
@@ -383,6 +451,8 @@ class TransactionState {
     switch (data.state.status()) {
       case TransactionStatus::ABORTED:
         return AbortedReplicationFinished(data);
+      case TransactionStatus::SEALED:
+        return SealedReplicationFinished(data);
       case TransactionStatus::COMMITTED:
         return CommittedReplicationFinished(data);
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
@@ -495,6 +565,42 @@ class TransactionState {
     return Status::OK();
   }
 
+  CHECKED_STATUS SealedReplicationFinished(
+      const TransactionCoordinator::ReplicatedData& data) {
+    if (status_ != TransactionStatus::PENDING) {
+      auto status = STATUS_FORMAT(
+          IllegalState,
+          "Unexpected status during CommittedReplicationFinished: $0",
+          TransactionStatus_Name(status_));
+      LOG_WITH_PREFIX(DFATAL) << status;
+      return status;
+    }
+
+    last_touch_ = data.hybrid_time;
+    commit_time_ = data.hybrid_time;
+    // TODO(dtxn) Not yet implemented
+    next_abort_after_sealing_ = CoarseMonoClock::now() + FLAGS_avoid_abort_after_sealing_ms * 1ms;
+    VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
+    status_ = TransactionStatus::SEALED;
+
+    involved_tablets_.reserve(data.state.tablets().size());
+    for (int idx = 0; idx != data.state.tablets().size(); ++idx) {
+      auto tablet_batches = data.state.tablet_batches(idx);
+      LOG_IF_WITH_PREFIX(DFATAL, tablet_batches == 0)
+          << "Tablet without batches: " << data.state.ShortDebugString();
+      ++tablets_with_not_replicated_batches_;
+      InvolvedTabletState state = {
+        .required_replicated_batches = static_cast<size_t>(tablet_batches),
+        .all_batches_replicated = false,
+        .all_intents_applied = false
+      };
+      involved_tablets_.emplace(data.state.tablets(idx), state);
+    }
+
+    first_entry_raft_index_ = data.op_id.index();
+    return Status::OK();
+  }
+
   CHECKED_STATUS CommittedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (status_ != TransactionStatus::PENDING) {
       auto status = STATUS_FORMAT(
@@ -507,22 +613,25 @@ class TransactionState {
 
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
-    VLOG_WITH_PREFIX(4) << "Commit time: " << commit_time_;
-    status_ = TransactionStatus::COMMITTED;
-    resend_applying_time_ = MonoTime::Now() +
-        std::chrono::microseconds(FLAGS_transaction_resend_applying_interval_usec);
-    unnotified_tablets_.insert(data.state.tablets().begin(), data.state.tablets().end());
-    for (const auto& tablet : unnotified_tablets_) {
-      context_.NotifyApplying({tablet, id_, commit_time_});
-    }
-    NotifyAbortWaiters(TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_));
     first_entry_raft_index_ = data.op_id.index();
+    involved_tablets_.reserve(data.state.tablets().size());
+    for (const auto& tablet : data.state.tablets()) {
+      InvolvedTabletState state = {
+        .required_replicated_batches = 0,
+        .all_batches_replicated = true,
+        .all_intents_applied = false
+      };
+      involved_tablets_.emplace(tablet, state);
+    }
+
+    status_ = TransactionStatus::COMMITTED;
+    StartApply();
     return Status::OK();
   }
 
   CHECKED_STATUS AppliedInAllInvolvedTabletsReplicationFinished(
       const TransactionCoordinator::ReplicatedData& data) {
-    if (status_ != TransactionStatus::COMMITTED) {
+    if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
       // That could happen in old version, because we could drop all entries before
       // APPLIED_IN_ALL_INVOLVED_TABLETS.
       LOG_WITH_PREFIX(DFATAL)
@@ -530,6 +639,8 @@ class TransactionState {
           << TransactionStatus_Name(status_) << ", request: " << data.state.ShortDebugString();
       CHECK_EQ(status_, TransactionStatus::PENDING);
     }
+    VLOG_WITH_PREFIX(4) << __func__ << ", status: " << TransactionStatus_Name(status_)
+                        << ", leader: " << context_.leader();
     last_touch_ = data.hybrid_time;
     status_ = TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
     return Status::OK();
@@ -554,17 +665,32 @@ class TransactionState {
   }
 
   CHECKED_STATUS AppliedInOneOfInvolvedTablets(const tserver::TransactionStatePB& state) {
-    if (status_ != TransactionStatus::COMMITTED) {
+    if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
       // We could ignore this request, because it will be resend if required.
       LOG_WITH_PREFIX(DFATAL)
           << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
           << ", request: " << state.ShortDebugString();
       return Status::OK();
     }
-    DCHECK_EQ(state.tablets_size(), 1);
-    unnotified_tablets_.erase(state.tablets(0));
-    if (unnotified_tablets_.empty()) {
-      SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
+
+    if (state.tablets_size() != 1) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Expected exactly one tablet in $0: $1", __func__, state);
+    }
+
+    auto it = involved_tablets_.find(state.tablets(0));
+    if (it == involved_tablets_.end()) {
+      LOG_WITH_PREFIX(DFATAL) << "Applied in unknown tablet: " << state.tablets(0);
+      return Status::OK();
+    }
+    if (!it->second.all_intents_applied) {
+      --tablets_with_not_applied_intents_;
+      it->second.all_intents_applied = true;
+      VLOG_WITH_PREFIX(4) << "Applied to " << state.tablets(0) << ", left not applied: "
+                          << tablets_with_not_applied_intents_;
+      if (tablets_with_not_applied_intents_ == 0) {
+        SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
+      }
     }
     return Status::OK();
   }
@@ -576,6 +702,39 @@ class TransactionState {
     abort_waiters_.clear();
   }
 
+  void StartApply() {
+    VLOG_WITH_PREFIX(4) << __func__ << ", commit time: " << commit_time_ << ", involved tablets: "
+                        << AsString(involved_tablets_);
+    resend_applying_time_ = MonoTime::Now() +
+        std::chrono::microseconds(FLAGS_transaction_resend_applying_interval_usec);
+    tablets_with_not_applied_intents_ = involved_tablets_.size();
+    if (context_.leader()) {
+      for (const auto& tablet : involved_tablets_) {
+        context_.NotifyApplying({
+            .tablet = tablet.first,
+            .transaction = id_,
+            .commit_time = commit_time_,
+            .sealed = status_ == TransactionStatus::SEALED});
+      }
+    }
+    NotifyAbortWaiters(TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_));
+  }
+
+  void FillExpectedTabletBatches(
+      std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
+    if (!expected_tablet_batches) {
+      return;
+    }
+
+    for (const auto& tablet_id_and_state : involved_tablets_) {
+      if (!tablet_id_and_state.second.all_batches_replicated) {
+        expected_tablet_batches->push_back(ExpectedTabletBatches{
+            tablet_id_and_state.first,
+            tablet_id_and_state.second.required_replicated_batches});
+      }
+    }
+  }
+
   TransactionStateContext& context_;
   const TransactionId id_;
   const std::string log_prefix_;
@@ -584,7 +743,33 @@ class TransactionState {
   // It should match last_touch_, but it is possible that because of some code errors it
   // would not be so. To add stability we introduce a separate field for it.
   HybridTime commit_time_;
-  std::unordered_set<TabletId> unnotified_tablets_;
+
+  // If transaction was only sealed, we will try to abort it not earlier than this time.
+  CoarseTimePoint next_abort_after_sealing_;
+
+  struct InvolvedTabletState {
+    // How many batches should be replicated at this tablet.
+    size_t required_replicated_batches = 0;
+
+    // True if this tablet already replicated all batches.
+    bool all_batches_replicated = false;
+
+    // True if this tablet already applied all intents.
+    bool all_intents_applied = false;
+
+    std::string ToString() const {
+      return Format("{ required_replicated_batches: $0 all_batches_replicated: $1 "
+                        "all_intents_applied: $2 }",
+                    required_replicated_batches, all_batches_replicated, all_intents_applied);
+    }
+  };
+
+  // Tablets participating in this transaction.
+  std::unordered_map<TabletId, InvolvedTabletState> involved_tablets_;
+  // Number of tablets that have not yet replicated all batches.
+  size_t tablets_with_not_replicated_batches_ = 0;
+  // Number of tablets that have not yet applied intents.
+  size_t tablets_with_not_applied_intents_ = 0;
   // Don't resend applying until this time.
   MonoTime resend_applying_time_;
   int64_t first_entry_raft_index_ = std::numeric_limits<int64_t>::max();
@@ -663,18 +848,134 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+                           CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response) {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
-    for (const auto& transaction_id : transaction_ids) {
-      auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
-      auto it = managed_transactions_.find(id);
-      auto txn_status_with_ht = it != managed_transactions_.end()
-          ? it->GetStatus()
-          : TransactionStatusResult(TransactionStatus::ABORTED, HybridTime::kMax);
-      response->add_status(txn_status_with_ht.status);
-      response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
+    auto leader_term = context_.LeaderTerm();
+    PostponedLeaderActions postponed_leader_actions;
+    {
+      std::unique_lock<std::mutex> lock(managed_mutex_);
+      postponed_leader_actions_.leader_term = leader_term;
+      for (const auto& transaction_id : transaction_ids) {
+        auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
+
+        auto it = managed_transactions_.find(id);
+        std::vector<ExpectedTabletBatches> expected_tablet_batches;
+        auto txn_status_with_ht = it != managed_transactions_.end()
+            ? VERIFY_RESULT(it->GetStatus(&expected_tablet_batches))
+            : TransactionStatusResult(TransactionStatus::ABORTED, HybridTime::kMax);
+        VLOG_WITH_PREFIX(4) << __func__ << ": " << id << " => " << txn_status_with_ht;
+        if (txn_status_with_ht.status == TransactionStatus::SEALED) {
+          // TODO(dtxn) Avoid concurrent resolve
+          txn_status_with_ht = VERIFY_RESULT(ResolveSealedStatus(
+              id, txn_status_with_ht.status_time, expected_tablet_batches,
+              /* abort_if_not_replicated = */ false, &lock));
+        }
+        response->add_status(txn_status_with_ht.status);
+        response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
+      }
+      postponed_leader_actions.Swap(&postponed_leader_actions_);
     }
+
+    ExecutePostponedLeaderActions(&postponed_leader_actions);
     return Status::OK();
+  }
+
+  Result<TransactionStatusResult> ResolveSealedStatus(
+      const TransactionId& transaction_id,
+      HybridTime commit_time,
+      const std::vector<ExpectedTabletBatches>& expected_tablet_batches,
+      bool abort_if_not_replicated,
+      std::unique_lock<std::mutex>* lock) {
+    VLOG_WITH_PREFIX(4)
+        << __func__ << ", txn: " << transaction_id << ", commit time: " << commit_time
+        << ", expected tablet batches: " << AsString(expected_tablet_batches)
+        << ", abort if not replicated: " << abort_if_not_replicated;
+
+    auto deadline = TransactionRpcDeadline();
+    auto now_ht = context_.clock().Now();
+    CountDownLatch latch(expected_tablet_batches.size());
+    std::vector<HybridTime> write_hybrid_times(expected_tablet_batches.size());
+    {
+      lock->unlock();
+      auto scope_exit = ScopeExit([lock] {
+        if (lock) {
+          lock->lock();
+        }
+      });
+      size_t idx = 0;
+      for (const auto& p : expected_tablet_batches) {
+        tserver::GetTransactionStatusAtParticipantRequestPB req;
+        req.set_tablet_id(p.tablet);
+        req.set_transaction_id(
+            pointer_cast<const char*>(transaction_id.data), transaction_id.size());
+        req.set_propagated_hybrid_time(now_ht.ToUint64());
+        if (abort_if_not_replicated) {
+          req.set_required_num_replicated_batches(p.batches);
+        }
+
+        auto handle = rpcs_.Prepare();
+        if (handle != rpcs_.InvalidHandle()) {
+          *handle = GetTransactionStatusAtParticipant(
+              deadline,
+              nullptr /* remote_tablet */,
+              context_.client_future().get(),
+              &req,
+              [this, handle, idx, &write_hybrid_times, &expected_tablet_batches, &latch,
+               &transaction_id, &p](
+                  const Status& status,
+                  const tserver::GetTransactionStatusAtParticipantResponsePB& resp) {
+                client::UpdateClock(resp, &context_);
+                rpcs_.Unregister(handle);
+
+                VLOG_WITH_PREFIX(4)
+                    << "TXN: " << transaction_id << " batch status at " << p.tablet << ": "
+                    << "idx: " << idx << ", resp: " << resp.ShortDebugString() << ", expected: "
+                    << expected_tablet_batches[idx].batches;
+                if (status.ok()) {
+                  if (resp.aborted()) {
+                    write_hybrid_times[idx] = HybridTime::kMin;
+                  } else if (resp.num_replicated_batches() ==
+                                 expected_tablet_batches[idx].batches) {
+                    write_hybrid_times[idx] = HybridTime(resp.status_hybrid_time());
+                    LOG_IF_WITH_PREFIX(DFATAL, !write_hybrid_times[idx].is_valid())
+                        << "Received invalid hybrid time when all batches were replicated: "
+                        << resp.ShortDebugString();
+                  }
+                }
+                latch.CountDown();
+              });
+          (**handle).SendRpc();
+        } else {
+          latch.CountDown();
+        }
+        ++idx;
+      }
+      latch.Wait();
+    }
+
+    auto txn_it = managed_transactions_.find(transaction_id);
+    if (txn_it == managed_transactions_.end()) {
+      // Transaction was completed (aborted/committed) during this procedure.
+      return TransactionStatusResult{TransactionStatus::PENDING, commit_time.Decremented()};
+    }
+
+    for (size_t idx = 0; idx != expected_tablet_batches.size(); ++idx) {
+      if (write_hybrid_times[idx] == HybridTime::kMin) {
+        Modify(txn_it).Aborted();
+      } else if (write_hybrid_times[idx].is_valid()) {
+        Modify(txn_it).ReplicatedAllBatchesAt(
+            expected_tablet_batches[idx].tablet, write_hybrid_times[idx]);
+      }
+    }
+    auto result = VERIFY_RESULT(txn_it->GetStatus(/* expected_tablet_batches = */ nullptr));
+    if (result.status != TransactionStatus::SEALED) {
+      VLOG_WITH_PREFIX(4) << "TXN: " << transaction_id << " status resolved: "
+                          << TransactionStatus_Name(result.status);
+      return result;
+    }
+
+    VLOG_WITH_PREFIX(4) << "TXN: " << transaction_id << " status NOT resolved";
+    return TransactionStatusResult{TransactionStatus::PENDING, result.status_time.Decremented()};
   }
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback) {
@@ -696,6 +997,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       postponed_leader_actions_.leader_term = term;
       auto status = Modify(it).Abort(&callback);
       if (callback) {
+        lock.unlock();
         callback(status);
         return;
       }
@@ -704,7 +1006,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
     ExecutePostponedLeaderActions(&actions);
   }
-
 
   size_t test_count_transactions() {
     std::lock_guard<std::mutex> lock(managed_mutex_);
@@ -864,14 +1165,17 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
     if (!actions->notify_applying.empty()) {
       auto deadline = TransactionRpcDeadline();
-      for (const auto& p : actions->notify_applying) {
+      for (const auto& action : actions->notify_applying) {
+        VLOG_WITH_PREFIX(3) << "Notify applying: " << action.ToString();
+
         tserver::UpdateTransactionRequestPB req;
-        req.set_tablet_id(p.tablet);
+        req.set_tablet_id(action.tablet);
         auto& state = *req.mutable_state();
-        state.set_transaction_id(p.transaction.begin(), p.transaction.size());
+        state.set_transaction_id(action.transaction.begin(), action.transaction.size());
         state.set_status(TransactionStatus::APPLYING);
         state.add_tablets(context_.tablet_id());
-        state.set_commit_hybrid_time(p.commit_time.ToUint64());
+        state.set_commit_hybrid_time(action.commit_time.ToUint64());
+        state.set_sealed(action.sealed);
 
         auto handle = rpcs_.Prepare();
         if (handle != rpcs_.InvalidHandle()) {
@@ -880,12 +1184,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
               nullptr /* remote_tablet */,
               context_.client_future().get(),
               &req,
-              [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
-                if (propagated_hybrid_time.is_valid()) {
-                  context_.UpdateClock(propagated_hybrid_time);
-                }
+              [this, handle](const Status& status,
+                             const tserver::UpdateTransactionResponsePB& resp) {
+                client::UpdateClock(resp, &context_);
                 rpcs_.Unregister(handle);
-                LOG_IF(WARNING, !status.ok()) << "Failed to send apply: " << status;
+                LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send apply: " << status;
               });
           (**handle).SendRpc();
         }
@@ -915,6 +1218,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void NotifyApplying(NotifyApplyingData data) override {
+    if (!leader()) {
+      LOG_WITH_PREFIX(WARNING) << __func__ << " at non leader: " << data.ToString();
+      return;
+    }
     postponed_leader_actions_.notify_applying.push_back(std::move(data));
   }
 
@@ -944,7 +1251,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   bool leader() const override {
-    return postponed_leader_actions_.leader_term != OpId::kUnknownTerm;
+    return postponed_leader_actions_.leader();
   }
 
   Counter& expired_metric() override {
@@ -1069,8 +1376,9 @@ void TransactionCoordinator::Shutdown() {
 
 Status TransactionCoordinator::GetStatus(
     const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+    CoarseTimePoint deadline,
     tserver::GetTransactionStatusResponsePB* response) {
-  return impl_->GetStatus(transaction_ids, response);
+  return impl_->GetStatus(transaction_ids, deadline, response);
 }
 
 void TransactionCoordinator::Abort(const std::string& transaction_id,
@@ -1080,8 +1388,8 @@ void TransactionCoordinator::Abort(const std::string& transaction_id,
 }
 
 std::string TransactionCoordinator::ReplicatedData::ToString() const {
-  return Format("{ state: $0 op_id: $1 hybrid_time: $2 }",
-                state, op_id, hybrid_time);
+  return Format("{ leader_term: $0 state: $1 op_id: $2 hybrid_time: $3 }",
+                leader_term, state, op_id, hybrid_time);
 }
 
 } // namespace tablet

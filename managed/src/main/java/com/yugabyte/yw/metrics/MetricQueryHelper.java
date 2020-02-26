@@ -77,6 +77,14 @@ public class MetricQueryHelper {
       }
     }
 
+    ObjectNode responseJson = Json.newObject();
+    String metricsUrl = appConfig.getString("yb.metrics.url");
+    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
+    if ((null == metricsUrl || metricsUrl.isEmpty()) && !useNativeMetrics) {
+      LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
+      return responseJson;
+    }
+
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
     Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
     for (String metricKey : metricKeys) {
@@ -89,7 +97,7 @@ public class MetricQueryHelper {
       futures.add(future);
     }
 
-    ObjectNode responseJson = Json.newObject();
+
     for (Future<JsonNode> future : futures) {
       JsonNode response = Json.newObject();
       try {

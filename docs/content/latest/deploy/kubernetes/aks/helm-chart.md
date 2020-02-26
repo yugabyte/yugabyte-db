@@ -31,4 +31,4 @@ showAsideToc: true
   </li>
 </ul>
 
-Detailed instructions specific to AKS are coming soon. Refer to the [Kubernetes Open Source](../../oss/helm-chart/) instructions till then.
+Detailed instructions specific to AKS are coming soon. Until then, refer to the [Open Source Kubernetes](../../oss/helm-chart/) instructions.

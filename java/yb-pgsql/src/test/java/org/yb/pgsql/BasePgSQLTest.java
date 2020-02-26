@@ -28,17 +28,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
-import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.Metrics;
+import org.yb.minicluster.*;
 import org.yb.minicluster.Metrics.YSQLStat;
-import org.yb.minicluster.MiniYBCluster;
-import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.minicluster.MiniYBDaemon;
 import org.yb.pgsql.cleaners.ClusterCleaner;
 import org.yb.pgsql.cleaners.ConnectionCleaner;
 import org.yb.pgsql.cleaners.UserObjectCleaner;
 import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.SanitizerUtil;
+import org.yb.master.Master;
 
 import java.io.File;
 import java.net.InetSocketAddress;
@@ -1016,11 +1013,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       String tableName,
       String valueColumnName,
       PartitioningMode partitioningMode) throws SQLException {
-    Statement statement = connection.createStatement();
-    String sql = getSimpleTableCreationStatement(tableName, valueColumnName, partitioningMode);
-    LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
-    statement.execute(sql);
-    LOG.info("Table creation finished: " + tableName);
+    try (Statement statement = connection.createStatement()) {
+      String sql = getSimpleTableCreationStatement(tableName, valueColumnName, partitioningMode);
+      LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
+      statement.execute(sql);
+      LOG.info("Table creation finished: " + tableName);
+    }
   }
 
   protected void createSimpleTable(String tableName, String valueColumnName) throws SQLException {
@@ -1030,7 +1028,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected List<Row> setupSimpleTable(String tableName) throws SQLException {
     List<Row> allRows = new ArrayList<>();
     try (Statement statement = connection.createStatement()) {
-      createSimpleTable(tableName);
+      createSimpleTable(statement, tableName);
       String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
 
       for (int h = 0; h < 10; h++) {
@@ -1237,6 +1235,27 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
             maxTotalMillis),
         elapsedMillis <= maxTotalMillis);
   }
+
+  /** UUID of the first table with specified name. **/
+  private String getTableUUID(String tableName)  throws Exception {
+    for (Master.ListTablesResponsePB.TableInfo table :
+        miniCluster.getClient().getTablesList().getTableInfoList()) {
+      if (table.getName().equals(tableName)) {
+        return table.getId().toStringUtf8();
+      }
+    }
+    throw new Exception(String.format("YSQL table ''%s' not found", tableName));
+  }
+
+  protected RocksDBMetrics getRocksDBMetric(String tableName) throws Exception {
+    return getRocksDBMetricByTableUUID(getTableUUID(tableName));
+  }
+
+  protected int getTableCounterMetric(String tableName,
+                                      String metricName) throws Exception {
+    return getTableCounterMetricByTableUUID(getTableUUID(tableName), metricName);
+  }
+
 
   public static class ConnectionBuilder {
     private static final int MAX_CONNECTION_ATTEMPTS = 10;

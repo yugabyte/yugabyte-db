@@ -32,7 +32,7 @@ YugabyteDB is designed for reliability, providing high fault tolerance and redun
 
 ## Back up a single database
 
-The YugabyteDB [`ysql_dump`](../../../admin/ysql-dump) backup utility, derived from PostgreSQL `pg_dump`, 
+The YugabyteDB [`ysql_dump`](../../../admin/ysql-dump) backup utility, derived from PostgreSQL `pg_dump`,
 can be used to extract a single YugabyteDB database into a SQL script file.  `ysql_dump` will make a consistent backup for a database, even if it is being used concurrently, and does not block other database users (readers or writers).
 
 The SQL script dump is a plain-text file that include the SQL statements required to restore the database to the state it was in at the time it was saved. To restore a database from the SQL script file, use [`ysqlsh`](../../../admin/ysqlsh). For details on restoring an individual YugabyteDB database, see [Restore data](../restore-data).
@@ -66,7 +66,7 @@ Use the [`ysql_dumpall`](../../../admin/ysql-dumpall) backup utility to write ou
 
 {{< /note >}}
 
-To back up all databases, from your YugabyteDB home directory, run the `ysql_dumpall` utility command.
+To back up all databases, from your YugabyteDB home directory, run the [`ysql_dumpall`](../../../admin/ysql-dumpall) utility command.
 
 ```sh
 $ ./postgres/bin/ysql_dumpall > <backup-file>
@@ -80,4 +80,4 @@ In the following example, all databases and database objects are backed up to th
 $ ./postgres/bin/ysql_dumpall > ../backup/yb-dumpall.sql
 ```
 
-Options for the `ysql_dumpall` utility can be used to limit backups to roles only (`--roles-only`), all database objects except the data (`--schema-only`), or other options. For details about the utility's available options, see [`ysql_dumpall`](../../../admin/ysql_dumpall`).
+Options for the `ysql_dumpall` utility can be used to limit backups to roles only (`--roles-only`), all database objects except the data (`--schema-only`), or other options. For details about the utility's available options, see [`ysql_dumpall`](../../../admin/ysql-dumpall).

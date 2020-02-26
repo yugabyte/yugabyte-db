@@ -42,12 +42,16 @@ using DocKeyHash = uint16_t;
 
 // A key that allows us to locate a document. This is the prefix of all RocksDB keys of records
 // inside this document. A document key contains:
+//   - An optional ID (cotable id or pgtable id).
 //   - An optional fixed-width hash prefix.
 //   - A group of primitive values representing "hashed" components (this is what the hash is
 //     computed based on, so this group is present/absent together with the hash).
 //   - A group of "range" components suitable for doing ordered scans.
 //
 // The encoded representation of the key is as follows:
+//   - Optional ID:
+//     * For cotable id, the byte ValueType::kTableId followed by a sixteen byte UUID.
+//     * For pgtable id, the byte ValueType::kPgTableOid followed by a four byte PgTableId.
 //   - Optional fixed-width hash prefix, followed by hashed components:
 //     * The byte ValueType::kUInt16Hash, followed by two bytes of the hash prefix.
 //     * Hashed components:
@@ -59,8 +63,9 @@ using DocKeyHash = uint16_t;
 //        representation of the respective type (see PrimitiveValue's key encoding).
 //     2. ValueType::kGroupEnd terminates the sequence.
 enum class DocKeyPart {
+  UP_TO_HASH,
+  UP_TO_ID,
   WHOLE_DOC_KEY,
-  HASHED_PART_ONLY
 };
 
 class DocKeyDecoder;
@@ -608,8 +613,35 @@ class SubDocKey {
   static CHECKED_STATUS DecodePrefixLengths(
       Slice slice, boost::container::small_vector_base<size_t>* out);
 
-  // Fills out with ends of SubDocKey components. First item in out will be size of DocKey,
-  // second size of DocKey + size of first subkey and so on.
+  // Fills out with ends of SubDocKey components.  First item in out will be size of ID part
+  // (cotable id or pgtable id) of DocKey (0 if ID is not present), second size of whole DocKey,
+  // third size of DocKey + size of first subkey, and so on.
+  //
+  // To illustrate,
+  // * for key
+  //     SubDocKey(DocKey(0xfca0, [3], []), [SystemColumnId(0); HT{ physical: 1581475435181551 }])
+  //   aka
+  //     47FCA0488000000321214A80238001B5E605A0CA10804A
+  //   (and with spaces to make it clearer)
+  //     47FCA0 4880000003 21 21 4A80 238001B5E605A0CA10804A
+  //   the ends will be
+  //     {0, 10, 12}
+  // * for key
+  //     SubDocKey(DocKey(PgTableId=16385, [], [5]), [SystemColumnId(0); HT{ physical: ... }])
+  //   aka
+  //     30000040014880000005214A80238001B5E700309553804A
+  //   (and with spaces to make it clearer)
+  //     3000004001 4880000005 21 4A80 238001B5E700309553804A
+  //   the ends will be
+  //     {5, 11, 13}
+  // * for key
+  //     SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 1581471227403848 }])
+  //   aka
+  //     300000400121238001B5E7006E61B7804A
+  //   (and with spaces to make it clearer)
+  //     3000004001 21 238001B5E7006E61B7804A
+  //   the ends will be
+  //     {5}
   //
   // If out is not empty, then it will be interpreted as partial result for this decoding operation
   // and the appropriate prefix will be skipped.

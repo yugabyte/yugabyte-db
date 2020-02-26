@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
 import org.junit.Test;
+import org.mindrot.jbcrypt.BCrypt;
 import org.mockito.ArgumentCaptor;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -44,6 +45,7 @@ import java.io.*;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.*;
@@ -166,5 +168,44 @@ public class UsersControllerTest extends WithApplication {
     testUser1 = Users.get(testUser1.uuid);
     assertEquals(testUser1.getRole(), Role.ReadOnly);
     assertAuditEntry(1, customer1.uuid);
+  }
+
+  @Test
+  public void testPasswordChangeInvalid() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("email", "tc3@test.com");
+    params.put("password", "new-password");
+    params.put("confirmPassword", "new-password");
+    params.put("role", "Admin");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
+    Result result = route(fakeRequest("PUT",
+        String.format("%s/%s/change_password",
+        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+        .cookie(validCookie).bodyJson(params));
+    testUser1 = Users.get(testUser1.uuid);
+    assertEquals(result.status(), FORBIDDEN);
+  }
+
+  @Test
+  public void testPasswordChangeValid() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("email", "tc3@test.com");
+    params.put("password", "new-password");
+    params.put("confirmPassword", "new-password");
+    params.put("role", "Admin");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result = route(fakeRequest("PUT",
+        String.format("%s/%s/change_password",
+        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+        .cookie(validCookie).bodyJson(params));
+    testUser1 = Users.get(testUser1.uuid);
+    assertEquals(testUser1.getRole(), Role.Admin);
+    assertTrue(BCrypt.checkpw("new-password", testUser1.passwordHash));
+    assertAuditEntry(0, customer1.uuid);
   }
 }

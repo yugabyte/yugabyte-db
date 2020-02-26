@@ -92,7 +92,7 @@ To build the tables and database objects, run the following `\i` command.
 chinook=# \i share/chinook_ddl.sql
 ```
 
-You can verify that all 14 tables have been created by running the `\d` command.
+You can verify that all 11 tables have been created by running the `\d` command.
 
 ```postgresql
 chinook=# \d

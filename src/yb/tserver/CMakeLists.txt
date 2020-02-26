@@ -154,6 +154,7 @@ add_dependencies(tserver_util gen_proto)
 
 set(TSERVER_SRCS
   heartbeater.cc
+  heartbeater_factory.cc
   metrics_snapshotter.cc
   mini_tablet_server.cc
   remote_bootstrap_client.cc
@@ -167,6 +168,7 @@ set(TSERVER_SRCS
   tablet_service.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
+  tserver_metrics_heartbeat_data_provider.cc
   ${TSERVER_SRCS_EXTENSIONS})
 
 add_library(tserver ${TSERVER_SRCS})

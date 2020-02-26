@@ -1,7 +1,7 @@
 ---
-title: Date and time Functions
+title: Date and time functions
 summary: Functions that work on data types related to date and time.
-description: Date and Ttme Functions
+description: Date and time functions
 menu:
   latest:
     parent: api-cassandra
@@ -336,7 +336,6 @@ cqlsh:example> SELECT uuid() FROM test_uuid;
 
 ## See also
 
-[`DATE`, `TIME` and `TIMESTAMP`](../type_datetime)
-[`TIMEUUID`](../type_uuid)
-[`UUID`](../type_uuid)
-[Other CQL Statements](..)
+- [`DATE`, `TIME` and `TIMESTAMP`](../type_datetime)
+- [`TIMEUUID`](../type_uuid)
+- [`UUID`](../type_uuid)

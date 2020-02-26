@@ -32,6 +32,17 @@ SELECT * FROM tab_nonkey_noco ORDER BY a ASC;
 SELECT * FROM tab_range_range;
 SELECT * FROM tab_range_colo;
 
+BEGIN;
+INSERT INTO tab_range_colo VALUES (4);
+SELECT * FROM tab_range_colo;
+ROLLBACK;
+BEGIN;
+INSERT INTO tab_range_colo VALUES (5);
+COMMIT;
+SELECT * FROM tab_range_colo;
+
+INSERT INTO tab_range_colo VALUES (6), (6);
+
 -- CREATE INDEX
 
 -- table with index
@@ -48,24 +59,10 @@ SELECT * FROM tab_range_nonkey2;
 -- colocated table with non-colocated index
 CREATE TABLE tab_range_nonkey3 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range_colo ON tab_range_nonkey3 (a) WITH (colocated = true);
-INSERT INTO tab_range_nonkey3 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM tab_range_nonkey3 WHERE a = 1;
-SELECT * FROM tab_range_nonkey3 WHERE a = 1;
-UPDATE tab_range_nonkey3 SET b = b + 1 WHERE a > 3;
-SELECT * FROM tab_range_nonkey3;
-DELETE FROM tab_range_nonkey3 WHERE a > 3;
-SELECT * FROM tab_range_nonkey3;
 
 -- colocated table with colocated index
 CREATE TABLE tab_range_nonkey4 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range_noco ON tab_range_nonkey4 (a) WITH (colocated = false);
-INSERT INTO tab_range_nonkey4 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM tab_range_nonkey4 WHERE a = 1;
-SELECT * FROM tab_range_nonkey4 WHERE a = 1;
-UPDATE tab_range_nonkey4 SET b = b + 1 WHERE a > 3;
-SELECT * FROM tab_range_nonkey4;
-DELETE FROM tab_range_nonkey4 WHERE a > 3;
-SELECT * FROM tab_range_nonkey4;
 
 -- non-colocated table with index
 CREATE TABLE tab_range_nonkey_noco (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
@@ -94,7 +91,16 @@ CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
 
 -- truncate colocated table with default index
 TRUNCATE TABLE tab_range;
--- TODO(jason): fix output of select after issue #3359
+SELECT * FROM tab_range;
+INSERT INTO tab_range VALUES (4);
+SELECT * FROM tab_range;
+INSERT INTO tab_range VALUES (1);
+INSERT INTO tab_range VALUES (2), (5);
+SELECT * FROM tab_range;
+DELETE FROM tab_range WHERE a = 2;
+TRUNCATE TABLE tab_range;
+SELECT * FROM tab_range;
+INSERT INTO tab_range VALUES (2);
 SELECT * FROM tab_range;
 
 -- truncate non-colocated table without index
@@ -103,7 +109,6 @@ SELECT * FROM tab_nonkey_noco;
 
 -- truncate colocated table with explicit index
 TRUNCATE TABLE tab_range_nonkey2;
--- TODO(jason): fix output of select after issue #3359
 SELECT * FROM tab_range_nonkey2;
 
 -- truncate non-colocated table with explicit index

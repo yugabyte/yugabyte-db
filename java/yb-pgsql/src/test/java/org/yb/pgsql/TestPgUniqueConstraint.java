@@ -15,7 +15,6 @@ package org.yb.pgsql;
 
 import java.sql.Statement;
 
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.util.YBTestRunnerNonTsanOnly;
@@ -123,7 +122,7 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
     }
   }
 
-  @Ignore // TODO: Enable after #1058
+  @Test
   public void multipleNullsAreAllowed() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       // Singular column UNIQUE constraint
@@ -134,8 +133,8 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
       stmt.execute("INSERT INTO test1 VALUES (NULL)");
       assertQuery(stmt,
           "SELECT * FROM test1",
-          new Row(null),
-          new Row(null));
+          new Row((Comparable<?>)null),
+          new Row((Comparable<?>)null));
 
       // Multi-column UNIQUE constraint
       stmt.execute("CREATE TABLE test2("
@@ -362,6 +361,39 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
       // Insert fails immediately
       runInvalidQuery(stmt, "INSERT INTO test(i1, i2) VALUES (2, 1)", "duplicate");
       stmt.execute("COMMIT");
+    }
+  }
+
+  @Test
+  public void createIndexViolatingUniqueness() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test(id int PRIMARY KEY, v int)");
+
+      // Get the OID of the 'test' table from pg_class
+      long tableOid = getRowList(
+          stmt.executeQuery("SELECT oid FROM pg_class WHERE relname = 'test'")).get(0).getLong(0);
+
+      // Two entries in pg_depend table, one for pg_type and the other for pg_constraint
+      assertQuery(stmt, "SELECT COUNT(*) FROM pg_depend WHERE refobjid=" + tableOid,
+          new Row(2));
+
+      stmt.executeUpdate("INSERT INTO test VALUES (1, 1)");
+      stmt.executeUpdate("INSERT INTO test VALUES (2, 1)");
+
+      runInvalidQuery(stmt, "CREATE UNIQUE INDEX test_v on test(v)", "duplicate key");
+
+      // Make sure index has no leftovers
+      runInvalidQuery(stmt, "DROP INDEX test_v", "does not exist");
+      assertNoRows(stmt, "SELECT oid FROM pg_class WHERE relname = 'test_v'");
+      assertQuery(stmt, "SELECT COUNT(*) FROM pg_depend WHERE refobjid=" + tableOid,
+          new Row(2));
+      assertQuery(stmt, "SELECT * FROM test WHERE v = 1",
+          new Row(1, 1), new Row(2, 1));
+
+      // We can still insert duplicate elements
+      stmt.executeUpdate("INSERT INTO test VALUES (3, 1)");
+      assertQuery(stmt, "SELECT * FROM test WHERE v = 1",
+          new Row(1, 1), new Row(2, 1), new Row(3, 1));
     }
   }
 }

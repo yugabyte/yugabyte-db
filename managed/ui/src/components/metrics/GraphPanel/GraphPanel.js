@@ -56,6 +56,7 @@ const panelTypes = {
       "lsm_rocksdb_block_cache_usage",
       "lsm_rocksdb_blooms_checked_and_useful",
       "lsm_rocksdb_stalls",
+      "lsm_rocksdb_write_rejections",
       "lsm_rocksdb_flush_size",
       "lsm_rocksdb_compaction",
       "lsm_rocksdb_compaction_time",
@@ -64,10 +65,13 @@ const panelTypes = {
   proxies: {title: "Overall Ops and Latency",
     metrics: ["ysql_server_rpc_per_second",
       "ysql_sql_latency",
+      // "ysql_server_rpc_percentile",
       "cql_server_rpc_per_second",
       "cql_sql_latency",
+      "cql_server_rpc_percentile",
       "redis_rpcs_per_sec_all",
-      "redis_ops_latency_all"
+      "redis_ops_latency_all",
+      "redis_rpc_percentile"
     ]},
 
   redis:  {title: "YEDIS Advanced",
@@ -200,7 +204,7 @@ class GraphPanel extends Component {
 
     if (insecureLoginToken && type !== 'proxies') {
       panelData = (<div className="oss-unavailable-warning">
-        Only available on YugaByte Platform.
+        Only available on Yugabyte Platform.
       </div>);
     } else {
       if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {

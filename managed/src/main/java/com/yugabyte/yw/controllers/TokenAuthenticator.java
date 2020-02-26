@@ -71,6 +71,23 @@ public class TokenAuthenticator extends Action.Simple {
     return delegate.call(ctx);
   }
 
+  public boolean superAdminAuthentication(Http.Context ctx) {
+    String token = fetchToken(ctx, true);
+    Users user = null;
+    if (token != null) {
+      user = Users.authWithApiToken(token);
+    } else {
+      token = fetchToken(ctx, false);
+      user = Users.authWithToken(token);
+    }
+    if (user != null) {
+      if (user.getRole() == Role.SuperAdmin) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private String fetchToken(Http.Context ctx, boolean isApiToken) {
     String header, cookie;
     if (isApiToken) {
@@ -98,9 +115,20 @@ public class TokenAuthenticator extends Action.Simple {
     if (requestType.equals("GET")) {
       return true;
     }
-
-    // Admin has access to all APIs.
-    if (user.getRole() == Role.Admin) {
+    // Users should be allowed to change their password.
+    // Even admin users should not be allowed to change another
+    // user's password.
+    if (endPoint != null) {
+      if (endPoint.endsWith("/change_password")) {
+        UUID userUUID = UUID.fromString(endPoint.split("/")[2]);
+        if (userUUID.equals(user.uuid)) {
+          return true;
+        }
+        return false;
+      }
+    }
+    // Admin/SuperAdmin have access to all APIs.
+    if (user.getRole() != Role.ReadOnly) {
       return true;
     } else {
       // User is not admin and the request isn't a GET.

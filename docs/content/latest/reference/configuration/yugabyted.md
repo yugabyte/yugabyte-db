@@ -2,7 +2,7 @@
 title: yugabyted
 linkTitle: yugabyted
 description: yugabyted
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     identifier: yugabyted
@@ -61,7 +61,7 @@ The following commands are available:
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This one-node cluster includes [`yb-tserver`](../yb-tserver) and [`yb-master`](yb-master) services.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This one-node cluster includes [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) services.
 
 ### Syntax
 
@@ -86,7 +86,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your
 
 ### Options
 
-##### -h | --help
+##### -h, --help
 
 Print the commmand line help and exit.
 
@@ -112,7 +112,7 @@ The port on which YSQL will run.
 
 ##### --master_rpc_port *master-rpc-port*
 
-The port on which yb-master will listen for RPC calls.
+The port on which YB-Master will listen for RPC calls.
 
 ##### --tserver_rpc_port *tserver-rpc-port*
 

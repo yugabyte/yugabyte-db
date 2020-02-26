@@ -78,7 +78,7 @@ CQLConnectionContext::CQLConnectionContext(
 Result<rpc::ProcessDataResult> CQLConnectionContext::ProcessCalls(
     const rpc::ConnectionPtr& connection, const IoVecs& data,
     rpc::ReadBufferFull read_buffer_full) {
-  return parser_.Parse(connection, data, read_buffer_full);
+  return parser_.Parse(connection, data, read_buffer_full, nullptr /* tracker_for_throttle */);
 }
 
 Status CQLConnectionContext::HandleCall(

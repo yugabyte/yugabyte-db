@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../reference/configuration/yb-master/) and [`yb-tserver`](../reference/configuration/yb-tserver/) binaries to perform the necessary administration.
+The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-tserver`](../../reference/configuration/yb-tserver/) binaries to perform the necessary administration.
 
 ## Syntax
 
@@ -33,7 +33,7 @@ $ ./bin/yb-ctl --help
 
 ## Commands
 
-### create
+##### create
 
 Creates a local YugabyteDB cluster. With no optional arguments, creates a 1-node cluster.
 
@@ -183,10 +183,7 @@ Timeout, in seconds, for operations that wait on the cluster.
 ##### --verbose
 
 Flag to log internal debug messages to `stderr`.
-  
-##### --install-if-needed
 
-With this option, if YugabyteDB is not yet installed on the system, the latest version will be downloaded and installed automatically.
 
 ## Create a local cluster
 

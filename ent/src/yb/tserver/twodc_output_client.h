@@ -20,21 +20,16 @@ namespace yb {
 
 class ThreadPool;
 
-namespace client {
-
-class YBClient;
-
-} // client
-
 namespace tserver {
 namespace enterprise {
 
 class CDCConsumer;
+struct CDCClient;
 
 std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     CDCConsumer* cdc_consumer,
     const cdc::ConsumerTabletInfo& consumer_tablet_info,
-    const std::shared_ptr<client::YBClient>& local_client,
+    const std::shared_ptr<CDCClient>& local_client,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
     bool use_local_tserver);
 

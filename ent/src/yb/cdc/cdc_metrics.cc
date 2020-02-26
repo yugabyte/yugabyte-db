@@ -49,6 +49,9 @@ METRIC_DEFINE_gauge_int64(cdc, last_read_opid_term, "CDC Last Read OpId (Term)",
 METRIC_DEFINE_gauge_int64(cdc, last_read_opid_index, "CDC Last Read OpId (Index)",
   yb::MetricUnit::kOperations,
   "ID of the Last Read Producer Operation from a CDC GetChanges request. Format = term.index");
+METRIC_DEFINE_gauge_int64(cdc, last_checkpoint_opid_index, "CDC Last Checkpoint OpId (Index)",
+  yb::MetricUnit::kOperations,
+  "ID of the Last Checkpoint Sent by Consumer in a CDC GetChanges request. Format = term.index");
 METRIC_DEFINE_gauge_uint64(cdc, last_read_hybridtime, "CDC Last Read HybridTime.",
   yb::MetricUnit::kMicroseconds,
   "HybridTime of the Last Read Operation from a CDC GetChanges request");
@@ -73,6 +76,7 @@ CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
       MINIT(rpc_heartbeats_responded),
       GINIT(last_read_opid_term),
       GINIT(last_read_opid_index),
+      GINIT(last_checkpoint_opid_index),
       GINIT(last_read_hybridtime),
       GINIT(last_read_physicaltime),
       GINIT(last_readable_opid_index),

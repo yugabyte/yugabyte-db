@@ -334,6 +334,7 @@ Status Log::Open(const LogOptions &options,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& metric_entity,
                  ThreadPool* append_thread_pool,
+                 int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log) {
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(tablet_wal_path)),
@@ -460,6 +461,9 @@ Status Log::RollOver() {
   RETURN_NOT_OK(allocation_status_.Get());
 
   DCHECK_EQ(allocation_state(), kAllocationFinished);
+
+  LOG_WITH_PREFIX(INFO) << Format("Last appended opid in segment $0: $1", active_segment_->path(),
+                                  last_appended_entry_op_id_.ToString());
 
   RETURN_NOT_OK(Sync());
   RETURN_NOT_OK(CloseCurrentSegment());
@@ -807,8 +811,9 @@ void Log::set_wal_retention_secs(uint32_t wal_retention_secs) {
 
 uint32_t Log::wal_retention_secs() const {
   uint32_t wal_retention_secs = wal_retention_secs_.load(std::memory_order_acquire);
-  return FLAGS_log_min_seconds_to_retain > 0 ?
-      std::max(wal_retention_secs, static_cast<uint32_t>(FLAGS_log_min_seconds_to_retain)) :
+  auto flag_wal_retention = GetAtomicFlag(&FLAGS_log_min_seconds_to_retain);
+  return flag_wal_retention > 0 ?
+      std::max(wal_retention_secs, static_cast<uint32_t>(flag_wal_retention)) :
       wal_retention_secs;
 }
 
@@ -1045,7 +1050,8 @@ Status Log::PreAllocateNewSegment() {
   CHECK_EQ(allocation_state(), kAllocationInProgress);
 
   WritableFileOptions opts;
-  opts.sync_on_close = durable_wal_write_;
+  // We always want to sync on close: https://github.com/yugabyte/yugabyte-db/issues/3490
+  opts.sync_on_close = true;
   opts.o_direct = durable_wal_write_;
   RETURN_NOT_OK(CreatePlaceholderSegment(opts, &next_segment_path_, &next_segment_file_));
 
@@ -1073,9 +1079,7 @@ Status Log::SwitchToAllocatedSegment() {
       FsManager::GetWalSegmentFileName(tablet_wal_path_, active_segment_sequence_number_);
 
   RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
-  if (durable_wal_write_) {
-    RETURN_NOT_OK(get_env()->SyncDir(log_dir_));
-  }
+  RETURN_NOT_OK(get_env()->SyncDir(log_dir_));
 
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(

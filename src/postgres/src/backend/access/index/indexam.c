@@ -239,7 +239,7 @@ index_insert(Relation indexRelation,
 
 /* ----------------
  *		index_delete - delete an index tuple from a relation.
- *      This is used only for indexes backed by YugaByte DB. For Postgres, when a tuple is updated,
+ *      This is used only for indexes backed by YugabyteDB. For Postgres, when a tuple is updated,
  *      the ctid of the original tuple will be invalid (except for heap-only tuple (HOT)). Because
  *      of this, index entries of the original tuple do not need to be deleted in UPDATE. For
  *      YugaByte-based tables, the ybctid is the primary key of the tuple and will remain valid

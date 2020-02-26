@@ -1,7 +1,7 @@
 ---
-title: Back up data using snapshots
-linkTitle: Back up data using snapshots
-description: Back up data using snapshots
+title: Snapshot and restore data
+linkTitle: Snapshot and restore data
+description: Snapshot and restore data
 image: /images/section_icons/manage/enterprise.png
 aliases:
   - manage/backup-restore/manage-snapshots
@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link active">
+    <a href="/latest/manage/backup-restore/snapshots" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -32,18 +32,18 @@ You can create a backup for YugabyteDB using snapshots. Here are some points to 
   - Single table snapshots don't work in YSQL [#2083](https://github.com/YugaByte/yugabyte-db/issues/2083).
   - Yugabyte Platform automates these steps for you.
 - Implementation notes:
- - Once the snapshot command is issued, we will “buffer” newly incoming writes to that tablet without writing them immediately.
- - For the existing data: we flush it to disk and hardlink the files in a `.snapshots` directory on each tablet.
- - These steps are pretty fast - small flush to disk and hardlinks. Most likely the incoming operations that were buffered will not timeout. 
- - The buffered writes are now opened up for writes.
- - The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
- - If this takes longer, some ops can timeout but in practice, users should expect such slowness occasionally when using network storage (AWS EBS, Persistent Disk in GCP, SAN storage, etc.).
+  - Once the snapshot command is issued, we will “buffer” newly incoming writes to that tablet without writing them immediately.
+  - For the existing data: we flush it to disk and hardlink the files in a `.snapshots` directory on each tablet.
+  - These steps are pretty fast - small flush to disk and hardlinks. Most likely the incoming operations that were buffered will not timeout. 
+  - The buffered writes are now opened up for writes.
+  - The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
+  - If this takes longer, some ops can timeout but in practice, users should expect such slowness occasionally when using network storage (AWS EBS, Persistent Disk in GCP, SAN storage, etc.).
 
-In this tutorial you will be using YCQL, but the same APIs are used in YSQL.
+In this tutorial, you will be using YCQL, but the same APIs are used in YSQL.
 
 ## Step 1: Create a local cluster
 
-Read [creating a local cluster](../../quick-start/create-local-cluster.md) on how to create a local cluster.
+To create a local cluster, see [Create a local cluster](../../../quick-start/create-local-cluster).
 
 ```sh
 $ ./bin/yb-ctl create
@@ -66,11 +66,11 @@ Waiting for cluster to be ready.
 For more info, please use: yb-ctl status
 ```
 
-For details on options, see [yb-ctl reference](../../admin/yb-ctl.md).
+For details on options, see [yb-ctl reference](../../../admin/yb-ctl).
 
 ## Step 2: Create a table with data
 
-After [getting started on YCQL API](../../api/ycql/quick-start/), open `cqlsh`:
+After [getting started on YCQL API](../../../api/ycql/quick-start/), open `cqlsh`:
 
 ```
 $ ./bin/cqlsh
@@ -101,7 +101,7 @@ cqlsh> SELECT * FROM ydb.test_tb;
 
 ## Step 3: Create a snapshot
 
-Create a snapshot using the `yb-admin create_snapshot` command:
+Create a snapshot using the [`yb-admin create_snapshot`](../../../admin/yb-admin/#create-snapshot) command:
 
 ```sh
 $ ./bin/yb-admin create_snapshot ydb test_tb
@@ -112,7 +112,7 @@ Flushing complete: SUCCESS
 Started snapshot creation: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-To see when your snapshot is ready, you can run the `yb-admin list_snapshots` command.
+To see when your snapshot is ready, you can run the [`yb-admin list_snapshots`](../../../admin/yb-admin/#list-snapshots) command.
 
 ```sh
 $ ./bin/yb-admin list_snapshots
@@ -148,7 +148,7 @@ have to use a script that copies all data. The file path structure is:
 - `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server.
 
 This directory structure is specific to `yb-ctl`, which is a local testing tool.
-In practice, for each server, you will use the `--fs_data_dirs` configuration option, which is a CSV of paths where to put the data (normally different paths should be on different disks).
+In practice, for each server, you will use the `--fs_data_dirs` configuration option, which is a comma-separated list of paths where to put the data (normally different paths should be on different disks).
 In this `yb-ctl` example, these are the full paths up to the `disk-x`.
 
 ### Step 3.2: Copy snapshot data to another directory
@@ -225,7 +225,7 @@ For more info, please use: yb-ctl status
 
 {{< note title="Tip" >}}
 
-Make sure to get the master IP address from `$ ./bin/yb-ctl status` since you have multiple nodes on different IP addresses.
+Make sure to get the master IP address from [`yb-ctl status`](../../../admin/yb-ctl/#status) since you have multiple nodes on different IP addresses.
 
 {{< /note >}}
 
@@ -268,11 +268,11 @@ Using these IDs, you can restore the previous `.snapshot` folders to the new pat
 
 {{< note title="Tip" >}}
 
-For each tablet we have to copy the snapshots folder on all replicas.
+For each tablet, you need to copy the snapshots folder on all replicas.
 
 {{< /note >}}
 
-Now, you can start restoring the snapshot:
+You can start restoring the snapshot using the [`yb-admin restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command:
 
 ```sh
 $ ./bin/yb-admin restore_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295
@@ -315,5 +315,4 @@ $ ./bin/yb-admin delete_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295
 Deleted snapshot: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-This was a guide on how to snapshot and restore data on YugabyteDB. In the Yugabyte Platform and Yugabyte Cloud,
-all of the manual steps above are automated.
+This was a guide on how to snapshot and restore data on YugabyteDB. In the Yugabyte Platform and Yugabyte Cloud, all of the manual steps above are automated.

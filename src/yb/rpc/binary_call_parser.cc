@@ -19,13 +19,30 @@
 #include "yb/rpc/stream.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/size_literals.h"
+
+using yb::operator"" _MB;
 
 DEFINE_bool(
     binary_call_parser_reject_on_mem_tracker_hard_limit, false,
     "Whether to reject/ignore calls on hitting mem tracker hard limit.");
 
+DEFINE_int32(
+    rpc_throttle_threshold_bytes, -1,
+    "Throttle inbound RPC calls larger than specified size on hitting mem tracker soft limit. "
+    "Throttling is disabled if negative value is specified.");
+
+DECLARE_int32(memory_limit_warn_threshold_percentage);
+
 namespace yb {
 namespace rpc {
+
+bool ShouldThrottleRpc(
+    const MemTrackerPtr& throttle_tracker, size_t call_data_size, const char* throttle_message) {
+  return (FLAGS_rpc_throttle_threshold_bytes >= 0 &&
+      call_data_size > FLAGS_rpc_throttle_threshold_bytes &&
+      !CheckMemoryPressureWithLogging(throttle_tracker, 0 /* score */, throttle_message));
+}
 
 BinaryCallParser::BinaryCallParser(
     const MemTrackerPtr& parent_tracker, size_t header_size, size_t size_offset,
@@ -41,7 +58,8 @@ BinaryCallParser::BinaryCallParser(
 }
 
 Result<ProcessDataResult> BinaryCallParser::Parse(
-    const rpc::ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
+    const rpc::ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full,
+    const MemTrackerPtr* tracker_for_throttle) {
   if (call_data_.should_reject()) {
     // We can't properly respond with error, because we don't have enough call data since we
     // have ignored it. So, we will just ignore this call and client will have timeout.
@@ -83,6 +101,16 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
       // received and appended by the caller into the same buffer.
       const size_t call_received_size = full_input_size - (consumed + body_offset);
       VLOG(4) << "BinaryCallParser::Parse, call_received_size: " << call_received_size;
+
+      if (tracker_for_throttle) {
+        VLOG(4) << "BinaryCallParser::Parse, tracker_for_throttle memory usage: "
+                << (*tracker_for_throttle)->LogUsage("");
+        if (ShouldThrottleRpc(*tracker_for_throttle, call_data_size, "Ignoring RPC call: ")) {
+          call_data_ = CallData(call_data_size, ShouldReject::kTrue);
+          return ProcessDataResult{ full_input_size, Slice(), call_data_size - call_received_size };
+        }
+      }
+
       MemTracker* blocking_mem_tracker = nullptr;
       if (buffer_tracker_->TryConsume(call_data_size, &blocking_mem_tracker)) {
         call_data_consumption_ = ScopedTrackedConsumption(

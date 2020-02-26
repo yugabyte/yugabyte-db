@@ -37,6 +37,7 @@
 #include "yb/docdb/docdb.h"
 
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_context.h"
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/cleanup_aborts_task.h"
@@ -46,6 +47,7 @@
 #include "yb/tablet/tablet.h"
 
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/service_util.h"
 
 #include "yb/util/delayer.h"
 #include "yb/util/flag_tags.h"
@@ -119,11 +121,33 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   ~Impl() {
-    LOG_WITH_PREFIX(INFO) << "Stop";
-    closing_.store(true, std::memory_order_release);
-    transactions_.clear();
-    MinRunningNotifier min_running_notifier(nullptr /* applier */);
-    TransactionsModifiedUnlocked(&min_running_notifier);
+    if (StartShutdown()) {
+      CompleteShutdown();
+    } else {
+      LOG_IF_WITH_PREFIX(DFATAL, !shutdown_done_.load(std::memory_order_acquire))
+          << "Destroying transaction participant that did not complete shutdown";
+    }
+  }
+
+  bool StartShutdown() {
+    bool expected = false;
+    if (!closing_.compare_exchange_strong(expected, true)) {
+      return false;
+    }
+
+    LOG_WITH_PREFIX(INFO) << "Shutdown";
+    return true;
+  }
+
+  void CompleteShutdown() {
+    LOG_IF_WITH_PREFIX(DFATAL, !closing_.load()) << __func__ << " w/o StartShutdown";
+
+    {
+      MinRunningNotifier min_running_notifier(nullptr /* applier */);
+      std::lock_guard<std::mutex> lock(mutex_);
+      transactions_.clear();
+      TransactionsModifiedUnlocked(&min_running_notifier);
+    }
 
     rpcs_.Shutdown();
     if (load_thread_.joinable()) {
@@ -132,6 +156,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     while (checking_status_.load(std::memory_order_acquire)) {
       std::this_thread::sleep_for(10ms);
     }
+    shutdown_done_.store(true, std::memory_order_release);
   }
 
   void Start() {
@@ -361,27 +386,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
     if (state->request()->status() == TransactionStatus::APPLYING) {
-      if (RandomActWithProbability(GetAtomicFlag(
-          &FLAGS_transaction_ignore_applying_probability_in_tests))) {
-        state->CompleteWithStatus(Status::OK());
-        return;
-      }
-      participant_context_.SubmitUpdateTransaction(std::move(state), term);
+      HandleApplying(std::move(state), term);
       return;
     }
 
     if (state->request()->status() == TransactionStatus::CLEANUP) {
-      auto id = FullyDecodeTransactionId(state->request()->transaction_id());
-      if (!id.ok()) {
-        state->CompleteWithStatus(id.status());
-        return;
-      }
-      TransactionApplyData data = {
-          term, *id, consensus::OpId(), HybridTime(), HybridTime(),
-          std::string() };
-      WARN_NOT_OK(ProcessCleanup(data, false /* force_remove */),
-                  "Process cleanup failed");
-      state->CompleteWithStatus(Status::OK());
+      HandleCleanup(std::move(state), term);
       return;
     }
 
@@ -392,25 +402,15 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
+    auto id = FullyDecodeTransactionId(data.state.transaction_id());
+    if (!id.ok()) {
+      return id.status();
+    }
+
     if (data.state.status() == TransactionStatus::APPLYING) {
-      auto id = FullyDecodeTransactionId(data.state.transaction_id());
-      if (!id.ok()) {
-        return id.status();
-      }
-      // data.state.tablets contains only status tablet.
-      if (data.state.tablets_size() != 1) {
-        return STATUS_FORMAT(InvalidArgument,
-                             "Expected only one table during APPLYING, state received: $0",
-                             data.state);
-      }
-      HybridTime commit_time(data.state.commit_hybrid_time());
-      TransactionApplyData apply_data = {
-          data.leader_term, *id, data.op_id, commit_time, data.hybrid_time, data.state.tablets(0) };
-      if (!data.already_applied) {
-        return ProcessApply(apply_data);
-      } else {
-        return ProcessCleanup(apply_data, true /* force_remove */);
-      }
+      return ReplicatedApplying(*id, data);
+    } else if (data.state.status() == TransactionStatus::ABORTED) {
+      return ReplicatedAborted(*id, data);
     }
 
     auto status = STATUS_FORMAT(
@@ -489,8 +489,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
             nullptr /* remote_tablet */,
             client(),
             &req,
-            [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
-              participant_context_.UpdateClock(propagated_hybrid_time);
+            [this, handle](const Status& status,
+                           const tserver::UpdateTransactionResponsePB& resp) {
+              client::UpdateClock(resp, &participant_context_);
               rpcs_.Unregister(handle);
               LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
             });
@@ -519,19 +520,45 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return Status::OK();
   }
 
-  void SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds) {
+  void SetDB(
+      rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
+      PendingOperationCounter* pending_op_counter) {
     bool had_db = db_ != nullptr;
     db_ = db;
     key_bounds_ = key_bounds;
 
     // In case of truncate we should not reload transactions.
     if (!had_db) {
-      std::unique_ptr <docdb::BoundedRocksDbIterator> iter(new docdb::BoundedRocksDbIterator(
-          docdb::CreateRocksDBIterator(
-              db_, &docdb::KeyBounds::kNoBounds,
-              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-              boost::none, rocksdb::kDefaultQueryId)));
-      load_thread_ = std::thread(&Impl::LoadTransactions, this, iter.release());
+      auto scoped_pending_operation = std::make_unique<ScopedPendingOperation>(pending_op_counter);
+      if (scoped_pending_operation->ok()) {
+        auto iter = std::make_unique<docdb::BoundedRocksDbIterator>(docdb::CreateRocksDBIterator(
+            db_, &docdb::KeyBounds::kNoBounds,
+            docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+            boost::none, rocksdb::kDefaultQueryId));
+        load_thread_ = std::thread(
+            &Impl::LoadTransactions, this, iter.release(), scoped_pending_operation.release());
+      }
+    }
+  }
+
+  void GetStatus(
+      const TransactionId& transaction_id,
+      size_t required_num_replicated_batches,
+      int64_t term,
+      tserver::GetTransactionStatusAtParticipantResponsePB* response,
+      rpc::RpcContext* context) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(transaction_id);
+    if (it == transactions_.end()) {
+      response->set_num_replicated_batches(0);
+      response->set_status_hybrid_time(0);
+    } else {
+      if ((**it).WasAborted()) {
+        response->set_aborted(true);
+        return;
+      }
+      response->set_num_replicated_batches((**it).num_replicated_batches());
+      response->set_status_hybrid_time((**it).last_batch_data().hybrid_time.ToUint64());
     }
   }
 
@@ -799,9 +826,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return LockAndFindResult{};
   }
 
-  void LoadTransactions(docdb::BoundedRocksDbIterator* iterator) {
-    LOG_WITH_PREFIX(INFO) << "LoadTransactions";
+  void LoadTransactions(
+      docdb::BoundedRocksDbIterator* iterator, ScopedPendingOperation* scoped_pending_operation) {
+    LOG_WITH_PREFIX(INFO) << __func__ << " start";
 
+    std::unique_ptr<ScopedPendingOperation> scoped_pending_operation_holder(
+        scoped_pending_operation);
     std::unique_ptr<docdb::BoundedRocksDbIterator> iterator_holder(iterator);
     docdb::KeyBytes key_bytes;
     TransactionId id;
@@ -835,6 +865,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
     TryStartCheckLoadedTransactionsStatus(&started_, &all_loaded_);
     load_cond_.notify_all();
+    LOG_WITH_PREFIX(INFO) << __func__ << " done";
   }
 
   // iterator - rocks db iterator, that should be used for write id resolution.
@@ -1031,12 +1062,16 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         &check_status_handle_);
   }
 
-  void StatusReceived(const Status& status,
+  void StatusReceived(Status status,
                       const tserver::GetTransactionStatusResponsePB& response,
                       size_t request_size) {
     VLOG_WITH_PREFIX(2) << "Received statuses: " << status << ", " << response.ShortDebugString();
 
     rpcs_.Unregister(&check_status_handle_);
+
+    if (status.ok() && response.has_error()) {
+      status = StatusFromPB(response.error().status());
+    }
 
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
@@ -1079,6 +1114,81 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
 
     CheckLoadedTransactionsStatus();
+  }
+
+  void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
+    if (RandomActWithProbability(GetAtomicFlag(
+        &FLAGS_transaction_ignore_applying_probability_in_tests))) {
+      VLOG_WITH_PREFIX(2)
+          << "TEST: Rejected apply: "
+          << FullyDecodeTransactionId(state->request()->transaction_id());
+      state->CompleteWithStatus(Status::OK());
+      return;
+    }
+    participant_context_.SubmitUpdateTransaction(std::move(state), term);
+  }
+
+  void HandleCleanup(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
+    VLOG_WITH_PREFIX(3) << "Cleanup";
+    auto id = FullyDecodeTransactionId(state->request()->transaction_id());
+    if (!id.ok()) {
+      state->CompleteWithStatus(id.status());
+      return;
+    }
+
+    TransactionApplyData data = {
+        .leader_term = term,
+        .transaction_id = *id,
+        .op_id = consensus::OpId(),
+        .commit_ht = HybridTime(),
+        .log_ht = HybridTime(),
+        .sealed = state->request()->sealed(),
+        .status_tablet = std::string() };
+    WARN_NOT_OK(ProcessCleanup(data, false /* force_remove */),
+                "Process cleanup failed");
+    state->CompleteWithStatus(Status::OK());
+  }
+
+  CHECKED_STATUS ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
+    // data.state.tablets contains only status tablet.
+    if (data.state.tablets_size() != 1) {
+      return STATUS_FORMAT(InvalidArgument,
+                           "Expected only one table during APPLYING, state received: $0",
+                           data.state);
+    }
+    HybridTime commit_time(data.state.commit_hybrid_time());
+    TransactionApplyData apply_data = {
+        data.leader_term, id, data.op_id, commit_time, data.hybrid_time, data.sealed,
+        data.state.tablets(0) };
+    if (!data.already_applied) {
+      return ProcessApply(apply_data);
+    }
+    if (!data.sealed) {
+      return ProcessCleanup(apply_data, true /* force_remove */);
+    }
+    return Status::OK();
+  }
+
+  CHECKED_STATUS ReplicatedAborted(const TransactionId& id, const ReplicatedData& data) {
+    MinRunningNotifier min_running_notifier(&applier_);
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      TransactionMetadata metadata = {
+        .transaction_id = id,
+        .isolation = IsolationLevel::NON_TRANSACTIONAL,
+        .status_tablet = TabletId(),
+        .priority = 0
+      };
+      it = transactions_.insert(std::make_shared<RunningTransaction>(
+          metadata, TransactionalBatchData(), OneWayBitmap(), this)).first;
+      TransactionsModifiedUnlocked(&min_running_notifier);
+    }
+
+    // TODO(dtxn) store this fact to rocksdb.
+    (**it).Aborted();
+
+    return Status::OK();
   }
 
   struct CleanupQueueEntry {
@@ -1144,6 +1254,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   std::atomic<HybridTime> min_running_ht_{HybridTime::kMax};
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
   HybridTime waiting_for_min_running_ht_ = HybridTime::kMax;
+  std::atomic<bool> shutdown_done_{false};
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1228,8 +1339,19 @@ void TransactionParticipant::FillPriorities(
   return impl_->FillPriorities(inout);
 }
 
-void TransactionParticipant::SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds) {
-  impl_->SetDB(db, key_bounds);
+void TransactionParticipant::SetDB(
+    rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
+    PendingOperationCounter* pending_op_counter) {
+  impl_->SetDB(db, key_bounds, pending_op_counter);
+}
+
+void TransactionParticipant::GetStatus(
+    const TransactionId& transaction_id,
+    size_t required_num_replicated_batches,
+    int64_t term,
+    tserver::GetTransactionStatusAtParticipantResponsePB* response,
+    rpc::RpcContext* context) {
+  impl_->GetStatus(transaction_id, required_num_replicated_batches, term, response, context);
 }
 
 TransactionParticipantContext* TransactionParticipant::context() const {
@@ -1256,6 +1378,14 @@ OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(
 std::string TransactionParticipant::ReplicatedData::ToString() const {
   return Format("{ leader_term: $0 state: $1 op_id: $2 hybrid_time: $3 already_applied: $4 }",
                leader_term, state, op_id, hybrid_time, already_applied);
+}
+
+void TransactionParticipant::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void TransactionParticipant::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 } // namespace tablet

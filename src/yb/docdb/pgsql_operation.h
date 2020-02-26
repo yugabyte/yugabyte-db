@@ -122,6 +122,13 @@ class PgsqlReadOperation : public DocExprExecutor {
                          PgsqlResultSet *result_set,
                          HybridTime *restart_read_ht);
 
+  CHECKED_STATUS ExecuteBatch(const common::YQLStorageIf& ql_storage,
+                              CoarseTimePoint deadline,
+                              const ReadHybridTime& read_time,
+                              const Schema& schema,
+                              PgsqlResultSet *resultset,
+                              HybridTime *restart_read_ht);
+
   CHECKED_STATUS GetTupleId(QLValue *result) const override;
 
   CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);

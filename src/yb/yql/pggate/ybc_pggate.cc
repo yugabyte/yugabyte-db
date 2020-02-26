@@ -59,7 +59,7 @@ YBCStatus ExtractValueFromResult(const Result<T>& result, T* value) {
 //--------------------------------------------------------------------------------------------------
 extern "C" {
 
-void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
+void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, PgCallbacks pg_callbacks) {
   InitThreading();
 
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
@@ -67,7 +67,7 @@ void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
   YBCInitFlags();
 
   pgapi_shutdown_done.exchange(false);
-  pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count);
+  pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count, pg_callbacks);
   VLOG(1) << "PgGate open";
 }
 
@@ -364,13 +364,12 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_shared_index,
                               bool is_unique_index,
                               bool if_not_exist,
-                              bool colocated,
                               YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name,
-                                           index_id, table_id, is_shared_index, is_unique_index,
-                                           if_not_exist, colocated, handle));
+  return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
+                                           table_id, is_shared_index, is_unique_index, if_not_exist,
+                                           handle));
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -422,10 +421,6 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_at
   return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
 }
 
-YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
-  return ToYBCStatus(pgapi->DmlBindIndexColumn(handle, attr_num, attr_value));
-}
-
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DmlBindTable(handle));
 }
@@ -441,12 +436,12 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
-YBCStatus YBCPgStartBufferingWriteOperations() {
-  return ToYBCStatus(pgapi->StartBufferingWriteOperations());
+YBCStatus YBCPgStartOperationsBuffering() {
+  return ToYBCStatus(pgapi->StartOperationsBuffering());
 }
 
-YBCStatus YBCPgFlushBufferedWriteOperations() {
-  return ToYBCStatus(pgapi->FlushBufferedWriteOperations());
+YBCStatus YBCPgFlushBufferedOperations() {
+  return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
@@ -592,41 +587,62 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
 //------------------------------------------------------------------------------------------------
 
 YBCStatus YBCPgBeginTransaction() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->BeginTransaction());
+  return ToYBCStatus(pgapi->BeginTransaction());
 }
 
 YBCStatus YBCPgRestartTransaction() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->RestartTransaction());
+  return ToYBCStatus(pgapi->RestartTransaction());
 }
 
 YBCStatus YBCPgCommitTransaction() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->CommitTransaction());
+  return ToYBCStatus(pgapi->CommitTransaction());
 }
 
 YBCStatus YBCPgAbortTransaction() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->AbortTransaction());
+  return ToYBCStatus(pgapi->AbortTransaction());
 }
 
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation) {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->SetIsolationLevel(isolation));
+  return ToYBCStatus(pgapi->SetTransactionIsolationLevel(isolation));
 }
 
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only) {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->SetReadOnly(read_only));
+  return ToYBCStatus(pgapi->SetTransactionReadOnly(read_only));
 }
 
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->SetDeferrable(deferrable));
+  return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
 
 YBCStatus YBCPgEnterSeparateDdlTxnMode() {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->EnterSeparateDdlTxnMode());
+  return ToYBCStatus(pgapi->EnterSeparateDdlTxnMode());
 }
 
 YBCStatus YBCPgExitSeparateDdlTxnMode(bool success) {
-  return ToYBCStatus(pgapi->GetPgTxnManager()->ExitSeparateDdlTxnMode(success));
+  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(success));
 }
 
+// Referential Integrity Caching
+bool YBCForeignKeyReferenceExists(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size) {
+  return pgapi->ForeignKeyReferenceExists(table_id, std::string(ybctid, ybctid_size));
+}
+
+YBCStatus YBCCacheForeignKeyReference(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size) {
+  return ToYBCStatus(pgapi->CacheForeignKeyReference(table_id, std::string(ybctid, ybctid_size)));
+}
+
+YBCStatus YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_id, uint64_t ybctid) {
+  char *value;
+  int64_t bytes;
+
+  const YBCPgTypeEntity *type_entity = pgapi->FindTypeEntity(kPgByteArrayOid);
+  type_entity->datum_to_yb(ybctid, &value, &bytes);
+  return ToYBCStatus(pgapi->DeleteForeignKeyReference(table_id, std::string(value, bytes)));
+}
+
+void ClearForeignKeyReferenceCache() {
+  pgapi->ClearForeignKeyReferenceCache();
+}
 
 bool YBCIsInitDbModeEnvVarSet() {
   static bool cached_value = false;

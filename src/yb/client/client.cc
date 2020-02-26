@@ -947,6 +947,14 @@ Status YBClient::GetCDCStream(const CDCStreamId& stream_id,
   return Status::OK();
 }
 
+void YBClient::GetCDCStream(const CDCStreamId& stream_id,
+                            std::shared_ptr<TableId> table_id,
+                            std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+                            StdStatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  data_->GetCDCStream(this, stream_id, table_id, options, deadline, callback);
+}
+
 Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams) {
   if (streams.empty()) {
     return STATUS(InvalidArgument, "At least one stream id should be provided");
@@ -1204,6 +1212,10 @@ Status YBClient::RemoveMasterFromClient(const HostPort& remove) {
 
 Status YBClient::AddMasterToClient(const HostPort& add) {
   return data_->AddMasterAddress(add);
+}
+
+Status YBClient::SetMasterAddresses(const std::string& addrs) {
+  return data_->SetMasterAddresses(addrs);
 }
 
 Status YBClient::GetMasterUUID(const string& host,

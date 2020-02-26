@@ -19,6 +19,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/locks.h"
@@ -106,6 +107,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Defer the read hybrid time to the global limit.  Since the global limit should not change for a
   // session, this call is idempotent.
   void DeferReadPoint();
+
+  // Used for backfilling the index, where we may want to write with a historic timestamp.
+  void WriteWithHybridTime(HybridTime ht);
 
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
@@ -280,6 +284,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   // Timeout for the next batch.
   MonoDelta timeout_;
+
+  // HybridTime for Write. Used for Index Backfill.
+  HybridTime hybrid_time_for_write_;
 
   internal::AsyncRpcMetricsPtr async_rpc_metrics_;
 

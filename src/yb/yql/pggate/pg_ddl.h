@@ -261,8 +261,7 @@ class PgCreateIndex : public PgCreateTable {
                 const PgObjectId& base_table_id,
                 bool is_shared_index,
                 bool is_unique_index,
-                bool if_not_exist,
-                bool colocated);
+                bool if_not_exist);
   virtual ~PgCreateIndex();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }

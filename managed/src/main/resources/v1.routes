@@ -27,7 +27,7 @@ GET     /customers/:cUUID/regions                                              c
 GET     /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/providers/:pUUID/initialize                          com.yugabyte.yw.controllers.CloudProviderController.initialize(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderController.create(cUUID: java.util.UUID)
-POST    /customers/:cUUID/providers/kubernetes               	               com.yugabyte.yw.controllers.CloudProviderController.createKubernetes(cUUID: java.util.UUID)
+POST    /customers/:cUUID/providers/kubernetes                                 com.yugabyte.yw.controllers.CloudProviderController.createKubernetes(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/bootstrap                           com.yugabyte.yw.controllers.CloudProviderController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/cleanup                             com.yugabyte.yw.controllers.CloudProviderController.cleanup(cUUID: java.util.UUID, pUUID: java.util.UUID)
@@ -114,7 +114,9 @@ PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state               c
 POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     com.yugabyte.yw.controllers.UniverseController.configureAlerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/run_query                         com.yugabyte.yw.controllers.UniverseController.runQuery(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-POST    /customers/:cUUID/universes/:uniUUID/run_in_shell      				   com.yugabyte.yw.controllers.UniverseController.runInShell(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/run_in_shell                      com.yugabyte.yw.controllers.UniverseController.runInShell(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/update_db_credentials             com.yugabyte.yw.controllers.UniverseController.setDatabaseCredentials(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/create_db_credentials             com.yugabyte.yw.controllers.UniverseController.createUserInDB(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Cluster under universe
 POST    /customers/:cUUID/universes/:uniUUID/cluster                           com.yugabyte.yw.controllers.UniverseController.clusterCreate(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -159,6 +161,8 @@ GET    /customers/:cUUID/universes/:uniUUID/tablet-servers                     c
 
 # User Management API
 GET    /customers/:cUUID/users                                                 com.yugabyte.yw.controllers.UsersController.list(cUUID: java.util.UUID)
+GET    /customers/:cUUID/users/:uUUID 										   com.yugabyte.yw.controllers.UsersController.index(cUUID: java.util.UUID, uUUID: java.util.UUID)
 POST   /customers/:cUUID/users                                                 com.yugabyte.yw.controllers.UsersController.create(cUUID: java.util.UUID)
 PUT    /customers/:cUUID/users/:uUUID                                          com.yugabyte.yw.controllers.UsersController.changeRole(cUUID: java.util.UUID, uUUID: java.util.UUID)
+PUT    /customers/:cUUID/users/:uUUID/change_password                          com.yugabyte.yw.controllers.UsersController.changePassword(cUUID: java.util.UUID, uUUID: java.util.UUID)
 DELETE /customers/:cUUID/users/:uUUID                                          com.yugabyte.yw.controllers.UsersController.delete(cUUID: java.util.UUID, uUUID: java.util.UUID)

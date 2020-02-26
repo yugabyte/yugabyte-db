@@ -178,21 +178,21 @@ class GraphPanelHeader extends Component {
   };
 
   universeItemChanged = event => {
-    const {universe: {universeList}} = this.props;
+    const { universe: { universeList } } = this.props;
+    const selectedUniverseUUID = event.target.value;
     const self = this;
-    let universeFound = false;
     const newParams = this.state;
-    for (let counter = 0; counter < universeList.data.length; counter++) {
-      if (universeList.data[counter].universeUUID === event.target.value) {
-        universeFound = true;
-        self.setState({currentSelectedUniverse: universeList[counter], nodePrefix: universeList.data[counter].universeDetails.nodePrefix,
-          nodeName: "all"});
-        newParams.nodePrefix = universeList.data[counter].universeDetails.nodePrefix;
-        break;
-      }
-    }
-    if (!universeFound) {
+    const matchedUniverse = universeList.data.find(u => u.universeUUID === selectedUniverseUUID);
+    if (matchedUniverse) {
+      self.setState({
+        currentSelectedUniverse: matchedUniverse,
+        nodePrefix: matchedUniverse.universeDetails.nodePrefix,
+        nodeName: "all"
+      });
+      newParams.nodePrefix = matchedUniverse.universeDetails.nodePrefix;
+    } else {
       self.setState({nodeName: "all", nodePrefix: "all"});
+      newParams.nodePrefix = null;
     }
     newParams.nodeName = "all";
     this.props.changeGraphQueryFilters(newParams);

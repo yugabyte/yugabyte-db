@@ -63,4 +63,4 @@ cqlsh:example> SELECT * FROM dns_table;
 
 ## See also
 
-[Data Types](..#data-types)
+- [Data types](..#data-types)

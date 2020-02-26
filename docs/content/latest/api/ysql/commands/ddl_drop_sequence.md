@@ -122,6 +122,6 @@ DROP SEQUENCE
 
 - [`ALTER SEQUENCE`](../ddl_alter_sequence)
 - [`CREATE SEQUENCE`](../ddl_create_sequence)
-- [`currval()`](../currval_sequence)
-- [`lastval()`](../lastval_sequence)
-- [`nextval()`](../nextval_sequence)
+- [`currval()`](../../exprs/func_currval)
+- [`lastval()`](../../exprs/func_lastval)
+- [`nextval()`](../../exprs/func_nextval)

@@ -201,7 +201,11 @@ public class HealthChecker {
     running.set(true);
     // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
     for (Customer c : Customer.getAll()) {
-      checkCustomer(c);
+      try {
+        checkCustomer(c);
+      } catch (Exception ex) {
+        LOG.error("Error running health check for customer " + c.uuid, ex);
+      }
     }
     LOG.info("Completed running health checker.");
     running.set(false);
@@ -241,8 +245,12 @@ public class HealthChecker {
       Customer c, CustomerConfig config, boolean shouldSendStatusUpdate) {
     // Process all of a customer's universes.
     for (Universe u : c.getUniverses()) {
-      checkSingleUniverse(u, c, config, shouldSendStatusUpdate);
-    }
+      try {
+        checkSingleUniverse(u, c, config, shouldSendStatusUpdate);
+      } catch (Exception ex) {
+        LOG.error("Error running health check for universe " + u.universeUUID, ex);
+      }
+     }
   }
 
   public void checkSingleUniverse(

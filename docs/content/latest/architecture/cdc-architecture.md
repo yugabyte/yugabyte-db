@@ -2,7 +2,7 @@
 title: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Change data capture (CDC)
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: architecture
@@ -34,7 +34,7 @@ Maintaining multiple data centers enables enterprises to provide:
 - High availability (HA) — Redundant systems help ensure that your operations virtually never fail.
 - Geo-redundancy — Geographically dispersed servers provide resiliency against catastrophic events and natural disasters.
 
-Two data center (2DC), or dual data center, deployments are a common use of CDC that allows efficient management of two YugabyteDB universes that are geographically separated. For more information, see [Two data center (2DC) deployments](../2dc-deployments) and [Replicate between two data centers](../../deploy/2dc-deployment)
+Two data center (2DC), or dual data center, deployments are a common use of CDC that allows efficient management of two YugabyteDB universes that are geographically separated. For more information, see [Two data center (2DC) deployments](../2dc-deployments) and [Replicate between two data centers](../../deploy/multi-dc/2dc-deployment)
 
 ### Compliance and auditing
 

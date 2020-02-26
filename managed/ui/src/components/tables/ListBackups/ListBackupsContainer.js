@@ -34,6 +34,7 @@ function mapStateToProps(state, ownProps) {
   return {
     universeBackupList: state.universe.universeBackupList,
     universeTableTypes: tableTypes,
+    currentCustomer: state.customer.currentCustomer
   };
 }
 

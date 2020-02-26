@@ -1367,8 +1367,8 @@ TEST_F(ClientTest, TestCreateCDCStreamAsync) {
   Synchronizer sync;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
-      client_table_.table()->id(), options, std::bind(&CreateCDCStreamCallbackSuccess, &sync,
-                                                      std::placeholders::_1));
+      client_table_.table()->id(), options,
+      std::bind(&CreateCDCStreamCallbackSuccess, &sync, std::placeholders::_1));
   ASSERT_OK(sync.Wait());
 }
 
@@ -1376,8 +1376,8 @@ TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
   Synchronizer sync;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
-      "MissingTableId", options, std::bind(&CreateCDCStreamCallbackFailure, &sync,
-                                           std::placeholders::_1));
+      "MissingTableId", options,
+      std::bind(&CreateCDCStreamCallbackFailure, &sync, std::placeholders::_1));
   Status s = sync.Wait();
   ASSERT_TRUE(s.IsNotFound());
 }

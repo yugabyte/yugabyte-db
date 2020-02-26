@@ -116,13 +116,20 @@ class HdrHistogram {
   // Count of all events recorded.
   uint64_t TotalCount() const { return base::subtle::NoBarrier_Load(&total_count_); }
 
-  // Count of all events recorded in buckets. Resets to 0 after ResetPercentiles.
-  uint64_t TotalCountInBuckets() const {
-    return base::subtle::NoBarrier_Load(&total_count_in_buckets_);
+  // Count of all events recorded since last Reset. Resets to 0 after
+  // ResetPercentiles.
+  uint64_t CurrentCount() const {
+    return base::subtle::NoBarrier_Load(&current_count_);
   }
 
   // Sum of all events recorded.
   uint64_t TotalSum() const { return base::subtle::NoBarrier_Load(&total_sum_); }
+
+  // Sum of all events recorded since last Reset. Resets to 0 after
+  // ResetPercentiles.
+  uint64_t CurrentSum() const {
+    return base::subtle::NoBarrier_Load(&current_sum_);
+  }
 
   // Return number of items at index.
   uint64_t CountAt(int bucket_index, int sub_bucket_index) const;
@@ -211,9 +218,12 @@ class HdrHistogram {
   uint32_t sub_bucket_mask_;
 
   // Also hot.
+  // Non-resetting sum and counts.
   base::subtle::Atomic64 total_count_;
-  base::subtle::Atomic64 total_count_in_buckets_;
   base::subtle::Atomic64 total_sum_;
+  // Resetting values
+  base::subtle::Atomic64 current_count_;
+  base::subtle::Atomic64 current_sum_;
   base::subtle::Atomic64 min_value_;
   base::subtle::Atomic64 max_value_;
   gscoped_array<base::subtle::Atomic64> counts_;

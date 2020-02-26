@@ -138,7 +138,7 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`TIMEUUID`](type_uuid) | Yes | - | Timed UUID |
 [`TINYINT`](type_int) | Yes | - | 8-bit signed integer |
 [`UUID`](type_uuid) | Yes | - | Standard UUID |
-[`VARINT`](type_integer) | Yes | - | Arbitrary-precision integer |
+[`VARINT`](type_int) | Yes | - | Arbitrary-precision integer |
 [`JSONB`](type_jsonb) | No | - | JSON data type similar to PostgreSQL jsonb |
 
 - [User-defined data types](ddl_create_type) are also supported.

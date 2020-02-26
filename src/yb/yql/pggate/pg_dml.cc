@@ -18,6 +18,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/util/debug-util.h"
 #include "yb/yql/pggate/pg_dml.h"
+#include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb {
@@ -27,6 +28,7 @@ using docdb::PrimitiveValue;
 using docdb::ValueType;
 
 using namespace std::literals;  // NOLINT
+using std::list;
 
 // TODO(neil) This should be derived from a GFLAGS.
 static MonoDelta kSessionTimeout = 60s;
@@ -47,42 +49,35 @@ PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
 
   if (prepare_params) {
     prepare_params_ = *prepare_params;
-
+    // Primary index does not have its own data table.
     if (prepare_params_.use_secondary_index) {
-      // TODO(neil) Instead of assign "index_id" to "table_id_", which can cause confusion, change
-      // PgGate layer to take the pair(Table, Index) together as inputs.
-
-      if (prepare_params_.index_only_scan) {
-        // IndexOnlyScan ( SysTable or UserTable ). Select from INDEX table.
-        table_id_ = index_id;
-      } else if (prepare_params_.querying_systable) {
-        // IndexScan ( SystemTable )
-        index_id_ = index_id;
-      } else {
-        // IndexScan ( UserTable )
-        table_id_ = index_id;
-      }
+      index_id_ = index_id;
     }
   }
 }
 
-Status PgDml::LoadTable() {
-  table_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
-  return Status::OK();
+PgDml::~PgDml() {
 }
 
 Status PgDml::ClearBinds() {
   return STATUS(NotSupported, "Clearing binds for prepared statement is not yet implemented");
 }
 
-Status PgDml::FindColumn(int attr_num, PgColumn **col) {
-  *col = VERIFY_RESULT(table_desc_->FindColumn(attr_num));
-  return Status::OK();
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::AppendTarget(PgExpr *target) {
+  // Except for base_ctid, all targets should be appended to this DML.
+  if (target_desc_ && (prepare_params_.index_only_scan || !target->is_ybbasetid())) {
+    RETURN_NOT_OK(AppendTargetPB(target));
+  } else {
+    // Append base_ctid to the index_query.
+    RETURN_NOT_OK(secondary_index_query_->AppendTargetPB(target));
+  }
+
+  return Status::OK();
+}
+
+Status PgDml::AppendTargetPB(PgExpr *target) {
   // Append to targets_.
   targets_.push_back(target);
 
@@ -105,9 +100,9 @@ Status PgDml::AppendTarget(PgExpr *target) {
 Status PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
                                    const PgColumn **col) {
   *col = nullptr;
-  PgColumn *pg_col;
-  RETURN_NOT_OK(FindColumn(attr_num, &pg_col));
-  *col = pg_col;
+
+  // Find column from targeted table.
+  PgColumn *pg_col = VERIFY_RESULT(target_desc_->FindColumn(attr_num));
 
   // Prepare protobuf to send to DocDB.
   target_pb->set_column_id(pg_col->id());
@@ -117,6 +112,7 @@ Status PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
     pg_col->set_read_requested(true);
   }
 
+  *col = pg_col;
   return Status::OK();
 }
 
@@ -132,9 +128,9 @@ Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_
   return Status::OK();
 }
 
-void PgDml::SetColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRefsPB *column_refs) {
+void PgDml::ColumnRefsToPB(PgsqlColumnRefsPB *column_refs) {
   column_refs->Clear();
-  for (const PgColumn& col : table_desc->columns()) {
+  for (const PgColumn& col : target_desc_->columns()) {
     if (col.read_requested() || col.write_requested()) {
       column_refs->add_ids(col.id());
     }
@@ -144,9 +140,13 @@ void PgDml::SetColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRef
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
-  // Find column.
-  PgColumn *col = nullptr;
-  RETURN_NOT_OK(FindColumn(attr_num, &col));
+  if (secondary_index_query_) {
+    // Bind by secondary key.
+    return secondary_index_query_->BindColumn(attr_num, attr_value);
+  }
+
+  // Find column to bind.
+  PgColumn *col = VERIFY_RESULT(bind_desc_->FindColumn(attr_num));
 
   // Check datatype.
   SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
@@ -181,8 +181,6 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
 }
 
 Status PgDml::UpdateBindPBs() {
-  // Process the column binds for two cases.
-  // For performance reasons, we might evaluate these expressions together with bind values in YB.
   for (const auto &entry : expr_binds_) {
     PgsqlExpressionPB *expr_pb = entry.first;
     PgExpr *attr_value = entry.second;
@@ -202,9 +200,8 @@ Status PgDml::BindTable() {
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::AssignColumn(int attr_num, PgExpr *attr_value) {
-  // Find column.
-  PgColumn *col = nullptr;
-  RETURN_NOT_OK(FindColumn(attr_num, &col));
+  // Find column from targeted table.
+  PgColumn *col = VERIFY_RESULT(target_desc_->FindColumn(attr_num));
 
   // Check datatype.
   SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
@@ -251,6 +248,41 @@ Status PgDml::UpdateAssignPBs() {
 
 //--------------------------------------------------------------------------------------------------
 
+Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_params) {
+  if (!secondary_index_query_) {
+    // Secondary INDEX is not used in this request.
+    return false;
+  }
+
+  // Execute query in PgGate.
+  // If index query is not yet executed, run it.
+  if (!secondary_index_query_->is_executed()) {
+    secondary_index_query_->set_is_executed(true);
+    RETURN_NOT_OK(secondary_index_query_->Exec(exec_params));
+  }
+
+  // Not processing index request if it does not require its own doc operator.
+  //
+  // When INDEX is used for system catalog (colocated table), the index subquery does not have its
+  // own operator. The request is combined with 'this' outer SELECT using 'index_request' attribute.
+  //   (PgDocOp)doc_op_->(YBPgsqlReadOp)read_op_->(PgsqlReadRequestPB)read_request_::index_request
+  if (!secondary_index_query_->has_doc_op()) {
+    return false;
+  }
+
+  // When INDEX has its own doc_op, execute it to fetch next batch of ybctids which is then used
+  // to read data from the main table.
+  const vector<Slice> *ybctids;
+  if (!VERIFY_RESULT(secondary_index_query_->FetchYbctidBatch(&ybctids))) {
+    // No more rows of ybctids.
+    return false;
+  }
+
+  // Update request with the new batch of ybctids to fetch the next batch of rows.
+  RETURN_NOT_OK(doc_op_->SetBatchArgYbctid(ybctids, target_desc_->GetPartitions()));
+  return true;
+}
+
 Status PgDml::Fetch(int32_t natts,
                     uint64_t *values,
                     bool *isnulls,
@@ -265,53 +297,81 @@ Status PgDml::Fetch(int32_t natts,
     memset(syscols, 0, sizeof(PgSysColumns));
   }
 
-  // Load data from cache in doc_op_ to cursor_ if it is not pointing to any data.
-  if (cursor_.empty()) {
-    int64_t row_count = 0;
-    // Keep reading untill we either reach the end or get some rows.
-    while (row_count == 0) {
-      if (VERIFY_RESULT(doc_op_->EndOfResult())) {
-        // To be compatible with Postgres code, memset output array with 0.
-        *has_data = false;
-        return Status::OK();
-      }
-
-      // Read from cache.
-      RETURN_NOT_OK(doc_op_->GetResult(&row_batch_));
-      RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
-    }
-
-    accumulated_row_count_ += row_count;
-  }
-
-  // Read the tuple from cached buffer and write it to postgres buffer.
+  // Keep reading until we either reach the end or get some rows.
   *has_data = true;
   PgTuple pg_tuple(values, isnulls, syscols);
-  RETURN_NOT_OK(WritePgTuple(&pg_tuple));
+  while (!VERIFY_RESULT(GetNextRow(&pg_tuple))) {
+    if (!VERIFY_RESULT(FetchDataFromServer())) {
+      // Stop processing as server returns no more rows.
+      *has_data = false;
+      return Status::OK();
+    }
+  }
 
   return Status::OK();
 }
 
-Status PgDml::WritePgTuple(PgTuple *pg_tuple) {
-  int attr_num = 0;
-  for (const PgExpr *target : targets_) {
-    if (!target->is_colref() && !target->is_aggregate()) {
-      return STATUS(InternalError,
-                    "Unexpected expression, only column refs or aggregates supported here");
+Result<bool> PgDml::FetchDataFromServer() {
+  // Get the rowsets from doc-operator.
+  RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
+
+  // Check if EOF is reached.
+  if (rowsets_.empty()) {
+    // Process the secondary index to find the next WHERE condition.
+    //   DML(Table) WHERE ybctid IN (SELECT base_ybctid FROM IndexTable),
+    //   The nested query would return many rows each of which yields different result-set.
+    if (!VERIFY_RESULT(ProcessSecondaryIndexRequest(nullptr))) {
+      // Return EOF as the nested subquery does not have any more data.
+      return false;
     }
-    if (target->opcode() == PgColumnRef::Opcode::PG_EXPR_COLREF) {
-      attr_num = static_cast<const PgColumnRef *>(target)->attr_num();
-    } else {
-      attr_num++;
-    }
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&cursor_);
-    target->TranslateData(&cursor_, header, attr_num - 1, pg_tuple);
+
+    // Execute doc_op_ again for the new set of WHERE condition from the nested query.
+    SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
+              "YSQL read operation was not sent");
   }
-  return Status::OK();
+
+  // Get the rowsets from doc-operator.
+  RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
+  return true;
+}
+
+Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
+  list<PgDocResult::SharedPtr>::iterator rowset_iter = rowsets_.begin();
+  while (rowset_iter != rowsets_.end()) {
+    // Check if the rowset has any data.
+    const PgDocResult::SharedPtr& rowset = *rowset_iter;
+    if (rowset->is_eof()) {
+      rowsets_.erase(rowset_iter++);
+      continue;
+    }
+
+    // If this rowset has the next row of the index order, load it. Otherwise, continue looking for
+    // the next row in the order.
+    //
+    // NOTE:
+    //   DML <Table> WHERE ybctid IN (SELECT base_ybctid FROM <Index> ORDER BY <Index Range>)
+    // The nested subquery should return rows in indexing order, but the ybctids are then grouped
+    // by hash-code for BATCH-DML-REQUEST, so the response here are out-of-order.
+    if (rowset->NextRowOrder() <= current_row_order_) {
+      // Write row to postgres tuple.
+      int64_t row_order = -1;
+      RETURN_NOT_OK(rowset->WritePgTuple(targets_, pg_tuple, &row_order));
+      SCHECK(row_order == -1 || row_order == current_row_order_, InternalError,
+             "The resulting row are not arranged in indexing order");
+
+      // Found the current row. Move cursor to next row.
+      current_row_order_++;
+      return true;
+    }
+
+    rowset_iter++;
+  }
+
+  return false;
 }
 
 Result<string> PgDml::BuildYBTupleId(const PgAttrValueDescriptor *attrs, int32_t nattrs) {
-  SCHECK_EQ(nattrs, table_desc_->num_key_columns(), Corruption,
+  SCHECK_EQ(nattrs, target_desc_->num_key_columns(), Corruption,
       "Number of key components does not match column description");
   vector<PrimitiveValue> *values = nullptr;
   PgsqlExpressionPB *expr_pb;
@@ -322,8 +382,8 @@ Result<string> PgDml::BuildYBTupleId(const PgAttrValueDescriptor *attrs, int32_t
   size_t remain_attr = nattrs;
   auto attrs_end = attrs + nattrs;
   // DocDB API requires that partition columns must be listed in their created-order.
-  // Order from table_desc_ should be used as attributes sequence may have different order.
-  for (const auto& c : table_desc_->columns()) {
+  // Order from target_desc_ should be used as attributes sequence may have different order.
+  for (const auto& c : target_desc_->columns()) {
     for (auto attr = attrs; attr != attrs_end; ++attr) {
       if (attr->attr_num == c.attr_num()) {
         if (!c.desc()->is_primary()) {
@@ -353,18 +413,18 @@ Result<string> PgDml::BuildYBTupleId(const PgAttrValueDescriptor *attrs, int32_t
         }
 
         if (--remain_attr == 0) {
-          SCHECK_EQ(hashed_values.size(), table_desc_->num_hash_key_columns(), Corruption,
+          SCHECK_EQ(hashed_values.size(), target_desc_->num_hash_key_columns(), Corruption,
                     "Number of hashed values does not match column description");
-          SCHECK_EQ(hashed_components.size(), table_desc_->num_hash_key_columns(), Corruption,
+          SCHECK_EQ(hashed_components.size(), target_desc_->num_hash_key_columns(), Corruption,
                     "Number of hashed components does not match column description");
           SCHECK_EQ(range_components.size(),
-                    table_desc_->num_key_columns() - table_desc_->num_hash_key_columns(),
+                    target_desc_->num_key_columns() - target_desc_->num_hash_key_columns(),
                     Corruption, "Number of range components does not match column description");
           if (hashed_values.empty()) {
             return docdb::DocKey(move(range_components)).Encode().data();
           }
           string partition_key;
-          const PartitionSchema& partition_schema = table_desc_->table()->partition_schema();
+          const PartitionSchema& partition_schema = target_desc_->table()->partition_schema();
           RETURN_NOT_OK(partition_schema.EncodeKey(hashed_values, &partition_key));
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 

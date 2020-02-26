@@ -345,61 +345,63 @@ class UniverseDetail extends Component {
           </h2>
           <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} refreshUniverseData={this.getUniverseInfo}/>
         </div>
-        <div className="page-action-buttons">
+        {isNotHidden(currentCustomer.data.features, "universes.details.pageActions") &&
+          <div className="page-action-buttons">
 
-          {/* UNIVERSE EDIT */}
-          <div className="universe-detail-btn-group">
+            {/* UNIVERSE EDIT */}
+            <div className="universe-detail-btn-group">
 
-            <UniverseConnectModal/>
+              <UniverseConnectModal/>
 
-            <DropdownButton title="More" className={this.showUpgradeMarker() ? "btn-marked": ""} id="bg-nested-dropdown" pullRight>
-              <YBMenuItem eventKey="1" onClick={showSoftwareUpgradesModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.upgradeSoftware")}>
-                <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                  Upgrade Software
-                </YBLabelWithIcon>
-                { this.showUpgradeMarker() ? <span className="badge badge-pill badge-red pull-right">{updateAvailable}</span> : ""}
-              </YBMenuItem>
-              {!isReadOnlyUniverse && isNotHidden(currentCustomer.data.features, "universes.details.metrics") &&
-                <YBMenuItem eventKey="2" to={`/universes/${uuid}/edit/primary`} availability={getFeatureState(currentCustomer.data.features, "universes.details.metrics")}>
-                  <YBLabelWithIcon icon="fa fa-pencil">
-                  Edit Universe
+              <DropdownButton title="More" className={this.showUpgradeMarker() ? "btn-marked": ""} id="bg-nested-dropdown" pullRight>
+                <YBMenuItem eventKey="1" onClick={showSoftwareUpgradesModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.upgradeSoftware")}>
+                  <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                    Upgrade Software
+                  </YBLabelWithIcon>
+                  { this.showUpgradeMarker() ? <span className="badge badge-pill badge-red pull-right">{updateAvailable}</span> : ""}
+                </YBMenuItem>
+                {!isReadOnlyUniverse && isNotHidden(currentCustomer.data.features, "universes.details.overview.editUniverse") &&
+                  <YBMenuItem eventKey="2" to={`/universes/${uuid}/edit/primary`} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.editUniverse")}>
+                    <YBLabelWithIcon icon="fa fa-pencil">
+                    Edit Universe
+                    </YBLabelWithIcon>
+                  </YBMenuItem>
+                }
+                <YBMenuItem eventKey="4" onClick={showGFlagsModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.editGFlags")}>
+                  <YBLabelWithIcon icon="fa fa-flag fa-fw">
+                    Edit GFlags
                   </YBLabelWithIcon>
                 </YBMenuItem>
-              }
-              <YBMenuItem eventKey="4" onClick={showGFlagsModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.editGFlags")}>
-                <YBLabelWithIcon icon="fa fa-flag fa-fw">
-                  Edit GFlags
-                </YBLabelWithIcon>
-              </YBMenuItem>
-              <YBMenuItem eventKey="4" onClick={showManageKeyModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.manageEncryption")}>
-                <YBLabelWithIcon icon="fa fa-key fa-fw">
-                  Manage Encryption Keys
-                </YBLabelWithIcon>
-              </YBMenuItem>
-              {!isReadOnlyUniverse &&
-                <YBMenuItem eventKey="3" to={`/universes/${uuid}/edit/async`} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.readReplica")}>
-                  <YBLabelWithIcon icon="fa fa-copy fa-fw">
-                    {this.hasReadReplica(universeInfo) ? "Edit" : "Add" } Read Replica
-                  </YBLabelWithIcon>
-                  <span className="badge badge-pill badge-blue pull-right">Beta</span>
-                </YBMenuItem>
-              }
-              <UniverseAppsModal currentUniverse={currentUniverse.data} modal={modal} closeModal={closeModal} button={
-                <YBMenuItem eventKey="0" onClick={showRunSampleAppsModal}>
-                  <YBLabelWithIcon icon="fa fa-terminal">
-                    Run Sample Apps
+                <YBMenuItem eventKey="4" onClick={showManageKeyModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.manageEncryption")}>
+                  <YBLabelWithIcon icon="fa fa-key fa-fw">
+                    Manage Encryption Keys
                   </YBLabelWithIcon>
                 </YBMenuItem>
-              }/>
-              <div className="divider"></div>
-              <YBMenuItem eventKey="5" onClick={showDeleteUniverseModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.deleteUniverse")}>
-                <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
-                  Delete Universe
-                </YBLabelWithIcon>
-              </YBMenuItem>
-            </DropdownButton>
+                {!isReadOnlyUniverse &&
+                  <YBMenuItem eventKey="3" to={`/universes/${uuid}/edit/async`} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.readReplica")}>
+                    <YBLabelWithIcon icon="fa fa-copy fa-fw">
+                      {this.hasReadReplica(universeInfo) ? "Edit" : "Add" } Read Replica
+                    </YBLabelWithIcon>
+                    <span className="badge badge-pill badge-blue pull-right">Beta</span>
+                  </YBMenuItem>
+                }
+                <UniverseAppsModal currentUniverse={currentUniverse.data} modal={modal} closeModal={closeModal} button={
+                  <YBMenuItem eventKey="0" onClick={showRunSampleAppsModal}>
+                    <YBLabelWithIcon icon="fa fa-terminal">
+                      Run Sample Apps
+                    </YBLabelWithIcon>
+                  </YBMenuItem>
+                }/>
+                <div className="divider"></div>
+                <YBMenuItem eventKey="5" onClick={showDeleteUniverseModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.deleteUniverse")}>
+                  <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                    Delete Universe
+                  </YBLabelWithIcon>
+                </YBMenuItem>
+              </DropdownButton>
+            </div>
           </div>
-        </div>
+        }
         <RollingUpgradeFormContainer modalVisible={showModal &&
         (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}
                                       onHide={closeModal} />
@@ -448,7 +450,7 @@ class YBMenuItem extends Component {
       }
     }
     return (
-      <li>
+      <li className={availability}>
         <div className={className}>
           {this.props.children}
         </div>
@@ -489,7 +491,7 @@ class UniverseTaskList extends Component {
     if (isNonEmptyArray(universeTaskHistoryArray)) {
       const errorPlatformMessage = (
         <div className="oss-unavailable-warning">
-          Only available on YugaByte Platform.
+          Only available on Yugabyte Platform.
         </div>
       );
       universeTaskHistory = (

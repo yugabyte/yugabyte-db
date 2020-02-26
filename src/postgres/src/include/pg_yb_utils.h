@@ -227,14 +227,6 @@ extern void YBReportIfYugaByteEnabled();
 bool YBShouldRestartAllChildrenIfOneCrashes();
 
 /*
- * Define additional inline wrappers around _Status functions that return the
- * real return value and ereport the error status.
- */
-#include "yb/yql/pggate/if_macros_c_pg_wrapper_inl.h"
-#include "yb/yql/pggate/pggate_if.h"
-#include "yb/yql/pggate/if_macros_undef.h"
-
-/*
  * These functions help indicating if we are creating system catalog.
  */
 void YBSetPreparingTemplates();

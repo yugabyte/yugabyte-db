@@ -74,7 +74,6 @@ yugabyte=# ALTER POLICY p1 ON table_foo TO PUBLIC;
 
 ## See also
 
-[`CREATE POLICY`](../dcl_create_policy)
-[`DROP POLICY`](../dcl_drop_policy)
-[`ALTER TABLE`](../ddl_alter_table)
-[Other YSQL Statements](..)
+- [`CREATE POLICY`](../dcl_create_policy)
+- [`DROP POLICY`](../dcl_drop_policy)
+- [`ALTER TABLE`](../ddl_alter_table)

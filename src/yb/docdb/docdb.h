@@ -338,12 +338,16 @@ class IndexBound {
 // Pass data to GetSubDocument function.
 struct GetSubDocumentData {
   GetSubDocumentData(
-    const Slice& subdoc_key, SubDocument* result_,
-    bool* doc_found_ = nullptr, MonoDelta default_ttl = Value::kMaxTtl)
+    const Slice& subdoc_key,
+    SubDocument* result_,
+    bool* doc_found_ = nullptr,
+    MonoDelta default_ttl = Value::kMaxTtl,
+    DocHybridTime* table_tombstone_time_ = nullptr)
       : subdocument_key(subdoc_key),
         result(result_),
         doc_found(doc_found_),
-        exp(default_ttl) {}
+        exp(default_ttl),
+        table_tombstone_time(table_tombstone_time_) {}
 
   Slice subdocument_key;
   SubDocument* result;
@@ -369,6 +373,9 @@ struct GetSubDocumentData {
   bool count_only = false;
   // Stores the count of records found, if count_only option is set.
   mutable size_t record_count = 0;
+  // Hybrid time of latest table tombstone.  Used by colocated tables to compare with the write
+  // times of records belonging to the table.
+  DocHybridTime* table_tombstone_time;
 
   GetSubDocumentData Adjusted(
       const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
@@ -385,10 +392,10 @@ struct GetSubDocumentData {
   }
 
   std::string ToString() const {
-    return Format("{ subdocument_key: $0 ttl: $1 write_time: $2 return_type_only: $3 "
-                      "low_subkey: $4 high_subkey: $5 }",
+    return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 return_type_only: $3 "
+                      "low_subkey: $4 high_subkey: $5 table_tombstone_time: $6 }",
                   SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
-                  exp.write_ht, return_type_only, *low_subkey, *high_subkey);
+                  exp.write_ht, return_type_only, *low_subkey, *high_subkey, *table_tombstone_time);
   }
 };
 

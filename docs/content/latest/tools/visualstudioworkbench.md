@@ -6,7 +6,7 @@ menu:
   latest:
     identifier: visualstudioworkbench
     parent: tools
-    weight: 2811
+    weight: 2760
 isTocNested: true
 showAsideToc: true
 ---

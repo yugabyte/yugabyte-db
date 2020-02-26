@@ -579,7 +579,7 @@ DefineIndex(Oid relationId,
 			if (strcmp(accessMethodName, "btree") == 0 || strcmp(accessMethodName, "hash") == 0)
 			{
 				ereport(NOTICE,
-						(errmsg("index method \"%s\" was replaced with \"%s\" in YugaByte DB",
+						(errmsg("index method \"%s\" was replaced with \"%s\" in YugabyteDB",
 								accessMethodName, DEFAULT_YB_INDEX_TYPE)));
 				accessMethodName = DEFAULT_YB_INDEX_TYPE;
 			}

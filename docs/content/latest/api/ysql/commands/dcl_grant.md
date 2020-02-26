@@ -52,7 +52,7 @@ Use the `GRANT` statement to grant access privileges on database objects as well
 This variant of `GRANT` command is used to assign privileges on database objects to one or more roles.
 If keyword `PUBLIC` is used instead of `role_name`, then it means that the privileges are to be granted to all roles, including those that might be created later.
 
-If WITH GRANT OPTION is specified, the recipient of the privilege can in turn grant it to others. Without a grant option, the recipient cannot do that. Grant options cannot be granted to PUBLIC.
+If `WITH GRANT OPTION` is specified, the recipient of the privilege can in turn grant it to others. Without a grant option, the recipient cannot do that. Grant options cannot be granted to `PUBLIC`.
 
 There is no need to grant privileges to the owner of an object (usually the user that created it), as the owner has all privileges by default. (The owner could, however, choose to revoke some of their own privileges for safety.)
 
@@ -79,7 +79,7 @@ Possible privileges are
 
 - REFERENCES
 
-  - This allows creation of a foreign key constraint referencing the specified table, or specified column(s) of the table.
+  - This allows creation of a foreign key constraint referencing the specified table, or specified columns of the table.
 
 - TRIGGER
 
@@ -105,7 +105,7 @@ Possible privileges are
 - USAGE
 
   - For schemas, this allows access to objects contained in the specified schema (assuming that the objects' own privilege requirements are also met). Essentially this allows the grantee to “look up” objects within the schema.
-  - For sequences, this privilege allows the use of the currval and nextval functions.
+  - For sequences, this privilege allows the use of the `currval()` and `nextval()` functions.
   - For types and domains, this privilege allows the use of the type or domain in the creation of tables, functions, and other schema objects.
 
 - ALL PRIVILEGES

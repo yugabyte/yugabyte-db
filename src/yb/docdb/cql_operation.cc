@@ -22,6 +22,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/primitive_value_util.h"
 
@@ -468,15 +469,39 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApplyData& data) {
+  VLOG(3) << "Looking for collisions in \n"
+          << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+  // We only need to check backwards for backfilled entries.
+  return VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kForward)) ||
+         (request_.is_backfilling() &&
+          VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kBackward)));
+}
+
+Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
+    const DocOperationApplyData& data, Direction direction) {
+  VLOG(2) << "Looking for collision while going " << yb::ToString(direction);
+  auto requested_read_time = data.read_time;
+  if (direction == Direction::kForward) {
+    return DuplicateUniqueIndexValue(data, requested_read_time);
+  }
+
+  // TODO: Handle Unique Index conflicts during backfill.
+  return false;
+}
+
+Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
+    const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
-  DocQLScanSpec spec(*unique_index_key_schema_, *pk_doc_key_, request_.query_id());
-  DocRowwiseIterator iterator(*unique_index_key_schema_, schema_, txn_op_context_,
-                              data.doc_write_batch->doc_db(), data.deadline, data.read_time);
+  DocQLScanSpec spec(*unique_index_key_schema_, *pk_doc_key_, request_.query_id(), true);
+  DocRowwiseIterator iterator(
+      *unique_index_key_schema_, schema_, txn_op_context_, data.doc_write_batch->doc_db(),
+      data.deadline, read_time);
   RETURN_NOT_OK(iterator.Init(spec));
 
   // It is a duplicate value if the index key exist already and the associated indexed primary key
   // is not the same.
   if (!VERIFY_RESULT(iterator.HasNext())) {
+    VLOG(2) << "No collision found while checking at " << yb::ToString(read_time);
     return false;
   }
   QLTableRow table_row;
@@ -488,11 +513,17 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApply
     if (key_column_ids.count(column_id) > 0) {
       auto value = table_row.GetValue(column_id);
       if (value && *value != column_value.expr().value()) {
+        VLOG(2) << "Found collision while checking at " << yb::ToString(read_time)
+                << " Existing :" << yb::ToString(*value)
+                << " vs New :" << yb::ToString(column_value.expr().value()) << " used read time as "
+                << yb::ToString(data.read_time) << " data is now :\n"
+                << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
         return true;
       }
     }
   }
 
+  VLOG(2) << "No collision while checking at " << yb::ToString(read_time);
   return false;
 }
 
@@ -723,6 +754,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   }
 
   if (insert_into_unique_index_ && VERIFY_RESULT(DuplicateUniqueIndexValue(data))) {
+    VLOG(3) << "set_applied is set to " << false << " for over " << yb::ToString(existing_row);
     response_->set_applied(false);
     response_->set_status(QLResponsePB::YQL_STATUS_OK);
     return Status::OK();
@@ -1008,76 +1040,17 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
     if (IsRowDeleted(existing_row, new_row)) {
       index_key_changed = true;
     } else {
-      QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_INSERT,
-                                                        new_row);
-      // Prepare the new index key.
-      for (size_t idx = 0; idx < index->key_column_count(); idx++) {
-        const IndexInfo::IndexColumn& index_column = index->column(idx);
-        QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
-
-        // Column_id should be used without executing "colexpr" for the following cases (we want
-        // to avoid executing colexpr as it is less efficient).
-        // - Old PROTO messages (expr_case() == NOT SET).
-        // - When indexing expression is just a column-ref (expr_case == kColumnId)
-        if (index_column.colexpr.expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
-            index_column.colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId) {
-          auto result = new_row.GetValue(index_column.indexed_column_id);
-          if (!existing_row.IsEmpty()) {
-            // For each column in the index key, if there is a new value, see if the value is
-            // changed from the current value. Else, use the current value.
-            if (result) {
-              if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
-                index_key_changed = true;
-              }
-            } else {
-              result = existing_row.GetValue(index_column.indexed_column_id);
-            }
-          }
-          if (result) {
-            key_column->mutable_value()->CopyFrom(*result);
-          }
-        } else {
-          QLValue result;
-          if (existing_row.IsEmpty()) {
-            RETURN_NOT_OK(EvalExpr(index_column.colexpr, new_row, &result));
-          } else {
-            // The following code needs to be updated to support various expression including JSONB.
-            // For each column in the index key, if there is a new value, see if the value is
-            // specified in the new value. Otherwise, use the current value.
-            if (new_row.IsColumnSpecified(index_column.indexed_column_id)) {
-              RETURN_NOT_OK(EvalExpr(index_column.colexpr, new_row, &result));
-              if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
-                index_key_changed = true;
-              }
-            } else {
-              RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, &result));
-            }
-          }
-          key_column->mutable_value()->CopyFrom(result.value());
-        }
-      }
-
-      // Prepare the covering columns.
-      for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
-        const IndexInfo::IndexColumn& index_column = index->column(idx);
-        auto result = new_row.GetValue(index_column.indexed_column_id);
-        // If the index value is changed and there is no new covering column value set, use the
-        // current value.
-        if (index_key_changed && !result) {
-          result = existing_row.GetValue(index_column.indexed_column_id);
-        }
-        if (result) {
-          QLColumnValuePB* covering_column = index_request->add_column_values();
-          covering_column->set_column_id(index_column.column_id);
-          covering_column->mutable_expr()->mutable_value()->CopyFrom(*result);
-        }
-      }
+      QLWriteRequestPB* index_request =
+          (index->AllowWrites() ? NewIndexRequest(index, QLWriteRequestPB::QL_STMT_INSERT, new_row)
+                                : nullptr);
+      RETURN_NOT_OK(PrepareIndexWriteAndCheckIfIndexKeyChanged(
+          this, existing_row, new_row, index, index_request, &index_key_changed));
     }
 
     // If the index key is changed, delete the current key.
-    if (index_key_changed) {
-      QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE,
-                                                        new_row);
+    if (index_key_changed && index->AllowDelete()) {
+      QLWriteRequestPB* index_request =
+          NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE, new_row);
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
@@ -1099,6 +1072,82 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
     }
   }
 
+  return Status::OK();
+}
+
+Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
+    QLExprExecutor* expr_executor, const QLTableRow& existing_row, const QLTableRow& new_row,
+    const IndexInfo* index, QLWriteRequestPB* index_request, bool* has_index_key_changed) {
+  bool index_key_changed = false;
+  // Prepare the new index key.
+  for (size_t idx = 0; idx < index->key_column_count(); idx++) {
+    const IndexInfo::IndexColumn& index_column = index->column(idx);
+    QLExpressionPB *key_column =
+        (index_request ? NewKeyColumn(index_request, *index, idx) : nullptr);
+
+    // Column_id should be used without executing "colexpr" for the following cases (we want
+    // to avoid executing colexpr as it is less efficient).
+    // - Old PROTO messages (expr_case() == NOT SET).
+    // - When indexing expression is just a column-ref (expr_case == kColumnId)
+    if (index_column.colexpr.expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
+        index_column.colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId) {
+      auto result = new_row.GetValue(index_column.indexed_column_id);
+      if (!existing_row.IsEmpty()) {
+        // For each column in the index key, if there is a new value, see if the value is
+        // changed from the current value. Else, use the current value.
+        if (result) {
+          if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
+            index_key_changed = true;
+          }
+        } else {
+          result = existing_row.GetValue(index_column.indexed_column_id);
+        }
+      }
+      if (result && key_column) {
+        key_column->mutable_value()->CopyFrom(*result);
+      }
+    } else {
+      QLValue result;
+      if (existing_row.IsEmpty()) {
+        RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, &result));
+      } else {
+        // The following code needs to be updated to support various expression including JSONB.
+        // For each column in the index key, if there is a new value, see if the value is
+        // specified in the new value. Otherwise, use the current value.
+        if (new_row.IsColumnSpecified(index_column.indexed_column_id)) {
+          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, &result));
+          if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
+            index_key_changed = true;
+          }
+        } else {
+          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, existing_row, &result));
+        }
+      }
+      if (key_column) {
+        key_column->mutable_value()->CopyFrom(result.value());
+      }
+    }
+  }
+
+  // Prepare the covering columns.
+  for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
+    const IndexInfo::IndexColumn& index_column = index->column(idx);
+    auto result = new_row.GetValue(index_column.indexed_column_id);
+    // If the index value is changed and there is no new covering column value set, use the
+    // current value.
+    if (index_key_changed && !result) {
+      result = existing_row.GetValue(index_column.indexed_column_id);
+    }
+    if (result && index_request) {
+      QLColumnValuePB* covering_column = index_request->add_column_values();
+      covering_column->set_column_id(index_column.column_id);
+      covering_column->mutable_expr()->mutable_value()->CopyFrom(*result);
+    }
+  }
+
+  if (has_index_key_changed) {
+    *has_index_key_changed = index_key_changed;
+  }
   return Status::OK();
 }
 
@@ -1370,6 +1419,7 @@ Status QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLScanSpec>
                                        QLResultSet* resultset,
                                        int* match_count,
                                        size_t *num_rows_skipped) {
+  VLOG(3) << __FUNCTION__ << " : " << yb::ToString(row);
   if (resultset->rsrow_count() < row_count_limit) {
     bool match = false;
     RETURN_NOT_OK(spec->Match(row, &match));

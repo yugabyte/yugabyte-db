@@ -40,8 +40,9 @@ public class TestPgDepend extends BasePgSQLTest {
 
   @Test
   public void testPgDependInsertion() throws SQLException {
-    createSimpleTable("test");
     try (Statement statement = connection.createStatement()) {
+      createSimpleTable(statement, "test");
+
       // Create an Index for the table.
       statement.execute("CREATE UNIQUE INDEX test_h on test(h)");
 
@@ -64,8 +65,9 @@ public class TestPgDepend extends BasePgSQLTest {
 
   @Test
   public void testTableWithIndexDeletion() throws SQLException {
-    createSimpleTable("test");
     try (Statement statement = connection.createStatement()) {
+      createSimpleTable(statement, "test");
+
       // Create an Index for the table.
       statement.execute("CREATE INDEX test_h on test(h)");
 
@@ -101,7 +103,7 @@ public class TestPgDepend extends BasePgSQLTest {
       assertFalse(rs.next());
 
       // Check that we can create a new index with the same name.
-      createSimpleTable("test");
+      createSimpleTable(statement, "test");
       statement.execute("CREATE INDEX test_h on test(h)");
     }
   }
@@ -143,8 +145,9 @@ public class TestPgDepend extends BasePgSQLTest {
 
   @Test
   public void testTableWithViewDeletionWithCascade() throws SQLException {
-    createSimpleTable("test");
     try (Statement statement = connection.createStatement()) {
+      createSimpleTable(statement, "test");
+
       // Create an index for the table.
       statement.execute("CREATE INDEX test_h on test(h)");
 
@@ -187,15 +190,15 @@ public class TestPgDepend extends BasePgSQLTest {
       assertFalse(rs.next());
 
       // Check that we can create a new view with the same name.
-      createSimpleTable("test");
+      createSimpleTable(statement, "test");
       statement.execute("CREATE VIEW test_view AS SELECT * FROM test");
     }
   }
 
   @Test
   public void testViewDeletionWithCascade() throws SQLException {
-    createSimpleTable("test");
     try (Statement statement = connection.createStatement()) {
+      createSimpleTable(statement, "test");
 
       // Create a view on the table.
       statement.execute("CREATE VIEW test_view AS SELECT * FROM test");

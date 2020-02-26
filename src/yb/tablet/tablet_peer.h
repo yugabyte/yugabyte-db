@@ -275,10 +275,6 @@ class TabletPeer : public consensus::ConsensusContext,
   // initialized.
   yb::OpId GetLatestLogEntryOpId() const;
 
-  server::Clock& clock() const override {
-    return *clock_;
-  }
-
   const server::ClockPtr& clock_ptr() const override {
     return clock_;
   }
@@ -332,6 +328,12 @@ class TabletPeer : public consensus::ConsensusContext,
   const RaftGroupMetadataPtr& tablet_metadata() const {
     return meta_;
   }
+
+  CHECKED_STATUS set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
+
+  CHECKED_STATUS set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index);
+
+  CHECKED_STATUS reset_cdc_min_replicated_index_if_stale();
 
   TableType table_type();
 
@@ -424,6 +426,11 @@ class TabletPeer : public consensus::ConsensusContext,
   std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
 
   std::atomic<size_t> preparing_operations_{0};
+
+  // Serializes access to set_cdc_min_replicated_index and reset_cdc_min_replicated_index_if_stale
+  // and protects cdc_min_replicated_index_refresh_time_ for reads and writes.
+  mutable simple_spinlock cdc_min_replicated_index_lock_;
+  MonoTime cdc_min_replicated_index_refresh_time_ = MonoTime::Min();
 
  private:
   HybridTime ReportReadRestart() override;

@@ -105,6 +105,30 @@ DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
 
+namespace {
+
+constexpr const auto kMinRpcThrottleThresholdBytes = 16;
+
+static bool RpcThrottleThresholdBytesValidator(const char* flagname, int32_t value) {
+  if (value > 0) {
+    if (value < kMinRpcThrottleThresholdBytes) {
+      LOG(ERROR) << "Expect " << flagname << " to be at least " << kMinRpcThrottleThresholdBytes;
+      return false;
+    } else if (value >= FLAGS_consensus_max_batch_size_bytes) {
+      LOG(ERROR) << "Expect " << flagname << " to be less than consensus_max_batch_size_bytes "
+                 << "value (" << FLAGS_consensus_max_batch_size_bytes << ")";
+      return false;
+    }
+  }
+  return true;
+}
+
+} // namespace
+
+DECLARE_int32(rpc_throttle_threshold_bytes);
+__attribute__((unused))
+DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
+
 namespace yb {
 namespace consensus {
 
@@ -330,6 +354,9 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
     fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_index.index());
 
     if (queue_state_.mode != Mode::LEADER) {
+      log_cache_.EvictThroughOp(id.index());
+
+      UpdateMetrics();
       return;
     }
   }

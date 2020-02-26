@@ -187,7 +187,6 @@ public class SessionControllerTest {
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
 
     ObjectNode loginJson = Json.newObject();
-    registerJson.put("code", "fb");
     loginJson.put("email", "foo2@bar.com");
     loginJson.put("password", "password");
     result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
@@ -196,6 +195,117 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
     assertAuditEntry(0, c1.uuid);
+  }
+
+  @Test
+  public void testRegisterMultiCustomer() {
+    startApp(true);
+    ObjectNode registerJson = Json.newObject();
+    registerJson.put("code", "fb");
+    registerJson.put("email", "foo2@bar.com");
+    registerJson.put("password", "password");
+    registerJson.put("name", "Foo");
+
+    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("authToken"));
+    String authToken = json.get("authToken").asText();
+    Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
+
+    ObjectNode registerJson2 = Json.newObject();
+    registerJson2.put("code", "fb");
+    registerJson2.put("email", "foo3@bar.com");
+    registerJson2.put("password", "password");
+    registerJson2.put("name", "Foo");
+
+    result = route(fakeRequest("POST", "/api/register")
+        .bodyJson(registerJson2)
+        .header("X-AUTH-TOKEN", authToken));
+    json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("authToken"));
+    assertAuditEntry(0, c1.uuid);
+  }
+
+  @Test
+  public void testRegisterMultiCustomerWithoutAuth() {
+    startApp(true);
+    ObjectNode registerJson = Json.newObject();
+    registerJson.put("code", "fb");
+    registerJson.put("email", "foo2@bar.com");
+    registerJson.put("password", "password");
+    registerJson.put("name", "Foo");
+
+    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("authToken"));
+    String authToken = json.get("authToken").asText();
+    Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
+
+    ObjectNode registerJson2 = Json.newObject();
+    registerJson2.put("code", "fb");
+    registerJson2.put("email", "foo3@bar.com");
+    registerJson2.put("password", "password");
+    registerJson2.put("name", "Foo");
+
+    result = route(fakeRequest("POST", "/api/register")
+        .bodyJson(registerJson2));
+    json = Json.parse(contentAsString(result));
+
+    assertEquals(BAD_REQUEST, result.status());
+    assertBadRequest(result, "Only Super Admins can register tenant.");
+  }
+
+  @Test
+  public void testRegisterMultiCustomerWrongAuth() {
+    startApp(true);
+    ObjectNode registerJson = Json.newObject();
+    registerJson.put("code", "fb");
+    registerJson.put("email", "foo2@bar.com");
+    registerJson.put("password", "password");
+    registerJson.put("name", "Foo");
+
+    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("authToken"));
+    String authToken = json.get("authToken").asText();
+    Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
+
+    ObjectNode registerJson2 = Json.newObject();
+    registerJson2.put("code", "fb");
+    registerJson2.put("email", "foo3@bar.com");
+    registerJson2.put("password", "password");
+    registerJson2.put("name", "Foo");
+
+    result = route(fakeRequest("POST", "/api/register")
+        .bodyJson(registerJson2)
+        .header("X-AUTH-TOKEN", authToken));
+    json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("authToken"));
+    String authToken2 = json.get("authToken").asText();
+
+    ObjectNode registerJson3 = Json.newObject();
+    registerJson3.put("code", "fb");
+    registerJson3.put("email", "foo4@bar.com");
+    registerJson3.put("password", "password");
+    registerJson3.put("name", "Foo");
+
+    result = route(fakeRequest("POST", "/api/register")
+        .bodyJson(registerJson3)
+        .header("X-AUTH-TOKEN", authToken2));
+    json = Json.parse(contentAsString(result));
+
+    assertEquals(BAD_REQUEST, result.status());
+    assertBadRequest(result, "Only Super Admins can register tenant.");
   }
 
   @Test

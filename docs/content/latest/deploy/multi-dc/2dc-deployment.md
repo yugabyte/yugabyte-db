@@ -2,7 +2,6 @@
 title: Two data center (2DC)
 linkTitle: Two data center (2DC)
 description: Two data center (2DC) deployments
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: multi-dc
@@ -22,7 +21,7 @@ showAsideToc: true
 
 {{< /tip >}}
 
-For details on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../architecture/2dc-deployments).
+For details on the two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments).
 
 Follow the steps below to set up a 2DC deployment using either unidirectional (aka master-follower) or bidirectional (aka multi-master) replication between the data centers.
 
@@ -46,7 +45,7 @@ To create the consumer universe, follow these steps.
 
 Make sure to create the same tables as you did for the producer universe.
 
-After creating the required tables, you can now set up aysnchronous replication using the steps below.
+After creating the required tables, you can now set up asysnchronous replication using the steps below.
 
 ## 2. Unidirectional (aka master-follower) replication
 

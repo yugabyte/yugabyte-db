@@ -102,6 +102,7 @@ namespace internal {
 class ClientMasterRpc;
 class CreateCDCStreamRpc;
 class DeleteCDCStreamRpc;
+class GetCDCStreamRpc;
 }
 
 // This needs to be called by a client app before performing any operations that could result in
@@ -437,6 +438,11 @@ class YBClient {
                               TableId* table_id,
                               std::unordered_map<std::string, std::string>* options);
 
+  void GetCDCStream(const CDCStreamId& stream_id,
+                    std::shared_ptr<TableId> table_id,
+                    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+                    StdStatusCallback callback);
+
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
@@ -518,6 +524,7 @@ class YBClient {
   // from its own master address list.
   CHECKED_STATUS AddMasterToClient(const HostPort& add);
   CHECKED_STATUS RemoveMasterFromClient(const HostPort& remove);
+  CHECKED_STATUS SetMasterAddresses(const std::string& addrs);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {
@@ -616,6 +623,7 @@ class YBClient {
   friend class internal::ClientMasterRpc;
   friend class internal::CreateCDCStreamRpc;
   friend class internal::DeleteCDCStreamRpc;
+  friend class internal::GetCDCStreamRpc;
   friend class PlacementInfoTest;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);

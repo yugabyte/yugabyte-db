@@ -59,6 +59,7 @@ class DocDBRocksDBUtil {
 
   CHECKED_STATUS OpenRocksDB();
 
+  void CloseRocksDB();
   CHECKED_STATUS ReopenRocksDB();
   CHECKED_STATUS DestroyRocksDB();
   void ResetMonotonicCounter();
@@ -84,6 +85,9 @@ class DocDBRocksDBUtil {
   // The same as WriteToRocksDB but also clears the write batch afterwards.
   CHECKED_STATUS WriteToRocksDBAndClear(DocWriteBatch* dwb, const HybridTime& hybrid_time,
                                         bool decode_dockey = true, bool increment_write_id = true);
+
+  // Writes value fully determined by its index using DefaultWriteBatch.
+  CHECKED_STATUS WriteSimple(int index);
 
   void SetHistoryCutoffHybridTime(HybridTime history_cutoff);
 
@@ -176,6 +180,10 @@ class DocDBRocksDBUtil {
 
   void SetInitMarkerBehavior(InitMarkerBehavior init_marker_behavior);
 
+  // Returns DocWriteBatch created with MakeDocWriteBatch.
+  // Could be used when single DocWriteBatch is enough.
+  DocWriteBatch& DefaultDocWriteBatch();
+
  protected:
   std::string IntentsDBDir();
 
@@ -201,6 +209,7 @@ class DocDBRocksDBUtil {
 
  private:
   std::atomic<int64_t> monotonic_counter_{0};
+  boost::optional<DocWriteBatch> doc_write_batch_;
 };
 
 // An implementation of the document node visitor interface that dumps all events (document

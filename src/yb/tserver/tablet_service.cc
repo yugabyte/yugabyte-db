@@ -160,6 +160,16 @@ TAG_FLAG(min_rejection_delay_ms, runtime);
 DEFINE_uint64(max_rejection_delay_ms, 5000, ".");
 TAG_FLAG(max_rejection_delay_ms, runtime);
 
+DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000,
+              "For Non-Txn tables, it is impossible to know at the tservers "
+              "weather or not an 'old transaction' is still active. To avoid "
+              "having such old transactions, we assume a bound on the duration "
+              "of such transactions (during the backfill process) and wait "
+              "it out. This flag denotes a conservative upper bound on the "
+              "duration of such user enforced transactions.");
+TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
+TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
+
 DEFINE_test_flag(int32, TEST_write_rejection_percentage, 0,
                  "Reject specified percentage of writes.");
 
@@ -182,6 +192,7 @@ DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
 DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
 
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(transaction_min_running_check_interval_ms);
 
 namespace yb {
 namespace tserver {
@@ -508,12 +519,65 @@ void TabletServiceAdminImpl::GetSafeTime(
   if (!tablet) {
     return;
   }
+  const CoarseTimePoint& deadline = context.GetClientDeadline();
+  HybridTime min_hybrid_time(HybridTime::kMin);
+  if (req->has_min_hybrid_time_for_backfill()) {
+    min_hybrid_time = HybridTime(req->min_hybrid_time_for_backfill());
+    // For Transactional tables, wait until there are no pending transactions that started
+    // prior to min_hybrid_time. These may not have updated the index correctly, if they
+    // happen to commit after the backfill scan, it is possible that they may miss updating
+    // the index because the some operations may have taken place prior to min_hybrid_time.
+    //
+    // For Non-Txn tables, it is impossible to know at the tservers weather or not an "old
+    // transaction" is still active. To avoid having such old transactions, we assume a
+    // bound on the length of such transactions (during the backfill process) and wait it
+    // out.
+    if (!tablet.peer->tablet()->transaction_participant()) {
+      min_hybrid_time = min_hybrid_time.AddMilliseconds(
+          FLAGS_index_backfill_upperbound_for_user_enforced_txn_duration_ms);
+      VLOG(2) << "GetSafeTime called on a user enforced transaction tablet "
+              << tablet.peer->tablet_id() << " will wait until "
+              << min_hybrid_time << " is safe.";
+    } else {
+      auto txn_particpant = tablet.peer->tablet()->transaction_participant();
+      HybridTime min_running_ht;
+      while ((min_running_ht = txn_particpant->MinRunningHybridTime()) <
+             min_hybrid_time) {
+        VLOG(2) << "MinRunningHybridTime is " << min_running_ht
+                << " need to wait for " << min_hybrid_time;
+        if (CoarseMonoClock::Now() > deadline) {
+          // A long running pending transaction that started before the index
+          // backfill can effectively block us from choosing a safe time to
+          // perform the backfill read.
+          // For now, we only wait for pending transactions; and can therefore
+          // block if a transaction does not complete in a timely manner.
+          // TODO(#3471): abort/restart such transactions so that the backfill process
+          // does not wait forever.
+          SetupErrorAndRespond(resp->mutable_error(),
+                               STATUS_SUBSTITUTE(TimedOut,
+                                                 "TimedOut waiting on running "
+                                                 "transactions. Oldest started "
+                                                 "at $0 (before $1)",
+                                                 tablet.peer->tablet()
+                                                     ->transaction_participant()
+                                                     ->MinRunningHybridTime()
+                                                     .ToString(),
+                                                 min_hybrid_time.ToString()),
+                               TabletServerErrorPB::UNKNOWN_ERROR, &context);
+          return;
+        }
+        SleepFor(MonoDelta::FromMilliseconds(
+            FLAGS_transaction_min_running_check_interval_ms));
+      }
+    }
+  }
 
-  HybridTime safe_time = tablet.peer->tablet()->SafeTime();
+  HybridTime safe_time = tablet.peer->tablet()->SafeTime(
+      tablet::RequireLease::kTrue, min_hybrid_time);
   resp->set_safe_time(safe_time.ToUint64());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-  DVLOG(3) << "Tablet " << tablet.peer->tablet_id()
-           << ". returning SafeTime for : " << yb::ToString(safe_time);
+  VLOG(1) << "Tablet " << tablet.peer->tablet_id()
+          << ". returning SafeTime for : " << yb::ToString(safe_time);
 
   context.RespondSuccess();
 }
@@ -555,11 +619,20 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
 
   DVLOG(1) << "Received Backfill Index RPC: " << req->DebugString();
+  const CoarseTimePoint &deadline = context.GetClientDeadline();
   const auto coarse_start = CoarseMonoClock::Now();
   {
     std::unique_lock<std::mutex> l(backfill_lock_);
     while (num_tablets_backfilling_ >= FLAGS_num_concurrent_backfills_allowed) {
-      backfill_cond_.wait(l);
+      if (backfill_cond_.wait_until(l, deadline) == std::cv_status::timeout) {
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            STATUS_SUBSTITUTE(ServiceUnavailable,
+                              "Already running $0 backfill requests.",
+                              FLAGS_num_concurrent_backfills_allowed),
+            TabletServerErrorPB::UNKNOWN_ERROR, &context);
+        return;
+      }
     }
     num_tablets_backfilling_++;
   }
@@ -569,13 +642,26 @@ void TabletServiceAdminImpl::BackfillIndex(
     this->backfill_cond_.notify_all();
   });
 
-  const auto coarse_now = CoarseMonoClock::Now();
-  const CoarseTimePoint& deadline = context.GetClientDeadline();
+  // Wait for SafeTime to get past read_at;
+  const HybridTime read_at(req->read_at_hybrid_time());
+  const HybridTime safe_time = tablet.peer->tablet()->SafeTime(
+      tablet::RequireLease::kTrue, read_at, deadline);
+  if (!safe_time.is_valid()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_SUBSTITUTE(TimedOut,
+                          "TimedOut waiting for safe time to get past $0",
+                          read_at.ToString()),
+        TabletServerErrorPB::UNKNOWN_ERROR, &context);
+    return;
+  }
+
   // Don't work on the request if we have had to wait more than 50%
   // of the time allocated to us for the RPC.
   // Backfill is a costly operation, we do not want to start working
   // on it if we expect the client (master) to time out the RPC and
   // force us to redo the work.
+  const auto coarse_now = CoarseMonoClock::Now();
   if (deadline - coarse_now < coarse_now - coarse_start) {
     SetupErrorAndRespond(
         resp->mutable_error(),
@@ -593,8 +679,9 @@ void TabletServiceAdminImpl::BackfillIndex(
     indices_to_backfill.push_back(index_map.at(idx.table_id()));
     index_ids.push_back(index_map.at(idx.table_id()).table_id());
   }
-  Status s = tablet.peer->tablet()->BackfillIndexes(
-      indices_to_backfill, HybridTime(req->read_at_hybrid_time()));
+
+  Status s =
+      tablet.peer->tablet()->BackfillIndexes(indices_to_backfill, read_at);
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id()
            << ". Backfilled indices for : " << yb::ToString(index_ids) << " with status " << s;
   if (!s.ok()) {
@@ -730,31 +817,69 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   }
 }
 
+template <class Req, class Resp, class Action>
+void TabletServiceImpl::PerformAtLeader(
+    const Req& req, Resp* resp, rpc::RpcContext* context, const Action& action) {
+  UpdateClock(*req, server_->Clock());
+
+  auto tablet_peer = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, context);
+
+  if (!tablet_peer) {
+    return;
+  }
+
+  auto status = action(tablet_peer);
+
+  if (*context) {
+    resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+    if (status.ok()) {
+      context->RespondSuccess();
+    } else {
+      SetupErrorAndRespond(
+          resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, context);
+    }
+  }
+}
+
 void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB* req,
                                              GetTransactionStatusResponsePB* resp,
                                              rpc::RpcContext context) {
   TRACE("GetTransactionStatus");
 
-  UpdateClock(*req, server_->Clock());
+  PerformAtLeader(req, resp, &context,
+      [req, resp, &context](const LeaderTabletPeer& tablet_peer) {
+    auto* transaction_coordinator = tablet_peer.peer->tablet()->transaction_coordinator();
+    if (!transaction_coordinator) {
+      return STATUS_FORMAT(
+          InvalidArgument, "No transaction coordinator at tablet $0",
+          tablet_peer.peer->tablet_id());
+    }
+    return transaction_coordinator->GetStatus(
+        req->transaction_id(), context.GetClientDeadline(), resp);
+  });
+}
 
-  auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+void TabletServiceImpl::GetTransactionStatusAtParticipant(
+    const GetTransactionStatusAtParticipantRequestPB* req,
+    GetTransactionStatusAtParticipantResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("GetTransactionStatusAtParticipant");
 
-  auto status = CheckPeerIsLeaderAndReady(*tablet_peer);
-  if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, &context);
-    return;
-  }
+  PerformAtLeader(req, resp, &context,
+      [req, resp, &context](const LeaderTabletPeer& tablet_peer) -> Status {
+    auto* transaction_participant = tablet_peer.peer->tablet()->transaction_participant();
+    if (!transaction_participant) {
+      return STATUS_FORMAT(
+          InvalidArgument, "No transaction participant at tablet $0",
+          tablet_peer.peer->tablet_id());
+    }
 
-  status = tablet_peer->tablet()->transaction_coordinator()->GetStatus(
-      req->transaction_id(), resp);
-  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-  if (status.ok()) {
-    context.RespondSuccess();
-  } else {
-    SetupErrorAndRespond(
-        resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
-  }
+    transaction_participant->GetStatus(
+        VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id())),
+        req->required_num_replicated_batches(), tablet_peer.leader_term, resp, &context);
+    return Status::OK();
+  });
 }
 
 void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
@@ -821,6 +946,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
     return;
   }
+  DVLOG(3) << "Received CreateTablet RPC: " << yb::ToString(*req);
   TRACE_EVENT1("tserver", "CreateTablet",
                "tablet_id", req->tablet_id());
 
@@ -1000,6 +1126,7 @@ void TabletServiceAdminImpl::AddTableToTablet(
   if (!tablet) {
     return;
   }
+  DVLOG(3) << "Received AddTableToTablet RPC: " << yb::ToString(*req);
 
   tserver::ChangeMetadataRequestPB change_req;
   *change_req.mutable_add_table() = req->add_table();

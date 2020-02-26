@@ -410,7 +410,7 @@ void Webserver::RegisterPathHandler(const string& path,
 const char* const PAGE_HEADER = "<!DOCTYPE html>"
 "<html>"
 "  <head>"
-"    <title>YugaByte DB</title>"
+"    <title>YugabyteDB</title>"
 "    <link rel='shortcut icon' href='/favicon.ico'>"
 "    <link href='/bootstrap/css/bootstrap.min.css' rel='stylesheet' media='screen' />"
 "    <link href='/bootstrap/css/bootstrap-theme.min.css' rel='stylesheet' media='screen' />"
@@ -424,7 +424,7 @@ const char* const PAGE_HEADER = "<!DOCTYPE html>"
 static const char* const NAVIGATION_BAR_PREFIX =
 "  <nav class=\"navbar navbar-fixed-top navbar-inverse sidebar-wrapper\" role=\"navigation\">"
 "    <ul class=\"nav sidebar-nav\">"
-"      <li><a href='/'><img src='/logo.png' alt='YugaByte DB' class='nav-logo' /></a></li>"
+"      <li><a href='/'><img src='/logo.png' alt='YugabyteDB' class='nav-logo' /></a></li>"
 "\n";
 
 static const char* const NAVIGATION_BAR_SUFFIX =

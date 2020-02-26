@@ -160,7 +160,8 @@ class TabletPeerTest : public YBTabletTest,
     ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
                         tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
                         *tablet()->schema(), tablet()->metadata()->schema_version(),
-                        metric_entity_.get(), append_pool_.get(), &log));
+                        metric_entity_.get(), append_pool_.get(),
+                        tablet()->metadata()->cdc_min_replicated_index(), &log));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),

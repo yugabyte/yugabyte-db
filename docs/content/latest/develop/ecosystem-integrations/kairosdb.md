@@ -17,7 +17,7 @@ showAsideToc: true
 
 ## 1. Start local cluster
 
-Follow [Quick start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra API as [documented](../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra service running on `localhost:9042`.
+Follow [Quick start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra API as [documented](../../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra service running on `localhost:9042`.
 
 ## 2. Download KairosDB
 

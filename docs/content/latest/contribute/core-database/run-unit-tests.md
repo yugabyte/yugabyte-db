@@ -1,14 +1,14 @@
 ---
-title: Testing the source code
-linkTitle: Running the Tests
-description: Running the Tests
+title: Run the tests
+linkTitle: Run the tests
+description: Run the tests
 image: /images/section_icons/index/quick_start.png
-headcontent: Running the tests.
+headcontent: Run the tests.
 type: page
 menu:
   latest:
-    identifier: contribute-db-core-test
-    parent: contribute-db-core
+    identifier: run-unit-tests
+    parent: core-database
     weight: 2913
 isTocNested: true
 showAsideToc: true

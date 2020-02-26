@@ -75,6 +75,34 @@ SELECT * FROM tab_range_colo;
  3
 (4 rows)
 
+BEGIN;
+INSERT INTO tab_range_colo VALUES (4);
+SELECT * FROM tab_range_colo;
+ a
+---
+ 0
+ 1
+ 2
+ 3
+ 4
+(5 rows)
+
+ROLLBACK;
+BEGIN;
+INSERT INTO tab_range_colo VALUES (5);
+COMMIT;
+SELECT * FROM tab_range_colo;
+ a
+---
+ 0
+ 1
+ 2
+ 3
+ 5
+(5 rows)
+
+INSERT INTO tab_range_colo VALUES (6), (6);
+ERROR:  duplicate key value violates unique constraint "tab_range_colo_pkey"
 -- CREATE INDEX
 -- table with index
 CREATE TABLE tab_range_nonkey2 (a INT, b INT, PRIMARY KEY (a ASC));
@@ -118,81 +146,11 @@ SELECT * FROM tab_range_nonkey2;
 -- colocated table with non-colocated index
 CREATE TABLE tab_range_nonkey3 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range_colo ON tab_range_nonkey3 (a) WITH (colocated = true);
-INSERT INTO tab_range_nonkey3 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM tab_range_nonkey3 WHERE a = 1;
-                                       QUERY PLAN
-----------------------------------------------------------------------------------------
- Index Scan using idx_range_colo on tab_range_nonkey3  (cost=0.00..4.11 rows=1 width=8)
-   Index Cond: (a = 1)
-(2 rows)
-
-SELECT * FROM tab_range_nonkey3 WHERE a = 1;
- a | b
----+---
- 1 | 1
-(1 row)
-
-UPDATE tab_range_nonkey3 SET b = b + 1 WHERE a > 3;
-SELECT * FROM tab_range_nonkey3;
- a | b
----+---
- 0 | 0
- 1 | 1
- 2 | 2
- 3 | 3
- 4 | 5
- 5 | 6
-(6 rows)
-
-DELETE FROM tab_range_nonkey3 WHERE a > 3;
-SELECT * FROM tab_range_nonkey3;
- a | b
----+---
- 0 | 0
- 1 | 1
- 2 | 2
- 3 | 3
-(4 rows)
-
+ERROR:  cannot set option "colocated" on index
 -- colocated table with colocated index
 CREATE TABLE tab_range_nonkey4 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range_noco ON tab_range_nonkey4 (a) WITH (colocated = false);
-INSERT INTO tab_range_nonkey4 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
-EXPLAIN SELECT * FROM tab_range_nonkey4 WHERE a = 1;
-                                       QUERY PLAN
-----------------------------------------------------------------------------------------
- Index Scan using idx_range_noco on tab_range_nonkey4  (cost=0.00..4.11 rows=1 width=8)
-   Index Cond: (a = 1)
-(2 rows)
-
-SELECT * FROM tab_range_nonkey4 WHERE a = 1;
- a | b
----+---
- 1 | 1
-(1 row)
-
-UPDATE tab_range_nonkey4 SET b = b + 1 WHERE a > 3;
-SELECT * FROM tab_range_nonkey4;
- a | b
----+---
- 0 | 0
- 1 | 1
- 2 | 2
- 3 | 3
- 4 | 5
- 5 | 6
-(6 rows)
-
-DELETE FROM tab_range_nonkey4 WHERE a > 3;
-SELECT * FROM tab_range_nonkey4;
- a | b
----+---
- 0 | 0
- 1 | 1
- 2 | 2
- 3 | 3
-(4 rows)
-
+ERROR:  cannot set option "colocated" on index
 -- non-colocated table with index
 CREATE TABLE tab_range_nonkey_noco (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocated = false);
 CREATE INDEX idx_range2 ON tab_range_nonkey_noco (a);
@@ -267,8 +225,6 @@ CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
  public | idx_range3                  | index | yugabyte | tab_range_nonkey_noco2
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3
  public | idx_range5                  | index | yugabyte | tab_range_nonkey5
- public | idx_range_colo              | index | yugabyte | tab_range_nonkey3
- public | idx_range_noco              | index | yugabyte | tab_range_nonkey4
  public | tab_range_colo_pkey         | index | yugabyte | tab_range_colo
  public | tab_range_nonkey2_pkey      | index | yugabyte | tab_range_nonkey2
  public | tab_range_nonkey3_pkey      | index | yugabyte | tab_range_nonkey3
@@ -280,19 +236,47 @@ CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
  public | tab_range_nonkey_pkey       | index | yugabyte | tab_range_nonkey
  public | tab_range_pkey              | index | yugabyte | tab_range
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
-(18 rows)
+(16 rows)
 
 -- TRUNCATE TABLE
 -- truncate colocated table with default index
 TRUNCATE TABLE tab_range;
--- TODO(jason): fix output of select after issue #3359
 SELECT * FROM tab_range;
  a
 ---
- 0
+(0 rows)
+
+INSERT INTO tab_range VALUES (4);
+SELECT * FROM tab_range;
+ a
+---
+ 4
+(1 row)
+
+INSERT INTO tab_range VALUES (1);
+INSERT INTO tab_range VALUES (2), (5);
+SELECT * FROM tab_range;
+ a
+---
  1
  2
-(3 rows)
+ 4
+ 5
+(4 rows)
+
+DELETE FROM tab_range WHERE a = 2;
+TRUNCATE TABLE tab_range;
+SELECT * FROM tab_range;
+ a
+---
+(0 rows)
+
+INSERT INTO tab_range VALUES (2);
+SELECT * FROM tab_range;
+ a
+---
+ 2
+(1 row)
 
 -- truncate non-colocated table without index
 TRUNCATE TABLE tab_nonkey_noco;
@@ -303,15 +287,10 @@ SELECT * FROM tab_nonkey_noco;
 
 -- truncate colocated table with explicit index
 TRUNCATE TABLE tab_range_nonkey2;
--- TODO(jason): fix output of select after issue #3359
 SELECT * FROM tab_range_nonkey2;
  a | b
 ---+---
- 0 | 0
- 1 | 1
- 2 | 2
- 3 | 3
-(4 rows)
+(0 rows)
 
 -- truncate non-colocated table with explicit index
 TRUNCATE TABLE tab_range_nonkey_noco2;
@@ -347,8 +326,6 @@ SELECT * FROM tab_range_nonkey_noco2;
  public | idx_range3                  | index | yugabyte | tab_range_nonkey_noco2
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3
  public | idx_range5                  | index | yugabyte | tab_range_nonkey5
- public | idx_range_colo              | index | yugabyte | tab_range_nonkey3
- public | idx_range_noco              | index | yugabyte | tab_range_nonkey4
  public | tab_range_colo_pkey         | index | yugabyte | tab_range_colo
  public | tab_range_nonkey2_pkey      | index | yugabyte | tab_range_nonkey2
  public | tab_range_nonkey3_pkey      | index | yugabyte | tab_range_nonkey3
@@ -360,7 +337,7 @@ SELECT * FROM tab_range_nonkey_noco2;
  public | tab_range_nonkey_pkey       | index | yugabyte | tab_range_nonkey
  public | tab_range_pkey              | index | yugabyte | tab_range
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
-(18 rows)
+(16 rows)
 
 -- DROP TABLE
 -- drop colocated table with default index
@@ -425,8 +402,6 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
  Schema |            Name             | Type  |  Owner   |         Table
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3
- public | idx_range_colo              | index | yugabyte | tab_range_nonkey3
- public | idx_range_noco              | index | yugabyte | tab_range_nonkey4
  public | tab_range_colo_pkey         | index | yugabyte | tab_range_colo
  public | tab_range_nonkey3_pkey      | index | yugabyte | tab_range_nonkey3
  public | tab_range_nonkey4_pkey      | index | yugabyte | tab_range_nonkey4
@@ -435,7 +410,7 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
  public | tab_range_nonkey_noco_pkey  | index | yugabyte | tab_range_nonkey_noco
  public | tab_range_nonkey_pkey       | index | yugabyte | tab_range_nonkey
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
-(11 rows)
+(9 rows)
 
 -- drop database
 \c yugabyte

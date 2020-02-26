@@ -71,16 +71,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
  public:
   BackfillTable(Master *master, ThreadPool *callback_pool,
                 const scoped_refptr<TableInfo> &indexed_table,
-                std::vector<IndexInfoPB> indices)
-      : master_(master), callback_pool_(callback_pool),
-        indexed_table_(indexed_table), indices_to_build_(indices) {
-    LOG_IF(DFATAL, indices_to_build_.size() != 1)
-        << "As of Dec 2019, we only support "
-        << "building one index at a time. indices_to_build_.size() = "
-        << indices_to_build_.size();
-    auto l = indexed_table_->LockForRead();
-    schema_version_ = indexed_table_->metadata().state().pb.version();
-  }
+                std::vector<IndexInfoPB> indices);
 
   void Launch();
 
@@ -94,6 +85,15 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const std::vector<IndexInfoPB>& indices() const { return indices_to_build_; }
 
+  std::vector<TableId> index_ids() const {
+    std::vector<TableId> index_ids;
+    index_ids.reserve(indices().size());
+    for (const auto &index_info : indices()) {
+      index_ids.emplace_back(index_info.table_id());
+    }
+    return index_ids;
+  }
+
   int32_t schema_version() const { return schema_version_; }
 
   std::string LogPrefix() const;
@@ -102,9 +102,17 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
     return done_.load(std::memory_order_acquire);
   }
 
+  bool timestamp_chosen() const {
+    return timestamp_chosen_.load(std::memory_order_acquire);
+  }
+
   HybridTime read_time_for_backfill() const {
     std::lock_guard<simple_spinlock> l(mutex_);
     return read_time_for_backfill_;
+  }
+
+  int64_t leader_term() const {
+    return leader_term_;
   }
 
  private:
@@ -112,35 +120,39 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   void LaunchBackfill();
 
-  void AlterTableStateToSuccess();
+  CHECKED_STATUS AlterTableStateToSuccess();
 
-  void AlterTableStateToAbort();
+  CHECKED_STATUS AlterTableStateToAbort();
 
-  void ClearCheckpointStateInTablets();
+  CHECKED_STATUS ClearCheckpointStateInTablets();
 
   // We want to prevent major compactions from garbage collecting delete markers
   // on an index table, until the backfill process is complete.
   // This API is used at the end of a successful backfill to enable major compactions
   // to gc delete markers on an index table.
-  void AllowCompactionsToGCDeleteMarkers(const TableId& index_table_id);
+  CHECKED_STATUS
+  AllowCompactionsToGCDeleteMarkers(const TableId &index_table_id);
 
   // Send the "backfill done request" to all tablets of the specified table.
-  void SendRpcToAllowCompactionsToGCDeleteMarkers(const scoped_refptr<TableInfo>& index_table);
+  CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
+      const scoped_refptr<TableInfo> &index_table);
 
   // Send the "backfill done request" to the specified tablet.
-  void SendRpcToAllowCompactionsToGCDeleteMarkers(
-      const scoped_refptr<TabletInfo>& index_table_tablet);
+  CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
+      const scoped_refptr<TabletInfo> &index_table_tablet);
 
   Master* master_;
   ThreadPool* callback_pool_;
   const scoped_refptr<TableInfo> indexed_table_;
   const std::vector<IndexInfoPB> indices_to_build_;
   int32_t schema_version_;
+  int64_t leader_term_;
 
   std::atomic_bool done_;
+  std::atomic_bool timestamp_chosen_;
   std::atomic<size_t> tablets_pending_;
   mutable simple_spinlock mutex_;
-  HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMax};
+  HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMin};
 };
 
 // A background task which is responsible for backfilling rows from a given
@@ -164,6 +176,8 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   }
 
   const std::vector<IndexInfoPB>& indices() { return backfill_table_->indices(); }
+
+  std::vector<TableId> index_ids() { return backfill_table_->index_ids(); }
 
   int32_t schema_version() { return backfill_table_->schema_version(); }
 
@@ -193,12 +207,15 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 class GetSafeTimeForTablet : public RetryingTSRpcTask {
  public:
   GetSafeTimeForTablet(
-      std::shared_ptr<BackfillTable> backfill_table, const scoped_refptr<TabletInfo>& tablet)
+      std::shared_ptr<BackfillTable> backfill_table,
+      const scoped_refptr<TabletInfo>& tablet,
+      HybridTime min_cutoff)
       : RetryingTSRpcTask(
             backfill_table->master(), backfill_table->threadpool(),
             gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get()),
         backfill_table_(backfill_table),
-        tablet_(tablet) {
+        tablet_(tablet),
+        min_cutoff_(min_cutoff) {
     deadline_ = MonoTime::Max();  // Never time out.
   }
 
@@ -209,10 +226,8 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
   std::string type_name() const override { return "Get SafeTime for Tablet"; }
 
   std::string description() const override {
-    return yb::Format(
-        "Fetch SafeTime for Backfilling index tablet for $0. Indices $1",
-        tablet_,
-        backfill_table_->indices());
+    return yb::Format("GetSafeTime for $0 Backfilling index_ids $1",
+                      tablet_id(), backfill_table_->index_ids());
   }
 
  private:
@@ -229,8 +244,9 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
   }
 
   tserver::GetSafeTimeResponsePB resp_;
-  std::shared_ptr<BackfillTable> backfill_table_;
+  const std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
+  const HybridTime min_cutoff_;
 };
 
 // A background task which is responsible for backfilling rows in the partitions
@@ -257,10 +273,9 @@ class BackfillChunk : public RetryingTSRpcTask {
   std::string type_name() const override { return "Backfill Index Table"; }
 
   std::string description() const override {
-    return yb::Format(
-        "Backfilling index tablet for $0 from $1 to $2 for indices $3",
-        backfill_tablet_->tablet(), "start_key_", "end_key_",
-        backfill_tablet_->indices());
+    return yb::Format("Backfilling index_ids $0 :  for $1 from $2 to $3",
+                      backfill_tablet_->index_ids(), tablet_id(), "start_key_",
+                      "end_key_");
   }
 
   MonoTime ComputeDeadline() override;

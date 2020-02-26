@@ -80,8 +80,7 @@ ERROR:  currval of sequence "s2" is not yet defined in this session
 
 ## See also
 
-[`CREATE SEQUENCE`](../create_sequence)
-[`DROP SEQUENCE`](../drop_sequence)
-[`lastval()`](../lastval_sequence)
-[`nextval()`](../nextval_sequence)
-[Other YSQL Statements](..)
+- [`CREATE SEQUENCE`](../../commands/ddl_create_sequence)
+- [`DROP SEQUENCE`](../../commands/drop_sequence)
+- [`lastval()`](../func_lastval)
+- [`nextval()`](../func_nextval)

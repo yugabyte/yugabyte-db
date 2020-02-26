@@ -18,6 +18,8 @@
 
 #include <functional>
 
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 
@@ -29,54 +31,53 @@ namespace yb {
 
 class HybridTime;
 
+#define TRANSACTION_RPCS \
+    (UpdateTransaction) \
+    (GetTransactionStatus) \
+    (GetTransactionStatusAtParticipant) \
+    (AbortTransaction)
+
 namespace tserver {
 
-class AbortTransactionRequestPB;
-class AbortTransactionResponsePB;
-class GetTransactionStatusRequestPB;
-class GetTransactionStatusResponsePB;
-class UpdateTransactionRequestPB;
+#define TRANSACTION_RPC_TSERVER_FORWARD(i, data, entry) \
+  class BOOST_PP_CAT(entry, RequestPB); \
+  class BOOST_PP_CAT(entry, ResponsePB);
+
+BOOST_PP_SEQ_FOR_EACH(TRANSACTION_RPC_TSERVER_FORWARD, ~, TRANSACTION_RPCS)
 
 }
 
 namespace client {
-
-typedef std::function<void(const Status&, HybridTime)> UpdateTransactionCallback;
 
 // Common arguments for all functions from this header.
 // deadline - operation deadline, i.e. timeout.
 // tablet - handle of status tablet for this transaction, could be null when unknown.
 // client - YBClient that should be used to send this request.
 
-// Updates specified transaction.
-MUST_USE_RESULT rpc::RpcCommandPtr UpdateTransaction(
-    CoarseTimePoint deadline,
-    internal::RemoteTablet* tablet,
-    YBClient* client,
-    tserver::UpdateTransactionRequestPB* req,
-    UpdateTransactionCallback callback);
+#define TRANSACTION_RPC_CALLBACK(rpc) BOOST_PP_CAT(rpc, Callback)
+#define TRANSACTION_RPC_REQUEST_PB(rpc) tserver::BOOST_PP_CAT(rpc, RequestPB)
+#define TRANSACTION_RPC_RESPONSE_PB(rpc) tserver::BOOST_PP_CAT(rpc, ResponsePB)
 
-typedef std::function<void(const Status&, const tserver::GetTransactionStatusResponsePB&)>
-    GetTransactionStatusCallback;
+#define TRANSACTION_RPC_SEMICOLON(rpc) ; // NOLINT
 
-// Gets status of specified transaction.
-MUST_USE_RESULT rpc::RpcCommandPtr GetTransactionStatus(
-    CoarseTimePoint deadline,
-    internal::RemoteTablet* tablet,
-    YBClient* client,
-    tserver::GetTransactionStatusRequestPB* req,
-    GetTransactionStatusCallback callback);
+#define TRANSACTION_RPC_FUNCTION(i, data, entry) \
+  typedef std::function<void(const Status&, const TRANSACTION_RPC_RESPONSE_PB(entry)&)> \
+      TRANSACTION_RPC_CALLBACK(entry); \
+  MUST_USE_RESULT rpc::RpcCommandPtr entry( \
+      CoarseTimePoint deadline, \
+      internal::RemoteTablet* tablet, \
+      YBClient* client, \
+      TRANSACTION_RPC_REQUEST_PB(entry)* req, \
+      TRANSACTION_RPC_CALLBACK(entry) callback) data(entry) \
 
-typedef std::function<void(const Status&, const tserver::AbortTransactionResponsePB&)>
-    AbortTransactionCallback;
+BOOST_PP_SEQ_FOR_EACH(TRANSACTION_RPC_FUNCTION, TRANSACTION_RPC_SEMICOLON, TRANSACTION_RPCS)
 
-// Aborts specified transaction.
-MUST_USE_RESULT rpc::RpcCommandPtr AbortTransaction(
-    CoarseTimePoint deadline,
-    internal::RemoteTablet* tablet,
-    YBClient* client,
-    tserver::AbortTransactionRequestPB* req,
-    AbortTransactionCallback callback);
+template <class Response, class T>
+void UpdateClock(const Response& resp, T* t) {
+  if (resp.has_propagated_hybrid_time()) {
+    t->UpdateClock(HybridTime(resp.propagated_hybrid_time()));
+  }
+}
 
 } // namespace client
 } // namespace yb

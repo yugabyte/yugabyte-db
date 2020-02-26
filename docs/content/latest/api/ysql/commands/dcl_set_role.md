@@ -92,7 +92,6 @@ ERROR:  permission denied to create database
 
 ## See also
 
-[`CREATE ROLE`](../dcl_create_role)
-[`GRANT`](../dcl_grant)
-[`REVOKE`](../dcl_revoke)
-[Other YSQL Statements](..)
+- [`CREATE ROLE`](../dcl_create_role)
+- [`GRANT`](../dcl_grant)
+- [`REVOKE`](../dcl_revoke)

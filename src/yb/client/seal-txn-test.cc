@@ -17,8 +17,14 @@
 
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+using namespace std::literals;
+
 DECLARE_int32(TEST_write_rejection_percentage);
 DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_transaction_sealing);
 
 namespace yb {
@@ -99,6 +105,39 @@ TEST_F(SealTxnTest, NumBatchesDisable) {
   WriteRows(session);
   ASSERT_OK(cluster_->RestartSync());
   ASSERT_OK(txn->CommitFuture().get());
+}
+
+TEST_F(SealTxnTest, Simple) {
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+  WriteRows(session, /* transaction = */ 0, WriteOpType::INSERT, Flush::kFalse);
+  auto flush_future = session->FlushFuture();
+  auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
+  ASSERT_OK(flush_future.get());
+  LOG(INFO) << "Flushed: " << txn->id();
+  ASSERT_OK(commit_future.get());
+  LOG(INFO) << "Committed: " << txn->id();
+  ASSERT_NO_FATALS(VerifyData());
+  ASSERT_OK(cluster_->RestartSync());
+  CheckNoRunningTransactions();
+}
+
+TEST_F(SealTxnTest, Update) {
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
+  LOG(INFO) << "Inserting rows";
+  WriteRows(session, /* transaction = */ 0);
+  LOG(INFO) << "Updating rows";
+  WriteRows(session, /* transaction = */ 0, WriteOpType::UPDATE, Flush::kFalse);
+  auto flush_future = session->FlushFuture();
+  auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
+  ASSERT_OK(flush_future.get());
+  LOG(INFO) << "Flushed: " << txn->id();
+  ASSERT_OK(commit_future.get());
+  LOG(INFO) << "Committed: " << txn->id();
+  ASSERT_NO_FATALS(VerifyData(1, WriteOpType::UPDATE));
+  ASSERT_OK(cluster_->RestartSync());
+  CheckNoRunningTransactions();
 }
 
 } // namespace client

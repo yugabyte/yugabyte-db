@@ -33,7 +33,7 @@
 #define VAR_OID_PREFETCH		8192
 
 /*
- * Number of OIDs to prefetch (preallocate) in YugaByte DB setup.
+ * Number of OIDs to prefetch (preallocate) in YugabyteDB setup.
  * Given there are multiple Postgres nodes, each node should prefetch
  * in smaller chunks.
  */

@@ -191,6 +191,6 @@ nextval
 
 - [`ALTER SEQUENCE`](../ddl_alter_sequence)
 - [`DROP SEQUENCE`](../ddl_drop_sequence)
-- [`currval()`](../currval_sequence)
-- [`lastval()`](../lastval_sequence)
-- [`nextval()`](../nextval_sequence)
+- [`currval()`](../../exprs/func_currval)
+- [`lastval()`](../../exprs/func_lastval)
+- [`nextval()`](../../exprs/func_nextval)

@@ -6,7 +6,7 @@ menu:
   latest:
     identifier: pgadmin
     parent: tools
-    weight: 2710
+    weight: 2730
 isTocNested: true
 showAsideToc: true
 ---

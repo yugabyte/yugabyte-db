@@ -105,10 +105,6 @@ extern void YBCUpdateSysCatalogTuple(Relation rel,
 									 HeapTuple oldtuple,
 									 HeapTuple tuple);
 
-// Buffer write operations.
-extern void YBCStartBufferingWriteOperations();
-extern void YBCFlushBufferedWriteOperations();
-
 //------------------------------------------------------------------------------
 // Utility methods.
 
@@ -125,5 +121,15 @@ extern Datum YBCGetYBTupleIdFromTuple(YBCPgStatement pg_stmt,
  * Returns if a table has secondary indices.
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
+
+/*
+ * Get primary key columns as bitmap of a table for real and system YB columns.
+ */
+extern Bitmapset *GetFullYBTablePrimaryKey(Relation rel);
+
+/*
+ * Get primary key columns as bitmap of a table for real columns.
+ */
+extern Bitmapset *GetYBTablePrimaryKey(Relation rel);
 
 #endif							/* YBCMODIFYTABLE_H */

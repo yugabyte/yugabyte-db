@@ -179,9 +179,11 @@ Status Value::DecodePrimitiveValueType(
     int64_t* user_ts) {
   auto slice_copy = rocksdb_value;
   uint64_t local_merge_flags;
+  DocHybridTime local_doc_ht;
   MonoDelta local_ttl;
   int64_t local_user_ts;
   RETURN_NOT_OK(DecodeMergeFlags(&slice_copy, merge_flags ? merge_flags : &local_merge_flags));
+  RETURN_NOT_OK(DecodeIntentDocHT(&slice_copy, &local_doc_ht));
   RETURN_NOT_OK(DecodeTTL(&slice_copy, ttl ? ttl : &local_ttl));
   RETURN_NOT_OK(DecodeUserTimestamp(&slice_copy, user_ts ? user_ts : &local_user_ts));
   *value_type = DecodeValueType(slice_copy);

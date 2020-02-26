@@ -345,6 +345,11 @@ void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
 WriteRpc::WriteRpc(AsyncRpcData* data)
     : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated to $0", data->tablet->tablet_id());
+
+  if (data->write_time_for_backfill_.is_valid()) {
+    req_.set_external_hybrid_time(data->write_time_for_backfill_.ToUint64());
+    ReadHybridTime::SingleTime(data->write_time_for_backfill_).ToPB(req_.mutable_read_time());
+  }
   // Add the rows
   int ctr = 0;
   for (auto& op : ops_) {

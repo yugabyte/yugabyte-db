@@ -208,12 +208,20 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Upon completion, the tablet enters the kBootstrapping state.
   CHECKED_STATUS Open();
 
-  CHECKED_STATUS EnableCompactions();
+  CHECKED_STATUS EnableCompactions(ScopedPendingOperationPause* operation_pause);
 
   CHECKED_STATUS BackfillIndexes(const std::vector<IndexInfo> &indexes,
                                  HybridTime read_time);
 
   bool ShouldRetainDeleteMarkersInMajorCompaction() const;
+
+  CHECKED_STATUS UpdateIndexInBatches(
+      const QLTableRow& row, const std::vector<IndexInfo>& indexes,
+      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests);
+
+  CHECKED_STATUS FlushIndexBatchIfRequired(
+      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      bool force_flush = false);
 
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
@@ -221,12 +229,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
-  void SetShutdownRequestedFlag();
+  // Returns true if it was the first call to StartShutdown.
+  bool StartShutdown();
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::memory_order_acquire);
   }
 
-  void Shutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
+  void CompleteShutdown(IsDropTable is_drop_table = IsDropTable::kFalse);
 
   CHECKED_STATUS ImportData(const std::string& source_dir);
 
@@ -603,6 +612,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS ResetRocksDBs(bool destroy = false);
 
+  CHECKED_STATUS DoEnableCompactions();
+
+  void PreventCallbacksFromRocksDBs(bool disable_flush_on_shutdown);
+
   std::string LogPrefix() const;
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
@@ -766,6 +779,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;
+  CoarseTimePoint last_backfill_flush_at_;
 
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 

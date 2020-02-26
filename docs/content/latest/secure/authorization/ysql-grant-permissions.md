@@ -39,7 +39,7 @@ Here is what we want to achieve from a role-based access control (RBAC) perspect
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../ysql-authentication/) in YugabyteDB clusters for YSQL. For this tutorial, we are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
+Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../authentication/ysql-authentication/) in YugabyteDB clusters for YSQL. For this tutorial, we are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
 
 ```sh
 $ ysqlsh
@@ -162,7 +162,7 @@ The output should look similar to below, where we see that the `engineering` rol
         |                   |       | engineering=r/yugabyte   +|                   |
 ```
 
-The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement and access privileges, see [GRANT](../../../admin/commands/dcl_grant).
+The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement and access privileges, see [GRANT](../../../api/ysql/commands/dcl_grant).
 
 Granting the role `engineering` to any other role will cause all those roles to inherit the specified privileges. Thus, `developer`, `qa` and `db_admin` will all inherit the `SELECT` and `USAGE` privileges, giving them read-access.
 

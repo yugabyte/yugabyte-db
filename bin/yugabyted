@@ -38,8 +38,13 @@ Run `yugabyted` to start a single-node YugabyteDB process. If no options are spe
 `yugabyted` will assume the following default directory tree:
 
 yugabyte
-+-- conf
-|   |   +-- yugabyted.conf
++-- var
+    |
+    +-- conf
+        |   +-- yugabyted.conf
+     +-- logs
+         |   +-- master & tserver & yugaware
+     +-- data
 +-- bin
 |   |   +-- yugabyted
 |   |   +-- yb-master
@@ -48,17 +53,15 @@ yugabyte
 +-- ui
 |   |   +-- bin...
 |   |   +-- ...
-+-- logs
-|   |   +-- master & tserver logfiles, unify these if possible
-+-- yugabyte-data
 """
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-DEFAULT_CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
+YUGABYTE_VAR_DIR = os.path.join(YUGABYTE_DIR, "var")
+DEFAULT_CONF_DIR = os.path.join(YUGABYTE_VAR_DIR, "conf")
 BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
-DEFAULT_DATA_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-data")
-DEFAULT_LOG_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-logs")
+DEFAULT_DATA_DIR = os.path.join(YUGABYTE_VAR_DIR, "data")
+DEFAULT_LOG_DIR = os.path.join(YUGABYTE_VAR_DIR, "logs")
 DEFAULT_CONF = os.path.join(DEFAULT_CONF_DIR, "{}.conf".format(SCRIPT_NAME))
 DEFAULT_CALLHOME = True
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
@@ -67,7 +70,7 @@ BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
 SLACK_LINK = "https://www.yugabyte.com/slack"
 COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
-DEFAULT_DEMO_DATABASE = "retail"
+DEFAULT_DEMO_DATABASE = "northwind"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
@@ -109,6 +112,8 @@ YUGAWARE_BIN_DIR = os.path.join(YUGAWARE_DIR, "bin")
 YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.default.conf")
 WEBSERVER_DB = "system_platform"
 DEMO_DB_PREFIX = "yb_demo_"
+
+BREW_CONF_FILE = "/usr/local/etc/yugabyted.conf"
 
 ALERT_WARNING = "Warning"
 ULIMIT_ERR_CODE = "LOW_ULIMITS"
@@ -228,53 +233,72 @@ class ControlScript(object):
         signal(SIGABRT, self.destroy_demo)
         signal(SIGTERM, self.destroy_demo)
         atexit.register(self.destroy_demo)
-        self.run_demo()
+        self.connect_demo()
         self.set_signals(SIG_DFL)
 
     # Create target demo database if it does not exist.
     def create_demo(self):
-        demo_db = self.configs.temp_data.get("demo_db")
-        db_name = DEMO_DB_PREFIX + demo_db
-        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
-        if not ysql_proxy.db_exists(demo_db):
-            Output.print_out(
-                "Initializing {} demo database. This may take up to a minute...".format(demo_db))
-            # Create demo database.
-            Output.log("Creating database {}...".format(db_name))
-            _, err = ysql_proxy.create_db(db_name)
-            if err:
-                Output.log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
 
-            # Populate demo database.
-            Output.log("Populating {} with sample data...".format(db_name))
-            files = []
-            for name in ("schema.sql", "products.sql", "users.sql", "reviews.sql", "orders.sql"):
-                files.append(os.path.join(YUGABYTE_DIR, "share", name))
-            _, err = ysql_proxy.load_files(files, db=db_name)
-            if err:
-                Output.log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
-
-            msg = "Successfully loaded sample database!"
-            Output.print_and_log(msg)
-
-    # Run YSQL shell in target demo database.
-    def run_demo(self):
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         if ysql_proxy.db_exists(db_name):
-            website = Output.make_underline(SAMPLE_DATA_LINKS[demo_db])
-            Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
-            Output.print_out(
-                "For more, go to {}\n".format(website)
-            )
-            ysql_proxy.connect(db=db_name)
-        else:
+            Output.print_out("Demo database {} already exists.".format(demo_db))
+            return
+
+        Output.print_out(
+            "Initializing {} demo database. This may take up to a minute...".format(demo_db))
+        # Create demo database.
+        Output.log("Creating database {}...".format(db_name))
+        _, err = ysql_proxy.create_db(db_name)
+        if err:
+            Output.log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
+
+        # Populate demo database.
+        Output.log("Populating {} with sample data...".format(db_name))
+        files = []
+        for name in Configs.get_demo_info()[demo_db]["files"]:
+            files.append(os.path.join(YUGABYTE_DIR, "share", name))
+        _, err = ysql_proxy.load_files(files, db=db_name)
+        if err:
+            Output.log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
+
+        msg = "Successfully loaded sample database!"
+        Output.print_and_log(msg)
+
+    # Run YSQL shell in target demo database.
+    def connect_demo(self):
+        if self.get_failed_node_processes():
             Output.log_error_and_exit(
-                "{} demo was not loaded properly.".format(SCRIPT_NAME))
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
+        demo_db = self.configs.temp_data.get("demo_db")
+        db_name = DEMO_DB_PREFIX + demo_db
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if not ysql_proxy.db_exists(db_name):
+            self.create_demo()
+
+        # Ignore kill SIGINT to match normal ysqlsh and psql behavior.
+        signal(SIGINT, SIG_IGN)
+        website = Output.make_underline(SAMPLE_DATA_LINKS[demo_db])
+        Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
+        Output.print_out(
+            "For more, go to {}\n".format(website)
+        )
+        ysql_proxy.connect(db=db_name)
 
     # Destroy target demo database if it exists.
     def destroy_demo(self, signum=None, frame=None):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
@@ -403,7 +427,8 @@ class ControlScript(object):
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
             "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
-            "-Dhttp.address={}".format(bind_ip)
+            "-Dhttp.address={}".format(bind_ip),
+            "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
         ]
 
         self.processes = {
@@ -418,8 +443,7 @@ class ControlScript(object):
         if self.configs.temp_data.get("ui"):
             self.processes["yugaware"] = ProcessManager(
                 "yugaware", yw_cmd, self.configs.saved_data.get("log_dir"),
-                self.configs.saved_data.get("data_dir"),
-                os.path.join(YUGABYTE_DIR, "ui", "logs"))
+                self.configs.saved_data.get("data_dir"))
 
         for p in self.processes.values():
             pid = p.get_pid()
@@ -438,18 +462,19 @@ class ControlScript(object):
             should_callhome = False
 
             is_first_install = is_first_run and not self.is_yb_initialized()
-            # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
-            if is_first_install and os.path.exists(self.configs.saved_data.get("data_dir")):
-                Output.print_and_log(
-                    "Found data from failed initialization in {}. Removing...".format(
-                        self.configs.saved_data.get("data_dir")))
-                shutil.rmtree(self.configs.saved_data.get("data_dir"))
 
             # Create data directory.
             if not os.path.exists(self.configs.saved_data.get("data_dir")):
                 Output.log(
                     "Creating data directory {}.".format(self.configs.saved_data.get("data_dir")))
                 os.makedirs(self.configs.saved_data.get("data_dir"))
+
+            # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
+            if is_first_install and os.listdir(self.configs.saved_data.get("data_dir")):
+                Output.print_and_log(
+                    "Found data from failed initialization in {}. Removing...".format(
+                        self.configs.saved_data.get("data_dir")))
+                rmcontents(self.configs.saved_data.get("data_dir"))
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
@@ -645,7 +670,9 @@ class ControlScript(object):
     def init_yw(self):
         # Create Play evolutions table. Required for YugaWare to start up properly.
         create_play_table = [
-            os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file=" + YUGAWARE_CONF
+            os.path.join(YUGAWARE_BIN_DIR, "yugaware"),
+            "-Dconfig.file=" + YUGAWARE_CONF,
+            "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
         ]
         Output.log("Initializing play tables...")
         run_process(create_play_table)
@@ -752,7 +779,8 @@ class ControlScript(object):
         status_info = [
             (Output.make_yellow("Status"), status),
             (Output.make_yellow("Webserver UI"), yw_status),
-            (Output.make_yellow("JDBC"), "jdbc:postgresql://{}:{}/yugabyte".format(
+            (Output.make_yellow("JDBC"),
+               "jdbc:postgresql://{}:{}/yugabyte?user=yugabyte&password=yugabyte".format(
                 advertise_ip, ysql_port)),
             (Output.make_yellow("YSQL"), "bin/ysqlsh{}".format(ysql_flags)),
             (Output.make_yellow("YCQL"), "bin/cqlsh{}".format(ycql_flags)),
@@ -817,17 +845,22 @@ class ControlScript(object):
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
         has_errors = False
-        conf_dir = os.path.dirname(args.config)
+
+        self.conf_file = args.config or Configs.get_brew_config() or DEFAULT_CONF
+
+        self.conf_file = os.path.abspath(os.path.realpath(self.conf_file))
+
+        conf_dir = os.path.dirname(self.conf_file)
         if not os.path.isdir(conf_dir):
             os.makedirs(conf_dir)
 
-        self.conf_file = args.config
+
         self.configs = Configs.parse_config_file(self.conf_file)
 
-        for path_args in ("data_dir", "config", "log_dir"):
+        for path_args in ("data_dir", "log_dir"):
             path = getattr(args, path_args, None)
             if path:
-                setattr(args, path_args, os.path.realpath(path))
+                setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
 
         if args.parser == "start":
             if args.data_dir is not None:
@@ -837,7 +870,7 @@ class ControlScript(object):
                     has_errors = True
                     # TODO: Gradefully handle this case... User should be able to override config.
                     Output.print_out(
-                        "Data directory already exits at {}.".format(config_data_dir))
+                        "Data directory already exists at {}.".format(config_data_dir))
 
             if args.log_dir is not None:
                 config_log_dir = self.configs.saved_data.get("log_dir")
@@ -862,14 +895,12 @@ class ControlScript(object):
             sys.exit(1)
 
         # Override configs and defaults with user specified variables
-        update_config_file = not os.path.exists(self.conf_file)
         for k, v in get_kv(args.__dict__):
             if (v is not None and k in self.configs.saved_data
                     and v != self.configs.saved_data.get(k)):
                 self.configs.saved_data[k] = v
-                update_config_file = True
 
-        if update_config_file:
+        if args.parser == "start":
             self.configs.save_configs()
 
     def parse_bool(self, config):
@@ -879,7 +910,8 @@ class ControlScript(object):
         # Parent subparser for common args
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
-            "--config", default=DEFAULT_CONF, help="{} configuration file.".format(SCRIPT_NAME))
+            "--config", help="{} configuration file, default value is {}".format(
+                              SCRIPT_NAME, DEFAULT_CONF))
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
@@ -913,6 +945,18 @@ class ControlScript(object):
             cur_parser.set_defaults(func=func)
             all_parsers[api] = cur_parser
 
+        # Add demo commands to create, connect, and destroy.
+        demo_parser = all_parsers["demo"]
+        demo_subparsers = demo_parser.add_subparsers()
+        for cmd, description in (
+                ("connect", "Connect to the demo database."),
+                ("destroy", "Destroy the demo database.")):
+            subparser = demo_subparsers.add_parser(cmd, help=description, parents=[common_parser])
+            parser_name = cmd + "_demo"
+            func = getattr(self, parser_name, None)
+            subparser.set_defaults(func=func)
+            all_parsers[parser_name] = subparser
+
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
@@ -942,8 +986,7 @@ class ControlScript(object):
                 "--callhome", choices=BOOL_CHOICES, default="true", metavar="BOOL",
                 help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
                      "Default true.")
-            group = cur_parser.add_mutually_exclusive_group()
-            group.add_argument(
+            cur_parser.add_argument(
                 "--ui", choices=BOOL_CHOICES, default="true", metavar="BOOL",
                 help="Toggle enabling or disabling webserver UI. Default true.")
 
@@ -955,6 +998,7 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--tserver_flags", help=argparse.SUPPRESS)
 
+
         if not sys.argv[1:]:
             parser.print_help()
             return
@@ -963,18 +1007,18 @@ class ControlScript(object):
         args = parser.parse_args()
         self.validate_and_set_configs(args)
 
-        if args.parser == "start":
-            # Should we log for non-start commands? If we do, we need to ensure logs are written
-            # cleanly and with clarity on the source when running concurrent yugabyted commands.
-            log_dir = self.configs.saved_data.get("log_dir")
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
+        log_dir = self.configs.saved_data.get("log_dir")
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
 
-            Output.log_dir = log_dir
-            logging.basicConfig(
-                level=logging.DEBUG, filemode="a",
-                filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
-                format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
+        Output.log_dir = log_dir
+        logging.basicConfig(
+            level=logging.DEBUG, filemode="a",
+            filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
+            format="[%(filename)s " + args.parser + "] %(asctime)s %(levelname)s: %(message)s")
+
+        Output.log("cmd = {} using config file: {} (args.config={})".format(
+            args.parser, self.conf_file, args.config))
 
         try:
             args.func()
@@ -983,8 +1027,7 @@ class ControlScript(object):
                 "{} crashed. For troubleshooting, contact us on {} or check our FAQ at {}".format(
                     SCRIPT_NAME, Output.make_underline(SLACK_LINK),
                     Output.make_underline(HELP_LINK)))
-            Output.log(traceback.format_exc(), logging.ERROR)
-            sys.exit(1)
+            Output.log_error_and_exit(traceback.format_exc())
 
     def advertise_ip(self):
         bind_ip = self.configs.saved_data.get("bind_ip")
@@ -1031,11 +1074,22 @@ class Configs(object):
         if os.path.isfile(config_file):
             try:
                 with open(config_file) as f:
-                    configs.saved_data.update(json.load(f))
+                   configs.saved_data.update(json.load(f))
             except ValueError as e:
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
+
         return configs
+
+    @staticmethod
+    def get_brew_config():
+        # hack alert: we are using the cellar dir name to identify a brew install
+        if ("darwin" == sys.platform and
+            os.path.realpath(sys.argv[0]).lower().find('cellar') >= 0 and
+            os.path.exists(BREW_CONF_FILE)):
+            return BREW_CONF_FILE
+
+        return None
 
     # Returns information about demo databases.
     @staticmethod
@@ -1057,7 +1111,11 @@ class Configs(object):
             "northwind": {
                 "files": ("northwind_ddl.sql", "northwind_data.sql"),
                 "output": "",
-                "examples": ""
+                "examples": "# JOINS (find customer details for orders):\n"
+                        "   %s c.customer_id, c.company_name, o.order_id, o.order_date\n"
+                        "       %s orders o %s customers c %s o.customer_id=c.customer_id\n"
+                        "       %s 10;\n\n" % tuple([Output.make_cyan(kw) for kw in (
+                            "SELECT", "FROM", "INNER JOIN", "ON", "LIMIT")])
             },
             "club": {
                 "files": ("clubdata_ddl.sql", "clubdata_data.sql"),
@@ -1695,9 +1753,16 @@ class Output(object):
             return
 
         try:
-            print(msg.encode('utf8'))
-        except UnicodeEncodeError:
-            print(msg.encode('ascii', 'ignore'))
+            try:
+                if PY_VERSION < 3:
+                    print(msg.encode('utf8'))
+                else:
+                    print(msg)
+            except UnicodeEncodeError:
+                print(msg.encode('ascii', 'ignore').decode())
+        except Exception as e:
+            # Ignore any print errors as they are not critical to the application.
+            Output.log("Failed to print with error: {}".format(traceback.format_exc()))
 
     # Writes one line that may be replaced with the update_animation method.
     # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
@@ -1728,19 +1793,25 @@ class Output(object):
                 line_to_write = "{:<{}}".format(line, line_len)
                 if not running:
                     line_to_write += "\n"
-                line_to_write = line_to_write.encode('utf-8')
 
                 try:
-                    sys.stdout.write(line_to_write)
-                except UnicodeEncodeError:
-                    sys.stdout.write(line_to_write.encode('ascii', 'ignore'))
+                    try:
+                        if PY_VERSION < 3:
+                            sys.stdout.write(line_to_write.encode('utf-8'))
+                        else:
+                            sys.stdout.write(line_to_write)
+                    except UnicodeEncodeError:
+                        sys.stdout.write(line_to_write.encode('ascii', 'ignore').decode())
 
-                try:
-                    sys.stdout.flush()
-                except IOError as e:
-                    Output.log("Errored when flushing stdout: {}".format(e), logging.ERROR)
+                    try:
+                        sys.stdout.flush()
+                    except IOError as e:
+                        Output.log("Errored when flushing stdout: {}".format(e), logging.ERROR)
+                    i = (i + 1) % len(loading_symbols)
+                except Exception as e:
+                    # Ignore stdout write errors as they are not critical to application.
+                    Output.log("Failed stdout write with error: {}".format(traceback.format_exc()))
 
-                i = (i + 1) % len(loading_symbols)
                 time.sleep(.05)
 
         Output.animation_status = (Output.ANIMATION_RUNNING, msg)
@@ -1770,7 +1841,10 @@ class Output(object):
         if time_since_sec < 1000:
             # add time since start to make it easier to debug startup perf
             full_msg = " | {:.1f}s | {}".format(time_since_sec, msg)
-        logging.log(level, full_msg)
+        try:
+            logging.log(level, full_msg)
+        except:
+            pass
 
     @staticmethod
     def print_and_log(msg, level=logging.INFO):
@@ -1864,6 +1938,17 @@ def run_process(cmd, timeout=None):
     else:
         out, err = proc.communicate()
     return out.decode('utf-8'), err.decode('utf-8'), proc.returncode
+
+def rmcontents(dirname):
+    for f in os.listdir(dirname):
+        fullpath = os.path.join(dirname, f)
+        if os.path.islink(fullpath) or os.path.isfile(fullpath):
+            os.unlink(fullpath)
+            continue
+        if os.path.isdir(fullpath):
+            shutil.rmtree(fullpath)
+            continue
+        Output.log("Unexpected type of file : [ {} ]".format(fullpath))
 
 if __name__ == '__main__':
     ControlScript().run()

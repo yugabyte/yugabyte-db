@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The transaction statement block makes changes to multiple rows in one or more tables in a [distributed ACID transaction](../../explore/transactions).
+The transaction statement block makes changes to multiple rows in one or more tables in a [distributed ACID transaction](../../../architecture/transactions/distributed-txns).
 
 ## Syntax
 
@@ -138,7 +138,6 @@ cqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FR
 
 ## See also
 
-[`INSERT`](../dml_insert)
-[`UPDATE`](../dml_update)
-[`DELETE`](../dml_delete)
-[Other CQL Statements](..)
+- [`INSERT`](../dml_insert)
+- [`UPDATE`](../dml_update)
+- [`DELETE`](../dml_delete)

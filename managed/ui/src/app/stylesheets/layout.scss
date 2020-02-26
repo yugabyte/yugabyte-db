@@ -15,7 +15,7 @@
 }
 
 .navbar-default {
-  background: #fff;    
+  background: #fff;
   border-color: transparent;
 }
 
@@ -39,6 +39,18 @@
 
   .dashboard-container {
     padding: 30px 30px 30px 30px;
+  }
+}
+
+.sidebar-hidden .container-body {
+  padding: 0 0 45px 0;
+
+  & > *:first-child {
+    &:before {
+      left: 0;
+      box-shadow: unset;
+      background: unset;
+    }
   }
 }
 
@@ -151,7 +163,7 @@ pre {
   max-width: none;
   z-index: 1030;
   font-size: 13px;
-  font-family: "Open Sans", sans-serif;
+  font-family: "Inter", sans-serif;
 
   &:before {
     position: absolute;
@@ -234,7 +246,7 @@ dd {
 .dl-inline {
   margin: 0;
   padding: 0;
-  
+
   span {
     display: block;
 
@@ -290,4 +302,12 @@ dd {
   visibility: hidden;
   opacity: 0;
   transition: visibility 0s 2s, opacity 1s linear 1s;
+}
+
+.user-list-container .table-actions-cell {
+  overflow: inherit;
+
+  div {
+    overflow: inherit;
+  }
 }

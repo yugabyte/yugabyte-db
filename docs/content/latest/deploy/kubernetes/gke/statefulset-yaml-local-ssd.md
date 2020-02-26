@@ -43,7 +43,7 @@ showAsideToc: true
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the kubectl command line tool by running the following command:
+After installing Cloud SDK, install the `kubectl` command line tool by running the following command:
 
 ```sh
 $ gcloud components install kubectl
@@ -60,7 +60,7 @@ $ gcloud config set project yugabyte
 
 ## 1. Create a GKE cluster
 
-Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernetes masters. You can directly create a cluster with the desired machine type using the `--machine-type` option. In thie example we are going to create a node-pool with `n1-standard-8` type nodes for the YugabyteDB universe.
+Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernetes masters. You can directly create a cluster with the desired machine type using the `--machine-type` option. In this example, we are going to create a node-pool with `n1-standard-8` type nodes for the YugabyteDB universe.
 
 - Choose the zone
 
@@ -106,7 +106,7 @@ Created [https://container.googleapis.com/v1/projects/yugabyte/zones/us-west1-b/
 
 ## 2. Create a node pool
 
-Create a node pool with 3 nodes, each having 8 cpus and 2 local SSDs.
+Create a node pool with 3 nodes, each having eight CPUs and two local SSDs.
 
 ```sh
 $ gcloud container node-pools create node-pool-8cpu-2ssd \
@@ -123,7 +123,7 @@ NAME                 MACHINE_TYPE   DISK_SIZE_GB  NODE_VERSION
 node-pool-8cpu-2ssd  n1-standard-8  100           1.8.7-gke.1
 ```
 
-Note the `--local-ssd-count` option above, which tells gcloud to mount the nodes with 2 local SSDs each.
+Note the `--local-ssd-count` option above, which tells gcloud to mount the nodes with two local SSDs each.
 
 We can list all the node pools by doing the following.
 
@@ -180,9 +180,9 @@ service "yb-tservers" created
 statefulset "yb-tserver" created
 ```
 
-You can see the [yaml file to launch a YugabyteDB kubernetes universe on nodes with local disks](https://github.com/yugabyte/yugabyte-db/blob/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml).
+You can see the [YAML file to launch a YugabyteDB kubernetes universe on nodes with local disks](https://github.com/yugabyte/yugabyte-db/blob/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml).
 
-Note the following `nodeSelector` snippet in the yaml file which instructs the Kubernetes scheduler to place the YugabyteDB pods on nodes that have local disks:
+Note the following `nodeSelector` snippet in the YAML file which instructs the Kubernetes scheduler to place the YugabyteDB pods on nodes that have local disks:
 
 ```
   nodeSelector:
@@ -240,7 +240,7 @@ yb-masters     ClusterIP      None          <none>          7000/TCP,7100/TCP   
 yb-tservers    ClusterIP      None          <none>          9000/TCP,9100/TCP,9042/TCP,6379/TCP   1m
 ```
 
-Note the `yb-master-ui` service above. It is a loadbalancer service, which exposes the YugabyteDB universe UI. You can view this by browsing to the url http://XX.XX.XX.XX:7000. It should look as follows.
+Note the `yb-master-ui` service above. It is a load balancer service, which exposes the YugabyteDB universe UI. You can view this by browsing to the URL `http://XX.XX.XX.XX:7000`. It should look as follows.
 
 ![GKE YugabyteDB dashboard](/images/deploy/kubernetes/gke-kubernetes-dashboard.png)
 
@@ -286,7 +286,7 @@ You can destroy the YugabyteDB universe by running the following command. Note t
 $ kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
 
-You can destroy the node-pool we created by running the following command:
+You can destroy the node-pool you created by running the following command:
 
 ```sh
 $ gcloud container node-pools delete node-pool-8cpu-2ssd --cluster yugabyte --zone=us-west1-b

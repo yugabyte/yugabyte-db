@@ -368,7 +368,7 @@ class Repairer {
     if (status.ok()) {
       TableReader* reader;
       InternalIterator* iter = table_cache_->NewIterator(
-          ReadOptions(), env_options_, icmp_, t->meta.fd, &reader);
+          ReadOptions(), env_options_, icmp_, t->meta.fd, t->meta.UserFilter(), &reader);
       t->meta.fd.total_file_size = base_file_size +
           (reader->IsSplitSst() ? reader->GetTableProperties()->data_size : 0);
       bool empty = true;

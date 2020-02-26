@@ -29,3 +29,4 @@ export { default as UniverseOverviewContainer } from './UniverseOverview/Univers
 export { default as EncryptionKeyModal } from './SecurityModal/EncryptionKeyModal';
 export { default as EncryptionKeyModalContainer } from './SecurityModal/EncryptionKeyModalContainer';
 export { default as UniverseAction } from './UniverseAction/UniverseAction';
+export { default as AlertSnoozeModal } from './UniverseAction/AlertSnoozeModal';
