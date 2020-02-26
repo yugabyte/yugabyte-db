@@ -1,43 +1,62 @@
 {
-  "%symlinks%": {
-    "bin/psql": "../postgres/bin/ysqlsh",
-    "bin/ysqlsh": "../postgres/bin/ysqlsh"
+  "all": {
+    "%symlinks%": {
+      "bin/psql": "../postgres/bin/ysqlsh",
+      "bin/ysqlsh": "../postgres/bin/ysqlsh"
+    },
+    ".": ["$BUILD_ROOT/version_metadata.json"],
+    "bin": [
+      "$BUILD_ROOT/bin/ldb",
+      "$BUILD_ROOT/bin/log-dump",
+      "$BUILD_ROOT/bin/sst_dump",
+      "$BUILD_ROOT/bin/yb-admin",
+      "$BUILD_ROOT/bin/yb-bulk_load",
+      "$BUILD_ROOT/bin/yb-generate_partitions_main",
+      "$BUILD_ROOT/bin/yb-master",
+      "$BUILD_ROOT/bin/yb-pbc-dump",
+      "$BUILD_ROOT/bin/yb-ts-cli",
+      "$BUILD_ROOT/bin/yb-tserver",
+      "$BUILD_ROOT/bin/yb-ysck",
+      "$BUILD_ROOT/bin/yb_load_test_tool",
+      "$BUILD_ROOT/postgres/bin/*",
+      "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof",
+      "bin/bulk_load_cleanup.sh",
+      "bin/bulk_load_helper.sh",
+      "bin/configure",
+      "bin/log_cleanup.sh",
+      "bin/yb-check-consistency.py",
+      "bin/yb-check-failed-tablets.sh",
+      "bin/yb-prof.py",
+      "bin/yugabyted",
+      "build-support/post_install.sh",
+      "submodules/yugabyte-installation/bin/yb-ctl",
+      "thirdparty/installed/common/bin/redis-cli",
+      "thirdparty/installed/common/cqlsh/bin/cqlsh",
+      "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
+    ],
+    "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
+    "postgres": ["$BUILD_ROOT/postgres/*"],
+    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
+    "share": [
+      "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
+      "sample/*.sql"
+    ],
+    "www": ["www/*"]
   },
-  ".": ["$BUILD_ROOT/version_metadata.json"],
-  "bin": [
-    "$BUILD_ROOT/bin/ldb",
-    "$BUILD_ROOT/bin/log-dump",
-    "$BUILD_ROOT/bin/sst_dump",
-    "$BUILD_ROOT/bin/yb-admin",
-    "$BUILD_ROOT/bin/yb-bulk_load",
-    "$BUILD_ROOT/bin/yb-generate_partitions_main",
-    "$BUILD_ROOT/bin/yb-master",
-    "$BUILD_ROOT/bin/yb-pbc-dump",
-    "$BUILD_ROOT/bin/yb-ts-cli",
-    "$BUILD_ROOT/bin/yb-tserver",
-    "$BUILD_ROOT/bin/yb-ysck",
-    "$BUILD_ROOT/bin/yb_load_test_tool",
-    "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof",
-    "bin/bulk_load_cleanup.sh",
-    "bin/bulk_load_helper.sh",
-    "bin/configure",
-    "bin/log_cleanup.sh",
-    "bin/yb-check-consistency.py",
-    "bin/yb-check-failed-tablets.sh",
-    "bin/yb-prof.py",
-    "bin/yugabyted",
-    "build-support/post_install.sh",
-    "submodules/yugabyte-installation/bin/yb-ctl",
-    "thirdparty/installed/common/bin/redis-cli",
-    "thirdparty/installed/common/cqlsh/bin/cqlsh",
-    "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
-  ],
-  "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
-  "postgres": ["$BUILD_ROOT/postgres/*"],
-  "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
-  "share": [
-    "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
-    "sample/*.sql"
-  ],
-  "www": ["www/*"]
+  "cli": {
+    "%symlinks%": {
+      "bin/psql": "../postgres/bin/ysqlsh",
+      "bin/ysqlsh": "../postgres/bin/ysqlsh"
+    },
+    ".": ["$BUILD_ROOT/version_metadata.json"],
+    "bin": [
+      "$BUILD_ROOT/postgres/bin/ysqlsh",
+      "build-support/post_install.sh",
+      "thirdparty/installed/common/bin/redis-cli",
+      "thirdparty/installed/common/cqlsh/bin/cqlsh",
+      "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
+    ],
+    "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
+    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"]
+  }
 }
