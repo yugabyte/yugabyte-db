@@ -171,14 +171,8 @@ You have to keep this number in mind depending on the number of tables and numbe
 of tablets per-server that you intend to create.
 We're [actively working](https://github.com/yugabyte/yugabyte-db/issues/1317) to increase this limit.
 
-## Partition size limit on hash sharding
-YugabyteDB doesn't have any limitation on partition size as long as it can fit in 1 tablet in 1 server. The server needs
-to have enough cpu/ram/disk-io to support all tablets that it hosts.
-YugabyteDB uses size tiered compactions and partition size need to be less than ~40% of disk space in cases when the server has
-a big tablet. Having several small tablets removes this limitation.
-After [tablet splitting](https://github.com/YugaByte/yugabyte-db/issues/1004), big tablets will be able to autosplit and
-partitions will not have any limitation in size.
-
+On deployments where we have many small tables and few big tables, we can use [colocation](../explore/colocated-tables/linux.md) in YSQL layer to group small 
+tables into 1 tablet.
 
 ## Use `TRUNCATE` to empty tables instead of `DELETE`
 `TRUNCATE` deletes the database files that store the table and is very fast. 
