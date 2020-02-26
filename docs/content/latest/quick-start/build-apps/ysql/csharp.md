@@ -33,7 +33,7 @@ namespace Yugabyte_CSharp_Demo
     {
         static void Main(string[] args)
         {
-            NpgsqlConnection conn = new NpgsqlConnection("host=localhost;port=5433;database=yb-demo;user id=yugabyte;password=");
+            NpgsqlConnection conn = new NpgsqlConnection("host=localhost;port=5433;database=yb_demo;user id=yugabyte;password=");
 
             try
             {

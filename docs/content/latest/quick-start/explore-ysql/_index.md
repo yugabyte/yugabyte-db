@@ -88,40 +88,40 @@ Open the YSQL shell (`ysqlsh) by running the following command.
   </div>
 </div>
 
-1. Create a database (`yb-demo`) by using the following `CREATE DATABASE` command.
+1. Create a database (`yb_demo`) by using the following `CREATE DATABASE` command.
 
     ```postgresql
-    yugabyte=# CREATE DATABASE yb-demo;
+    yugabyte=# CREATE DATABASE yb_demo;
     ```
 
 2. Connect to the new database using the following YSQL shell `\c` meta command.
 
     ```postgresql
-    yugabyte=# \c yb-demo;
+    yugabyte=# \c yb_demo;
     ```
 
 3. Create the database schema, which includes four tables, by running the following `\i` meta command.
 
     ```postgresql
-    yb-demo=# \i share/schema.sql;
+    yb_demo=# \i share/schema.sql;
     ```
 
 4. Load the data into the tables by running the following four `\i` commands.
 
     ```postgresql
-    yb-demo=# \i share/products.sql
+    yb_demo=# \i share/products.sql
     ```
 
     ```postgresql
-    yb-demo=# \i share/users.sql
+    yb_demo=# \i share/users.sql
     ```
 
     ```postgresql
-    yb-demo=# \i share/orders.sql
+    yb_demo=# \i share/orders.sql
     ```
 
     ```postgresql
-    yb-demo=# \i share/reviews.sql
+    yb_demo=# \i share/reviews.sql
     ```
 
     You now have sample data and are ready to begin exploring YSQL in YugabyteDB.
@@ -131,7 +131,7 @@ Open the YSQL shell (`ysqlsh) by running the following command.
 Lets us look at the schema of the `products` table. You can do this as follows:
 
 ```postgresql
-yb-demo=# \d products
+yb_demo=# \d products
 ```
 
 You should see an output like the following:
@@ -156,7 +156,7 @@ Indexes:
 To see how many products there are in this table, you can run the following query.
 
 ```postgresql
-yb-demo=# SELECT count(*) FROM products;
+yb_demo=# SELECT count(*) FROM products;
 ```
 
 You should see an output which looks like the following:
@@ -171,7 +171,7 @@ You should see an output which looks like the following:
 Now let us run a query to select the `id`, `title`, `category` and `price` columns for the first five products.
 
 ```postgresql
-yb-demo=# SELECT id, title, category, price, rating
+yb_demo=# SELECT id, title, category, price, rating
           FROM products
           LIMIT 5;
 ```
@@ -192,7 +192,7 @@ You should see an output like the following:
 To view the next 3 products, we simply add an `OFFSET 5` clause to start from the fifth product.
 
 ```postgresql
-yb-demo=# SELECT id, title, category, price, rating
+yb_demo=# SELECT id, title, category, price, rating
           FROM products
           LIMIT 3 OFFSET 5;
 ```
@@ -215,7 +215,7 @@ A JOIN clause is used to combine rows from two or more tables, based on a relate
 From the `orders` table, we are going to select the `total` column that represents the total amount the user paid. For each of these orders, we are going to fetch the `id`, the `name` and the `email` from the `users` table of the corresponding users that placed those orders. The related column between the two tables is the user's id. This can be expressed as the following join query:
 
 ```postgresql
-yb-demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
+yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
           FROM orders INNER JOIN users ON orders.user_id=users.id
           LIMIT 10;
 ```
@@ -247,7 +247,7 @@ Imagine the user with id `1` wants to order for `10` units of the product with i
 Before running the transaction, we can verify that we have `5000` units of product `2` in stock by running the following query:
 
 ```postgresql
-yb-demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
+yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
 ```
@@ -261,7 +261,7 @@ SELECT id, category, price, quantity FROM products WHERE id=2;
 Now, to place the order, we can run the following transaction:
 
 ```postgresql
-yb-demo=# BEGIN TRANSACTION;
+yb_demo=# BEGIN TRANSACTION;
 
 /* First insert a new order into the orders table. */
 INSERT INTO orders
@@ -287,7 +287,7 @@ COMMIT;
 We can verify that the order got inserted by running the following:
 
 ```postgresql
-yb-demo=# select * from orders where id = (select max(id) from orders);
+yb_demo=# select * from orders where id = (select max(id) from orders);
 ```
 
 ```
@@ -300,7 +300,7 @@ yb-demo=# select * from orders where id = (select max(id) from orders);
 We can also verify that total quantity of product id `2` in the inventory is `4990` by running the following query.
 
 ```postgresql
-yb-demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
+yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
 ```
@@ -319,7 +319,7 @@ YSQL supports a rich set of built-in functions. In this example, we will look at
 To answer this question, we should list the unique set of `source` channels present in the database. This can be achieved as follows:
 
 ```postgresql
-yb-demo=# SELECT DISTINCT(source) FROM users;
+yb_demo=# SELECT DISTINCT(source) FROM users;
 ```
 
 ```
@@ -336,7 +336,7 @@ source
 - What is the min, max and average price of products in the store?
 
 ```postgresql
-yb-demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
+yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
 
 ```
@@ -353,7 +353,7 @@ The `GROUP BY` clause is commonly used to perform aggregations. Below are a coup
 - What is the most effective channel for user signups?
 
 ```postgresql
-yb-demo=# SELECT source, count(*) AS num_user_signups
+yb_demo=# SELECT source, count(*) AS num_user_signups
           FROM users
           GROUP BY source
           ORDER BY num_user_signups DESC;
@@ -373,7 +373,7 @@ source     | num_user_signups
 - What are the most effective channels for product sales by revenue?
 
 ```postgresql
-yb-demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
+yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
           FROM users, orders WHERE users.id=orders.user_id
           GROUP BY source
           ORDER BY total_sales DESC;
@@ -397,7 +397,7 @@ Let us answer the questions below by creating a view.
 - What percentage of the total sales is from the Facebook channel?
 
 ```postgresql
-yb-demo=# CREATE VIEW channel AS
+yb_demo=# CREATE VIEW channel AS
             (SELECT source, ROUND(SUM(orders.total)) AS total_sales
              FROM users, orders
              WHERE users.id=orders.user_id
@@ -408,7 +408,7 @@ yb-demo=# CREATE VIEW channel AS
 Now that the view is created, we can see it in our list of relations.
 
 ```postgresql
-yb-demo=# \d
+yb_demo=# \d
 ```
 
 ```
@@ -428,7 +428,7 @@ yb-demo=# \d
 ```
 
 ```postgresql
-yb-demo=# SELECT source, 
+yb_demo=# SELECT source, 
             total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
           FROM channel
           WHERE source='Facebook';
