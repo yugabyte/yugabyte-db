@@ -12,7 +12,7 @@ menu:
     weight: 640
 ---
 
-Yugabyte Cloud is a fully-managed “YugabyteDB-as-a-Service” that allows you to run YugabyteDB clusters on [Google Cloud Platform (GCP)](https://cloud.google.com/) and [Amazon Web Services (AWS)](https://aws.amazon.com/) (coming soon). You can use the Free Tier level to get started with YugabyteDB. Although not suitable for production workloads, the free tier includes enough resources to start using YugabyteDB, explore core features, and develop applications.
+You can use the Free Tier level to get started using YugabyteDB, explore core features, and develop applications.
 
 ## Free Tier
 
