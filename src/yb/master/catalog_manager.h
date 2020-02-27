@@ -416,6 +416,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Return the recent tasks.
   std::vector<std::shared_ptr<MonitoredTask>> GetRecentTasks();
 
+  // Return the recent user-initiated jobs.
+  std::vector<std::shared_ptr<MonitoredTask>> GetRecentJobs();
+
   NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const;
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
 
@@ -1171,6 +1174,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Tracks most recent async tasks.
   scoped_refptr<TasksTracker> tasks_tracker_;
+
+  // Tracks most recent user initiated jobs.
+  scoped_refptr<TasksTracker> jobs_tracker_;
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
 

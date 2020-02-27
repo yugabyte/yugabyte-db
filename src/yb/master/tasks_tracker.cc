@@ -22,12 +22,22 @@ DEFINE_int32(tasks_tracker_keep_time_multiplier, 300,
              "How long we should keep tasks before cleaning them up, as a multiple of the "
              "load balancer interval (catalog_manager_bg_task_wait_ms).");
 
+DEFINE_int32(tasks_tracker_num_long_term_tasks, 20,
+             "Number of most recent tasks to track for displaying in utilities UI.");
+
+DEFINE_int32(long_term_tasks_tracker_keep_time_multiplier, 86400,
+             "How long we should keep long-term tasks before cleaning them up, "
+             "as a multiple of the load balancer interval (catalog_manager_bg_task_wait_ms).");
+
 namespace yb {
 namespace master {
 
 using strings::Substitute;
 
-TasksTracker::TasksTracker() : tasks_(FLAGS_tasks_tracker_num_tasks) {}
+TasksTracker::TasksTracker(IsUserInitiated user_initiated)
+    : user_initiated_(user_initiated),
+      tasks_(user_initiated_ ? FLAGS_tasks_tracker_num_long_term_tasks
+                             : FLAGS_tasks_tracker_num_tasks) {}
 
 void TasksTracker::Reset() {
   std::lock_guard<decltype(lock_)> l(lock_);
@@ -49,12 +59,17 @@ std::vector<std::shared_ptr<MonitoredTask>> TasksTracker::GetTasks() {
 }
 
 void TasksTracker::CleanupOldTasks() {
+  auto timeout_ms =
+      FLAGS_catalog_manager_bg_task_wait_ms *
+      GetAtomicFlag(user_initiated_
+                        ? &FLAGS_long_term_tasks_tracker_keep_time_multiplier
+                        : &FLAGS_tasks_tracker_keep_time_multiplier);
   std::lock_guard<decltype(lock_)> l(lock_);
   for (boost::circular_buffer<std::shared_ptr<MonitoredTask>>::iterator iter = tasks_.begin();
        iter != tasks_.end(); ) {
-    if (MonoTime::Now().GetDeltaSince((*iter)->start_timestamp()).ToMilliseconds() >
-        GetAtomicFlag(&FLAGS_tasks_tracker_keep_time_multiplier) *
-        FLAGS_catalog_manager_bg_task_wait_ms) {
+    if (MonoTime::Now()
+            .GetDeltaSince((*iter)->start_timestamp())
+            .ToMilliseconds() > timeout_ms) {
       iter = tasks_.erase(iter);
     } else {
       // Tasks are implicitly sorted by time, so we can break once a task is within
