@@ -34,7 +34,7 @@ The Free Tier is not intended for production deployments and workloads.
 
 {{< /note >}}
 
-To upgrade and provision additional clusters, contact [Yugabyte Sales](https://www.yugabyte.com/contact-sales/).
+To upgrade and create additional clusters, contact [Yugabyte Sales](https://www.yugabyte.com/contact-sales/).
 
 ## Get started with the Free Tier
 

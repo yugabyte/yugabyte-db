@@ -14,42 +14,26 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Create a database
+## Create a database using YSQL
 
-### YSQL
+You can use the YSQL shell (`ysqlsh`) and the [YSQL API](../../../api/ysql/) to create and manage YugabyteDB databases and tables in your Yugabyte Cloud clusters.
 
-You can use the YSQL shell (`ysqlsh`) to create and manage YugabyteDB databases. Until `ysqlsh` is available as a separate installation, you should
-download YugabyteDB for your local operating system. After installing YugabyteDB locally, you can open the YSQL shell, specifying the following options:
+To configure a local YSQL shell to connect to your clusters, see [Connect using the YSQL shell (ysqlsh)](../connect-to-clusters/#connect-using-the-ysql-shell-ysqlsh).
 
-- host
-- port
-- username
-- password
+## Create a keyspace using YCQL
 
-Here's an example:
+You can use the YCQL shell (`cqlsh`) and the [YCQL API](../../../api/ycql/) to create and manage YugabyteDB keyspaces and tables in your Yugabyte Cloud clusters.
 
-```sh
-$ ./bin/ysqlsh -h
-```
+To configure a local YCQL shell to connect to your clusters, see [Connect using the YCQL shell (cqlsh)](../connect-to-clusters/#connect-using-the-ycql-shell-cqlsh).
 
-### YCQL
-
-
-
-
-## Create a database using third party clients
-
-
-## Create a database using sample datasets
-
-Use the YSQL shell to 
+## Create a database using a sample dataset
 
 [Sample datasets](../../../sample-data/) are available to help you learn and explore YugabyteDB. The SQL script files (`.sql`) required to create
 sample databases are included in the `share` directory of the YugabyteDB home directory.
 
-Here are links to documentation on the datasets and the steps to create the sample databases:
+Here are links to documentation on the tested datasets and the steps to create the sample databases:
 
-- [Northwind](../../../sample-datasest/northwind/)
-- [PgExercises](../../../sample-datasest/pgexercises/)
-- [SportsDB](../../../sample-datasest/sportsdb/)
-- [Chinook](../../../sample-datasest/chinook/)
+- [Northwind](../../../sample-data/northwind/)
+- [PgExercises](../../../sample-data/pgexercises/)
+- [SportsDB](../../../sample-data/sportsdb/)
+- [Chinook](../../../sample-data/chinook/)
