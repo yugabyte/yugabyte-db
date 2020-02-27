@@ -954,7 +954,8 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   master_->catalog_manager()->GetAllTables(&tables);
   *output << "<h3>Active Tasks</h3>\n";
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
+  *output << "  <tr><th>Task Name</th><th>State</th><th>Start "
+             "Time</th><th>Time</th><th>Description</th></tr>\n";
   for (const auto& table : tables) {
     for (const auto& task : table->GetTasks()) {
       HtmlOutputTask(task, output);
@@ -962,16 +963,39 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   }
   *output << "</table>\n";
 
+  std::vector<std::shared_ptr<MonitoredTask>> jobs =
+      master_->catalog_manager()->GetRecentJobs();
+  *output << Substitute(
+      "<h3>Last $0 user-initiated jobs started in the past $1 "
+      "hours</h3>\n",
+      FLAGS_tasks_tracker_num_long_term_tasks,
+      FLAGS_long_term_tasks_tracker_keep_time_multiplier *
+          MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms)
+              .ToSeconds() /
+          3600);
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Job Name</th><th>State</th><th>Start "
+             "Time</th><th>Duration</th><th>Description</th></tr>\n";
+  for (std::vector<std::shared_ptr<MonitoredTask>>::reverse_iterator iter =
+           jobs.rbegin();
+       iter != jobs.rend(); ++iter) {
+    HtmlOutputTask(*iter, output);
+  }
+  *output << "</table>\n";
+
   std::vector<std::shared_ptr<MonitoredTask> > tasks =
     master_->catalog_manager()->GetRecentTasks();
-  *output << Substitute("<h3>Last $0 tasks started in the past $1 seconds</h3>\n",
-                        FLAGS_tasks_tracker_num_tasks,
-                        FLAGS_tasks_tracker_keep_time_multiplier *
-                        MonoDelta::FromMilliseconds(
-                            FLAGS_catalog_manager_bg_task_wait_ms).ToSeconds());
+  *output << Substitute(
+      "<h3>Last $0 tasks started in the past $1 seconds</h3>\n",
+      FLAGS_tasks_tracker_num_tasks,
+      FLAGS_tasks_tracker_keep_time_multiplier *
+          MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms)
+              .ToSeconds());
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
-  for (std::vector<std::shared_ptr<MonitoredTask>>::reverse_iterator iter = tasks.rbegin();
+  *output << "  <tr><th>Task Name</th><th>State</th><th>Start "
+             "Time</th><th>Duration</th><th>Description</th></tr>\n";
+  for (std::vector<std::shared_ptr<MonitoredTask>>::reverse_iterator iter =
+           tasks.rbegin();
        iter != tasks.rend(); ++iter) {
     HtmlOutputTask(*iter, output);
   }

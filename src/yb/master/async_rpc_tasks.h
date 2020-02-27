@@ -154,11 +154,6 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   void TransitionToTerminalState(MonitoredTaskState expected, MonitoredTaskState terminal_state);
 
-  static bool IsStateTerminal(MonitoredTaskState state) {
-    return state == MonitoredTaskState::kComplete || state == MonitoredTaskState::kFailed ||
-           state == MonitoredTaskState::kAborted;
-  }
-
   void AbortTask();
 
   virtual MonoTime ComputeDeadline();
@@ -303,7 +298,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Delete Tablet"; }
 
   std::string description() const override {
-    return tablet_id_ + " Delete Tablet RPC for TS=" + permanent_uuid_;
+    return "Delete Tablet RPC for " + tablet_id_ + " on TS=" + permanent_uuid_;
   }
 
  protected:

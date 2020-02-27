@@ -543,7 +543,7 @@ AsyncAlterTable::AsyncAlterTable(Master *master,
 }
 
 string AsyncAlterTable::description() const {
-  return tablet_->ToString() + " " + type_name() + " RPC";
+  return type_name() + " RPC for " + tablet_->ToString();
 }
 
 TabletId AsyncAlterTable::tablet_id() const {
@@ -668,7 +668,8 @@ AsyncCopartitionTable::AsyncCopartitionTable(Master *master,
 }
 
 string AsyncCopartitionTable::description() const {
-  return tablet_->ToString() + " handling copartition Table RPC for table " + table_->ToString();
+  return "Copartition Table RPC for tablet " + tablet_->ToString()
+          + " for " + table_->ToString();
 }
 
 TabletId AsyncCopartitionTable::tablet_id() const {
@@ -714,7 +715,7 @@ AsyncTruncate::AsyncTruncate(Master *master,
 }
 
 string AsyncTruncate::description() const {
-  return tablet_->ToString() + " Truncate Tablet RPC";
+  return "Truncate Tablet RPC for " + tablet_->ToString();
 }
 
 TabletId AsyncTruncate::tablet_id() const {
