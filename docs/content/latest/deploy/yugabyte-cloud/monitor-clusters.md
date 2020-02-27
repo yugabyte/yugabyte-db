@@ -25,3 +25,5 @@ To access the Yugabyte Cloud Console:
 2. Click **Go to cluster** for your cluster.
 
 The Yugabyte Cloud Console opens.
+
+![Yugabyte Cloud Console](/images/deploy/yugabyte-cloud/yugabyte-cloud-console.png)
