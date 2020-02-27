@@ -482,7 +482,8 @@ CatalogManager::CatalogManager(Master* master)
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(new enterprise::ClusterLoadBalancer(this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
-      tasks_tracker_(new TasksTracker()),
+      tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
+      jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
@@ -803,6 +804,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
 
   // Clear recent tasks.
   tasks_tracker_->Reset();
+
+  // Clear recent jobs.
+  jobs_tracker_->Reset();
 
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
@@ -1339,8 +1343,9 @@ void CatalogManager::Shutdown() {
     sys_catalog_->Shutdown();
   }
 
-  // Reset the tasks tracker.
+  // Reset the jobs/tasks tracker.
   tasks_tracker_->Reset();
+  jobs_tracker_->Reset();
 
   if (initdb_future_ && initdb_future_->wait_for(0s) != std::future_status::ready) {
     LOG(WARNING) << "initdb is still running, waiting for it to complete.";
@@ -3729,6 +3734,10 @@ void CatalogManager::GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types
 
 std::vector<std::shared_ptr<MonitoredTask>> CatalogManager::GetRecentTasks() {
   return tasks_tracker_->GetTasks();
+}
+
+std::vector<std::shared_ptr<MonitoredTask>> CatalogManager::GetRecentJobs() {
+  return jobs_tracker_->GetTasks();
 }
 
 NamespaceName CatalogManager::GetNamespaceNameUnlocked(const NamespaceId& id) const  {
