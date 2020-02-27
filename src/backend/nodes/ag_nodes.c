@@ -92,10 +92,16 @@ static void read_ag_node(ExtensibleNode *node)
 
 void register_ag_nodes(void)
 {
+    static bool initialized = false;
     int i;
+
+    if (initialized)
+        return;
 
     for (i = 0; i < lengthof(node_methods); i++)
         RegisterExtensibleNodeMethods(&node_methods[i]);
+
+    initialized = true;
 }
 
 ExtensibleNode *_new_ag_node(Size size, ag_node_tag tag)
