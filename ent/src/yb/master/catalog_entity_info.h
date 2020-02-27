@@ -29,6 +29,19 @@ struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB, SysRowEn
     return pb.table_id();
   }
 
+  bool started_deleting() const {
+    return pb.state() == SysCDCStreamEntryPB::DELETING ||
+        pb.state() == SysCDCStreamEntryPB::DELETED;
+  }
+
+  bool is_deleting() const {
+    return pb.state() == SysCDCStreamEntryPB::DELETING;
+  }
+
+  bool is_deleted() const {
+    return pb.state() == SysCDCStreamEntryPB::DELETED;
+  }
+
   const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB> options() const {
     return pb.options();
   }
@@ -90,6 +103,7 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   const std::string producer_id_;
 
   std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks_;
+  std::string master_addrs_;
 
   // Protects cdc_rpc_tasks_.
   mutable rw_spinlock lock_;

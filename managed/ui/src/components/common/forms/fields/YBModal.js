@@ -8,6 +8,20 @@ import './stylesheets/YBModal.scss';
 
 export default class YBModal extends Component {
 
+  escFunction = (event) => {
+    const { onHide } = this.props;
+    if (event.keyCode === 27) {
+      onHide(event);
+    }
+  }
+
+  componentDidMount() {
+    document.addEventListener("keydown", this.escFunction, false);
+  }
+  componentWillUnmount() {
+    document.removeEventListener("keydown", this.escFunction, false);
+  }
+
   render() {
     const {visible, onHide, size, formName, onFormSubmit, title, submitLabel,
       cancelLabel,  error, submitting, asyncValidating, footerAccessory,

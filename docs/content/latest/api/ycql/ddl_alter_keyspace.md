@@ -90,7 +90,6 @@ ALTER KEYSPACE example;
 
 ## See also
 
-[`CREATE KEYSPACE`](../ddl_create_keyspace)
-[`DROP KEYSPACE`](../ddl_drop_keyspace)
-[`USE`](../ddl_use)
-[Other CQL Statements](..)
+- [`CREATE KEYSPACE`](../ddl_create_keyspace)
+- [`DROP KEYSPACE`](../ddl_drop_keyspace)
+- [`USE`](../ddl_use)

@@ -101,12 +101,12 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
 
   // This will cache the response to an ApplyChanges() request.
-  cdc::GetChangesResponsePB resp_;
+  cdc::GetChangesResponsePB twodc_resp_copy_;
 
   std::unique_ptr<TwoDCWriteInterface> write_strategy_;
 };
 
-Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
+Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_resp) {
   // ApplyChanges is called in a single threaded manner.
   // For all the changes in GetChangesResponsePB, we first fan out and find the tablet for
   // every record key.
@@ -114,23 +114,23 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   // Once all changes have been applied (successfully or not), we invoke the callback which will
   // then either poll for next set of changes (in case of successful application) or will try to
   // re-apply.
-  DCHECK(resp->has_checkpoint());
-  resp_.Clear();
+  DCHECK(poller_resp->has_checkpoint());
+  twodc_resp_copy_.Clear();
 
   // Init class variables that threads will use.
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     DCHECK(consensus::OpIdEquals(op_id_, consensus::MinimumOpId()));
-    op_id_ = resp->checkpoint().op_id();
+    op_id_ = poller_resp->checkpoint().op_id();
     error_status_ = Status::OK();
     done_processing_ = false;
     processed_record_count_ = 0;
-    record_count_ = resp->records_size();
+    record_count_ = poller_resp->records_size();
     ResetWriteInterface(&write_strategy_);
   }
 
   // Ensure we have records.
-  if (resp->records_size() == 0) {
+  if (poller_resp->records_size() == 0) {
     HandleResponse();
     return Status::OK();
   }
@@ -146,19 +146,18 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
     }
   }
 
-  // Inspect all records in the response.
-  for (int i = 0; i < resp->records_size(); i++) {
-    if (resp->records(i).key_size() == 0) {
+  // Inspect all records in the response and strip out records we don't support on the Consumer.
+  for (int i = 0; i < poller_resp->records_size(); i++) {
+    if (poller_resp->records(i).key_size() == 0) {
       // Transaction status record, ignore for now.
       // Support for handling transactions will be added in future.
       IncProcessedRecordCount();
     } else {
-      auto record_pb = resp_.add_records();
-      *record_pb = resp->records(i);
+      twodc_resp_copy_.add_records()->CopyFrom(poller_resp->records(i));
     }
   }
 
-  for (int i = 0; i < resp_.records_size(); i++) {
+  for (int i = 0; i < twodc_resp_copy_.records_size(); i++) {
     // All KV-pairs within a single CDC record will be for the same row.
     // key(0).key() will contain the hash code for that row. We use this to lookup the tablet.
     if (UseLocalTserver()) {
@@ -167,13 +166,13 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
       local_client_->client->LookupTabletByKey(
           table_.get(),
           PartitionSchema::EncodeMultiColumnHashValue(
-              boost::lexical_cast<uint16_t>(resp_.records(i).key(0).key())),
+              boost::lexical_cast<uint16_t>(twodc_resp_copy_.records(i).key(0).key())),
           CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
           std::bind(&TwoDCOutputClient::TabletLookupCallback, this, i, std::placeholders::_1));
     }
   }
 
-  if (resp_.records_size() == 0) {
+  if (twodc_resp_copy_.records_size() == 0) {
     // Nothing to process, return success.
     HandleResponse();
   }
@@ -217,13 +216,14 @@ void TwoDCOutputClient::TabletLookupCallback(
     return;
   }
 
-  write_strategy_->ProcessRecord(tablet->get()->tablet_id(), resp_.records(record_idx));
+  write_strategy_->ProcessRecord(tablet->get()->tablet_id(), twodc_resp_copy_.records(record_idx));
 
   WriteIfAllRecordsProcessed();
 }
 
 void TwoDCOutputClient::TabletLookupCallbackFastTrack(const size_t record_idx) {
-  write_strategy_->ProcessRecord(consumer_tablet_info_.tablet_id, resp_.records(record_idx));
+  write_strategy_->ProcessRecord(consumer_tablet_info_.tablet_id,
+      twodc_resp_copy_.records(record_idx));
 
   WriteIfAllRecordsProcessed();
 }

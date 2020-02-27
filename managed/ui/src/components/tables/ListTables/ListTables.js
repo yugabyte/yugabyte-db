@@ -19,6 +19,7 @@ import { isDisabled } from '../../../utils/LayoutUtils';
 
 class TableTitle extends Component {
   render() {
+    const { customer: { currentCustomer } } = this.props;
     const currentUniverse = this.props.universe.currentUniverse.data;
     const {numCassandraTables, numRedisTables, numPostgresTables} = this.props;
     return (
@@ -41,7 +42,9 @@ class TableTitle extends Component {
         <div className="pull-right">
           <div className="backup-action-btn-group">
             <UniverseAction className="table-action" universe={currentUniverse}
-              actionType="toggle-backup" btnClass={"btn-orange"} />
+              actionType="toggle-backup" btnClass={"btn-orange"}
+              disabled={isDisabled(currentCustomer.data.features, "universes.details.backups")}
+            />
           </div>
         </div>
       </div>

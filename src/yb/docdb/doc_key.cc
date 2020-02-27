@@ -715,8 +715,7 @@ Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
 Status SubDocKey::DecodePrefixLengths(
     Slice slice, boost::container::small_vector_base<size_t>* out) {
   auto begin = slice.data();
-  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(
-      slice, DocKeyPart::UP_TO_HASH));
+  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(slice, DocKeyPart::UP_TO_HASH));
   if (hashed_part_size != 0) {
     slice.remove_prefix(hashed_part_size);
     out->push_back(hashed_part_size);
@@ -742,10 +741,27 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
     Slice slice, boost::container::small_vector_base<size_t>* out) {
   auto begin = slice.data();
   if (out->empty()) {
-    auto doc_key_size = VERIFY_RESULT(DocKey::EncodedSize(
-        slice, DocKeyPart::WHOLE_DOC_KEY));
-    slice.remove_prefix(doc_key_size);
-    out->push_back(doc_key_size);
+    auto id_size = VERIFY_RESULT(DocKey::EncodedSize(slice, DocKeyPart::UP_TO_ID));
+    out->push_back(id_size);
+  }
+  if (out->size() == 1) {
+    auto id_size = out->front();
+    SCHECK_GE(slice.size(), id_size + 1, Corruption,
+              Format("Cannot have exclusively ID in key $0", slice.ToDebugHexString()));
+    // Identify table tombstone.
+    if (slice[0] == ValueTypeAsChar::kPgTableOid && slice[id_size] == ValueTypeAsChar::kGroupEnd) {
+      SCHECK_GE(slice.size(), id_size + 2, Corruption,
+                Format("Space for kHybridTime expected in key $0", slice.ToDebugHexString()));
+      SCHECK_EQ(slice[id_size + 1], ValueTypeAsChar::kHybridTime, Corruption,
+                Format("Hybrid time expected in key $0", slice.ToDebugHexString()));
+      // Consume kGroupEnd without pushing to out because the empty key of a table tombstone
+      // shouldn't count as an end.
+      slice.remove_prefix(id_size + 1);
+    } else {
+      auto doc_key_size = VERIFY_RESULT(DocKey::EncodedSize(slice, DocKeyPart::WHOLE_DOC_KEY));
+      slice.remove_prefix(doc_key_size);
+      out->push_back(doc_key_size);
+    }
   } else {
     slice.remove_prefix(out->back());
   }

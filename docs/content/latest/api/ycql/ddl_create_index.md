@@ -236,6 +236,5 @@ cqlsh:example> SELECT * FROM emp;
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`DROP INDEX`](../ddl_drop_index)
-[Other CQL Statements](..)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`DROP INDEX`](../ddl_drop_index)

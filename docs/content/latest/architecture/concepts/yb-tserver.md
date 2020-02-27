@@ -41,11 +41,12 @@ others. The block cache will automatically favor blocks of this table as the blo
 across all tablet-peers.
 
 ## Space amplification
-YugabyteDB's compactions are size tiered. 
-Size tier compactions have the advantage of lower disk write (IO) amplification when compared to level compactions. 
-There's sometimes concern that size-tiered compactions have higher space amplification (that it needs 50% space head room). 
 
-This is not true in YugabyteDB because each table is broken into several tablets and concurrent compactions across 
+YugabyteDB's compactions are size tiered.
+Size tier compactions have the advantage of lower disk write (IO) amplification when compared to level compactions.
+There's sometimes concern that size-tiered compactions have higher space amplification (that it needs 50% space head room).
+
+This is not true in YugabyteDB because each table is broken into several tablets and concurrent compactions across
 tablets are throttled to a certain maximum. Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
 
 ## Throttled compactions
@@ -57,22 +58,22 @@ compaction storm.
 The default policy makes sure that doing a compaction is worthwhile.
 The algorithm tries to make sure that the files being compacted are not too disparate in terms of size.
 For example, it does not make sense to compact a 100GB file with a 1GB file to produce a 101GB file, 
-that would be a lot of unnecessary IO for less gain. 
+that would be a lot of unnecessary IO for less gain.
 
 ## Small and large compaction queues
 
 Compactions are prioritized into large and small compactions with
 some prioritization to keep the system functional even in extreme IO patterns.
 
-In addition to throttling controls for compactions, YugabyteDB does a variety 
-of internal optimizations to minimize impact of compactions on foreground latencies. 
-One such is a prioritized queue to give priority to small compactions over large compactions 
+In addition to throttling controls for compactions, YugabyteDB does a variety
+of internal optimizations to minimize impact of compactions on foreground latencies.
+One such is a prioritized queue to give priority to small compactions over large compactions
 to make sure the number of SSTable files for any tablet stays as low as possible.
 
 ### Manual compactions
-YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../yb-admin/#compact-table) command in 
-the [`yb-admin` utility](../yb-admin). 
-This can be useful for cases when new data is not coming into the system for a table anymore, 
+
+YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [`yb-admin` utility](../../../admin/yb-admin).
+This can be useful for cases when new data is not coming into the system for a table anymore,
 users want to reclaim disk space due to overwrites/deletes that have already happened or due to TTL expiry.
 
 ### Server-global memstore limit
@@ -81,8 +82,7 @@ Tracks and enforces a global size across the memstores for
 different tablets. This makes sense when there is a skew in the write rate across tablets. For
 example, the scenario when there are tablets belonging to multiple tables in a single YB-TServer and
 one of the tables gets a lot more writes than the other tables. The write heavy table is allowed to
-grow much larger than it could if there was a per-tablet memory limit, allowing good write
-efficiency.
+grow much larger than it could if there was a per-tablet memory limit, allowing good write efficiency.
 
 ### Auto-sizing of block cache/memstore
 
@@ -95,6 +95,6 @@ total available memory to the block cache, and another percentage to memstores.
 ### Striping tablet load uniformly across data disks
 
 On multi-SSD machines, the data (SSTable) and
-WAL (RAFT write-ahead-log) for various tablets of tables are evenly distributed across the attached
-disks on a **per-table basis**. This ensures that each disk handles an even amount of load for each
+WAL (Raft write-ahead log) for various tablets of tables are evenly distributed across the attached
+disks on a *per-table basis*. This ensures that each disk handles an even amount of load for each
 table.

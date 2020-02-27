@@ -1,4 +1,16 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright 2020 YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package com.yugabyte.yw.controllers;
 
@@ -71,7 +83,12 @@ public class CustomerController extends AuthenticatedController {
     }
     responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
-    responseJson.put("features", customer.getFeatures());
+    Users user = (Users) ctx().args.get("user");
+    if (customer.getFeatures().size() == 0) {
+      responseJson.put("features", user.getFeatures());
+    } else {
+      responseJson.put("features", customer.getFeatures());
+    }
 
     return ok(responseJson);
   }

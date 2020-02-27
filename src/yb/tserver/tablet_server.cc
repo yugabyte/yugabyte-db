@@ -49,7 +49,7 @@
 #include "yb/server/rpc_server.h"
 #include "yb/server/webserver.h"
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/tserver/heartbeater.h"
+#include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -236,7 +236,9 @@ Status TabletServer::Init() {
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
-  heartbeater_.reset(new Heartbeater(opts_, this));
+  log_prefix_ = Format("P $0: ", permanent_uuid());
+
+  heartbeater_ = CreateHeartbeater(opts_, this);
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     metrics_snapshotter_.reset(new MetricsSnapshotter(opts_, this));

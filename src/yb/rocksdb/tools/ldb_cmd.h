@@ -39,12 +39,15 @@
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/ldb_tool.h"
 #include "yb/rocksdb/options.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/tools/ldb_cmd_execute_result.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
+#include "yb/util/header_manager_impl.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
+#include "yb/util/universe_key_manager.h"
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 using std::string;
 using std::map;
@@ -79,6 +82,8 @@ class LDBCommand {
   static const string ARG_FILE_SIZE;
   static const string ARG_CREATE_IF_MISSING;
   static const string ARG_NO_VALUE;
+  static const string ARG_UNIVERSE_KEY_FILE;
+  static const string ARG_ONLY_VERIFY_CHECKSUMS;
 
   static LDBCommand* InitFromCmdLineArgs(
       const vector<string>& args, const Options& options,
@@ -239,6 +244,9 @@ class LDBCommand {
   /** List of command-line options valid for this command */
   const vector<string> valid_cmd_line_options_;
 
+  std::unique_ptr<yb::enterprise::UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<rocksdb::Env> env_;
+
   bool ParseKeyValue(const string& line, string* key, string* value,
                       bool is_key_hex, bool is_value_hex);
 
@@ -257,6 +265,29 @@ class LDBCommand {
     map<string, string>::const_iterator itr = options.find(ARG_DB);
     if (itr != options.end()) {
       db_path_ = itr->second;
+    }
+
+    itr = options.find(ARG_UNIVERSE_KEY_FILE);
+    if (itr != options.end()) {
+      vector<string> splits = StringSplit(itr->second, ':');
+      if (splits.size() != 2) {
+        LOG(FATAL) << yb::Format("Could not split $0 by ':' into a key id and key file",
+                                 itr->second);
+      }
+      string key_data;
+      auto key_id = splits[0];
+      auto key_path = splits[1];
+      Status s = ReadFileToString(Env::Default(), key_path, &key_data);
+      if(!s.ok()) {
+        LOG(FATAL) << yb::Format("Could not read file at path $0: $1", key_path, s.ToString());
+      }
+      auto res = yb::enterprise::UniverseKeyManager::FromKey(key_id, yb::Slice(key_data));
+      if (!res.ok()) {
+        LOG(FATAL) << "Could not create universe key manager: " << res.status().ToString();
+      }
+      universe_key_manager_ = std::move(*res);
+      env_ = yb::enterprise::NewRocksDBEncryptedEnv(
+          yb::enterprise::DefaultHeaderManager(universe_key_manager_.get()));
     }
 
     itr = options.find(ARG_CF_NAME);
@@ -414,7 +445,7 @@ class LDBCommand {
     vector<string> ret = {ARG_DB, ARG_BLOOM_BITS, ARG_BLOCK_SIZE,
                           ARG_AUTO_COMPACTION, ARG_COMPRESSION_TYPE,
                           ARG_WRITE_BUFFER_SIZE, ARG_FILE_SIZE,
-                          ARG_FIX_PREFIX_LEN, ARG_CF_NAME};
+                          ARG_FIX_PREFIX_LEN, ARG_CF_NAME, ARG_UNIVERSE_KEY_FILE};
     ret.insert(ret.end(), options.begin(), options.end());
     return ret;
   }
@@ -828,6 +859,7 @@ class ScanCommand : public LDBCommand {
   bool end_key_specified_;
   int max_keys_scanned_;
   bool no_value_;
+  bool only_verify_checksums_ = false;
 };
 
 class DeleteCommand : public LDBCommand {

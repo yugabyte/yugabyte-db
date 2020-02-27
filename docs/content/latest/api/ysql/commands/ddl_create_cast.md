@@ -98,5 +98,4 @@ yugabyte=# SELECT CAST('2'::myint4 AS int4);
 ## See also
 
 - [`DROP CAST`](../ddl_drop_cast)
-
-[postgresql-docs-create-cast]: https://www.postgresql.org/docs/current/sql-createcast.html
+- [postgresql-docs-create-cast](https://www.postgresql.org/docs/current/sql-createcast.html)

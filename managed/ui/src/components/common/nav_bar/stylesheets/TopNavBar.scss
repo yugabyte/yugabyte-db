@@ -16,7 +16,7 @@
   }
 
   & > *:first-child {
-    flex: 0 0 90px;
+    flex: 1 0 90px;
   }
 
   & > *:not(:first-child):not(:last-child) {
@@ -31,6 +31,15 @@
 .yb-nav-bar .navbar {
   margin-bottom: 0px;
   border: none;
+}
+
+.sidebar-hidden {
+  .yb-nav-bar .navbar {
+    display: none;
+  }
+  .page-action-buttons {
+    top: 0;
+  }
 }
 
 .nav_title {
@@ -125,13 +134,16 @@
       &, &:hover, &:focus {
         cursor: not-allowed;
         background-color: $YB_BACKGROUND !important;
-
-        i {
-          color: $YB_GRAY_HOVER !important;
-        }
       }
     }
   }
+
+  > li.disabled {
+    i {
+        color: $YB_GRAY_HOVER !important;
+    }
+  }
+
   > .active {
     > a {
       background-color: inherit;

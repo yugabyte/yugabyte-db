@@ -17,6 +17,10 @@
       padding: 0 2px !important;
     }
   }
+
+  label {
+    font-weight: 500;
+  }
 }
 
 .dark-form {
@@ -55,7 +59,7 @@
   }
 
   input {
-    font-weight: 500;
+    font-weight: 400;
     font-size: 16px;
 
 
@@ -431,7 +435,7 @@
       vertical-align: middle;
     }
     b {
-      font-weight: 900;
+      font-weight: 700;
       font-size: 1.1em;
     }
   }

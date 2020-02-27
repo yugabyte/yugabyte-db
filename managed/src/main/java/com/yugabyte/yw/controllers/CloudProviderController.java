@@ -57,7 +57,7 @@ public class CloudProviderController extends AuthenticatedController {
 
 
   private static JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE = Json.parse(
-      "{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.3, \"memSizeGB\": 0.3}");
+      "{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
   private static JsonNode KUBERNETES_DEV_INSTANCE_TYPE = Json.parse(
       "{\"instanceTypeCode\": \"dev\", \"numCores\": 0.5, \"memSizeGB\": 0.5}");
   private static JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +

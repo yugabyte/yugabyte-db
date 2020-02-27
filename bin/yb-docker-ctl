@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 # Copyright (c) YugaByte, Inc.
 
 import argparse
@@ -178,7 +178,7 @@ class YBDockerControl():
     def fetch_containers(self):
         try:
             config = get_subprocess_result_as_str(self.CONTAINER_SEARCH_CMD, shell=True)
-            universe_containers = filter(None, config.strip().split("\n"))
+            universe_containers = [ line for line in config.strip().split("\n") if line ]
             self.containers = []
             for container_id in universe_containers:
                 container_info = get_subprocess_result_as_str(
@@ -210,8 +210,8 @@ class YBDockerControl():
                                    help='YugaByte Docker image tag')
 
         self.parser = argparse.ArgumentParser(description='YugaByte Docker Container Control')
-        subparsers = self.parser.add_subparsers(help='Commands')
-
+        subparsers = self.parser.add_subparsers(help='Commands', dest='command')
+        subparsers.required = True
         create_subparser = subparsers.add_parser('create',
                                                  help='Create YugaByte Cluster',
                                                  parents = [parent_parser])
@@ -380,7 +380,7 @@ class YBDockerControl():
 
         for info_hash in self.containers:
             cid, name, ip, status, pid, started_at = info_hash.split("|")
-            node_types = filter(None, re.split('.*-(.*)-.*', name))
+            node_types = [ node_type for node_type in re.split('.*-(.*)-.*', name) if node_type ]
             node_type_first = node_types[0] if isinstance(node_types, list) else next(node_types)
             ui_port = self.YB_MASTER_UI_PORT if \
                 node_type_first == "master" else self.YB_TSERVER_UI_PORT
@@ -520,7 +520,7 @@ class YBDockerControl():
             self.fetch_containers()
             self.cluster_status()
             if not os.getenv("YB_DISABLE_CALLHOME"):
-                print ("Congratulations on installing YugaByte DB Community Edition. " +
+                print ("Congratulations on installing YugabyteDB. " +
                        "We'd like to welcome you to the community with a free t-shirt " +
                        "and pack of stickers! " +
                        "Please claim your reward here: https://www.yugabyte.com/community-rewards/")

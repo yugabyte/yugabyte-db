@@ -107,8 +107,6 @@ YBRedisOp::YBRedisOp(const shared_ptr<YBTable>& table)
     : YBOperation(table) {
 }
 
-YBRedisOp::~YBRedisOp() {}
-
 RedisResponsePB* YBRedisOp::mutable_response() {
   if (!redis_response_) {
     redis_response_.reset(new RedisResponsePB());
@@ -130,8 +128,6 @@ OpGroup YBRedisReadOp::group() {
 YBRedisWriteOp::YBRedisWriteOp(const shared_ptr<YBTable>& table)
     : YBRedisOp(table), redis_write_request_(new RedisWriteRequestPB()) {
 }
-
-YBRedisWriteOp::~YBRedisWriteOp() {}
 
 size_t YBRedisWriteOp::space_used_by_request() const {
   return redis_write_request_->ByteSizeLong();
@@ -160,8 +156,6 @@ Status YBRedisWriteOp::GetPartitionKey(std::string *partition_key) const {
 YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
     : YBRedisOp(table), redis_read_request_(new RedisReadRequestPB()) {
 }
-
-YBRedisReadOp::~YBRedisReadOp() {}
 
 size_t YBRedisReadOp::space_used_by_request() const {
   return redis_read_request_->SpaceUsedLong();
@@ -212,30 +206,30 @@ YBqlWriteOp::YBqlWriteOp(const shared_ptr<YBTable>& table)
 
 YBqlWriteOp::~YBqlWriteOp() {}
 
-static YBqlWriteOp *NewYBqlWriteOp(const shared_ptr<YBTable>& table,
-                                   QLWriteRequestPB::QLStmtType stmt_type) {
-  YBqlWriteOp *op = new YBqlWriteOp(table);
-  QLWriteRequestPB *req = op->mutable_request();
+static std::unique_ptr<YBqlWriteOp> NewYBqlWriteOp(const shared_ptr<YBTable>& table,
+                                                   QLWriteRequestPB::QLStmtType stmt_type) {
+  auto op = std::unique_ptr<YBqlWriteOp>(new YBqlWriteOp(table));
+  QLWriteRequestPB* req = op->mutable_request();
   req->set_type(stmt_type);
   req->set_client(YQL_CLIENT_CQL);
   // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
-  req->set_request_id(reinterpret_cast<uint64_t>(op));
-  req->set_query_id(reinterpret_cast<int64_t>(op));
+  req->set_request_id(reinterpret_cast<uint64_t>(op.get()));
+  req->set_query_id(reinterpret_cast<int64_t>(op.get()));
 
   req->set_schema_version(table->schema().version());
 
   return op;
 }
 
-YBqlWriteOp *YBqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
   return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_INSERT);
 }
 
-YBqlWriteOp *YBqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
   return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_UPDATE);
 }
 
-YBqlWriteOp *YBqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
   return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_DELETE);
 }
 
@@ -367,13 +361,13 @@ OpGroup YBqlReadOp::group() {
       ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
 }
 
-YBqlReadOp *YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
-  YBqlReadOp *op = new YBqlReadOp(table);
+std::unique_ptr<YBqlReadOp> YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
+  std::unique_ptr<YBqlReadOp> op(new YBqlReadOp(table));
   QLReadRequestPB *req = op->mutable_request();
   req->set_client(YQL_CLIENT_CQL);
   // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
-  req->set_request_id(reinterpret_cast<uint64_t>(op));
-  req->set_query_id(reinterpret_cast<int64_t>(op));
+  req->set_request_id(reinterpret_cast<uint64_t>(op.get()));
+  req->set_query_id(reinterpret_cast<int64_t>(op.get()));
 
   req->set_schema_version(table->schema().version());
 
@@ -503,9 +497,10 @@ YBPgsqlWriteOp::YBPgsqlWriteOp(const shared_ptr<YBTable>& table)
 
 YBPgsqlWriteOp::~YBPgsqlWriteOp() {}
 
-static YBPgsqlWriteOp *NewYBPgsqlWriteOp(const shared_ptr<YBTable>& table,
-                                         PgsqlWriteRequestPB::PgsqlStmtType stmt_type) {
-  YBPgsqlWriteOp *op = new YBPgsqlWriteOp(table);
+static std::unique_ptr<YBPgsqlWriteOp> NewYBPgsqlWriteOp(
+    const shared_ptr<YBTable>& table,
+    PgsqlWriteRequestPB::PgsqlStmtType stmt_type) {
+  auto op = std::make_unique<YBPgsqlWriteOp>(table);
   PgsqlWriteRequestPB *req = op->mutable_request();
   req->set_stmt_type(stmt_type);
   req->set_client(YQL_CLIENT_PGSQL);
@@ -515,19 +510,20 @@ static YBPgsqlWriteOp *NewYBPgsqlWriteOp(const shared_ptr<YBTable>& table,
   return op;
 }
 
-YBPgsqlWriteOp *YBPgsqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
   return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_INSERT);
 }
 
-YBPgsqlWriteOp *YBPgsqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
   return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_UPDATE);
 }
 
-YBPgsqlWriteOp *YBPgsqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
   return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_DELETE);
 }
 
-YBPgsqlWriteOp *YBPgsqlWriteOp::NewTruncateColocated(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
+    const std::shared_ptr<YBTable>& table) {
   return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED);
 }
 
@@ -566,10 +562,8 @@ YBPgsqlReadOp::YBPgsqlReadOp(const shared_ptr<YBTable>& table)
       yb_consistency_level_(YBConsistencyLevel::STRONG) {
 }
 
-YBPgsqlReadOp::~YBPgsqlReadOp() {}
-
-YBPgsqlReadOp *YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
-  YBPgsqlReadOp *op = new YBPgsqlReadOp(table);
+std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
+  std::unique_ptr<YBPgsqlReadOp> op(new YBPgsqlReadOp(table));
   PgsqlReadRequestPB *req = op->mutable_request();
   req->set_client(YQL_CLIENT_PGSQL);
   req->set_table_id(table->id());
@@ -579,7 +573,7 @@ YBPgsqlReadOp *YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
 }
 
 std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::DeepCopy() {
-  auto op = std::unique_ptr<YBPgsqlReadOp>(NewSelect(table_));
+  auto op = NewSelect(table_);
   op->set_yb_consistency_level(yb_consistency_level());
   op->SetReadTime(read_time());
   op->SetTablet(tablet());
@@ -697,9 +691,6 @@ Result<QLRowBlock> YBPgsqlReadOp::MakeRowBlock() const {
 
 YBNoOp::YBNoOp(YBTable* table)
   : table_(table) {
-}
-
-YBNoOp::~YBNoOp() {
 }
 
 Status YBNoOp::Execute(const YBPartialRow& key) {

@@ -52,9 +52,8 @@ It can also be used to rename a role.
 
 ## See also
 
-[`ALTER ROLE`](../dcl_alter_role)
-[`CREATE ROLE`](../dcl_create_role)
-[`DROP ROLE`](../dcl_drop_role)
-[`GRANT`](../dcl_grant)
-[`REVOKE`](../dcl_revoke)
-[Other YSQL Statements](..)
+- [`ALTER ROLE`](../dcl_alter_role)
+- [`CREATE ROLE`](../dcl_create_role)
+- [`DROP ROLE`](../dcl_drop_role)
+- [`GRANT`](../dcl_grant)
+- [`REVOKE`](../dcl_revoke)

@@ -28,7 +28,7 @@ ensure_option_has_arg() {
 
 show_help() {
   cat >&2 <<-EOT
-yb_build.sh (or "ybd") is the main build tool for YugaByte Database.
+yb_build.sh (or "ybd") is the main build tool for Yugabyte Database.
 Usage: ${0##*/} [<options>] [<build_type>] [<target_keywords>] [<yb_env_var_settings>]
 Options:
   -h, --help
@@ -71,7 +71,7 @@ Options:
   --no-rebuild-thirdparty, --nbtp, --nb3p, --nrtp, --nr3p
     Skip building third-party libraries, even if the thirdparty directory has changed in git.
   --use-shared-thirdparty, --ustp, --stp, --us3p, --s3p
-    Try to find and use a shared third-party directory (in YugaByte's build environment these
+    Try to find and use a shared third-party directory (in Yugabyte's build environment these
     third-party directories are under $NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY)
   --show-compiler-cmd-line, --sccl
     Show compiler command line.
@@ -195,7 +195,8 @@ Options:
     Pass all arguments after -- to repeat_unit_test.
 
 Build types:
-  debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
+  ${VALID_BUILD_TYPES[*]}
+  (default: debug)
 
 Supported target keywords:
   ...-test           - build and run a C++ test
@@ -570,9 +571,20 @@ print_saved_log_path() {
 "Or using symlink:"$'\n\n'"less '$latest_log_symlink_path'"$'\n'
 }
 
+load_yb_build_configuration() {
+  local conf_file
+  for conf_file in /etc/yb_buildrc "$HOME/.yb_buildrc" ; do
+    if [[ -f "$conf_file" ]]; then
+      . "$conf_file"
+    fi
+  done
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
+
+load_yb_build_configuration
 
 build_type=""
 verbose=false

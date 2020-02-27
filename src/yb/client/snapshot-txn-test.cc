@@ -56,6 +56,7 @@ class SnapshotTxnTest : public TransactionCustomLogSegmentSizeTest<0, Transactio
                         int minimal_updates_per_second);
   void TestBankAccountsThread(
      int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool);
+  void TestRemoteBootstrap();
 };
 
 void SnapshotTxnTest::TestBankAccountsThread(
@@ -685,7 +686,7 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
 
 using RemoteBootstrapOnStartBase = TransactionCustomLogSegmentSizeTest<128, SnapshotTxnTest>;
 
-TEST_F_EX(SnapshotTxnTest, RemoteBootstrapOnStart, RemoteBootstrapOnStartBase) {
+void SnapshotTxnTest::TestRemoteBootstrap() {
   constexpr int kTransactionsCount = RegularBuildVsSanitizers(100, 10);
   FLAGS_log_min_seconds_to_retain = 1;
   DisableTransactionTimeout();
@@ -739,13 +740,59 @@ TEST_F_EX(SnapshotTxnTest, RemoteBootstrapOnStart, RemoteBootstrapOnStartBase) {
     }
 
     // Start all servers. Cluster verifier should check that all tablets are synchronized.
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    for (int i = cluster_->num_tablet_servers(); i-- > 0;) {
       ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
     }
 
     ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
                       "All tablets running"));
   }
+}
+
+TEST_F_EX(SnapshotTxnTest, RemoteBootstrapOnStart, RemoteBootstrapOnStartBase) {
+  TestRemoteBootstrap();
+}
+
+TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
+  FLAGS_inject_load_transaction_delay_ms = 50;
+
+  constexpr int kTransactionsCount = RegularBuildVsSanitizers(20, 5);
+  FLAGS_log_min_seconds_to_retain = 1;
+  DisableTransactionTimeout();
+
+  DisableApplyingIntents();
+
+  TestThreadHolder thread_holder;
+
+  std::atomic<int> transactions(0);
+
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &transactions] {
+    auto session = CreateSession();
+    for (int transaction_idx = 0; !stop.load(std::memory_order_acquire); ++transaction_idx) {
+      auto txn = CreateTransaction();
+      session->SetTransaction(txn);
+      WriteRows(session, transaction_idx);
+      if (txn->CommitFuture().get().ok()) {
+        transactions.fetch_add(1);
+      }
+    }
+  });
+
+  while (transactions.load(std::memory_order_acquire) < kTransactionsCount) {
+    std::this_thread::sleep_for(100ms);
+  }
+
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  thread_holder.Stop();
+
+  ASSERT_OK(client_->TruncateTable(table_.table()->id()));
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+
+  ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
+                    "All tablets running"));
 }
 
 } // namespace client

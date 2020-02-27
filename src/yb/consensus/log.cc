@@ -334,6 +334,7 @@ Status Log::Open(const LogOptions &options,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& metric_entity,
                  ThreadPool* append_thread_pool,
+                 int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log) {
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(tablet_wal_path)),
@@ -810,8 +811,9 @@ void Log::set_wal_retention_secs(uint32_t wal_retention_secs) {
 
 uint32_t Log::wal_retention_secs() const {
   uint32_t wal_retention_secs = wal_retention_secs_.load(std::memory_order_acquire);
-  return FLAGS_log_min_seconds_to_retain > 0 ?
-      std::max(wal_retention_secs, static_cast<uint32_t>(FLAGS_log_min_seconds_to_retain)) :
+  auto flag_wal_retention = GetAtomicFlag(&FLAGS_log_min_seconds_to_retain);
+  return flag_wal_retention > 0 ?
+      std::max(wal_retention_secs, static_cast<uint32_t>(flag_wal_retention)) :
       wal_retention_secs;
 }
 

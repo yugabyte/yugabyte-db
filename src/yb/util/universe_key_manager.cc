@@ -16,6 +16,20 @@
 namespace yb {
 namespace enterprise {
 
+Result<std::unique_ptr<UniverseKeyManager>> UniverseKeyManager::FromKey(
+    const std::string& key_id, const Slice& key_data) {
+  auto universe_key_manager = std::make_unique<UniverseKeyManager>();
+  UniverseKeyRegistryPB universe_key_registry;
+  universe_key_registry.set_encryption_enabled(true);
+  universe_key_registry.set_latest_version_id(key_id);
+  auto encryption_params = VERIFY_RESULT(yb::enterprise::EncryptionParams::FromSlice(key_data));
+  yb::EncryptionParamsPB params_pb;
+  encryption_params->ToEncryptionParamsPB(&params_pb);
+  (*universe_key_registry.mutable_universe_keys())[key_id] = params_pb;
+  universe_key_manager->SetUniverseKeyRegistry(universe_key_registry);
+  return universe_key_manager;
+}
+
 void UniverseKeyManager::SetUniverseKeyRegistry(
     const UniverseKeyRegistryPB& universe_key_registry) {
   {

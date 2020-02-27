@@ -91,5 +91,5 @@ yugabyte=# CREATE TABLE person(first_name TEXT, last_name TEXT, phone_number pho
 
 ## See also
 
-[`DROP DOMAIN`](../ddl_drop_domain)
-[`ALTER DOMAIN`](../ddl_alter_domain)
+- [`DROP DOMAIN`](../ddl_drop_domain)
+- [`ALTER DOMAIN`](../ddl_alter_domain)

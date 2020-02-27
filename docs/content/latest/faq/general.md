@@ -59,7 +59,7 @@ YugabyteDB feature highlights are listed below.
 
 ### Cloud native
 
-- Built for the container era with [highly elastic scaling](../../explore/linear-scalability/) and infrastructure portability, including [Kubernetes-driven orchestration](../../quick-start/install/#kubernetes).
+- Built for the container era with [highly elastic scaling](../../explore/linear-scalability/) and infrastructure portability, including [Kubernetes-driven orchestration](../../quick-start/install/kubernetes).
 
 - [Self-healing database](../../explore/fault-tolerance/) that automatically tolerates any failures common in the inherently unreliable modern cloud infrastructure.
 
@@ -69,7 +69,7 @@ YugabyteDB feature highlights are listed below.
 
 ### Built-in enterprise features
 
-- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as [Change Data Capture (CDC)](../../architecture/cdc-architecture/) and [2 Data Center Deployments](../../architecture/2dc-deployments/) are also included in open source.
+- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/cdc-architecture/) and [2 Data Center Deployments](../../architecture/2dc-deployments/) are also included in open source.
 
 ## What client APIs are supported by YugabyteDB?
 
@@ -81,12 +81,14 @@ YugabyteDB supports two flavors of distributed SQL.
 
 ### Yugabyte Cloud QL (YCQL)
 
-[YCQL]((../../api/ycql/)) is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../../api/ycql/quick-start/).
+[YCQL](../../api/ycql/) is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../../api/ycql/quick-start/).
 
 {{< note title="Note" >}}
+
 The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../develop/ecosystem-integrations/presto/) can help for simple cases). 
 
 <b>The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.</b>
+
 {{< /note >}}
 
 ## How does YugabyteDB's common document store work?
@@ -197,7 +199,7 @@ YugabyteDB is not a good fit for traditional Online Analytical Processing (OLAP)
 
 ## How can YugabyteDB be both CP and ensure high availability (HA) at the same time?
 
-In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c-for-cap-theorem-8e9b78600e6d), YugabyteDB is a consistent (C) and partition-tolerant (P) database. It ensures high availability (HA) for most practical situations even while remaining strongly consistent. While this may seem to be a violation of the CAP theorem, that is not the case. CAP treats availability as a binary option whereas YugabyteDB treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available).
+In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c-for-cap-theorem-8e9b78600e6d), YugabyteDB is a consistent and partition-tolerant (CP) database. It ensures high availability (HA) for most practical situations even while remaining strongly consistent. While this may seem to be a violation of the CAP theorem, that is not the case. CAP treats availability as a binary option whereas YugabyteDB treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available).
 
 - During network partitions or node failures, the replicas of the impacted tablets (whose leaders got partitioned out or lost) form two groups: a majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). The replicas in the majority partition elect a new leader among themselves in a matter of seconds and are ready to accept new writes after the leader election completes. For these few seconds till the new leader is elected, the DB is unable to accept new writes given the design choice of prioritizing consistency over availability. All the leader replicas in the minority partition lose their leadership during these few seconds and hence become followers.
 
@@ -209,28 +211,21 @@ On one hand, the YugabyteDB storage and replication architecture is similar to t
 
 A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugabyteDB](https://blog.yugabyte.com/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db/) goes through the above tradeoffs in more detail.
 
-## Why is a group of YugabyteDB nodes called a universe instead of the more commonly used term clusters?
-
-A YugabyteDB universe packs a lot more functionality than what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
-
-- A YugabyteDB universe can move into new machines, availability zones (AZs), regions, and data centers in an online fashion, while these primitives are not associated with a traditional cluster.
-
-- It is very easy to set up multiple asynchronous replicas with just a few clicks (in the Yugabyte Platform). This is built into the universe as a first-class operation with bootstrapping of the remote replica and all the operational aspects of running async replicas being supported natively. In the case of traditional clusters, the source and the async replicas are independent clusters. The user is responsible for maintaining these separate clusters as well as operating the replication logic.
-
-- Failover to asynchronous replicas as the primary data and failback once the original is up and running are both natively supported within a universe.
 
 ## How many major releases YugabyteDB has had so far?
 
-YugabyteDB has had 6 major releases.
+YugabyteDB has had 7 major releases.
 
-- [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017
-- [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018
-- [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018
-- [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019
-- [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019
+- [v2.1](https://blog.yugabyte.com/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020
 - [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019
+- [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019
+- [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019
+- [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018
+- [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018
+- [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017
 
-The next major release is the v2.1 release in Winter 2020.
+
+The next major release is the v2.2 release in Summer 2020.
 
 ## Can I deploy YugabyteDB to production?
 
@@ -283,13 +278,20 @@ For a more detailed comparison between YugabyteDB and Yugabyte Platform, see [Ad
 
 See [Compare YugabyteDB to other databases](../../comparisons/)
 
+- [Amazon Aurora](../../comparisons/amazon-aurora/)
 - [Google Cloud Spanner](../../comparisons/google-spanner/)
-- [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/)
 - [MongoDB](../../comparisons/mongodb/)
-- [FoundationDB](../../comparisons/foundationdb/)
-- [Amazon DynamoDB](../../comparisons/amazon-dynamodb/)
-- [Apache Cassandra](../../comparisons/cassandra/)
-- [Azure Cosmos DB](../../comparisons/azure-cosmos/)
+- [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/)
+
+## Why is a group of YugabyteDB nodes called a universe instead of the more commonly used term clusters?
+
+A YugabyteDB universe packs a lot more functionality than what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
+
+- A YugabyteDB universe can move into new machines, availability zones (AZs), regions, and data centers in an online fashion, while these primitives are not associated with a traditional cluster.
+
+- It is very easy to set up multiple asynchronous replicas with just a few clicks (in the Yugabyte Platform). This is built into the universe as a first-class operation with bootstrapping of the remote replica and all the operational aspects of running async replicas being supported natively. In the case of traditional clusters, the source and the async replicas are independent clusters. The user is responsible for maintaining these separate clusters as well as operating the replication logic.
+
+- Failover to asynchronous replicas as the primary data and failback once the original is up and running are both natively supported within a universe.
 
 ## What is the difference between `ysqlsh` and `psql`?
 

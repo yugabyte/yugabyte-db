@@ -78,6 +78,10 @@ bool PgTableDesc::IsTransactional() const {
   return table_->schema().table_properties().is_transactional();
 }
 
+const std::vector<std::string>& PgTableDesc::GetPartitions() const {
+  return table_->GetPartitions();
+}
+
 const client::YBTableName& PgTableDesc::table_name() const {
   return table_->name();
 }
@@ -94,23 +98,23 @@ const size_t PgTableDesc::num_columns() const {
   return table_->schema().num_columns();
 }
 
-client::YBPgsqlReadOp* PgTableDesc::NewPgsqlSelect() {
+std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSelect() {
   return table_->NewPgsqlSelect();
 }
 
-client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlInsert() {
+std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlInsert() {
   return table_->NewPgsqlInsert();
 }
 
-client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlUpdate() {
+std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlUpdate() {
   return table_->NewPgsqlUpdate();
 }
 
-client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlDelete() {
+std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlDelete() {
   return table_->NewPgsqlDelete();
 }
 
-client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlTruncateColocated() {
+std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlTruncateColocated() {
   return table_->NewPgsqlTruncateColocated();
 }
 

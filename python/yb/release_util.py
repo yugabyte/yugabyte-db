@@ -25,8 +25,8 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 class ReleaseUtil(object):
     """Packages a YugaByte package with the appropriate file naming schema."""
-    def __init__(self, repository, build_type, distribution_path, force, commit,
-                 build_root):
+    def __init__(self, repository, build_type, distribution_path, force, commit, build_root,
+                 package_name):
         self.repo = repository
         self.build_type = build_type
         self.build_path = os.path.join(self.repo, 'build')
@@ -41,7 +41,7 @@ class ReleaseUtil(object):
             'Unable to read {0} file'.format(RELEASE_VERSION_FILE)
 
         with open(os.path.join(self.repo, RELEASE_MANIFEST_NAME)) as f:
-            self.release_manifest = json.load(f)
+            self.release_manifest = json.load(f)[package_name]
         assert self.release_manifest is not None, \
             'Unable to read {0} file'.format(RELEASE_MANIFEST_NAME)
         self.build_root = build_root
@@ -55,8 +55,7 @@ class ReleaseUtil(object):
         return self.release_manifest
 
     def get_seed_executable_patterns(self):
-        return self.release_manifest['bin'] + [
-            os.path.join(self.build_root, 'postgres', 'bin', '*')]
+        return self.release_manifest['bin']
 
     def expand_value(self, old_value):
         """

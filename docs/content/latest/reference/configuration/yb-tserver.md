@@ -446,6 +446,14 @@ Specifies the port for monitoring YCQL metrics.
 
 Default: `12000`
 
+
+##### --cql_table_is_transactional_by_default
+
+Specifies if YCQL tables are created with transactions enabled by default.
+
+Default: `false`
+
+
 ---
 
 ### YEDIS options

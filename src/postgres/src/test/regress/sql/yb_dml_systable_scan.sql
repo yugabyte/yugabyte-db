@@ -11,18 +11,25 @@ EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_d
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid, objid, objsubid
 		LIMIT 2;
+
+-- We cannot run the following SELECT on test because different platforms have different system
+-- catalog data.
 --
-SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
-		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
-		ORDER BY classid, objid, objsubid
-		LIMIT 2;
+-- SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
+--		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
+--		ORDER BY classid, objid, objsubid
+--		LIMIT 2;
+
 -- Test reverse scan.
 EXPLAIN SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid DESC, objid DESC, objsubid DESC
 		LIMIT 2;
+
+-- We cannot run the following SELECT on test because different platforms have different system
+-- catalog data.
 --
-SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
-		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
-		ORDER BY classid DESC, objid DESC, objsubid DESC
-		LIMIT 2;
+-- SELECT classid, objid, objsubid, refclassid, refobjid, deptype FROM pg_depend
+--		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
+--		ORDER BY classid DESC, objid DESC, objsubid DESC
+--		LIMIT 2;

@@ -88,9 +88,8 @@ cqlsh:example> SELECT * FROM employees;
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[`UPDATE`](../dml_update)
-[`DELETE`](../dml_delete)
-[Other CQL Statements](..)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`INSERT`](../dml_insert)
+- [`SELECT`](../dml_select)
+- [`UPDATE`](../dml_update)
+- [`DELETE`](../dml_delete)

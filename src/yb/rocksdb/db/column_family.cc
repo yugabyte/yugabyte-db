@@ -110,7 +110,7 @@ void GetIntTblPropCollectorFactory(
   auto& collector_factories = cf_options.table_properties_collector_factories;
   for (size_t i = 0; i < cf_options.table_properties_collector_factories.size();
        ++i) {
-    assert(collector_factories[i]);
+    DCHECK(collector_factories[i]);
     int_tbl_prop_collector_factories->emplace_back(
         new UserKeyTablePropertiesCollectorFactory(collector_factories[i]));
   }
@@ -208,7 +208,7 @@ ColumnFamilyOptions SanitizeOptions(const DBOptions& db_options,
              &result.max_write_buffer_number_to_maintain);
 
   if (!result.prefix_extractor) {
-    assert(result.memtable_factory);
+    DCHECK(result.memtable_factory);
     Slice name = result.memtable_factory->Name();
     if (name.compare("HashSkipListRepFactory") == 0 ||
         name.compare("HashLinkListRepFactory") == 0) {
@@ -304,12 +304,12 @@ SuperVersion* SuperVersion::Ref() {
 bool SuperVersion::Unref() {
   // fetch_sub returns the previous value of ref
   uint32_t previous_refs = refs.fetch_sub(1);
-  assert(previous_refs > 0);
+  DCHECK_GT(previous_refs, 0);
   return previous_refs == 1;
 }
 
 void SuperVersion::Cleanup() {
-  assert(refs.load(std::memory_order_relaxed) == 0);
+  DCHECK_EQ(refs.load(std::memory_order_relaxed), 0);
   imm->Unref(&to_delete);
   MemTable* m = mem->Unref();
   if (m != nullptr) {
@@ -456,8 +456,8 @@ ColumnFamilyData::~ColumnFamilyData() {
 
   // It would be wrong if this ColumnFamilyData is in flush_queue_ or
   // compaction_queue_ and we destroyed it
-  assert(!pending_flush_);
-  assert(!pending_compaction_);
+  DCHECK(!pending_flush_);
+  DCHECK(!pending_compaction_);
 
   if (super_version_ != nullptr) {
     // Release SuperVersion reference kept in ThreadLocalPtr.
@@ -468,7 +468,7 @@ ColumnFamilyData::~ColumnFamilyData() {
 
     bool is_last_reference __attribute__((unused));
     is_last_reference = super_version_->Unref();
-    assert(is_last_reference);
+    DCHECK(is_last_reference);
     super_version_->Cleanup();
     delete super_version_;
     super_version_ = nullptr;
@@ -476,9 +476,9 @@ ColumnFamilyData::~ColumnFamilyData() {
 
   if (dummy_versions_ != nullptr) {
     // List must be empty
-    assert(dummy_versions_->TEST_Next() == dummy_versions_);
+    DCHECK_EQ(dummy_versions_->TEST_Next(), dummy_versions_);
     bool deleted __attribute__((unused)) = dummy_versions_->Unref();
-    assert(deleted);
+    DCHECK(deleted);
   }
 
   if (mem_ != nullptr) {
@@ -493,7 +493,7 @@ ColumnFamilyData::~ColumnFamilyData() {
 
 void ColumnFamilyData::SetDropped() {
   // can't drop default CF
-  assert(id_ != 0);
+  DCHECK_NE(id_, 0);
   dropped_ = true;
   write_controller_token_.reset();
 
@@ -556,7 +556,7 @@ std::unique_ptr<WriteControllerToken> SetupDelay(
 int GetL0ThresholdSpeedupCompaction(int level0_file_num_compaction_trigger,
                                     int level0_slowdown_writes_trigger) {
   // SanitizeOptions() ensures it.
-  assert(level0_file_num_compaction_trigger <= level0_slowdown_writes_trigger);
+  DCHECK_LE(level0_file_num_compaction_trigger, level0_slowdown_writes_trigger);
 
   const int64_t level0_file_num_compaction_trigger64 = level0_file_num_compaction_trigger;
   const int64_t level0_slowdown_writes_trigger64 = level0_slowdown_writes_trigger;
@@ -703,7 +703,7 @@ uint64_t ColumnFamilyData::GetTotalSstFilesSize() const {
 
 MemTable* ColumnFamilyData::ConstructNewMemtable(
     const MutableCFOptions& mutable_cf_options, SequenceNumber earliest_seq) {
-  assert(current() != nullptr);
+  DCHECK_ONLY_NOTNULL(current());
   return new MemTable(*internal_comparator_, ioptions_, mutable_cf_options,
                       write_buffer_, earliest_seq);
 }
@@ -783,7 +783,7 @@ SuperVersion* ColumnFamilyData::GetThreadLocalSuperVersion(
   // (2) the Swap above (always) installs kSVInUse, ThreadLocal storage
   // should only keep kSVInUse before ReturnThreadLocalSuperVersion call
   // (if no Scrape happens).
-  assert(ptr != SuperVersion::kSVInUse);
+  DCHECK_NE(ptr, SuperVersion::kSVInUse);
   sv = static_cast<SuperVersion*>(ptr);
   if (sv == SuperVersion::kSVObsolete ||
       sv->version_number != super_version_number_.load()) {
@@ -805,12 +805,12 @@ SuperVersion* ColumnFamilyData::GetThreadLocalSuperVersion(
 
     delete sv_to_delete;
   }
-  assert(sv != nullptr);
+  DCHECK_ONLY_NOTNULL(sv);
   return sv;
 }
 
 bool ColumnFamilyData::ReturnThreadLocalSuperVersion(SuperVersion* sv) {
-  assert(sv != nullptr);
+  DCHECK_ONLY_NOTNULL(sv);
   // Put the SuperVersion back
   void* expected = SuperVersion::kSVInUse;
   if (local_sv_->CompareAndSwap(static_cast<void*>(sv), expected)) {
@@ -822,7 +822,7 @@ bool ColumnFamilyData::ReturnThreadLocalSuperVersion(SuperVersion* sv) {
     // ThreadLocal scrape happened in the process of this GetImpl call (after
     // thread local Swap() at the beginning and before CompareAndSwap()).
     // This means the SuperVersion it holds is obsolete.
-    assert(expected == SuperVersion::kSVObsolete);
+    DCHECK_EQ(expected, SuperVersion::kSVObsolete);
   }
   return false;
 }
@@ -860,7 +860,7 @@ void ColumnFamilyData::ResetThreadLocalSuperVersions() {
   autovector<void*> sv_ptrs;
   local_sv_->Scrape(&sv_ptrs, SuperVersion::kSVObsolete);
   for (auto ptr : sv_ptrs) {
-    assert(ptr);
+    DCHECK(ptr);
     if (ptr == SuperVersion::kSVInUse) {
       continue;
     }
@@ -920,7 +920,7 @@ ColumnFamilySet::~ColumnFamilySet() {
 }
 
 ColumnFamilyData* ColumnFamilySet::GetDefault() const {
-  assert(default_cfd_cache_ != nullptr);
+  DCHECK_ONLY_NOTNULL(default_cfd_cache_);
   return default_cfd_cache_;
 }
 
@@ -938,7 +938,7 @@ ColumnFamilyData* ColumnFamilySet::GetColumnFamily(const std::string& name)
   auto cfd_iter = column_families_.find(name);
   if (cfd_iter != column_families_.end()) {
     auto cfd = GetColumnFamily(cfd_iter->second);
-    assert(cfd != nullptr);
+    DCHECK_ONLY_NOTNULL(cfd);
     return cfd;
   } else {
     return nullptr;
@@ -963,7 +963,7 @@ size_t ColumnFamilySet::NumberOfColumnFamilies() const {
 ColumnFamilyData* ColumnFamilySet::CreateColumnFamily(
     const std::string& name, uint32_t id, Version* dummy_versions,
     const ColumnFamilyOptions& options) {
-  assert(column_families_.find(name) == column_families_.end());
+  DCHECK_EQ(column_families_.count(name), 0);
   ColumnFamilyData* new_cfd =
       new ColumnFamilyData(id, name, dummy_versions, table_cache_,
                            write_buffer_, options, db_options_,
@@ -1000,7 +1000,7 @@ void ColumnFamilySet::FreeDeadColumnFamilies() {
 // under a DB mutex AND from a write thread
 void ColumnFamilySet::RemoveColumnFamily(ColumnFamilyData* cfd) {
   auto cfd_iter = column_family_data_.find(cfd->GetID());
-  assert(cfd_iter != column_family_data_.end());
+  DCHECK(cfd_iter != column_family_data_.end());
   column_family_data_.erase(cfd_iter);
   column_families_.erase(cfd->GetName());
 }
@@ -1018,7 +1018,7 @@ bool ColumnFamilyMemTablesImpl::Seek(uint32_t column_family_id) {
 }
 
 uint64_t ColumnFamilyMemTablesImpl::GetLogNumber() const {
-  assert(current_ != nullptr);
+  DCHECK_ONLY_NOTNULL(current_);
   return current_->GetLogNumber();
 }
 
@@ -1028,7 +1028,7 @@ MemTable* ColumnFamilyMemTablesImpl::GetMemTable() const {
 }
 
 ColumnFamilyHandle* ColumnFamilyMemTablesImpl::GetColumnFamilyHandle() {
-  assert(current_ != nullptr);
+  DCHECK_ONLY_NOTNULL(current_);
   return &handle_;
 }
 

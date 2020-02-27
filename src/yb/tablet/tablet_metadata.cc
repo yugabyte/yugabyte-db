@@ -262,19 +262,11 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
     wal_top_dir = wal_root_dirs[rand.Uniform(wal_root_dirs.size())];
   }
 
-  auto table_dir = Substitute("table-$0", table_id);
-  auto tablet_dir = Substitute("tablet-$0", raft_group_id);
-  string wal_dir;
-  string rocksdb_dir;
-
-  if (colocated) {
-    wal_dir = JoinPathSegments(wal_top_dir, tablet_dir);
-    rocksdb_dir = JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName, tablet_dir);
-  } else {
-    auto wal_table_top_dir = JoinPathSegments(wal_top_dir, table_dir);
-    wal_dir = JoinPathSegments(wal_table_top_dir, tablet_dir);
-    rocksdb_dir = JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName, table_dir, tablet_dir);
-  }
+  const string table_dir_name = Substitute("table-$0", table_id);
+  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
+  const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
+  const string rocksdb_dir = JoinPathSegments(
+      data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager,
                                                        table_id,
@@ -467,7 +459,8 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
       fs_manager_(fs_manager),
       wal_dir_(wal_dir),
       tablet_data_state_(tablet_data_state),
-      colocated_(colocated) {
+      colocated_(colocated),
+      cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()) {
   CHECK(schema.has_column_ids());
   CHECK_GT(schema.num_key_columns(), 0);
   kv_store_.tables.emplace(
@@ -542,6 +535,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     } else {
       tombstone_last_logged_opid_ = OpId();
     }
+    cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
   }
 
   return Status::OK();
@@ -624,6 +618,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
 
   pb.set_primary_table_id(primary_table_id_);
   pb.set_colocated(colocated_);
+  pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
 
   superblock->Swap(&pb);
 }
@@ -762,6 +757,19 @@ uint32_t RaftGroupMetadata::wal_retention_secs() const {
   return it->second->wal_retention_secs;
 }
 
+Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_index) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    cdc_min_replicated_index_ = cdc_min_replicated_index;
+  }
+  return Flush();
+}
+
+int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return cdc_min_replicated_index_;
+}
+
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
   std::lock_guard<MutexType> lock(data_mutex_);
   tablet_data_state_ = state;
@@ -785,11 +793,12 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock));
   metadata->raft_group_id_ = raft_group_id;
-  const auto tablet_dir = Substitute("tablet-$0", raft_group_id);
-  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir);
+  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
+  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir_name);
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
-  metadata->kv_store_.rocksdb_dir = JoinPathSegments(DirName(kv_store_.rocksdb_dir), tablet_dir);
+  metadata->kv_store_.rocksdb_dir = JoinPathSegments(
+      DirName(kv_store_.rocksdb_dir), tablet_dir_name);
   metadata->partition_ = partition;
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
@@ -798,8 +807,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
 
 namespace {
 // MigrateSuperblockForDXXXX functions are only needed for backward compatibility with
-// YugaByte DB versions which don't have changes from DXXXX revision.
-// Each MigrateSuperblockForDXXXX could be removed after all YugaByte DB installations are
+// YugabyteDB versions which don't have changes from DXXXX revision.
+// Each MigrateSuperblockForDXXXX could be removed after all YugabyteDB installations are
 // upgraded to have revision DXXXX.
 
 CHECKED_STATUS MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {

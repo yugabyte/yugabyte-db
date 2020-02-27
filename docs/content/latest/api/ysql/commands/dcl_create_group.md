@@ -56,7 +56,6 @@ yugabyte=# CREATE GROUP SysAdmin WITH CREATEDB CREATEROLE;
 
 ## See also
 
-[`CREATE ROLE`](../dcl_create_role)
-[`GRANT`](../dcl_grant)
-[`REVOKE`](../dcl_revoke)
-[Other YSQL Statements](..)
+- [`CREATE ROLE`](../dcl_create_role)
+- [`GRANT`](../dcl_grant)
+- [`REVOKE`](../dcl_revoke)

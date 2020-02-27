@@ -15,8 +15,7 @@
 #ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
 #define YB_YQL_PGGATE_PG_DOC_OP_H_
 
-#include <mutex>
-#include <condition_variable>
+#include <deque>
 
 #include "yb/util/locks.h"
 #include "yb/client/yb_op.h"
@@ -27,6 +26,69 @@ namespace pggate {
 
 YB_STRONGLY_TYPED_BOOL(RequestSent);
 
+//--------------------------------------------------------------------------------------------------
+// PgDocResult represents a batch of rows in ONE reply from tablet servers.
+class PgDocResult {
+ public:
+  // Public types.
+  typedef std::shared_ptr<PgDocResult> SharedPtr;
+  typedef std::shared_ptr<const PgDocResult> SharedPtrConst;
+
+  explicit PgDocResult(string&& data);
+  PgDocResult(string&& data, std::list<int64_t>&& row_orders);
+  ~PgDocResult();
+
+  // Get the order of the next row in this batch.
+  int64_t NextRowOrder();
+
+  // End of this batch.
+  bool is_eof() const {
+    return row_count_ == 0 || row_iterator_.empty();
+  }
+
+  // Get the postgres tuple from this batch.
+  CHECKED_STATUS WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
+                              int64_t *row_order);
+
+  // Get system columns' values from this batch.
+  // Currently, we only have ybctids, but there could be more.
+  CHECKED_STATUS ProcessSystemColumns();
+
+  // Access function to ybctids value in this batch.
+  // Sys columns must be processed before this function is called.
+  const vector<Slice>& ybctids() const {
+    DCHECK(syscol_processed_) << "System columns are not yet setup";
+    return ybctids_;
+  }
+
+  // Row count in this batch.
+  int64_t row_count() const {
+    return row_count_;
+  }
+
+ private:
+  // Data selected from DocDB.
+  string data_;
+
+  // Iterator on "data_" from row to row.
+  Slice row_iterator_;
+
+  // The row number of only this batch.
+  int64_t row_count_ = 0;
+
+  // The indexing order of the row in this batch.
+  // These order values help to identify the row order across all batches.
+  std::list<int64_t> row_orders_;
+
+  // System columns.
+  // - ybctids_ contains pointers to the buffers "data_".
+  // - System columns must be processed before these fields have any meaning.
+  vector<Slice> ybctids_;
+  bool syscol_processed_ = false;
+};
+
+//--------------------------------------------------------------------------------------------------
+
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
  public:
   // Public types.
@@ -36,54 +98,32 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<PgDocOp> UniPtr;
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
-  typedef scoped_refptr<PgDocOp> ScopedRefPtr;
-
   // Constructors & Destructors.
-  explicit PgDocOp(PgSession::ScopedRefPtr pg_session);
+  explicit PgDocOp(const PgSession::ScopedRefPtr& pg_session);
   virtual ~PgDocOp();
 
-  // Set execution control parameters.
-  // When "exec_params" is null, the default setup in PgExecParameters are used.
-  void SetExecParams(const PgExecParameters *exec_params);
+  // Initialize doc operator.
+  virtual void Initialize(const PgExecParameters *exec_params);
+
+  // Currently, only ybctid can be batched.
+  virtual CHECKED_STATUS SetBatchArgYbctid(const vector<Slice> *ybctids,
+                                           const vector<string>& partitions) = 0;
 
   // Execute the op. Return true if the request has been sent and is awaiting the result.
-  virtual Result<RequestSent> Execute();
+  virtual Result<RequestSent> Execute(bool force_non_bufferable = false);
 
-  // Get the result of the op.
-  virtual CHECKED_STATUS GetResult(string *result_set);
+  // Get the result of the op. Empty string is used to indicate end of data.
+  CHECKED_STATUS GetResult(std::list<PgDocResult::SharedPtr> *rowsets);
 
-  // Access functions.
-  Status exec_status() {
-    return exec_status_;
-  }
-  Result<bool> EndOfResult() const;
-
-  int32_t GetRowsAffectedCount() {
-    return rows_affected_count_;
-  }
+  Result<int32_t> GetRowsAffectedCount() const;
 
  protected:
-  virtual void Init();
-  virtual CHECKED_STATUS SendRequest() = 0;
-  virtual void ProcessResponse(const Status& exec_status) = 0;
-
-  // Caching and reading return result.
-  void WriteToCache(client::YBPgsqlOp* yb_op);
-  void ReadFromCache(string* result);
-
-  // Sets exec_status_ based on the operation result.
-  void HandleResponseStatus(client::YBPgsqlOp* op);
-
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
 
   // Operation time. This time is set at the start and must stay the same for the lifetime of the
   // operation to ensure that it is operating on one snapshot.
   uint64_t read_time_ = 0;
-
-  // Result set either from selected or returned targets is cached in a list of strings.
-  // Querying state variables.
-  Status exec_status_ = Status::OK();
 
   // Future object to fetch a response from DocDB after sending a request.
   // Object's valid() method returns false in case no request is sent
@@ -94,15 +134,29 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Whether all requested data by the statement has been received or there's a run-time error.
   bool end_of_data_ = false;
 
-  // Caching state variables.
-  std::list<string> result_cache_;
-
   // Exec control parameters.
   PgExecParameters exec_params_;
 
-  // Number of rows affected by the operation.
-  int32_t rows_affected_count_ = 0;
+  // Caching state variables.
+  std::list<PgDocResult::SharedPtr> result_cache_;
+
+ private:
+  CHECKED_STATUS SendRequest(bool force_non_bufferable);
+
+  CHECKED_STATUS ProcessResponse(const Status& exec_status);
+
+  virtual CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) = 0;
+
+  virtual CHECKED_STATUS ProcessResponseImpl(const Status& exec_status) = 0;
+
+  virtual int32_t GetRowsAffectedCountImpl() const { return 0; }
+
+  // Result set either from selected or returned targets is cached in a list of strings.
+  // Querying state variables.
+  Status exec_status_ = Status::OK();
 };
+
+//--------------------------------------------------------------------------------------------------
 
 class PgDocReadOp : public PgDocOp {
  public:
@@ -113,21 +167,20 @@ class PgDocReadOp : public PgDocOp {
   typedef std::unique_ptr<PgDocReadOp> UniPtr;
   typedef std::unique_ptr<const PgDocReadOp> UniPtrConst;
 
-  typedef scoped_refptr<PgDocReadOp> ScopedRefPtr;
-
   // Constructors & Destructors.
-  PgDocReadOp(PgSession::ScopedRefPtr pg_session,
-              PgTableDesc::ScopedRefPtr table_desc);
+  PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+              size_t num_hash_key_columns,
+              std::unique_ptr<client::YBPgsqlReadOp> read_op);
 
-  client::YBPgsqlReadOp& GetTemplateOp() {
-    return *template_op_;
-  }
+  void Initialize(const PgExecParameters *exec_params) override;
+
+  CHECKED_STATUS SetBatchArgYbctid(const vector<Slice> *ybctids,
+                                   const vector<string>& partitions) override;
 
  private:
   // Process response from DocDB.
-  void Init() override;
-  CHECKED_STATUS SendRequest() override;
-  void ProcessResponse(const Status& exec_status) override;
+  CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) override;
+  CHECKED_STATUS ProcessResponseImpl(const Status& exec_status) override;
 
   // Analyze options and pick the appropriate prefetch limit.
   void SetRequestPrefetchLimit();
@@ -135,7 +188,10 @@ class PgDocReadOp : public PgDocOp {
   // Set the row_mark_type field of our read request based on our exec control parameter.
   void SetRowMark();
 
-  PgTableDesc::ScopedRefPtr table_desc_;
+  // Create batch operators, one per partition.
+  CHECKED_STATUS CreateBatchOps(int partition_count);
+
+  const size_t num_hash_key_columns_;
 
   // Template operation, used to fill in read_ops_ by copying it with custom partition_column_values
   std::unique_ptr<client::YBPgsqlReadOp> template_op_;
@@ -181,7 +237,29 @@ class PgDocReadOp : public PgDocOp {
   // In ReceiveResponse this list is pruned from exhausted operations, remaining are set up to
   // retrieve the next batch of data.
   std::vector<std::shared_ptr<client::YBPgsqlReadOp>> read_ops_;
+
+  // TODO(neil) batch_ops_ vs read_ops_
+  // - batch_ops_ and read_ops_ should be just one list. Instead of erasing item from read_ops_,
+  //   just mark them as inactive. Currently, read_op is erased when done without being reused.
+  // - The field read_ops_ was introduced to support IN operator on hash values where we batch
+  //   by statement, and the read_ops are recreated for each hash permutation. We can change this
+  //   to batch by arguments and therefore merge read_ops_ and batch_ops into one list.
+  //
+  // Array of doc operators, one operator per tablet server. The arguments of the same hash-code
+  // are grouped or batched together in one operator, which is called batch op.
+  std::vector<std::shared_ptr<client::YBPgsqlReadOp>> batch_ops_;
+
+  // The order number of each request when batching arguments.
+  std::vector<std::list<int64_t>> batch_row_orders_;
+
+  // If true, all data for each batch must be collected before processing and returning to users.
+  bool wait_for_batch_completion_ = false;
+
+  // The order number of each argument when the operator sends request in batch fashion.
+  int64_t batch_row_ordering_counter_ = 0;
 };
+
+//--------------------------------------------------------------------------------------------------
 
 class PgDocWriteOp : public PgDocOp {
  public:
@@ -192,52 +270,25 @@ class PgDocWriteOp : public PgDocOp {
   typedef std::unique_ptr<PgDocWriteOp> UniPtr;
   typedef std::unique_ptr<const PgDocWriteOp> UniPtrConst;
 
-  typedef scoped_refptr<PgDocWriteOp> ScopedRefPtr;
-
   // Constructors & Destructors.
-  PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op);
+  PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
+               const PgObjectId& relation_id,
+               std::unique_ptr<client::YBPgsqlWriteOp> write_op);
 
-  // Access function.
-  std::shared_ptr<client::YBPgsqlWriteOp> write_op() {
-    return write_op_;
-  }
-
- private:
-  // Process response from DocDB.
-  CHECKED_STATUS SendRequest() override;
-  virtual void ProcessResponse(const Status& exec_status) override;
-
-  // Operator.
-  std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
-};
-
-// TODO(neil)
-// - Compound operator execute multiple singular ops in one transaction.
-// - All virtual functions should be redefined for this class because default behaviors are for
-//   singular operators.
-class PgDocCompoundOp : public PgDocOp {
- public:
-  // Public types.
-  typedef std::shared_ptr<PgDocCompoundOp> SharedPtr;
-  typedef std::shared_ptr<const PgDocCompoundOp> SharedPtrConst;
-
-  typedef std::unique_ptr<PgDocCompoundOp> UniPtr;
-  typedef std::unique_ptr<const PgDocCompoundOp> UniPtrConst;
-
-  typedef scoped_refptr<PgDocCompoundOp> ScopedRefPtr;
-
-  // Constructors & Destructors.
-  explicit PgDocCompoundOp(PgSession::ScopedRefPtr pg_session);
-
-  Result<RequestSent> Execute() override {
-    return RequestSent::kTrue;
-  }
-  CHECKED_STATUS GetResult(string *result_set) override {
+  // For write ops, we are not yet batching ybctid from index query.
+  CHECKED_STATUS SetBatchArgYbctid(const vector<Slice> *ybctids,
+                                   const vector<string>& partitions) override {
     return Status::OK();
   }
 
  private:
-  std::vector<PgDocOp::SharedPtr> ops_;
+  CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) override;
+  CHECKED_STATUS ProcessResponseImpl(const Status& exec_status) override;
+  int32_t GetRowsAffectedCountImpl() const override { return rows_affected_count_; }
+
+  std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
+  PgObjectId relation_id_;
+  int32_t rows_affected_count_ = 0;
 };
 
 }  // namespace pggate

@@ -35,8 +35,8 @@ PostgreSQL can be thought of as a single-shard database which means it supports 
 
 The following posts cover some more details around how YugabyteDB differs from PostgreSQL.
 
-- [Mapping YugaByte DB Concepts to PostgreSQL and MongoDB](https://blog.yugabyte.com/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
-- [YugaByte DB High Availability & Transactions for PostgreSQL & MongoDB Developers](https://blog.yugabyte.com/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
+- [Mapping YugabyteDB Concepts to PostgreSQL and MongoDB](https://blog.yugabyte.com/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
+- [YugabyteDB High Availability & Transactions for PostgreSQL & MongoDB Developers](https://blog.yugabyte.com/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
 - [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
 - [Distributed PostgreSQL on a Google Spanner Architecture – Storage Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)
 

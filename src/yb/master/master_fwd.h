@@ -38,6 +38,7 @@ class ChangeEncryptionInfoRequestPB;
 class ChangeEncryptionInfoResponsePB;
 class IsEncryptionEnabledRequestPB;
 class IsEncryptionEnabledResponsePB;
+class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 
 } // namespace master

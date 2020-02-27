@@ -16,7 +16,8 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          UPDATE_RELEASE_RESPONSE, GET_ALERTS, GET_ALERTS_SUCCESS, GET_ALERTS_FAILURE,
          API_TOKEN_LOADING, API_TOKEN, API_TOKEN_RESPONSE,
          GET_SCHEDULES, GET_SCHEDULES_RESPONSE, DELETE_SCHEDULE, DELETE_SCHEDULE_RESPONSE,
-         GET_CUSTOMER_USERS, GET_CUSTOMER_USERS_SUCCESS, GET_CUSTOMER_USERS_FAILURE
+         GET_CUSTOMER_USERS, GET_CUSTOMER_USERS_SUCCESS, GET_CUSTOMER_USERS_FAILURE,
+         CREATE_USER, CREATE_USER_RESPONSE
        } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -51,6 +52,7 @@ const INITIAL_STATE = {
   userCertificates: getInitialState({}),
   users: getInitialState([]),
   schedules: getInitialState([]),
+  createUser: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -178,11 +180,22 @@ export default function(state = INITIAL_STATE, action) {
       return setPromiseResponse(state, "deleteConfig", action);
 
     case GET_LOGS:
-      return {...state, yugaware_logs: null};
+      return {
+        ...state,
+        yugaware_logs: null
+      };
     case GET_LOGS_SUCCESS:
-      return {...state, yugaware_logs: action.payload.data.lines.reverse()};
+      return {
+        ...state,
+        yugaware_logs: action.payload.data.lines.reverse(),
+        yugawareLogError: false
+      };
     case GET_LOGS_FAILURE:
-      return {...state, yugaware_logs: null };
+      return {
+        ...state,
+        yugaware_logs: null,
+        yugawareLogError: true
+      };
 
     case GET_CUSTOMER_USERS:
       return setLoadingState(state, "users", getInitialState([]));
@@ -190,6 +203,11 @@ export default function(state = INITIAL_STATE, action) {
       return setSuccessState(state, "users", action.payload.data);
     case GET_CUSTOMER_USERS_FAILURE:
       return setFailureState(state, "users", action.payload);
+
+    case CREATE_USER:
+      return setLoadingState(state, "createUser", {});
+    case CREATE_USER_RESPONSE:
+      return setPromiseResponse(state, "createUser", action);
 
     case GET_RELEASES:
       return setLoadingState(state, "releases", []);

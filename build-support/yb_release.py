@@ -63,6 +63,9 @@ def main():
     parser.add_argument('--no_reinitdb', action='store_true',
                         help='Do not re-create the initial sys catalog snapshot. Useful when '
                              'debugging the release process.')
+    parser.add_argument('--package_name',
+                        default='all',
+                        help='Name of package to release (e.g. cli).')
     add_common_arguments(parser)
     args = parser.parse_args()
 
@@ -118,7 +121,7 @@ def main():
     if not build_type:
         build_type = 'release'
 
-    logging.info("Building YugaByte DB {} build".format(build_type))
+    logging.info("Building YugabyteDB {} build".format(build_type))
 
     build_desc_path = os.path.join(tmp_dir, 'build_descriptor.yaml')
     build_cmd_list = [
@@ -209,7 +212,8 @@ def main():
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
     release_util = ReleaseUtil(
-            YB_SRC_ROOT, build_type, build_target, args.force, args.commit, build_root)
+        YB_SRC_ROOT, build_type, build_target, args.force, args.commit, build_root,
+        args.package_name)
 
     system = platform.system().lower()
     library_packager_args = dict(

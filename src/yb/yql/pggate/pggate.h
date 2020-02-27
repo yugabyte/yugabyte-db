@@ -37,7 +37,6 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/type_mapping.h"
-#include "yb/yql/pggate/pggate_if_cxx_decl.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -59,7 +58,7 @@ class PggateOptions : public yb::server::ServerBaseOptions {
 // Implements support for CAPI.
 class PgApiImpl {
  public:
-  PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count);
+  PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
   virtual ~PgApiImpl();
 
   //------------------------------------------------------------------------------------------------
@@ -273,7 +272,6 @@ class PgApiImpl {
   CHECKED_STATUS DmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
   CHECKED_STATUS DmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
       YBCPgExpr attr_value_end);
-  CHECKED_STATUS DmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
   CHECKED_STATUS DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
       YBCPgExpr *attr_value);
 
@@ -311,8 +309,8 @@ class PgApiImpl {
   //   - API for "group_by_expr"
 
   // Buffer write operations.
-  CHECKED_STATUS StartBufferingWriteOperations();
-  CHECKED_STATUS FlushBufferedWriteOperations();
+  CHECKED_STATUS StartOperationsBuffering();
+  CHECKED_STATUS FlushBufferedOperations();
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -361,6 +359,16 @@ class PgApiImpl {
   // Transaction control.
   PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
 
+  CHECKED_STATUS BeginTransaction();
+  CHECKED_STATUS RestartTransaction();
+  CHECKED_STATUS CommitTransaction();
+  CHECKED_STATUS AbortTransaction();
+  CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
+  CHECKED_STATUS SetTransactionReadOnly(bool read_only);
+  CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
+  CHECKED_STATUS EnterSeparateDdlTxnMode();
+  CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
+
   //------------------------------------------------------------------------------------------------
   // Expressions.
   //------------------------------------------------------------------------------------------------
@@ -393,6 +401,12 @@ class PgApiImpl {
                              const YBCPgTypeEntity *type_entity,
                              PgExpr **op_handle);
   CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
+
+  // Foreign key reference caching.
+  bool ForeignKeyReferenceExists(YBCPgOid table_id, std::string&& ybctid);
+  CHECKED_STATUS CacheForeignKeyReference(YBCPgOid table_id, std::string&& ybctid);
+  CHECKED_STATUS DeleteForeignKeyReference(YBCPgOid table_id, std::string&& ybctid);
+  void ClearForeignKeyReferenceCache();
 
   struct MessengerHolder {
     std::unique_ptr<rpc::SecureContext> security_context;
@@ -430,6 +444,8 @@ class PgApiImpl {
   std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;
+
+  YBCPgCallbacks pg_callbacks_;
 };
 
 }  // namespace pggate

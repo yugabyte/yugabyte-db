@@ -53,10 +53,12 @@ namespace yb {
 
 class HybridTime;
 class OneWayBitmap;
+class PendingOperationCounter;
 class TransactionMetadataPB;
 
 namespace tserver {
 
+class GetTransactionStatusAtParticipantResponsePB;
 class TransactionStatePB;
 
 }
@@ -64,11 +66,12 @@ class TransactionStatePB;
 namespace tablet {
 
 struct TransactionApplyData {
-  int64_t leader_term;
+  int64_t leader_term = -1;
   TransactionId transaction_id;
   consensus::OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
+  bool sealed = false;
   TabletId status_tablet;
 
   std::string ToString() const;
@@ -176,10 +179,11 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
-    int64_t leader_term;
+    int64_t leader_term = -1;
     const tserver::TransactionStatePB& state;
     const consensus::OpId& op_id;
     HybridTime hybrid_time;
+    bool sealed = false;
     AlreadyApplied already_applied;
 
     std::string ToString() const;
@@ -187,12 +191,20 @@ class TransactionParticipant : public TransactionStatusManager {
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
-  void SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds);
+  void SetDB(
+      rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
+      PendingOperationCounter* pending_op_counter);
 
   CHECKED_STATUS CheckAborted(const TransactionId& id);
 
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
+
+  void GetStatus(const TransactionId& transaction_id,
+                 size_t required_num_replicated_batches,
+                 int64_t term,
+                 tserver::GetTransactionStatusAtParticipantResponsePB* response,
+                 rpc::RpcContext* context);
 
   TransactionParticipantContext* context() const;
 

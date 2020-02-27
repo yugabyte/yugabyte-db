@@ -27,7 +27,7 @@ The keys and the corresponding document values are described below.
 
 ### DocDB key
 
-The **keys** in DocDB document model are compound keys consisting of 1 or more **hash organized components**, followed by 0 or more **ordered (range) components**. These components are stored in their data type specific sort order; both ascending and descending sort order is supported for each ordered component of the key.
+The **keys** in DocDB document model are compound keys consisting of one or more **hash organized components**, followed by zero or more **ordered (range) components**. These components are stored in their data type specific sort order; both ascending and descending sort order is supported for each ordered component of the key.
 
 ### DocDB value
 

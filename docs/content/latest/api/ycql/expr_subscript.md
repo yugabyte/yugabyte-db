@@ -1,7 +1,7 @@
 ---
 title: Subscript
-summary: Subscripted Columns
-description: Subscripted Expressions
+summary: Subscripted columns
+description: Subscripted expressions
 menu:
   latest:
     parent: api-cassandra
@@ -32,4 +32,4 @@ cqlsh:yugaspace> UPDATE yugatab SET map_value['key_value'] = 'yuga_string' WHERE
 
 ## See also
 
-[All Expressions](..##expressions)
+- [All Expressions](..##expressions)

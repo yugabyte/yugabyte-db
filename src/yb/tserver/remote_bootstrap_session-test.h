@@ -122,6 +122,7 @@ class RemoteBootstrapTest : public YBTabletTest {
                        0,  // schema_version
                        nullptr, // metric_entity
                        append_pool_.get(),
+                       std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log));
 
     scoped_refptr<MetricEntity> metric_entity =

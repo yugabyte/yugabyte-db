@@ -270,6 +270,20 @@ BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
 ERROR:  FORCE_NULL column "b" not referenced by COPY
 ROLLBACK;
+CREATE TABLE t(k INT PRIMARY KEY, v INT);
+CREATE UNIQUE INDEX ON t(v);
+-- should fail, non unique primary key
+COPY t FROM stdin;
+ERROR:  duplicate key value violates unique constraint "t_pkey"
+-- should fail, non unique index
+COPY t FROM stdin;
+ERROR:  duplicate key value violates unique constraint "t_v_idx"
+SELECT COUNT(*) FROM t;
+ count
+-------
+     0
+(1 row)
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
@@ -277,3 +291,4 @@ DROP TABLE y;
 DROP TABLE testnl;
 DROP TABLE testeoc;
 DROP TABLE testnull;
+DROP TABLE t;

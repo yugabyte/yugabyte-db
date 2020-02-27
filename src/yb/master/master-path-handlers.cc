@@ -983,7 +983,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   VersionInfo::GetVersionInfoPB(&version_info);
 
   // Display the overview information.
-  (*output) << "<h1>YugaByte DB</h1>\n";
+  (*output) << "<h1>YugabyteDB</h1>\n";
 
   (*output) << "<div class='row dashboard-content'>\n";
 

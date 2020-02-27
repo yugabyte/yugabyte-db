@@ -1,4 +1,16 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright 2020 YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package com.yugabyte.yw.controllers;
 
@@ -49,10 +61,8 @@ public class SessionController extends Controller {
   @Inject
   ConfigHelper configHelper;
 
-
   @Inject
   Environment environment;
-
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
@@ -147,7 +157,7 @@ public class SessionController extends Controller {
       }
 
       try {
-        InputStream featureStream = environment.resourceAsStream("sampleFeatureConfig.json");
+        InputStream featureStream = environment.resourceAsStream("ossFeatureConfig.json");
         ObjectMapper mapper = new ObjectMapper();
         JsonNode features = mapper.readTree(featureStream);
         Customer.get(customerUUID).upsertFeatures(features);
@@ -184,14 +194,30 @@ public class SessionController extends Controller {
     if (!multiTenant && customerCount >= 1) {
       return ApiResponse.error(BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
     }
-
     CustomerRegisterFormData data = formData.get();
+    if (customerCount == 0) {
+      return registerCustomer(data, true);
+    } else {
+      TokenAuthenticator tokenAuth = new TokenAuthenticator();
+      if (tokenAuth.superAdminAuthentication(ctx())) {
+        return registerCustomer(data, false);
+      } else {
+        return ApiResponse.error(BAD_REQUEST, "Only Super Admins can register tenant.");
+      }
+    }
+  }
+
+  private Result registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
     try {
       Customer cust = Customer.create(data.code, data.name);
       if (cust == null) {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to register the customer");
       }
-      Users user = Users.create(data.email, data.password, Role.Admin,
+      Role role = Role.Admin;
+      if (isSuper) {
+        role = Role.SuperAdmin;
+      }
+      Users user = Users.create(data.email, data.password, role,
           cust.uuid, /* Primary user*/ true);
       String authToken = user.createAuthToken();
       ObjectNode authTokenJson = Json.newObject();
@@ -236,8 +262,9 @@ public class SessionController extends Controller {
 
   @With(TokenAuthenticator.class)
   public Result getLogs(Integer maxLines) {
-    String logDir = appConfig.getString("application.home", ".");
-    File file = new File(String.format("%s/logs/application.log", logDir));
+    String appHomeDir = appConfig.getString("application.home", ".");
+    String logDir = System.getProperty("log.override.path", String.format("%s/logs", appHomeDir));
+    File file = new File(String.format("%s/application.log", logDir));
     // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time..
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
     try {

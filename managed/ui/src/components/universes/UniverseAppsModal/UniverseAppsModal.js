@@ -44,9 +44,10 @@ export default class UniverseAppsModal extends Component {
       universeDetails.nodeDetailsSet.filter((nodeDetails) => nodeDetails.isTserver) :
       [];
 
-    var getHost = function(host) {
-      return host != "127.0.0.1" ? host : "host.docker.internal";
-    }
+    const getHost = function(host) {
+      return host !== "127.0.0.1" ? host : "host.docker.internal";
+    };
+
     const cassandraHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Live" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
         return getHost(nodeDetail.cloudInfo.private_ip) + ":" + nodeDetail.yqlServerRpcPort;

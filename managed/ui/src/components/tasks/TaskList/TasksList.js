@@ -18,7 +18,7 @@ export default class TasksList extends Component {
     showOrRedirect(currentCustomer.data.features, "menu.tasks");
     const errorPlatformMessage = (
       <div className="oss-unavailable-warning">
-        Only available on YugaByte Platform.
+        Only available on Yugabyte Platform.
       </div>
     );
 

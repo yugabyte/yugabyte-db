@@ -115,28 +115,11 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	YBCBuildState	buildstate;
 	double			heap_tuples = 0;
 
-	PG_TRY();
-	{
-		/* Buffer the inserts into the index for initdb */
-		if (IsBootstrapProcessingMode())
-			YBCStartBufferingWriteOperations();
-
-		/* Do the heap scan */
-		buildstate.isprimary = index->rd_index->indisprimary;
-		buildstate.index_tuples = 0;
-		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
-										 &buildstate, NULL);
-	}
-	PG_CATCH();
-	{
-		if (IsBootstrapProcessingMode())
-			YBCFlushBufferedWriteOperations();
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	if (IsBootstrapProcessingMode())
-		YBCFlushBufferedWriteOperations();
+	/* Do the heap scan */
+	buildstate.isprimary = index->rd_index->indisprimary;
+	buildstate.index_tuples = 0;
+	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
+									 &buildstate, NULL);
 
 	/*
 	 * Return statistics
@@ -284,8 +267,8 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	 * IndexScan(SysTable, Index) --> HeapTuple.
 	 */
 	scan->xs_ctup.t_ybctid = 0;
-	if (ybscan->prepare_params.index_only_scan ||
-			(!ybscan->prepare_params.querying_systable && ybscan->prepare_params.use_secondary_index)) {
+	if (ybscan->prepare_params.index_only_scan)
+	{
 		IndexTuple tuple = ybc_getnext_indextuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{

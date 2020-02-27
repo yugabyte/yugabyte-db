@@ -30,7 +30,7 @@ export AZ2_NODES="<ip2> <ip2> ..."
 export AZ3_NODES="<ip1> <ip2> ..."
 
 # Version of YugabyteDB you plan to install.
-export YB_VERSION=2.0.11.0
+export YB_VERSION=2.1.0.0
 
 # Comma separated list of directories available for YB on each node
 # In this example, it is just 1. But if you have two then the RHS
@@ -181,7 +181,7 @@ done
 
 ### Verify system configuration
 
-Below is an example of setting up these prerequisites in  CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. Full documentation for system configuration is available [here](../manual-deployment/system-config/).
+Below is an example of setting up these prerequisites in CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. For details, see [System configuration](../../manual-deployment/system-config/).
 
 #### Install ntp and other optional packages
 

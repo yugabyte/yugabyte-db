@@ -119,7 +119,7 @@ PggateOptions::PggateOptions() {
 
 //--------------------------------------------------------------------------------------------------
 
-PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
+PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCallbacks callbacks)
     : metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
       mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
@@ -137,7 +137,8 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
                          messenger_holder_.messenger.get()),
       clock_(new server::HybridClock()),
       tserver_shared_object_(InitTServerSharedObject()),
-      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_, tserver_shared_object_.get())) {
+      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_, tserver_shared_object_.get())),
+      pg_callbacks_(callbacks) {
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -178,8 +179,12 @@ Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 Status PgApiImpl::InitSession(const PgEnv *pg_env,
                               const string& database_name) {
   CHECK(!pg_session_);
-  auto session = make_scoped_refptr<PgSession>(
-      client(), database_name, pg_txn_manager_, clock_, tserver_shared_object_.get());
+  auto session = make_scoped_refptr<PgSession>(client(),
+                                               database_name,
+                                               pg_txn_manager_,
+                                               clock_,
+                                               tserver_shared_object_.get(),
+                                               pg_callbacks_);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -631,25 +636,17 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
 }
 
 Status PgApiImpl::DmlBindColumnCondEq(PgStatement *handle, int attr_num, PgExpr *attr_value) {
-  return down_cast<PgSelect*>(handle)->BindColumnCondEq(attr_num, attr_value);
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondEq(attr_num, attr_value);
 }
 
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, PgExpr *attr_value,
     PgExpr *attr_value_end) {
-  return down_cast<PgSelect*>(handle)->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
 }
 
 Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,
     PgExpr **attr_values) {
-  return down_cast<PgSelect*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
-}
-
-Status PgApiImpl::DmlBindIndexColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  return down_cast<PgSelect*>(handle)->BindIndexColumn(attr_num, attr_value);
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {
@@ -673,12 +670,12 @@ Status PgApiImpl::DmlBuildYBTupleId(PgStatement *handle, const PgAttrValueDescri
   return Status::OK();
 }
 
-Status PgApiImpl::StartBufferingWriteOperations() {
-  return pg_session_->StartBufferingWriteOperations();
+Status PgApiImpl::StartOperationsBuffering() {
+  return pg_session_->StartOperationsBuffering();
 }
 
-Status PgApiImpl::FlushBufferedWriteOperations() {
-  return pg_session_->FlushBufferedWriteOperations();
+Status PgApiImpl::FlushBufferedOperations() {
+  return pg_session_->FlushBufferedOperations();
 }
 
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
@@ -688,11 +685,12 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
     case StmtOp::STMT_DELETE:
     case StmtOp::STMT_TRUNCATE:
       {
-        Status status = down_cast<PgDmlWrite *>(handle)->Exec();
+        auto dml_write = down_cast<PgDmlWrite *>(handle);
+        RETURN_NOT_OK(dml_write->Exec(rows_affected_count != nullptr /* force_non_bufferable */));
         if (rows_affected_count) {
-          *rows_affected_count = down_cast<PgDmlWrite *>(handle)->GetRowsAffectedCount();
+          *rows_affected_count = dml_write->GetRowsAffectedCount();
         }
-        return status;
+        return Status::OK();
       }
     default:
       break;
@@ -786,11 +784,23 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
                             const PgObjectId& index_id,
                             const PgPrepareParameters *prepare_params,
                             PgStatement **handle) {
+  // Scenarios:
+  // - Sequential Scan: PgSelect to read from table_id.
+  // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
+  // - Index-Only-Scan: PgSelectIndex directly from secondary index_id.
+  // - IndexScan: Use PgSelectIndex to read from index_id and then PgSelect to read from table_id.
+  //     Note that for SysTable, only one request is send for both table_id and index_id.
   *handle = nullptr;
-  if (prepare_params && prepare_params->index_only_scan && !index_id.IsValid()) {
-    return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
+  PgDmlRead::ScopedRefPtr stmt;
+  if (prepare_params && prepare_params->index_only_scan && prepare_params->use_secondary_index) {
+    if (!index_id.IsValid()) {
+      return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
+    }
+    stmt = make_scoped_refptr<PgSelectIndex>(pg_session_, table_id, index_id, prepare_params);
+  } else {
+    // For IndexScan PgSelect processing will create subquery PgSelectIndex.
+    stmt = make_scoped_refptr<PgSelect>(pg_session_, table_id, index_id, prepare_params);
   }
-  auto stmt = make_scoped_refptr<PgSelect>(pg_session_, table_id, index_id, prepare_params);
 
   RETURN_NOT_OK(stmt->Prepare());
   *handle = stmt.detach();
@@ -802,7 +812,7 @@ Status PgApiImpl::SetForwardScan(PgStatement *handle, bool is_forward_scan) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  down_cast<PgSelect*>(handle)->SetForwardScan(is_forward_scan);
+  down_cast<PgDmlRead*>(handle)->SetForwardScan(is_forward_scan);
   return Status::OK();
 }
 
@@ -811,7 +821,7 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgSelect*>(handle)->Exec(exec_params);
+  return down_cast<PgDmlRead*>(handle)->Exec(exec_params);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -917,6 +927,62 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion() {
   return pg_session_->GetSharedCatalogVersion();
 }
 
+// Transaction Control -----------------------------------------------------------------------------
+Status PgApiImpl::BeginTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->BeginTransaction();
+}
+
+Status PgApiImpl::RestartTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->RestartTransaction();
+}
+
+Status PgApiImpl::CommitTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->CommitTransaction();
+}
+
+Status PgApiImpl::AbortTransaction() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+  return pg_txn_manager_->AbortTransaction();
+}
+
+Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
+  return pg_txn_manager_->SetIsolationLevel(isolation);
+}
+
+Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
+  return pg_txn_manager_->SetReadOnly(read_only);
+}
+
+Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
+  return pg_txn_manager_->SetDeferrable(deferrable);
+}
+
+Status PgApiImpl::EnterSeparateDdlTxnMode() {
+  return pg_txn_manager_->EnterSeparateDdlTxnMode();
+}
+
+Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
+  return pg_txn_manager_->ExitSeparateDdlTxnMode(success);
+}
+
+bool PgApiImpl::ForeignKeyReferenceExists(YBCPgOid table_id, std::string&& ybctid) {
+  return pg_session_->ForeignKeyReferenceExists(table_id, std::move(ybctid));
+}
+
+Status PgApiImpl::CacheForeignKeyReference(YBCPgOid table_id, std::string&& ybctid) {
+  return pg_session_->CacheForeignKeyReference(table_id, std::move(ybctid));
+}
+
+Status PgApiImpl::DeleteForeignKeyReference(YBCPgOid table_id, std::string&& ybctid) {
+  return pg_session_->DeleteForeignKeyReference(table_id, std::move(ybctid));
+}
+
+void PgApiImpl::ClearForeignKeyReferenceCache() {
+  pg_session_->InvalidateForeignKeyReferenceCache();
+}
 
 } // namespace pggate
 } // namespace yb

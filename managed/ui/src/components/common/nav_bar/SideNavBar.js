@@ -6,7 +6,7 @@ import { NavDropdown } from 'react-bootstrap';
 import slackIcon from './images/slack-monochrome-black.svg';
 import './stylesheets/SideNavBar.scss';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { isNotHidden, getFeatureState } from 'utils/LayoutUtils';
+import { isHidden, isNotHidden, getFeatureState } from 'utils/LayoutUtils';
 
 class NavLink extends Component {
   render () {
@@ -38,6 +38,13 @@ export default class SideNavBar extends Component {
 
   render() {
     const { customer: { currentCustomer } } = this.props;
+
+    // Add check for initial state of `currentCustomer` to avoid first load showing the sidebar
+    // Just in case we are on cloud and don't want to cause visual flicker
+    if (getPromiseState(currentCustomer).isInit() || isHidden(currentCustomer.data.features, "menu.sidebar")) {
+      return null;
+    }
+
     return (
       <div className="side-nav-container">
         <div className="left_col" >

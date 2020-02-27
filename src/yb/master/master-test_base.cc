@@ -261,7 +261,7 @@ Status MasterTestBase::DeleteTableSync(const NamespaceName& ns_name, const Table
   IsDeleteTableDoneResponsePB done_resp;
   bool delete_done = false;
 
-  for (int num_retries = 0; num_retries < 10; ++num_retries) {
+  for (int num_retries = 0; num_retries < 30; ++num_retries) {
     RETURN_NOT_OK(proxy_->IsDeleteTableDone(done_req, &done_resp, ResetAndGetController()));
     if (!done_resp.has_done()) {
       return STATUS_FORMAT(

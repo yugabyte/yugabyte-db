@@ -9,14 +9,13 @@ import Select from 'react-select';
 export default class YBFormSelect extends Component {
   handleChange = option => {
     const { form, field, onChange } = this.props;
-    if (isDefinedNotNull(option)) {
+    if (isDefinedNotNull(onChange) && typeof(onChange) === "function") {
+      onChange(this.props, option);
+    } else if (isDefinedNotNull(option)) {
       form.setFieldValue(field.name, option);
     } else {
       form.setFieldValue(field.name, "");
     }
-    if (isDefinedNotNull(onChange)
-      && typeof(onChange) === "function")
-      onChange(this.props, option);
   };
 
   handleBlur = () => {
@@ -25,7 +24,7 @@ export default class YBFormSelect extends Component {
   };
 
   render() {
-    const { field, options } = this.props;
+    const { field } = this.props;
     const customStyles = {
       option: (provided, state) => ({
         ...provided,
@@ -66,7 +65,7 @@ export default class YBFormSelect extends Component {
       singleValue: (provided, state) => {
         const opacity = state.isDisabled ? 0.5 : 1;
         const transition = 'opacity 300ms';
-    
+
         return { ...provided, opacity, transition };
       },
       multiValueRemove: (provided) => ({
@@ -78,7 +77,6 @@ export default class YBFormSelect extends Component {
         margin: "0"
       }),
     };
-    
     return (
       <YBLabel {...this.props} >
         <Select
@@ -88,7 +86,7 @@ export default class YBFormSelect extends Component {
           {...this.props}
           onChange={this.handleChange}
           onBlur={this.handleBlur}
-          value={options ? options.find(option => option.value === field.value) : ''}
+          value={field.value}
           isOptionDisabled={(option) => !!option.disabled}
         />
       </YBLabel>

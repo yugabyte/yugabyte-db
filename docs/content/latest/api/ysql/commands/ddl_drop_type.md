@@ -88,4 +88,3 @@ yugabyte=# DROP TYPE feature_range RESTRICT;
 ## See also
 
 - [`CREATE TYPE`](../ddl_create_type)
-

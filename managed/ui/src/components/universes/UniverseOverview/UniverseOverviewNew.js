@@ -356,7 +356,7 @@ export default class UniverseOverviewNew extends Component {
         body={
           <FlexContainer direction={"column"} >
             <FlexGrow>
-              <div style={{marginBottom: '30px'}}>Load a retail data set and run queries against it.</div>
+              <div style={{marginBottom: '30px'}}>Load a data set and run queries against it.</div>
             </FlexGrow>
             <FlexShrink className={"centered"}>
               <Fragment>
@@ -372,9 +372,9 @@ export default class UniverseOverviewNew extends Component {
                   cancelLabel={"Close"}
                   showCancelButton={true}
                 >
-                  <div>Create a sample retail database:</div>
+                  <div>Query a sample database:</div>
                   <YBCodeBlock>
-                    yugabyted demo
+                    yugabyted demo connect
                   </YBCodeBlock>
                   <div>Explore YSQL at <a href="https://docs.yugabyte.com/latest/quick-start/explore-ysql/">here</a>.</div>
                 </YBModal>

@@ -3,12 +3,13 @@ title: Contribute to the core database
 linkTitle: Core database
 description: Contribute to the core database
 image: /images/section_icons/index/quick_start.png
-headcontent: Participate in improving YugabyteDB
+headcontent: How to contribute code to the core database
 type: page
-section: CONTRIBUTE
+section: CONTRIBUTOR GUIDES
 menu:
   latest:
-    identifier: contribute-db-core
+    identifier: core-database
+    parent: contribute
     weight: 2910
 ---
 
@@ -16,23 +17,23 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="checklist/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
-        <div class="title">Contribution checklist</div>
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Contributing checklist</div>
       </div>
       <div class="body">
-        Review before starting your contributions.
+        Checklist to review before starting your contribution.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="build-from-src/">
+    <a class="section-link icon-offset" href="build-from-src-macos/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/tunable_reads.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Build from source</div>
       </div>
       <div class="body">
-        Build binaries from source.
+        Building binaries from source.
       </div>
     </a>
   </div>
@@ -44,7 +45,7 @@ menu:
         <div class="title">Run tests</div>
       </div>
       <div class="body">
-        Run tests and view log outputs.
+        Running the various tests.
       </div>
     </a>
   </div>

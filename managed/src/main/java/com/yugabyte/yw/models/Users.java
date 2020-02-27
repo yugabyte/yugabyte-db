@@ -51,6 +51,9 @@ public class Users extends Model {
 
     @EnumValue("ReadOnly")
     ReadOnly,
+
+    @EnumValue("SuperAdmin")
+    SuperAdmin
   }
 
 
@@ -272,6 +275,13 @@ public class Users extends Model {
    */
   public JsonNode getFeatures() {
     return features == null ? Json.newObject() : features;
+  }
+
+  /**
+   * Set features for this User.
+   */
+  public void setFeatures(JsonNode input) {
+    this.features = input;
   }
 
   /**

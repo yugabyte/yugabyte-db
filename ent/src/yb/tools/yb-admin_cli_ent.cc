@@ -238,6 +238,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "write_universe_key_to_file", " <key_id> <file_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->WriteUniverseKeyToFile(args[2], args[3]),
+                              "Unable to write key to file");
+        return Status::OK();
+      });
+
+  Register(
       "create_cdc_stream", " <table_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3) {
@@ -251,7 +262,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "setup_universe_replication",
-      " <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>",
+      " <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>"
+          " [comma_separated_list_of_producer_bootstrap_ids]"  ,
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 5) {
           return ClusterAdminCli::kInvalidArguments;
@@ -264,9 +276,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         vector<string> table_uuids;
         boost::split(table_uuids, args[4], boost::is_any_of(","));
 
+        vector<string> producer_bootstrap_ids;
+        if (args.size() == 6) {
+          boost::split(producer_bootstrap_ids, args[5], boost::is_any_of(","));
+        }
+
         RETURN_NOT_OK_PREPEND(client->SetupUniverseReplication(producer_uuid,
                                                                producer_addresses,
-                                                               table_uuids),
+                                                               table_uuids,
+                                                               producer_bootstrap_ids),
                               Substitute("Unable to setup replication from universe $0",
                                          producer_uuid));
         return Status::OK();
@@ -286,6 +304,39 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "alter_universe_replication",
+      " <producer_universe_uuid>"
+      " {set_master_addresses <producer_master_addresses,...> |"
+      "  add_table <table_id>[, <table_id>...] | remove_table <table_id>[, <table_id>...] }",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 5) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string producer_uuid = args[2];
+        vector<string> master_addresses;
+        vector<string> add_tables;
+        vector<string> remove_tables;
+
+        vector<string> newElem, *lst;
+        if (args[3] == "set_master_addresses") lst = &master_addresses;
+        else if (args[3] == "add_table") lst = &add_tables;
+        else if (args[3] == "remove_table") lst = &remove_tables;
+        else
+          return ClusterAdminCli::kInvalidArguments;
+
+        boost::split(newElem, args[4], boost::is_any_of(","));
+        lst->insert(lst->end(), newElem.begin(), newElem.end());
+
+        RETURN_NOT_OK_PREPEND(client->AlterUniverseReplication(producer_uuid,
+                                                               master_addresses,
+                                                               add_tables,
+                                                               remove_tables),
+            Substitute("Unable to alter replication for universe $0", producer_uuid));
+
+        return Status::OK();
+      });
+
+  Register(
       "set_universe_replication_enabled", " <producer_universe_uuid> <0|1>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 4) {
@@ -297,6 +348,22 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             Substitute("Unable to $0 replication for universe $1",
                 is_enabled ? "enable" : "disable",
                 producer_id));
+        return Status::OK();
+      });
+
+
+  Register(
+      "bootstrap_cdc_producer", " <comma_separated_list_of_table_ids>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        vector<string> table_ids;
+        boost::split(table_ids, args[2], boost::is_any_of(","));
+
+        RETURN_NOT_OK_PREPEND(client->BootstrapProducer(table_ids),
+                              "Unable to bootstrap CDC producer");
         return Status::OK();
       });
 }

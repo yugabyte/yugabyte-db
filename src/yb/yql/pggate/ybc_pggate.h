@@ -19,7 +19,6 @@
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/pg_if_c_decl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,7 +26,7 @@ extern "C" {
 
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
-void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count);
+void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
 void YBCDestroyPgGate();
 
 //--------------------------------------------------------------------------------------------------
@@ -250,13 +249,19 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and constants whose values can be updated for each
 //     execution of the same allocated statement.
+//
+// NOTE ON KEY BINDING
+// - For Sequential Scan, the target columns of the bind are those in the main table.
+// - For Primary Scan, the target columns of the bind are those in the main table.
+// - For Index Scan, the target columns of the bind are those in the index table.
+//   The index-scan will use the bind to find base-ybctid which is then use to read data from
+//   the main-table, and therefore the bind-arguments are not associated with columns in main table.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end);
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
     YBCPgExpr *attr_values);
-YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
@@ -290,8 +295,8 @@ YBCStatus YBCPgDmlBuildYBTupleId(YBCPgStatement handle, const YBCPgAttrValueDesc
 
 
 // Buffer write operations.
-YBCStatus YBCPgStartBufferingWriteOperations();
-YBCStatus YBCPgFlushBufferedWriteOperations();
+YBCStatus YBCPgStartOperationsBuffering();
+YBCStatus YBCPgFlushBufferedOperations();
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
@@ -375,6 +380,18 @@ YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
                            const YBCPgTypeEntity *type_entity,
                            YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
+
+// Referential Integrity Check Caching.
+// Check if foreign key reference exists in cache.
+bool YBCForeignKeyReferenceExists(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size);
+
+// Add an entry to foreign key reference cache.
+YBCStatus YBCCacheForeignKeyReference(YBCPgOid table_id, const char* ybctid, int64_t ybctid_size);
+
+// Delete an entry from foreign key reference cache.
+YBCStatus YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_id, uint64_t ybctid);
+
+void ClearForeignKeyReferenceCache();
 
 bool YBCIsInitDbModeEnvVarSet();
 
