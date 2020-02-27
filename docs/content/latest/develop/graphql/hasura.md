@@ -19,7 +19,7 @@ Follow the steps below to learn how easily you can begin using the Hasura GraphQ
 
 ### Install and start YugabyteDB
 
-To use the Hasura GraphQL Engine with YugabyteDB, you need to set the `yb-tserver` option `--ysql_suppress_unsupported_error` to `true` so that errors on the use of unsupported SQL statements and return only warnings instead.
+To use the Hasura GraphQL Engine with YugabyteDB, you need to set the `yb-tserver` option `--ysql_suppress_unsupported_error` to `true` so that errors on the use of unsupported SQL statements are suppressed and only raise warnings instead.
 
 If you're using `yb-ctl` to start your cluster, you can add the option like this:
 
