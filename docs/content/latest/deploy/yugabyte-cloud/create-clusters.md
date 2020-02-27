@@ -21,7 +21,7 @@ having to get deep into details you do not want to focus on.
 
 When you register for your Yugabyte Cloud account, you start at the [Free Tier level](../free-tier/) and see the following:
 
-![Build a Free Tier cluster](/images/deploy/yugabyte-cloud/create-free-tier-cluster.png)
+![Build a Free Tier cluster](/images/deploy/yugabyte-cloud/create-free-tier-cluster-new.png)
 
 Follow the steps here to create your first cluster:
 
