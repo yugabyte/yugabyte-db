@@ -89,3 +89,15 @@ The local YSQL opens connected to the remote cluster.
     ```
 
 The local YCQL shell opens connected to the remote cluster.
+
+## Connect using third party clients
+
+Because YugabyteDB is PostgreSQL-compatible, you can use third party PostgreSQL clients to connect to your YugabyteDB clusters in Yugabyte Cloud.
+To create connections to your cluster in Yugabyte Cloud, follow the client's configuration steps for PostgreSQL, but use the values for host, port, username,
+and password available in the Connect dialog for your cluster.
+
+To see the host, port, username, and password required to connect:
+
+1. Click **Clusters** an then click **Go to cluster** for the cluster you want to connect to.
+2. Click **Connect**. The **Connect** dialog appears, displaying the host, port, and user credentials for the default user (`admin`).
+3. To get the user credentials for a different user, click **Database Access** and then click **INFO** for that user.
