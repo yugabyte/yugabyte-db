@@ -58,7 +58,7 @@ YugabyteDB. If you do not have a local installation, see [Install YugabyteDB](..
     yugabyte=#
     ```
 
-The local YSQL opens connected to the remote cluster.
+The local YSQL shell (`ysqlsh`) opens connected to the remote cluster.
 
 ### Connect using the YCQL shell
 
@@ -88,7 +88,7 @@ The local YSQL opens connected to the remote cluster.
     admin@cqlsh>
     ```
 
-The local YCQL shell opens connected to the remote cluster.
+The local YCQL shell (`cqlsh`) opens connected to the remote cluster.
 
 ## Connect using third party clients
 
