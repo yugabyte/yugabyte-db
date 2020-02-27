@@ -10,13 +10,15 @@ menu:
     identifier: free-tier
     parent: yugabyte-cloud
     weight: 640
+isTocNested: true
+showAsideToc: true
 ---
 
 You can use the Free Tier level to get started using YugabyteDB, explore core features, and develop applications.
 
-## Free Tier
+All new accounts start at the Free Tier level that includes enough resources to explore the core features and develop applications. 
 
-All new accounts start at the Free Tier level that includes enough resources to explore the core features and develop applications. Here's what the Free Tier level includes:
+The Free Tier level includes:
 
 - **Cluster:** One three-node YugabyteDB cluster
 - **Storage:** 5 GB

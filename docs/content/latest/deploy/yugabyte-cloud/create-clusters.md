@@ -9,7 +9,9 @@ menu:
   latest:
     identifier: create-clusters
     parent: yugabyte-cloud
-    weight: 640
+    weight: 641
+isTocNested: true
+showAsideToc: true
 ---
 
 asdfadfadf
