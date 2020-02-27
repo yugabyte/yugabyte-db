@@ -392,7 +392,8 @@ class NodeChecker():
 
         errors = []
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database "postgres"')):
+        if not (output.startswith('You are connected to database "postgres"') or
+                "Password for user postgres:"):
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
