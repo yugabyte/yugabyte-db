@@ -16,8 +16,6 @@ showAsideToc: true
 
 You can connect to YugabyteDB clusters in Yugabyte Cloud with YugabyteDB clients and third party clients.
 
-## YugabyteDB CLIs
-
 You can use the following YugabyteDB clients (locally installed) to connect to your remote clusters in Yugabyte Cloud:
 
 - [YSQL shell (`ysqlsh`)](../../../admin/ysqlsh/)
@@ -30,7 +28,9 @@ YugabyteDB. If you do not have a local installation, see [Install YugabyteDB](..
 
 {{< /note >}}
 
-### Connect using the YSQL shell
+## Connect using the YSQL shell (ysqlsh)
+
+Follow these steps to connect to your remote cluster using the [YSQL shell (`ysqlsh`)](../../../admin/ysqlsh/):
 
 1. Log into Yugabyte Cloud and click **Cluster** in the navigation bar. The list of available clusters appears.
 2. Click **Go to cluster** for your cluster. The Yugabyte Cloud Console appears.
@@ -58,9 +58,11 @@ YugabyteDB. If you do not have a local installation, see [Install YugabyteDB](..
     yugabyte=#
     ```
 
-The local YSQL shell (`ysqlsh`) opens connected to the remote cluster.
+The local [YSQL shell (`ysqlsh`)](../../../admin/ysqlsh/) opens connected to the remote cluster.
 
-### Connect using the YCQL shell
+## Connect using the YCQL shell (cqlsh)
+
+Follow these steps to connect to your remote cluster using the [YCQL shell (`cqlsh`)](../../../admin/cqlsh/):
 
 1. Log into Yugabyte Cloud and click **Cluster** in the navigation bar. The list of available clusters appears.
 2. Click **Go to cluster** for your cluster. The Yugabyte Cloud Console appears.
@@ -88,7 +90,7 @@ The local YSQL shell (`ysqlsh`) opens connected to the remote cluster.
     admin@cqlsh>
     ```
 
-The local YCQL shell (`cqlsh`) opens connected to the remote cluster.
+The local [YCQL shell (`cqlsh`)](../../../admin/cqlsh/) opens connected to the remote cluster.
 
 ## Connect using third party clients
 
