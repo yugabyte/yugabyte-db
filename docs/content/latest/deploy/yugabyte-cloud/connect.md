@@ -101,3 +101,13 @@ To see the host, port, username, and password required to connect:
 1. Click **Clusters** an then click **Go to cluster** for the cluster you want to connect to.
 2. Click **Connect**. The **Connect** dialog appears, displaying the host, port, and user credentials for the default user (`admin`).
 3. To get the user credentials for a different user, click **Database Access** and then click **INFO** for that user.
+
+For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/). In that section, configuration steps
+are included for the following tools:
+
+- [DBeaver](../../../tools/dbeaver)
+- [DbSchema](../../../tools/dbschema)
+- [pgAdmin](../../../tools/pgadmin)
+- [SQL Workbench/J](../../../tools/sql-workbench)
+- [TablePlus](../../../tools/tableplus)
+- [Visual Studio Workbench](../../../tools/visualstudioworkbench)
