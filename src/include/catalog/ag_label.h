@@ -19,6 +19,20 @@
 
 #include "postgres.h"
 
+#include "catalog/ag_catalog.h"
+
+#define Anum_ag_label_name 1
+#define Anum_ag_label_graph 2
+#define Anum_ag_label_id 3
+#define Anum_ag_label_kind 4
+#define Anum_ag_label_relation 5
+
+#define Natts_ag_label 5
+
+#define ag_label_relation_id() ag_relation_id("ag_label", "table")
+#define ag_label_name_graph_index_id() \
+    ag_relation_id("ag_label_name_graph_index", "index")
+
 #define LABEL_KIND_VERTEX 'v'
 #define LABEL_KIND_EDGE 'e'
 

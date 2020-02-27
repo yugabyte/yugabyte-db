@@ -43,7 +43,8 @@ OBJS = src/backend/agensgraph.o \
        src/backend/utils/adt/agtype_util.o \
        src/backend/utils/adt/cypher_funcs.o \
        src/backend/utils/adt/graphid.o \
-       src/backend/utils/ag_func.o
+       src/backend/utils/ag_func.o \
+       src/backend/utils/cache/ag_cache.o
 
 EXTENSION = agensgraph
 

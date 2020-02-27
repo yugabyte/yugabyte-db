@@ -22,25 +22,15 @@
 #include "access/htup_details.h"
 #include "access/skey.h"
 #include "access/stratnum.h"
-#include "access/sysattr.h"
 #include "catalog/indexing.h"
 #include "storage/lockdefs.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 
-#include "catalog/ag_catalog.h"
 #include "catalog/ag_graph.h"
-
-#define Anum_ag_graph_name 1
-#define Anum_ag_graph_namespace 2
-
-#define Natts_ag_graph 2
-
-#define ag_graph_relation_id() ag_relation_id("ag_graph", "table")
-#define ag_graph_name_index_id() ag_relation_id("ag_graph_name_index", "index")
+#include "utils/ag_cache.h"
 
 // INSERT INTO ag_catalog.ag_graph VALUES (graph_name, nsp_id)
 Oid insert_graph(const Name graph_name, const Oid nsp_id)
@@ -153,76 +143,32 @@ void update_graph_name(const Name graph_name, const Name new_name)
 Oid get_graph_oid(const char *graph_name)
 {
     NameData graph_name_key;
-    ScanKeyData scan_keys[1];
-    Relation ag_graph;
-    SysScanDesc scan_desc;
-    HeapTuple tuple;
-    Oid graph_oid;
+    graph_cache_data *cache_data;
 
     AssertArg(graph_name);
     namestrcpy(&graph_name_key, graph_name);
-    ScanKeyInit(&scan_keys[0], Anum_ag_graph_name, BTEqualStrategyNumber,
-                F_NAMEEQ, NameGetDatum(&graph_name_key));
 
-    ag_graph = heap_open(ag_graph_relation_id(), AccessShareLock);
-    scan_desc = systable_beginscan(ag_graph, ag_graph_name_index_id(), true,
-                                   NULL, 1, scan_keys);
-
-    tuple = systable_getnext(scan_desc);
-    if (HeapTupleIsValid(tuple))
-    {
-        bool is_null;
-        Datum value;
-
-        value = heap_getsysattr(tuple, ObjectIdAttributeNumber,
-                                RelationGetDescr(ag_graph), &is_null);
-        Assert(!is_null);
-
-        graph_oid = DatumGetObjectId(value);
-    }
+    cache_data = search_graph_name_cache(&graph_name_key);
+    if (cache_data)
+        return cache_data->oid;
     else
-    {
-        graph_oid = InvalidOid;
-    }
-
-    systable_endscan(scan_desc);
-    heap_close(ag_graph, AccessShareLock);
-
-    return graph_oid;
+        return InvalidOid;
 }
 
 Oid get_graph_namespace(const char *graph_name)
 {
     NameData graph_name_key;
-    ScanKeyData scan_keys[1];
-    Relation ag_graph;
-    SysScanDesc scan_desc;
-    HeapTuple tuple;
-    bool is_null;
-    Datum value;
+    graph_cache_data *cache_data;
 
     AssertArg(graph_name);
     namestrcpy(&graph_name_key, graph_name);
-    ScanKeyInit(&scan_keys[0], Anum_ag_graph_name, BTEqualStrategyNumber,
-                F_NAMEEQ, NameGetDatum(&graph_name_key));
 
-    ag_graph = heap_open(ag_graph_relation_id(), AccessShareLock);
-    scan_desc = systable_beginscan(ag_graph, ag_graph_name_index_id(), true,
-                                   NULL, 1, scan_keys);
-
-    tuple = systable_getnext(scan_desc);
-    if (!HeapTupleIsValid(tuple))
+    cache_data = search_graph_name_cache(&graph_name_key);
+    if (!cache_data)
     {
         ereport(ERROR, (errcode(ERRCODE_UNDEFINED_SCHEMA),
                         errmsg("graph \"%s\" does not exist", graph_name)));
     }
 
-    value = fastgetattr(tuple, Anum_ag_graph_namespace,
-                        RelationGetDescr(ag_graph), &is_null);
-    Assert(!is_null);
-
-    systable_endscan(scan_desc);
-    heap_close(ag_graph, AccessShareLock);
-
-    return DatumGetObjectId(value);
+    return cache_data->namespace;
 }

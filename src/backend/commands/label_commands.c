@@ -43,7 +43,7 @@ Oid create_vertex_label(char *graph_name, char *label_name)
     // TODO: generate "id" for label (use sequence)
 
     relation_id = create_table_for_vertex_label(graph_name, label_name);
-    label_oid = insert_label(label_name, get_graph_namespace(graph_name), 0,
+    label_oid = insert_label(label_name, get_graph_oid(graph_name), 0,
                              LABEL_KIND_VERTEX, relation_id);
 
     CommandCounterIncrement();

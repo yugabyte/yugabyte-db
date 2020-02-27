@@ -16,34 +16,17 @@
 
 #include "postgres.h"
 
-#include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
-#include "access/skey.h"
-#include "access/stratnum.h"
-#include "access/sysattr.h"
 #include "catalog/indexing.h"
 #include "storage/lockdefs.h"
 #include "utils/builtins.h"
-#include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 
-#include "catalog/ag_catalog.h"
 #include "catalog/ag_label.h"
-
-#define Anum_ag_label_name 1
-#define Anum_ag_label_graph 2
-#define Anum_ag_label_id 3
-#define Anum_ag_label_kind 4
-#define Anum_ag_label_relation 5
-
-#define Natts_ag_label 5
-
-#define ag_label_relation_id() ag_relation_id("ag_label", "table")
-#define ag_label_name_graph_index_id() \
-    ag_relation_id("ag_label_name_graph_index", "index")
+#include "utils/ag_cache.h"
 
 // INSERT INTO ag_catalog.ag_label
 // VALUES (label_name, label_graph, label_id, label_kind, label_relation)
@@ -92,44 +75,16 @@ Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
 Oid get_label_oid(const char *label_name, Oid label_graph)
 {
     NameData label_name_key;
-    ScanKeyData scan_keys[2];
-    Relation ag_label;
-    SysScanDesc scan_desc;
-    HeapTuple tuple;
-    Oid label_oid;
+    label_cache_data *cache_data;
 
     AssertArg(label_name);
     AssertArg(OidIsValid(label_graph));
 
     namestrcpy(&label_name_key, label_name);
-    ScanKeyInit(&scan_keys[0], Anum_ag_label_name, BTEqualStrategyNumber,
-                F_NAMEEQ, NameGetDatum(&label_name_key));
-    ScanKeyInit(&scan_keys[1], Anum_ag_label_graph, BTEqualStrategyNumber,
-                F_OIDEQ, ObjectIdGetDatum(label_graph));
 
-    ag_label = heap_open(ag_label_relation_id(), AccessShareLock);
-    scan_desc = systable_beginscan(ag_label, ag_label_name_graph_index_id(),
-                                   true, NULL, 2, scan_keys);
-
-    tuple = systable_getnext(scan_desc);
-    if (HeapTupleIsValid(tuple))
-    {
-        bool is_null;
-        Datum value;
-
-        value = heap_getsysattr(tuple, ObjectIdAttributeNumber,
-                                RelationGetDescr(ag_label), &is_null);
-        Assert(!is_null);
-
-        label_oid = DatumGetObjectId(value);
-    }
+    cache_data = search_label_name_graph_cache(&label_name_key, label_graph);
+    if (cache_data)
+        return cache_data->oid;
     else
-    {
-        label_oid = InvalidOid;
-    }
-
-    systable_endscan(scan_desc);
-    heap_close(ag_label, AccessShareLock);
-
-    return label_oid;
+        return InvalidOid;
 }

@@ -19,6 +19,16 @@
 
 #include "postgres.h"
 
+#include "catalog/ag_catalog.h"
+
+#define Anum_ag_graph_name 1
+#define Anum_ag_graph_namespace 2
+
+#define Natts_ag_graph 2
+
+#define ag_graph_relation_id() ag_relation_id("ag_graph", "table")
+#define ag_graph_name_index_id() ag_relation_id("ag_graph_name_index", "index")
+
 Oid insert_graph(const Name graph_name, const Oid nsp_id);
 void delete_graph(const Name graph_name);
 void update_graph_name(const Name graph_name, const Name new_name);
