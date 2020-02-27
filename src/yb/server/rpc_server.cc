@@ -57,7 +57,7 @@ using strings::Substitute;
 using std::unique_ptr;
 using std::make_unique;
 
-DEFINE_string(rpc_bind_addresses, "0.0.0.0",
+DEFINE_string(rpc_bind_addresses, "::",
               "Comma-separated list of addresses to bind to for RPC connections. "
               "Currently, ephemeral ports (i.e. port 0) are not allowed.");
 TAG_FLAG(rpc_bind_addresses, stable);

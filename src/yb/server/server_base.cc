@@ -107,7 +107,7 @@ using strings::Substitute;
 namespace yb {
 namespace server {
 
-static const string kWildCardHostAddress = "0.0.0.0";
+static const string kWildCardHostAddress = "::";
 
 namespace {
 
@@ -596,7 +596,7 @@ std::string TEST_RpcAddress(int index, Private priv) {
 }
 
 string TEST_RpcBindEndpoint(int index, uint16_t port) {
-  return Format("$0:$1", TEST_RpcAddress(index, Private::kTrue), port);
+  return HostPortToString(TEST_RpcAddress(index, Private::kTrue), port);
 }
 
 constexpr int kMaxServers = 20;

@@ -140,24 +140,41 @@ Status HostPort::RemoveAndGetHostPortList(
   return Status::OK();
 }
 
+
+// Accepts entries like: ::1, 127.0.0.1, [::1]:7100, 0.0.0.0:7100, f.q.d.n:7100
 Status HostPort::ParseString(const string& str, uint16_t default_port) {
-  std::pair<string, string> p = strings::Split(str, strings::delimiter::Limit(":", 1));
-
-  // Strip any whitespace from the host.
-  StripWhiteSpace(&p.first);
-
-  // Parse the port.
   uint32_t port;
-  if (p.second.empty() && strcount(str, ':') == 0) {
-    // No port specified.
-    port = default_port;
-  } else if (!SimpleAtoi(p.second, &port) ||
-             port > 65535) {
-    return STATUS(InvalidArgument, "Invalid port", str);
+
+  // We look for the last colon and see if there is a valid port behind it
+  // If it looks like a valid port and there is only one colon, it's host:port
+  // If it looks like a valid port and the string starts with [ and there's a ]
+  // before the last colon, it's an IPv6 address [host]:port
+  // otherwise, just a host.
+  size_t pos = str.rfind(':');
+  if (pos != string::npos && pos > 1 && pos + 1 < str.length()
+      && SimpleAtoi(str.substr(pos + 1), &port)
+      && ((str[0] == '[' && str[pos - 1] == ']')
+          || count(str.begin(), str.end(), ':') == 1)) {
+
+    if (port == 0 || port > numeric_limits<uint16_t>::max()) {
+      return STATUS(InvalidArgument, "Invalid port", str);
+    }
+
+    // Brackets indicate the address for IPv6 urls
+    if (str[0] == '[' && str[pos - 1] == ']') {
+      host_ = str.substr(1, pos - 2);
+      port_ = port;
+      return Status::OK();
+    } else {
+      host_ = str.substr(0, pos);
+      port_ = port;
+      return Status::OK();
+    }
   }
 
-  host_.swap(p.first);
-  port_ = port;
+  // Not in host:port or [host]:port format, assume it's a host
+  host_ = str;
+  port_ = default_port;
   return Status::OK();
 }
 
@@ -184,7 +201,6 @@ const string getaddrinfo_rc_to_string(int rc) {
 Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std::string& host) {
   struct addrinfo hints;
   memset(&hints, 0, sizeof(hints));
-  hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   struct addrinfo* res = nullptr;
   int rc = 0;
@@ -259,7 +275,7 @@ Status HostPort::ParseStrings(const string& comma_sep_addrs,
 }
 
 string HostPort::ToString() const {
-  return Substitute("$0:$1", host_, port_);
+  return HostPortToString(host_, port_);
 }
 
 string HostPort::ToCommaSeparatedString(const std::vector<HostPort>& hostports) {
@@ -271,7 +287,7 @@ string HostPort::ToCommaSeparatedString(const std::vector<HostPort>& hostports) 
 }
 
 bool IsPrivilegedPort(uint16_t port) {
-  return port <= 1024 && port != 0;
+  return port < 1024 && port != 0;
 }
 
 Status ParseAddressList(const std::string& addr_list,
@@ -529,7 +545,11 @@ HostPort HostPort::FromBoundEndpoint(const Endpoint& endpoint) {
 std::string HostPortToString(const std::string& host, int port) {
   DCHECK_GE(port, 0);
   DCHECK_LE(port, 65535);
-  return Format("$0:$1", host, port);
+  if (host.find(':') != string::npos) {
+    return Format("[$0]:$1", host, port);
+  } else {
+    return Format("$0:$1", host, port);
+  }
 }
 
 Status HostToAddresses(

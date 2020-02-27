@@ -106,7 +106,7 @@ static constexpr const char* kDBTypePrefixRedis = "yedis";
 
 
 string FormatHostPort(const HostPortPB& host_port) {
-  return Format("$0:$1", host_port.host(), host_port.port());
+  return HostPortToString(host_port.host(), host_port.port());
 }
 
 string FormatFirstHostPort(

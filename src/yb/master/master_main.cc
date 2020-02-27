@@ -66,7 +66,7 @@ namespace master {
 
 static int MasterMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
-  FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
+  FLAGS_rpc_bind_addresses = strings::Substitute("[::]:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
   FLAGS_default_memory_limit_to_ram_ratio = 0.10;
   // For masters we always want to fsync the WAL files.

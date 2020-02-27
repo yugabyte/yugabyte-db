@@ -98,7 +98,7 @@ Webserver::Webserver(const WebserverOptions& opts, const std::string& server_nam
   : opts_(opts),
     context_(nullptr),
     server_name_(server_name) {
-  string host = opts.bind_interface.empty() ? "0.0.0.0" : opts.bind_interface;
+  string host = opts.bind_interface.empty() ? "[::]" : opts.bind_interface;
   http_address_ = host + ":" + boost::lexical_cast<string>(opts.port);
 }
 
