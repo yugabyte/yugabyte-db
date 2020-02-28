@@ -752,6 +752,168 @@ RelationBuildTupleDesc(Relation relation)
 }
 
 /*
+ * A special version of RelationBuildRuleLock (initializes rewrite rules for a relation).
+ *
+ * Its only difference from the original is that instead of doing a direct scan
+ * on RewriteRelationId, it uses partial query against RULERELNAME cache
+ * (which we pre-initialized in YBPreloadRelCache).
+ */
+static void
+YBRelationBuildRuleLock(Relation relation)
+{
+	MemoryContext rulescxt;
+	MemoryContext oldcxt;
+	Relation	rewrite_desc;
+	TupleDesc	rewrite_tupdesc;
+	RuleLock   *rulelock;
+	int			numlocks;
+	RewriteRule **rules;
+	int			maxlocks;
+
+	/*
+	 * Make the private context.  Assume it'll not contain much data.
+	 */
+	rulescxt = AllocSetContextCreate(CacheMemoryContext,
+									 "relation rules",
+									 ALLOCSET_SMALL_SIZES);
+	relation->rd_rulescxt = rulescxt;
+	MemoryContextCopyAndSetIdentifier(rulescxt,
+									  RelationGetRelationName(relation));
+
+	/*
+	 * allocate an array to hold the rewrite rules (the array is extended if
+	 * necessary)
+	 */
+	maxlocks = 4;
+	rules = (RewriteRule **)
+		MemoryContextAlloc(rulescxt, sizeof(RewriteRule *) * maxlocks);
+	numlocks = 0;
+
+	/*
+	 * # ORIGINAL POSTGRES COMMENT:
+	 *
+	 * open pg_rewrite and begin a scan
+	 *
+	 * Note: since we scan the rules using RewriteRelRulenameIndexId, we will
+	 * be reading the rules in name order, except possibly during
+	 * emergency-recovery operations (ie, IgnoreSystemIndexes). This in turn
+	 * ensures that rules will be fired in name order.
+	 *
+	 *
+	 * # YB NOTE (alex):
+	 *
+	 * Instead of full scan, we're doing partial cache lookup. This cache is also using
+	 * RewriteRelRulenameIndexId, so the order persists.
+	 */
+	rewrite_desc = heap_open(RewriteRelationId, AccessShareLock);
+	rewrite_tupdesc = RelationGetDescr(rewrite_desc);
+
+	CatCList* rewrite_list = SearchSysCacheList1(RULERELNAME,
+												 ObjectIdGetDatum(RelationGetRelid(relation)));
+
+	for (int i = 0; i < rewrite_list->n_members; i++)
+	{
+		HeapTuple       rewrite_tuple = &rewrite_list->members[i]->tuple;
+		Form_pg_rewrite rewrite_form  = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
+
+		bool		isnull;
+		Datum		rule_datum;
+		char		*rule_str;
+		RewriteRule *rule;
+
+		rule = (RewriteRule *) MemoryContextAlloc(rulescxt,
+												  sizeof(RewriteRule));
+
+		rule->ruleId = HeapTupleGetOid(rewrite_tuple);
+
+		rule->event = rewrite_form->ev_type - '0';
+		rule->enabled = rewrite_form->ev_enabled;
+		rule->isInstead = rewrite_form->is_instead;
+
+		/*
+		 * Must use heap_getattr to fetch ev_action and ev_qual.  Also, the
+		 * rule strings are often large enough to be toasted.  To avoid
+		 * leaking memory in the caller's context, do the detoasting here so
+		 * we can free the detoasted version.
+		 */
+		rule_datum = heap_getattr(rewrite_tuple,
+								  Anum_pg_rewrite_ev_action,
+								  rewrite_tupdesc,
+								  &isnull);
+		Assert(!isnull);
+		rule_str = TextDatumGetCString(rule_datum);
+		oldcxt = MemoryContextSwitchTo(rulescxt);
+		rule->actions = (List *) stringToNode(rule_str);
+		MemoryContextSwitchTo(oldcxt);
+		pfree(rule_str);
+
+		rule_datum = heap_getattr(rewrite_tuple,
+								  Anum_pg_rewrite_ev_qual,
+								  rewrite_tupdesc,
+								  &isnull);
+		Assert(!isnull);
+		rule_str = TextDatumGetCString(rule_datum);
+		oldcxt = MemoryContextSwitchTo(rulescxt);
+		rule->qual = (Node *) stringToNode(rule_str);
+		MemoryContextSwitchTo(oldcxt);
+		pfree(rule_str);
+
+		/*
+		 * We want the rule's table references to be checked as though by the
+		 * table owner, not the user referencing the rule.  Therefore, scan
+		 * through the rule's actions and set the checkAsUser field on all
+		 * rtable entries.  We have to look at the qual as well, in case it
+		 * contains sublinks.
+		 *
+		 * The reason for doing this when the rule is loaded, rather than when
+		 * it is stored, is that otherwise ALTER TABLE OWNER would have to
+		 * grovel through stored rules to update checkAsUser fields. Scanning
+		 * the rule tree during load is relatively cheap (compared to
+		 * constructing it in the first place), so we do it here.
+		 */
+		setRuleCheckAsUser((Node *) rule->actions, relation->rd_rel->relowner);
+		setRuleCheckAsUser(rule->qual, relation->rd_rel->relowner);
+
+		if (numlocks >= maxlocks)
+		{
+			maxlocks *= 2;
+			rules = (RewriteRule **)
+				repalloc(rules, sizeof(RewriteRule *) * maxlocks);
+		}
+		rules[numlocks++] = rule;
+	}
+
+	/*
+	 * We don't use those preloaded pg_rewrite partial-match lists anywhere else in the code,
+	 * so there's no point of keeping them in memory.
+	 * We mark them dead so that ReleaseCatCacheList would evict them.
+	 */
+	rewrite_list->dead = true;
+	ReleaseCatCacheList(rewrite_list);
+	heap_close(rewrite_desc, AccessShareLock);
+
+	/*
+	 * there might not be any rules (if relhasrules is out-of-date)
+	 */
+	if (numlocks == 0)
+	{
+		relation->rd_rules = NULL;
+		relation->rd_rulescxt = NULL;
+		MemoryContextDelete(rulescxt);
+		return;
+	}
+
+	/*
+	 * form a RuleLock and insert into relation
+	 */
+	rulelock = (RuleLock *) MemoryContextAlloc(rulescxt, sizeof(RuleLock));
+	rulelock->numLocks = numlocks;
+	rulelock->rules = rules;
+
+	relation->rd_rules = rulelock;
+}
+
+/*
  *		RelationBuildRuleLock
  *
  *		Form the relation's rewrite rules from information in
@@ -1118,10 +1280,9 @@ equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
  */
 void YBPreloadRelCache()
 {
-	Relation      relation;
-	Oid           relid;
-	HeapTuple     pg_class_tuple;
-	Form_pg_class relp;
+	Relation    relation;
+	Oid         relid;
+	SysScanDesc scandesc;
 
 	/*
 	 * Make sure that the connection is still valid.
@@ -1143,20 +1304,38 @@ void YBPreloadRelCache()
 	}
 
 	/*
+	 * Loading the relation cache requires per-relation lookups to a number of related system tables
+	 * to assemble the relation data (e.g. columns, indexes, foreign keys, etc).
+	 * This can cause a large number of master queries (since catalog caches are typically not
+	 * loaded when calling this).
+	 * To handle that we preload the catcaches here for the biggest offenders.
+	 *
+	 * Note: For historical reasons pg_attribute is currently handled separately below
+	 * by querying the entire table once and amending the relevant information into each relation.
+	 *
+	 * TODO(mihnea, alex): Consider simplifying pg_attribute handling by simply preloading
+	 *                     the catcache for that too.
+	 */
+
+	YBPreloadCatalogCache(INDEXRELID, -1); // pg_index
+	YBPreloadCatalogCache(RULERELNAME, -1); // pg_rewrite
+
+	/*
 	 * 1. Load up the (partial) relation info from pg_class.
 	 */
 	Relation pg_class_desc = heap_open(RelationRelationId, AccessShareLock);
 
-	SysScanDesc scandesc = systable_beginscan(pg_class_desc,
-											  RelationRelationId,
-											  false /* indexOk */,
-											  NULL,
-											  0,
-											  NULL);
+	scandesc = systable_beginscan(pg_class_desc,
+	                              RelationRelationId,
+	                              false /* indexOk */,
+	                              NULL,
+	                              0,
+	                              NULL);
 
 	/*
 	 * Must copy tuple before releasing buffer.
 	 */
+	HeapTuple pg_class_tuple;
 	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
 	{
 		pg_class_tuple = heap_copytuple(pg_class_tuple);
@@ -1164,8 +1343,8 @@ void YBPreloadRelCache()
 		/*
 		 * get information from the pg_class_tuple
 		 */
-		relid = HeapTupleGetOid(pg_class_tuple);
-		relp  = (Form_pg_class) GETSTRUCT(pg_class_tuple);
+		relid               = HeapTupleGetOid(pg_class_tuple);
+		Form_pg_class relp  = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 
 		/*
 		 * allocate storage for the relation descriptor, and copy pg_class_tuple
@@ -1532,9 +1711,9 @@ void YBPreloadRelCache()
 
 			/*
 			 * Fetch rules and triggers that affect this relation
-		     */
+			 */
 			if (relation->rd_rel->relhasrules)
-				RelationBuildRuleLock(relation);
+				YBRelationBuildRuleLock(relation);
 			else
 			{
 				relation->rd_rules    = NULL;
@@ -2426,8 +2605,8 @@ RelationIdGetRelation(Oid relationId)
 {
 	Relation	rd;
 
-  /* Make sure we're in an xact, even if this ends up being a cache hit */
-  Assert(IsTransactionState());
+	/* Make sure we're in an xact, even if this ends up being a cache hit */
+	Assert(IsTransactionState());
 
 	/*
 	 * first try to find reldesc in the cache
