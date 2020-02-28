@@ -350,6 +350,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       "/maintenance-manager", "",
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
       true /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/health-check", "TServer Health Check",
+      std::bind(&TabletServerPathHandlers::HandleHealthCheck, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
 
   return Status::OK();
 }
@@ -620,7 +624,6 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
 
 void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest& req,
                                                     std::stringstream* output) {
-
   *output << "<h3>Dashboards</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Dashboard</th><th>Description</th></tr>\n";
@@ -696,6 +699,24 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
     }
   }
   *output << "</table>\n";
+}
+
+void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& req,
+                                                 std::stringstream* output) {
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  vector<std::shared_ptr<TabletPeer> > tablet_peers;
+  tserver_->tablet_manager()->GetTabletPeers(&tablet_peers);
+
+  jw.StartObject();
+  jw.String("failed_tablets");
+  jw.StartArray();
+  for (const auto& peer : tablet_peers) {
+    if (peer->state() == tablet::FAILED) {
+      jw.String(peer->tablet_id());
+    }
+  }
+  jw.EndArray();
+  jw.EndObject();
 }
 
 }  // namespace tserver
