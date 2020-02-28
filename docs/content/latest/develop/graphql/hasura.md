@@ -50,7 +50,7 @@ For the `hasura/graphql-engine` value, make sure that the version matches the Ha
 
 {{< /note >}}
 
-After downloading or editing the `docker-run.sh` file, you need to make the file executable. Run the following `chmod` command:
+After following the steps in the Hasura Quick start with Docker above and downloading the `docker-run.sh` file, you need to change the user permissions on the file to make it executable by running the following `chmod` command:
 
 ```sh
 $ chmod +x docker-run.sh
@@ -71,7 +71,7 @@ $ ./docker-run.sh
 
 {{< note title="Note" >}}
 
-The initialization step may take a moment or more.
+The initialization step may take a few seconds or more.
 
 To check the Docker logs, you can use the container ID returned by the command above:
 
