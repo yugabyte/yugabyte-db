@@ -261,9 +261,8 @@ class PeerMessageQueue {
 
   // Updates the request queue with the latest response of a peer, returns whether this peer has
   // more requests pending.
-  virtual void ResponseFromPeer(const std::string& peer_uuid,
-                                const ConsensusResponsePB& response,
-                                bool* more_pending);
+  virtual bool ResponseFromPeer(const std::string& peer_uuid,
+                                const ConsensusResponsePB& response);
 
   // Closes the queue, peers are still allowed to call UntrackPeer() and ResponseFromPeer() but no
   // additional peers can be tracked or messages queued.
@@ -276,6 +275,8 @@ class PeerMessageQueue {
 
   // Returns the current majority replicated OpId, for tests.
   OpId GetMajorityReplicatedOpIdForTests() const;
+
+  OpId TEST_GetLastAppended() const;
 
   // Returns true if specified peer accepted our lease request.
   bool PeerAcceptedOurLease(const std::string& uuid) const;
@@ -405,14 +406,13 @@ class PeerMessageQueue {
   void NotifyObserversOfMajorityReplOpChangeTask(const MajorityReplicatedData& data);
 
   void NotifyObserversOfTermChange(int64_t term);
-  void NotifyObserversOfTermChangeTask(int64_t term);
 
   void NotifyObserversOfFailedFollower(const std::string& uuid,
                                        int64_t term,
                                        const std::string& reason);
-  void NotifyObserversOfFailedFollowerTask(const std::string& uuid,
-                                           int64_t term,
-                                           const std::string& reason);
+
+  template <class Func>
+  void NotifyObservers(const char* title, Func&& func);
 
   typedef std::unordered_map<std::string, TrackedPeer*> PeersMap;
 
@@ -440,8 +440,10 @@ class PeerMessageQueue {
   void LocalPeerAppendFinished(const OpId& id,
                                const Status& status);
 
+  void NumSSTFilesChanged();
+
   // Updates op id replicated on each node.
-  void UpdateAllReplicatedOpId(OpId* result);
+  void UpdateAllReplicatedOpId(OpId* result) REQUIRES(queue_lock_);
 
   // Policy is responsible for tuning of watermark calculation.
   // I.e. simple leader lease or hybrid time leader lease etc.
@@ -493,6 +495,7 @@ class PeerMessageQueue {
   server::ClockPtr clock_;
 
   ConsensusContext* context_ = nullptr;
+  bool installed_num_sst_files_changed_listener_ = false;
 
   // Used to protect cdc_consumer_op_id_ and cdc_consumer_op_id_last_updated_.
   mutable rw_spinlock cdc_consumer_lock_;
@@ -538,6 +541,8 @@ class PeerMessageQueueObserver {
   virtual void NotifyFailedFollower(const std::string& peer_uuid,
                                     int64_t term,
                                     const std::string& reason) = 0;
+
+  virtual void MajorityReplicatedNumSSTFilesChanged(uint64_t majority_replicated_num_sst_files) = 0;
 
   virtual ~PeerMessageQueueObserver() {}
 };

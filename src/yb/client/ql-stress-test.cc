@@ -196,6 +196,8 @@ class QLStressTest : public QLDmlTestBase {
       const std::chrono::nanoseconds& sleep_duration = std::chrono::nanoseconds(),
       bool allow_failures = false);
 
+  void TestWriteRejection();
+
   TableHandle table_;
 
   int checkpoint_index_ = 0;
@@ -715,12 +717,13 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
   ASSERT_LE(max_peak_consumption, 150_MB);
 }
 
+template <int kSoftLimit, int kHardLimit>
 class QLStressTestDelayWrite : public QLStressTestSingleTablet {
  public:
   void SetUp() override {
     FLAGS_db_write_buffer_size = 1_KB;
-    FLAGS_sst_files_soft_limit = 4;
-    FLAGS_sst_files_hard_limit = 10;
+    FLAGS_sst_files_soft_limit = kSoftLimit;
+    FLAGS_sst_files_hard_limit = kHardLimit;
     FLAGS_rocksdb_level0_file_num_compaction_trigger = 6;
     FLAGS_rocksdb_universal_compaction_min_merge_width = 2;
     FLAGS_rocksdb_universal_compaction_size_ratio = 1000;
@@ -759,7 +762,7 @@ void QLStressTest::AddWriter(
   });
 }
 
-TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
+void QLStressTest::TestWriteRejection() {
   constexpr int kWriters = 10;
   constexpr int kKeyBase = 10000;
 
@@ -787,6 +790,11 @@ TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
     }
   });
 
+  int last_keys_written = 0;
+  int first_keys_written_after_rejections_started_to_appear = -1;
+  auto last_keys_written_update_time = CoarseMonoClock::now();
+  uint64_t last_rejections = 0;
+  bool has_writes_after_rejections = false;
   for (;;) {
     std::this_thread::sleep_for(1s);
     int keys_written = 0;
@@ -794,9 +802,19 @@ TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
       keys_written += keys[i].load() - kKeyBase * i;
     }
     LOG(INFO) << "Total keys written: " << keys_written;
-    if (keys_written < RegularBuildVsSanitizers(1000, 100)) {
+    if (keys_written == last_keys_written) {
+      ASSERT_LE(CoarseMonoClock::now() - last_keys_written_update_time, 20s);
       continue;
     }
+    if (last_rejections != 0) {
+      if (first_keys_written_after_rejections_started_to_appear < 0) {
+        first_keys_written_after_rejections_started_to_appear = keys_written;
+      } else if (keys_written > first_keys_written_after_rejections_started_to_appear) {
+        has_writes_after_rejections = true;
+      }
+    }
+    last_keys_written = keys_written;
+    last_keys_written_update_time = CoarseMonoClock::now();
 
     uint64_t total_rejections = 0;
     for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
@@ -808,15 +826,15 @@ TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
         rejections += counter->value();
       }
       total_rejections += rejections;
-
-      LOG(INFO) << "Rejections: " << rejections;
     }
+    LOG(INFO) << "Total rejections: " << total_rejections;
+    last_rejections = total_rejections;
 
-    if (!IsSanitizer() && total_rejections < 10) {
-      continue;
+    if (keys_written >= RegularBuildVsSanitizers(1000, 100) &&
+        (IsSanitizer() || total_rejections >= 10) &&
+        has_writes_after_rejections) {
+      break;
     }
-
-    break;
   }
 
   ASSERT_OK(WaitFor([cluster = cluster_.get()] {
@@ -835,6 +853,19 @@ TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
     }
     return true;
   }, 30s, "Waiting tablets to sync up"));
+}
+
+typedef QLStressTestDelayWrite<4, 10> QLStressTestDelayWrite_4_10;
+
+TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite_4_10) {
+  TestWriteRejection();
+}
+
+// Soft limit == hard limit to test write stop and recover after it.
+typedef QLStressTestDelayWrite<6, 6> QLStressTestDelayWrite_6_6;
+
+TEST_F_EX(QLStressTest, WriteStop, QLStressTestDelayWrite_6_6) {
+  TestWriteRejection();
 }
 
 class QLStressTestLongRemoteBootstrap : public QLStressTestSingleTablet {

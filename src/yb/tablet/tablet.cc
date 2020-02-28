@@ -571,6 +571,7 @@ Status Tablet::OpenKeyValueTablet() {
     return STATUS(IllegalState, rocksdb_open_status.ToString());
   }
   regular_db_.reset(db);
+  regular_db_->ListenFilesChanged(std::bind(&Tablet::RegularDbFilesChanged, this));
 
   if (transaction_participant_) {
     LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << db_dir + kIntentsDBSuffix;
@@ -613,6 +614,13 @@ Status Tablet::OpenKeyValueTablet() {
                         << ", obj: " << db;
 
   return Status::OK();
+}
+
+void Tablet::RegularDbFilesChanged() {
+  std::lock_guard<std::mutex> lock(num_sst_files_changed_listener_mutex_);
+  if (num_sst_files_changed_listener_) {
+    num_sst_files_changed_listener_();
+  }
 }
 
 Status Tablet::EnableCompactions() {
@@ -2407,6 +2415,15 @@ Result<int64_t> Tablet::CountIntents() {
     intent_iter->Next();
   }
   return num_intents;
+}
+
+void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
+  std::lock_guard<std::mutex> lock(num_sst_files_changed_listener_mutex_);
+  bool has_new_listener = listener != nullptr;
+  bool has_old_listener = num_sst_files_changed_listener_ != nullptr;
+  LOG_IF_WITH_PREFIX(DFATAL, has_new_listener == has_old_listener)
+      << __func__ << " in wrong state, has_old_listener: " << has_old_listener;
+  num_sst_files_changed_listener_ = std::move(listener);
 }
 
 // ------------------------------------------------------------------------------------------------

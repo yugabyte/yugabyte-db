@@ -825,6 +825,8 @@ class DB {
 
   virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
 
+  virtual void ListenFilesChanged(std::function<void()> listener) {}
+
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.

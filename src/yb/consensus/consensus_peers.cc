@@ -354,6 +354,10 @@ void Peer::ProcessResponse() {
     return;
   }
 
+  // Response should be either error or status.
+  LOG_IF(DFATAL, response_.has_error() == response_.has_status())
+    << "Invalid response: " << response_.ShortDebugString();
+
   // Pass through errors we can respond to, like not found, since in that case
   // we will need to remotely bootstrap. TODO: Handle DELETED response once implemented.
   if ((response_.has_error() &&
@@ -368,8 +372,7 @@ void Peer::ProcessResponse() {
   }
 
   failed_attempts_ = 0;
-  bool more_pending = false;
-  queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), response_, &more_pending);
+  bool more_pending = queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), response_);
 
   if (more_pending) {
     processing_lock.unlock();

@@ -1011,6 +1011,11 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return Status::OK();
 }
 
+void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
+    uint64_t majority_replicated_num_sst_files) {
+  majority_num_sst_files_.store(majority_replicated_num_sst_files, std::memory_order_release);
+}
+
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data,
     OpId* committed_op_id) {

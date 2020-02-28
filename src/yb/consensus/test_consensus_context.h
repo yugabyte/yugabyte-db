@@ -32,6 +32,8 @@ class TestConsensusContext : public ConsensusContext {
   void ChangeConfigReplicated(const RaftConfigPB&) override {}
 
   uint64_t NumSSTFiles() override { return 0; }
+
+  void ListenNumSSTFilesChanged(std::function<void()> listener) override {}
 };
 
 } // namespace consensus

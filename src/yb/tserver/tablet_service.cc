@@ -293,10 +293,10 @@ bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
   const uint64_t num_sst_files = tablet_peer->raft_consensus()->MajorityNumSSTFiles();
   const auto sst_files_soft_limit = FLAGS_sst_files_soft_limit;
   const int64_t sst_files_used_delta = num_sst_files - sst_files_soft_limit;
-  if (sst_files_used_delta > 0) {
+  if (sst_files_used_delta >= 0) {
     const auto sst_files_hard_limit = FLAGS_sst_files_hard_limit;
     const auto sst_files_full_delta = sst_files_hard_limit - sst_files_soft_limit;
-    if (sst_files_used_delta > sst_files_full_delta * (1 - score)) {
+    if (sst_files_used_delta >= sst_files_full_delta * (1 - score)) {
       tablet->metrics()->majority_sst_files_rejections->Increment();
       auto message = Format("SST files limit exceeded $0 against ($1, $2), score: $3",
                             num_sst_files, sst_files_soft_limit, sst_files_hard_limit, score);

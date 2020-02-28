@@ -318,6 +318,10 @@ uint64_t TabletPeer::NumSSTFiles() {
   return tablet_->GetCurrentVersionNumSSTFiles();
 }
 
+void TabletPeer::ListenNumSSTFilesChanged(std::function<void()> listener) {
+  tablet_->ListenNumSSTFilesChanged(std::move(listener));
+}
+
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   {
     std::lock_guard<simple_spinlock> l(state_change_lock_);

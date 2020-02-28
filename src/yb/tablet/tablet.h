@@ -473,6 +473,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
 
+  void ListenNumSSTFilesChanged(std::function<void()> listener);
+
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);
   }
@@ -726,11 +728,17 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   template <class Ids>
   CHECKED_STATUS RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids);
 
+  void RegularDbFilesChanged();
+
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
   client::LocalTabletFilter local_tablet_filter_;
 
   std::string log_prefix_suffix_;
+
+  std::mutex num_sst_files_changed_listener_mutex_;
+  std::function<void()> num_sst_files_changed_listener_
+      GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

@@ -676,6 +676,10 @@ class DBImpl : public DB {
   // prefix is used for logging.
   bool CheckBackgroundWorkAndLog(const char* prefix) const;
 
+  void ListenFilesChanged(std::function<void()> listener) override;
+
+  void FilesChanged();
+
   struct TaskPriorityChange {
     size_t task_serial_no;
     int new_priority;
@@ -972,9 +976,11 @@ class DBImpl : public DB {
   // Whether DB should be flushed on shutdown.
   bool disable_flush_on_shutdown_ = false;
 
+  std::function<void()> files_changed_listener_;
+
   // No copying allowed
-  DBImpl(const DBImpl&);
-  void operator=(const DBImpl&);
+  DBImpl(const DBImpl&) = delete;
+  void operator=(const DBImpl&) = delete;
 
   // Background threads call this function, which is just a wrapper around
   // the InstallSuperVersion() function. Background threads carry

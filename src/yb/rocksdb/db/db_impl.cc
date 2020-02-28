@@ -3267,6 +3267,7 @@ void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
     // will cause trouble.
   }
   task_priority_updater.Apply();
+  FilesChanged();
 }
 
 void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compaction> compaction,
@@ -3354,6 +3355,7 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
   }
 
   task_priority_updater.Apply();
+  FilesChanged();
 }
 
 Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
@@ -4317,18 +4319,31 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
     if (file_info->is_split_sst) {
       ::rocksdb::DeleteFile(env_, db_data_fname, db_options_.info_log, error_format);
     }
-  } else if (status.ok() && move_file) {
-    // The file was moved and added successfully, remove original file link
-    const char* error_format = "%s was added to DB successfully but failed to remove original file "
-        "link : %s";
-    ::rocksdb::DeleteFile(env_, file_info->file_path, db_options_.info_log, error_format);
-    if (file_info->is_split_sst) {
-      ::rocksdb::DeleteFile(env_, data_file_path, db_options_.info_log, error_format);
+  } else if (status.ok()) {
+    if (move_file) {
+      // The file was moved and added successfully, remove original file link
+      const char* error_format =
+          "%s was added to DB successfully but failed to remove original file link : %s";
+      ::rocksdb::DeleteFile(env_, file_info->file_path, db_options_.info_log, error_format);
+      if (file_info->is_split_sst) {
+        ::rocksdb::DeleteFile(env_, data_file_path, db_options_.info_log, error_format);
+      }
     }
+    FilesChanged();
   }
   return status;
 }
 #endif  // ROCKSDB_LITE
+
+void DBImpl::ListenFilesChanged(std::function<void()> files_changed_listener) {
+  files_changed_listener_ = std::move(files_changed_listener);
+}
+
+void DBImpl::FilesChanged() {
+  if (files_changed_listener_) {
+    files_changed_listener_();
+  }
+}
 
 Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
                                   const std::string& column_family_name,
@@ -5700,6 +5715,13 @@ Status DBImpl::DeleteFile(std::string name) {
   JobContext job_context(next_job_id_.fetch_add(1), true);
   {
     InstrumentedMutexLock l(&mutex_);
+    // Delete file is infrequent operation, so could just busy wait here.
+    while (versions_->has_manifest_writers()) {
+      mutex_.unlock();
+      std::this_thread::sleep_for(10ms);
+      mutex_.lock();
+    }
+
     status = versions_->GetMetadataForFile(number, &level, &metadata, &cfd);
     if (!status.ok()) {
       RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
@@ -5756,6 +5778,9 @@ Status DBImpl::DeleteFile(std::string name) {
     PurgeObsoleteFiles(job_context);
   }
   job_context.Clean();
+
+  FilesChanged();
+
   return status;
 }
 

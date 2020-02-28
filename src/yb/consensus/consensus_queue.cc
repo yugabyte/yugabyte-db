@@ -126,13 +126,12 @@ METRIC_DEFINE_gauge_int64(tablet, in_progress_ops, "Leader Operations in Progres
 const auto kCDCConsumerCheckpointInterval = FLAGS_cdc_checkpoint_opid_interval_ms * 1ms;
 
 std::string PeerMessageQueue::TrackedPeer::ToString() const {
-  return Substitute("Peer: $0, Is new: $1, Last received: $2, Next index: $3, "
-                    "Last known committed idx: $4, Last exchange result: $5, "
-                    "Needs remote bootstrap: $6",
-                    uuid, is_new, OpIdToString(last_received), next_index,
-                    last_known_committed_idx,
-                    is_last_exchange_successful ? "SUCCESS" : "ERROR",
-                    needs_remote_bootstrap);
+  return Format("{ peer: $0 is_new: $1 last_received: $2 next_index: $3 "
+                    "last_known_committed_idx: $4, is_last_exchange_successful: $5, "
+                    "needs_remote_bootstrap: $6 member_type: $7 num_sst_files: $8 }",
+                uuid, is_new, last_received, next_index, last_known_committed_idx,
+                is_last_exchange_successful, needs_remote_bootstrap,
+                RaftPeerPB::MemberType_Name(member_type), num_sst_files);
 }
 
 void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
@@ -181,6 +180,11 @@ void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
   queue_state_.last_appended = last_locally_replicated;
   queue_state_.state = State::kQueueOpen;
   local_peer_ = TrackPeerUnlocked(local_peer_uuid_);
+
+  if (context_) {
+    context_->ListenNumSSTFilesChanged(std::bind(&PeerMessageQueue::NumSSTFilesChanged, this));
+    installed_num_sst_files_changed_listener_ = true;
+  }
 }
 
 void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
@@ -272,6 +276,30 @@ void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
   }
 }
 
+void PeerMessageQueue::NumSSTFilesChanged() {
+  auto num_sst_files = context_->NumSSTFiles();
+
+  uint64_t majority_replicated_num_sst_files;
+  {
+    LockGuard lock(queue_lock_);
+    if (queue_state_.mode != Mode::LEADER) {
+      return;
+    }
+    auto it = peers_map_.find(local_peer_uuid_);
+    if (it == peers_map_.end()) {
+      return;
+    }
+    it->second->num_sst_files = num_sst_files;
+    majority_replicated_num_sst_files = NumSSTFilesWatermark();
+  }
+
+  NotifyObservers(
+      "majority replicated num SST files changed",
+      [majority_replicated_num_sst_files](PeerMessageQueueObserver* observer) {
+    observer->MajorityReplicatedNumSSTFilesChanged(majority_replicated_num_sst_files);
+  });
+}
+
 void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
                                                const Status& status) {
   CHECK_OK(status);
@@ -280,7 +308,6 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   // TODO: we should probably refactor the ResponseFromPeer function so that we don't need to
   // construct this fake response, but this seems to work for now.
   ConsensusResponsePB fake_response;
-  fake_response.set_responder_uuid(local_peer_uuid_);
   *fake_response.mutable_status()->mutable_last_received() = id;
   *fake_response.mutable_status()->mutable_last_received_current_leader() = id;
   if (context_) {
@@ -295,9 +322,12 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
       queue_state_.last_appended = id;
     }
     fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_index.index());
+
+    if (queue_state_.mode != Mode::LEADER) {
+      return;
+    }
   }
-  bool junk;
-  ResponseFromPeer(local_peer_uuid_, fake_response, &junk);
+  ResponseFromPeer(local_peer_uuid_, fake_response);
 }
 
 Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
@@ -853,14 +883,14 @@ void PeerMessageQueue::NotifyPeerIsResponsiveDespiteError(const std::string& pee
   peer->last_successful_communication_time = MonoTime::Now();
 }
 
-void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
-                                        const ConsensusResponsePB& response,
-                                        bool* more_pending) {
+bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
+                                        const ConsensusResponsePB& response) {
   DCHECK(response.IsInitialized()) << "Error: Uninitialized: "
       << response.InitializationErrorString() << ". Response: " << response.ShortDebugString();
 
   MajorityReplicatedData majority_replicated;
   Mode mode_copy;
+  bool result = false;
   {
     LockGuard scoped_lock(queue_lock_);
     DCHECK_NE(State::kQueueConstructed, queue_state_.state);
@@ -869,8 +899,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     if (PREDICT_FALSE(queue_state_.state != State::kQueueOpen || peer == nullptr)) {
       LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Queue is closed or peer was untracked, disregarding "
           "peer response. Response: " << response.ShortDebugString();
-      *more_pending = false;
-      return;
+      return false;
     }
 
     // Remotely bootstrap the peer if the tablet is not found or deleted.
@@ -887,8 +916,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       peer->last_successful_communication_time = MonoTime::Now();
       YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30)
           << "Marked peer as needing remote bootstrap: " << peer->ToString();
-      *more_pending = true;
-      return;
+      return true;
     }
 
     if (queue_state_.active_config) {
@@ -901,87 +929,82 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       peer->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
     }
 
-    // Sanity checks.  Some of these can be eventually removed, but they are handy for now.
-    DCHECK(response.status().IsInitialized()) << "Error: Uninitialized: "
-        << response.InitializationErrorString() << ". Response: " << response.ShortDebugString();
-    // TODO: Include uuid in error messages as well.
-    DCHECK(response.has_responder_uuid() && !response.responder_uuid().empty())
-        << "Got response from peer with empty UUID";
-
     // Application level errors should be handled elsewhere
     DCHECK(!response.has_error());
-    // Responses should always have a status.
-    DCHECK(response.has_status());
-    // The status must always have a last received op id and a last committed index.
-    DCHECK(response.status().has_last_received());
-    DCHECK(response.status().has_last_received_current_leader());
-    DCHECK(response.status().has_last_committed_idx());
-
-    const ConsensusStatusPB& status = response.status();
 
     // Take a snapshot of the current peer status.
     TrackedPeer previous = *peer;
 
     // Update the peer status based on the response.
     peer->is_new = false;
-    peer->last_known_committed_idx = status.last_committed_idx();
     peer->last_successful_communication_time = MonoTime::Now();
 
-    // If the reported last-received op for the replica is in our local log, then resume sending
-    // entries from that point onward. Otherwise, resume after the last op they received from us. If
-    // we've never successfully sent them anything, start after the last-committed op in their log,
-    // which is guaranteed by the Raft protocol to be a valid op.
+    if (response.has_status()) {
+      const auto& status = response.status();
+      // Sanity checks.  Some of these can be eventually removed, but they are handy for now.
+      DCHECK(status.IsInitialized()) << "Error: Uninitialized: "
+                                                << response.InitializationErrorString()
+                                                << ". Response: " << response.ShortDebugString();
+      // The status must always have a last received op id and a last committed index.
+      DCHECK(status.has_last_received());
+      DCHECK(status.has_last_received_current_leader());
+      DCHECK(status.has_last_committed_idx());
 
-    bool peer_has_prefix_of_log = IsOpInLog(yb::OpId::FromPB(status.last_received()));
-    if (peer_has_prefix_of_log) {
-      // If the latest thing in their log is in our log, we are in sync.
-      peer->last_received = status.last_received();
-      peer->next_index = peer->last_received.index() + 1;
+      peer->last_known_committed_idx = status.last_committed_idx();
 
-    } else if (!OpIdEquals(status.last_received_current_leader(), MinimumOpId())) {
-      // Their log may have diverged from ours, however we are in the process of replicating our ops
-      // to them, so continue doing so. Eventually, we will cause the divergent entry in their log
-      // to be overwritten.
-      peer->last_received = status.last_received_current_leader();
-      peer->next_index = peer->last_received.index() + 1;
+      // If the reported last-received op for the replica is in our local log, then resume sending
+      // entries from that point onward. Otherwise, resume after the last op they received from us.
+      // If we've never successfully sent them anything, start after the last-committed op in their
+      // log, which is guaranteed by the Raft protocol to be a valid op.
 
-    } else {
-      // The peer is divergent and they have not (successfully) received anything from us yet. Start
-      // sending from their last committed index.  This logic differs from the Raft spec slightly
-      // because instead of stepping back one-by-one from the end until we no longer have an LMP
-      // error, we jump back to the last committed op indicated by the peer with the hope that doing
-      // so will result in a faster catch-up process.
-      DCHECK_GE(peer->last_known_committed_idx, 0);
-      peer->next_index = peer->last_known_committed_idx + 1;
-    }
+      bool peer_has_prefix_of_log = IsOpInLog(yb::OpId::FromPB(status.last_received()));
+      if (peer_has_prefix_of_log) {
+        // If the latest thing in their log is in our log, we are in sync.
+        peer->last_received = status.last_received();
+        peer->next_index = peer->last_received.index() + 1;
 
-    if (PREDICT_FALSE(status.has_error())) {
-      peer->is_last_exchange_successful = false;
-      switch (status.error().code()) {
-        case ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH: {
-          DCHECK(status.has_last_received());
-          if (previous.is_new) {
-            // That's currently how we can detect that we able to connect to a peer.
-            LOG_WITH_PREFIX_UNLOCKED(INFO) << "Connected to new peer: " << peer->ToString();
-          } else {
-            LOG_WITH_PREFIX_UNLOCKED(INFO) << "Got LMP mismatch error from peer: "
-                                           << peer->ToString();
+      } else if (!OpIdEquals(status.last_received_current_leader(), MinimumOpId())) {
+        // Their log may have diverged from ours, however we are in the process of replicating our
+        // ops to them, so continue doing so. Eventually, we will cause the divergent entry in their
+        // log to be overwritten.
+        peer->last_received = status.last_received_current_leader();
+        peer->next_index = peer->last_received.index() + 1;
+      } else {
+        // The peer is divergent and they have not (successfully) received anything from us yet.
+        // Start sending from their last committed index.  This logic differs from the Raft spec
+        // slightly because instead of stepping back one-by-one from the end until we no longer have
+        // an LMP error, we jump back to the last committed op indicated by the peer with the hope
+        // that doing so will result in a faster catch-up process.
+        DCHECK_GE(peer->last_known_committed_idx, 0);
+        peer->next_index = peer->last_known_committed_idx + 1;
+      }
+
+      if (PREDICT_FALSE(status.has_error())) {
+        peer->is_last_exchange_successful = false;
+        switch (status.error().code()) {
+          case ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH: {
+            DCHECK(status.has_last_received());
+            if (previous.is_new) {
+              // That's currently how we can detect that we able to connect to a peer.
+              LOG_WITH_PREFIX_UNLOCKED(INFO) << "Connected to new peer: " << peer->ToString();
+            } else {
+              LOG_WITH_PREFIX_UNLOCKED(INFO) << "Got LMP mismatch error from peer: "
+                                             << peer->ToString();
+            }
+            return true;
           }
-          *more_pending = true;
-          return;
-        }
-        case ConsensusErrorPB::INVALID_TERM: {
-          CHECK(response.has_responder_term());
-          LOG_WITH_PREFIX_UNLOCKED(INFO) << "Peer responded invalid term: " << peer->ToString()
-                                         << ". Peer's new term: " << response.responder_term();
-          NotifyObserversOfTermChange(response.responder_term());
-          *more_pending = false;
-          return;
-        }
-        default: {
-          LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Unexpected consensus error. Code: "
-              << ConsensusErrorPB::Code_Name(status.error().code()) << ". Response: "
-              << response.ShortDebugString();
+          case ConsensusErrorPB::INVALID_TERM: {
+            CHECK(response.has_responder_term());
+            LOG_WITH_PREFIX_UNLOCKED(INFO) << "Peer responded invalid term: " << peer->ToString()
+                                           << ". Peer's new term: " << response.responder_term();
+            NotifyObserversOfTermChange(response.responder_term());
+            return false;
+          }
+          default: {
+            LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Unexpected consensus error. Code: "
+                << ConsensusErrorPB::Code_Name(status.error().code()) << ". Response: "
+                << response.ShortDebugString();
+          }
         }
       }
     }
@@ -1006,7 +1029,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     // If our log has the next request for the peer or if the peer's committed index is lower than
     // our own, set 'more_pending' to true.
-    *more_pending = log_cache_.HasOpBeenWritten(peer->next_index) ||
+    result = log_cache_.HasOpBeenWritten(peer->next_index) ||
         (peer->last_known_committed_idx < queue_state_.committed_index.index());
 
     mode_copy = queue_state_.mode;
@@ -1046,6 +1069,8 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
   if (mode_copy == Mode::LEADER) {
     NotifyObserversOfMajorityReplOpChange(majority_replicated);
   }
+
+  return result;
 }
 
 PeerMessageQueue::TrackedPeer PeerMessageQueue::GetTrackedPeerForTests(string uuid) {
@@ -1067,6 +1092,11 @@ OpId PeerMessageQueue::GetCommittedIndexForTests() const {
 OpId PeerMessageQueue::GetMajorityReplicatedOpIdForTests() const {
   LockGuard lock(queue_lock_);
   return queue_state_.majority_replicated_opid;
+}
+
+OpId PeerMessageQueue::TEST_GetLastAppended() const {
+  LockGuard lock(queue_lock_);
+  return queue_state_.last_appended;
 }
 
 void PeerMessageQueue::UpdateMetrics() {
@@ -1102,6 +1132,10 @@ void PeerMessageQueue::ClearUnlocked() {
 }
 
 void PeerMessageQueue::Close() {
+  if (installed_num_sst_files_changed_listener_) {
+    context_->ListenNumSSTFilesChanged(std::function<void()>());
+    installed_num_sst_files_changed_listener_ = false;
+  }
   raft_pool_observers_token_->Shutdown();
   LockGuard lock(queue_lock_);
   ClearUnlocked();
@@ -1182,11 +1216,29 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
                            "majority replicated op change.");
 }
 
+template <class Func>
+void PeerMessageQueue::NotifyObservers(const char* title, Func&& func) {
+  WARN_NOT_OK(
+      raft_pool_observers_token_->SubmitFunc(
+          [this, func = std::move(func)] {
+        MAYBE_INJECT_RANDOM_LATENCY(FLAGS_consensus_inject_latency_ms_in_notifications);
+        std::vector<PeerMessageQueueObserver*> copy;
+        {
+          LockGuard lock(queue_lock_);
+          copy = observers_;
+        }
+
+        for (PeerMessageQueueObserver* observer : copy) {
+          func(observer);
+        }
+      }),
+      Format("$0Unable to notify observers for $1.", LogPrefixUnlocked(), title));
+}
+
 void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
-  WARN_NOT_OK(raft_pool_observers_token_->SubmitClosure(
-      Bind(&PeerMessageQueue::NotifyObserversOfTermChangeTask,
-           Unretained(this), term)),
-              LogPrefixUnlocked() + "Unable to notify RaftConsensus of term change.");
+  NotifyObservers("term change", [term](PeerMessageQueueObserver* observer) {
+    observer->NotifyTermChange(term);
+  });
 }
 
 void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
@@ -1213,18 +1265,6 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
   }
 }
 
-void PeerMessageQueue::NotifyObserversOfTermChangeTask(int64_t term) {
-  MAYBE_INJECT_RANDOM_LATENCY(FLAGS_consensus_inject_latency_ms_in_notifications);
-  std::vector<PeerMessageQueueObserver*> copy;
-  {
-    LockGuard lock(queue_lock_);
-    copy = observers_;
-  }
-  for (PeerMessageQueueObserver* observer : copy) {
-    observer->NotifyTermChange(term);
-  }
-}
-
 void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
                                                        const string& reason) {
   int64_t current_term;
@@ -1238,24 +1278,9 @@ void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
 void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
                                                        int64_t term,
                                                        const string& reason) {
-  WARN_NOT_OK(raft_pool_observers_token_->SubmitClosure(
-      Bind(&PeerMessageQueue::NotifyObserversOfFailedFollowerTask,
-           Unretained(this), uuid, term, reason)),
-              LogPrefixUnlocked() + "Unable to notify RaftConsensus of abandoned follower.");
-}
-
-void PeerMessageQueue::NotifyObserversOfFailedFollowerTask(const string& uuid,
-                                                           int64_t term,
-                                                           const string& reason) {
-  MAYBE_INJECT_RANDOM_LATENCY(FLAGS_consensus_inject_latency_ms_in_notifications);
-  std::vector<PeerMessageQueueObserver*> observers_copy;
-  {
-    LockGuard lock(queue_lock_);
-    observers_copy = observers_;
-  }
-  for (PeerMessageQueueObserver* observer : observers_copy) {
+  NotifyObservers("failed follower", [uuid, term, reason](PeerMessageQueueObserver* observer) {
     observer->NotifyFailedFollower(uuid, term, reason);
-  }
+  });
 }
 
 bool PeerMessageQueue::PeerAcceptedOurLease(const std::string& uuid) const {

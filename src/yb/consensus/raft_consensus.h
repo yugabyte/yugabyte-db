@@ -195,12 +195,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // can cause consensus to deadlock.
   ReplicaState* GetReplicaStateForTests();
 
-  // Updates the committed_index and triggers the Apply()s for whatever
-  // operations were pending.
-  // This is idempotent.
-  void UpdateMajorityReplicated(const MajorityReplicatedData& data,
-                                OpId* committed_op_id) override;
-
   void UpdateMajorityReplicatedInTests(const OpId &majority_replicated,
                                        OpId *committed_index) {
     UpdateMajorityReplicated({ majority_replicated,
@@ -208,12 +202,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                HybridTime::kMin.GetPhysicalValueMicros() },
                              committed_index);
   }
-
-  void NotifyTermChange(int64_t term) override;
-
-  void NotifyFailedFollower(const std::string& uuid,
-                            int64_t term,
-                            const std::string& reason) override;
 
   yb::OpId GetLastReceivedOpId() override;
 
@@ -291,6 +279,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   }
 
  private:
+  friend class ReplicaState;
+  friend class RaftConsensusQuorumTest;
+
   CHECKED_STATUS DoStartElection(const LeaderElectionData& data, PreElected preelected);
 
   Result<LeaderElectionPtr> CreateElectionUnlocked(
@@ -298,8 +289,19 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       MonoDelta timeout,
       PreElection preelection);
 
-  friend class ReplicaState;
-  friend class RaftConsensusQuorumTest;
+  // Updates the committed_index and triggers the Apply()s for whatever
+  // operations were pending.
+  // This is idempotent.
+  void UpdateMajorityReplicated(const MajorityReplicatedData& data,
+                                OpId* committed_op_id) override;
+
+  void NotifyTermChange(int64_t term) override;
+
+  void NotifyFailedFollower(const std::string& uuid,
+                            int64_t term,
+                            const std::string& reason) override;
+
+  void MajorityReplicatedNumSSTFilesChanged(uint64_t majority_replicated_num_sst_files) override;
 
   // Control whether printing of log messages should be done for a particular
   // function call.

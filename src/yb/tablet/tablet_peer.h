@@ -431,6 +431,7 @@ class TabletPeer : public consensus::ConsensusContext,
   void MajorityReplicated() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;
+  void ListenNumSSTFilesChanged(std::function<void()> listener) override;
 
   MetricRegistry* metric_registry_;
 
