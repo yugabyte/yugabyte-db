@@ -25,7 +25,7 @@ isTocNested: true
 
 </ul>
 
-Follow the steps below to to run TPC-C benchmarks against YugabyteDB for YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
+Follow the steps below to run the open-source [oltpbench](https://github.com/oltpbenchmark/oltpbench) TPC-C workload against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
 
 ## Step 1. Download the TPC-C binaries
 
@@ -40,7 +40,7 @@ $ cd tpcc
 
 ## Step 2. Start your database
 
-Start the database using steps mentioned here: https://docs.yugabyte.com/latest/quick-start/explore-ysql/.
+Start the database using the steps mentioned [here](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/macos/).
 
 ## Step 3. Configure connection properties
 
