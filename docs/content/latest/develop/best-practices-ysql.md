@@ -135,3 +135,8 @@ per-tserver is 300 and is set by the `--ysql_max_connections` gflag.
 
 We're also working to lower the overhead of connections.
 
+## Use `TRUNCATE` to empty tables instead of `DELETE`
+`TRUNCATE` deletes the database files that store the table and is very fast. 
+While DELETE inserts a `delete marker` for each row  in transactions and they are removed from storage when a compaction 
+runs.
+

@@ -50,3 +50,8 @@ Apache Cassandra uses LWT which requires 4 round-trips between peers. These oper
 lot more efficiently, because of YugabyteDB's CP (in the CAP theorem) design based on strong consistency, 
 and require only 1 Raft-round trip between peers. Number & Counter types work the same and don't need a separate "counters" table.
 
+## Use `TRUNCATE` to empty tables instead of `DELETE`
+`TRUNCATE` deletes the database files that store the table and is very fast. 
+While DELETE inserts a `delete marker` for each row  in transactions and they are removed from storage when a compaction 
+runs.
+
