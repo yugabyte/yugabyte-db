@@ -30,15 +30,6 @@ showAsideToc: true
 </ul>
 
 
-## No tombstones
-Tombstones are delete markers used in async replicated databases like Cassandra to keep track of deleted columns until 
-that aren't deleted on compaction until gc-grace perdiod of time has passed or a repair has been issued. 
-They incur storage overhead and performance penalty.
-
-YugabyteDB uses synchronous replication based on RAFT protocol. Since replicas have the same data the database has no 
-concept of repair, no hinted handoff, no non-transactional batch and no tombstones are created. 
-Rows are deleted physically on disk after every compaction. Because of this delete heavy workloads are efficient. 
-
 ## JSONB datatype
 YugabyteDB has [`jsonb`](https://docs.yugabyte.com/latest/api/ycql/type_jsonb/) datatype which is similar to 
 Postgresql [`jsonb`](https://www.postgresql.org/docs/current/datatype-json.html) datatype. It is stored on disk in
