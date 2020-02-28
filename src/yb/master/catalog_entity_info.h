@@ -379,9 +379,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
+    std::shared_lock<decltype(lock_)> l(lock_);
     return is_backfilling_;
   }
+
   void SetIsBackfilling(bool flag) {
+    std::lock_guard<decltype(lock_)> l(lock_);
     is_backfilling_ = flag;
   }
 
