@@ -11,21 +11,23 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Integrate the [Hasura GraphQL engine](https://hasura.io) with YugabyteDB to use GraphQL on your YugabyteDB databases and applications.
+Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB to use GraphQL with your YugabyteDB databases and applications.
 
-Follow the steps below to learn how easily you can begin using the Hasura GraphQL engine with YugabyteDB. For details on using the Hasura GraphQL engine, see the [Hasura GraphQL engine documentation](https://docs.hasura.io).
+Follow the steps below to learn how easily you can begin using the Hasura GraphQL Engine with YugabyteDB. For details on using the Hasura GraphQL engine, see the [Hasura GraphQL engine documentation](https://docs.hasura.io).
 
 ## Before you begin
 
 ### Install and start YugabyteDB
 
-Before starting and running YugabyteDB with Hasura, you need to add the YugabyteDB environment variable `YB_SUPPRESS_UNSUPPORTED_ERROR=1`. Setting the value to 1 suppresses unsupported error exceptions and raise only warnings. To set the environment variable , run the following command.
+If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
+
+To use the Hasura GraphQL Engine with YugabyteDB, you need to set the `yb-tserver` option `--ysql_suppress_unsupported_error` to `true` so that errors on the use of unsupported SQL statements are suppressed and only raise warnings instead.
+
+If you're using `yb-ctl` to start your cluster, you can add the option like this:
 
 ```sh
-$ export YB_SUPPRESS_UNSUPPORTED_ERROR=1
+$ ./bin/yb-ctl start --tserver_flags "ysql_suppress_unsupported_error=true"
 ```
-
-If you're new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
 
 ### Install and start Hasura
 
@@ -37,26 +39,39 @@ For a local Mac setup, the configuration should be:
 
 ```sh
 docker run -d -p 8080:8080 \
-       -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:@host.docker.internal:5433/postgres \
+       -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:@host.docker.internal:5433/yugabyte \
        -e HASURA_GRAPHQL_ENABLE_CONSOLE=true \
-       hasura/graphql-engine:v1.0.0
+       hasura/graphql-engine:v1.1.0
 ```
 
 {{< note title="Note" >}}
 
-Make sure that the release version specified for `hasura/graphql-engine` matches the version you are using. The releases can be found at [Hasura graphql-engine releases](https://github.com/hasura/graphql-engine/releases).
+For the `hasura/graphql-engine` value, make sure that the version matches the Hasura GraphQL Engine version that you are using.
 
 {{< /note >}}
 
-To start Hasura, run the following script:
+After following the steps in the Hasura Quick start with Docker above and downloading the `docker-run.sh` file, you need to change the user permissions on the file to make it executable by running the following `chmod` command:
 
 ```sh
-./docker-run.sh
+$ chmod +x docker-run.sh
+```
+
+When this script runs, the Hasura GraphQL Engine starts in the Docker container and returns the unique container ID.
+
+```
+$ hasura-yb ./docker-run.sh
+8afee92b0e2535baf3fdb1308f78f008b3e3c950d4f560a58449b4ef7e23652a
+```
+
+To start the Hasura GraphQL Engine, run the following script:
+
+```sh
+$ ./docker-run.sh
 ```
 
 {{< note title="Note" >}}
 
-This initialization step may take a minute or more.
+The initialization step may take a few seconds or more.
 
 To check the Docker logs, you can use the container ID returned by the command above:
 
@@ -66,11 +81,12 @@ docker logs <container-id>
 
 {{< /note >}}
 
-The Hasura UI should load on `localhost:8080`.
-
 ## Create sample tables and relationships
 
- Open the Hasura UI on `localhost:8080` and go to the `DATA` tab as shown here.
+Follow the steps below to add tables to the `yugabyte` database specified in the configuration above.
+You can use another database, if you want, but make sure to change the database name in the `HASURA_GRAPHQL_DATABASE_URL` setting.
+
+To perform the steps below, open the Hasura UI on `localhost:8080` and go to the `DATA` tab as shown here.
 
 ![DATA tab in Hasura UI](/images/develop/graphql/hasura/data-tab.png)
 
@@ -120,11 +136,10 @@ Click **Add**, and then click **Save**.
 ./bin/ysqlsh
 ```
 
-1. Copy the commands below into the shell and press **Enter**.
+1. Copy the YSQL statements below into the shell and press **Enter**.
 
 ```postgresql
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE
-INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe')
+INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe'); 
 INSERT INTO article(title, content, rating, author_id) 
 VALUES ('Jane''s First Book', 'Lorem ipsum', 10, 2);
 INSERT INTO article(title, content, rating, author_id) 
@@ -134,14 +149,14 @@ VALUES ('Jane''s Second Book', 'consectetur adipiscing elit', 7, 2);
 INSERT INTO article(title, content, rating, author_id) 
 VALUES ('Jane''s Third Book', 'sed do eiusmod tempor', 8, 2);
 INSERT INTO article(title, content, rating, author_id) 
-VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1)
+VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1);
 SELECT * FROM author ORDER BY id;
 SELECT * FROM article ORDER BY id;
 ```
 
 ## Run some GraphQL queries
 
-Go back to the Hasura UI, click the **GRAPHQL** tab on top.
+Go back to the Hasura UI and click **GRAPHIQL**.
 
 ### Query using the object relationship
 
@@ -160,7 +175,7 @@ Fetch a list of articles and sort each article’s author in descending order an
 }
 ```
 
-![relationships form](/images/develop/graphql/hasura/query-relationship-object.png)
+![Relationships form](/images/develop/graphql/hasura/query-relationship-object.png)
 
 ### Query using the array relationship
 
