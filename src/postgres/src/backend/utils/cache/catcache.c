@@ -1045,14 +1045,15 @@ CatalogCacheInitializeCache(CatCache *cache)
 
 /*
  * YugaByte utility method to set the data for a cache list entry.
- * Used during InitCatCachePhase2 (specifically for the procedure name list).
+ * Used during InitCatCachePhase2 (specifically for the procedure name list
+ * and for rewrite rules).
  * Code basically takes the second part of SearchCatCacheList (which sets the
  * data if no entry is found).
  */
 void
 SetCatCacheList(CatCache *cache,
                 int nkeys,
-                List *fnlist)
+                List *current_list)
 {
 	ScanKeyData cur_skey[CATCACHE_MAXKEYS];
 	Datum		arguments[CATCACHE_MAXKEYS];
@@ -1075,7 +1076,7 @@ SetCatCacheList(CatCache *cache,
 
 	Assert(nkeys > 0 && nkeys < cache->cc_nkeys);
 	memcpy(cur_skey, cache->cc_skey, sizeof(cur_skey));
-	HeapTuple tup = linitial(fnlist);
+	HeapTuple tup = linitial(current_list);
 	for (i = 0; i < nkeys; i++)
 	{
 		if (cur_skey[i].sk_attno == InvalidOid)
@@ -1124,7 +1125,7 @@ SetCatCacheList(CatCache *cache,
 		relation = heap_open(cache->cc_reloid, AccessShareLock);
 
 		ListCell *lc;
-		foreach(lc, fnlist)
+		foreach(lc, current_list)
 		{
 			uint32     hashValue;
 			Index      hashIndex;
@@ -1380,7 +1381,7 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
  * Utility to add a Tuple entry to the cache only if it does not exist.
  * Used only when IsYugaByteEnabled() is true.
  * Currently used in two cases:
- *  1. When initializing the essential caches (i.e. on backend start).
+ *  1. When initializing the caches (i.e. on backend start).
  *  2. When inserting a new entry to the sys catalog (i.e. on DDL create).
  */
 void

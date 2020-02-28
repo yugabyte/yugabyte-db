@@ -30,6 +30,9 @@ DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(transaction_not_found);
 
+METRIC_DECLARE_entity(server);
+METRIC_DECLARE_counter(rpc_inbound_calls_created);
+
 namespace yb {
 namespace pgwrapper {
 
@@ -1069,6 +1072,28 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
 
   ASSERT_OK(conn1.CommitTransaction());
   ASSERT_OK(conn2.CommitTransaction());
+}
+
+// Test that the number of RPCs sent to master upon first connection is not too high.
+// See https://github.com/yugabyte/yugabyte-db/issues/3049
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
+  auto get_master_inbound_rpcs_created = [&cluster_ = this->cluster_]() -> Result<int64_t> {
+    int64_t m_in_created = 0;
+    for (auto* master : cluster_->master_daemons()) {
+      m_in_created += VERIFY_RESULT(master->GetInt64Metric(
+          &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
+    }
+    return m_in_created;
+  };
+
+  int64_t rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
+  ASSERT_RESULT(Connect());
+  int64_t rpcs_after  = ASSERT_RESULT(get_master_inbound_rpcs_created());
+  int64_t rpcs_during = rpcs_after - rpcs_before;
+
+  // Real-world numbers (debug build, local Mac): 328 RPCs before, 95 after the fix for #3049
+  LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
+  ASSERT_LT(rpcs_during, 150);
 }
 
 } // namespace pgwrapper
