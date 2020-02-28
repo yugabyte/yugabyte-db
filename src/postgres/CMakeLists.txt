@@ -29,8 +29,8 @@ set(build_postgres_args
       --cflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
       --compiler_type       "$ENV{YB_COMPILER_TYPE}"
       --cxxflags            "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
-      --ldflags             "${CMAKE_SHARED_LINKER_FLAGS}"
-      --ldflags_ex          "${CMAKE_EXE_LINKER_FLAGS}"
+      --ldflags             " ${CMAKE_SHARED_LINKER_FLAGS}"
+      --ldflags_ex          " ${CMAKE_EXE_LINKER_FLAGS}"
       --openssl_include_dir "${OPENSSL_INCLUDE_DIR}"
       --openssl_lib_dir     "${OPENSSL_LIB_DIR}"
     )
