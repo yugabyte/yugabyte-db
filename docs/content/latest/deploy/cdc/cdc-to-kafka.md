@@ -109,10 +109,10 @@ $ wget -O yb-cdc-connector.jar https://github.com/yugabyte/yb-kafka-connector/bl
 Run the following command to start logging an output stream of data changes from the YugabyteDB `cdc` table to Apache Kafka.
 
 ```sh
-java -jar yb-cdc-connector.jar
---table_name yugabyte.cdc
---topic_name cdc-test
---table_schema_path table_schema_path.avsc
+java -jar yb-cdc-connector.jar \
+--table_name yugabyte.cdc \
+--topic_name cdc-test \
+--table_schema_path table_schema_path.avsc \
 --primary_key_schema_path primary_key_schema_path.avsc
 ```
 
