@@ -18,8 +18,11 @@
 
 #include "fmgr.h"
 #include "utils/builtins.h"
+#include "utils/sortsupport.h"
 
 #include "utils/graphid.h"
+
+static int graphid_btree_fast_cmp(Datum x, Datum y, SortSupport ssup);
 
 PG_FUNCTION_INFO_V1(graphid_in);
 
@@ -52,8 +55,106 @@ Datum graphid_out(PG_FUNCTION_ARGS)
     char buf[GRAPHID_LEN + 1];
     char *out;
 
-    pg_lltoa((int64)gid, buf);
+    pg_lltoa(gid, buf);
     out = pstrdup(buf);
 
     PG_RETURN_CSTRING(out);
+}
+
+PG_FUNCTION_INFO_V1(graphid_eq);
+
+Datum graphid_eq(PG_FUNCTION_ARGS)
+{
+    graphid lgid = AG_GETARG_GRAPHID(0);
+    graphid rgid = AG_GETARG_GRAPHID(1);
+
+    PG_RETURN_BOOL(lgid == rgid);
+}
+
+PG_FUNCTION_INFO_V1(graphid_ne);
+
+Datum graphid_ne(PG_FUNCTION_ARGS)
+{
+    graphid lgid = AG_GETARG_GRAPHID(0);
+    graphid rgid = AG_GETARG_GRAPHID(1);
+
+    PG_RETURN_BOOL(lgid != rgid);
+}
+
+PG_FUNCTION_INFO_V1(graphid_lt);
+
+Datum graphid_lt(PG_FUNCTION_ARGS)
+{
+    graphid lgid = AG_GETARG_GRAPHID(0);
+    graphid rgid = AG_GETARG_GRAPHID(1);
+
+    PG_RETURN_BOOL(lgid < rgid);
+}
+
+PG_FUNCTION_INFO_V1(graphid_gt);
+
+Datum graphid_gt(PG_FUNCTION_ARGS)
+{
+    graphid lgid = AG_GETARG_GRAPHID(0);
+    graphid rgid = AG_GETARG_GRAPHID(1);
+
+    PG_RETURN_BOOL(lgid > rgid);
+}
+
+PG_FUNCTION_INFO_V1(graphid_le);
+
+Datum graphid_le(PG_FUNCTION_ARGS)
+{
+    graphid lgid = AG_GETARG_GRAPHID(0);
+    graphid rgid = AG_GETARG_GRAPHID(1);
+
+    PG_RETURN_BOOL(lgid <= rgid);
+}
+
+PG_FUNCTION_INFO_V1(graphid_ge);
+
+Datum graphid_ge(PG_FUNCTION_ARGS)
+{
+    graphid lgid = AG_GETARG_GRAPHID(0);
+    graphid rgid = AG_GETARG_GRAPHID(1);
+
+    PG_RETURN_BOOL(lgid >= rgid);
+}
+
+PG_FUNCTION_INFO_V1(graphid_btree_cmp);
+
+Datum graphid_btree_cmp(PG_FUNCTION_ARGS)
+{
+    graphid lgid = AG_GETARG_GRAPHID(0);
+    graphid rgid = AG_GETARG_GRAPHID(1);
+
+    if (lgid > rgid)
+        PG_RETURN_INT32(1);
+    else if (lgid == rgid)
+        PG_RETURN_INT32(0);
+    else
+        PG_RETURN_INT32(-1);
+}
+
+PG_FUNCTION_INFO_V1(graphid_btree_sort);
+
+Datum graphid_btree_sort(PG_FUNCTION_ARGS)
+{
+    SortSupport ssup = (SortSupport)PG_GETARG_POINTER(0);
+
+    ssup->comparator = graphid_btree_fast_cmp;
+    PG_RETURN_VOID();
+}
+
+static int graphid_btree_fast_cmp(Datum x, Datum y, SortSupport ssup)
+{
+    graphid lgid = DATUM_GET_GRAPHID(x);
+    graphid rgid = DATUM_GET_GRAPHID(y);
+
+    if (lgid > rgid)
+        return 1;
+    else if (lgid == rgid)
+        return 0;
+    else
+        return -1;
 }

@@ -72,6 +72,7 @@ AS 'MODULE_PATHNAME';
 -- graphid type
 --
 
+-- define graphid as a shell type first
 CREATE TYPE graphid;
 
 CREATE FUNCTION graphid_in(cstring)
@@ -98,6 +99,167 @@ CREATE TYPE graphid (
   ALIGNMENT = float8,
   STORAGE = plain
 );
+
+--
+-- graphid - comparison operators (=, <>, <, >, <=, >=)
+--
+
+CREATE FUNCTION graphid_eq(graphid, graphid)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR = (
+  FUNCTION = graphid_eq,
+  LEFTARG = graphid,
+  RIGHTARG = graphid,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
+CREATE FUNCTION graphid_ne(graphid, graphid)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = graphid_ne,
+  LEFTARG = graphid,
+  RIGHTARG = graphid,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
+
+CREATE FUNCTION graphid_lt(graphid, graphid)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR < (
+  FUNCTION = graphid_lt,
+  LEFTARG = graphid,
+  RIGHTARG = graphid,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
+CREATE FUNCTION graphid_gt(graphid, graphid)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = graphid_gt,
+  LEFTARG = graphid,
+  RIGHTARG = graphid,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
+
+CREATE FUNCTION graphid_le(graphid, graphid)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <= (
+  FUNCTION = graphid_le,
+  LEFTARG = graphid,
+  RIGHTARG = graphid,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
+CREATE FUNCTION graphid_ge(graphid, graphid)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR >= (
+  FUNCTION = graphid_ge,
+  LEFTARG = graphid,
+  RIGHTARG = graphid,
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
+);
+
+--
+-- graphid - B-tree support functions
+--
+
+-- comparison support
+CREATE FUNCTION graphid_btree_cmp(graphid, graphid)
+RETURNS int
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- sort support
+CREATE FUNCTION graphid_btree_sort(internal)
+RETURNS void
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
+-- define operator classes for graphid
+--
+
+-- B-tree strategies
+--   1: less than
+--   2: less than or equal
+--   3: equal
+--   4: greater than or equal
+--   5: greater than
+--
+-- B-tree support functions
+--   1: compare two keys and return an integer less than zero, zero, or greater
+--      than zero, indicating whether the first key is less than, equal to, or
+--      greater than the second
+--   2: return the addresses of C-callable sort support function(s) (optional)
+--   3: compare a test value to a base value plus/minus an offset, and return
+--      true or false according to the comparison result (optional)
+CREATE OPERATOR CLASS graphid_ops DEFAULT FOR TYPE graphid USING btree AS
+  OPERATOR 1 <,
+  OPERATOR 2 <=,
+  OPERATOR 3 =,
+  OPERATOR 4 >=,
+  OPERATOR 5 >,
+  FUNCTION 1 graphid_btree_cmp (graphid, graphid),
+  FUNCTION 2 graphid_btree_sort (internal);
 
 --
 -- agtype type and its support functions

@@ -50,7 +50,9 @@ EXTENSION = agensgraph
 
 DATA = agensgraph--0.0.0.sql
 
+# sorted in dependency order
 REGRESS = scan \
+          graphid \
           agtype \
           commands \
           cypher \

@@ -27,8 +27,10 @@
 typedef int64 graphid;
 
 #define DATUM_GET_GRAPHID(d) DatumGetInt64(d)
-#define AG_GETARG_GRAPHID(x) DATUM_GET_GRAPHID(PG_GETARG_DATUM(x))
-#define AG_RETURN_GRAPHID(x) return Int64GetDatum(x)
+#define GRAPHID_GET_DATUM(x) Int64GetDatum(x)
+
+#define AG_GETARG_GRAPHID(a) DATUM_GET_GRAPHID(PG_GETARG_DATUM(a))
+#define AG_RETURN_GRAPHID(x) return GRAPHID_GET_DATUM(x)
 
 // OID of graphid and _graphid
 #define GRAPHIDOID \
