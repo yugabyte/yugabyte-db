@@ -660,7 +660,7 @@ void MasterPathHandlers::HandleHealthCheck(
 
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                                               stringstream* output,
-                                              bool skip_system_tables) {
+                                              bool only_user_tables) {
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   vector<scoped_refptr<TableInfo> > tables;
@@ -681,26 +681,30 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       continue;
     }
 
-    table_cat = kUserTable;
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;
 
     // Determine the table category. YugaWare tables should be displayed as system tables.
-    if (master_->catalog_manager()->IsUserIndex(*table) && !is_platform) {
-      table_cat = kIndexTable;
-    } else if (!master_->catalog_manager()->IsUserTable(*table) || is_platform) {
-      // Skip system tables if we should.
-      if (skip_system_tables) {
-        continue;
-      }
+    if (is_platform) {
       table_cat = kSystemTable;
+    } else if (master_->catalog_manager()->IsUserIndex(*table)) {
+      table_cat = kUserIndex;
+    } else if (master_->catalog_manager()->IsUserTable(*table)) {
+      table_cat = kUserTable;
+    } else {
+      table_cat = kSystemTable;
+    }
+    // Skip non-user tables if we should.
+    if (only_user_tables && (table_cat != kUserIndex && table_cat != kUserTable)) {
+      continue;
     }
 
     string table_uuid = table->id();
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     string ysql_table_oid;
-    if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+    if (table->GetTableType() == PGSQL_TABLE_TYPE &&
+        !master_->catalog_manager()->IsColocatedParentTable(*table)) {
       const auto result = GetPgsqlTableOid(table_uuid);
       if (result.ok()) {
         ysql_table_oid = std::to_string(*result);
@@ -726,17 +730,17 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
   }
 
   for (int i = 0; i < kNumTypes; ++i) {
-    if (skip_system_tables && table_type_[i] == "System") {
+    if (only_user_tables && (table_type_[i] != "Index" && table_type_[i] != "User")) {
       continue;
     }
     (*output) << "<div class='panel panel-default'>\n"
               << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[i]
-              << " Tables</h2></div>\n";
+              << " tables</h2></div>\n";
     (*output) << "<div class='panel-body table-responsive'>";
 
     if (ordered_tables[i]->empty()) {
       (*output) << "There are no " << static_cast<char>(tolower(table_type_[i][0]))
-                << table_type_[i].substr(1) << " type tables.\n";
+                << table_type_[i].substr(1) << " tables.\n";
     } else {
       *output << "<table class='table table-striped' style='table-layout: fixed;'>\n";
       *output << "  <tr><th width='14%'>Keyspace</th>\n"
@@ -1074,7 +1078,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // Display the user tables if any.
   (*output) << "<div class='col-md-12 col-lg-12'>\n";
-  HandleCatalogManager(req, output, true /* skip_system_tables */);
+  HandleCatalogManager(req, output, true /* only_user_tables */);
   (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
 }
 
@@ -1353,7 +1357,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-server");
   cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
-      this, _1, _2, false /* skip_system_tables */);
+      this, _1, _2, false /* only_user_tables */);
   server->RegisterPathHandler(
       "/tables", "Tables",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
