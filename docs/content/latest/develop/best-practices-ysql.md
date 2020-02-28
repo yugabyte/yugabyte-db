@@ -112,13 +112,13 @@ of a cluster of YugabyteDB.
 {{< /note >}}
 
 ## Partial indexes
-Creating indexes actually creates another hidden table where 1 row is inserted for each row from the base table.
-This includes a lot of overhead when we're only interested on querying a subset of the values. 
-
-A common scenario is to query the index only when the value of a column `is not NULL`. 
-This can be achieved with partial indexes using the `WITH` clause when creating an index.
-
-The partial index has lower storage overhead and better write performance because not all inserts will also write to the index table.
+A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition 
+specified in the `WHERE` clause. It can be used to exclude `NULL` or common values from the index. 
+This will speed up any writes to the table since rows containing the common column values don't need to be indexed. 
+It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
+It can also be used to index just the rows of interest. 
+For example, an application maintaining a shipments table may have a column for shipment status. 
+If the application mostly accesses the in-flight shipments, then it can use a partial index to exclude rows whose shipment status is delivered.
 
 Partial indexes can also be combined with [Covering indexes](../api/ysql/commands/ddl_create_index.md#include-columns).
 
