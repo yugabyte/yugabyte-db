@@ -58,7 +58,7 @@ RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION drop_graph(graph_name name, cascade bool = false)
+CREATE FUNCTION drop_graph(graph_name name, cascade boolean = false)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
@@ -100,9 +100,10 @@ CREATE TYPE graphid (
 );
 
 --
--- agtype type and support functions
+-- agtype type and its support functions
 --
 
+-- define agtype as a shell type first
 CREATE TYPE agtype;
 
 CREATE FUNCTION agtype_in(cstring)
@@ -128,7 +129,7 @@ CREATE TYPE agtype (
 );
 
 --
--- agtype operator functions
+-- agtype - mathematical operators (+, -, *, /, %, ^)
 --
 
 CREATE FUNCTION agtype_add(agtype, agtype)
@@ -139,6 +140,13 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE OPERATOR + (
+  FUNCTION = agtype_add,
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = +
+);
+
 CREATE FUNCTION agtype_sub(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
@@ -146,6 +154,12 @@ STABLE
 RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR - (
+  FUNCTION = agtype_sub,
+  LEFTARG = agtype,
+  RIGHTARG = agtype
+);
 
 CREATE FUNCTION agtype_neg(agtype)
 RETURNS agtype
@@ -155,6 +169,11 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE OPERATOR - (
+  FUNCTION = agtype_neg,
+  RIGHTARG = agtype
+);
+
 CREATE FUNCTION agtype_mul(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
@@ -162,6 +181,13 @@ STABLE
 RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR * (
+  FUNCTION = agtype_mul,
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = *
+);
 
 CREATE FUNCTION agtype_div(agtype, agtype)
 RETURNS agtype
@@ -171,6 +197,12 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE OPERATOR / (
+  FUNCTION = agtype_div,
+  LEFTARG = agtype,
+  RIGHTARG = agtype
+);
+
 CREATE FUNCTION agtype_mod(agtype, agtype)
 RETURNS agtype
 LANGUAGE c
@@ -178,6 +210,12 @@ STABLE
 RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR % (
+  FUNCTION = agtype_mod,
+  LEFTARG = agtype,
+  RIGHTARG = agtype
+);
 
 CREATE FUNCTION agtype_pow(agtype, agtype)
 RETURNS agtype
@@ -187,55 +225,14 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
---
--- agtype operator definitions
---
-
-CREATE OPERATOR + (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_add,
-  COMMUTATOR = +
-);
-
-CREATE OPERATOR - (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_sub
-);
-
-CREATE OPERATOR - (
-  RIGHTARG = agtype,
-  FUNCTION = agtype_neg
-);
-
-CREATE OPERATOR * (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_mul,
-  COMMUTATOR = *
-);
-
-CREATE OPERATOR / (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_div
-);
-
-CREATE OPERATOR % (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_mod
-);
-
 CREATE OPERATOR ^ (
+  FUNCTION = agtype_pow,
   LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_pow
+  RIGHTARG = agtype
 );
 
 --
--- agtype comparator functions
+-- agtype - comparison operators (=, <>, <, >, <=, >=)
 --
 
 CREATE FUNCTION agtype_eq(agtype, agtype)
@@ -246,6 +243,16 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE OPERATOR = (
+  FUNCTION = agtype_eq,
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = =,
+  NEGATOR = <>,
+  RESTRICT = eqsel,
+  JOIN = eqjoinsel
+);
+
 CREATE FUNCTION agtype_ne(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
@@ -253,6 +260,16 @@ STABLE
 RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <> (
+  FUNCTION = agtype_ne,
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = <>,
+  NEGATOR = =,
+  RESTRICT = neqsel,
+  JOIN = neqjoinsel
+);
 
 CREATE FUNCTION agtype_lt(agtype, agtype)
 RETURNS boolean
@@ -262,6 +279,16 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE OPERATOR < (
+  FUNCTION = agtype_lt,
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = >,
+  NEGATOR = >=,
+  RESTRICT = scalarltsel,
+  JOIN = scalarltjoinsel
+);
+
 CREATE FUNCTION agtype_gt(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
@@ -269,6 +296,16 @@ STABLE
 RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR > (
+  FUNCTION = agtype_gt,
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = <,
+  NEGATOR = <=,
+  RESTRICT = scalargtsel,
+  JOIN = scalargtjoinsel
+);
 
 CREATE FUNCTION agtype_le(agtype, agtype)
 RETURNS boolean
@@ -278,6 +315,16 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE OPERATOR <= (
+  FUNCTION = agtype_le,
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  COMMUTATOR = >=,
+  NEGATOR = >,
+  RESTRICT = scalarlesel,
+  JOIN = scalarlejoinsel
+);
+
 CREATE FUNCTION agtype_ge(agtype, agtype)
 RETURNS boolean
 LANGUAGE c
@@ -286,48 +333,18 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
---
--- agtype comparator definitions
---
-
-CREATE OPERATOR = (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_eq
-);
-
-CREATE OPERATOR <> (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_ne
-);
-
-CREATE OPERATOR < (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_lt
-);
-
-CREATE OPERATOR > (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_gt
-);
-
-CREATE OPERATOR <= (
-  LEFTARG = agtype,
-  RIGHTARG = agtype,
-  FUNCTION = agtype_le
-);
-
 CREATE OPERATOR >= (
+  FUNCTION = agtype_ge,
   LEFTARG = agtype,
   RIGHTARG = agtype,
-  FUNCTION = agtype_ge
+  COMMUTATOR = <=,
+  NEGATOR = <,
+  RESTRICT = scalargesel,
+  JOIN = scalargejoinsel
 );
 
 --
--- agtype map literal functions
+-- agtype - map literal (`{key: expr, ...}`)
 --
 
 CREATE FUNCTION agtype_build_map(VARIADIC "any")
@@ -347,7 +364,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME', 'agtype_build_map_noargs';
 
 --
--- agtype list literal functions
+-- agtype - list literal (`[expr, ...]`)
 --
 
 CREATE FUNCTION agtype_build_list(VARIADIC "any")
@@ -367,8 +384,10 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME', 'agtype_build_list_noargs';
 
 --
--- agtype (boolean) <-to-> boolean functions and casts
+-- agtype - type coercions
 --
+
+-- agtype -> boolean (implicit)
 
 CREATE FUNCTION agtype_to_bool(agtype)
 RETURNS boolean
@@ -382,6 +401,8 @@ CREATE CAST (agtype AS boolean)
 WITH FUNCTION agtype_to_bool(agtype)
 AS IMPLICIT;
 
+-- boolean -> agtype (explicit)
+
 CREATE FUNCTION bool_to_agtype(boolean)
 RETURNS agtype
 LANGUAGE c
@@ -394,19 +415,20 @@ CREATE CAST (boolean AS agtype)
 WITH FUNCTION bool_to_agtype(boolean);
 
 --
--- agtype access operator [element], ["field"], object.field
+-- agtype - access operators
 --
 
+-- for series of `map.key` and `container[expr]`
 CREATE FUNCTION agtype_access_operator(VARIADIC agtype[])
 RETURNS agtype
 LANGUAGE C
 STABLE
-STRICT
+RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 --
--- agtype string match function
+-- agtype - string matching (`STARTS WITH`, `ENDS WITH`, `CONTAINS`)
 --
 
 CREATE FUNCTION agtype_string_match_starts_with(agtype, agtype)
