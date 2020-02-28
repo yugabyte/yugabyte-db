@@ -31,7 +31,7 @@ Follow the steps here to create your first cluster:
 
     {{< note title="Note" >}}
     
-    For the initial beta release, the options are hard-coded to use the following options:
+    For the initial beta release, the options available are limited to::
     
     - **Cloud Provider:** Google Cloud Platform
     - **Region:** Oregon (`us-west1`)
