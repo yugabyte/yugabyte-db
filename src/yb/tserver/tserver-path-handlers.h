@@ -72,6 +72,8 @@ class TabletServerPathHandlers {
                             std::stringstream* output);
   void HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
                                     std::stringstream* output);
+  void HandleHealthCheck(const Webserver::WebRequest& req,
+                         std::stringstream* output);
   std::string ConsensusStatePBToHtml(const consensus::ConsensusStatePB& cstate) const;
   std::string GetDashboardLine(const std::string& link,
                                const std::string& text, const std::string& desc);

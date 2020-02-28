@@ -155,6 +155,9 @@ DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_greater_than, 0,
                  "If greater than zero, this process will crash if we detect more than the "
                  "specified number of remote bootstrap sessions.");
 
+DEFINE_test_flag(bool, force_single_tablet_failure, false,
+                 "Force exactly one tablet to a failed state.");
+
 namespace {
 
 constexpr int kDbCacheSizeUsePercentage = -1;
@@ -1096,6 +1099,13 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   consensus::ConsensusBootstrapInfo bootstrap_info;
   consensus::RetryableRequests retryable_requests(kLogPrefix);
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
+  if (CompareAndSetFlag(&FLAGS_force_single_tablet_failure, true /* expected */, false /* val */)) {
+    LOG(ERROR) << "Setting the state of a tablet to FAILED";
+    tablet_peer->SetFailed(STATUS(InternalError, "Setting tablet to failed state for test",
+                                  tablet_id));
+    return;
+  }
+
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
     auto s = tablet_peer->SetBootstrapping();

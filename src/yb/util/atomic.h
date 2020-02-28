@@ -385,6 +385,12 @@ void SetAtomicFlag(U value, T* flag) {
   atomic_flag.store(value);
 }
 
+template <class U, class T>
+bool CompareAndSetFlag(T* flag, U exp, U desired) {
+  std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
+  return atomic_flag.compare_exchange_strong(exp, desired);
+}
+
 template<typename T>
 void UpdateAtomicMax(std::atomic<T>* max_holder, T new_value) {
   auto current_max = max_holder->load(std::memory_order_acquire);
