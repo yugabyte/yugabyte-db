@@ -174,12 +174,6 @@ We're [actively working](https://github.com/yugabyte/yugabyte-db/issues/1317) to
 On deployments where we have many small tables and few big tables, we can use [colocation](../explore/colocated-tables/linux.md) in YSQL layer to group small 
 tables into 1 tablet.
 
-## Use `TRUNCATE` to empty tables instead of `DELETE`
-`TRUNCATE` deletes the database files that store the table and is very fast. 
-While DELETE inserts a `delete marker` for each row  in transactions and they are removed from storage when a compaction 
-runs.
-
-Reach out on slack/forum for help with your data-schemas and how to better integrate best practices in your project.
 
 ## Covering indexes
 When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the 
@@ -193,3 +187,4 @@ This turns a (possible) random read from the main table to just a filter on the 
 The `INCLUDE` clause is available in both [YSQL](../api/ysql/commands/ddl_create_index.md#include-clause) and 
 [YCQL](../api/ycql/ddl_create_index.md#included-columns)].
 
+Reach out on slack/forum for help with your data-schemas and how to better integrate best practices in your project.
