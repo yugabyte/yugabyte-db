@@ -30,14 +30,14 @@ Follow the steps here to create your first cluster:
     ![Create Free Tier cluster details](/images/deploy/yugabyte-cloud/create-free-tier-cluster-details.png)
 
     {{< note title="Note" >}}
-    
-    For the initial beta release, the options available are limited to::
-    
-    - **Cloud Provider:** Google Cloud Platform
+
+    For the initial beta release, the options available are limited to:
+
+    - **Cloud Provider:** Google Cloud Platform (GCP) or Amazon Web Services (AWS)
     - **Region:** Oregon (`us-west1`)
-    
+
     Additional options for cloud provider and region will become available in future beta updates.
-    
+
     {{< /note >}}
 
 2. Click **Create Cluster**. The **Clusters** page appears with the provisioning of your new cluster in progress. When the **State** changes to `Ready`,
