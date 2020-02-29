@@ -6891,7 +6891,7 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 
 	/* Don't drop columns used in the partition key */
 	if (has_partition_attrs(rel,
-							bms_make_singleton(attnum - FirstLowInvalidHeapAttributeNumber),
+							bms_make_singleton(attnum - YBGetFirstLowInvalidAttributeNumber(rel)),
 							&is_expr))
 	{
 		if (!is_expr)
@@ -9618,7 +9618,7 @@ ATPrepAlterColumnType(List **wqueue,
 
 	/* Don't alter columns used in the partition key */
 	if (has_partition_attrs(rel,
-							bms_make_singleton(attnum - FirstLowInvalidHeapAttributeNumber),
+							bms_make_singleton(attnum - YBGetFirstLowInvalidAttributeNumber(rel)),
 							&is_expr))
 	{
 		if (!is_expr)
