@@ -28,6 +28,6 @@ public class TestPgRegressPartitions extends BasePgSQLTest {
 
   @Test
   public void testPgRegressTypes() throws Exception {
-    runPgRegressTest("yb_partitions");
+    runPgRegressTest("yb_pg_partitions");
   }
 }
