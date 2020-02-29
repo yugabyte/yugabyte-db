@@ -17,32 +17,39 @@
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "catalog/objectaddress.h"
-#include "catalog/pg_class_d.h"
-#include "commands/tablecmds.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
-#include "utils/builtins.h"
+#include "nodes/plannodes.h"
+#include "tcop/dest.h"
+#include "tcop/utility.h"
+#include "utils/lsyscache.h"
 
-#include "catalog/ag_catalog.h"
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "commands/label_commands.h"
 #include "utils/agtype.h"
 #include "utils/graphid.h"
 
-static Oid create_table_for_vertex_label(char *graph_name, char *label_name);
+static void create_table_for_vertex_label(char *graph_name, char *label_name);
 
 Oid create_vertex_label(char *graph_name, char *label_name)
 {
+    Oid nsp_id;
     Oid relation_id;
     Oid label_oid;
 
+    // create a table for the new lable
+    create_table_for_vertex_label(graph_name, label_name);
+
+    CommandCounterIncrement();
+
     // TODO: generate "id" for label (use sequence)
 
-    relation_id = create_table_for_vertex_label(graph_name, label_name);
+    // record the new lable in ag_label
+    nsp_id = get_graph_namespace(graph_name);
+    relation_id = get_relname_relid(label_name, nsp_id);
     label_oid = insert_label(label_name, get_graph_oid(graph_name), 0,
                              LABEL_KIND_VERTEX, relation_id);
 
@@ -53,22 +60,18 @@ Oid create_vertex_label(char *graph_name, char *label_name)
 
 // CREATE TABLE "graph_name"."label_name" (
 //   "id" graphid PRIMARY KEY,
-//   "properties" agtype
+//   "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
 // )
-//
-// TODO: enable PRIMARY KEY constraint
-static Oid create_table_for_vertex_label(char *graph_name, char *label_name)
+static void create_table_for_vertex_label(char *graph_name, char *label_name)
 {
-    CreateStmt *create_stmt = makeNode(CreateStmt);
+    CreateStmt *create_stmt;
     ColumnDef *id;
-/*
     Constraint *pk;
- */
     ColumnDef *props;
     Constraint *not_null;
     List *func_name;
     Constraint *props_default;
-    ObjectAddress address;
+    PlannedStmt *wrapper;
 
     create_stmt = makeNode(CreateStmt);
 
@@ -77,7 +80,6 @@ static Oid create_table_for_vertex_label(char *graph_name, char *label_name)
 
     // "id" graphid PRIMARY KEY
     id = makeColumnDef("id", GRAPHIDOID, -1, InvalidOid);
-/*
     pk = makeNode(Constraint);
     pk->contype = CONSTR_PRIMARY;
     pk->location = -1;
@@ -86,7 +88,6 @@ static Oid create_table_for_vertex_label(char *graph_name, char *label_name)
     pk->indexname = NULL;
     pk->indexspace = NULL;
     id->constraints = list_make1(pk);
- */
 
     // "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
     props = makeColumnDef("properties", AGTYPEOID, -1, InvalidOid);
@@ -113,8 +114,14 @@ static Oid create_table_for_vertex_label(char *graph_name, char *label_name)
     create_stmt->tablespacename = NULL;
     create_stmt->if_not_exists = false;
 
-    address = DefineRelation(create_stmt, RELKIND_RELATION, InvalidOid, NULL,
-                             NULL);
+    wrapper = makeNode(PlannedStmt);
+    wrapper->commandType = CMD_UTILITY;
+    wrapper->canSetTag = false;
+    wrapper->utilityStmt = (Node *)create_stmt;
+    wrapper->stmt_location = -1;
+    wrapper->stmt_len = 0;
 
-    return address.objectId;
+    ProcessUtility(wrapper, "(generated CREATE TABLE command)",
+                   PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
+                   NULL);
 }
