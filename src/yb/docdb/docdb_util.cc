@@ -96,8 +96,8 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     bool decode_dockey,
     bool increment_write_id,
     PartialRangeKeyIntents partial_range_key_intents) const {
-  for (const auto& entry : dwb.key_value_pairs()) {
-    if (decode_dockey) {
+  if (decode_dockey) {
+    for (const auto& entry : dwb.key_value_pairs()) {
       SubDocKey subdoc_key;
       // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
       // don't contain the HybridTime.
