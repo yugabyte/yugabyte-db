@@ -1,0 +1,207 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#include "yb/tablet/transaction_status_resolver.h"
+
+#include <gflags/gflags.h>
+
+#include "yb/client/transaction_rpc.h"
+
+#include "yb/common/wire_protocol.h"
+
+#include "yb/rpc/rpc.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+
+using namespace std::literals;
+using namespace std::placeholders;
+
+namespace yb {
+namespace tablet {
+
+class TransactionStatusResolver::Impl {
+ public:
+  Impl(TransactionParticipantContext* participant_context, rpc::Rpcs* rpcs,
+       size_t max_transactions_per_request, TransactionStatusResolverCallback callback)
+      : participant_context_(*participant_context), rpcs_(*rpcs),
+        max_transactions_per_request_(max_transactions_per_request), callback_(std::move(callback)),
+        log_prefix_(participant_context->LogPrefix()), handle_(rpcs_.InvalidHandle()) {}
+
+  void Shutdown() {
+    closing_.store(true, std::memory_order_release);
+    run_latch_.Wait();
+  }
+
+  void Start(CoarseTimePoint deadline) {
+    deadline_ = deadline;
+    run_latch_.Reset(1);
+    Execute();
+  }
+
+  std::future<Status> ResultFuture() {
+    return result_promise_.get_future();
+  }
+
+  void Add(const TabletId& status_tablet, const TransactionId& transaction_id) {
+    LOG_IF(DFATAL, run_latch_.count()) << "Add while running";
+    queues_[status_tablet].push_back(transaction_id);
+  }
+
+ private:
+  void Execute() {
+    LOG_IF(DFATAL, !run_latch_.count()) << "Execute while running is false";
+
+    if (CoarseMonoClock::now() >= deadline_) {
+      Complete(STATUS(TimedOut, "Timed out to resolve transaction statuses"));
+      return;
+    }
+    if (closing_.load(std::memory_order_acquire)) {
+      Complete(STATUS(Aborted, "Aborted because of shutdown"));
+      return;
+    }
+    if (queues_.empty() || max_transactions_per_request_ <= 0) {
+      Complete(Status::OK());
+      return;
+    }
+
+    // We access queues_ only while adding transaction and after that while resolving
+    // transaction statuses, which is NOT concurrent.
+    // So we could avoid doing synchronization here.
+    auto& tablet_id_and_queue = *queues_.begin();
+    tserver::GetTransactionStatusRequestPB req;
+    req.set_tablet_id(tablet_id_and_queue.first);
+    req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
+    const auto& tablet_queue = tablet_id_and_queue.second;
+    auto request_size = std::min<size_t>(max_transactions_per_request_, tablet_queue.size());
+    for (size_t i = 0; i != request_size; ++i) {
+      const auto& txn_id = tablet_queue[i];
+      VLOG_WITH_PREFIX(4) << "Checking txn status: " << txn_id;
+      req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.begin()), txn_id.size());
+    }
+    rpcs_.RegisterAndStart(
+        client::GetTransactionStatus(
+            std::min(deadline_, TransactionRpcDeadline()),
+            nullptr /* tablet */,
+            participant_context_.client_future().get(),
+            &req,
+            std::bind(&Impl::StatusReceived, this, _1, _2, request_size)),
+        &handle_);
+  }
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  void StatusReceived(Status status,
+                      const tserver::GetTransactionStatusResponsePB& response,
+                      size_t request_size) {
+    VLOG_WITH_PREFIX(2) << "Received statuses: " << status << ", " << response.ShortDebugString();
+
+    rpcs_.Unregister(&handle_);
+
+    if (status.ok() && response.has_error()) {
+      status = StatusFromPB(response.error().status());
+    }
+
+    if (!status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
+      if (status.IsAborted()) {
+        Complete(status);
+      } else {
+        Execute();
+      }
+      return;
+    }
+
+    if (response.has_propagated_hybrid_time()) {
+      participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
+    }
+
+    if (response.status().size() != 1 && response.status().size() != request_size) {
+      // Node with old software version would always return 1 status.
+      LOG_WITH_PREFIX(DFATAL)
+          << "Bad response size, expected " << request_size << " entries, but found: "
+          << response.ShortDebugString();
+      Execute();
+      return;
+    }
+
+    status_infos_.clear();
+    status_infos_.reserve(request_size);
+    auto it = queues_.begin();
+    auto& queue = it->second;
+    for (size_t i = 0; i != response.status().size(); ++i) {
+      VLOG_WITH_PREFIX(4) << "Status of " << queue.front() << ": "
+                          << TransactionStatus_Name(response.status(i));
+      status_infos_.push_back({
+          queue.front(), response.status(i), HybridTime(response.status_hybrid_time(i))});
+      queue.pop_front();
+    }
+    if (queue.empty()) {
+      queues_.erase(it);
+    }
+
+    callback_(status_infos_);
+
+    Execute();
+  }
+
+  void Complete(const Status& status) {
+    result_promise_.set_value(status);
+    run_latch_.CountDown();
+  }
+
+  TransactionParticipantContext& participant_context_;
+  rpc::Rpcs& rpcs_;
+  const size_t max_transactions_per_request_;
+  TransactionStatusResolverCallback callback_;
+
+  const std::string log_prefix_;
+  rpc::Rpcs::Handle handle_;
+
+  std::atomic<bool> closing_{false};
+  CountDownLatch run_latch_{0};
+  CoarseTimePoint deadline_;
+  std::unordered_map<TabletId, std::deque<TransactionId>> queues_;
+  std::vector<TransactionStatusInfo> status_infos_;
+  std::promise<Status> result_promise_;
+};
+
+TransactionStatusResolver::TransactionStatusResolver(
+    TransactionParticipantContext* participant_context, rpc::Rpcs* rpcs,
+    size_t max_transactions_per_request, TransactionStatusResolverCallback callback)
+    : impl_(new Impl(
+        participant_context, rpcs, max_transactions_per_request, std::move(callback))) {
+}
+
+TransactionStatusResolver::~TransactionStatusResolver() {}
+
+void TransactionStatusResolver::Shutdown() {
+  impl_->Shutdown();
+}
+
+void TransactionStatusResolver::Add(
+    const TabletId& status_tablet, const TransactionId& transaction_id) {
+  impl_->Add(status_tablet, transaction_id);
+}
+
+void TransactionStatusResolver::Start(CoarseTimePoint deadline) {
+  impl_->Start(deadline);
+}
+
+std::future<Status> TransactionStatusResolver::ResultFuture() {
+  return impl_->ResultFuture();
+}
+
+} // namespace tablet
+} // namespace yb
