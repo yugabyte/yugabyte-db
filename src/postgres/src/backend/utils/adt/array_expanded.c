@@ -361,7 +361,7 @@ DatumGetExpandedArray(Datum d)
 	}
 
 	/* Else expand the hard way */
-	d = expand_array(d, CurrentMemoryContext, NULL);
+	d = expand_array(d, GetCurrentMemoryContext(), NULL);
 	return (ExpandedArrayHeader *) DatumGetEOHP(d);
 }
 
@@ -389,7 +389,7 @@ DatumGetExpandedArrayX(Datum d, ArrayMetaState *metacache)
 	}
 
 	/* Else expand using caller's cache if any */
-	d = expand_array(d, CurrentMemoryContext, metacache);
+	d = expand_array(d, GetCurrentMemoryContext(), metacache);
 	return (ExpandedArrayHeader *) DatumGetEOHP(d);
 }
 

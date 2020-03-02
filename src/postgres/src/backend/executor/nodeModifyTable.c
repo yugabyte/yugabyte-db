@@ -1156,7 +1156,8 @@ ExecUpdate(ModifyTableState *mtstate,
 		if (resultRelInfo->ri_projectReturning && resultRelInfo->ri_junkFilter)
 			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 
-		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
+		    !((ModifyTable *)mtstate->ps.plan)->no_index_update)
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 
@@ -1464,13 +1465,15 @@ lreplace:;
 	if (canSetTag)
 		(estate->es_processed)++;
 
-	/* AFTER ROW UPDATE Triggers */
-	ExecARUpdateTriggers(estate, resultRelInfo, tupleid, oldtuple, tuple,
-						 recheckIndexes,
-						 mtstate->operation == CMD_INSERT ?
-						 mtstate->mt_oc_transition_capture :
-						 mtstate->mt_transition_capture);
-
+	if (!((ModifyTable *)mtstate->ps.plan)->no_row_trigger)
+	{
+		/* AFTER ROW UPDATE Triggers */
+		ExecARUpdateTriggers(estate, resultRelInfo, tupleid, oldtuple, tuple,
+							recheckIndexes,
+							mtstate->operation == CMD_INSERT ?
+							mtstate->mt_oc_transition_capture :
+							mtstate->mt_transition_capture);
+	}
 	list_free(recheckIndexes);
 
 	/*

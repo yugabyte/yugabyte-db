@@ -72,7 +72,7 @@ geqo_eval(PlannerInfo *root, Gene *tour, int num_gene)
 	 * temp context a child of the planner's normal context, so that it will
 	 * be freed even if we abort via ereport(ERROR).
 	 */
-	mycontext = AllocSetContextCreate(CurrentMemoryContext,
+	mycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 									  "GEQO",
 									  ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(mycontext);

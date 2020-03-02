@@ -207,7 +207,7 @@ typedef struct ExprContext_CB
  *	  before we begin to evaluate expressions for that tuple.  Each
  *	  ExprContext normally has its very own per-tuple memory context.
  *
- *	CurrentMemoryContext should be set to ecxt_per_tuple_memory before
+ *	GetCurrentMemoryContext() should be set to ecxt_per_tuple_memory before
  *	calling ExecEvalExpr() --- see ExecEvalExprSwitchContext().
  * ----------------
  */

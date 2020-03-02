@@ -279,6 +279,9 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
   }
 
   bool has_rocksdb_max_background_compactions = false;
+  // This controls the maximum number of schedulable compactions, per each instance of rocksdb, of
+  // which we will have many. We also do not want to waste resources by having too many queued
+  // compactions.
   if (FLAGS_rocksdb_max_background_compactions == -1) {
     if (kNumCpus <= 4) {
       FLAGS_rocksdb_max_background_compactions = 1;
@@ -292,6 +295,8 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
     LOG(INFO) << "Auto setting FLAGS_rocksdb_max_background_compactions to "
               << FLAGS_rocksdb_max_background_compactions;
   } else {
+    // If we have provided an override, note that, so we can use that in the actual thread pool
+    // sizing as well.
     has_rocksdb_max_background_compactions = true;
   }
   options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
@@ -303,11 +308,23 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
   }
   options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
 
+  // This controls the number of background threads to use in the compaction thread pool.
   if (FLAGS_priority_thread_pool_size == -1) {
     if (has_rocksdb_max_background_compactions) {
+      // If we did override the per-rocksdb flag, but not this one, just port over that value.
       FLAGS_priority_thread_pool_size = FLAGS_rocksdb_max_background_compactions;
     } else {
-      FLAGS_priority_thread_pool_size = std::max(1, static_cast<int>(std::sqrt(kNumCpus)));
+      // If we did not override the per-rocksdb queue size, then just use a production friendly
+      // formula.
+      //
+      // For less then 8cpus, just manually tune to 1-2 threads. Above that, we can use 3.5/8.
+      if (kNumCpus < 4) {
+        FLAGS_priority_thread_pool_size = 1;
+      } else if (kNumCpus < 8) {
+        FLAGS_priority_thread_pool_size = 2;
+      } else {
+        FLAGS_priority_thread_pool_size = std::floor(kNumCpus * 3.5 / 8.0);
+      }
     }
     LOG(INFO) << "Auto setting FLAGS_priority_thread_pool_size to "
               << FLAGS_priority_thread_pool_size;

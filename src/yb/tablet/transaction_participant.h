@@ -120,6 +120,8 @@ class TransactionParticipantContext {
   // Returns hybrid time that lower than any future transaction apply record.
   virtual HybridTime SafeTimeForTransactionParticipant() = 0;
 
+  std::string LogPrefix() const;
+
  protected:
   ~TransactionParticipantContext() {}
 };
@@ -217,6 +219,12 @@ class TransactionParticipant : public TransactionStatusManager {
   void StartShutdown();
 
   void CompleteShutdown();
+
+  // Resolve all transactions that were committed or aborted at resolve_at.
+  // After this function returns with success:
+  // - All intents of committed transactions will have been applied.
+  // - No transactions can be committed with commit time <= resolve_at from that point on..
+  CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
 
   size_t TEST_GetNumRunningTransactions() const;
 

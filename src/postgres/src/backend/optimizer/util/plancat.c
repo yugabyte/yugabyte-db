@@ -2038,7 +2038,7 @@ find_partition_scheme(PlannerInfo *root, Relation relation)
 		palloc(sizeof(FmgrInfo) * partnatts);
 	for (i = 0; i < partnatts; i++)
 		fmgr_info_copy(&part_scheme->partsupfunc[i], &partkey->partsupfunc[i],
-					   CurrentMemoryContext);
+					   GetCurrentMemoryContext());
 
 	/* Add the partitioning scheme to PlannerInfo. */
 	root->part_schemes = lappend(root->part_schemes, part_scheme);

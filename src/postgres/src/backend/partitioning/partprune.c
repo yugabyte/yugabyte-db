@@ -584,7 +584,7 @@ prune_append_rel_partitions(RelOptInfo *rel)
 	context.stepcmpfuncs = (FmgrInfo *) palloc0(sizeof(FmgrInfo) *
 												context.partnatts *
 												list_length(pruning_steps));
-	context.ppccontext = CurrentMemoryContext;
+	context.ppccontext = GetCurrentMemoryContext();
 
 	/* These are not valid when being called from the planner */
 	context.partrel = NULL;

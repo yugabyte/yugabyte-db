@@ -78,7 +78,7 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	oldcontext = CurrentMemoryContext;
+	oldcontext = GetCurrentMemoryContext();
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -220,7 +220,7 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 		return NULL;
 	}
 
-	oldcontext = CurrentMemoryContext;
+	oldcontext = GetCurrentMemoryContext();
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -318,7 +318,7 @@ PLy_spi_execute_query(char *query, long limit)
 	volatile ResourceOwner oldowner;
 	PyObject   *ret = NULL;
 
-	oldcontext = CurrentMemoryContext;
+	oldcontext = GetCurrentMemoryContext();
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -381,7 +381,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 		Py_DECREF(result->nrows);
 		result->nrows = PyLong_FromUnsignedLongLong(rows);
 
-		cxt = AllocSetContextCreate(CurrentMemoryContext,
+		cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 									"PL/Python temp context",
 									ALLOCSET_DEFAULT_SIZES);
 
@@ -389,7 +389,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 		PLy_input_setup_func(&ininfo, cxt, RECORDOID, -1,
 							 exec_ctx->curr_proc);
 
-		oldcontext = CurrentMemoryContext;
+		oldcontext = GetCurrentMemoryContext();
 		PG_TRY();
 		{
 			MemoryContext oldcontext2;
@@ -466,7 +466,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
  *
  * Usage:
  *
- *	MemoryContext oldcontext = CurrentMemoryContext;
+ *	MemoryContext oldcontext = GetCurrentMemoryContext();
  *	ResourceOwner oldowner = CurrentResourceOwner;
  *
  *	PLy_spi_subtransaction_begin(oldcontext, oldowner);

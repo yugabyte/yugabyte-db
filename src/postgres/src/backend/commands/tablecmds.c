@@ -15060,7 +15060,7 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 	MemoryContext cxt;
 	MemoryContext oldcxt;
 
-	cxt = AllocSetContextCreate(CurrentMemoryContext,
+	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								"AttachPartitionEnsureIndexes",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
@@ -15209,7 +15209,7 @@ CloneRowTriggersToPartition(Relation parent, Relation partition)
 	scan = systable_beginscan(pg_trigger, TriggerRelidNameIndexId,
 							  true, NULL, 1, &key);
 
-	perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
+	perTupCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 									  "clone trig", ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(perTupCxt);
 

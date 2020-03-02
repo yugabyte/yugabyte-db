@@ -45,6 +45,7 @@
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/running_transaction.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/transaction_status_resolver.h"
 
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/service_util.h"
@@ -82,7 +83,8 @@ DEFINE_test_flag(int32, inject_load_transaction_delay_ms, 0,
 DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
 
 DEFINE_uint64(max_transactions_in_status_request, 128,
-              "Request status for at most specified number of transactions at once.");
+              "Request status for at most specified number of transactions at once. "
+                  "0 disables load time transaction status resolution.");
 
 METRIC_DEFINE_simple_counter(
     tablet, transaction_load_attempts,
@@ -111,8 +113,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier,
        const scoped_refptr<MetricEntity>& entity)
       : RunningTransactionContext(context, applier),
-        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), context->permanent_uuid())),
-        check_status_handle_(rpcs_.InvalidHandle()) {
+        log_prefix_(context->LogPrefix()),
+        status_resolver_(context, &rpcs_, FLAGS_max_transactions_in_status_request,
+                         std::bind(&Impl::TransactionsStatus, this, _1)) {
     LOG_WITH_PREFIX(INFO) << "Create";
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_load_attempts_ = METRIC_transaction_load_attempts.Instantiate(entity);
@@ -153,9 +156,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     if (load_thread_.joinable()) {
       load_thread_.join();
     }
-    while (checking_status_.load(std::memory_order_acquire)) {
-      std::this_thread::sleep_for(10ms);
-    }
+    status_resolver_.Shutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 
@@ -615,6 +616,97 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     CheckMinRunningHybridTimeSatisfiedUnlocked(&min_running_notifier);
   }
 
+  CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
+    RETURN_NOT_OK(WaitUntil(participant_context_.clock_ptr().get(), resolve_at, deadline));
+
+    if (FLAGS_max_transactions_in_status_request == 0) {
+      return STATUS(
+          IllegalState,
+          "Cannot resolve intents when FLAGS_max_transactions_in_status_request is zero");
+    }
+
+    std::vector<TransactionId> recheck_ids, committed_ids;
+
+    // Maintain a set of transactions, check their statuses, and remove them as they get
+    // committed/applied, aborted or we realize that transaction was not committed at
+    // resolve_at.
+    for (;;) {
+      TransactionStatusResolver resolver(
+          &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
+          [this, resolve_at, &recheck_ids, &committed_ids](
+              const std::vector <TransactionStatusInfo>& status_infos) {
+            std::vector<TransactionId> aborted;
+            for (const auto& info : status_infos) {
+              VLOG_WITH_PREFIX(4) << "Transaction status: " << info.ToString();
+              if (info.status == TransactionStatus::COMMITTED) {
+                if (info.status_ht <= resolve_at) {
+                  // Transaction was committed, but not yet applied.
+                  // So rely on filtering recheck_ids before next phase.
+                  committed_ids.push_back(info.transaction_id);
+                }
+              } else if (info.status == TransactionStatus::ABORTED) {
+                aborted.push_back(info.transaction_id);
+              } else {
+                LOG_IF_WITH_PREFIX(DFATAL, info.status != TransactionStatus::PENDING)
+                    << "Transaction is in unexpected state: " << info.ToString();
+                if (info.status_ht <= resolve_at) {
+                  recheck_ids.push_back(info.transaction_id);
+                }
+              }
+            }
+            if (!aborted.empty()) {
+              MinRunningNotifier min_running_notifier(&applier_);
+              std::lock_guard<std::mutex> lock(mutex_);
+              for (const auto& id : aborted) {
+                EnqueueRemoveUnlocked(id, &min_running_notifier);
+              }
+            }
+          });
+      {
+        std::lock_guard <std::mutex> lock(mutex_);
+        if (recheck_ids.empty() && committed_ids.empty()) {
+          // First step, check all transactions.
+          for (const auto& transaction : transactions_) {
+            if (!transaction->local_commit_time().is_valid()) {
+              resolver.Add(transaction->metadata().status_tablet, transaction->id());
+            }
+          }
+        } else {
+          for (const auto& id : recheck_ids) {
+            auto it = transactions_.find(id);
+            if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
+              continue;
+            }
+            resolver.Add((**it).metadata().status_tablet, id);
+          }
+          auto filter = [this](const TransactionId& id) {
+            auto it = transactions_.find(id);
+            return it == transactions_.end() || (**it).local_commit_time().is_valid();
+          };
+          committed_ids.erase(std::remove_if(committed_ids.begin(), committed_ids.end(), filter),
+                              committed_ids.end());
+        }
+      }
+
+      recheck_ids.clear();
+      resolver.Start(deadline);
+
+      RETURN_NOT_OK(resolver.ResultFuture().get());
+
+      if (recheck_ids.empty()) {
+        if (committed_ids.empty()) {
+          break;
+        } else {
+          // We are waiting only for committed transactions to be applied.
+          // So just add some delay.
+          std::this_thread::sleep_for(10ms * std::min<size_t>(10, committed_ids.size()));
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
   size_t TEST_GetNumRunningTransactions() {
     std::lock_guard<std::mutex> lock(mutex_);
     VLOG_WITH_PREFIX(4) << "Transactions: " << yb::ToString(transactions_);
@@ -959,9 +1051,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
       last_loaded_ = metadata->transaction_id;
-      if (FLAGS_max_transactions_in_status_request > 0) {
-        check_status_queues_[metadata->status_tablet].push_back(metadata->transaction_id);
-      }
+      status_resolver_.Add(metadata->status_tablet, metadata->transaction_id);
       transactions_.insert(std::make_shared<RunningTransaction>(
           std::move(*metadata), last_batch_data, std::move(replicated_batches), this));
       TransactionsModifiedUnlocked(&min_running_notifier);
@@ -1018,102 +1108,20 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       std::lock_guard<std::mutex> lock(mutex_);
       *flag_to_set = true;
       check_loaded_transactions_status = *flag_to_check;
-      if (check_loaded_transactions_status) {
-        checking_status_.store(true, std::memory_order_release);
-      }
     }
     if (check_loaded_transactions_status) {
-      CheckLoadedTransactionsStatus();
+      status_resolver_.Start(CoarseTimePoint::max());
     }
   }
 
-  // Picks status tablet from checking_status_ map and request status of transactions
-  // related to it.
-  void CheckLoadedTransactionsStatus() {
-    DCHECK(checking_status_.load(std::memory_order_acquire));
-    auto max_transactions_in_status_request = FLAGS_max_transactions_in_status_request;
-    if (closing_.load(std::memory_order_acquire) || check_status_queues_.empty() ||
-        max_transactions_in_status_request <= 0) {
-      checking_status_.store(false, std::memory_order_release);
-      return;
-    }
-
-    // We access check_status_queues_ only during load and after that while resolving
-    // transaction statuses, which is NOT concurrent.
-    // So we could avoid doing synchronization here.
-    auto& tablet_id_and_queue = *check_status_queues_.begin();
-    tserver::GetTransactionStatusRequestPB req;
-    req.set_tablet_id(tablet_id_and_queue.first);
-    req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
-    const auto& tablet_queue = tablet_id_and_queue.second;
-    auto request_size = std::min<size_t>(max_transactions_in_status_request, tablet_queue.size());
-    for (size_t i = 0; i != request_size; ++i) {
-      const auto& txn_id = tablet_queue[i];
-      VLOG_WITH_PREFIX(4) << "Checking txn status: " << txn_id;
-      req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.begin()), txn_id.size());
-    }
-    rpcs_.RegisterAndStart(
-        client::GetTransactionStatus(
-            TransactionRpcDeadline(),
-            nullptr /* tablet */,
-            client(),
-            &req,
-            std::bind(&Impl::StatusReceived, this, _1, _2, request_size)),
-        &check_status_handle_);
-  }
-
-  void StatusReceived(Status status,
-                      const tserver::GetTransactionStatusResponsePB& response,
-                      size_t request_size) {
-    VLOG_WITH_PREFIX(2) << "Received statuses: " << status << ", " << response.ShortDebugString();
-
-    rpcs_.Unregister(&check_status_handle_);
-
-    if (status.ok() && response.has_error()) {
-      status = StatusFromPB(response.error().status());
-    }
-
-    if (!status.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Failed to request transaction statuses: " << status;
-      if (status.IsAborted()) {
-        check_status_queues_.clear();
-      }
-      CheckLoadedTransactionsStatus();
-      return;
-    }
-
-    if (response.has_propagated_hybrid_time()) {
-      participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
-    }
-
-    if (response.status().size() != 1 && response.status().size() != request_size) {
-      // Node with old software version would always return 1 status.
-      LOG_WITH_PREFIX(DFATAL)
-          << "Bad response size, expected " << request_size << " entries, but found: "
-          << response.ShortDebugString();
-      CheckLoadedTransactionsStatus();
-      return;
-    }
-
-    {
-      MinRunningNotifier min_running_notifier(&applier_);
-      std::lock_guard<std::mutex> lock(mutex_);
-      auto it = check_status_queues_.begin();
-      auto& queue = it->second;
-      for (size_t i = 0; i != response.status().size(); ++i) {
-        VLOG_WITH_PREFIX(4) << "Status of " << queue.front() << ": "
-                            << TransactionStatus_Name(response.status(i));
-        if (response.status(i) == TransactionStatus::ABORTED) {
-          EnqueueRemoveUnlocked(queue.front(), &min_running_notifier);
-        }
-        queue.pop_front();
-      }
-      if (queue.empty()) {
-        check_status_queues_.erase(it);
+  void TransactionsStatus(const std::vector<TransactionStatusInfo>& status_infos) {
+    MinRunningNotifier min_running_notifier(&applier_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& info : status_infos) {
+      if (info.status == TransactionStatus::ABORTED) {
+        EnqueueRemoveUnlocked(info.transaction_id, &min_running_notifier);
       }
     }
-
-    CheckLoadedTransactionsStatus();
   }
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
@@ -1235,8 +1243,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   };
   std::deque<RecentlyRemovedTransaction> recently_removed_transactions_cleanup_queue_;
 
-  std::unordered_map<TabletId, std::deque<TransactionId>> check_status_queues_;
-  rpc::Rpcs::Handle check_status_handle_;
+  TransactionStatusResolver status_resolver_;
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_transactions_running_;
   scoped_refptr<Counter> metric_transaction_load_attempts_;
@@ -1247,8 +1254,6 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   TransactionId last_loaded_;
   std::atomic<bool> all_loaded_{false};
   std::atomic<bool> closing_{false};
-  // True while status check for loaded transactions is in progress.
-  std::atomic<bool> checking_status_{false};
   bool started_ = false;
 
   std::atomic<HybridTime> min_running_ht_{HybridTime::kMax};
@@ -1366,6 +1371,10 @@ void TransactionParticipant::WaitMinRunningHybridTime(HybridTime ht) {
   impl_->WaitMinRunningHybridTime(ht);
 }
 
+Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
+  return impl_->ResolveIntents(resolve_at, deadline);
+}
+
 size_t TransactionParticipant::TEST_GetNumRunningTransactions() const {
   return impl_->TEST_GetNumRunningTransactions();
 }
@@ -1386,6 +1395,10 @@ void TransactionParticipant::StartShutdown() {
 
 void TransactionParticipant::CompleteShutdown() {
   impl_->CompleteShutdown();
+}
+
+std::string TransactionParticipantContext::LogPrefix() const {
+  return Format("T $0 P $1: ", tablet_id(), permanent_uuid());
 }
 
 } // namespace tablet

@@ -52,11 +52,43 @@ typedef struct MemoryContextCallback
 } MemoryContextCallback;
 
 /*
- * CurrentMemoryContext is the default allocation context for palloc().
+ * GetCurrentMemoryContext() is the default allocation context for palloc().
  * Avoid accessing it directly!  Instead, use MemoryContextSwitchTo()
  * to change the setting.
  */
 extern PGDLLIMPORT MemoryContext CurrentMemoryContext;
+
+/*
+ * This enables running query-layer code in a multi-threaded constext by using
+ * thread-local variables instead of globals.
+ * Currently only used for expression evaluation in DocDB (i.e. for pushdown).
+ */
+static inline bool IsMultiThreadedMode() {
+	/*
+	 * Just checking if the memory infrastructure is initialized.
+	 * TODO Consider using a specific global variable or compiler flag
+	 * for this.
+	 */
+	return CurrentMemoryContext == NULL;
+}
+
+extern MemoryContext GetThreadLocalCurrentMemoryContext();
+extern MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx);
+
+static inline MemoryContext GetCurrentMemoryContext() {
+	if (IsMultiThreadedMode())
+	{
+		return (MemoryContext) GetThreadLocalCurrentMemoryContext();
+	}
+	else
+	{
+		return CurrentMemoryContext;
+	}
+}
+
+extern void PrepareThreadLocalCurrentMemoryContext();
+
+extern void ResetThreadLocalCurrentMemoryContext();
 
 /*
  * Flags for MemoryContextAllocExtended.
@@ -90,8 +122,8 @@ extern void pfree(void *pointer);
  */
 #define palloc0fast(sz) \
 	( MemSetTest(0, sz) ? \
-		MemoryContextAllocZeroAligned(CurrentMemoryContext, sz) : \
-		MemoryContextAllocZero(CurrentMemoryContext, sz) )
+		MemoryContextAllocZeroAligned(GetCurrentMemoryContext(), sz) : \
+		MemoryContextAllocZero(GetCurrentMemoryContext(), sz) )
 
 /* Higher-limit allocators. */
 extern void *MemoryContextAllocHuge(MemoryContext context, Size size);
@@ -108,10 +140,17 @@ extern void *repalloc_huge(void *pointer, Size size);
 static inline MemoryContext
 MemoryContextSwitchTo(MemoryContext context)
 {
-	MemoryContext old = CurrentMemoryContext;
+	if (IsMultiThreadedMode())
+	{
+		return SetThreadLocalCurrentMemoryContext(context);
+	}
+	else
+	{
+		MemoryContext old = GetCurrentMemoryContext();
 
-	CurrentMemoryContext = context;
-	return old;
+		CurrentMemoryContext = context;
+		return old;
+	}
 }
 #endif							/* FRONTEND */
 

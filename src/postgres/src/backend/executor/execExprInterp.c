@@ -4049,7 +4049,7 @@ ExecAggTransReparent(AggState *aggstate, AggStatePerTrans pertrans,
 		if (DatumIsReadWriteExpandedObject(newValue,
 										   false,
 										   pertrans->transtypeLen) &&
-			MemoryContextGetParent(DatumGetEOHP(newValue)->eoh_context) == CurrentMemoryContext)
+			MemoryContextGetParent(DatumGetEOHP(newValue)->eoh_context) == GetCurrentMemoryContext())
 			 /* do nothing */ ;
 		else
 			newValue = datumCopy(newValue,

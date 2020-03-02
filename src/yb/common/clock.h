@@ -37,6 +37,8 @@ class ClockBase : public RefCountedThreadSafe<ClockBase> {
   virtual ~ClockBase() {}
 };
 
+CHECKED_STATUS WaitUntil(ClockBase* clock, HybridTime hybrid_time, CoarseTimePoint deadline);
+
 } // namespace yb
 
 #endif // YB_COMMON_CLOCK_H

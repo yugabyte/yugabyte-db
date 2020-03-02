@@ -3,10 +3,10 @@
 
 set -e
 
-VERSION=2.1.0.0
+VERSION=2.1.1.0
 
 uname=$(uname | tr '[:upper:]' '[:lower:]')
-pkg="yugabyte-${VERSION}-$uname.tar.gz"
+pkg="yugabyte-client-${VERSION}-$uname.tar.gz"
 
 printf "Downloading %s ... \r" "$pkg"
 wget -q "https://downloads.yugabyte.com/${pkg}" -O "$pkg"

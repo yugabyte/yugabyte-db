@@ -29,8 +29,8 @@ set(build_postgres_args
       --cflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
       --compiler_type       "$ENV{YB_COMPILER_TYPE}"
       --cxxflags            "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
-      --ldflags             "${CMAKE_SHARED_LINKER_FLAGS}"
-      --ldflags_ex          "${CMAKE_EXE_LINKER_FLAGS}"
+      --ldflags             " ${CMAKE_SHARED_LINKER_FLAGS}"
+      --ldflags_ex          " ${CMAKE_EXE_LINKER_FLAGS}"
       --openssl_include_dir "${OPENSSL_INCLUDE_DIR}"
       --openssl_lib_dir     "${OPENSSL_LIB_DIR}"
     )
@@ -41,7 +41,7 @@ set(build_postgres_args
 # We add spaces before every "flags" parameter so that Python's argparse does not interpret them as
 # its own flags.
 add_custom_target(configure_postgres ALL COMMAND ${build_postgres_args} --step configure)
-add_custom_target(postgres ALL COMMAND ${build_postgres_args} --step make)
+add_custom_target(postgres ALL COMMAND ${build_postgres_args} --step make BYPRODUCTS "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend.dylib")
 add_dependencies(postgres configure_postgres)
 
 # ------------------------------------------------------------------------------------------------
