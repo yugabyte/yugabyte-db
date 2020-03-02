@@ -126,7 +126,7 @@ class ControlScript(object):
         self.processes = {}
         self.stop_callhome = False
         self.alerts = []
-        self.script = ScriptProcessManager()
+        self.script = None
 
     # Starts YugabyteDB node.
     def start(self):
@@ -370,7 +370,10 @@ class ControlScript(object):
         bind_ip = self.configs.saved_data.get("bind_ip")
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
+        join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        if join_ip:
+            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
         tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
 
         common_gflags = [
@@ -382,22 +385,29 @@ class ControlScript(object):
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
             "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER),
-            "--cluster_uuid={}".format(self.configs.saved_data.get("universe_uuid"))
         ]
+
+        if not join_ip:
+            common_gflags.append("--cluster_uuid={}".format(
+                self.configs.saved_data.get("universe_uuid")))
+
 
         yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_gflags + \
             [
-                "--master_addresses={}".format(master_addresses),
-                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
-                "--server_broadcast_addresses={}".format(master_addresses),
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
+                "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
                 "--use_initial_sys_catalog_snapshot",
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
                 "--master_enable_metrics_snapshotter=true",
                 "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
-                "--default_memory_limit_to_ram_ratio=0.35"
+                "--default_memory_limit_to_ram_ratio=0.35",
+                "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
             ]
+        if not join_ip:
+            yb_master_cmd.append("--master_addresses={}".format(master_addresses))
+
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(
                 ["--{}".format(flag) for flag in \
@@ -417,7 +427,8 @@ class ControlScript(object):
                 "--tserver_enable_metrics_snapshotter=true",
                 "--metrics_snapshotter_interval_ms=11000",
                 "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
-                "--default_memory_limit_to_ram_ratio=0.6"
+                "--default_memory_limit_to_ram_ratio=0.6",
+                "--instance_uuid_override={}".format(self.configs.saved_data.get("tserver_uuid")),
             ]
 
         if self.configs.saved_data.get("tserver_flags"):
@@ -466,17 +477,20 @@ class ControlScript(object):
             is_first_install = is_first_run and not self.is_yb_initialized()
 
             # Create data directory.
-            if not os.path.exists(self.configs.saved_data.get("data_dir")):
+            data_dir = self.configs.saved_data.get("data_dir")
+            if not os.path.exists(data_dir):
                 Output.log(
-                    "Creating data directory {}.".format(self.configs.saved_data.get("data_dir")))
-                os.makedirs(self.configs.saved_data.get("data_dir"))
+                    "Creating data directory {}.".format(data_dir))
+                os.makedirs(data_dir)
 
             # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
-            if is_first_install and os.listdir(self.configs.saved_data.get("data_dir")):
+            pid_file_name = os.path.basename(self.script.pidfile)
+            data_dir_files = [ x for x in os.listdir(data_dir) if x != pid_file_name ]
+            if is_first_install and data_dir_files:
                 Output.print_and_log(
-                    "Found data from failed initialization in {}. Removing...".format(
-                        self.configs.saved_data.get("data_dir")))
-                rmcontents(self.configs.saved_data.get("data_dir"))
+                    ("Found files {} in data dir {} from possibly failed initialization."
+                    " Removing...").format(data_dir_files, data_dir))
+                rmcontents(data_dir, exclude_names=[pid_file_name])
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
@@ -494,107 +508,107 @@ class ControlScript(object):
                     process.start()
                     should_callhome = True
 
-            if self.wait_master_tserver():
-                if is_first_run:
-                    Output.update_animation("System checks")
+            if is_first_run:
+                if not self.wait_tserver():
+                    Output.update_animation("Database failed to start",
+                        status=Output.ANIMATION_FAIL)
+                    Output.log_error_and_exit("Failed to start tserver {}".format(SCRIPT_NAME))
 
-                yw_logged_in = False
-                # Start or initialize yugaware after setting YSQL default isolation level.
-                # This if required to start YW because of
-                # https://github.com/Yugabyte/yugabyte-db/issues/1199.
-                if self.configs.temp_data.get("ui"):
-                    yw_process = self.processes.get("yugaware")
-                    yw_proxy = YugaWareProxy(advertise_ip,
-                        self.configs.saved_data.get("webserver_port"))
-                    if is_first_run and not self.is_yw_initialized():
-                        Output.log("Setting up admin console schema...")
-                        Output.init_animation("Installing database...")
-                        if not self.init_yw():
-                            Output.log_error_and_exit("Failed to set up admin console schema...")
-                        Output.update_animation("Database installed")
+                if not self.setup_master():
+                    Output.update_animation("Database failed to start",
+                        status=Output.ANIMATION_FAIL)
+                    Output.log_error_and_exit("Failed to start master {}".format(SCRIPT_NAME))
 
+                Output.update_animation("System checks")
+            yw_logged_in = False
+            if self.configs.temp_data.get("ui"):
+                yw_process = self.processes.get("yugaware")
+                yw_proxy = YugaWareProxy(advertise_ip,
+                    self.configs.saved_data.get("webserver_port"))
+                if is_first_run and not self.is_yw_initialized():
+                    Output.log("Setting up admin console schema...")
+                    Output.init_animation("Installing database...")
+                    if not self.init_yw():
+                        Output.log_error_and_exit("Failed to set up admin console schema...")
+                    Output.update_animation("Database installed")
+
+                    yw_process.start()
+
+                    Output.init_animation("Bringing up UI...")
+                    Output.log(self.wait_yw_login(yw_proxy))
+                    yw_logged_in = True
+
+                    Output.log(yw_proxy.set_security("insecure"))
+                    Output.log(yw_proxy.insecure_login())
+
+                    Output.log(yw_proxy.import_universe(
+                                advertise_ip,
+                                master_rpc_port,
+                                self.configs.saved_data.get("universe_uuid")))
+
+                    Output.log(yw_proxy.set_landing_page(
+                            self.configs.saved_data.get("universe_uuid")))
+                    should_callhome = True
+                    Output.update_animation("UI ready")
+                else:
+                    if not yw_process.is_running():
+                        if not is_first_run:
+                            Output.log(
+                                "Webserver died unexpectedly. Restarting...", logging.ERROR)
                         yw_process.start()
 
-                        Output.init_animation("Bringing up UI...")
-                        Output.log(self.wait_yw_login(yw_proxy))
-                        yw_logged_in = True
+                        # TODO: If insecure login fails here, we should assume importing
+                        # universe and setting security level failed and retry initializing YW.
+                        if is_first_run:
+                            Output.init_animation("Bringing up UI...")
 
-                        Output.log(yw_proxy.set_security("insecure"))
-                        Output.log(yw_proxy.insecure_login())
-
-                        Output.log(yw_proxy.import_universe(
-                                    advertise_ip,
-                                    master_rpc_port,
-                                    self.configs.saved_data.get("universe_uuid")))
-
-                        Output.log(yw_proxy.set_landing_page(
-                                self.configs.saved_data.get("universe_uuid")))
-                        should_callhome = True
-                        Output.update_animation("UI ready")
-                    else:
-                        if not yw_process.is_running():
-                            if not is_first_run:
-                                Output.log(
-                                    "Webserver died unexpectedly. Restarting...", logging.ERROR)
-                            yw_process.start()
-
-                            # TODO: If insecure login fails here, we should assume importing
-                            # universe and setting security level failed and retry initializing YW.
-                            if is_first_run:
-                                Output.init_animation("Bringing up UI...")
-
-                            yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
-                            if yw_logged_in:
-                                animation_status = Output.ANIMATION_SUCCESS
-                            else:
-                                animation_status = Output.ANIMATION_FAIL
-                            if is_first_run:
-                                Output.update_animation("UI status", status=animation_status)
-
-                            should_callhome = True
+                        yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
+                        if yw_logged_in:
+                            animation_status = Output.ANIMATION_SUCCESS
                         else:
-                            yw_logged_in = False
-                    if yw_process.is_running() and yw_logged_in:
-                        if self.alerts:
-                            yw_proxy.send_alerts(self.alerts)
+                            animation_status = Output.ANIMATION_FAIL
+                        if is_first_run:
+                            Output.update_animation("UI status", status=animation_status)
 
-                if is_first_run:
-                    status = self.get_status_string() + \
-                        "{} {} started successfully! To load a sample dataset, " \
-                        "try '{} demo'.\n" \
-                        "{} Join us on Slack at {}\n" \
-                        "{} Claim your free t-shirt at {}\n".format(
-                            Output.ROCKET, SCRIPT_NAME, SCRIPT_NAME, Output.PARTY,
-                            Output.make_underline(SLACK_LINK), Output.SHIRT,
-                            Output.make_underline(COMMUNITY_REWARDS_LINK))
-                    Output.print_out(status)
+                        should_callhome = True
+                    else:
+                        yw_logged_in = False
+                if yw_process.is_running() and yw_logged_in:
+                    if self.alerts:
+                        yw_proxy.send_alerts(self.alerts)
 
-                    if self.configs.temp_data.get("daemon"):
-                        # Let original process know daemon was successful so it can exit.
-                        # This is to display the initial status message.
-                        self.script.daemon_success.put(1)
-                        # Ignore any console output as important information will be logged.
-                        with open('/dev/null', 'r+') as dev_null:
-                            Output.console_access = False
-                            sys.stderr.flush()
-                            sys.stdout.flush()
-                            os.dup2(dev_null.fileno(), sys.stdin.fileno())
-                            os.dup2(dev_null.fileno(), sys.stderr.fileno())
-                            os.dup2(dev_null.fileno(), sys.stdout.fileno())
+            if is_first_run:
+                status = self.get_status_string() + \
+                    "{} {} started successfully! To load a sample dataset, " \
+                    "try '{} demo'.\n" \
+                    "{} Join us on Slack at {}\n" \
+                    "{} Claim your free t-shirt at {}\n".format(
+                        Output.ROCKET, SCRIPT_NAME, SCRIPT_NAME, Output.PARTY,
+                        Output.make_underline(SLACK_LINK), Output.SHIRT,
+                        Output.make_underline(COMMUNITY_REWARDS_LINK))
+                Output.print_out(status)
 
-                    Diagnostics.first_run_secs = time.time() - start_time_sec
-                    Diagnostics.first_install = is_first_install
+                if self.configs.temp_data.get("daemon"):
+                    # Let original process know daemon was successful so it can exit.
+                    # This is to display the initial status message.
+                    self.script.daemon_success.put(1)
+                    # Ignore any console output as important information will be logged.
+                    with open('/dev/null', 'r+') as dev_null:
+                        Output.console_access = False
+                        sys.stderr.flush()
+                        sys.stdout.flush()
+                        os.dup2(dev_null.fileno(), sys.stdin.fileno())
+                        os.dup2(dev_null.fileno(), sys.stderr.fileno())
+                        os.dup2(dev_null.fileno(), sys.stdout.fileno())
 
-                    if self.configs.saved_data.get("callhome"):
-                        callhome_thread = Thread(target=self.callhome_loop)
-                        callhome_thread.daemon = True
-                        callhome_thread.start()
+                Diagnostics.first_run_secs = time.time() - start_time_sec
+                Diagnostics.first_install = is_first_install
 
-            elif is_first_run:
-                Output.update_animation("Database failure", status=Output.ANIMATION_FAIL)
-                # Only error out if we fail to start initially. Otherwise, continue trying
-                # to restart master/tserver.
-                Output.log_error_and_exit("Failed to start {}".format(SCRIPT_NAME))
+                if self.configs.saved_data.get("callhome"):
+                    callhome_thread = Thread(target=self.callhome_loop)
+                    callhome_thread.daemon = True
+                    callhome_thread.start()
+
 
             is_first_run = False
 
@@ -698,35 +712,97 @@ class ControlScript(object):
         Output.log("Finished checking play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
 
-    def wait_master_tserver(self, timeout=180):
-        Output.log("Waiting for yb master via ybadmin...")
-        num_tservers = 1
-        master_addr = "{}:{}".format(self.advertise_ip(),
+    # Returns true if this master was found in the current list of masters
+    def wait_master(self):
+        join_ip = self.configs.saved_data.get("join")
+        master_ip = join_ip if join_ip else self.advertise_ip()
+        master_addr = "{}:{}".format(master_ip,
                                      self.configs.saved_data.get("master_rpc_port"))
 
-        start_time = time.time()
-        cur_num_tservers = None
-        universe_uuid = self.configs.saved_data.get("universe_uuid")
-        while time.time() - start_time < timeout:
-            if (not self.processes.get("master").is_running()
-                    or not self.processes.get("tserver").is_running()):
-                Output.log("Failed waiting for yb-master... process died.", logging.ERROR)
-                return False
-            cur_num_tservers = YBAdminProxy.get_num_tservers(master_addr)
-            if cur_num_tservers is not None:
-                cluster_uuid = YBAdminProxy.get_cluster_uuid(master_addr)
-                if cluster_uuid != universe_uuid:
-                    Output.log_error_and_exit(
-                        "Found existing nodes with universe UUID: {}".format(cluster_uuid))
-                if cur_num_tservers == num_tservers:
-                    Output.log(
-                        "Completed waiting for yb master, num tservers={}.".format(num_tservers))
-                    return True
-            time.sleep(.5)
+        if (not self.processes.get("master").is_running()
+                or not self.processes.get("tserver").is_running()):
+            Output.log("Failed waiting for yb-master/tserver... process died.", logging.ERROR)
+            raise RuntimeError("process died unexpectedly.")
 
-        Output.log("Failed waiting for yb-master, current num tservers={}, expected {}.".format(
-                   cur_num_tservers, num_tservers))
+        cur_master_uuids = YBAdminProxy.get_masters(master_addr)
+        master_uuid = self.configs.saved_data.get("master_uuid")
+        if not cur_master_uuids:
+            raise RetryableError()
+        return master_uuid in cur_master_uuids
+
+    # Verify that the master is in the current list of masters.
+    # If not, set it up appropriately.
+    def setup_master(self, timeout=180):
+        Output.log("Waiting for master")
+        try:
+            if retry_op(self.wait_master):
+                return True
+        except RuntimeError:
+            Output.log_error_and_exit("Failed to setup master. Exception: {}".format(
+                traceback.format_exc()))
+            return False
+
+        # The master was not in the current list of masters
+        join_ip = self.configs.saved_data.get("join")
+        bind_ip = self.configs.saved_data.get("bind_ip")
+        master_addrs = "{}:{}".format(join_ip,
+                    self.configs.saved_data.get("master_rpc_port"))
+        master_uuids = YBAdminProxy.get_masters(master_addrs)
+        if not YBAdminProxy.add_master(master_addrs, bind_ip):
+            Output.log_error_and_exit("Unable to add master {} to existing cluster at {}.".format(
+                bind_ip, join_ip))
+            return False
+
+        # If we are the third master, set replication factor to 3. This makes the cluster
+        # automatically expand to rf3 when the third node is added.
+        if len(master_uuids) == 2:
+            if not YBAdminProxy.set_rf(master_addrs, 3):
+                Output.log_error_and_exit("Unable to change replication factor for {}.".format(
+                    master_addrs))
+                return False
+
+        try:
+            if retry_op(self.wait_master):
+                Output.log("Completed setup and wait for master.")
+                return True
+        except RuntimeError:
+            Output.log("setup_master: exception: {}".format(traceback.format_exc()))
+
+        Output.log("Failed to setup master, did add_master succeed?")
         return False
+
+    def is_tserver_up(self):
+        join_ip = self.configs.saved_data.get("join")
+        master_ip = join_ip if join_ip else self.advertise_ip()
+        master_addr = "{}:{}".format(master_ip,
+                                     self.configs.saved_data.get("master_rpc_port"))
+
+        if (not self.processes.get("master").is_running()
+                or not self.processes.get("tserver").is_running()):
+            Output.log("Failed waiting for yb-master/tserver... process died.", logging.ERROR)
+            raise RuntimeError("process not running")
+
+        cur_tservers = YBAdminProxy.get_tservers(master_addr)
+        tserver_uuid = self.configs.saved_data.get("tserver_uuid")
+        if not cur_tservers or tserver_uuid not in cur_tservers:
+            raise RetryableError()
+
+        Output.log("Found tserver uuid {} in list of tserver uuids {}.".format(
+            tserver_uuid, cur_tservers))
+        return True
+
+    def wait_tserver(self, timeout=180):
+        Output.log("Waiting for tserver ...")
+        try:
+            if retry_op(self.is_tserver_up):
+                Output.log("Completed waiting for tserver.")
+                return True
+        except RuntimeError:
+            Output.log("wait_tserver: exception: {}".format(traceback.format_exc()))
+
+        Output.log("Failed to wait for tserver.")
+        return False
+
 
     def wait_yw_login(self, yw_proxy, timeout=180, insecure=False):
         Output.log("Attempting to log in...")
@@ -902,8 +978,18 @@ class ControlScript(object):
                     and v != self.configs.saved_data.get(k)):
                 self.configs.saved_data[k] = v
 
+        data_dir = self.configs.saved_data["data_dir"]
+        log_dir = self.configs.saved_data["log_dir"]
         if args.parser == "start":
             self.configs.save_configs()
+
+            if not os.path.isdir(data_dir):
+                os.makedirs(data_dir)
+            if not os.path.isdir(log_dir):
+                os.makedirs(log_dir)
+
+        self.script = ScriptProcessManager(log_dir, data_dir)
+
 
     def parse_bool(self, config):
         return config in TRUE_CHOICES
@@ -981,6 +1067,8 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--bind_ip", help="IP address to which {} processes will bind.".format(SCRIPT_NAME))
             cur_parser.add_argument(
+                "--join", help="IP address to which this process will join".format(SCRIPT_NAME))
+            cur_parser.add_argument(
                 "--daemon", choices=BOOL_CHOICES, default="true", metavar="BOOL",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
                      "Default true.".format(SCRIPT_NAME))
@@ -1051,10 +1139,13 @@ class Configs(object):
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "universe_uuid": str(uuid.uuid4()),
             "node_uuid": str(uuid.uuid4()),
+            "tserver_uuid": str(uuid.uuid4()).replace("-", ""),
+            "master_uuid": str(uuid.uuid4()).replace("-", ""),
             "polling_interval": "5",
             "callhome": DEFAULT_CALLHOME,
             "master_flags": "",
             "tserver_flags": "",
+            "join": "",
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -1297,8 +1388,8 @@ class ProcessManager(object):
 # Class for managing yugabyted process components - e.g. pidfiles and lockfiles.
 # Maybe this class can take over the ControlScript.start_processes functionality?
 class ScriptProcessManager(ProcessManager):
-    def __init__(self):
-        super(ScriptProcessManager, self).__init__(SCRIPT_NAME, "", YUGABYTE_DIR, YUGABYTE_DIR)
+    def __init__(self, log_dir, data_dir):
+        super(ScriptProcessManager, self).__init__(SCRIPT_NAME, "", log_dir, data_dir)
         # Used to retrieve status of daemon process. When daemon successfully initializes,
         # it will put a value here which can be checked on.
         self.daemon_success = multiprocessing.Queue()
@@ -1419,12 +1510,36 @@ class Diagnostics(object):
 class YBAdminProxy(object):
     path = os.path.join(BIN_DIR, "yb-admin")
 
-    # Returns number of tservers reported by yb-master.
     @staticmethod
-    def get_num_tservers(master_addrs, timeout=10):
+    def add_master(master_addrs, new_master_ip, timeout=10):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs,
+              "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (0 == ret_code)
+
+    @staticmethod
+    def set_rf(master_addrs, rf, timeout=10):
+        cmd = [ YBAdminProxy.path, "--master_addresses", master_addrs,
+                "modify_placement_info", "cloud1.datacenter1.rack1", str(rf) ]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (0 == ret_code)
+
+    @staticmethod
+    def get_masters(master_addrs, timeout=10):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_masters"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return None
+        return [ line.split()[0] for line in out.splitlines()[1:] ]
+
+    # Returns list[tserver uuid] reported by yb-master.
+    @staticmethod
+    def get_tservers(master_addrs, timeout=10):
         cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_tablet_servers"]
-        out, err, ret_code = run_process(cmd, timeout=timeout)
-        return len(out.splitlines()) - 1 if not ret_code else None
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return None
+        return [ line.split()[0] for line in out.splitlines()[1:] ]
 
     # Returns the cluster_uuid for this universe
     @staticmethod
@@ -1930,19 +2045,28 @@ def get_kv(map):
     else:
         return map.items()
 
-def run_process(cmd, timeout=None):
+def run_process(cmd, timeout=None, log_cmd=False):
+    if log_cmd:
+        Output.log("run_process: cmd: {}".format(str(cmd)))
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     if PY_VERSION >= 3:
         try:
             out, err = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired as e:
+            Output.log("run_process: {} timeout expired for command: ".format(cmd))
             return None, str(e), -1
     else:
         out, err = proc.communicate()
-    return out.decode('utf-8'), err.decode('utf-8'), proc.returncode
+    (ret_out, ret_err, retcode) = (out.decode('utf-8'), err.decode('utf-8'), proc.returncode)
+    if log_cmd:
+        Output.log("run_process returned {}: \nOUT >>\n{}\n<< ERR >>\n<<".format(
+            retcode, ret_out, ret_err))
+    return (ret_out, ret_err, retcode)
 
-def rmcontents(dirname):
+def rmcontents(dirname, exclude_names=[]):
     for f in os.listdir(dirname):
+        if f in exclude_names:
+            continue
         fullpath = os.path.join(dirname, f)
         if os.path.islink(fullpath) or os.path.isfile(fullpath):
             os.unlink(fullpath)
@@ -1951,6 +2075,22 @@ def rmcontents(dirname):
             shutil.rmtree(fullpath)
             continue
         Output.log("Unexpected type of file : [ {} ]".format(fullpath))
+
+
+class RetryableError(Exception):
+    pass
+
+# Retry as long as func throws RetryableError.
+def retry_op(func, timeout=180):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            return func()
+        except RetryableError:
+            continue
+
+        time.sleep(.5)
+    raise RuntimeError("Failed after retrying operation for {} secs.")
 
 if __name__ == '__main__':
     ControlScript().run()
