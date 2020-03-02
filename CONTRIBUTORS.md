@@ -89,3 +89,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [graffido](https://github.com/graffido)
 * [svanellewee](https://github.com/svanellewee)
 * [ghaskins](https://github.com/ghaskins)
+* [Klins](https://github.com/carlos-username)
