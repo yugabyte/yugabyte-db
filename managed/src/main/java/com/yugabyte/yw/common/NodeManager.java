@@ -207,6 +207,12 @@ public class NodeManager extends DevopsBase {
       }
     }
 
+    if (!taskParam.itestS3PackagePath.isEmpty()
+        && getUserIntentFromParams(taskParam).providerType.equals(Common.CloudType.aws)) {
+      subcommand.add("--itest_s3_package_path");
+      subcommand.add(taskParam.itestS3PackagePath);
+    }
+
     switch(taskParam.type) {
       case Everything:
         if (ybServerPackage == null) {
