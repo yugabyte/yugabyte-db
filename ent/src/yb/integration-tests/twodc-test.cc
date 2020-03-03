@@ -93,7 +93,7 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
-constexpr int kRpcTimeout = NonTsanVsTsan(30, 60);
+constexpr int kRpcTimeout = NonTsanVsTsan(30, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 
@@ -106,8 +106,8 @@ class TwoDCTest : public YBTest, public testing::WithParamInterface<int> {
                       uint32_t num_masters = 1) {
     FLAGS_enable_ysql = false;
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
-    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
-    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 6) * 1000;
+    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
+    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_cdc_max_apply_batch_num_records = GetParam();

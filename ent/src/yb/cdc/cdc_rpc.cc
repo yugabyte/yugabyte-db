@@ -62,7 +62,9 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
     req_.Swap(req);
   }
 
-  ~CDCWriteRpc() = default;
+  virtual ~CDCWriteRpc() {
+    CHECK(called_);
+  }
 
   void SendRpc() override {
     invoker_.Execute(tablet_id());
@@ -101,7 +103,13 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   }
 
   void InvokeCallback(const Status &status) {
-    callback_(status, resp_);
+    if (!called_) {
+      called_ = true;
+      callback_(status, resp_);
+    } else {
+      LOG(WARNING) << "Multiple invocation of CDCWriteRpc: "
+                   << status.ToString() << " : " << resp_.DebugString();
+    }
   }
 
   void InvokeAsync(TabletServerServiceProxy *proxy,
@@ -115,6 +123,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   WriteRequestPB req_;
   WriteResponsePB resp_;
   WriteCDCRecordCallback callback_;
+  bool called_ = false;
 };
 
 rpc::RpcCommandPtr CreateCDCWriteRpc(
