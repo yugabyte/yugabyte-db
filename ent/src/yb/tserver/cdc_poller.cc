@@ -90,6 +90,8 @@ void CDCPoller::Poll() {
 void CDCPoller::DoPoll() {
   RETURN_WHEN_OFFLINE();
 
+  std::lock_guard<std::mutex> l(data_mutex_);
+
   // determine if we should delay our upcoming poll
   if (FLAGS_async_replication_polling_delay_ms > 0 || poll_failures_ > 0) {
     int64_t delay = max(FLAGS_async_replication_polling_delay_ms, // user setting
@@ -131,17 +133,21 @@ void CDCPoller::DoPoll() {
     (**read_rpc_handle).SendRpc();
   } else {
     // Handle the Poll as a failure so repeated invocations will incur backoff.
-    HandlePoll(STATUS(Aborted, LogPrefixUnlocked() + "InvalidHandle for GetChangesCDCRpc"), resp_);
+    WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::HandlePoll, this,
+                  STATUS(Aborted, LogPrefixUnlocked() + "InvalidHandle for GetChangesCDCRpc"),
+                  resp_)),
+                "Could not submit HandlePoll to thread pool");
   }
 }
 
 void CDCPoller::HandlePoll(yb::Status status,
                            std::shared_ptr<cdc::GetChangesResponsePB> resp) {
   RETURN_WHEN_OFFLINE();
-
   if (!should_continue_polling_()) {
     return remove_self_from_pollers_map_();
   }
+
+  std::lock_guard<std::mutex> l(data_mutex_);
 
   status_ = status;
   resp_ = resp;
@@ -179,10 +185,12 @@ void CDCPoller::HandleApplyChanges(cdc::OutputClientResponse response) {
 
 void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
   RETURN_WHEN_OFFLINE();
-
   if (!should_continue_polling_()) {
     return remove_self_from_pollers_map_();
   }
+
+  std::lock_guard<std::mutex> l(data_mutex_);
+
   if (!response.status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "ApplyChanges failure: " << response.status;
     // Repeat the ApplyChanges step, with exponential backoff
