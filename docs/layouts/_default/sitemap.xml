@@ -4,9 +4,7 @@
   {{ range where .Pages "Section" "latest" }}
     <url>
 <loc>{{ .Permalink }}</loc>{{ if not .Lastmod.IsZero }}
-<lastmod>{{ safeHTML ( .Lastmod.Format "2006-01-02" ) }}</lastmod>{{ end }}{{ with .Sitemap.ChangeFreq }}
-<changefreq>{{ . }}</changefreq>{{ end }}{{ if ge .Sitemap.Priority 0.0 }}
-<priority>{{ .Sitemap.Priority }}</priority>{{ end }}
+<lastmod>{{ safeHTML ( .Lastmod.Format "2006-01-02" ) }}</lastmod>{{ end }}
     </url>
   {{ end }}{{ end }}
 </urlset>
