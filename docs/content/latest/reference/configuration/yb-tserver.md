@@ -320,6 +320,12 @@ Specifies the name of the cloud where this instance is deployed.
 
 Default: `cloud1`
 
+##### --placement_uuid
+
+The unique identifier for the cluster.
+
+Default: `""`
+
 ---
 
 ### YSQL options

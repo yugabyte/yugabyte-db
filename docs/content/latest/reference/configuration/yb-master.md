@@ -61,7 +61,7 @@ Shows version and build information, then exits.
 
 ##### --flagfile
 
-Specifies the configuration file to load flags from.
+Specifies the configuration file to load options (flags) from.
 
 ##### --master_addresses
 
@@ -364,6 +364,12 @@ Default: `datacenter1`
 Name of the cloud where this instance is deployed.
 
 Default: `cloud1`
+
+##### --placement_uuid
+
+The unique identifier for the cluster.
+
+Default: `""`
 
 ##### -- use_private_ip
 
