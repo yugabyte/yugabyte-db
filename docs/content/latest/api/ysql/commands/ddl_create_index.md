@@ -57,16 +57,11 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### WHERE clause
 
-A partial index is defined using a restriction so that only some of a table’s rows are indexed.
-Indexing a fraction of the table shortens significantly the response time for inserts, updates, and deletes and 
-results in a smaller index which is easier to be cached. 
-
-If a partial index is used, instead of a regular one, on a nullable column—where only a small fraction of the rows have not null values for this column—then 
-the response time for inserts, updates, and deletes can be shortened significantly. As a bonus, the response times for single row selects shorten a little bit too. 
-
-Check out 
-[The Benefit of Partial Indexes in Distributed SQL Databases](https://blog.yugabyte.com/the-benefit-of-partial-indexes-in-distributed-sql-databases/) blog post for more scenarios.
-
+A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the WHERE clause. 
+It can be used to exclude NULL or common values from the index. 
+This will speed up any writes to the table since rows containing the common column values don't need to be indexed. 
+It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
+It can also be used to index just the rows of interest. [See below for example](#partial-indexes).
 
 #### *name*
 
@@ -147,20 +142,10 @@ lsm, for table "public.products"
 
 ### Partial indexes
 
-In YSQL/Postgresql, `NULL` values are always considered unique (`NULL` != `NULL`) To enforce uniqueness, we can also 
-create a partial index only when `code` isn't `NULL`.
+For example, an application maintaining a shipments table may have a column for shipment status. 
+If the application mostly accesses the in-flight shipments, then it can use a partial index to exclude rows whose shipment status is delivered.
 
 ```postgresql
-yugabyte=# DROP INDEX IF EXISTS products_code_idx;
-yugabyte=# CREATE UNIQUE INDEX ON products(code) WHERE code IS NOT NULL;
-yugabyte=# \d products
-              Table "public.products"
- Column |  Type   | Collation | Nullable | Default
---------+---------+-----------+----------+---------
- id     | integer |           | not null |
- name   | text    |           |          |
- code   | text    |           |          |
-Indexes:
-    "products_pkey" PRIMARY KEY, lsm (id HASH)
-    "products_code_idx" UNIQUE, lsm (code HASH) WHERE code IS NOT NULL
+yugabyte=# create table shipments(id int, delivery_status text, address text, delivery_date date);
+yugabyte=# create index shipment_delivery on shipments(delivery_status, address, delivery_date) where delivery_status != 'delivered';
 ```
