@@ -160,23 +160,29 @@ class Schedules extends Component {
 
     const findUniverseName = (uuid) => {
       if (getPromiseState(universeList).isSuccess()) {
-        return universeList.data.find(universe => universe.universeUUID === uuid).name;
-      } else {
-        return null;
+        const currentUniverse = universeList.data.find(universe => universe.universeUUID === uuid) || null;
+        if (currentUniverse) {
+          return currentUniverse.name;
+        }
       }
+      return null;
     };
 
     let schedulesList = <span>There is no data to display</span>;
     if (getPromiseState(schedules).isSuccess() && isNonEmptyArray(schedules.data) && getPromiseState(universeList).isSuccess()) {
       schedulesList = schedules.data.map((scheduleItem, idx) => {
-        return (<ScheduleDisplayItem
-          key={scheduleItem.name + scheduleItem.taskType + idx}
-          idx={idx}
-          modal={modal}
-          handleDeleteAction={this.handleDeleteAction}
-          name={findUniverseName(scheduleItem.taskParams.universeUUID)}
-          schedule={scheduleItem}
-        />);
+        const universeName = findUniverseName(scheduleItem.taskParams.universeUUID);
+        if (universeName) {
+          return (<ScheduleDisplayItem
+            key={scheduleItem.name + scheduleItem.taskType + idx}
+            idx={idx}
+            modal={modal}
+            handleDeleteAction={this.handleDeleteAction}
+            name={universeName}
+            schedule={scheduleItem}
+          />);
+        }
+        return null;
       });
     }
 
