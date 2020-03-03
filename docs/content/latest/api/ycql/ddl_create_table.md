@@ -168,6 +168,13 @@ You can do this as shown below.
 cqlsh:example> CREATE TABLE users(user_id INT PRIMARY KEY, full_name TEXT) WITH tablets = 10;
 ```
 
+### Combining table properties
+We can combine multiple table properties like shown below.
+
+```cassandraql
+CREATE TABLE users(user_id INT PRIMARY KEY, full_name TEXT) WITH tablets = 10 AND transactions = {'enabled' : true};
+```
+
 ### Use table property to define the order (ascending or descending) for clustering columns
 
 Timestamp column 'ts' will be stored in descending order (latest values first).
