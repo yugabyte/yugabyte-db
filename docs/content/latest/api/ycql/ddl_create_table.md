@@ -252,22 +252,6 @@ cqlsh:example> SELECT * FROM sensor_data;
 
 ```
 
-### Create CDC table specifying number of tablets
-
-For two data center (2DC) deployments that require the identical number of tablets on both clusters, you can use the `CREATE TABLE` statement with the `WITH` clause to specify the number of tablets.
-
-```sql
-cqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10;
-```
-
-If you create an index for these tables, you can also specify the number of tablets for the index.
-
-You can also use `AND` to add other table properties, like in this example.
-
-```sql
-cqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10 AND transactions = { 'enabled' : true };
-```
-
 ## See also
 
 - [`ALTER TABLE`](../ddl_alter_table)
