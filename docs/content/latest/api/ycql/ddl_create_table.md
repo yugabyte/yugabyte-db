@@ -168,7 +168,7 @@ You can do this as shown below.
 cqlsh:example> CREATE TABLE users(user_id INT PRIMARY KEY, full_name TEXT) WITH tablets = 10;
 ```
 
-### Combining table properties
+### Multiple table properties
 We can combine multiple table properties like shown below.
 
 ```cassandraql
