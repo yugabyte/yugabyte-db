@@ -101,7 +101,7 @@ Where
 - The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
 - The `default_time_to_live` property sets the default expiration time (TTL) in seconds for a table. The expiration time can be overridden by setting TTL for individual rows. The default value is `0` and means rows do not expire.
 - The `transactions` property specifies if distributed transactions are enabled in the table. To enable distributed transactions, use `transactions = { 'enabled' : true }`.
-- The `tablets` property specifies the number of tablets to be used. This is also useful for two data center (2DC) deployments. See [example](#use-tablets-property-to-define-the-number-of-tablets) below.
+- The `tablets` property specifies the number of tablets to be used. See [example](#use-tablets-property-to-define-the-number-of-tablets) below.
 - Use the `AND` operator to use multiple table properties.
 - The other CQL table properties are allowed in the syntax but are currently ignored internally (have no effect).
 
