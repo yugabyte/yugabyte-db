@@ -47,65 +47,50 @@ hidePagination: true
 
 </ul>
 
+{{< note title="Note" >}}
+
+This Docker Quick Start is based on the new [`yugabyted`](../../../reference/configuration/yugabyted/) server currently in BETA. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
+
+{{< /note >}}
+
 ## 1. Create a local cluster
 
-You can use the [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) utility, downloaded in the previous step, to create and administer a containerized local cluster.
-
-To quickly create a 1-node or 3-node local cluster using Docker, follow the steps below. For details on using the `yb-docker-ctl create` command and the cluster configuration, see [Create a local cluster](../../../admin/yb-docker-ctl/#create-cluster) in the utility reference.
-
-### Create a 1-node cluster with RF=1
-
-To create a 1-node cluster with a replication factor (RF) of 1, run the default `yb-ctl create` command.
+To create a 1-node cluster with a replication factor (RF) of 1, run the command below.
 
 ```sh
-$ ./yb-docker-ctl create
-```
-
-### Create a 3-node cluster with RF=3
-
-To run a distributed SQL cluster locally, run the following `yb-docker-ctl` command to create a 3-node YugabyteDB cluster with a replication factor (RF) of 3.
-
-```sh
-$ ./yb-docker-ctl create --rf 3
+$ docker run -d -m 3G --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
+ -v yb_data:/home/yugabyte/var yugabytedb/yugabyte:latest bin/yugabyted start\
+ --daemon=false --ui=false
 ```
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
 
-## 2. Check cluster status with yb-docker-ctl
-
-Run the command below to see that we now have 1 `yb-master` (yb-master-n1) and 1 `yb-tserver` (yb-tserver-n1) containers running on this localhost. Roles played by these containers in a YugabyteDB cluster are explained in detail [here](../../../architecture/concepts/universe/).
+## 2. Check cluster status
 
 ```sh
-$ ./yb-docker-ctl status
+$ docker ps
 ```
 
 ```
-ID             PID        Type       Node                 URL                       Status          Started At
-921494a8058d   5547       tserver    yb-tserver-n1        http://192.168.64.5:9000  Running         2018-10-18T22:02:50.187976253Z
-feea0823209a   5039       master     yb-master-n1         http://192.168.64.2:7000  Running         2018-10-18T22:02:47.163244578Z
+CONTAINER ID        IMAGE                 COMMAND                  CREATED             STATUS              PORTS                                                                                                                                                                     NAMES
+5088ca718f70        yugabytedb/yugabyte   "bin/yugabyted start…"   46 seconds ago      Up 44 seconds       0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 12000/tcp   yugabyte
 ```
 
 ## 3. Check cluster status with Admin UI
 
-The [yb-master-n1 Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at `http://localhost:7000` and the [yb-tserver-n1 Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at `http://localhost:9000`. To avoid port conflicts, other YB-Master and YB-TServer services do not have their admin ports mapped to `localhost`.
-
-{{< note title="Note" >}}
-
-Clients connecting to the cluster will connect to only yb-tserver-n1 even if you used yb-docker-ctl to create a multi-node local cluster. In case of Docker for Mac, routing [traffic directly to containers](https://docs.docker.com/docker-for-mac/networking/#known-limitations-use-cases-and-workarounds) is not even possible today. Since only 1 node will receive the incoming client traffic, throughput expected for Docker-based local clusters can be significantly lower than binary-based local clusters.
-
-{{< /note >}}
+The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at http://localhost:9000. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 ### Overview and YB-Master status
 
-The yb-master-n1 home page shows that we have a cluster (or universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is `0` since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
+The yb-master home page shows that we have a cluster (or universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is `0` since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
 
 ![master-home](/images/admin/master-home-docker-rf1.png)
 
-The Masters section highlights the 3 masters along with their corresponding cloud, region and zone placement.
+The Masters section highlights the cloud, region and zone placement for the yb-master servers.
 
 ### YB-TServer status
 
-Clicking on the `See all nodes` takes us to the Tablet Servers page where we can observe the 1 tservers along with the time since it last connected to this master via regular heartbeats. Additionally, we can see that the `Load (Num Tablets)` is balanced across all available tservers. These tablets are the shards of the user tables currently managed by the cluster (which in this case is the `system_redis.redis` table). As new tables get added, new tablets will get automatically created and distributed evenly across all the available tservers.
+Clicking on the `See all nodes` takes us to the Tablet Servers page where we can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. 
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 

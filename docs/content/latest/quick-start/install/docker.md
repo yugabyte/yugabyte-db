@@ -51,7 +51,7 @@ hidePagination: true
 
 {{< note title="Note" >}}
 
-The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugabyteDB in Docker is more complex and error-prone than the more common stateless app use cases.
+The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugabyteDB in Docker is more complex and error-prone than stateless apps.
 
 {{< /note >}}
 
@@ -70,7 +70,7 @@ a) You must have the Docker runtime installed on your localhost. Follow the link
 
 <i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
 
-b) Verify that you have python2 installed.Support for Python 3 is in the works, status can be tracked on [GitHub](https://github.com/yugabyte/yugabyte-db/issues/3025).
+b) Verify that you have Python 2 or 3 installed.
 
 ```sh
 $ python --version
@@ -80,36 +80,13 @@ $ python --version
 Python 2.7.10
 ```
 
-## Download yb-docker-ctl
-
-Download the [yb-docker-ctl](../../../admin/yb-docker-ctl/) utility. This utility has a set of pre-built commands to create and thereafter administer a containerized local cluster.
-
-```sh
-$ mkdir ~/yugabyte && cd ~/yugabyte
-```
-
-```sh
-$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
-```
-
 ## Install
-
-Confirm that Docker and python are installed correctly.
-
-```sh
-$ docker ps
-```
-
-```sh
-$ python --version
-```
 
 Pull the YugabyteDB container.
 
 ```sh
 $ docker pull yugabytedb/yugabyte
 ```
-
 
 {{<tip title="Next step" >}}
 
