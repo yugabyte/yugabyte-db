@@ -74,11 +74,13 @@ void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, PgCallbac
 
 void YBCDestroyPgGate() {
   if (pgapi_shutdown_done.exchange(true)) {
-    LOG(FATAL) << __PRETTY_FUNCTION__ << " can only be called once";
+    LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
+  } else {
+    pggate::PgApiImpl* local_pgapi = pgapi;
+    pgapi = nullptr; // YBCPgIsYugaByteEnabled() must return false from now on.
+    delete local_pgapi;
+    VLOG(1) << __PRETTY_FUNCTION__ << " finished";
   }
-  delete pgapi;
-  pgapi = nullptr;
-  VLOG(1) << __PRETTY_FUNCTION__ << " finished";
 }
 
 YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {

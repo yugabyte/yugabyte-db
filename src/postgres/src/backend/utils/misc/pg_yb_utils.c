@@ -364,14 +364,7 @@ YBInitPostgresBackend(
 void
 YBOnPostgresBackendShutdown()
 {
-	static bool shutdown_done = false;
-
-	if (shutdown_done)
-	{
-		return;
-	}
 	YBCDestroyPgGate();
-	shutdown_done = true;
 }
 
 void
