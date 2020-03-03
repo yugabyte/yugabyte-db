@@ -43,8 +43,6 @@ Oid create_vertex_label(char *graph_name, char *label_name)
     // create a table for the new lable
     create_table_for_vertex_label(graph_name, label_name);
 
-    CommandCounterIncrement();
-
     // TODO: generate "id" for label (use sequence)
 
     // record the new lable in ag_label
@@ -52,7 +50,6 @@ Oid create_vertex_label(char *graph_name, char *label_name)
     relation_id = get_relname_relid(label_name, nsp_id);
     label_oid = insert_label(label_name, get_graph_oid(graph_name), 0,
                              LABEL_KIND_VERTEX, relation_id);
-
     CommandCounterIncrement();
 
     return label_oid;
@@ -124,4 +121,5 @@ static void create_table_for_vertex_label(char *graph_name, char *label_name)
     ProcessUtility(wrapper, "(generated CREATE TABLE command)",
                    PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
                    NULL);
+    // CommandCounterIncrement() is called in ProcessUtility()
 }

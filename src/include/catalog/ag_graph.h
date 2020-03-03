@@ -36,4 +36,6 @@ void update_graph_name(const Name graph_name, const Name new_name);
 Oid get_graph_oid(const char *graph_name);
 Oid get_graph_namespace(const char *graph_name);
 
+#define graph_exists(graph_name) OidIsValid(get_graph_oid(graph_name))
+
 #endif

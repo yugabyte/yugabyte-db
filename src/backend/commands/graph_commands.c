@@ -17,22 +17,30 @@
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "catalog/dependency.h"
-#include "catalog/objectaddress.h"
-#include "catalog/pg_namespace.h"
+#include "commands/defrem.h"
 #include "commands/schemacmds.h"
+#include "commands/tablecmds.h"
 #include "fmgr.h"
-#include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
-#include "utils/acl.h"
-#include "utils/lsyscache.h"
+#include "nodes/pg_list.h"
+#include "nodes/value.h"
 
 #include "catalog/ag_graph.h"
+#include "utils/graphid.h"
+
+#define LABEL_ID_SEQ_NAME "_label_id_seq"
 
 static Oid create_schema_for_graph(const Name graph_name);
-static void drop_schema_for_graph(const Name graph_name, const bool cascade);
+static void drop_schema_for_graph(char *graph_name_str, const bool cascade);
 static void rename_graph(const Name graph_name, const Name new_name);
+
+/*
+ * Schema name doesn't have to be graph name but the same name is used so
+ * that users can find the backed schema for a graph only by its name.
+ */
+#define get_graph_schema_name(graph_name) (graph_name)
 
 PG_FUNCTION_INFO_V1(create_graph);
 
@@ -49,9 +57,8 @@ Datum create_graph(PG_FUNCTION_ARGS)
     graph_name = PG_GETARG_NAME(0);
 
     nsp_id = create_schema_for_graph(graph_name);
-    insert_graph(graph_name, nsp_id);
 
-    // Make effects of this command visible.
+    insert_graph(graph_name, nsp_id);
     CommandCounterIncrement();
 
     ereport(NOTICE,
@@ -62,21 +69,51 @@ Datum create_graph(PG_FUNCTION_ARGS)
 
 static Oid create_schema_for_graph(const Name graph_name)
 {
-    CreateSchemaStmt *stmt;
+    char *graph_name_str = NameStr(*graph_name);
+    CreateSchemaStmt *schema_stmt;
+    CreateSeqStmt *seq_stmt;
+    TypeName *integer;
+    DefElem *data_type;
+    DefElem *maxvalue;
+    DefElem *cycle;
     Oid nsp_id;
 
     /*
-     * This is the same with running `CREATE SCHEMA graph_name`.
+     * This is the same with running the following SQL statement.
+     *
+     * CREATE SCHEMA `graph_name`
+     *   CREATE SEQUENCE `LABEL_ID_SEQ_NAME`
+     *     AS integer
+     *     MAXVALUE `GRAPHID_LABEL_ID_MAX`
+     *     CYCLE
+     *
+     * The sequence will be used to assign a unique id to a label in the graph.
+     *
      * schemaname doesn't have to be graph_name but the same name is used so
      * that users can find the backed schema for a graph only by its name.
+     *
+     * ProcessUtilityContext of this command is PROCESS_UTILITY_SUBCOMMAND
+     * so the event trigger will not be fired.
      */
-    stmt = makeNode(CreateSchemaStmt);
-    stmt->schemaname = NameStr(*graph_name);
-    stmt->authrole = NULL;
-    stmt->schemaElts = NIL;
-    stmt->if_not_exists = false;
-    nsp_id = CreateSchemaCommand(stmt, "(generated CREATE SCHEMA command)", -1,
-                                 -1);
+    schema_stmt = makeNode(CreateSchemaStmt);
+    schema_stmt->schemaname = get_graph_schema_name(graph_name_str);
+    schema_stmt->authrole = NULL;
+    seq_stmt = makeNode(CreateSeqStmt);
+    seq_stmt->sequence = makeRangeVar(graph_name_str, LABEL_ID_SEQ_NAME, -1);
+    integer = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"),
+                                                  makeString("int4")));
+    data_type = makeDefElem("as", (Node *)integer, -1);
+    maxvalue = makeDefElem("maxvalue",
+                           (Node *)makeInteger(GRAPHID_LABEL_ID_MAX), -1);
+    cycle = makeDefElem("cycle", (Node *)makeInteger(true), -1);
+    seq_stmt->options = list_make3(data_type, maxvalue, cycle);
+    seq_stmt->ownerId = InvalidOid;
+    seq_stmt->if_not_exists = false;
+    schema_stmt->schemaElts = list_make1(seq_stmt);
+    schema_stmt->if_not_exists = false;
+    nsp_id = CreateSchemaCommand(schema_stmt,
+                                 "(generated CREATE SCHEMA command)", -1, -1);
+    // CommandCounterIncrement() is called in CreateSchemaCommand()
 
     return nsp_id;
 }
@@ -86,6 +123,7 @@ PG_FUNCTION_INFO_V1(drop_graph);
 Datum drop_graph(PG_FUNCTION_ARGS)
 {
     Name graph_name;
+    char *graph_name_str;
     bool cascade;
 
     if (PG_ARGISNULL(0))
@@ -96,10 +134,17 @@ Datum drop_graph(PG_FUNCTION_ARGS)
     graph_name = PG_GETARG_NAME(0);
     cascade = PG_GETARG_BOOL(1);
 
-    drop_schema_for_graph(graph_name, cascade);
-    delete_graph(graph_name);
+    graph_name_str = NameStr(*graph_name);
+    if (!graph_exists(graph_name_str))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                 errmsg("graph \"%s\" does not exist", graph_name_str)));
+    }
 
-    // Make effects of this command visible.
+    drop_schema_for_graph(graph_name_str, cascade);
+
+    delete_graph(graph_name);
     CommandCounterIncrement();
 
     ereport(NOTICE,
@@ -108,28 +153,40 @@ Datum drop_graph(PG_FUNCTION_ARGS)
     PG_RETURN_VOID();
 }
 
-static void drop_schema_for_graph(const Name graph_name, const bool cascade)
+static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
 {
-    Oid nsp_id;
-    ObjectAddress object;
-    DropBehavior behavior;
+    DropStmt *drop_stmt;
+    Value *schema_name;
+    List *label_id_seq_name;
 
-    nsp_id = get_graph_namespace(NameStr(*graph_name));
-    Assert(OidIsValid(nsp_id));
+    /*
+     * ProcessUtilityContext of commands below is PROCESS_UTILITY_SUBCOMMAND
+     * so the event triggers will not be fired.
+     */
 
-    if (!pg_namespace_ownercheck(nsp_id, GetUserId()))
-    {
-        aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SCHEMA,
-                       get_namespace_name(nsp_id));
-    }
+    // DROP SEQUENCE `graph_name_str`.`LABEL_ID_SEQ_NAME`
+    drop_stmt = makeNode(DropStmt);
+    schema_name = makeString(get_graph_schema_name(graph_name_str));
+    label_id_seq_name = list_make2(schema_name, makeString(LABEL_ID_SEQ_NAME));
+    drop_stmt->objects = list_make1(label_id_seq_name);
+    drop_stmt->removeType = OBJECT_SEQUENCE;
+    drop_stmt->behavior = DROP_RESTRICT;
+    drop_stmt->missing_ok = false;
+    drop_stmt->concurrent = false;
 
-    object.classId = NamespaceRelationId;
-    object.objectId = nsp_id;
-    object.objectSubId = 0;
+    RemoveRelations(drop_stmt);
+    // CommandCounterIncrement() is called in RemoveRelations()
 
-    behavior = cascade ? DROP_CASCADE : DROP_RESTRICT;
+    // DROP SCHEMA `graph_name_str` [ CASCADE ]
+    drop_stmt = makeNode(DropStmt);
+    drop_stmt->objects = list_make1(schema_name);
+    drop_stmt->removeType = OBJECT_SCHEMA;
+    drop_stmt->behavior = cascade ? DROP_CASCADE : DROP_RESTRICT;
+    drop_stmt->missing_ok = false;
+    drop_stmt->concurrent = false;
 
-    performDeletion(&object, behavior, 0);
+    RemoveObjects(drop_stmt);
+    // CommandCounterIncrement() is called in RemoveObjects()
 }
 
 PG_FUNCTION_INFO_V1(alter_graph);
@@ -178,9 +235,6 @@ Datum alter_graph(PG_FUNCTION_ARGS)
                         errhint("valid operations: RENAME")));
     }
 
-    // Make sure latter steps can see the results of this operation.
-    CommandCounterIncrement();
-
     PG_RETURN_VOID();
 }
 
@@ -193,8 +247,17 @@ static void rename_graph(const Name graph_name, const Name new_name)
     char *oldname = NameStr(*graph_name);
     char *newname = NameStr(*new_name);
 
-    RenameSchema(oldname, newname);
+    /*
+     * ProcessUtilityContext of this command is PROCESS_UTILITY_SUBCOMMAND
+     * so the event trigger will not be fired.
+     *
+     * CommandCounterIncrement() does not have to be called after this.
+     */
+    RenameSchema(get_graph_schema_name(oldname),
+                 get_graph_schema_name(newname));
+
     update_graph_name(graph_name, new_name);
+    CommandCounterIncrement();
 
     ereport(NOTICE,
             (errmsg("graph \"%s\" renamed to \"%s\"", oldname, newname)));
