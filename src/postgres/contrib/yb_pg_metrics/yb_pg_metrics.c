@@ -475,10 +475,21 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	  ybpgm_Store(AggregatePushdown, time);
   }
 
-  if (prev_ExecutorEnd)
-    prev_ExecutorEnd(queryDesc);
-  else
-    standard_ExecutorEnd(queryDesc);
+  statement_nesting_level++;
+  PG_TRY();
+  {
+    if (prev_ExecutorEnd)
+      prev_ExecutorEnd(queryDesc);
+    else
+      standard_ExecutorEnd(queryDesc);
+    statement_nesting_level--;
+  }
+  PG_CATCH();
+  {
+    statement_nesting_level--;
+    PG_RE_THROW();
+  }
+  PG_END_TRY();
 }
 
 /*

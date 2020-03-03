@@ -56,6 +56,10 @@ public class TestYSQLMetrics extends BasePgSQLTest {
                           INSERT_STMT_METRIC, 1, 1, true);
     statement.execute("END");
 
+    // Limit query on complex view (issue #3811).
+    verifyStatementMetric(statement, "SELECT * FROM information_schema.key_column_usage LIMIT 1",
+                          SELECT_STMT_METRIC, 1, 1, true);
+
     // Non-txn update.
     verifyStatementMetric(statement, "UPDATE test SET v = 2 WHERE k = 1",
                           UPDATE_STMT_METRIC, 1, 0, true);
@@ -127,9 +131,15 @@ public class TestYSQLMetrics extends BasePgSQLTest {
     stmt      = "DELETE FROM test WHERE k = 2";
     stat_stmt = "DELETE FROM test WHERE k = $1";
     verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+
     // Txn delete.
     stmt      = "DELETE FROM test";
     stat_stmt = stmt;
+    verifyStatementStat(statement, stmt, stat_stmt, 1, true);
+
+    // Limit query on complex view (issue #3811).
+    stmt      = "SELECT * FROM information_schema.key_column_usage LIMIT 1";
+    stat_stmt = "SELECT * FROM information_schema.key_column_usage LIMIT $1";
     verifyStatementStat(statement, stmt, stat_stmt, 1, true);
 
     // Invalid statement should not update metrics.
