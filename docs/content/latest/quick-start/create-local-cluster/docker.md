@@ -58,9 +58,15 @@ This Docker Quick Start is based on the new [`yugabyted`](../../../reference/con
 To create a 1-node cluster with a replication factor (RF) of 1, run the command below.
 
 ```sh
-$ docker run -d -m 3G --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
- -v yb_data:/home/yugabyte/var yugabytedb/yugabyte:latest bin/yugabyted start\
+$ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
+ yugabytedb/yugabyte:latest bin/yugabyted start\
  --daemon=false --ui=false
+```
+
+As per the above docker run command, the data stored in YugabyteDB is not persistent across container restarts. If you would like to make YugabyteDB persist data across restarts then you have to add the following volume mount option to the above command.
+
+```sh
+-v yb_data:/home/yugabyte/var
 ```
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.

@@ -1,3 +1,13 @@
+## Prerequisite
+
+Install a local YugabyteDB universe on Docker using the steps below.
+
+```sh
+mkdir ~/yugabyte && cd ~/yugabyte
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
+docker pull yugabytedb/yugabyte
+```
+
 ## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.

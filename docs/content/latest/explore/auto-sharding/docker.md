@@ -55,7 +55,15 @@ We will explore automatic sharding inside YugabyteDB by creating these tables:
 - Use a replication factor (RF) of `1`. This will make it easier to understand how automatic sharding is achieved independent of data replication.
 - Insert entries one by one, and examine which how the data gets distributed across the various nodes.
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../quick-start/install/) guide.
+## Prerequisite
+
+Install a local YugabyteDB universe on Docker using the steps below.
+
+```sh
+mkdir ~/yugabyte && cd ~/yugabyte
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
+docker pull yugabytedb/yugabyte
+```
 
 ## 1. Create universe
 

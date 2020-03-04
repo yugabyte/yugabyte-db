@@ -49,7 +49,15 @@ You can monitor your local YugabyteDB cluster with a local instance of [Promethe
 
 For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../../reference/configuration/default-ports/#monitoring-with-prometheus).
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+## Prerequisite
+
+Install a local YugabyteDB universe on Docker using the steps below.
+
+```sh
+mkdir ~/yugabyte && cd ~/yugabyte
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
+docker pull yugabytedb/yugabyte
+```
 
 ## 1. Create universe
 

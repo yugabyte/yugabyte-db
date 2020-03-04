@@ -58,7 +58,7 @@ The Docker option to run local clusters is recommended only for advanced Docker 
 
 ## Prerequisites
 
-a) You must have the Docker runtime installed on your localhost. Follow the links below to download and install Docker if you have not done so already.
+You must have the Docker runtime installed on your localhost. Follow the links below to download and install Docker if you have not done so already.
 
 <i class="fab fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
 
@@ -70,15 +70,6 @@ a) You must have the Docker runtime installed on your localhost. Follow the link
 
 <i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
 
-b) Verify that you have Python 2 or 3 installed.
-
-```sh
-$ python --version
-```
-
-```
-Python 2.7.10
-```
 
 ## Install
 
