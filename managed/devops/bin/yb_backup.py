@@ -53,9 +53,11 @@ S3_CFG_FILE_NAME = 's3cfg'
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
 SHA_TOOL_PATH = '/usr/bin/sha256sum'
-TSERVER_CONF_PATH = '/home/yugabyte/tserver/conf/server.conf'
+# Try to read home dir from environment variable, else assume it's /home/yugabyte.
+YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
+TSERVER_CONF_PATH = os.path.join(YB_HOME_DIR, 'tserver/conf/server.conf')
 K8S_DATA_DIRS = ["/mnt/disk0", "/mnt/disk1"]
-DEFAULT_REMOTE_YB_ADMIN_PATH = '/home/yugabyte/master/bin/yb-admin'
+DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
 
 
 class BackupException(Exception):

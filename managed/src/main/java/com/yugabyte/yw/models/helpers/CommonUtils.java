@@ -9,6 +9,7 @@ import play.libs.Json;
 import java.util.Iterator;
 
 public class CommonUtils {
+  public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
   private static String maskRegex = "(?<!^.?).(?!.?$)";
 
   public static JsonNode maskConfig(JsonNode config) {

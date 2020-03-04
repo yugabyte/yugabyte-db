@@ -51,6 +51,9 @@ RELEASE_VERSION_FILENAME = "version.txt"
 RELEASE_VERSION_PATTERN = "\d+.\d+.\d+.\d+"
 RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
 
+# Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
+YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
+
 
 class ReleasePackage(object):
     def __init__(self):

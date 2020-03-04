@@ -244,8 +244,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.enableNodeToNodeEncrypt) extra_gflags.put("use_node_to_node_encryption", "true");
           if (taskParam.enableClientToNodeEncrypt) extra_gflags.put("use_client_to_server_encryption", "true");
           extra_gflags.put("allow_insecure_connections", taskParam.allowInsecure ? "true" : "false");
+          String yb_home_dir = taskParam.getProvider().getYbHome();
           // TODO: This directory location should also be passed into subcommand: --certs_node_dir
-          extra_gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+          extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
           subcommand.add("--rootCA_cert");
           subcommand.add(cert.certificate);
           subcommand.add("--rootCA_key");

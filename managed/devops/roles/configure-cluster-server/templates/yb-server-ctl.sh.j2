@@ -192,7 +192,7 @@ case "$daemon" in
     exit 1
 esac
 
-daemon_home="/home/yugabyte/$daemon"
+daemon_home="{{ yb_home_dir }}/$daemon"
 daemon_logs_dir="$daemon_home/logs"
 daemon_binary="$daemon_home/bin/yb-$daemon"
 daemon_conf="$daemon_home/conf/server.conf"

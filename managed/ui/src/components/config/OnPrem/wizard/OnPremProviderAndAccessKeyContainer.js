@@ -12,7 +12,10 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       Object.keys(formData).forEach((key) => { if (typeof formData[key] === 'string' || formData[key] instanceof String) formData[key] = formData[key].trim(); });
       if (!ownProps.isEditProvider) {
         const formSubmitVals = {
-          provider: {name: formData.name},
+          provider: {
+            name: formData.name,
+            config: { YB_HOME_DIR: formData.homeDir }
+          },
           key: {
             code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",
             privateKeyContent: formData.privateKeyContent,
