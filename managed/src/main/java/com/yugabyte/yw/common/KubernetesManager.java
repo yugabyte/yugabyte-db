@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.Provider;
@@ -27,9 +26,6 @@ public class KubernetesManager {
   play.Configuration appConfig;
 
   private static String SERVICE_INFO_JSONPATH="{.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}";
-
-  @VisibleForTesting
-  static String POSTGRES_BIN_PATH = "/home/yugabyte/tserver/postgres/bin";
 
   public ShellProcessHandler.ShellResponse createNamespace(Map<String, String> config, String universePrefix) {
     List<String> commandList = ImmutableList.of("kubectl",  "create",

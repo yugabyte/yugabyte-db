@@ -11,7 +11,7 @@
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   vars:
-    script_to_run: "/home/{{ user_name }}/bin/yb-server-ctl.sh"
+    script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
   tasks:
     - name: Call the ctl script with appropriate args
       shell: "{{ script_to_run }} {{ process }} {{ command }}"

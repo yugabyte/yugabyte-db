@@ -11,7 +11,7 @@
 from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import get_ssh_host_port, get_datafile_path, \
-    get_internal_datafile_path, YBOpsRuntimeError
+    get_internal_datafile_path, YBOpsRuntimeError, YB_HOME_DIR
 
 from ybops.utils.remote_shell import RemoteShell
 
@@ -44,7 +44,7 @@ class AbstractCloud(AbstractCommandParser):
     PUBLIC_EXPONENT = 65537
     CERT_VALID_DURATION = 365
     CERTS_TEMP_DIR = "/opt/yugaware/certs"
-    YSQLSH_CERT_DIR = "/home/yugabyte/.yugabytedb"
+    YSQLSH_CERT_DIR = os.path.join(YB_HOME_DIR, ".yugabytedb")
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
@@ -160,20 +160,20 @@ class AbstractCloud(AbstractCommandParser):
         updated_vars.update(get_ssh_host_port(host_info))
         if os.environ.get("YB_USE_FABRIC", False):
             remote_shell = RemoteShell(updated_vars)
-            ssh_user = updated_vars.get("ssh_user")
-            # TODO: change the home directory from being hard coded into a param passed in.
+            file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
             remote_shell.run_command(
-                "/home/yugabyte/bin/yb-server-ctl.sh {} {}".format(process, command)
+                "{} {} {}".format(file_path, process, command)
             )
         else:
             self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
 
     def initYSQL(self, master_addresses, ssh_options):
         remote_shell = RemoteShell(ssh_options)
+        init_db_path = os.path.join(YB_HOME_DIR, "tserver/postgres/bin/initdb")
         remote_shell.run_command(
             "bash -c \"YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses={} "
-            "/home/yugabyte/tserver/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir "
-            "-U postgres\"".format(master_addresses)
+            "{} -D /tmp/yb_pg_initdb_tmp_data_dir "
+            "-U postgres\"".format(master_addresses, init_db_path)
         )
 
     def generate_client_cert(self, extra_vars, ssh_options):

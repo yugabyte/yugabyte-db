@@ -24,7 +24,7 @@ export default class OnPremProviderAndAccessKey extends Component {
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;
     const {nameHelpContent, userHelpContent, pkHelpContent,
-           passwordlessSudoHelp, airGapInstallHelp} = constants;
+           passwordlessSudoHelp, airGapInstallHelp, homeDirHelp} = constants;
     const isReadOnly = this.props.isEditProvider;
 
     return (
@@ -33,10 +33,12 @@ export default class OnPremProviderAndAccessKey extends Component {
           <Row>
             <Col lg={6}>
               <div className="form-right-aligned-labels">
-                <Field name="name" component={YBInputField} label="Provider Name" insetError={true} isReadOnly={isReadOnly}
-                       infoContent={nameHelpContent} infoTitle="Provider Name" />
-                <Field name="sshUser" component={YBInputField} label="SSH User" insetError={true} isReadOnly={isReadOnly}
-                       infoContent={userHelpContent} infoTitle="SSH User" />
+                <Field name="name" component={YBInputField} label="Provider Name" insetError={true}
+                       isReadOnly={isReadOnly} infoContent={nameHelpContent}
+                       infoTitle="Provider Name" />
+                <Field name="sshUser" component={YBInputField} label="SSH User" insetError={true}
+                       isReadOnly={isReadOnly} infoContent={userHelpContent}
+                       infoTitle="SSH User" />
                 <Field name="passwordlessSudoAccess" component={YBToggle}
                        label="Passwordless Sudo" defaultChecked={true} isReadOnly={isReadOnly}
                        infoContent={passwordlessSudoHelp} infoTitle="Passwordless Sudo"/>
@@ -46,6 +48,9 @@ export default class OnPremProviderAndAccessKey extends Component {
                 <Field name="airGapInstall" component={YBToggle} isReadOnly={isReadOnly}
                        label="Air Gap Installation" defaultChecked={false}
                        infoContent={airGapInstallHelp} infoTitle="Air Gap Installation"/>
+                <Field name="homeDir" component={YBTextArea} isReadOnly={isReadOnly}
+                       label="Desired Home Directory (Optional)" insetError={true}
+                       infoContent={homeDirHelp} infoTitle="Home Directory" />
               </div>
             </Col>
           </Row>

@@ -90,9 +90,10 @@
     become: yes
     when: ansible_os_family == "RedHat" and update_yum_cache
 
-  - name: Set Linux packages to Install
+  - name: Set Backup packages to Install
     set_fact:
-      linux_packages: "{{ required_packages }}"
+      linux_packages: "{{ linux_packages + backup_packages }}"
+    when: install_backup_packages
 
   - name: Set Dev packages to Install
     set_fact:

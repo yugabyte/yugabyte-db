@@ -8,7 +8,7 @@
 
 - name: Setup SSH | Create .ssh directory
   file:
-    path: "/home/{{ create_user.name  }}/.ssh"
+    path: "{{ create_user.home_dir }}/.ssh"
     state: directory
     mode: 0700
     owner: "{{ create_user.name  }}"
@@ -17,7 +17,7 @@
 - name: Setup SSH | Install private key
   copy:
     content: "{{ ssh_config.id_rsa }}"
-    dest: "/home/{{ user_name }}/.ssh/id_rsa"
+    dest: "{{ create_user.home_dir }}/.ssh/id_rsa"
     mode: 0600
     owner: "{{ create_user.name  }}"
     group: "{{ create_user.name  }}"
@@ -25,7 +25,7 @@
 - name: Setup SSH | Install public key
   copy:
     content: "{{ ssh_config.id_rsa_pub }}"
-    dest: "/home/{{ create_user.name  }}/.ssh/id_rsa.pub"
+    dest: "{{ create_user.home_dir }}/.ssh/id_rsa.pub"
     mode: 0600
     owner: "{{ create_user.name  }}"
     group: "{{ create_user.name  }}"
@@ -33,7 +33,7 @@
 - name: Setup SSH | Install authorized keys
   copy:
     content: "{{ ssh_config.authorized_keys }}"
-    dest: "/home/{{ create_user.name  }}/.ssh/authorized_keys"
+    dest: "{{ create_user.home_dir }}/.ssh/authorized_keys"
     mode: 0600
     owner: "{{ create_user.name  }}"
     group: "{{ create_user.name  }}"

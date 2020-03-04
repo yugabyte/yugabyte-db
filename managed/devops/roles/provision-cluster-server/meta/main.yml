@@ -19,9 +19,10 @@ dependencies:
   - role: create_user
     create_user:
       name: "{{ user_name }}"
+      group: "{{ user_name }}"
       shell: "/bin/bash"
       comment: "{{ user_name }}"
-      home_dir: "/home/{{ user_name }}"
+      home_dir: "{{ yb_home_dir }}"
     ssh_config:
       enabled: "{{ cluster_server_vault|default(False) }}"
       id_rsa: "{{ cluster_server_vault | get_value('id_rsa') }}"

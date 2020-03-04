@@ -14,7 +14,7 @@ from ybops.cloud.common.method import AbstractInstancesMethod
 from ybops.cloud.common.method import CreateInstancesMethod
 from ybops.cloud.common.method import DestroyInstancesMethod
 from ybops.cloud.common.method import ProvisionInstancesMethod
-from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path
+from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR
 
 import json
 import logging
@@ -151,6 +151,7 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
         file_name = 'provision_instance.py.j2'
         try:
             config.update(vars(args))
+            config["yb_home_dir"] = YB_HOME_DIR
             data_dir = os.path.dirname(get_datafile_path(file_name))
             template = Environment(loader=FileSystemLoader(data_dir)).get_template(file_name)
             with open(os.path.join(args.destination, args.name), 'w') as f:

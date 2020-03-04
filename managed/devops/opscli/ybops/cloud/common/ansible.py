@@ -72,6 +72,8 @@ class AnsibleProcess(object):
                 "yb_server_ssh_user": ssh_user
             })
 
+        playbook_args["yb_home_dir"] = ybutils.YB_HOME_DIR
+
         process_args = [
             "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, filename)
         ]

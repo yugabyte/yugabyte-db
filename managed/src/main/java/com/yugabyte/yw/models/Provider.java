@@ -25,6 +25,7 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
+import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 
 @Entity
 public class Provider extends Model {
@@ -85,6 +86,11 @@ public class Provider extends Model {
     } else {
       return Json.fromJson(this.config, Map.class);
     }
+  }
+
+  @JsonIgnore
+  public String getYbHome() {
+    return this.getConfig().getOrDefault("YB_HOME_DIR", DEFAULT_YB_HOME_DIR);
   }
 
   /**
