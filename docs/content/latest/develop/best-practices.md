@@ -102,10 +102,6 @@ or less. This is a combination of [column sizing recommendations](#column-size-l
 See [hardware sizing](/latest/deploy/checklist/) docs.
 
 
-## Consistent & global Secondary indexes
-To add secondary indexes you need to create tables with transactions enabled. Indexes are global and strongly consistent
-(ACID). Indexes can also be used as materialized views by using the `INCLUDE` [clause](../../api/ycql/ddl_create_index#included-columns).
-
 ## Tablet leaders in multi-az and multi-region deployments
 In multi-region deployments, we can hint the database to try and keep all tablet-leaders
 in 1 region thus lowering the latency and network hops during read/write transactions.
