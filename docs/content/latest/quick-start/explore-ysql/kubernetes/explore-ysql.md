@@ -6,7 +6,7 @@ $ kubectl --namespace yb_demo exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh --
 ```
 
 ```
-ysqlsh (11.2-YB-2.0.0.0-b0)
+ysqlsh (11.2-YB-2.1.0.0-b0)
 Type "help" for help.
 
 yugabyte=#

@@ -16,7 +16,11 @@ Use the `yugabyted` daemon, with its commands and options, to start a local clus
 
 {{< note title="Note" >}}
 
-`yugabyted` is under active development with new features and functionality being added incrementally. If you find missing features, use [`yb-ctl`](../../../admin/yb-ctl) utility to develop and test local clusters. For production deployments, configure your clusters using [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
+`yugabyted` currently supports creating a 1-node cluster only. Ability to create multi-node clusters is under active development. 
+
+- For local multi-node clusers, use [`yb-ctl`](../../../admin/yb-ctl). 
+
+- For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
 
 {{< /note >}}
 
