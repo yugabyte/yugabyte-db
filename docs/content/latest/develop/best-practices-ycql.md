@@ -67,3 +67,13 @@ A good schema design is to keep most columns as regular ones or collections only
 Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
 primitive columns.
 
+
+## Covering indexes
+When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the 
+index. This can result in multiple random reads across the main table.
+
+Sometimes a better way is to include the other columns that we're quering that aren't part of the index 
+using the [`INCLUDE`](../api/ycql/ddl_create_index.md#included-columns) clause.  
+When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
+
+This turns a (possible) random read from the main table to just a filter on the index.
