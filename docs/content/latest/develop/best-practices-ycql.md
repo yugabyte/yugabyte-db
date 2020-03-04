@@ -55,3 +55,10 @@ and require only 1 Raft-round trip between peers. Number & Counter types work th
 While DELETE inserts a `delete marker` for each row  in transactions and they are removed from storage when a compaction 
 runs.
 
+## Use jsonb columns only when necessary
+`jsonb` columns are slower to read/write compared to normal columns. 
+They also take more space because they need to store keys in strings and make keeping data consistency harder.
+A good schema design is to keep most columns as regular ones or collections only using `jsonb` for truly dynamic values. 
+Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
+primitive columns.
+
