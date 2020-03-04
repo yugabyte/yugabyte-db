@@ -135,7 +135,8 @@ class PgCreateTable : public PgDdl {
                 const PgObjectId& table_id,
                 bool is_shared_table,
                 bool if_not_exist,
-                bool add_primary_key);
+                bool add_primary_key,
+                const bool colocated);
   virtual ~PgCreateTable();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
@@ -166,8 +167,6 @@ class PgCreateTable : public PgDdl {
 
   // Specify the number of tablets explicitly.
   virtual CHECKED_STATUS SetNumTablets(int32_t num_tablets);
-
-  virtual void SetColocated(bool colocated);
 
   // Execute.
   virtual CHECKED_STATUS Exec();

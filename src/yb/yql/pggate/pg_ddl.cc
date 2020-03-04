@@ -109,7 +109,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& table_id,
                              bool is_shared_table,
                              bool if_not_exist,
-                             bool add_primary_key)
+                             bool add_primary_key,
+                             const bool colocated)
     : PgDdl(pg_session),
       table_name_(YQL_DATABASE_PGSQL,
                   GetPgsqlNamespaceId(table_id.database_oid),
@@ -120,7 +121,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
       is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
                            strcmp(schema_name, "information_schema") == 0),
       is_shared_table_(is_shared_table),
-      if_not_exist_(if_not_exist) {
+      if_not_exist_(if_not_exist),
+      colocated_(colocated) {
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
     // For regular user table, ybrowid should be a hash key because ybrowid is a random uuid.
@@ -166,10 +168,6 @@ Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
   }
   num_tablets_ = num_tablets;
   return Status::OK();
-}
-
-void PgCreateTable::SetColocated(bool colocated) {
-  colocated_ = colocated;
 }
 
 Status PgCreateTable::Exec() {
@@ -290,7 +288,8 @@ PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
                              bool is_unique_index,
                              bool if_not_exist)
     : PgCreateTable(pg_session, database_name, schema_name, index_name, index_id,
-                    is_shared_index, if_not_exist, false /* add_primary_key */),
+                    is_shared_index, if_not_exist, false /* add_primary_key */,
+                    true /* colocated */),
       base_table_id_(base_table_id),
       is_unique_index_(is_unique_index) {
 }

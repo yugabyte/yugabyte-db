@@ -34,7 +34,8 @@ TEST_F(PggateTestDelete, TestDelete) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, &pg_stmt));
+                                       false /* add_primary_key */, true /* colocated */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                              DataType::INT64, true, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "id", ++col_count,
