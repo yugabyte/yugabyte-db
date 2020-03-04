@@ -261,7 +261,7 @@ DBOptions::DBOptions()
       table_cache_numshardbits(4),
       WAL_ttl_seconds(0),
       WAL_size_limit_MB(0),
-      manifest_preallocation_size(4 * 1024 * 1024),
+      manifest_preallocation_size(64 * 1024),
       allow_os_buffer(true),
       allow_mmap_reads(false),
       allow_mmap_writes(false),
