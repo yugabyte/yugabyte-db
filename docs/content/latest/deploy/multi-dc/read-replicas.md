@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Read replicas are _observer nodes_ that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication. These "read-only" nodes allow your data to be stored safely and durably.
+Read replicas are _observer nodes_ that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication. These "read-only" nodes allow your data to be stored safely and durably in a read replica cluster that is 
 
 
 
