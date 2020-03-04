@@ -11,15 +11,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB to use GraphQL with your YugabyteDB databases and applications.
+Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB to power your GraphQL applications with a distributed SQL database.
 
-Follow the steps below to learn how easily you can begin using the Hasura GraphQL Engine with YugabyteDB. For details on using the Hasura GraphQL engine, see the [Hasura GraphQL engine documentation](https://docs.hasura.io).
+Follow the steps below to begin using Hasura with YugabyteDB. For details on using Hasura, see the [Hasura GraphQL engine documentation](https://docs.hasura.io).
 
 ## Before you begin
 
 ### Install and start YugabyteDB
 
-If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
+You can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](../../../quick-start/).
 
 To use the Hasura GraphQL Engine with YugabyteDB, you need to set the `yb-tserver` option `--ysql_suppress_unsupported_error` to `true` so that errors on the use of unsupported SQL statements are suppressed and only raise warnings instead.
 
@@ -29,9 +29,11 @@ If you're using `yb-ctl` to start your cluster, you can add the option like this
 $ ./bin/yb-ctl start --tserver_flags "ysql_suppress_unsupported_error=true"
 ```
 
+PostgreSQL-compatible YSQL API is now available to serve application client requests at `localhost:5433`.
+
 ### Install and start Hasura
 
-To install the Hasura GraphQL engine, follow the steps in the Hasura [Quick start with Docker](https://docs.hasura.io/1.0/graphql/manual/getting-started/docker-simple.html).
+To install the Hasura GraphQL engine on an existing PostgreSQL database, follow the steps in the Hasura [Quick start with Docker](https://hasura.io/docs/1.0/graphql/manual/deployment/docker/index.html).
 
 To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, except that the port should be `5433`.
 
@@ -39,46 +41,14 @@ For a local Mac setup, the configuration should be:
 
 ```sh
 docker run -d -p 8080:8080 \
-       -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:@host.docker.internal:5433/yugabyte \
-       -e HASURA_GRAPHQL_ENABLE_CONSOLE=true \
-       hasura/graphql-engine:v1.1.0
+  -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:@host.docker.internal:5433/yugabyte \
+  -e HASURA_GRAPHQL_ENABLE_CONSOLE=true \
+  hasura/graphql-engine:v1.1.0
 ```
 
 {{< note title="Note" >}}
-
-For the `hasura/graphql-engine` value, make sure that the version matches the Hasura GraphQL Engine version that you are using.
-
-{{< /note >}}
-
-After following the steps in the Hasura Quick start with Docker above and downloading the `docker-run.sh` file, you need to change the user permissions on the file to make it executable by running the following `chmod` command:
-
-```sh
-$ chmod +x docker-run.sh
-```
-
-When this script runs, the Hasura GraphQL Engine starts in the Docker container and returns the unique container ID.
-
-```
-$ hasura-yb ./docker-run.sh
-8afee92b0e2535baf3fdb1308f78f008b3e3c950d4f560a58449b4ef7e23652a
-```
-
-To start the Hasura GraphQL Engine, run the following script:
-
-```sh
-$ ./docker-run.sh
-```
-
-{{< note title="Note" >}}
-
-The initialization step may take a few seconds or more.
-
-To check the Docker logs, you can use the container ID returned by the command above:
-
-```sh
-docker logs <container-id>
-```
-
+- v1.1.0 refers to the version of `hasura/graphql-engine` we are using, you can change it to a different version as per your needs.
+- `@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
 {{< /note >}}
 
 ## Create sample tables and relationships
@@ -86,7 +56,7 @@ docker logs <container-id>
 Follow the steps below to add tables to the `yugabyte` database specified in the configuration above.
 You can use another database, if you want, but make sure to change the database name in the `HASURA_GRAPHQL_DATABASE_URL` setting.
 
-To perform the steps below, open the Hasura UI on `localhost:8080` and go to the `DATA` tab as shown here.
+To perform the steps below, open the Hasura UI on http://localhost:8080 and go to the `DATA` tab as shown here.
 
 ![DATA tab in Hasura UI](/images/develop/graphql/hasura/data-tab.png)
 
@@ -133,7 +103,7 @@ Click **Add**, and then click **Save**.
 1. On the command line, change your directory to the root `yugabyte` directory, and then open `ysqlsh` (the YSQL CLI) to connect to the YugabyteDB cluster:
 
 ```sh
-./bin/ysqlsh
+$ ./bin/ysqlsh
 ```
 
 1. Copy the YSQL statements below into the shell and press **Enter**.

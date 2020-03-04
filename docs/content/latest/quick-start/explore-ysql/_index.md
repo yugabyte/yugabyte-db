@@ -28,19 +28,13 @@ Follow the steps below to create a database and load sample data.
 
 {{< note title="Note" >}}
 
-The five SQL script (`.sql`) files used to create and load the sample data in the steps below are located in the `share` directory of your YugabyteDB installation. You can verify the files are available by entering the following `ls` command from the YugabyteDB home directory.
+The five SQL scripts (aka `.sql` files) used to create and load the sample data in the steps below are located in the `share` directory of your YugabyteDB installation. You can verify the files are available by entering the following `ls` command from the YugabyteDB home directory.
 
 ```sh
 $ ls share/
 ```
 
-The `share` directory includes sample dataset files available for creating databases for learning YugabyteDB. The following files will be used in the steps below.
-
-- `schema.sql`
-- `orders.sql`
-- `products.sql`
-- `reviews.sql`
-- `users.sql`
+The `share` directory includes sample dataset files available for creating databases for learning YugabyteDB. The files that will be used in the steps below are `schema.sql`, `orders.sql`, `products.sql`,`reviews.sql` and `users.sql`.
 
 {{< /note >}}
 

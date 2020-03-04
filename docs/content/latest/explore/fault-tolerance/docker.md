@@ -47,7 +47,15 @@ showAsideToc: true
 
 YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
-If you haven't installed YugabyteDB yet, you can create a local YugabyteDB cluster within five minutes by following the [Quick Start](../../../quick-start/install/) guide.
+## Prerequisite
+
+Install a local YugabyteDB universe on Docker using the steps below.
+
+```sh
+mkdir ~/yugabyte && cd ~/yugabyte
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
+docker pull yugabytedb/yugabyte
+```
 
 ## 1. Create universe
 
@@ -89,7 +97,7 @@ cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               profile frozen<map<text, text>>);
 ```
 
-## 2. Insert data through node `1`
+## 2. Insert data through a node
 
 Now insert some data by typing the following into `cqlsh` shell.
 
