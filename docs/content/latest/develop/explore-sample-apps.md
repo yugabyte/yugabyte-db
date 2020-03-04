@@ -6,6 +6,7 @@ headcontent:
 image: /images/section_icons/index/develop.png
 aliases:
   - /latest/quick-start/run-sample-apps/
+  - /quick-start/run-sample-apps/
 menu:
   latest:
     identifier: explore-sample-apps
