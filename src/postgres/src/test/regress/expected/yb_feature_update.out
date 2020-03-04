@@ -122,3 +122,61 @@ SELECT * FROM feature_tab_dml WHERE col_smallint = 78;
 --------------+-------------+------------+----------+------------+----------+-------------+----------+-----------+---------------+------------------+----------+---------------+----------------
            78 |             |            |          |            |          |             |          |           |               |                  |          |               |
 (1 row)
+
+--
+-- Test RETURNING clause with indexes and foreign keys.
+--
+CREATE TABLE feature_tab_dml_returning (
+  id SERIAL PRIMARY KEY,
+  a TEXT UNIQUE,
+  b timestamp with time zone
+);
+INSERT INTO feature_tab_dml_returning (a) values ('foo');
+SELECT * FROM feature_tab_dml_returning;
+ id |  a  | b
+----+-----+---
+  1 | foo |
+(1 row)
+
+-- Using `NOW()` because it is not an immutable function, so it needs to be
+-- evaluated during execution.
+-- Do not select NOW() value to ensure expected output is stable, only
+-- check query succeeds and b is not null (same for queries below).
+UPDATE feature_tab_dml_returning SET b = NOW() where id = 1 RETURNING id, a, b IS NOT NULL;
+ id |  a  | ?column?
+----+-----+----------
+  1 | foo | t
+(1 row)
+
+SELECT id, a, b IS NOT NULL FROM feature_tab_dml_returning;
+ id |  a  | ?column?
+----+-----+----------
+  1 | foo | t
+(1 row)
+
+--
+-- Add a table referencing column 'a'.
+--
+CREATE TABLE feature_tab_dml_returning_fk (
+  id SERIAL NOT NULL PRIMARY KEY,
+  x TEXT NOT NULL,
+  y TEXT REFERENCES feature_tab_dml_returning(a) NOT NULL
+);
+-- Should succeed because no fkey references 'foo'
+UPDATE feature_tab_dml_returning SET a = 'bar', b = NOW() where id = 1 RETURNING id, a, b IS NOT NULL;
+ id |  a  | ?column?
+----+-----+----------
+  1 | bar | t
+(1 row)
+
+SELECT id, a, b IS NOT NULL FROM feature_tab_dml_returning;
+ id |  a  | ?column?
+----+-----+----------
+  1 | bar | t
+(1 row)
+
+INSERT INTO feature_tab_dml_returning_fk (x, y) VALUES ('x', 'bar');
+-- Should fail the foreign key check.
+UPDATE feature_tab_dml_returning SET a = 'bar2', b = NOW() where id = 1 RETURNING id, a, b IS NOT NULL;
+ERROR:  update or delete on table "feature_tab_dml_returning" violates foreign key constraint "feature_tab_dml_returning_fk_y_fkey" on table "feature_tab_dml_returning_fk"
+DETAIL:  Key (a)=(bar) is still referenced from table "feature_tab_dml_returning_fk".

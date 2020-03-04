@@ -1149,13 +1149,8 @@ ExecUpdate(ModifyTableState *mtstate,
 		}
 
 		/*
-		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
-		 * For ON CONFLICT DO UPDATE, the INSERT returning clause is setup
-		 * differently, so junkFilter is not needed.
+		 * Update indexes if needed.
 		 */
-		if (resultRelInfo->ri_projectReturning && resultRelInfo->ri_junkFilter)
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
-
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
 		    !((ModifyTable *)mtstate->ps.plan)->no_index_update)
 		{
@@ -1488,9 +1483,20 @@ lreplace:;
 	if (resultRelInfo->ri_WithCheckOptions != NIL)
 		ExecWithCheckOptions(WCO_VIEW_CHECK, resultRelInfo, slot, estate);
 
+
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
+	{
+		/*
+		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
+		 * For ON CONFLICT DO UPDATE, the INSERT returning clause is setup
+		 * differently, so junkFilter is not needed.
+		 */
+		if (IsYBRelation(resultRelationDesc) && resultRelInfo->ri_junkFilter)
+			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+
 		return ExecProcessReturning(resultRelInfo, slot, planSlot);
+	}
 
 	return NULL;
 }
