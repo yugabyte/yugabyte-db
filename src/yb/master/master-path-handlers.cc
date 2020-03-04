@@ -1131,7 +1131,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   // Build version and type.
   (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-code-fork yb-dashboard-icon' aria-hidden='true'></i>",
-                          "YugaByte Version ", version_info.version_number());
+                          "YugabyteDB Version ", version_info.version_number());
   (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-terminal yb-dashboard-icon' aria-hidden='true'></i>",
                           "Build Type ", version_info.build_type());

@@ -38,7 +38,7 @@ This tutorial simulates a geo-distributed two data center (2DC) deployment using
 
 ## Prerequisites
 
-- YugabyteDB is installed and ready for use. If you are new to YugabyteDB, you can create a local YugabyteDB cluster in under five minutes by following the steps in the [Quick start](../../../quick-start/install/).
+- YugabyteDB is installed and ready for use. If you are new to YugabyteDB, you can create a local YugabyteDB cluster by following the steps in the [Quick start](../../../quick-start/install/).
 
 - Verify that you have the required extra loopback addresses by reviewing the Configure section.
 
