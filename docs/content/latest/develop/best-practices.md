@@ -102,11 +102,6 @@ or less. This is a combination of [column sizing recommendations](#column-size-l
 See [hardware sizing](/latest/deploy/checklist/) docs.
 
 
-## JSONB datatype
-YugabyteDB has [`jsonb`](https://docs.yugabyte.com/latest/api/ycql/type_jsonb/) datatype which is similar to 
-Postgresql [`jsonb`](https://www.postgresql.org/docs/current/datatype-json.html) datatype. It is stored on disk in
-binary format making searching & retrieval faster.
-
 ## Consistent & global Secondary indexes
 To add secondary indexes you need to create tables with transactions enabled. Indexes are global and strongly consistent
 (ACID). Indexes can also be used as materialized views by using the `INCLUDE` [clause](../../api/ycql/ddl_create_index#included-columns).

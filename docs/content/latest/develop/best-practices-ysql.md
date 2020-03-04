@@ -147,3 +147,4 @@ They also take more space because they need to store keys in strings and make ke
 A good schema design is to keep most columns as regular ones and only using `jsonb` for truly dynamic values. 
 Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
 primitive columns.
+
