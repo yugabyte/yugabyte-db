@@ -136,6 +136,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
+                              const bool colocated,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -143,8 +144,6 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
                                     bool is_desc, bool is_nulls_first);
 
 YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
-
-YBCStatus YBCPgCreateTableSetColocated(YBCPgStatement handle, bool colocated);
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 

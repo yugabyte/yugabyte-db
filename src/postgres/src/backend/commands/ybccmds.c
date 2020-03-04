@@ -506,10 +506,10 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 									   false, /* is_shared_table */
 									   false, /* if_not_exists */
 									   primary_key == NULL /* add_primary_key */,
+									   colocated,
 									   &handle));
 
 	CreateTableAddColumns(handle, desc, primary_key);
-	HandleYBStmtStatus(YBCPgCreateTableSetColocated(handle, colocated), handle);
 
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;

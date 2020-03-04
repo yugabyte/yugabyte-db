@@ -351,10 +351,11 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool is_shared_table,
                                  bool if_not_exist,
                                  bool add_primary_key,
+                                 const bool colocated,
                                  PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
-      table_id, is_shared_table, if_not_exist, add_primary_key);
+      table_id, is_shared_table, if_not_exist, add_primary_key, colocated);
   *handle = stmt.detach();
   return Status::OK();
 }
@@ -377,15 +378,6 @@ Status PgApiImpl::CreateTableSetNumTablets(PgStatement *handle, int32_t num_tabl
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
-}
-
-Status PgApiImpl::CreateTableSetColocated(PgStatement *handle, bool colocated) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  down_cast<PgCreateTable*>(handle)->SetColocated(colocated);
-  return Status::OK();
 }
 
 Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
