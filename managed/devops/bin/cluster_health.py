@@ -24,10 +24,12 @@ from datetime import datetime
 from dateutil import tz
 from multiprocessing import Pool
 
-YB_TSERVER_DIR = "/home/yugabyte/tserver/"
-YB_CORES_DIR = "/home/yugabyte/cores/"
-YB_PROCESS_LOG_PATH_FORMAT = "/home/yugabyte/{}/logs/"
-VM_CERT_FILE_PATH = "/home/yugabyte/yugabyte-tls-config/ca.crt"
+# Try to read home dir from environment variable, else assume it's /home/yugabyte.
+YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
+YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
+YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
+YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
+VM_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
 K8S_CERT_FILE_PATH = "/opt/certs/yugabyte/ca.crt"
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60

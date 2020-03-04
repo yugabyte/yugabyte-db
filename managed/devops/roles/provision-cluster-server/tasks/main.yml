@@ -28,7 +28,7 @@
   - name: Provision | Enable ntpd and restart service.
     service:
       enabled: yes
-      name: ntpd
+      name: "{{ 'ntpd' if ansible_distribution != 'Debian' else 'ntp' }}"
       state: restarted
     when: ansible_distribution != "Ubuntu"
 
@@ -38,7 +38,7 @@
       name: ntp
       state: restarted
     when: ansible_distribution == "Ubuntu"
-  when: not should_setup_chrony and not air_gap
+  when: not should_setup_chrony and not air_gap and "{{ cloud_type != 'onprem' }}"
 
 - block:
   - name: Uninstall NTP if available
@@ -65,7 +65,7 @@
 - name: Provision | Create core dump kernel pattern
   sysctl:
     name: kernel.core_pattern
-    value: "/home/{{ user_name }}/cores/core_%e.%p"
+    value: "{{ yb_home_dir }}/cores/core_%e.%p"
     state: present
 
 - name: Provision | Ensure proper permissions for mount paths.

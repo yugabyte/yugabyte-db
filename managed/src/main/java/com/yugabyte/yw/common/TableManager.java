@@ -26,7 +26,7 @@ public class TableManager extends DevopsBase {
   private static final int EMR_MULTIPLE = 8;
   private static final String YB_CLOUD_COMMAND_TYPE = "table";
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
-  private static final String VM_CERT_PATH = "/home/yugabyte/yugabyte-tls-config/";
+  private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
 
   public enum CommandSubType {
     BACKUP,
@@ -62,7 +62,8 @@ public class TableManager extends DevopsBase {
     Map<String, String> namespaceToConfig = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
-    String certsDir = VM_CERT_PATH;
+    String yb_home_dir = provider.getYbHome();
+    String certsDir = yb_home_dir + VM_CERT_DIR;
 
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;

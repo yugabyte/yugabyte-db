@@ -8,9 +8,13 @@
 
 air_gap: false
 install_dev_packages: false
+install_backup_packages: "{{ cloud_type != 'onprem' }}"
 update_yum_cache: false
 yum_retry_count: 5
-required_packages:
+
+linux_packages: []
+
+backup_packages:
   - s3cmd
 
 dev_packages:

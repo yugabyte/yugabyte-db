@@ -8,3 +8,4 @@
 
 use_chrony: false
 air_gap: false
+yb_home_dir: "/home/{{ user_name }}"

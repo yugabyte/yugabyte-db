@@ -9,6 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import argparse
+import os
 import subprocess
 
 
@@ -33,7 +34,8 @@ def construct_command(args):
 
 def execute_command(cmd):
     try:
-        subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
+        new_env = dict(os.environ, YB_HOME_DIR="{{ yb_home_dir }}")
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True, env=new_env)
         print "Success!"
     except subprocess.CalledProcessError as e:
         print "Failed!"

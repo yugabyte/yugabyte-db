@@ -55,7 +55,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     createOnPremProvider: (providerType, config) => {
-      dispatch(createOnPremProvider(providerType, config.provider.name, null)).then((response) => {
+      dispatch(createOnPremProvider(providerType, config.provider.name, config.provider.config)).then((response) => {
         dispatch(createOnPremProviderResponse(response.payload));
       });
     },

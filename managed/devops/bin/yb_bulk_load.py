@@ -41,7 +41,8 @@ import sys
 import time
 import datetime
 
-YB_DIR = '/home/yugabyte'
+# Try to read home dir from environment variable, else assume it's /home/yugabyte.
+YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_BIN_DIR = '%s/bin' % (YB_DIR)
 HADOOP_SSH_DIR = '/home/hadoop/.ssh'
 MAPPER = '%s/yb-generate_partitions_main' % (YB_BIN_DIR)

@@ -51,6 +51,7 @@ import javax.persistence.PersistenceException;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
+import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 
 public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
@@ -361,7 +362,7 @@ public class CloudProviderController extends AuthenticatedController {
     return hasKubeConfig;
   }
 
-  private void updateGCPConfig(Provider provider, Map<String,String> config) {
+  private void updateGCPConfig(Provider provider, Map<String, String> config) {
     // If we were not given a config file, then no need to do anything here.
     if (config.isEmpty()) {
       return;
