@@ -524,6 +524,7 @@ class YBClient {
   // from its own master address list.
   CHECKED_STATUS AddMasterToClient(const HostPort& add);
   CHECKED_STATUS RemoveMasterFromClient(const HostPort& remove);
+  CHECKED_STATUS SetMasterAddresses(const std::string& addrs);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {
@@ -628,7 +629,7 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
-  FRIEND_TEST(ClientTest, TestReplicatedTabletWritesWithLeaderElection);
+  FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
   FRIEND_TEST(ClientTest, TestScanTimeout);
   FRIEND_TEST(ClientTest, TestWriteWithDeadMaster);

@@ -11,6 +11,10 @@
 
 package com.yugabyte.yw.cloud;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.InputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -34,6 +38,7 @@ import com.yugabyte.yw.models.InstanceType.VolumeType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 
+import play.Environment;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -44,10 +49,11 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 public class AWSInitializer extends AbstractInitializer {
   private static final boolean enableVerboseLogging = false;
 
-  private static String baseEC2PriceUrl = "https://pricing.us-east-1.amazonaws.com";
-
   private List<Map<String, String>> ec2AvailableInstances = new ArrayList<>();
   private Provider provider;
+
+  @Inject
+  Environment environment;
 
   /**
    * Entry point to initialize AWS. This will create the various InstanceTypes and their
@@ -62,17 +68,19 @@ public class AWSInitializer extends AbstractInitializer {
     try {
       provider = Provider.get(customerUUID, providerUUID);
 
-      String regionIndexUrl = baseEC2PriceUrl + "/offers/v1.0/aws/AmazonEC2/current/region_index.json";
-      LOG.info("Initializing AWS instance type and pricing info from {}", regionIndexUrl);
+      LOG.info("Initializing AWS instance type and pricing info.");
       LOG.info("This operation may take a few minutes...");
-      JsonNode regionIndexResponse = apiHelper.getRequest(regionIndexUrl);
-      // Get the price Json object from the aws price url.
+      // Get the price Json object stored locally at conf/aws_pricing.
       for (Region region : provider.regions) {
-        String awsEc2PriceUrl = baseEC2PriceUrl + regionIndexResponse.get("regions")
-                                                                     .get(region.code)
-                                                                     .get("currentVersionUrl")
-                                                                     .asText();
-        JsonNode ec2PriceResponseJson = apiHelper.getRequest(awsEc2PriceUrl);
+        JsonNode regionJson = null;
+        try {
+          InputStream regionStream = environment.resourceAsStream("aws_pricing/" + region.code);
+          ObjectMapper mapper = new ObjectMapper();
+          regionJson = mapper.readTree(regionStream);
+        } catch (IOException e) {
+          LOG.error("Failed to parse region metadata from region ", region.code);
+          return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+        }
 
         // The products sub-document has the list of EC2 products along with the SKU, its format is:
         //    {
@@ -81,7 +89,7 @@ public class AWSInitializer extends AbstractInitializer {
         //        <productDetailsJson, which is a list of product details>
         //      }
         //    }
-        JsonNode productDetailsListJson = ec2PriceResponseJson.get("products");
+        JsonNode productDetailsListJson = regionJson.get("products");
 
         // The "terms" or price details json object has the following format:
         //  "terms" : {
@@ -89,7 +97,7 @@ public class AWSInitializer extends AbstractInitializer {
         //      <onDemandJson, which is a list of price details objects>
         //    }
         //  }
-        JsonNode onDemandJson = ec2PriceResponseJson.get("terms").get("OnDemand");
+        JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
 
         storeEBSPriceComponents(productDetailsListJson, onDemandJson);
         storeInstancePriceComponents(productDetailsListJson, onDemandJson);
@@ -98,7 +106,7 @@ public class AWSInitializer extends AbstractInitializer {
         // Create the instance types.
         storeInstanceTypeInfoToDB();
       }
-      LOG.info("Successfully finished parsing info from {}", regionIndexUrl);
+      LOG.info("Successfully finished parsing pricing info.");
     } catch (Exception e) {
       LOG.error("AWS initialize failed", e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -284,8 +292,12 @@ public class AWSInitializer extends AbstractInitializer {
           matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
       // Make sure it is current generation.
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
-      // Make sure tenancy is shared
+      // Make sure tenancy is shared.
       include &= matches(productAttrs, "tenancy", FilterOp.Equals, "Shared");
+      // Make sure it is the base instance type.
+      include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
+      // Make sure instance type is supported.
+      include &= isInstanceTypeSupported(productAttrs);
 
       if (include) {
         JsonNode attributesJson = productDetailsJson.get("attributes");
@@ -403,8 +415,12 @@ public class AWSInitializer extends AbstractInitializer {
                   matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
       // Make sure it is current generation.
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
-      // Make sure tenancy is shared
+      // Make sure tenancy is shared.
       include &= matches(productAttrs, "tenancy", FilterOp.Equals, "Shared");
+      // Make sure it is the base instance type.
+      include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
+      // Make sure instance type is supported.
+      include &= isInstanceTypeSupported(productAttrs);
 
       if (!include) {
         if (enableVerboseLogging) {
@@ -596,5 +612,10 @@ public class AWSInitializer extends AbstractInitializer {
       default:
         return false;
     }
+  }
+
+  private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
+    return InstanceType.AWS_INSTANCE_PREFIXES_SUPPORTED.stream().anyMatch(
+      productAttributes.getOrDefault("instanceType", "")::startsWith);
   }
 }

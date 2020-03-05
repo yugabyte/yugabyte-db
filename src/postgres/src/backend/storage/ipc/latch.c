@@ -359,7 +359,7 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 	int			ret = 0;
 	int			rc;
 	WaitEvent	event;
-	WaitEventSet *set = CreateWaitEventSet(CurrentMemoryContext, 3);
+	WaitEventSet *set = CreateWaitEventSet(GetCurrentMemoryContext(), 3);
 
 	if (wakeEvents & WL_TIMEOUT)
 		Assert(timeout >= 0);

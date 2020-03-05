@@ -83,6 +83,9 @@ DEFINE_bool(skip_flushed_entries, true,
 
 DECLARE_int32(retryable_request_timeout_secs);
 
+DEFINE_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
+              "The segment size for transaction status tablet log roll-overs, in bytes.");
+
 namespace yb {
 namespace tablet {
 
@@ -564,17 +567,24 @@ Status TabletBootstrap::RemoveRecoveryDir() {
 
 Status TabletBootstrap::OpenNewLog() {
   auto log_options = LogOptions();
-  log_options.retention_secs = tablet_->metadata()->wal_retention_secs();
+  const auto& metadata = *tablet_->metadata();
+  log_options.retention_secs = metadata.wal_retention_secs();
   log_options.env = GetEnv();
+  if (tablet_->metadata()->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    auto log_segment_size = FLAGS_transaction_status_tablet_log_segment_size_bytes;
+    if (log_segment_size) {
+      log_options.segment_size_bytes = log_segment_size;
+    }
+  }
   RETURN_NOT_OK(Log::Open(log_options,
                           tablet_->tablet_id(),
-                          tablet_->metadata()->wal_dir(),
-                          tablet_->metadata()->fs_manager()->uuid(),
+                          metadata.wal_dir(),
+                          metadata.fs_manager()->uuid(),
                           *tablet_->schema(),
-                          tablet_->metadata()->schema_version(),
+                          metadata.schema_version(),
                           tablet_->GetMetricEntity(),
                           append_pool_,
-                          tablet_->metadata()->cdc_min_replicated_index(),
+                          metadata.cdc_min_replicated_index(),
                           &log_));
   // Disable sync temporarily in order to speed up appends during the bootstrap process.
   log_->DisableSync();

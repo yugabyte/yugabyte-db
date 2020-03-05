@@ -29,6 +29,8 @@ class CatalogManager : public yb::master::CatalogManager {
   typedef yb::master::CatalogManager super;
  public:
   explicit CatalogManager(yb::master::Master* master) : super(master) {}
+  virtual ~CatalogManager();
+  void Shutdown();
 
   CHECKED_STATUS RunLoaders(int64_t term) override;
 
@@ -124,6 +126,11 @@ class CatalogManager : public yb::master::CatalogManager {
   CHECKED_STATUS DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
                                            DeleteUniverseReplicationResponsePB* resp,
                                            rpc::RpcContext* rpc);
+
+  // Alter Universe Replication.
+  CHECKED_STATUS AlterUniverseReplication(const AlterUniverseReplicationRequestPB* req,
+                                          AlterUniverseReplicationResponsePB* resp,
+                                          rpc::RpcContext* rpc);
 
   // Enable/Disable an Existing Universe Replication.
   CHECKED_STATUS SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
@@ -242,6 +249,7 @@ class CatalogManager : public yb::master::CatalogManager {
   void AddCDCStreamToUniverseAndInitConsumer(const std::string& universe_id, const TableId& table,
                                              const Result<CDCStreamId>& stream_id);
 
+  void MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> info);
   void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe);
 

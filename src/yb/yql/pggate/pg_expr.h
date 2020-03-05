@@ -47,6 +47,9 @@ class PgExpr {
     PG_EXPR_MAX,
     PG_EXPR_MIN,
 
+    // Serialized YSQL/PG Expr node.
+    PG_EXPR_EVAL_EXPR_CALL,
+
     PG_EXPR_GENERATE_ROWID,
   };
 
@@ -86,6 +89,9 @@ class PgExpr {
             opcode_ == Opcode::PG_EXPR_COUNT ||
             opcode_ == Opcode::PG_EXPR_MAX ||
             opcode_ == Opcode::PG_EXPR_MIN);
+  }
+  virtual bool is_ybbasetid() const {
+    return false;
   }
 
   // Read the result from input buffer (yb_cursor) that was computed by and sent from DocDB.
@@ -262,6 +268,9 @@ class PgColumnRef : public PgExpr {
     return attr_num_;
   }
 
+  virtual bool is_ybbasetid() const {
+    return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
+  }
  private:
   int attr_num_;
 };

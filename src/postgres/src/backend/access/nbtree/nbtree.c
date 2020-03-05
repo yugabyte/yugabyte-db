@@ -982,7 +982,7 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	vstate.oldestBtpoXact = InvalidTransactionId;
 
 	/* Create a temporary memory context to run _bt_pagedel in */
-	vstate.pagedelcontext = AllocSetContextCreate(CurrentMemoryContext,
+	vstate.pagedelcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 												  "_bt_pagedel",
 												  ALLOCSET_DEFAULT_SIZES);
 

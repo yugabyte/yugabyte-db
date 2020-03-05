@@ -3330,8 +3330,8 @@ SetTempNamespaceState(Oid tempNamespaceId, Oid tempToastNamespaceId)
  * used by PushOverrideSearchPath.
  *
  * The result structure is allocated in the specified memory context
- * (which might or might not be equal to CurrentMemoryContext); but any
- * junk created by revalidation calculations will be in CurrentMemoryContext.
+ * (which might or might not be equal to GetCurrentMemoryContext()); but any
+ * junk created by revalidation calculations will be in GetCurrentMemoryContext().
  */
 OverrideSearchPath *
 GetOverrideSearchPath(MemoryContext context)
@@ -3367,7 +3367,7 @@ GetOverrideSearchPath(MemoryContext context)
 /*
  * CopyOverrideSearchPath - copy the specified OverrideSearchPath.
  *
- * The result structure is allocated in CurrentMemoryContext.
+ * The result structure is allocated in GetCurrentMemoryContext().
  */
 OverrideSearchPath *
 CopyOverrideSearchPath(OverrideSearchPath *path)

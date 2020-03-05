@@ -136,6 +136,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
+                              const bool colocated,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -143,8 +144,6 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
                                     bool is_desc, bool is_nulls_first);
 
 YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
-
-YBCStatus YBCPgCreateTableSetColocated(YBCPgStatement handle, bool colocated);
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
@@ -249,13 +248,19 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and constants whose values can be updated for each
 //     execution of the same allocated statement.
+//
+// NOTE ON KEY BINDING
+// - For Sequential Scan, the target columns of the bind are those in the main table.
+// - For Primary Scan, the target columns of the bind are those in the main table.
+// - For Index Scan, the target columns of the bind are those in the index table.
+//   The index-scan will use the bind to find base-ybctid which is then use to read data from
+//   the main-table, and therefore the bind-arguments are not associated with columns in main table.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end);
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
     YBCPgExpr *attr_values);
-YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
@@ -399,6 +404,27 @@ int32_t YBCGetMaxReadRestartAttempts();
 int32_t YBCGetOutputBufferSize();
 
 bool YBCPgIsYugaByteEnabled();
+
+//--------------------------------------------------------------------------------------------------
+// Thread-Local variables.
+
+void* YBCPgGetThreadLocalCurrentMemoryContext();
+
+void* YBCPgSetThreadLocalCurrentMemoryContext(void *memctx);
+
+void YBCPgResetCurrentMemCtxThreadLocalVars();
+
+void* YBCPgGetThreadLocalStrTokPtr();
+
+void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
+
+void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
+
+void* YBCPgGetThreadLocalJumpBuffer();
+
+void YBCPgSetThreadLocalErrMsg(const void* new_msg);
+
+const void* YBCPgGetThreadLocalErrMsg();
 
 #ifdef __cplusplus
 }  // extern "C"

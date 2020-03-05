@@ -238,6 +238,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "write_universe_key_to_file", " <key_id> <file_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        RETURN_NOT_OK_PREPEND(client->WriteUniverseKeyToFile(args[2], args[3]),
+                              "Unable to write key to file");
+        return Status::OK();
+      });
+
+  Register(
       "create_cdc_stream", " <table_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3) {
@@ -246,6 +257,30 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const string table_id = args[2];
         RETURN_NOT_OK_PREPEND(client->CreateCDCStream(table_id),
                               Substitute("Unable to create CDC stream for table $0", table_id));
+        return Status::OK();
+      });
+
+  Register(
+      "delete_cdc_stream", " <stream_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string stream_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id),
+            Substitute("Unable to delete CDC stream id $0", stream_id));
+        return Status::OK();
+      });
+
+  Register(
+      "list_cdc_streams", " [table_id]",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 2 && args.size() != 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string table_id = (args.size() == 3 ? args[2] : "");
+        RETURN_NOT_OK_PREPEND(client->ListCDCStreams(table_id),
+            Substitute("Unable to list CDC streams for table $0", table_id));
         return Status::OK();
       });
 
@@ -289,6 +324,39 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id),
                               Substitute("Unable to delete replication for universe $0",
                               producer_id));
+        return Status::OK();
+      });
+
+  Register(
+      "alter_universe_replication",
+      " <producer_universe_uuid>"
+      " {set_master_addresses <producer_master_addresses,...> |"
+      "  add_table <table_id>[, <table_id>...] | remove_table <table_id>[, <table_id>...] }",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 5) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string producer_uuid = args[2];
+        vector<string> master_addresses;
+        vector<string> add_tables;
+        vector<string> remove_tables;
+
+        vector<string> newElem, *lst;
+        if (args[3] == "set_master_addresses") lst = &master_addresses;
+        else if (args[3] == "add_table") lst = &add_tables;
+        else if (args[3] == "remove_table") lst = &remove_tables;
+        else
+          return ClusterAdminCli::kInvalidArguments;
+
+        boost::split(newElem, args[4], boost::is_any_of(","));
+        lst->insert(lst->end(), newElem.begin(), newElem.end());
+
+        RETURN_NOT_OK_PREPEND(client->AlterUniverseReplication(producer_uuid,
+                                                               master_addresses,
+                                                               add_tables,
+                                                               remove_tables),
+            Substitute("Unable to alter replication for universe $0", producer_uuid));
+
         return Status::OK();
       });
 

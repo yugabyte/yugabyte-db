@@ -63,15 +63,15 @@ yugabyte=#
 ### Create a database
 
 ```postgresql
-yugabyte=# CREATE DATABASE yb_demo;
+yugabyte=# CREATE DATABASE yb-demo;
 ```
 
 ```postgresql
-yugabyte=# GRANT ALL ON DATABASE yb_demo to yugabyte;
+yugabyte=# GRANT ALL ON DATABASE yb-demo to yugabyte;
 ```
 
 ```postgresql
-yugabyte=# \c yb_demo;
+yugabyte=# \c yb-demo;
 ```
 
 ### Create schema and load data

@@ -23,6 +23,12 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
+#include "yb/util/encryption_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/header_manager_impl.h"
+#include "yb/util/universe_key_manager.h"
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
 namespace rocksdb {
 
 // Special Env used to delay background operations
@@ -53,10 +59,16 @@ SpecialEnv::SpecialEnv(Env* base)
   table_write_callback_ = nullptr;
 }
 
-DBTestBase::DBTestBase(const std::string path)
+const string DBTestBase::kKeyId = "key_id";
+const string DBTestBase::kKeyFile = "universe_key_file";
+
+DBTestBase::DBTestBase(const std::string path, bool encryption_enabled)
     : option_config_(kDefault),
       mem_env_(!getenv("MEM_ENV") ? nullptr : new MockEnv(Env::Default())),
       env_(new SpecialEnv(mem_env_ ? mem_env_ : Env::Default())) {
+  if (encryption_enabled) {
+    CreateEncryptedEnv();
+  }
   env_->SetBackgroundThreads(1, Env::LOW);
   env_->SetBackgroundThreads(1, Env::HIGH);
   dbname_ = test::TmpDir(env_) + path;
@@ -74,6 +86,7 @@ DBTestBase::DBTestBase(const std::string path)
 }
 
 DBTestBase::~DBTestBase() {
+  Env::Default()->DeleteFile(kKeyFile);
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
   rocksdb::SyncPoint::GetInstance()->LoadDependency({});
   rocksdb::SyncPoint::GetInstance()->ClearAllCallBacks();
@@ -85,6 +98,25 @@ DBTestBase::~DBTestBase() {
   options.db_paths.emplace_back(dbname_ + "_4", 0);
   EXPECT_OK(DestroyDB(dbname_, options));
   delete env_;
+}
+
+void DBTestBase::CreateEncryptedEnv() {
+  auto bytes = yb::RandomBytes(32);
+  yb::Slice key(bytes.data(), bytes.size());
+  auto status = yb::WriteStringToFile(yb::Env::Default(), key, kKeyFile);
+  if (!status.ok()) {
+    LOG(FATAL) << "Could not write slice to file:" << status.ToString();
+  }
+
+  auto res = yb::enterprise::UniverseKeyManager::FromKey(kKeyId, key);
+  if (!res.ok()) {
+    LOG(FATAL) << "Could not get key from bytes:" << res.status().ToString();
+  }
+  universe_key_manager_ = std::move(*res);
+  encrypted_env_ = yb::enterprise::NewRocksDBEncryptedEnv(
+      yb::enterprise::DefaultHeaderManager(universe_key_manager_.get()));
+  delete env_;
+  env_ = new rocksdb::SpecialEnv(encrypted_env_.get());
 }
 
 bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
@@ -400,6 +432,7 @@ Options DBTestBase::CurrentOptions(
     options.table_factory.reset(NewBlockBasedTableFactory(table_options));
   }
   options.env = env_;
+  options.checkpoint_env = env_->IsPlainText() ? env_ : Env::Default();
   options.create_if_missing = true;
   options.fail_if_options_file_error = true;
   return options;

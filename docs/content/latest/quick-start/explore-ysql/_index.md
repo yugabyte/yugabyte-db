@@ -20,43 +20,25 @@ isTocNested: false
 showAsideToc: true
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the steps here to explore YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
+After [creating a local cluster](../create-local-cluster/), you can now begin to explore YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
 ## 1. Load sample data
 
-Follow the steps to create a database and load sample data.
+Follow the steps below to create a database and load sample data.
 
-1. Download the sample schema using the following `wget` command.
+{{< note title="Note" >}}
 
-    ```sh
-    $ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
-    ```
+The five SQL scripts (aka `.sql` files) used to create and load the sample data in the steps below are located in the `share` directory of your YugabyteDB installation. You can verify the files are available by entering the following `ls` command from the YugabyteDB home directory.
 
-2. Download the sample data archive by running the following `wget` command.
+```sh
+$ ls share/
+```
 
-    ```sh
-    $ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
-    ```
+The `share` directory includes sample dataset files available for creating databases for learning YugabyteDB. The files that will be used in the steps below are `schema.sql`, `orders.sql`, `products.sql`,`reviews.sql` and `users.sql`.
 
-3. Unpack the `sample-data.tgz` file running the following `tar` command.
+{{< /note >}}
 
-    ```sh
-    $ tar zxvf sample-data.tgz
-    ```
-
-    Four SQL script files are added to the `data` directory that is created. You can verify the files are available by entering the following `ls` command.
-
-    ```sh
-    $ ls data/
-    ```
-
-    You should see the following filenames displayed.
-
-    ```
-    orders.sql  products.sql  reviews.sql users.sql
-    ```
-
-4. Open the YSQL command line by running the following `ysqlsh` command.
+Open the YSQL shell (`ysqlsh) by running the following command.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -100,40 +82,40 @@ Follow the steps to create a database and load sample data.
   </div>
 </div>
 
-1. Create a database named `yb_demo` by using the following `CREATE DATABASE` command.
+1. Create a database (`yb_demo`) by using the following `CREATE DATABASE` command.
 
     ```postgresql
     yugabyte=# CREATE DATABASE yb_demo;
     ```
 
-2. Connect to the new database using the following YSQL `\c` meta command.
+2. Connect to the new database using the following YSQL shell `\c` meta command.
 
-    ```sql
+    ```postgresql
     yugabyte=# \c yb_demo;
     ```
 
 3. Create the database schema, which includes four tables, by running the following `\i` meta command.
 
-    ```sql
-    yb_demo=# \i 'schema.sql';
+    ```postgresql
+    yb_demo=# \i share/schema.sql;
     ```
 
 4. Load the data into the tables by running the following four `\i` commands.
 
-    ```sql
-    yb_demo=# \i 'data/products.sql'
+    ```postgresql
+    yb_demo=# \i share/products.sql
     ```
 
-    ```sql
-    yb_demo=# \i 'data/users.sql'
+    ```postgresql
+    yb_demo=# \i share/users.sql
     ```
 
-    ```sql
-    yb_demo=# \i 'data/orders.sql'
+    ```postgresql
+    yb_demo=# \i share/orders.sql
     ```
 
-    ```sql
-    yb_demo=# \i 'data/reviews.sql'
+    ```postgresql
+    yb_demo=# \i share/reviews.sql
     ```
 
     You now have sample data and are ready to begin exploring YSQL in YugabyteDB.
@@ -142,7 +124,7 @@ Follow the steps to create a database and load sample data.
 
 Lets us look at the schema of the `products` table. You can do this as follows:
 
-```sql
+```postgresql
 yb_demo=# \d products
 ```
 
@@ -233,8 +215,9 @@ yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
 ```
 
 You should see something like the following:
+
 ```
-  id  |        name         |             email             |  id   |      total       
+  id  |        name         |             email             |  id   |      total
 ------+---------------------+-------------------------------+-------+------------------
   616 | Rex Thiel           | rex-thiel@gmail.com           |  4443 | 101.414602060277
  2289 | Alanis Kovacek      | alanis.kovacek@yahoo.com      | 17195 | 71.8499366564206
@@ -315,9 +298,9 @@ yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
 ```
- id | category  |      price       | quantity 
+ id | category  |      price       | quantity
 ----+-----------+------------------+----------
-  2 | Doohickey | 70.0798961307176 |     5000
+  2 | Doohickey | 70.0798961307176 |     4990
 (1 row)
 ```
 
@@ -391,7 +374,7 @@ yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
 ```
 
 ```
-  source   | total_sales 
+  source   | total_sales
 -----------+-------------
  Facebook  |      333454
  Google    |      325184
@@ -461,3 +444,9 @@ Coming soon.
 
 Coming soon.
 -->
+
+{{<tip title="Next step" >}}
+
+[Build an application](../build-apps/)
+
+{{< /tip >}}

@@ -14,6 +14,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -52,7 +53,7 @@ showAsideToc: true
 
 1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-2. Verify that you have Python 2 installed. Support for Python 3 is in the works, status can be tracked on [GitHub](https://github.com/yugabyte/yugabyte-db/issues/3025).
+2. Verify that you have Python 2 or 3 installed. 
 
     ```sh
     $ python --version
@@ -127,13 +128,13 @@ showAsideToc: true
 Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-2.0.11.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-2.1.0.0-darwin.tar.gz
 ```
 
 To unpack the archive file and change to the YugabyteDB home directory, run the following command.
 
 ```sh
-$ tar xvfz yugabyte-2.0.11.0-darwin.tar.gz && cd yugabyte-2.0.11.0/
+$ tar xvfz yugabyte-2.1.0.0-darwin.tar.gz && cd yugabyte-2.1.0.0/
 ```
 
 ## Configure 
@@ -175,3 +176,9 @@ lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
 	inet 127.0.0.7 netmask 0xff000000
 	nd6 options=201<PERFORMNUD,DAD>
 ```
+
+{{<tip title="Next step" >}}
+
+[Create a local cluster](../../create-local-cluster/macos)
+
+{{< /tip >}}

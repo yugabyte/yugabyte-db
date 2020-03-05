@@ -1492,7 +1492,7 @@ ExecCreatePartitionPruneState(PlanState *planstate,
 	 * our control.
 	 */
 	prunestate->prune_context =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(GetCurrentMemoryContext(),
 							  "Partition Prune",
 							  ALLOCSET_DEFAULT_SIZES);
 
@@ -1562,7 +1562,7 @@ ExecCreatePartitionPruneState(PlanState *planstate,
 			context->stepcmpfuncs = (FmgrInfo *)
 				palloc0(sizeof(FmgrInfo) * n_steps * partnatts);
 
-			context->ppccontext = CurrentMemoryContext;
+			context->ppccontext = GetCurrentMemoryContext();
 			context->planstate = planstate;
 
 			/* Initialize expression state for each expression we need */

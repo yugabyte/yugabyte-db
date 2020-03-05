@@ -47,6 +47,7 @@
 #include "utils/rel.h"
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
+#include "optimizer/ybcplan.h"
 
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -678,10 +679,19 @@ bool YBCExecuteUpdate(Relation rel,
 	/* Assign new values to the updated columns for the current row. */
 	tupleDesc = RelationGetDescr(rel);
 	bool whole_row = bms_is_member(InvalidAttrNumber, updatedCols);
+
+	ModifyTable *mt_plan = (ModifyTable *) mtstate->ps.plan;
+	ListCell* pushdown_lc = list_head(mt_plan->ybPushdownTlist);
+
 	for (int idx = 0; idx < tupleDesc->natts; idx++)
 	{
-		AttrNumber attnum = TupleDescAttr(tupleDesc, idx)->attnum;
-		bool has_default = TupleDescAttr(tupleDesc, idx)->atthasdef;
+		FormData_pg_attribute *att_desc = TupleDescAttr(tupleDesc, idx);
+
+		AttrNumber attnum = att_desc->attnum;
+		bool has_default = att_desc->atthasdef;
+		int32_t type_id = att_desc->atttypid;
+		int32_t type_mod = att_desc->atttypmod;
+
 		/* Skip virtual (system) and dropped columns */
 		if (!IsRealYBColumn(rel, attnum))
 			continue;
@@ -691,12 +701,29 @@ bool YBCExecuteUpdate(Relation rel,
 		if (!whole_row && !bms_is_member(bms_idx, updatedCols) && !has_default)
 			continue;
 
-		bool is_null = false;
-		Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
-		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid,
-		                                    d, is_null);
+		/* Assign this attr's value, handle expression pushdown if needed. */
+		if (pushdown_lc != NULL &&
+		    ((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
+			Expr *expr = copyObject(tle->expr);
+			YBCExprInstantiateParams(expr, estate->es_param_list_info);
 
-		HandleYBStmtStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr), update_stmt);
+			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr, attnum, type_id, type_mod);
+
+			HandleYBStmtStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr), update_stmt);
+
+			pushdown_lc = lnext(pushdown_lc);
+		}
+		else
+		{
+			bool is_null = false;
+			Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
+			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id,
+												d, is_null);
+
+			HandleYBStmtStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr), update_stmt);
+		}
 	}
 
 	/* Execute the statement. */

@@ -146,7 +146,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```sh
 NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
-yugabytedb/yugabyte 2.0.12        2.0.12.0-b10  YugabyteDB is the high-performance distr...
+yugabytedb/yugabyte 2.1.0        2.1.0.0-b18  YugabyteDB is the high-performance distr...
 ```
 
 ### Install YugabyteDB
@@ -179,7 +179,7 @@ If you are running in a resource-constrained environment or a local environment,
 ```sh
 $ helm install yugabytedb/yugabyte \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
-resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo --name yb-demo
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb_demo --name yb-demo
 ```
 
 **For Helm 3:**
@@ -396,6 +396,19 @@ In case you want to use a storage class other than the standard class for your d
 
 ```sh
 $ helm install yugabyte --namespace yb-demo --name yb-demo --set persistentVolume.storageClass=<name of provisioned storage> --wait
+```
+
+### YugabyteDB configuration flags
+
+Setting configuration flags (aka gflags) on the yb-master/yb-tserver pods can be done at the command line or by overriding the values.yaml file in the charts repository. For example, the following example shows how to set the three geo-distribution related flags of `placement_cloud`,`placement_region` and `placement_zone` on a minikube cluster.
+
+```sh
+helm install yb-demo yugabytedb/yugabyte \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+gflags.master.placement_cloud=myk8s-cloud,gflags.master.placement_region=myk8s-region,gflags.master.placement_zone=myk8s-zone,\
+gflags.tserver.placement_cloud=myk8s-cloud,gflags.tserver.placement_region=myk8s-region,gflags.tserver.placement_zone=myk8s-zone\
+ --namespace yb-demo
 ```
 
 ## Upgrade cluster

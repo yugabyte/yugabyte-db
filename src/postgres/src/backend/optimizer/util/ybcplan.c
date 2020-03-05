@@ -23,14 +23,18 @@
 
 #include "postgres.h"
 
+#include "optimizer/ybcplan.h"
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
+#include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/print.h"
 #include "nodes/relation.h"
+#include "utils/datum.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/lsyscache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
@@ -42,7 +46,7 @@
  * Note: As enhance pushdown support in DocDB (e.g. expr evaluation) this
  * can be expanded.
  */
-bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
+bool YBCIsSupportedSingleRowModifyWhereExpr(Expr *expr)
 {
 	switch (nodeTag(expr))
 	{
@@ -51,7 +55,7 @@ bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
 		case T_Param:
 		{
 			/* Bind variables. */
-			Param *param = (Param *) expr;
+			Param *param = castNode(Param, expr);
 			return param->paramkind == PARAM_EXTERN;
 		}
 		case T_RelabelType:
@@ -60,8 +64,8 @@ bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
 			 * RelabelType is a "dummy" type coercion between two binary-
 			 * compatible datatypes so we just recurse into its argument.
 			 */
-			RelabelType *rt = (RelabelType *) expr;
-			return YBCIsSupportedSingleRowModifyWriteExpr(rt->arg);
+			RelabelType *rt = castNode(RelabelType, expr);
+			return YBCIsSupportedSingleRowModifyWhereExpr(rt->arg);
 		}
 		case T_FuncExpr:
 		case T_OpExpr:
@@ -74,13 +78,15 @@ bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
 			/* Get the function info. */
 			if (IsA(expr, FuncExpr))
 			{
-				args = ((FuncExpr *) expr)->args;
-				funcid = ((FuncExpr *) expr)->funcid;
+				FuncExpr *func_expr = castNode(FuncExpr, expr);
+				args = func_expr->args;
+				funcid = func_expr->funcid;
 			}
 			else if (IsA(expr, OpExpr))
 			{
-				args = ((OpExpr *) expr)->args;
-				funcid = ((OpExpr *) expr)->opfuncid;
+				OpExpr *op_expr = castNode(OpExpr, expr);
+				args = op_expr->args;
+				funcid = op_expr->opfuncid;
 			}
 
 			/*
@@ -100,7 +106,200 @@ bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
 			/* Checking all arguments are valid (stable). */
 			foreach (lc, args) {
 				Expr* expr = (Expr *) lfirst(lc);
-				if (!YBCIsSupportedSingleRowModifyWriteExpr(expr)) {
+				if (!YBCIsSupportedSingleRowModifyWhereExpr(expr)) {
+					return false;
+				}
+			}
+			return true;
+		}
+		default:
+			break;
+	}
+
+	return false;
+}
+
+static void YBCExprInstantiateParamsInternal(Expr* expr,
+                                             ParamListInfo paramLI,
+                                             Expr** parent_var)
+{
+	switch (nodeTag(expr))
+	{
+		case T_Const:
+			return;
+		case T_Var:
+			return;
+		case T_Param:
+		{
+			/* Bind variables. */
+			Param *param = castNode(Param, expr);
+			ParamExternData *prm = NULL;
+			ParamExternData prmdata;
+			if (paramLI->paramFetch != NULL)
+				prm = paramLI->paramFetch(paramLI, param->paramid,
+										true, &prmdata);
+			else
+				prm = &paramLI->params[param->paramid - 1];
+
+			if (!OidIsValid(prm->ptype) ||
+				prm->ptype != param->paramtype ||
+				!(prm->pflags & PARAM_FLAG_CONST))
+			{
+				/* Planner should ensure this does not happen */
+				elog(ERROR, "Invalid parameter: %s", nodeToString(param));
+			}
+			int16		typLen = 0;
+			bool		typByVal = false;
+			Datum		pval = 0;
+
+			get_typlenbyval(param->paramtype,
+							&typLen, &typByVal);
+			if (prm->isnull || typByVal)
+				pval = prm->value;
+			else
+				pval = datumCopy(prm->value, typByVal, typLen);
+
+			Expr *const_expr = (Expr *) makeConst(param->paramtype,
+										param->paramtypmod,
+										param->paramcollid,
+										(int) typLen,
+										pval,
+										prm->isnull,
+										typByVal);
+
+			*parent_var = const_expr;
+			return;
+		}
+		case T_RelabelType:
+		{
+			/*
+			 * RelabelType is a "dummy" type coercion between two binary-
+			 * compatible datatypes so we just recurse into its argument.
+			 */
+			RelabelType *rt = castNode(RelabelType, expr);
+			YBCExprInstantiateParamsInternal(rt->arg, paramLI, &rt->arg);
+			return;
+		}
+		case T_FuncExpr:
+		{
+			FuncExpr *func_expr = castNode(FuncExpr, expr);
+			ListCell *lc = NULL;
+			foreach(lc, func_expr->args)
+			{
+				Expr *arg = (Expr *) lfirst(lc);
+				YBCExprInstantiateParamsInternal(arg,
+				                                 paramLI,
+				                                 (Expr **)&lc->data.ptr_value);
+			}
+			return;
+		}
+		case T_OpExpr:
+		{
+			OpExpr   *op_expr = castNode(OpExpr, expr);
+			ListCell *lc = NULL;
+			foreach(lc, op_expr->args)
+			{
+				Expr *arg = (Expr *) lfirst(lc);
+				YBCExprInstantiateParamsInternal(arg,
+				                                 paramLI,
+				                                 (Expr **)&lc->data.ptr_value);
+			}
+			return;
+		}
+		default:
+			break;
+	}
+
+	/* Planner should ensure this does not happen */
+	elog(ERROR, "Invalid expression: %s", nodeToString(expr));
+}
+
+
+void YBCExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
+{
+	/* Fast-path if there are no params. */
+	if (paramLI == NULL)
+		return;
+
+	YBCExprInstantiateParamsInternal(expr, paramLI, NULL);
+}
+
+
+static bool YBCIsSupportedDocDBFunctionId(Oid funcid) {
+	return is_builtin_func(funcid);
+}
+
+static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has_vars, bool *has_docdb_unsupported_funcs) {
+	switch (nodeTag(expr))
+	{
+		case T_Const:
+			return true;
+		case T_Var:
+		{
+			/* References to table attrs (to be read) */
+			Var *var = castNode(Var, expr);
+			*has_vars = true;
+			return var->varattno == target_attnum;
+		}
+		case T_Param:
+		{
+			/* Bind variables. */
+			Param *param = castNode(Param, expr);
+			return param->paramkind == PARAM_EXTERN;
+		}
+		case T_RelabelType:
+		{
+			/*
+			 * RelabelType is a "dummy" type coercion between two binary-
+			 * compatible datatypes so we just recurse into its argument.
+			 */
+			RelabelType *rt = castNode(RelabelType, expr);
+			return YBCAnalyzeExpression(rt->arg, target_attnum, has_vars, has_docdb_unsupported_funcs);
+		}
+		case T_FuncExpr:
+		case T_OpExpr:
+		{
+			List         *args = NULL;
+			ListCell     *lc = NULL;
+			Oid          funcid = InvalidOid;
+			HeapTuple    tuple = NULL;
+
+			/* Get the function info. */
+			if (IsA(expr, FuncExpr))
+			{
+				FuncExpr *func_expr = castNode(FuncExpr, expr);
+				args = func_expr->args;
+				funcid = func_expr->funcid;
+			}
+			else if (IsA(expr, OpExpr))
+			{
+				OpExpr *op_expr = castNode(OpExpr, expr);
+				args = op_expr->args;
+				funcid = op_expr->opfuncid;
+			}
+
+			/*
+			 * Only allow immutable functions as they cannot modify the
+			 * database or do lookups.
+			 */
+			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+			if (!HeapTupleIsValid(tuple))
+				elog(ERROR, "cache lookup failed for function %u", funcid);
+			char provolatile = ((Form_pg_proc) GETSTRUCT(tuple))->provolatile;
+			ReleaseSysCache(tuple);
+			if (provolatile != PROVOLATILE_IMMUTABLE)
+			{
+				return false;
+			}
+
+			if (!YBCIsSupportedDocDBFunctionId(funcid)) {
+				*has_docdb_unsupported_funcs = true;
+			}
+
+			/* Checking all arguments are valid (stable). */
+			foreach (lc, args) {
+				Expr* expr = (Expr *) lfirst(lc);
+				if (!YBCAnalyzeExpression(expr, target_attnum, has_vars, has_docdb_unsupported_funcs)) {
 				    return false;
 				}
 			}
@@ -110,6 +309,40 @@ bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr)
 			break;
 	}
 
+	return false;
+}
+
+/*
+ * Can expression be evaluated in DocDB.
+ * Eventually any immutable expression whose only variables are column references.
+ * Currently, limit to the case where the only referenced column is the target column.
+ */
+bool YBCIsSupportedSingleRowModifyAssignExpr(Expr *expr, AttrNumber target_attnum, bool *needs_pushdown) {
+	bool has_vars = false;
+	bool has_docdb_unsupported_funcs = false;
+	bool is_basic_expr = YBCAnalyzeExpression(expr, target_attnum, &has_vars, &has_docdb_unsupported_funcs);
+
+	/* default, will set to true below if needed. */
+	*needs_pushdown = false;
+
+	/* Immediately bail for complex expressions */
+	if (!is_basic_expr)
+		return false;
+
+	/* If there are no variables, we can just evaluate it to a const. */
+	if (!has_vars)
+	{
+		return true;
+	}
+
+	/* We can push down expression evaluation to DocDB. */
+	if (has_vars && !has_docdb_unsupported_funcs)
+	{
+		*needs_pushdown = true;
+		return true;
+	}
+
+	/* Variables plus DocDB-unsupported funcs -> query layer must evaluate. */
 	return false;
 }
 
@@ -164,9 +397,13 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 			foreach(lc, values->plan.targetlist)
 			{
 				TargetEntry *target = (TargetEntry *) lfirst(lc);
-				if (!YBCIsSupportedSingleRowModifyWriteExpr(target->expr))
+				bool needs_pushdown = false;
+				if (!YBCIsSupportedSingleRowModifyAssignExpr(target->expr,
+				                                             target->resno,
+				                                             &needs_pushdown))
+				{
 					return false;
-
+				}
 			}
 			break;
 		}

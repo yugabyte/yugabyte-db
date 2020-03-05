@@ -876,7 +876,7 @@ load_rangetype_info(TypeCacheEntry *typentry)
  * Note: we assume we're called in a relatively short-lived context, so it's
  * okay to leak data into the current context while scanning pg_constraint.
  * We build the new DomainConstraintCache data in a context underneath
- * CurrentMemoryContext, and reparent it under CacheMemoryContext when
+ * GetCurrentMemoryContext(), and reparent it under CacheMemoryContext when
  * complete.
  */
 static void
@@ -979,7 +979,7 @@ load_domaintype_info(TypeCacheEntry *typentry)
 			{
 				MemoryContext cxt;
 
-				cxt = AllocSetContextCreate(CurrentMemoryContext,
+				cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 											"Domain constraints",
 											ALLOCSET_SMALL_SIZES);
 				dcc = (DomainConstraintCache *)
@@ -1062,7 +1062,7 @@ load_domaintype_info(TypeCacheEntry *typentry)
 		{
 			MemoryContext cxt;
 
-			cxt = AllocSetContextCreate(CurrentMemoryContext,
+			cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 										"Domain constraints",
 										ALLOCSET_SMALL_SIZES);
 			dcc = (DomainConstraintCache *)
@@ -1671,7 +1671,7 @@ lookup_rowtype_tupdesc_noerror(Oid type_id, int32 typmod, bool noError)
  * lookup_rowtype_tupdesc_copy
  *
  * Like lookup_rowtype_tupdesc(), but the returned TupleDesc has been
- * copied into the CurrentMemoryContext and is not reference-counted.
+ * copied into the GetCurrentMemoryContext() and is not reference-counted.
  */
 TupleDesc
 lookup_rowtype_tupdesc_copy(Oid type_id, int32 typmod)

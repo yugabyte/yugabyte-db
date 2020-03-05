@@ -473,7 +473,7 @@ tokenize_file(const char *filename, FILE *file, List **tok_lines, int elevel)
 	MemoryContext linecxt;
 	MemoryContext oldcxt;
 
-	linecxt = AllocSetContextCreate(CurrentMemoryContext,
+	linecxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 									"tokenize_file",
 									ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(linecxt);
@@ -2554,7 +2554,7 @@ fill_hba_view(Tuplestorestate *tuple_store, TupleDesc tupdesc)
 	FreeFile(file);
 
 	/* Now parse all the lines */
-	hbacxt = AllocSetContextCreate(CurrentMemoryContext,
+	hbacxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								   "hba parser context",
 								   ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(hbacxt);

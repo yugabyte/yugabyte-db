@@ -632,6 +632,32 @@ Status ClusterAdminClient::DisableEncryptionInMemory() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::WriteUniverseKeyToFile(
+    const std::string& key_id, const std::string& file_name) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  master::GetUniverseKeyRegistryRequestPB req;
+  master::GetUniverseKeyRegistryResponsePB resp;
+  RETURN_NOT_OK_PREPEND(master_proxy_->GetUniverseKeyRegistry(req, &resp, &rpc),
+                        "MasterServiceImpl::ChangeEncryptionInfo call fails.");
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  auto universe_keys = resp.universe_keys();
+  const auto& it = universe_keys.map().find(key_id);
+  if (it == universe_keys.map().end()) {
+    return STATUS_FORMAT(NotFound, "Could not find key with id $0", key_id);
+  }
+
+  RETURN_NOT_OK(WriteStringToFile(Env::Default(), Slice(it->second), file_name));
+
+  std::cout << "Finished writing to file\n";
+  return Status::OK();
+}
+
 Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   master::CreateCDCStreamRequestPB req;
   master::CreateCDCStreamResponsePB resp;
@@ -658,6 +684,45 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   cout << "CDC Stream ID: " << resp.stream_id() << endl;
   return Status::OK();
 }
+
+Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id) {
+  master::DeleteCDCStreamRequestPB req;
+  master::DeleteCDCStreamResponsePB resp;
+  req.add_stream_id(stream_id);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->DeleteCDCStream(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error deleting stream: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Successfully deleted CDC Stream ID: " << stream_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListCDCStreams(const TableId& table_id) {
+  master::ListCDCStreamsRequestPB req;
+  master::ListCDCStreamsResponsePB resp;
+  if (!table_id.empty()) {
+    req.set_table_id(table_id);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->ListCDCStreams(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error getting CDC stream list: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC Streams: \r\n" << resp.DebugString();
+  return Status::OK();
+}
+
 
 Status ClusterAdminClient::SetupUniverseReplication(
     const string& producer_uuid, const vector<string>& producer_addresses,
@@ -712,6 +777,50 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
   }
 
   cout << "Replication deleted successfully" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_uuid,
+    const std::vector<std::string>& producer_addresses,
+    const std::vector<TableId>& add_tables,
+    const std::vector<TableId>& remove_tables) {
+  master::AlterUniverseReplicationRequestPB req;
+  master::AlterUniverseReplicationResponsePB resp;
+  req.set_producer_id(producer_uuid);
+
+  if (!producer_addresses.empty()) {
+    req.mutable_producer_master_addresses()->Reserve(producer_addresses.size());
+    for (const auto& addr : producer_addresses) {
+      // HostPort::FromString() expects a default port.
+      auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+      HostPortToPB(hp, req.add_producer_master_addresses());
+    }
+  }
+
+  if (!add_tables.empty()) {
+    req.mutable_producer_table_ids_to_add()->Reserve(add_tables.size());
+    for (const auto& table : add_tables) {
+      req.add_producer_table_ids_to_add(table);
+    }
+  }
+
+  if (!remove_tables.empty()) {
+    req.mutable_producer_table_ids_to_remove()->Reserve(remove_tables.size());
+    for (const auto& table : remove_tables) {
+      req.add_producer_table_ids_to_remove(table);
+    }
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->AlterUniverseReplication(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error altering universe replication: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Replication altered successfully" << endl;
   return Status::OK();
 }
 

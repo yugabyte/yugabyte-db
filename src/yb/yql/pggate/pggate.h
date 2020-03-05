@@ -168,6 +168,7 @@ class PgApiImpl {
                                 bool is_shared_table,
                                 bool if_not_exist,
                                 bool add_primary_key,
+                                const bool colocated,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -175,8 +176,6 @@ class PgApiImpl {
                                       bool is_range, bool is_desc, bool is_nulls_first);
 
   CHECKED_STATUS CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets);
-
-  CHECKED_STATUS CreateTableSetColocated(PgStatement *handle, bool colocated);
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
@@ -272,7 +271,6 @@ class PgApiImpl {
   CHECKED_STATUS DmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
   CHECKED_STATUS DmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
       YBCPgExpr attr_value_end);
-  CHECKED_STATUS DmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
   CHECKED_STATUS DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
       YBCPgExpr *attr_value);
 

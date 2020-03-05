@@ -13,6 +13,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -55,7 +56,7 @@ showAsideToc: true
 
   - <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
-2. Verify that you have Python 2 installed. Support for Python 3 is in the works, status can be tracked on [GitHub](https://github.com/yugabyte/yugabyte-db/issues/3025).
+2. Verify that you have Python 2 or 3 installed.
 
     ```sh
     $ python --version
@@ -84,13 +85,13 @@ showAsideToc: true
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.0.11.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.1.0.0-linux.tar.gz
     ```
 
 2. Extract the YugabyteDB package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.0.11.0-linux.tar.gz && cd yugabyte-2.0.11.0/
+    $ tar xvfz yugabyte-2.1.0.0-linux.tar.gz && cd yugabyte-2.1.0.0/
     ```
 
 ## Configure YugabyteDB
@@ -100,3 +101,9 @@ To configure YugabyteDB, run the following shell script.
 ```sh
 $ ./bin/post_install.sh
 ```
+
+{{<tip title="Next step" >}}
+
+[Create a local cluster](../../create-local-cluster/linux)
+
+{{< /tip >}}

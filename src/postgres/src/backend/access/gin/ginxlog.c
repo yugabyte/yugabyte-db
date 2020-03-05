@@ -807,7 +807,7 @@ gin_redo(XLogReaderState *record)
 void
 gin_xlog_startup(void)
 {
-	opCtx = AllocSetContextCreate(CurrentMemoryContext,
+	opCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "GIN recovery temporary context",
 								  ALLOCSET_DEFAULT_SIZES);
 }

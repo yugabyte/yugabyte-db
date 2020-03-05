@@ -1214,6 +1214,10 @@ Status YBClient::AddMasterToClient(const HostPort& add) {
   return data_->AddMasterAddress(add);
 }
 
+Status YBClient::SetMasterAddresses(const std::string& addrs) {
+  return data_->SetMasterAddresses(addrs);
+}
+
 Status YBClient::GetMasterUUID(const string& host,
                                int16_t port,
                                string* uuid) {

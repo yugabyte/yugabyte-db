@@ -119,7 +119,7 @@ gistbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	GISTBuildState buildstate;
 	Buffer		buffer;
 	Page		page;
-	MemoryContext oldcxt = CurrentMemoryContext;
+	MemoryContext oldcxt = GetCurrentMemoryContext();
 	int			fillfactor;
 
 	buildstate.indexrel = index;
@@ -1142,7 +1142,7 @@ gistInitParentMap(GISTBuildState *buildstate)
 
 	hashCtl.keysize = sizeof(BlockNumber);
 	hashCtl.entrysize = sizeof(ParentMapEntry);
-	hashCtl.hcxt = CurrentMemoryContext;
+	hashCtl.hcxt = GetCurrentMemoryContext();
 	buildstate->parentMap = hash_create("gistbuild parent map",
 										1024,
 										&hashCtl,

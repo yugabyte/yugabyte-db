@@ -355,7 +355,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 	 * subfunctions allocate storage that has to survive until we've finished
 	 * the WAL insertion.
 	 */
-	tmpCxt = AllocSetContextCreate(CurrentMemoryContext,
+	tmpCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								   "ginPlaceToPage temporary context",
 								   ALLOCSET_DEFAULT_SIZES);
 	oldCxt = MemoryContextSwitchTo(tmpCxt);

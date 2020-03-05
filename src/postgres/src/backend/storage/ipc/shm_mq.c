@@ -294,7 +294,7 @@ shm_mq_attach(shm_mq *mq, dsm_segment *seg, BackgroundWorkerHandle *handle)
 	mqh->mqh_expected_bytes = 0;
 	mqh->mqh_length_word_complete = false;
 	mqh->mqh_counterparty_attached = false;
-	mqh->mqh_context = CurrentMemoryContext;
+	mqh->mqh_context = GetCurrentMemoryContext();
 
 	if (seg != NULL)
 		on_dsm_detach(seg, shm_mq_detach_callback, PointerGetDatum(mq));

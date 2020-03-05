@@ -466,6 +466,21 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   latch.Wait();
   VerifyData(kTransactions);
   CheckNoRunningTransactions();
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  uint64_t max_active_segment_sequence_number = 0;
+  for (const auto& peer : peers) {
+    if (peer->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      continue;
+    }
+    auto current_active_segment_sequence_number = peer->log()->active_segment_sequence_number();
+    LOG(INFO) << peer->LogPrefix() << "active segment: "
+              << current_active_segment_sequence_number;
+    max_active_segment_sequence_number = std::max(
+        max_active_segment_sequence_number, current_active_segment_sequence_number);
+  }
+
+  // Ensure that we had enough log segments, otherwise this test is pretty useless.
+  ASSERT_GE(max_active_segment_sequence_number, kTransactions / 2);
 }
 
 TEST_F(QLTransactionTest, ResendApplying) {

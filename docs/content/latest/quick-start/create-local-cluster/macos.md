@@ -14,6 +14,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
 
 
@@ -54,7 +55,7 @@ showAsideToc: true
 
 You can use the [`yb-ctl`](../../../admin/yb-ctl/) utility, located in the `bin` directory of the YugabyteDB package, to create and administer a local cluster. The default data directory is `$HOME/yugabyte-data`. You can change the location of the data directory by using the [`--data_dir`](../../../admin/yb-ctl/#data-dir) configuration option.
 
-To quickly create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../../admin/yb-ctl/#create-cluster) in the utility reference.
+To quickly create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../../admin/yb-ctl/#create-cluster) in the CLI reference.
 
 ### Create a 1-node cluster with RF of 1
 
@@ -131,3 +132,10 @@ The Masters section highlights the 1 yb-master along with its corresponding clou
 Clicking on the `See all nodes` takes us to the Tablet Servers page where we can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. Since there are no user tables created yet, we can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will get automatically created and distributed evenly across all the available tablet servers.
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
+
+
+{{<tip title="Next step" >}}
+
+[Explore YSQL](../../explore-ysql/)
+
+{{< /tip >}}

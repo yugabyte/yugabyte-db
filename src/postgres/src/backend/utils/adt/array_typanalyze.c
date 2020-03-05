@@ -281,7 +281,7 @@ compute_array_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	elem_hash_ctl.entrysize = sizeof(TrackItem);
 	elem_hash_ctl.hash = element_hash;
 	elem_hash_ctl.match = element_match;
-	elem_hash_ctl.hcxt = CurrentMemoryContext;
+	elem_hash_ctl.hcxt = GetCurrentMemoryContext();
 	elements_tab = hash_create("Analyzed elements table",
 							   num_mcelem,
 							   &elem_hash_ctl,
@@ -291,7 +291,7 @@ compute_array_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	MemSet(&count_hash_ctl, 0, sizeof(count_hash_ctl));
 	count_hash_ctl.keysize = sizeof(int);
 	count_hash_ctl.entrysize = sizeof(DECountItem);
-	count_hash_ctl.hcxt = CurrentMemoryContext;
+	count_hash_ctl.hcxt = GetCurrentMemoryContext();
 	count_tab = hash_create("Array distinct element count table",
 							64,
 							&count_hash_ctl,

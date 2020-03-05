@@ -7,7 +7,9 @@
      "(\\.txt$)",
      "(^src/postgres/.*$)",
      "(^[.]gitmodules$)",
-     "(^managed/src/main/resources/v1.routes$)"
+     "(^managed/src/main/resources/v1.routes$)",
+     "(^managed/build.sbt$)",
+     "(^managed/src/main/resources/aws_pricing/.*$)"
   ],
   "linters": {
     "text": {

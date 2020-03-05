@@ -77,9 +77,9 @@ class MasterPathHandlers {
  private:
   enum TableType {
     kUserTable,
-    kIndexTable,
+    kUserIndex,
     kSystemTable,
-    kNumTypes
+    kNumTypes,
   };
 
   const string kSystemPlatformNamespace = "system_platform";
@@ -114,7 +114,7 @@ class MasterPathHandlers {
   // Map of tserver UUID -> TabletCounts
   typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
 
-  const string table_type_[3] = {"User", "Index", "System"};
+  const string table_type_[kNumTypes] = {"User", "Index", "System"};
 
   const string kNoPlacementUUID = "NONE";
 
@@ -148,7 +148,7 @@ class MasterPathHandlers {
                            std::stringstream* output);
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             std::stringstream* output,
-                            bool skip_system_tables = false);
+                            bool only_user_tables = false);
   void HandleTablePage(const Webserver::WebRequest& req,
                        std::stringstream* output);
   void HandleTasksPage(const Webserver::WebRequest& req,

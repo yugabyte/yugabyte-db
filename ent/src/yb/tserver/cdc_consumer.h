@@ -127,14 +127,17 @@ class CDCConsumer {
   std::function<bool(const std::string&)> is_leader_for_tablet_;
 
   std::unordered_map<cdc::ProducerTabletInfo, cdc::ConsumerTabletInfo,
-                     cdc::ProducerTabletInfo::Hash> producer_consumer_tablet_map_from_master_;
+                     cdc::ProducerTabletInfo::Hash> producer_consumer_tablet_map_from_master_
+                     GUARDED_BY(master_data_mutex_);
 
-  std::unordered_set<std::string> streams_with_same_num_producer_consumer_tablets_;
+  std::unordered_set<std::string> streams_with_same_num_producer_consumer_tablets_
+    GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 
   std::unordered_map<cdc::ProducerTabletInfo, std::shared_ptr<CDCPoller>,
-                     cdc::ProducerTabletInfo::Hash> producer_pollers_map_;
+                     cdc::ProducerTabletInfo::Hash> producer_pollers_map_
+                     GUARDED_BY(producer_pollers_map_mutex_);
 
   std::unique_ptr<ThreadPool> thread_pool_;
 
@@ -146,6 +149,7 @@ class CDCConsumer {
     GUARDED_BY(producer_pollers_map_mutex_);
   std::unordered_map<std::string, std::string> uuid_master_addrs_
     GUARDED_BY(master_data_mutex_);
+  std::unordered_set<std::string> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
 
   bool should_run_ = true;
 
