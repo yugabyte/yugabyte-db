@@ -21,6 +21,7 @@
 #include "yb/util/status.h"
 #include "yb/util/result.h"
 #include "yb/util/locks.h"
+#include "yb/util/cipher_stream_fwd.h"
 
 namespace yb {
 
@@ -38,21 +39,38 @@ class BlockAccessCipherStream {
       EncryptionParamsPtr encryption_params);
   explicit BlockAccessCipherStream(EncryptionParamsPtr encryption_params);
   CHECKED_STATUS Init();
+
   // Encrypt data at an offset.
-  CHECKED_STATUS Encrypt(uint64_t file_offset, const Slice& input, void* output);
+  CHECKED_STATUS Encrypt(
+      uint64_t file_offset,
+      const Slice& input,
+      void* output,
+      EncryptionOverflowWorkaround counter_overflow_workaround =
+          EncryptionOverflowWorkaround::kFalse);
 
   // Decrypt data at an offset.
-  CHECKED_STATUS Decrypt(uint64_t file_offset, const Slice& input, void* output);
+  // counter_overflow_workaround indicates whether we should add one to byte 11 of the initilization
+  // vector. Used to as a workaround in case of block checksum mismatches when reading data that is
+  // affected by https://github.com/yugabyte/yugabyte-db/issues/3707.
+  CHECKED_STATUS Decrypt(
+      uint64_t file_offset,
+      const Slice& input,
+      void* output,
+      EncryptionOverflowWorkaround counter_overflow_workaround =
+          EncryptionOverflowWorkaround::kFalse);
 
  private:
-  CHECKED_STATUS EncryptByBlock(uint64_t block_index, const Slice& input, void* output);
+  CHECKED_STATUS EncryptByBlock(
+      uint64_t block_index,
+      const Slice& input,
+      void* output,
+      EncryptionOverflowWorkaround counter_overflow_workaround =
+          EncryptionOverflowWorkaround::kFalse);
 
- private:
   EncryptionParamsPtr encryption_params_;
   std::unique_ptr<EVP_CIPHER_CTX, std::function<void(EVP_CIPHER_CTX*)>> encryption_context_;
   mutable simple_spinlock mutex_;
 };
-
 
 } // namespace enterprise
 } // namespace yb
