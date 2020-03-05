@@ -80,6 +80,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   const std::vector<std::string>& GetPartitions() const;
 
+  int32_t GetPartitionCount() const;
+
   // Indexes available on the table.
   const IndexMap& index_map() const;
 
@@ -105,6 +107,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   // Finds partition start for specified partition_key.
   // Partitions could be groupped by group_by bunches, in this case start of such bunch is returned.
+  size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
   const std::string& FindPartitionStart(
       const std::string& partition_key, size_t group_by = 1) const;
 
