@@ -12,46 +12,47 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Read replicas are _observer nodes_ that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication. These "read-only" nodes allow your data to be stored safely and durably in a read replica cluster that is 
+In a YugabyteDB deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. Optionally, you can create a read replica cluster that asynchronously replicates data from the primary cluster and guarantees timeline consistency (with bounded staleness). A synchronously replicated primary cluster can accept writes to the system. Using a read replica cluster allows applications to serve low latency reads in remote regions.
 
+In a read replica cluster, read replicas are _observer nodes_ that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication from the primary cluster.
 
+Use the steps below to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using the Yugabyte Platform, see [Read replicas](../../../manage/enterprise-edition/read-replicas/).
 
+## Deploy a read replicas cluster
 
-For details on creating read replica clusters on the Yugabyte Platform, see [Read relicas](../../../manage/enterprise-edition/read-replicas/)
+Follow the steps here to deploy a read replica cluster that will asynchronously replicate data with a primary cluster.
 
-## Create read replicas cluster
-
-1. Start the master processes and let them form a quorum.
-2. Define the placement information for the primary cluster.
+1. **Start the primary `yb-master` services** and let them form a quorum.
+2. **Define the primary cluster placement** using the [`yb-admin modify_placement_info`](../../../admin/yb-admin/#modify-placement-info) command.
 
     ```sh
-    $ ./bin/yb-admin modify_read_replica_placement_info <placement_info> <replication_factor>     [placement_uuid]
+    $ ./bin/yb-admin modify_placement_info <placement_info> <replication_factor> [placement_uuid]
     ```
 
-    - *placement_info*: Comma separated list of zones in format <cloud1.region1.zone1>,<cloud2.region2.    zone2>,etc…
-    - *replication_factor*: Replication factor of the primary cluster.
-    - *placement_uuid*: any human readable string representing primary cluster ID.
+    - *placement_info*: Comma-separated list of availability zones using the format `<cloud1.region1.zone1>,<cloud2.region2.zone2>, ...`.
+    - *replication_factor*: Replication factor (RF) of the primary cluster.
+    - *placement_uuid*: The placement identifier for the primary cluster, using a meaningful string.
 
-3. Define the placement information for the read replica cluster.
+3. **Define the read replica placement** using the [`yb-admin add_read_replica_placement_info`](../../../admin/yb-admin/#add-read-replica-placement-info) command.
 
     ```sh
     $ ./bin/yb-admin add_read_replica_placement_info <placement_info> <replication_factor> [placement_uuid]
     ```
 
-    - *placement_info*: Comma-separated list of availability zones in format `cloud1.region1.    zone1`:<num_replicas_in_zone1>,cloud2.region2.zone2:<num_replicas_in_zone_2>,etc... Note that these  zones should be distinct from the live zones from step 2 (if you want to use the same cloud, region, and zone as a live cluster, one option is to suffix the zone with _rr: for example, “c1.r1.z1” vs c1.r1.z1_rr”).
-    - *replication_factor*: The total number of read replica clusters.
-    - *placement_uuid*: A human-readable string representing read replica cluster ID (`uuid`).
+    - *placement_info*: Comma-separated list of availability zones, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone_2>,..` These read replica availability zones must be uniquely different than the primary availability zones defined in step 2. If you want to use the same cloud, region, and zone as a primary cluster, one option is to suffix the zone with `_rr` (for read replica): for example, `c1.r1.z1` vs `c1.r1.z1_rr`).
+    - *replication_factor*: The total number of read replicas.
+    - *placement_uuid*: The identifier for the read replica cluster, using a meaningful string.
 
-4. Start the primary `yb-tserver` services with the following configuration options (flags).
+4. Start the primary `yb-tserver` services, including the following configuration options (flags):
 
    - [--placement_cloud *placement_cloud*](../../../reference/configuration/yb-tserver/#placement-cloud)
    - [--placement_region *placement_region*](../../../reference/configuration/yb-tserver/#placement-region)
    - [--placement_zone *placement_zone*](../../../reference/configuration/yb-tserver/#placement-zone)
    - [--placement_uuid *live_id*](../../../reference/configuration/yb-tserver/#placement-uuid)
 
-    **Note:** The placements should match the information in step 2.
+    **Note:** The placements should match the information in step 2. You do not need to add these configuration options to your `yb-master` configurations.
 
-5. Start the read replica `yb-tserver` services with the following configuration options (flags):
+5. Start the read replica `yb-tserver` services, including the following configuration options (flags):
 
    - [--placement_cloud *placement_cloud*](../../../reference/configuration/yb-tserver/#placement-cloud)
    - [--placement_region *placement_region*](../../../reference/configuration/yb-tserver/#placement-region)
@@ -60,4 +61,4 @@ For details on creating read replica clusters on the Yugabyte Platform, see [Rea
 
     **Note:** The placements should match the information in step 3.
 
-You now have a cluster running with both a primary placement and read-replica placement.
+The primary cluster should begin asynchronous replication with the read replica cluster.
