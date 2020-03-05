@@ -665,7 +665,7 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
           break;
         }
       }
-      ASSERT_TRUE(op->succeeded());
+      ASSERT_TRUE(op->succeeded()) << "Read failed: " << op->response().ShortDebugString();
       auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
       ASSERT_EQ(rowblock->row_count(), 1);
       const auto& first_column = rowblock->row(0).column(0);
