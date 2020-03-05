@@ -140,6 +140,10 @@ const std::vector<std::string>& YBTable::GetPartitions() const {
   return partitions_;
 }
 
+int32_t YBTable::GetPartitionCount() const {
+  return partitions_.size();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite() {
@@ -166,17 +170,21 @@ std::unique_ptr<YBqlReadOp> YBTable::NewQLRead() {
   return std::unique_ptr<YBqlReadOp>(new YBqlReadOp(shared_from_this()));
 }
 
-const std::string& YBTable::FindPartitionStart(
-    const std::string& partition_key, size_t group_by) const {
+size_t YBTable::FindPartitionStartIndex(const std::string& partition_key, size_t group_by) const {
   auto it = std::lower_bound(partitions_.begin(), partitions_.end(), partition_key);
   if (it == partitions_.end() || *it > partition_key) {
     DCHECK(it != partitions_.begin());
     --it;
   }
   if (group_by <= 1) {
-    return *it;
+    return it - partitions_.begin();
   }
-  size_t idx = (it - partitions_.begin()) / group_by * group_by;
+  return (it - partitions_.begin()) / group_by * group_by;
+}
+
+const std::string& YBTable::FindPartitionStart(
+    const std::string& partition_key, size_t group_by) const {
+  size_t idx = FindPartitionStartIndex(partition_key, group_by);
   return partitions_[idx];
 }
 

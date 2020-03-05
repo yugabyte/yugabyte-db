@@ -225,7 +225,7 @@ Status PgDocReadOp::CreateBatchOps(int partition_count) {
 }
 
 Status PgDocReadOp::SetBatchArgYbctid(const vector<Slice> *ybctids,
-                                      const vector<string>& partition_boundaries) {
+                                      const PgTableDesc *table_desc) {
   // Begin the next batch of ybctids.
   end_of_data_ = false;
 
@@ -236,7 +236,7 @@ Status PgDocReadOp::SetBatchArgYbctid(const vector<Slice> *ybctids,
   wait_for_batch_completion_ = true;
 
   // Create batch operators, one per partition.
-  RETURN_NOT_OK(CreateBatchOps(partition_boundaries.size()));
+  RETURN_NOT_OK(CreateBatchOps(table_desc->GetPartitionCount()));
 
   // Assign ybctid values.
   for (const Slice& ybctid : *ybctids) {
@@ -246,9 +246,8 @@ Status PgDocReadOp::SetBatchArgYbctid(const vector<Slice> *ybctids,
     string key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
 
     // The partition index is the boundary index minus 1.
-    int partition = (lower_bound(partition_boundaries.begin(), partition_boundaries.end(), key) -
-                     partition_boundaries.begin()) - 1;
-    SCHECK(partition >= 0 || partition < partition_boundaries.size(), InternalError,
+    int partition = table_desc->FindPartitionStartIndex(key);
+    SCHECK(partition >= 0 || partition < table_desc->GetPartitionCount(), InternalError,
            "Ybctid value is not within partition boundary");
 
     // TODO(neil)

@@ -82,6 +82,14 @@ const std::vector<std::string>& PgTableDesc::GetPartitions() const {
   return table_->GetPartitions();
 }
 
+int PgTableDesc::GetPartitionCount() const {
+  return table_->GetPartitionCount();
+}
+
+size_t PgTableDesc::FindPartitionStartIndex(const std::string& partition_key) const {
+  return table_->FindPartitionStartIndex(partition_key);
+}
+
 const client::YBTableName& PgTableDesc::table_name() const {
   return table_->name();
 }

@@ -107,7 +107,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Currently, only ybctid can be batched.
   virtual CHECKED_STATUS SetBatchArgYbctid(const vector<Slice> *ybctids,
-                                           const vector<string>& partitions) = 0;
+                                           const PgTableDesc *table_desc) = 0;
 
   // Execute the op. Return true if the request has been sent and is awaiting the result.
   virtual Result<RequestSent> Execute(bool force_non_bufferable = false);
@@ -175,7 +175,7 @@ class PgDocReadOp : public PgDocOp {
   void Initialize(const PgExecParameters *exec_params) override;
 
   CHECKED_STATUS SetBatchArgYbctid(const vector<Slice> *ybctids,
-                                   const vector<string>& partitions) override;
+                                   const PgTableDesc *table_desc) override;
 
  private:
   // Process response from DocDB.
@@ -277,7 +277,7 @@ class PgDocWriteOp : public PgDocOp {
 
   // For write ops, we are not yet batching ybctid from index query.
   CHECKED_STATUS SetBatchArgYbctid(const vector<Slice> *ybctids,
-                                   const vector<string>& partitions) override {
+                                   const PgTableDesc *table_desc) override {
     return Status::OK();
   }
 
