@@ -66,6 +66,10 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const std::vector<std::string>& GetPartitions() const;
 
+  int GetPartitionCount() const;
+
+  size_t FindPartitionStartIndex(const std::string& partition_key) const;
+
   bool IsTransactional() const;
 
  private:
