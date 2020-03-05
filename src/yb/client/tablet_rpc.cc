@@ -263,9 +263,22 @@ bool TabletInvoker::Done(Status* status) {
 
   // Prefer controller failures over response failures.
   auto rsp_err = rpc_->response_error();
-  Status resp_error_status = ErrorStatus(rsp_err);
-  if ((status->ok() || status->IsRemoteError()) && !resp_error_status.ok()) {
-    *status = resp_error_status;
+  {
+    Status resp_error_status = ErrorStatus(rsp_err);
+    if (status->ok() && !resp_error_status.ok()) {
+      *status = resp_error_status;
+    } else if (status->IsRemoteError()) {
+      if (!resp_error_status.ok()) {
+        *status = resp_error_status;
+      } else {
+        const auto* error = retrier_->controller().error_response();
+        if (error &&
+            (error->code() == rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN ||
+             error->code() == rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE)) {
+          *status = STATUS(ServiceUnavailable, error->message());
+        }
+      }
+    }
   }
 
   // Oops, we failed over to a replica that wasn't a LEADER. Unlikely as
