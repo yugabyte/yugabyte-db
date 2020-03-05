@@ -116,6 +116,7 @@ race:cds::intrusive::OptimisticQueue
 race:cds::container::MSQueue
 race:cds::intrusive::SegmentedQueue
 race:cds::container::MoirQueue
+race:cds::gc::dhp::smr::free_thread_data
 
 # And more like these, so we silence all of these warnings in our test using just this:
 race:yb::QueuePerformanceHelper::RunAll
