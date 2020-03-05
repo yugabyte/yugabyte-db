@@ -21,6 +21,10 @@
 #include <memory>
 #include <boost/pointer_cast.hpp>
 
+#include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+
 #include "yb/util/encryption_util.h"
 
 #include "yb/util/cipher_stream.h"
@@ -28,9 +32,31 @@
 #include "yb/util/encryption.pb.h"
 
 #include "yb/gutil/endian.h"
+#include "yb/util/random_util.h"
+
+DEFINE_int64(encryption_counter_min, 0,
+             "Minimum value (inclusive) for the randomly generated 32-bit encryption counter at "
+             "the beginning of a file");
+TAG_FLAG(encryption_counter_min, advanced);
+TAG_FLAG(encryption_counter_min, hidden);
+
+DEFINE_int64(encryption_counter_max, 0x7fffffffLL,
+             "Maximum value (inclusive) for the randomly generated 32-bit encryption counter at "
+             "the beginning of a file. Setting to 2147483647 by default to reduce the probability "
+             "of #3707 until it is fixed. This only reduces the key size by 1 bit but eliminates "
+             "the encryption overflow issue for files up to 32 GiB in size.");
+
+TAG_FLAG(encryption_counter_max, advanced);
+TAG_FLAG(encryption_counter_max, hidden);
 
 namespace yb {
 namespace enterprise {
+
+namespace {
+
+std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
+
+}  // anonymous namespace
 
 constexpr uint32_t kDefaultKeySize = 16;
 
@@ -70,6 +96,17 @@ EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
   RAND_bytes(encryption_params->key, kDefaultKeySize);
   RAND_bytes(encryption_params->nonce, kBlockSize - 4);
   RAND_bytes(boost::reinterpret_pointer_cast<uint8_t>(&encryption_params->counter), 4);
+
+  const int64_t ctr_min = GetAtomicFlag(&FLAGS_encryption_counter_min);
+  const int64_t ctr_max = GetAtomicFlag(&FLAGS_encryption_counter_max);
+  if (0 <= ctr_min && ctr_min <= ctr_max && ctr_max <= std::numeric_limits<uint32_t>::max()) {
+    encryption_params->counter = ctr_min + encryption_params->counter % (ctr_max - ctr_min + 1);
+  } else {
+    YB_LOG_EVERY_N_SECS(WARNING, 10)
+        << "Invalid encrypted counter range: "
+        << "[" << ctr_min << ", " << ctr_max << "] specified by --encryption_counter_{min,max}, "
+        << "falling back to using the full unsigned 32-bit integer range.";
+  }
   encryption_params->key_size = kDefaultKeySize;
   return encryption_params;
 }
@@ -124,8 +161,6 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
   auto status = VERIFY_RESULT(header_manager->GetFileEncryptionStatusFromPrefix(encryption_info));
   return status.is_encrypted ? (status.header_size + metadata_start) : 0;
 }
-
-std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
 
 __attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS LockingCallback(
     int mode, int n, const char* /*file*/, int /*line*/) {

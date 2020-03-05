@@ -14,15 +14,16 @@
 #ifndef YB_UTIL_ENCRYPTED_FILE_H
 #define YB_UTIL_ENCRYPTED_FILE_H
 
+#include <atomic>
 #include <memory>
 
 #include "yb/util/env.h"
+#include "yb/util/cipher_stream_fwd.h"
 
 namespace yb {
 
 namespace enterprise {
 
-class BlockAccessCipherStream;
 class HeaderManager;
 
 // An encrypted fie implementation for random access of a file.
@@ -54,9 +55,22 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
     return true;
   }
 
+  CHECKED_STATUS ReadAndValidate(
+      uint64_t offset, size_t n, Slice* result, char* scratch,
+      const ReadValidator& validator) override;
+
+  int64_t TEST_GetNumOverflowWorkarounds() {
+    return num_overflow_workarounds_.load(std::memory_order_relaxed);
+  }
+
  private:
+  Status ReadInternal(
+      uint64_t offset, size_t n, Slice* result, char* scratch,
+      EncryptionOverflowWorkaround counter_overflow_workaround) const;
+
   std::unique_ptr<BlockAccessCipherStream> stream_;
   uint64_t header_size_;
+  std::atomic<int64_t> num_overflow_workarounds_{0};
 };
 
 } // namespace enterprise

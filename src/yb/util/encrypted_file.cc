@@ -13,11 +13,24 @@
 
 #include "yb/util/encrypted_file.h"
 
+#include <stdexcept>
+
+#include "yb/util/cipher_stream_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/cipher_stream.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/encryption_util.h"
+#include "yb/util/cast.h"
+#include "yb/util/flag_tags.h"
+
+using yb::util::to_char_ptr;
+
+DEFINE_bool(encryption_counter_overflow_read_path_workaround, true,
+            "Enable a read-path workaround for the encryption counter overflow bug #3707. "
+            "This is enabled by default and could be disabled to reproduce the bug in testing.");
+TAG_FLAG(encryption_counter_overflow_read_path_workaround, advanced);
+TAG_FLAG(encryption_counter_overflow_read_path_workaround, hidden);
 
 namespace yb {
 namespace enterprise {
@@ -29,16 +42,52 @@ Status EncryptedRandomAccessFile::Create(
       result, header_manager, std::move(underlying));
 }
 
-Status EncryptedRandomAccessFile::Read(
-    uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const {
+Status EncryptedRandomAccessFile::ReadInternal(
+    uint64_t offset,
+    size_t n,
+    Slice* result,
+    char* scratch,
+    EncryptionOverflowWorkaround counter_overflow_workaround) const {
   if (!scratch) {
     return STATUS(InvalidArgument, "scratch argument is null.");
   }
   uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(n));
   RETURN_NOT_OK(RandomAccessFileWrapper::Read(offset + header_size_, n, result, buf));
-  RETURN_NOT_OK(stream_->Decrypt(offset, *result, scratch));
+  RETURN_NOT_OK(stream_->Decrypt(offset, *result, scratch, counter_overflow_workaround));
   *result = Slice(scratch, result->size());
   return Status::OK();
+}
+
+Status EncryptedRandomAccessFile::Read(
+    uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const {
+  return ReadInternal(offset, n, result, to_char_ptr(scratch),
+                      EncryptionOverflowWorkaround::kFalse);
+}
+
+Status EncryptedRandomAccessFile::ReadAndValidate(
+    uint64_t offset, size_t n, Slice* result, char* scratch, const ReadValidator& validator) {
+  if (!FLAGS_encryption_counter_overflow_read_path_workaround) {
+    RETURN_NOT_OK(ReadInternal(offset, n, result, scratch, EncryptionOverflowWorkaround::kFalse));
+    return validator.Validate(*result);
+  }
+
+  Status status_without_workaround;
+  for (auto counter_overflow_workaround : EncryptionOverflowWorkaround::kValues) {
+    RETURN_NOT_OK(ReadInternal(offset, n, result, scratch, counter_overflow_workaround));
+
+    Status validation_status = validator.Validate(*result);
+    if (!counter_overflow_workaround) {
+      status_without_workaround = validation_status;
+    }
+
+    if (validation_status.ok()) {
+      if (counter_overflow_workaround) {
+        num_overflow_workarounds_.fetch_add(1, std::memory_order_relaxed);
+      }
+      return Status::OK();
+    }
+  }
+  return status_without_workaround;
 }
 
 } // namespace enterprise

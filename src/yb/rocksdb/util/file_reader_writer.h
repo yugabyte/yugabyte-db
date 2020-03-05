@@ -107,7 +107,9 @@ class RandomAccessFileReader {
   RandomAccessFileReader(const RandomAccessFileReader&) = delete;
   RandomAccessFileReader& operator=(const RandomAccessFileReader&) = delete;
 
-  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const;
+  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, char* scratch) const;
+  CHECKED_STATUS ReadAndValidate(
+      uint64_t offset, size_t n, Slice* result, char* scratch, const yb::ReadValidator& validator);
 
   RandomAccessFile* file() { return file_.get(); }
 };

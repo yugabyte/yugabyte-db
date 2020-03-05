@@ -135,7 +135,7 @@ class RocksDBEncryptedFileFactory : public rocksdb::RocksDBFileFactoryWrapper {
   Status NewWritableFile(const std::string& fname, std::unique_ptr<rocksdb::WritableFile>* result,
                          const rocksdb::EnvOptions& options) override {
     std::unique_ptr<rocksdb::WritableFile> underlying;
-        RETURN_NOT_OK(RocksDBFileFactoryWrapper::NewWritableFile(fname, &underlying, options));
+    RETURN_NOT_OK(RocksDBFileFactoryWrapper::NewWritableFile(fname, &underlying, options));
     return RocksDBEncryptedWritableFile::Create(
         result, header_manager_.get(), std::move(underlying));
   }

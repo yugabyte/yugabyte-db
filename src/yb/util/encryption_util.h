@@ -135,6 +135,9 @@ Status CreateEncryptionInfoForWrite(HeaderManager* header_manager,
   // Since file doesn't exist or this overwrites, append key to the name and create.
   *stream = std::make_unique<BlockAccessCipherStream>(std::move(encryption_params));
   RETURN_NOT_OK((*stream)->Init());
+  if (header.size() > std::numeric_limits<uint32_t>::max()) {
+    return STATUS_FORMAT(Corruption, "Invalid encryption header size: $0", header.size());
+  }
   *header_size = static_cast<uint32_t>(header.size());
   return Status::OK();
 }
