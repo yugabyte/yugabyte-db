@@ -17,6 +17,7 @@
 #include <string>
 
 #include "yb/util/header_manager_impl.h"
+#include "yb/tserver/universe_key_test_util.h"
 
 #include "yb/util/encryption_util.h"
 #include "yb/util/status.h"
@@ -29,30 +30,19 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+using yb::tserver::GenerateTestUniverseKeyManager;
+
 namespace yb {
+
 namespace enterprise {
 
 class TestHeaderManagerImpl : public YBTest {};
 
-std::unique_ptr<UniverseKeyManager> GenerateUniverseKeyManager() {
-  auto universe_key_manager = std::make_unique<UniverseKeyManager>();
-  UniverseKeyRegistryPB registry;
-  auto encryption_params = EncryptionParams::NewEncryptionParams();
-  EncryptionParamsPB params_pb;
-  encryption_params->ToEncryptionParamsPB(&params_pb);
-  auto version_id = RandomHumanReadableString(16);
-  (*registry.mutable_universe_keys())[version_id] = params_pb;
-  registry.set_encryption_enabled(true);
-  registry.set_latest_version_id(version_id);
-  universe_key_manager->SetUniverseKeyRegistry(registry);
-  return universe_key_manager;
-}
-
 TEST_F(TestHeaderManagerImpl, FileOps) {
-  auto universe_key_manger = GenerateUniverseKeyManager();
-  std::unique_ptr<HeaderManager> header_manager =
-      DefaultHeaderManager(universe_key_manger.get());
-  auto params = EncryptionParams::NewEncryptionParams();
+  auto universe_key_manger = GenerateTestUniverseKeyManager();
+  std::unique_ptr<yb::enterprise::HeaderManager> header_manager =
+      enterprise::DefaultHeaderManager(universe_key_manger.get());
+  auto params = yb::enterprise::EncryptionParams::NewEncryptionParams();
   string header = ASSERT_RESULT(header_manager->SerializeEncryptionParams(*params.get()));
   auto start_idx = header_manager->GetEncryptionMetadataStartIndex();
   auto status = ASSERT_RESULT(header_manager->GetFileEncryptionStatusFromPrefix(

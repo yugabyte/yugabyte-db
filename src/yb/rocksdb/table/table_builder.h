@@ -56,7 +56,7 @@ struct TableReaderOptions {
 
   const ImmutableCFOptions& ioptions;
   const EnvOptions& env_options;
-  const InternalKeyComparatorPtr& internal_comparator;
+  const InternalKeyComparatorPtr internal_comparator;
   // This is only used for BlockBasedTable (reader)
   bool skip_filters;
 };
@@ -64,7 +64,7 @@ struct TableReaderOptions {
 struct TableBuilderOptions {
   TableBuilderOptions(
       const ImmutableCFOptions& _ioptions,
-      const std::shared_ptr<const InternalKeyComparator>& _internal_comparator,
+      const InternalKeyComparatorPtr& _internal_comparator,
       const IntTblPropCollectorFactories& _int_tbl_prop_collector_factories,
       CompressionType _compression_type,
       const CompressionOptions& _compression_opts,
@@ -77,7 +77,7 @@ struct TableBuilderOptions {
         skip_filters(_skip_filters) {}
 
   const ImmutableCFOptions& ioptions;
-  std::shared_ptr<const InternalKeyComparator> internal_comparator;
+  InternalKeyComparatorPtr internal_comparator;
   const IntTblPropCollectorFactories* int_tbl_prop_collector_factories;
   CompressionType compression_type;
   const CompressionOptions& compression_opts;

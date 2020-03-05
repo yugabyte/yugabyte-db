@@ -118,7 +118,7 @@ class Footer {
   // initialized via @ReadFooterFromFile().
   // Use this when you plan to load Footer with DecodeFrom(). Never use this
   // when you plan to AppendEncodedTo.
-  Footer() : Footer(kInvalidTableMagicNumber, 0) {}
+  Footer() : Footer(kInvalidTableMagicNumber, /* version= */ 0) {}
 
   // Use this constructor when you plan to write out the footer using
   // AppendEncodedTo(). Never use this constructor with DecodeFrom().
@@ -189,7 +189,7 @@ class Footer {
   ChecksumType checksum_;
   BlockHandle metaindex_handle_;
   BlockHandle data_index_handle_;
-  uint64_t table_magic_number_ = 0;
+  uint64_t table_magic_number_ = kInvalidTableMagicNumber;
 };
 
 // Read the footer from file
