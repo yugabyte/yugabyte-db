@@ -237,5 +237,5 @@ Note that JSONB upsert only works for JSON objects and not for other data types 
 
 ## See also
 
-- [`Explore Json documents`](../../../explore/transactional/json-documents)
+- [`Explore JSON documents`](../../../explore/transactional/json-documents)
 - [Data types](..#data-types)
