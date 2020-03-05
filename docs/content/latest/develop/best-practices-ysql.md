@@ -16,15 +16,15 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="{{< ref "best-practices-ycql.md" >}}" class="nav-link"</a>
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li >
     <a href="" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
+    </a>
+  </li>
+  <li >
+    <a href="{{< ref "best-practices-ycql.md" >}}" class="nav-link"</a>
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 </ul>
