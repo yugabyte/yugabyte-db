@@ -158,3 +158,30 @@ using the [`INCLUDE`](../api/ysql/commands/ddl_create_index.md#include-clause) c
 When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
 This turns a (possible) random read from the main table to just a filter on the index.
+
+## Multi tenant use cases
+There are many cases where data is spread across many tenants. Usually each 
+tenant is isolated with it's own data. In these cases users may be inclined to 
+create per-tenant tables/databases.
+Because each table/tablet has overhead, having a large number of them is not 
+recommended.
+Depending on the number of tenants, it may be better to have a `tenant_id` on 
+primary-keys which can be used to filter tenants at write/query time.
+This can be combined with moving large tenants to their own private tables.
+
+
+## Number of tables
+Each table is split into tablets and each tablet has overhead. 
+See [tablets per server](#tablets-per-server) for limits.
+
+## Tablets per server
+Each table consists of several tablets based on the `yb_num_shards_per_tserver`
+gflag. Each `tablet` has overhead in the memory of the tserver that it resides.
+Currently we recommend a maximum of around `500` tablets on each tserver.
+You have to keep this number in mind depending on the number of tables and number 
+of tablets per-server that you intend to create.
+We're [actively working](https://github.com/yugabyte/yugabyte-db/issues/1317) to increase this limit.
+
+On deployments where we have many small tables and few big tables, we can use [colocation](../explore/colocated-tables/linux.md) in YSQL layer to group small 
+tables into 1 tablet.
+
