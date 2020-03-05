@@ -185,3 +185,12 @@ We're [actively working](https://github.com/yugabyte/yugabyte-db/issues/1317) to
 On deployments where we have many small tables and few big tables, we can use [colocation](../explore/colocated-tables/linux.md) in YSQL layer to group small 
 tables into 1 tablet.
 
+
+## Column size limit
+For consistent latency/performance, we suggest keeping columns in the `2MB` range 
+or less even though we support an individual column being about 32MB.
+
+## Row size limit
+Big columns add up when selecting full rows or multiple of them. 
+For consistent latency/performance, we suggest keeping the size in the `32MB` range
+or less. This is a combination of [column sizing recommendations](#column-size-limit) for all columns.
