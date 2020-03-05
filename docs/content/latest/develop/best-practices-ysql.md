@@ -55,15 +55,6 @@ Co-location is a [new feature in beta](../explore/colocated-tables/linux.md) in 
 a database inside 1 tablet. This increases performance and lowers latency on write transactions, joined queries and aggregations
 since they happen in 1 tablet/node.
 
-## Co-partitioning
-Co-partitioning tables makes writing/joining transactions across multiple tables that specify
-the same partition keys to be faster because the data from tables will reside
-in the same tserver, thus removing network that are needed for distributed transactions.
-
-This feature is in our roadmap. You can follow this 
-[issue](https://github.com/yugabyte/yugabyte-db/issues/79). 
-
-
 ## Cluster aware drivers
 We are working hard to create cluster-aware clients in most popular languages. 
 Currently the drivers available are:
