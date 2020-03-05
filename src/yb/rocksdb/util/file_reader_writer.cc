@@ -67,6 +67,23 @@ Status RandomAccessFileReader::Read(uint64_t offset, size_t n, Slice* result,
   return s;
 }
 
+Status RandomAccessFileReader::ReadAndValidate(
+    uint64_t offset, size_t n, Slice* result, char* scratch, const yb::ReadValidator& validator) {
+  uint64_t elapsed = 0;
+  Status s;
+  {
+    StopWatch sw(env_, stats_, hist_type_,
+                 (stats_ != nullptr) ? &elapsed : nullptr);
+    IOSTATS_TIMER_GUARD(read_nanos);
+    s = file_->ReadAndValidate(offset, n, result, scratch, validator);
+    IOSTATS_ADD_IF_POSITIVE(bytes_read, result->size());
+  }
+  if (stats_ != nullptr && file_read_hist_ != nullptr) {
+    file_read_hist_->Add(elapsed);
+  }
+  return s;
+}
+
 Status WritableFileWriter::Append(const Slice& data) {
   const char* src = data.cdata();
   size_t left = data.size();

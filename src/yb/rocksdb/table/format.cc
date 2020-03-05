@@ -36,9 +36,14 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/xxhash.h"
 
+#include "yb/util/encryption_util.h"
+#include "yb/util/encrypted_file.h"
 #include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/string_util.h"
+
+using yb::Format;
+using yb::Result;
 
 namespace rocksdb {
 
@@ -54,8 +59,6 @@ const uint64_t kLegacyPlainTableMagicNumber = 0;
 const uint64_t kPlainTableMagicNumber = 0;
 #endif
 const uint32_t DefaultStackBufferSize = 5000;
-
-using yb::Format;
 
 void BlockHandle::AppendEncodedTo(std::string* dst) const {
   // Sanity check that all fields have been set
@@ -161,9 +164,9 @@ Footer::Footer(uint64_t _table_magic_number, uint32_t _version)
 }
 
 Status Footer::DecodeFrom(Slice* input) {
-  assert(!HasInitializedTableMagicNumber());
-  assert(input != nullptr);
-  assert(input->size() >= kMinEncodedLength);
+  DSCHECK(!HasInitializedTableMagicNumber(), IllegalState, "Decoding into the same footer twice");
+  DSCHECK(input != nullptr, IllegalState, "input can't be null");
+  DSCHECK_GE(input->size(), kMinEncodedLength, Corruption, "Footer size is too small");
 
   const char *magic_ptr = input->cend() - kMagicNumberLengthByte;
   const uint32_t magic_lo = DecodeFixed32(magic_ptr);
@@ -234,11 +237,19 @@ std::string Footer::ToString() const {
   return result;
 }
 
-Status ReadFooterFromFile(RandomAccessFileReader* file, uint64_t file_size,
-                          Footer* footer, uint64_t enforce_table_magic_number) {
+Status CheckSSTableFileSize(RandomAccessFileReader* file, uint64_t file_size) {
   if (file_size < Footer::kMinEncodedLength) {
-    return STATUS(Corruption, "file is too short to be an sstable");
+    return STATUS_FORMAT(Corruption,
+                         "File is too short to be an SSTable: $0",
+                         file->file()->filename());
   }
+  return Status::OK();
+}
+
+Status ReadFooterFromFile(
+    RandomAccessFileReader* file, uint64_t file_size, Footer* footer,
+    uint64_t enforce_table_magic_number) {
+  RETURN_NOT_OK(CheckSSTableFileSize(file, file_size));
 
   char footer_space[Footer::kMaxEncodedLength];
   Slice footer_input;
@@ -246,78 +257,143 @@ Status ReadFooterFromFile(RandomAccessFileReader* file, uint64_t file_size,
       (file_size > Footer::kMaxEncodedLength)
           ? static_cast<size_t>(file_size - Footer::kMaxEncodedLength)
           : 0;
-  Status s = file->Read(read_offset, Footer::kMaxEncodedLength, &footer_input,
-                        footer_space);
-  if (!s.ok()) return s;
+  const size_t read_size = std::min<size_t>(Footer::kMaxEncodedLength, file_size);
+  struct FooterValidator : public yb::ReadValidator {
+    FooterValidator(RandomAccessFileReader* file_,
+                    Footer* footer_,
+                    uint64_t enforce_table_magic_number_)
+        : file(file_),
+          footer(footer_),
+          enforce_table_magic_number(enforce_table_magic_number_) {}
 
-  // Check that we actually read the whole footer from the file. It may be
-  // that size isn't correct.
-  if (footer_input.size() < Footer::kMinEncodedLength) {
-    return STATUS(Corruption, "file is too short to be an sstable");
-  }
+    CHECKED_STATUS Validate(const Slice& read_result) const override {
+      // Check that we actually read the whole footer from the file. It may be that size isn't
+      // correct.
+      RETURN_NOT_OK(CheckSSTableFileSize(file, read_result.size()));
+      Slice mutable_read_result(read_result);
+      *footer = Footer();
+      RETURN_NOT_OK(footer->DecodeFrom(&mutable_read_result));
+      if (enforce_table_magic_number != 0 &&
+          enforce_table_magic_number != footer->table_magic_number()) {
+        return STATUS_FORMAT(Corruption, "Bad table magic number: $0, expected: $1",
+                              footer->table_magic_number(),
+                              enforce_table_magic_number);
+      }
+      return Status::OK();
+    }
+    RandomAccessFileReader* file;
+    Footer* const footer;
+    const uint64_t enforce_table_magic_number;
+  } validator(file, footer, enforce_table_magic_number);
 
-  s = footer->DecodeFrom(&footer_input);
-  if (!s.ok()) {
-    return s;
-  }
-  if (enforce_table_magic_number != 0 &&
-      enforce_table_magic_number != footer->table_magic_number()) {
-    return STATUS(Corruption, "Bad table magic number");
-  }
-  return Status::OK();
+  return file->ReadAndValidate(read_offset, read_size, &footer_input, footer_space, validator);
 }
 
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
 namespace {
 
-// Read a block and check its CRC
-// contents is the result of reading.
-// According to the implementation of file->Read, contents may not point to buf
-Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
-                 const ReadOptions& options, const BlockHandle& handle,
-                 Slice* contents, /* result of reading */ char* buf) {
-  size_t n = static_cast<size_t>(handle.size());
-  Status s;
+struct ChecksumData {
+  uint32_t expected;
+  uint32_t actual;
+};
 
+Result<ChecksumData> ComputeChecksum(
+    RandomAccessFileReader* file,
+    const Footer& footer,
+    const BlockHandle& handle,
+    const Slice& src_data,
+    uint32_t raw_expected_checksum) {
+  switch (footer.checksum()) {
+    case kCRC32c:
+      return ChecksumData {
+          .expected = crc32c::Unmask(raw_expected_checksum),
+          .actual = crc32c::Value(src_data.data(), src_data.size())
+      };
+    case kxxHash:
+      if (src_data.size() > std::numeric_limits<int>::max()) {
+        return STATUS_FORMAT(
+            Corruption, "Block too large for xxHash ($0 bytes, but must be $1 or smaller)",
+            src_data.size(), std::numeric_limits<int>::max());
+      }
+      return ChecksumData {
+          .expected = raw_expected_checksum,
+          .actual = XXH32(src_data.data(), static_cast<int>(src_data.size()), 0)
+      };
+    case kNoChecksum:
+      return ChecksumData {
+          .expected = raw_expected_checksum,
+          .actual = raw_expected_checksum
+      };
+  }
+  return STATUS_FORMAT(
+      Corruption, "Unknown checksum type in file: $0, block handle: $1",
+      file->file()->filename(), handle.ToDebugString());
+}
+
+Status VerifyBlockChecksum(
+    RandomAccessFileReader* file,
+    const Footer& footer,
+    const BlockHandle& handle,
+    const char* data,
+    const size_t block_size) {
+  PERF_TIMER_GUARD(block_checksum_time);
+  const uint32_t raw_expected_checksum = DecodeFixed32(data + block_size + 1);
+  auto checksum = VERIFY_RESULT(
+      ComputeChecksum(file, footer, handle, Slice(data, block_size + 1), raw_expected_checksum));
+  if (checksum.actual != checksum.expected) {
+    return STATUS_FORMAT(
+        Corruption, "Block checksum mismatch in file: $0, block handle: $1",
+        file->file()->filename(), handle.ToDebugString());
+  }
+  return Status::OK();
+}
+
+// Read a block and check its CRC. When this function returns, *contents will contain the result of
+// reading.
+Status ReadBlock(
+    RandomAccessFileReader* file, const Footer& footer, const ReadOptions& options,
+    const BlockHandle& handle, Slice* contents, /* result of reading */ char* buf) {
+  *contents = Slice(buf, buf);
+  const size_t expected_read_size = static_cast<size_t>(handle.size()) + kBlockTrailerSize;
+  Status s;
   {
     PERF_TIMER_GUARD(block_read_time);
-    s = file->Read(handle.offset(), n + kBlockTrailerSize, contents, buf);
+    struct BlockChecksumValidator : public yb::ReadValidator {
+      BlockChecksumValidator(
+          RandomAccessFileReader* file_, const Footer& footer_, const ReadOptions& options_,
+          const BlockHandle& handle_, size_t expected_read_size_)
+          : file(file_),
+            footer(footer_),
+            options(options_),
+            handle(handle_),
+            expected_read_size(expected_read_size_) {}
+
+      CHECKED_STATUS Validate(const Slice& read_result) const override {
+        if (read_result.size() != expected_read_size) {
+          return STATUS_FORMAT(
+              Corruption, "Truncated block read in file: $0, block handle: $1, expected size: $2",
+              file->file()->filename(), handle.ToDebugString(), expected_read_size);
+        }
+
+        if (options.verify_checksums) {
+          return VerifyBlockChecksum(file, footer, handle, read_result.cdata(), handle.size());
+        }
+        return Status::OK();
+      };
+
+      RandomAccessFileReader* file;
+      const Footer& footer;
+      const ReadOptions& options;
+      const BlockHandle& handle;
+      const size_t expected_read_size;
+    } validator(file, footer, options, handle, expected_read_size);
+
+    s = file->ReadAndValidate(handle.offset(), expected_read_size, contents, buf, validator);
   }
 
   PERF_COUNTER_ADD(block_read_count, 1);
-  PERF_COUNTER_ADD(block_read_byte, n + kBlockTrailerSize);
+  PERF_COUNTER_ADD(block_read_byte, expected_read_size);
 
-  if (!s.ok()) {
-    return s;
-  }
-  if (contents->size() != n + kBlockTrailerSize) {
-    return STATUS(Corruption, "truncated block read");
-  }
-
-  // Check the crc of the type and the block contents
-  const char* data = contents->cdata();  // Pointer to where Read put the data
-  if (options.verify_checksums) {
-    PERF_TIMER_GUARD(block_checksum_time);
-    uint32_t value = DecodeFixed32(data + n + 1);
-    uint32_t actual = 0;
-    switch (footer.checksum()) {
-      case kCRC32c:
-        value = crc32c::Unmask(value);
-        actual = crc32c::Value(data, n + 1);
-        break;
-      case kxxHash:
-        actual = XXH32(data, static_cast<int>(n) + 1, 0);
-        break;
-      default:
-        s = STATUS(Corruption, "unknown checksum type");
-    }
-    if (s.ok() && actual != value) {
-      s = STATUS(Corruption, "block checksum mismatch");
-    }
-    if (!s.ok()) {
-      return s;
-    }
-  }
   return s;
 }
 

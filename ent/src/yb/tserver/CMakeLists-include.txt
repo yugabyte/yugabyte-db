@@ -40,4 +40,3 @@ set(TSERVER_EXTENSIONS_TESTS
   remote_bootstrap_rocksdb_session-test_ent
   remote_bootstrap_rocksdb_client-test_ent
   PARENT_SCOPE)
-
