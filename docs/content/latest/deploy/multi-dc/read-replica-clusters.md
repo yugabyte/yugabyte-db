@@ -18,7 +18,7 @@ In a read replica cluster, read replicas are _observer nodes_ that do not partic
 
 Use the steps below to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using the Yugabyte Platform, see [Read replicas](../../../manage/enterprise-edition/read-replicas/).
 
-## Deploy a read replicas cluster
+## Deploy a read replica cluster
 
 Follow the steps here to deploy a read replica cluster that will asynchronously replicate data with a primary cluster.
 
