@@ -2,7 +2,7 @@
 title: JSON and JSONB data types
 linktitle: JSON and JSONB
 summary: JSON and JSON B data types
-description: JSON data types
+description: JSON data types and functionality
 menu:
   v2.0:
     identifier: type-json
@@ -27,6 +27,6 @@ type_specification ::= { `JSON` | `JSONB` }
 
 The remainder of the account of JSON data types and functionality is organized thus:
 
-- The JSON data types
-- Classification of operators and functions by purpose
-- Creating indexes and check constraints on `json` and `jsonb` columns
+- [JSON data types](../json-data-types)
+- [Functions and operators by purpose](../json-data-types/functions-operators/)
+- [Create indexes and check constraints on `json` and `jsonb` columns](../json-data-types/create-indexes-constraints/)
