@@ -77,3 +77,13 @@ using the [`INCLUDE`](../api/ycql/ddl_create_index.md#included-columns) clause.
 When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
 This turns a (possible) random read from the main table to just a filter on the index.
+
+
+## Column size limit
+For consistent latency/performance, we suggest keeping columns in the `2MB` range 
+or less even though we support an individual column being about `32MB`.
+
+## Row size limit
+Big columns add up when selecting full rows or multiple of them. 
+For consistent latency/performance, we suggest keeping the size in the `32MB` range
+or less. This is a combination of [column sizing recommendations](#column-size-limit) for all columns.
