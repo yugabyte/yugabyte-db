@@ -1,23 +1,21 @@
 ---
 title: JSON data types
-linktitle: JSON and JSONB
-summary: JSON and JSON B data types
+linktitle: Json
+summary: JSON data types
 description: JSON data types
 menu:
-  v2.0:
-    identifier: type-json
-    parent: datatypes
+  latest:
+    identifier: api-ysql-datatypes-json
+    parent: api-ysql-datatypes
+aliases:
+  - /latest/api/ysql/datatypes/type_json
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
 
-JSON stands for JavaScript Object Notation, a text format for the serialization of structured data. Its syntax and semantics are defined in [RFC 7159](https://tools.ietf.org/html/rfc7159). JSON is represented by Unicode characters; and such a representation is usually called a _document_. Whitespace outside of _string_ values and _object_ keys (see below) is insignificant.
-
-YSQL supports two data types to represent a JSON document: `json` and `jsonb`. Each rejects any JSON document that does not conform to RFC 7159. The `json` datatype simply stores the text representation of a JSON document as presented. In contrast, the `jsonb` datatype stores a parsed representation of the document hierarchy of subvalues in an appropriate internal format. Some people prefer the mnemonic _"binary"_ for the _"b"_ suffix; others prefer _"better"_. Of course, it takes more computation to store a JSON document as a `jsonb` value than as `json` value. This cost is repaid when subvalues are operated on using the operators and functions that this section describes.
-
-JSON was invented as a data interchange format, initially to allow an arbitrary compound value in a JavaScript program to be serialized, transported as text, and then deserialized in another JavaScript program faithfully to reinstantiate the original compound value. Later, very many other programming languages—including, now, SQL and PL/pgSQL—support serialization to, and deserialization from, JSON. Moreover, it has become common to store JSON as the persistent representation of record in a table with just a primary key column and a `json` or `jsonb` column for facts that could be represented classically in a table design that conforms to the relational model. This pattern arose first in NoSQL databases but it is now widespread in SQL databases.
+The JSON data types are introduced to support JavaScript Object Notation (JSON) data. The `JSON` data type represents the exact text format of JSON while the `JSONB` data type represents its binary format in YSQL database. Both `JSONB` and `JSON` are supported in YSQL.
 
 ## Description
 
@@ -25,8 +23,6 @@ JSON was invented as a data interchange format, initially to allow an arbitrary 
 type_specification ::= { `JSON` | `JSONB` }
 ```
 
-The remainder of the account of JSON data types and functionality is organized thus:
-
-- The JSON data types
-- Classification of operators and functions by purpose
-- Creating indexes and check constraints on `json` and `jsonb` columns
+- `JSON` and `JSONB` literals can be any text strings that follow the specifications for JavaScript Object Notation.
+- When data is inserted into `JSONB` column, the text string will be parsed and converted to binary form before storing.
+- When selected, data of `JSONB` type will be converted and returned in the text format.
