@@ -12,7 +12,7 @@ showAsideToc: true
   <li >
     <a href="{{< ref "best-practices.md" >}}" class="nav-link">
       <i class="icon-" aria-hidden="true"></i>
-      General
+      DocDB
     </a>
   </li>
   <li >
