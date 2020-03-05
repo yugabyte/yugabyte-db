@@ -17,7 +17,7 @@ showAsideToc: true
   <li >
     <a href="" class="nav-link active">
       <i class="icon-" aria-hidden="true"></i>
-      General
+      DocDB
     </a>
   </li>
   <li >
