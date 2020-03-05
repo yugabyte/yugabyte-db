@@ -3,7 +3,6 @@
 
 
 
-
 ## Functions and operators by purpose
 
 Four tables list the operators and functions by category, thus:
@@ -25,7 +24,7 @@ Check the full account of each to find its variant status. When an operator or f
 
 To avoid clutter in the tables, only the `jsonb` variants of the function names are mentioned except where only a `json` variant exists.
 
-##### Note about the code examples 
+### Note about the code examples
 
 The functionality of each operator and function is illustrated by a code example of this form:
 
