@@ -87,7 +87,10 @@ class StreamContext {
   virtual void UpdateLastWrite() = 0;
   virtual void Transferred(const OutboundDataPtr& data, const Status& status) = 0;
   virtual void Destroy(const Status& status) = 0;
+
+  // Called by underlying stream when stream has been connected (Stream::IsConnected() became true).
   virtual void Connected() = 0;
+
   virtual Result<ProcessDataResult> ProcessReceived(
       const IoVecs& data, ReadBufferFull read_buffer_full) = 0;
   virtual StreamReadBuffer& ReadBuffer() = 0;
