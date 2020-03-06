@@ -22,8 +22,6 @@ Assume that a fleet management company wants to track their fleet of vehicles wh
 
 This app renders a dashboard showing both of the above. Below is a view of the realtime, auto-refreshing dashboard.
 
-![YB IoT Fleet Management Dashboard](/images/develop/realworld-apps/iot-spark-kafka/yb-iot-fleet-management-screenshot.png)
-
 
 ## App Architecture
 
@@ -35,8 +33,6 @@ This application has the following subcomponents:
 - Data Dashboard - Spring Boot app using web sockets, jQuery and bootstrap
 
 We will look at each of these components in detail. Below is an architecture diagram showing how these components fit together.
-
-![YB IoT Fleet Management Architecture](/images/develop/realworld-apps/iot-spark-kafka/yb-iot-fleet-mgmt-arch.png)
 
 
 ## Data Store
