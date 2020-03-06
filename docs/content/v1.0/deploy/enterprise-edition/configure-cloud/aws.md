@@ -13,12 +13,4 @@ Once you decide which access method is right for you, it is time to consider dep
 
 Note that the AWS Account Name should be unique for each instance of YugaWare integrating with a given AWS Account.
 
-![Configure AWS with Access and Secret keys](/images/ee/aws-setup/configure-aws-1.png)
-
-![Configure AWS using IAM role](/images/ee/aws-setup/configure-aws-4.png)
-
-![AWS Configuration in Progress](/images/ee/aws-setup/configure-aws-2.png)
-
-![AWS Configured Successfully](/images/ee/aws-setup/configure-aws-3.png)
-
 Now we are ready to create a YugabyteDB universe on AWS.

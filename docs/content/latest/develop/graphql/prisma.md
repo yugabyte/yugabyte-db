@@ -150,8 +150,6 @@ mutation {
 }
 ```
 
-![Create user Jane with three postings](/images/develop/graphql/prisma/create-user-jane.png)
-
 2. Create a user John with two postings.
 
 ```graphql
