@@ -1,11 +1,15 @@
-
-
-
-
-
-
-
-## Creating a JSON value from SQL values
+---
+title: JSON from SQL
+linktitle: Create a JSON value from SQL values
+summary: Concatenation: Create a JSON value from SQL values
+description: Concatenation: Create a JSON value from SQL values
+menu:
+  latest:
+    identifier: json-from-sql
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 | operator/function | description |
 | ---- | ---- |

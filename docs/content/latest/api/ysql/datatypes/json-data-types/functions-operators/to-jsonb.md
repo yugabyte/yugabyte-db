@@ -1,9 +1,15 @@
-
-
-
-
-
-### _to_jsonb()_ and _to_json()_
+---
+title: to_jsonb() and to_json()
+linktitle: to_jsonb() and to_json()
+summary: to_jsonb() and to_json()
+description: to_jsonb() and to_json()
+menu:
+  latest:
+    identifier: to-jsonb
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 Each takes a single value of any single SQL primitive or compound data type that allows a JSON representation. Here is the signature for the `jsonb` variant:
 

@@ -1,9 +1,15 @@
-
-
-
-
-
-## _jsonb_to_recordset()_ and _json_to_recordset()_
+---
+title: jsonb_to_recordset() and json_to_recordset()
+linktitle: jsonb_to_recordset() and json_to_recordset()
+summary: jsonb_to_recordset() and json_to_recordset()
+description: jsonb_to_recordset() and json_to_recordset()
+menu:
+  latest:
+    identifier: jsonb-to-recordset
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 Here is the signature for the `jsonb` variant:
 

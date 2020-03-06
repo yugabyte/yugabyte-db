@@ -1,9 +1,15 @@
-
-
-
-
-
-## _jsonb_object_keys()_ and _json_object_keys()_
+---
+title: jsonb_object_keys()
+linktitle: jsonb_object_keys()
+summary: jsonb_object_keys() and json_object_keys()
+description: jsonb_object_keys() and json_object_keys()
+menu:
+  latest:
+    identifier: jsonb-object-keys
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 Here is the signature for the `jsonb` variant:
 

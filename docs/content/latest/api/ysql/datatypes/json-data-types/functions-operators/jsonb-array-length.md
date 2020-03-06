@@ -1,7 +1,15 @@
-
-
-
-
+---
+title: Concatenation (`||`)
+linktitle: Concatenation (`||`)
+summary: Concatenation: the `||` operator
+description: Concatenation: the `||` operator
+menu:
+  latest:
+    identifier: to-jsonb
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 ### _jsonb_array_length()_ and _json_array_length()_
 

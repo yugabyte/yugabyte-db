@@ -1,10 +1,15 @@
-
-
-
-
-
-
-## Get a property of a JSON value
+---
+title: Get property of JSON value
+linktitle: Get property of JSON value
+summary: Get a property of a JSON value
+description: Get a property of a JSON value
+menu:
+  latest:
+    identifier: get-property
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 | operator/function | description |
 | ---- | ---- |

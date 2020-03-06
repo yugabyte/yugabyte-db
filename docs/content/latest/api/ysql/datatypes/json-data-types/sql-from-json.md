@@ -1,12 +1,15 @@
-
-
-
-
-
-
-
-
-## Creating a SQL value from a JSON value
+---
+title: SQL from JSON
+linktitle: SQL from JSON
+summary: SQL from JSON
+description: Create a SQL value from a JSON value
+menu:
+  latest:
+    identifier: sql-from-json
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 | operator/function | description |
 | ---- | ---- |

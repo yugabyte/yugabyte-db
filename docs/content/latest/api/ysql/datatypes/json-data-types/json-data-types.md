@@ -4,7 +4,7 @@ linktitle: JSON and JSONB
 summary: JSON and JSONB data types
 description: JSON and JSONB data types
 menu:
-  v2.0:
+  latest:
     identifier: type-json
     parent: datatypes
 isTocNested: true

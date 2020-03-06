@@ -1,9 +1,16 @@
+---
+title: Typecast operators
+linktitle: Typecast operators
+summary: JSON typecast operators
+description: Typecast operators, `::jsonb`, `::json` and `::text`
+menu:
+  latest:
+    identifier: typecast-operators
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
-
-
-
-
-## The typecast operators, `::jsonb`, `::json` and `::text`
 
 Consider this round trip:
 

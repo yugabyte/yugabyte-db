@@ -1,9 +1,15 @@
-
-
-
-
-
-### Concatenation: the `||` operator
+---
+title: Concatenation (`||`)
+linktitle: Concatenation (`||`)
+summary: Concatenation: the `||` operator
+description: Concatenation: the `||` operator
+menu:
+  latest:
+    identifier: to-jsonb
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 If both sides of the operator are primitive JSON values, then the result is an _array_ of these values:
 

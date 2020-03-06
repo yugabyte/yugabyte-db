@@ -1,13 +1,15 @@
-
-
-
-
-
-
-
-
-
-## Creating a JSON value from an existing JSON value
+---
+title: Create a JSON value from an existing JSON value
+linktitle: Create a JSON value from an existing JSON value
+summary: Create a JSON value from an existing JSON value
+description: Create a JSON value from an existing JSON value
+menu:
+  latest:
+    identifier: json-from-json
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 | operator/function | description |
 | ---- | ---- |

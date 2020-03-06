@@ -1,9 +1,17 @@
+---
+title: array_to_json()
+linktitle: array_to_json()
+summary: array_to_json()
+description: array_to_json()
+menu:
+  latest:
+    identifier: array-to-json
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
-
-
-## array_to_json()
-
-This has one variant that returns a `json` value. Here is the signature: 
+This has one variant that returns a `json` value. Here is the signature:
 
 ```
 input value        anyarray

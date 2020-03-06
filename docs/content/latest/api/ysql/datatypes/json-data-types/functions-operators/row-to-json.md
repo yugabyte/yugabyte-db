@@ -1,9 +1,15 @@
-
-
-
-
-
-## _row_to_json()_
+---
+title: row_to_json()
+linktitle: row_to_json()
+summary: row_to_json()
+description: row_to_json()
+menu:
+  latest:
+    identifier: row-to-json
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 This has one variant that returns a `json` value. Here is the signature:
 

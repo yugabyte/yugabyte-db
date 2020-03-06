@@ -1,16 +1,22 @@
-
-
-
-
-
-## Functions and operators by purpose
+---
+title: Functions and operators by purpose
+linktitle: Functions and operators by purpose
+summary: Functions and operators by purpose
+description: Functions and operators by purpose
+menu:
+  latest:
+    identifier: functions-operators
+    parent: functions-operators
+isTocNested: true
+showAsideToc: true
+---
 
 Four tables list the operators and functions by category, thus:
 
 - [Create a JSON value from SQL values](../json-from-json/)
 - [Create a JSON value from an existing JSON value](../json-from-json/)
 - [Create a SQL value from a JSON value](../sql-from-json/)
-- [Get a property of a JSON value]()
+- [Get a property of a JSON value](../get-property/)
 
 There are two trivial typecast operators for converting between a `text` value that conforms to RFC 7159 and a `jsonb` or `json` value, the ordinarily overloaded `=` operator,  12 dedicated JSON operators and 23 dedicated JSON functions.
 
