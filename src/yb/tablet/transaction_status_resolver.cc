@@ -43,6 +43,8 @@ class TransactionStatusResolver::Impl {
   }
 
   void Start(CoarseTimePoint deadline) {
+    LOG_WITH_PREFIX(INFO) << "Start, queues: " << queues_.size();
+
     deadline_ = deadline;
     run_latch_.Reset(1);
     Execute();
@@ -148,6 +150,7 @@ class TransactionStatusResolver::Impl {
       queue.pop_front();
     }
     if (queue.empty()) {
+      LOG_WITH_PREFIX(INFO) << "Processed queue for: " << it->first;
       queues_.erase(it);
     }
 
@@ -157,6 +160,7 @@ class TransactionStatusResolver::Impl {
   }
 
   void Complete(const Status& status) {
+    LOG_WITH_PREFIX(INFO) << "Complete: " << status;
     result_promise_.set_value(status);
     run_latch_.CountDown();
   }

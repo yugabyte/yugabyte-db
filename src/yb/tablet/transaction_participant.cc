@@ -719,6 +719,28 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return it != transactions_.end() ? (**it).replicated_batches() : OneWayBitmap();
   }
 
+  std::string DumpTransactions() {
+    std::string result;
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    result += Format(
+        "{ safe_time_for_participant: $0 remove_queue_size: $1 ",
+        participant_context_.SafeTimeForTransactionParticipant(), remove_queue_.size());
+    if (!remove_queue_.empty()) {
+      result += "remove_queue_front: " + AsString(remove_queue_.front());
+    }
+    if (!running_requests_.empty()) {
+      result += "running_requests_front: " + AsString(running_requests_.front());
+    }
+    result += "}\n";
+
+    for (const auto& txn : transactions_.get<StartTimeTag>()) {
+      result += txn->ToString();
+      result += "\n";
+    }
+    return result;
+  }
+
  private:
   class StartTimeTag;
 
@@ -930,6 +952,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     memset(&id, 0, sizeof(id));
     AppendTransactionKeyPrefix(id, &key_bytes);
     iterator->Seek(key_bytes.AsSlice());
+    size_t loaded_transactions = 0;
     while (iterator->Valid()) {
       auto key = iterator->key();
       if (key[0] != docdb::ValueTypeAsChar::kTransactionId) {
@@ -950,6 +973,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
           std::this_thread::sleep_for(FLAGS_inject_load_transaction_delay_ms * 1ms);
         }
         LoadTransaction(iterator, id, iterator->value(), &key_bytes);
+        ++loaded_transactions;
       }
       key_bytes.AppendValueType(docdb::ValueType::kMaxByte);
       iterator->Seek(key_bytes.AsSlice());
@@ -957,7 +981,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
     TryStartCheckLoadedTransactionsStatus(&started_, &all_loaded_);
     load_cond_.notify_all();
-    LOG_WITH_PREFIX(INFO) << __func__ << " done";
+    LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
   }
 
   // iterator - rocks db iterator, that should be used for write id resolution.
@@ -1228,6 +1252,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   struct RemoveQueueEntry {
     TransactionId id;
     HybridTime time;
+
+    std::string ToString() const {
+      return Format("{ id: $0 time: $1 }", id, time);
+    }
   };
 
   // Guarded by RunningTransactionContext::mutex_
@@ -1395,6 +1423,10 @@ void TransactionParticipant::StartShutdown() {
 
 void TransactionParticipant::CompleteShutdown() {
   impl_->CompleteShutdown();
+}
+
+std::string TransactionParticipant::DumpTransactions() const {
+  return impl_->DumpTransactions();
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {

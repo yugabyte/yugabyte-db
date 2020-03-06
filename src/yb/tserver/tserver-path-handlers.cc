@@ -146,6 +146,139 @@ using strings::Substitute;
 
 using namespace std::placeholders;  // NOLINT(build/namespaces)
 
+namespace {
+
+bool GetTabletID(const Webserver::WebRequest& req, string* id, std::stringstream *out) {
+  if (!FindCopy(req.parsed_args, "id", id)) {
+    // TODO: webserver should give a way to return a non-200 response code
+    (*out) << "Tablet missing 'id' argument";
+    return false;
+  }
+  return true;
+}
+
+bool GetTabletPeer(TabletServer* tserver, const Webserver::WebRequest& req,
+                   std::shared_ptr<TabletPeer>* peer, const string& tablet_id,
+                   std::stringstream *out) {
+  if (!tserver->tablet_manager()->LookupTablet(tablet_id, peer)) {
+    (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " not found";
+    return false;
+  }
+  return true;
+}
+
+bool TabletBootstrapping(const std::shared_ptr<TabletPeer>& peer, const string& tablet_id,
+                         std::stringstream* out) {
+  if (peer->state() == tablet::BOOTSTRAPPING) {
+    (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " is still bootstrapping";
+    return false;
+  }
+  return true;
+}
+
+// Returns true if the tablet_id was properly specified, the
+// tablet is found, and is in a non-bootstrapping state.
+bool LoadTablet(TabletServer* tserver,
+                const Webserver::WebRequest& req,
+                string* tablet_id, std::shared_ptr<TabletPeer>* peer,
+                std::stringstream* out) {
+  if (!GetTabletID(req, tablet_id, out)) return false;
+  if (!GetTabletPeer(tserver, req, peer, *tablet_id, out)) return false;
+  if (!TabletBootstrapping(*peer, *tablet_id, out)) return false;
+  return true;
+}
+
+void HandleTabletPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, std::stringstream* output) {
+  string table_name = peer->tablet_metadata()->table_name();
+
+  *output << "<h1>Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>\n";
+
+  // Output schema in tabular format.
+  *output << "<h2>Schema</h2>\n";
+  const Schema& schema = peer->tablet_metadata()->schema();
+  HtmlOutputSchemaTable(schema, output);
+
+  *output << "<h2>Other Tablet Info Pages</h2>" << endl;
+
+  // List of links to various tablet-specific info pages
+  *output << "<ul>";
+
+  std::initializer_list<std::array<const char*, 2>> entries = {
+      {"tablet-consensus-status", "Consensus Status"},
+      {"log-anchors", "Tablet Log Anchors"},
+      {"transactions", "Transactions"} };
+
+  auto encoded_tablet_id = UrlEncodeToString(tablet_id);
+  for (const auto& entry : entries) {
+    *output << Format("<li><a href=\"/$0?id=$2\">$1</a></li>\n",
+                      entry[0], entry[1], encoded_tablet_id);
+  }
+
+  // End list
+  *output << "</ul>\n";
+}
+
+void HandleLogAnchorsPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, std::stringstream* output) {
+  *output << "<h1>Log Anchors for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>"
+          << std::endl;
+
+  string dump = peer->log_anchor_registry()->DumpAnchorInfo();
+  *output << "<pre>" << EscapeForHtmlToString(dump) << "</pre>" << std::endl;
+}
+
+void HandleConsensusStatusPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, std::stringstream* output) {
+  shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
+  if (!consensus) {
+    *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
+    return;
+  }
+  consensus->DumpStatusHtml(*output);
+}
+
+void HandleTransactionsPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, std::stringstream* output) {
+  *output << "<h1>Transactions for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>"
+          << std::endl;
+
+  auto transaction_participant = peer->tablet()->transaction_participant();
+  if (transaction_participant) {
+    *output << "<pre>" << EscapeForHtmlToString(transaction_participant->DumpTransactions())
+            << "</pre>" << std::endl;
+    return;
+  }
+
+  auto transaction_coordinator = peer->tablet()->transaction_coordinator();
+  if (transaction_coordinator) {
+    *output << "<pre>" << EscapeForHtmlToString(transaction_coordinator->DumpTransactions())
+            << "</pre>" << std::endl;
+    return;
+  }
+
+  *output << "Tablet is non transactional";
+}
+
+template<class F>
+void RegisterTabletPathHandler(
+    Webserver* web_server, TabletServer* tserver, const std::string& path, const F& f) {
+  auto handler = [tserver, f](const Webserver::WebRequest& req, std::stringstream* output) {
+    string tablet_id;
+    tablet::TabletPeerPtr peer;
+    if (!LoadTablet(tserver, req, &tablet_id, &peer, output)) return;
+
+    f(tablet_id, peer, req, output);
+  };
+  web_server->RegisterPathHandler(path, "", handler, true /* styled */, false /* is_on_nav_bar */);
+}
+
+} // namespace
+
 TabletServerPathHandlers::~TabletServerPathHandlers() {
 }
 
@@ -156,24 +289,15 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/tablets", "Tablets", std::bind(&TabletServerPathHandlers::HandleTabletsPage, this, _1, _2),
       true /* styled */, true /* is_on_nav_bar */, "fa fa-server");
+  RegisterTabletPathHandler(server, tserver_, "/tablet", &HandleTabletPage);
   server->RegisterPathHandler(
-      "/tablet", "", std::bind(&TabletServerPathHandlers::HandleTabletPage, this, _1, _2),
-      true /* styled */, false /* is_on_nav_bar */);
-  server->RegisterPathHandler(
-      "/transactions", "",
-      std::bind(&TabletServerPathHandlers::HandleTransactionsPage, this, _1, _2), true /* styled */,
+      "/operations", "",
+      std::bind(&TabletServerPathHandlers::HandleOperationsPage, this, _1, _2), true /* styled */,
       false /* is_on_nav_bar */);
-  server->RegisterPathHandler(
-      "/tablet-rowsetlayout-svg", "",
-      std::bind(&TabletServerPathHandlers::HandleTabletSVGPage, this, _1, _2), true /* styled */,
-      false /* is_on_nav_bar */);
-  server->RegisterPathHandler(
-      "/tablet-consensus-status", "",
-      std::bind(&TabletServerPathHandlers::HandleConsensusStatusPage, this, _1, _2),
-      true /* styled */, false /* is_on_nav_bar */);
-  server->RegisterPathHandler(
-      "/log-anchors", "", std::bind(&TabletServerPathHandlers::HandleLogAnchorsPage, this, _1, _2),
-      true /* styled */, false /* is_on_nav_bar */);
+  RegisterTabletPathHandler(
+      server, tserver_, "/tablet-consensus-status", &HandleConsensusStatusPage);
+  RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
+  RegisterTabletPathHandler(server, tserver_, "/transactions", &HandleTransactionsPage);
   server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
@@ -186,8 +310,8 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   return Status::OK();
 }
 
-void TabletServerPathHandlers::HandleTransactionsPage(const Webserver::WebRequest& req,
-                                                      std::stringstream* output) {
+void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest& req,
+                                                    std::stringstream* output) {
   bool as_text = ContainsKey(req.parsed_args, "raw");
 
   vector<std::shared_ptr<TabletPeer> > peers;
@@ -448,127 +572,6 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
   }
   html << "</ul>\n";
   return html.str();
-}
-
-namespace {
-
-bool GetTabletID(const Webserver::WebRequest& req, string* id, std::stringstream *out) {
-  if (!FindCopy(req.parsed_args, "id", id)) {
-    // TODO: webserver should give a way to return a non-200 response code
-    (*out) << "Tablet missing 'id' argument";
-    return false;
-  }
-  return true;
-}
-
-bool GetTabletPeer(TabletServer* tserver, const Webserver::WebRequest& req,
-                   std::shared_ptr<TabletPeer>* peer, const string& tablet_id,
-                   std::stringstream *out) {
-  if (!tserver->tablet_manager()->LookupTablet(tablet_id, peer)) {
-    (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " not found";
-    return false;
-  }
-  return true;
-}
-
-bool TabletBootstrapping(const std::shared_ptr<TabletPeer>& peer, const string& tablet_id,
-                         std::stringstream* out) {
-  if (peer->state() == tablet::BOOTSTRAPPING) {
-    (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " is still bootstrapping";
-    return false;
-  }
-  return true;
-}
-
-// Returns true if the tablet_id was properly specified, the
-// tablet is found, and is in a non-bootstrapping state.
-bool LoadTablet(TabletServer* tserver,
-                const Webserver::WebRequest& req,
-                string* tablet_id, std::shared_ptr<TabletPeer>* peer,
-                std::stringstream* out) {
-  if (!GetTabletID(req, tablet_id, out)) return false;
-  if (!GetTabletPeer(tserver, req, peer, *tablet_id, out)) return false;
-  if (!TabletBootstrapping(*peer, *tablet_id, out)) return false;
-  return true;
-}
-
-}  // anonymous namespace
-
-void TabletServerPathHandlers::HandleTabletPage(const Webserver::WebRequest& req,
-                                                std::stringstream *output) {
-  string tablet_id;
-  std::shared_ptr<TabletPeer> peer;
-  if (!LoadTablet(tserver_, req, &tablet_id, &peer, output)) return;
-
-  string table_name = peer->tablet_metadata()->table_name();
-
-  *output << "<h1>Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>\n";
-
-  // Output schema in tabular format.
-  *output << "<h2>Schema</h2>\n";
-  const Schema& schema = peer->tablet_metadata()->schema();
-  HtmlOutputSchemaTable(schema, output);
-
-  *output << "<h2>Other Tablet Info Pages</h2>" << endl;
-
-  // List of links to various tablet-specific info pages
-  *output << "<ul>";
-
-  // Link to consensus status page.
-  *output << "<li>" << Substitute("<a href=\"/tablet-consensus-status?id=$0\">$1</a>",
-                                  UrlEncodeToString(tablet_id),
-                                  "Consensus Status")
-          << "</li>" << endl;
-
-  // Log anchors info page.
-  *output << "<li>" << Substitute("<a href=\"/log-anchors?id=$0\">$1</a>",
-                                  UrlEncodeToString(tablet_id),
-                                  "Tablet Log Anchors")
-          << "</li>" << endl;
-
-  // End list
-  *output << "</ul>\n";
-}
-
-void TabletServerPathHandlers::HandleTabletSVGPage(const Webserver::WebRequest& req,
-                                                   std::stringstream* output) {
-  string id;
-  std::shared_ptr<TabletPeer> peer;
-  if (!LoadTablet(tserver_, req, &id, &peer, output)) return;
-  auto tablet = peer->shared_tablet();
-  if (!tablet) {
-    *output << "Tablet " << EscapeForHtmlToString(id) << " not running";
-    return;
-  }
-
-  *output << "<h1>Rowset Layout Diagram for Tablet "
-          << TabletLink(id) << "</h1>\n";
-}
-
-void TabletServerPathHandlers::HandleLogAnchorsPage(const Webserver::WebRequest& req,
-                                                    std::stringstream* output) {
-  string tablet_id;
-  std::shared_ptr<TabletPeer> peer;
-  if (!LoadTablet(tserver_, req, &tablet_id, &peer, output)) return;
-
-  *output << "<h1>Log Anchors for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>"
-          << std::endl;
-
-  string dump = peer->log_anchor_registry()->DumpAnchorInfo();
-  *output << "<pre>" << EscapeForHtmlToString(dump) << "</pre>" << std::endl;
-}
-
-void TabletServerPathHandlers::HandleConsensusStatusPage(const Webserver::WebRequest& req,
-                                                         std::stringstream* output) {
-  string id;
-  std::shared_ptr<TabletPeer> peer;
-  if (!LoadTablet(tserver_, req, &id, &peer, output)) return;
-  shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-  if (!consensus) {
-    *output << "Tablet " << EscapeForHtmlToString(id) << " not running";
-    return;
-  }
-  consensus->DumpStatusHtml(*output);
 }
 
 void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest& req,

@@ -50,6 +50,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operation_order_verifier.h"
@@ -435,7 +436,7 @@ class TabletPeer : public consensus::ConsensusContext,
  private:
   HybridTime ReportReadRestart() override;
 
-  HybridTime HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
+  FixedHybridTimeLease HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
   HybridTime PropagatedSafeTime() override;
   void MajorityReplicated() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;

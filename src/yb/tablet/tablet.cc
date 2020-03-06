@@ -2394,10 +2394,10 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
 
 HybridTime Tablet::DoGetSafeTime(
     tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
-  HybridTime ht_lease;
   if (!require_lease) {
     return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
+  FixedHybridTimeLease ht_lease;
   if (require_lease && ht_lease_provider_) {
     // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
     // the resulting ht_lease is at least min_allowed.
@@ -2407,14 +2407,12 @@ HybridTime Tablet::DoGetSafeTime(
     }
     // This will block until a leader lease reaches the given value or a timeout occurs.
     ht_lease = ht_lease_provider_(min_allowed_lease, deadline);
-    if (!ht_lease) {
+    if (!ht_lease.lease.is_valid()) {
       // This could happen in case of timeout.
       return HybridTime::kInvalid;
     }
-  } else {
-    ht_lease = HybridTime::kMax;
   }
-  if (min_allowed > ht_lease) {
+  if (min_allowed > ht_lease.lease) {
     LOG_WITH_PREFIX(DFATAL)
         << "Read request hybrid time after leader lease: " << min_allowed << ", " << ht_lease;
     return HybridTime::kInvalid;
