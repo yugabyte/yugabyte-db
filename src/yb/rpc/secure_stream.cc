@@ -19,6 +19,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/rpc_util.h"
 
@@ -364,6 +365,7 @@ class SecureStream : public Stream, public StreamContext {
   size_t decrypted_bytes_to_skip_ = 0;
   SecureState state_ = SecureState::kInitial;
   bool need_connect_ = false;
+  bool connected_ = false;
   std::vector<OutboundDataPtr> pending_data_;
   std::vector<std::string> certificate_entries_;
 
@@ -384,6 +386,8 @@ void SecureStream::Close() {
 }
 
 void SecureStream::Shutdown(const Status& status) {
+  VLOG_WITH_PREFIX(1) << "SecureStream::Shutdown with status: " << status;
+
   for (auto& data : pending_data_) {
     if (data) {
       context_->Transferred(data, status);
@@ -447,7 +451,7 @@ bool SecureStream::Idle(std::string* reason) {
 }
 
 bool SecureStream::IsConnected() {
-  return lower_stream_->IsConnected();
+  return connected_;
 }
 
 void SecureStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) {
@@ -707,6 +711,7 @@ void SecureStream::Established(SecureState state) {
 
   state_ = state;
   ResetLogPrefix();
+  connected_ = true;
   context_->Connected();
   for (auto& data : pending_data_) {
     Send(std::move(data));
