@@ -250,6 +250,12 @@ public class NodeManager extends DevopsBase {
           subcommand.add(cert.certificate);
           subcommand.add("--rootCA_key");
           subcommand.add(cert.privateKey);
+          if (taskParam.enableClientToNodeEncrypt) {
+            subcommand.add("--client_cert");
+            subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+            subcommand.add("--client_key");
+            subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+          }
         }
         if (taskParam.callhomeLevel != null){
           extra_gflags.put("callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());

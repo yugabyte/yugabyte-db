@@ -58,7 +58,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     for (String cert: test_certs) {
-      test_certs_uuids.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs"));
+      test_certs_uuids.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs", true));
     }
   }
 
