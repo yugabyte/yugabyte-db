@@ -15,9 +15,7 @@ To install the driver in your Visual Studio project
 <ol>
   <li>Open your Project Solution View.</li>
   <li>Right-click on Packages and click Add Packages.</li>
-  ![Add Package](/images/develop/client-drivers/csharp/visual-studio-add-package.png)
   <li>Search for CassandraCSharpDriver and click Add Package.</li>
-  ![Search Package](/images/develop/client-drivers/csharp/visual-studio-search-cassandra-package.png)
 </ol>
 
 
