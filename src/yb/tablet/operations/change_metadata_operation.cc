@@ -217,7 +217,8 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
       RETURN_NOT_OK(tablet->RemoveTable(state()->request()->remove_table_id()));
       break;
     case MetadataChange::BACKFILL_DONE:
-      DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
       RETURN_NOT_OK(tablet->MarkBackfillDone(state()->request()->is_backfilling()));
       break;
   }
