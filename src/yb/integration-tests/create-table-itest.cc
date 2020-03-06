@@ -407,7 +407,7 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   wal_dir = JoinPathSegments(
       cluster_->data_root(), "ts-3", "yb-data", "tserver", "wals", "table-" + parent_table_id,
       "tablet-" + tablet_id);
-  ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(30), "Create data and wal directories"));
+  ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(100), "Create data and wal directories"));
 }
 
 }  // namespace yb
