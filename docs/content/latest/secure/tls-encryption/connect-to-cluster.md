@@ -19,16 +19,18 @@ To connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client-to-s
 
 ## Prerequisites
 
-Before you can enable and use server-to-server encryption, you need to create and configure server certificates for each node of your YugabyteDB cluster. For information, see [Create client certificates](../client-certificates).
+Before you can use client certificates to connect to your YugabyteDB clusters, server-to-server encryption and client-to-server encryption must be enabled. For details, see [Enable server-to-server encryption](../server-to-server/) and [Enable client-to-server encryption](../client-to-server).
 
-For each client that will connect to a YugabyteDB cluster, you need the following three files to be accessible on the client computer.
+Also, you need to create the required client certificates. For details, see [Create client certificates](../client-certificates).
 
-- `root.crt` — root certificate file
-  - To generate, see [Prepare root configuration file](../prepare-nodes/#generate-root-config)
-- `yugabytedb.crt` — private node certificate
-  - To generate, see [Generate private key for each node](../prepare-nodes/#generate-private-key-for-each-node)
-- `yugabytedb.key` — private node key
-  - To generate, see [Generate private key for each node](../prepare-nodes/#generate-private-key-for-each-node)
+Each client that connects to a YugabyteDB cluster needs the following files to be accessible on the client computer.
+
+- `ca.crt` — root certificate file (YSQL and YCQL)
+  - To generate, see [Generate the root certificate file](../server-certificates/#generate-the-root-certificate-file)
+- `yugabytedb.crt` — private node certificate (YSQL only)
+  - To generate, see [Generate client private key and certificate](../client-certificates/#generate-private-key-and-certificate)
+- `yugabytedb.key` — private node key (YSQL only)
+  - To generate, see [Generate client private key and certificate](../client-certificates/#generate-private-key-and-certificate)
 
 All three files should be available in the `~/.yugabytedb`, the default location for TLS certificates when running the YSQL shell (`ysqlsh`) locally.
 
@@ -127,21 +129,21 @@ system_schema  system_auth  system
 
 ### Remote cluster
 
-To connect to a remote YugabyteDB cluster, you need to have a local copy of `cqlsh` available. You can usse the `cqlsh` CLI available on a locally installed YugabyteDB.
+To connect to a remote YugabyteDB cluster, you need to have a local copy of `cqlsh` available. You can use the `cqlsh` CLI available on a locally installed YugabyteDB.
 
 To open the local `cqlsh` CLI and access the remote cluster, run `cqlsh` with configuration options set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-to-server encryption using TLS (successor to SSL).
 
 ```sh
-$ ./bin/cqlsh -h <node-ip-address> -p <port> --ssl
+$ ./bin/cqlsh <node-ip-address> <port> --ssl
 ```
 
 - *node-ip-address*: the IP address of the remote node.
 - *port*: the port of the remote node.
 
-For example, if the host is `127.0.0.2`, the port is `5433`, and the user is `yugabyte`, run the following command to connect:
+For example, if the host is `127.0.0.2`, the port is `9042`, and the user is `yugabyte`, run the following command to connect:
 
 ```sh
-$ ./bin/cqlsh -h 127.0.0.2 -p 5433 --ssl -U yugabyte
+$ ./bin/cqlsh 127.0.0.2 9042 --ssl
 ```
 
 You should see the following output:
