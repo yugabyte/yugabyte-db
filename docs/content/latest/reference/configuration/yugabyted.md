@@ -12,11 +12,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the `yugabyted` daemon, with its commands and options, to start a local cluster and explore a retail demo database. You can also use the YugabyteDB Admin Console. The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory. 
+`yugabyted` is a new database server that acts as a parent server across the [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) servers. Since its inception, YugabyteDB has relied on a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. yugabyted is the answer to this user need. It also adds a new UI similar to the Yugabyte Platform UI so that users can experience a richer data placement map and metrics dashboard.
+
+The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory. 
 
 {{< note title="Note" >}}
 
-`yugabyted` currently supports creating a 1-node cluster only. Ability to create multi-node clusters is under active development. 
+yugabyted currently supports creating a 1-node cluster only. Ability to create multi-node clusters is under active development. 
 
 - For local multi-node clusers, use [`yb-ctl`](../../../admin/yb-ctl). 
 
