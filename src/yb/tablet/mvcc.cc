@@ -220,7 +220,7 @@ void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
   cond_.notify_all();
 }
 
-void MvccManager::UpdatePropagatedSafeTimeOnLeader(HybridTime ht_lease) {
+void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& ht_lease) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht_lease << ")";
 
   {
@@ -260,7 +260,7 @@ HybridTime MvccManager::SafeTimeForFollower(
   if (leader_only_mode_) {
     // If there are no followers (RF == 1), use SafeTime()
     // because propagated_safe_time_ can be not updated.
-    return DoGetSafeTime(min_allowed, deadline, HybridTime::kMax, &lock);
+    return DoGetSafeTime(min_allowed, deadline, FixedHybridTimeLease(), &lock);
   }
 
   SafeTimeWithSource result;
@@ -268,8 +268,13 @@ HybridTime MvccManager::SafeTimeForFollower(
     // last_replicated_ is updated earlier than propagated_safe_time_, so because of concurrency it
     // could be greater than propagated_safe_time_.
     if (propagated_safe_time_ > last_replicated_) {
-      result.safe_time = propagated_safe_time_;
-      result.source = SafeTimeSource::kPropagated;
+      if (queue_.empty() || propagated_safe_time_ < queue_.front()) {
+        result.safe_time = propagated_safe_time_;
+        result.source = SafeTimeSource::kPropagated;
+      } else {
+        result.safe_time = queue_.front().Decremented();
+        result.source = SafeTimeSource::kNextInQueue;
+      }
     } else {
       result.safe_time = last_replicated_;
       result.source = SafeTimeSource::kLastReplicated;
@@ -293,29 +298,31 @@ HybridTime MvccManager::SafeTimeForFollower(
 
 HybridTime MvccManager::SafeTime(HybridTime min_allowed,
                                  CoarseTimePoint deadline,
-                                 HybridTime ht_lease) const {
+                                 const FixedHybridTimeLease& ht_lease) const {
   std::unique_lock<std::mutex> lock(mutex_);
   return DoGetSafeTime(min_allowed, deadline, ht_lease, &lock);
 }
 
 HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
                                       const CoarseTimePoint deadline,
-                                      const HybridTime ht_lease,
+                                      const FixedHybridTimeLease& ht_lease,
                                       std::unique_lock<std::mutex>* lock) const {
   DCHECK_ONLY_NOTNULL(lock);
-  CHECK(ht_lease.is_valid()) << LogPrefix();
-  CHECK_LE(min_allowed, ht_lease) << LogPrefix();
+  CHECK(ht_lease.lease.is_valid()) << LogPrefix();
+  CHECK_LE(min_allowed, ht_lease.lease) << LogPrefix();
 
-  const bool has_lease = ht_lease.GetPhysicalValueMicros() < kMaxHybridTimePhysicalMicros;
+  const bool has_lease = !ht_lease.empty();
   if (has_lease) {
-    max_ht_lease_seen_ = std::max(ht_lease, max_ht_lease_seen_);
+    max_ht_lease_seen_ = std::max(ht_lease.lease, max_ht_lease_seen_);
+    LOG_IF_WITH_PREFIX(DFATAL, !ht_lease.time.is_valid()) << "Bad ht lease: " << ht_lease;
   }
 
   HybridTime result;
   SafeTimeSource source = SafeTimeSource::kUnknown;
-  auto predicate = [this, &result, &source, min_allowed, has_lease] {
+  auto predicate = [this, &result, &source, min_allowed, time = ht_lease.time, has_lease] {
     if (queue_.empty()) {
-      result = clock_->Now();
+      result = time.is_valid() ? std::max(max_safe_time_returned_with_lease_.safe_time, time)
+                               : clock_->Now();
       source = SafeTimeSource::kNow;
       VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Now: " << result;
     } else {

@@ -142,6 +142,8 @@ class TransactionCoordinator {
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
 
+  std::string DumpTransactions();
+
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;
 

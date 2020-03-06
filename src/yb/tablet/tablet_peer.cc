@@ -293,23 +293,30 @@ Status TabletPeer::InitTabletPeer(const TabletPtr &tablet,
   return Status::OK();
 }
 
-HybridTime TabletPeer::HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline) {
+FixedHybridTimeLease TabletPeer::HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline) {
+  auto time = clock_->Now();
   MicrosTime lease_micros {
       consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
   if (!lease_micros) {
-    return HybridTime::kInvalid;
+    return {
+      .time = HybridTime::kInvalid,
+      .lease = HybridTime::kInvalid,
+    };
   }
   if (lease_micros >= kMaxHybridTimePhysicalMicros) {
     // This could happen when leader leases are disabled.
-    return HybridTime::kMax;
+    return FixedHybridTimeLease();
   }
-  return HybridTime(lease_micros, /* logical */ 0);
+  return {
+    .time = time,
+    .lease = HybridTime(lease_micros, /* logical */ 0)
+  };
 }
 
 HybridTime TabletPeer::PropagatedSafeTime() {
   // Get the current majority-replicated HT leader lease without any waiting.
   auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
-  if (!ht_lease) {
+  if (!ht_lease.lease) {
     return HybridTime::kInvalid;
   }
   return tablet_->mvcc_manager()->SafeTime(ht_lease);
@@ -317,7 +324,7 @@ HybridTime TabletPeer::PropagatedSafeTime() {
 
 void TabletPeer::MajorityReplicated() {
   auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
-  if (ht_lease) {
+  if (ht_lease.lease) {
     tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(ht_lease);
   }
 }
@@ -606,7 +613,8 @@ void TabletPeer::SubmitUpdateTransaction(
 }
 
 HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
-  return tablet_->mvcc_manager()->LastReplicatedHybridTime();
+  return tablet_->mvcc_manager()->SafeTimeForFollower(
+      /* min_allowed= */ HybridTime::kMin, /* deadline= */ CoarseTimePoint::min());
 }
 
 void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
