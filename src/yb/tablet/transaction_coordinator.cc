@@ -1119,9 +1119,19 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     return std::numeric_limits<int64_t>::max();
   }
 
-  // Returns logs prefix for this transaction.
+  // Returns logs prefix for this transaction coordinator.
   const std::string& LogPrefix() {
     return log_prefix_;
+  }
+
+  std::string DumpTransactions() {
+    std::string result;
+    std::lock_guard<std::mutex> lock(managed_mutex_);
+    for (const auto& txn : managed_transactions_) {
+      result += txn.ToString();
+      result += "\n";
+    }
+    return result;
   }
 
  private:
@@ -1385,6 +1395,10 @@ void TransactionCoordinator::Abort(const std::string& transaction_id,
                                    int64_t term,
                                    TransactionAbortCallback callback) {
   impl_->Abort(transaction_id, term, std::move(callback));
+}
+
+std::string TransactionCoordinator::DumpTransactions() {
+  return impl_->DumpTransactions();
 }
 
 std::string TransactionCoordinator::ReplicatedData::ToString() const {

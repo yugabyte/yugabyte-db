@@ -179,7 +179,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // until a hybrid time leader lease with at least the given microsecond component is acquired
   // (first argument), or a timeout occurs (second argument). HybridTime::kInvalid is returned
   // in case of a timeout.
-  using HybridTimeLeaseProvider = std::function<HybridTime(MicrosTime, CoarseTimePoint)>;
+  using HybridTimeLeaseProvider = std::function<FixedHybridTimeLease(MicrosTime, CoarseTimePoint)>;
   using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 
   // Create a new tablet.

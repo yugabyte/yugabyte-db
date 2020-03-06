@@ -147,7 +147,10 @@ void RunningTransaction::Abort(client::YBClient* client,
 }
 
 std::string RunningTransaction::ToString() const {
-  return metadata_.ToString();
+  return Format("{ metadata: $0 last_batch_data: $1 replicated_batches: $2 local_commit_time: $3 "
+                    "last_known_status: $4 last_known_status_hybrid_time: $5 }",
+                metadata_, last_batch_data_, replicated_batches_, local_commit_time_,
+                TransactionStatus_Name(last_known_status_), last_known_status_hybrid_time_);
 }
 
 void RunningTransaction::ScheduleRemoveIntents(const RunningTransactionPtr& shared_self) {

@@ -226,6 +226,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // - No transactions can be committed with commit time <= resolve_at from that point on..
   CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
 
+  std::string DumpTransactions() const;
+
   size_t TEST_GetNumRunningTransactions() const;
 
   // Returns pair of number of intents and number of transactions.
