@@ -56,14 +56,16 @@ While DELETE inserts a `delete marker` for each row  in transactions and they ar
 runs.
 
 ## JSONB datatype
-YugabyteDB has [`jsonb`](https://docs.yugabyte.com/latest/api/ycql/type_jsonb/) datatype which is similar to 
-Postgresql [`jsonb`](https://www.postgresql.org/docs/current/datatype-json.html) datatype. It is stored on disk in
-binary format making searching & retrieval faster.
+YugabyteDB has [`jsonb`](https://docs.yugabyte.com/latest/api/ycql/type_jsonb/) datatype that makes it easy to model 
+json data which does not have a set schema and might change often. 
+It is similar to Postgresql [`jsonb`](https://www.postgresql.org/docs/current/datatype-json.html) datatype. 
+You can use jsonb to group less interesting / lesser accessed columns of a table. 
+YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the json entries.
 
 ### Use jsonb columns only when necessary
 `jsonb` columns are slower to read/write compared to normal columns. 
 They also take more space because they need to store keys in strings and make keeping data consistency harder.
-A good schema design is to keep most columns as regular ones or collections only using `jsonb` for truly dynamic values. 
+A good schema design is to keep most columns as regular ones or collections, and only using `jsonb` for truly dynamic values. 
 Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
 primitive columns.
 

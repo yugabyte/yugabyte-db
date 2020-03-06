@@ -139,12 +139,27 @@ A good schema design is to keep most columns as regular ones and only using `jso
 Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
 primitive columns.
 
+## JSONB datatype
+YugabyteDB has [`jsonb`](../api/ysql/datatypes/type_json.md) datatype that makes it easy to model json data which does not have a set schema and might change often. 
+It is the same as Postgresql [`jsonb`](https://www.postgresql.org/docs/11/datatype-json.html) datatype.
+You can use jsonb to group less interesting / lesser accessed columns of a table. 
+YSQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the json entries.
+ 
+
+### Use jsonb columns only when necessary
+`jsonb` columns are slower to read/write compared to normal columns. 
+They also take more space because they need to store keys in strings and make keeping data consistency harder.
+A good schema design is to keep most columns as regular ones or collections, and only using `jsonb` for truly dynamic values. 
+Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
+primitive columns.
+
+
 ## Covering indexes
 When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the 
 index. This can result in multiple random reads across the main table and even network traffic if the main rows reside 
 in another yb-tserver.
 
-Sometimes a better way is to include the other columns that we're quering that aren't part of the index 
+Sometimes a better way is to include the other columns that we're querying that are not part of the index 
 using the [`INCLUDE`](../api/ysql/commands/ddl_create_index.md#include-clause) clause.  
 When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
