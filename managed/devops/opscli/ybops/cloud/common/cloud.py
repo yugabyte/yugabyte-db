@@ -44,6 +44,7 @@ class AbstractCloud(AbstractCommandParser):
     PUBLIC_EXPONENT = 65537
     CERT_VALID_DURATION = 365
     CERTS_TEMP_DIR = "/opt/yugaware/certs"
+    YSQLSH_CERT_DIR = "/home/yugabyte/.yugabytedb"
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
@@ -235,6 +236,19 @@ class AbstractCloud(AbstractCommandParser):
         remote_shell.put_file(os.path.join(common_path, cert_file),
                               os.path.join(certs_node_dir, cert_file))
         remote_shell.put_file(root_cert_path, os.path.join(certs_node_dir, 'ca.crt'))
+        remote_shell.run_command('chmod 400 {}/*'.format(certs_node_dir))
+
+        if "client_cert" in extra_vars:
+            client_cert_path = extra_vars["client_cert"]
+            client_key_path = extra_vars["client_key"]
+            remote_shell.run_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
+            remote_shell.put_file(root_cert_path, os.path.join(self.YSQLSH_CERT_DIR, 'root.crt'))
+            remote_shell.put_file(client_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
+                                                                 'yugabytedb.crt'))
+            remote_shell.put_file(client_key_path, os.path.join(self.YSQLSH_CERT_DIR,
+                                                                'yugabytedb.key'))
+            remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
+
         try:
             shutil.rmtree(common_path)
         except OSError as e:
@@ -242,8 +256,8 @@ class AbstractCloud(AbstractCommandParser):
 
     def create_encryption_at_rest_file(self, extra_vars, ssh_options):
         node_ip = ssh_options["ssh_host"]
-        encryption_key_path = extra_vars["encryption_key_file"] # Source file path
-        key_node_dir = extra_vars["encryption_key_dir"] # Target file path
+        encryption_key_path = extra_vars["encryption_key_file"]  # Source file path
+        key_node_dir = extra_vars["encryption_key_dir"]  # Target file path
         with open(encryption_key_path, "r") as f:
             encryption_key = f.read()
         key_file = os.path.basename(encryption_key_path)

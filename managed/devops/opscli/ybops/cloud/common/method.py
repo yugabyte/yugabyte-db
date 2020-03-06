@@ -415,8 +415,10 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--master_addresses_for_master')
         self.parser.add_argument('--rootCA_cert')
         self.parser.add_argument('--rootCA_key')
+        self.parser.add_argument('--client_key')
+        self.parser.add_argument('--client_cert')
         self.parser.add_argument('--cert_valid_duration', default=365)
-        self.parser.add_argument('--org_name', default="exmaple.com")
+        self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--certs_node_dir', default="yugabyte-tls-config")
         self.parser.add_argument('--encryption_key_source_file')
         self.parser.add_argument('--encryption_key_target_dir', default="yugabyte-encryption-files")
@@ -483,6 +485,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.rootCA_key is not None:
             self.extra_vars["rootCA_key"] = args.rootCA_key
 
+        if args.client_cert is not None:
+            self.extra_vars["client_cert"] = args.client_cert
+
+        if args.client_key is not None:
+            self.extra_vars["client_key"] = args.client_key
+
         host_info = None
         if args.search_pattern != 'localhost':
             host_info = self.cloud.get_host_info(args)
@@ -522,12 +530,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.cloud.generate_client_cert(self.extra_vars, ssh_options)
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
-            logging.info("Copying over encryption-at-rest certificate from {} to {}"
-                            .format(args.encryption_key_source_file, args.encryption_key_target_dir))
+            logging.info("Copying over encryption-at-rest certificate from {} to {}".format(
+                args.encryption_key_source_file, args.encryption_key_target_dir))
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
         self.cloud.setup_ansible(args).run("configure-{}.yml".format(args.type),
-            self.extra_vars, host_info)
+                                           self.extra_vars, host_info)
 
 
 class InitYSQLMethod(AbstractInstancesMethod):
