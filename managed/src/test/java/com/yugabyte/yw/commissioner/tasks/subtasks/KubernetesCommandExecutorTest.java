@@ -93,7 +93,10 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultAZ = AvailabilityZone.create(defaultRegion, "az-1", "PlacementAZ 1", "subnet-1");
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     defaultUniverse = updateUniverseDetails("small");
-    defaultCert = CertificateInfo.get(CertificateHelper.createRootCA(defaultUniverse.getUniverseDetails().nodePrefix, defaultProvider.customerUUID, "/tmp/certs"));
+    defaultCert = CertificateInfo.get(CertificateHelper.createRootCA(
+        defaultUniverse.getUniverseDetails().nodePrefix,
+        defaultProvider.customerUUID, "/tmp/certs",
+        true));
   }
 
   @After

@@ -12,12 +12,17 @@ import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
+import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
+
 import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,10 +32,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.math.BigInteger;
+import java.security.InvalidKeyException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.security.Security;
+import java.security.SignatureException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Base64;
@@ -47,7 +55,11 @@ public class CertificateHelper {
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateHelper.class);
 
-  public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
+  public static final String CLIENT_CERT = "client.crt";
+  public static final String CLIENT_KEY = "client.key";
+
+  public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath,
+                                  boolean generateClientCert) {
       try {
         Security.addProvider(new BouncyCastleProvider());
         KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
@@ -71,7 +83,8 @@ public class CertificateHelper {
           subject,
           keyPair.getPublic());
         BasicConstraints basicConstraints = new BasicConstraints(1);
-        KeyUsage keyUsage = new KeyUsage(KeyUsage.digitalSignature | KeyUsage.nonRepudiation | KeyUsage.keyEncipherment | KeyUsage.keyCertSign);
+        KeyUsage keyUsage = new KeyUsage(KeyUsage.digitalSignature | KeyUsage.nonRepudiation |
+                                         KeyUsage.keyEncipherment | KeyUsage.keyCertSign);
         certGen.addExtension(
           Extension.basicConstraints,
           true,
@@ -86,8 +99,10 @@ public class CertificateHelper {
         JcaX509CertificateConverter converter = new JcaX509CertificateConverter();
         converter.setProvider(new BouncyCastleProvider());
         X509Certificate x509 = converter.getCertificate(holder);
-        String certPath = String.format("%s/certs/%s/%s/ca.root.crt", storagePath, customerUUID.toString(), rootCA_UUID.toString());
-        String keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath, customerUUID.toString(), rootCA_UUID.toString());
+        String certPath = String.format("%s/certs/%s/%s/ca.root.crt", storagePath,
+            customerUUID.toString(), rootCA_UUID.toString());
+        String keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath,
+            customerUUID.toString(), rootCA_UUID.toString());
         File certfile = new File(certPath);
         certfile.getParentFile().mkdirs();
         File keyfile = new File(keyPath);
@@ -97,10 +112,57 @@ public class CertificateHelper {
         certWriter.flush();
         keyWriter.writeObject(keyPair.getPrivate());
         keyWriter.flush();
-        CertificateInfo cert = CertificateInfo.create(rootCA_UUID, customerUUID, nodePrefix, certStart, certExpiry, keyPath, certPath);
+        CertificateInfo cert = CertificateInfo.create(rootCA_UUID, customerUUID, nodePrefix,
+                                                      certStart, certExpiry, keyPath, certPath);
+
+        // Generate Client Certificates.
+        if (generateClientCert) {
+          X500Name clientCertSubject = new X500Name("CN=yugabyte");
+          BigInteger clientSerial = BigInteger.valueOf(System.currentTimeMillis());
+          KeyPair clientKeyPair = keypairGen.generateKeyPair();
+          PKCS10CertificationRequestBuilder p10Builder = new JcaPKCS10CertificationRequestBuilder(
+            clientCertSubject,
+            clientKeyPair.getPublic());
+          ContentSigner csrContentSigner = new JcaContentSignerBuilder("SHA256withRSA")
+            .build(keyPair.getPrivate());
+          PKCS10CertificationRequest csr = p10Builder.build(csrContentSigner);
+
+          X509v3CertificateBuilder clientCertBuilder = new X509v3CertificateBuilder(
+            subject, clientSerial, certStart, certExpiry,
+            csr.getSubject(), csr.getSubjectPublicKeyInfo());
+          JcaX509ExtensionUtils clientCertExtUtils = new JcaX509ExtensionUtils();
+          clientCertBuilder.addExtension(Extension.basicConstraints, true,
+                                         new BasicConstraints(false).toASN1Primitive());
+          clientCertBuilder.addExtension(Extension.authorityKeyIdentifier, false,
+                                         clientCertExtUtils.createAuthorityKeyIdentifier(x509));
+          clientCertBuilder.addExtension(Extension.subjectKeyIdentifier, false,
+              clientCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
+          clientCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
+
+          X509CertificateHolder clientCertHolder = clientCertBuilder.build(csrContentSigner);
+          X509Certificate clientCert  = new JcaX509CertificateConverter()
+            .setProvider(new BouncyCastleProvider())
+            .getCertificate(clientCertHolder);
+          String clientCertPath = String.format("%s/%s", certfile.getParentFile(), CLIENT_CERT);
+          String clientKeyPath = String.format("%s/%s", certfile.getParentFile(), CLIENT_KEY);
+          File clientCertfile = new File(clientCertPath);
+          File clientKeyfile = new File(clientKeyPath);
+          JcaPEMWriter clientCertWriter = new JcaPEMWriter(new FileWriter(clientCertfile));
+          JcaPEMWriter clientKeyWriter = new JcaPEMWriter(new FileWriter(clientKeyfile));
+          clientCertWriter.writeObject(clientCert);
+          clientCertWriter.flush();
+          clientKeyWriter.writeObject(clientKeyPair.getPrivate());
+          clientKeyWriter.flush();
+
+          clientCert.verify(x509.getPublicKey(), "BC");
+        }
+
+
         LOG.info("Created Root CA for {}.", nodePrefix);
         return cert.uuid;
-      } catch (NoSuchAlgorithmException | IOException | OperatorCreationException | CertificateException e) {
+      } catch (NoSuchAlgorithmException | IOException | OperatorCreationException |
+               CertificateException | InvalidKeyException | NoSuchProviderException |
+               SignatureException e) {
         LOG.error("Unable to create RootCA for universe " + nodePrefix, e);
         return null;
       }
@@ -155,5 +217,19 @@ public class CertificateHelper {
     String privateKeyPEM = FileUtils.readFileToString(new File(cert.privateKey));
     privateKeyPEM = Base64.getEncoder().encodeToString(privateKeyPEM.getBytes());
     return privateKeyPEM;
+  }
+
+  public static String getClientCertFile(UUID rootCA) {
+    CertificateInfo cert = CertificateInfo.get(rootCA);
+    File certFile = new File(cert.certificate);
+    String path = certFile.getParentFile().toString();
+    return String.format("%s/%s", path, CLIENT_CERT);
+  }
+
+  public static String getClientKeyFile(UUID rootCA) {
+    CertificateInfo cert = CertificateInfo.get(rootCA);
+    File certFile = new File(cert.certificate);
+    String path = certFile.getParentFile().toString();
+    return String.format("%s/%s", path, CLIENT_KEY);
   }
 }

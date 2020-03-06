@@ -337,6 +337,12 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add(cert.certificate);
             expectedCommand.add("--rootCA_key");
             expectedCommand.add(cert.privateKey);
+            if (configureParams.enableClientToNodeEncrypt) {
+              expectedCommand.add("--client_cert");
+              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add("--client_key");
+              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+            }
           }
           expectedCommand.add("--extra_gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
