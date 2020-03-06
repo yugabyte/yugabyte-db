@@ -51,6 +51,8 @@ hidePagination: true
 
 This Docker Quick Start is based on the new [`yugabyted`](../../../reference/configuration/yugabyted/) server currently in BETA. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
 
+Note that yugabyted currently supports creating a 1-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057). Meanwhile, use the [v2.0 docs](/v2.0/quick-start/install/docker/) if you need to create local multi-node clusters.
+
 {{< /note >}}
 
 ## 1. Create a local cluster
@@ -63,10 +65,13 @@ $ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042
  --daemon=false --ui=false
 ```
 
-As per the above docker run command, the data stored in YugabyteDB is not persistent across container restarts. If you would like to make YugabyteDB persist data across restarts then you have to add the following volume mount option to the above command.
+As per the above docker run command, the data stored in YugabyteDB is not persistent across container restarts. If you want to make YugabyteDB persist data across restarts then you have to add the volume mount option to the docker run command as shown below.
 
 ```sh
--v yb_data:/home/yugabyte/var
+docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
+ -v yb_data:/home/yugabyte/var\
+ yugabytedb/yugabyte:latest bin/yugabyted start\
+ --daemon=false --ui=false
 ```
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.

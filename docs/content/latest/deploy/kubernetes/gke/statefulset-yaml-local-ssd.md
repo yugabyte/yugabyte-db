@@ -24,13 +24,13 @@ showAsideToc: true
   <li >
     <a href="/latest/deploy/kubernetes/gke/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
-      StatefulSet YAML
+      YAML (Remote Disk)
     </a>
   </li>
    <li >
     <a href="/latest/deploy/kubernetes/gke/statefulset-yaml-local-ssd" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
-      StatefulSet YAML with Local SSD
+      YAML (Local Disk)
     </a>
   </li>
 </ul>
