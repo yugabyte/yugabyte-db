@@ -37,7 +37,7 @@ binary format making searching & retrieval faster.
 
 ## Consistent & global Secondary indexes
 Indexes use multi-shard transactional capability of YugabyteDB and are global and strongly consistent (ACID). 
-To add secondary indexes you need to create tables with transactions enabled. 
+To add secondary indexes you need to create tables with [transactions enabled](../api/ycql/ddl_create_table.md#table-properties-1). 
 They can also be used as materialized views by using the `INCLUDE` [clause](../../api/ycql/ddl_create_index#included-columns).
 
 ## Unique indexes
