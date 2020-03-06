@@ -49,6 +49,10 @@ CREATE UNIQUE INDEX ag_label_name_graph_index
 ON ag_label
 USING btree (name, graph);
 
+CREATE UNIQUE INDEX ag_label_graph_id_index
+ON ag_label
+USING btree (graph, id);
+
 --
 -- utility functions
 --

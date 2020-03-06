@@ -32,6 +32,13 @@
 #define ag_label_relation_id() ag_relation_id("ag_label", "table")
 #define ag_label_name_graph_index_id() \
     ag_relation_id("ag_label_name_graph_index", "index")
+#define ag_label_graph_id_index_id() \
+    ag_relation_id("ag_label_graph_id_index", "index")
+
+#define LABEL_ID_SEQ_NAME "_label_id_seq"
+#define LABEL_ID_MIN 1
+#define LABEL_ID_MAX PG_UINT16_MAX
+#define label_id_is_valid(id) (id >= LABEL_ID_MIN && id <= LABEL_ID_MAX)
 
 #define LABEL_KIND_VERTEX 'v'
 #define LABEL_KIND_EDGE 'e'
@@ -40,6 +47,7 @@ Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
                  char label_kind, Oid label_relation);
 
 Oid get_label_oid(const char *label_name, Oid label_graph);
+bool label_id_exists(Oid label_graph, int32 label_id);
 
 #define label_exists(label_name, label_graph) \
     OidIsValid(get_label_oid(label_name, label_graph))

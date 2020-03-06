@@ -14,37 +14,35 @@
  * limitations under the License.
  */
 
---
--- Initial setup
---
-
 LOAD 'agensgraph';
 SET search_path TO ag_catalog;
 
 --
--- create_graph() and drop_graph() tests.
+-- create_graph() and drop_graph() tests
 --
 
 SELECT create_graph('g');
-SELECT count(*) FROM ag_graph WHERE name = 'g';
-SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
+SELECT * FROM ag_graph WHERE name = 'g';
 
--- Create a temporary table to test drop_graph().
-CREATE TABLE g.tmp (i int);
+-- create a label to test drop_graph()
+SELECT * FROM cypher('g', $$CREATE (:v)$$) AS r(a agtype);
 
 SELECT drop_graph('g');
+-- FIXME: ag_label entries in the dropped graph needs to be deleted
+DELETE FROM ag_label WHERE graph = (SELECT oid FROM ag_graph WHERE name = 'g');
 SELECT drop_graph('g', true);
-SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
 SELECT count(*) FROM ag_graph WHERE name = 'g';
+SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
 
+-- invalid cases
 SELECT create_graph(NULL);
 SELECT drop_graph(NULL);
 
 --
--- alter_graph() RENAME function test.
+-- alter_graph() RENAME function tests
 --
 
--- Create 2 graphs for test.
+-- create 2 graphs for test.
 SELECT create_graph('GraphA');
 SELECT create_graph('GraphB');
 
@@ -88,5 +86,33 @@ SELECT alter_graph('GraphB', 'RENAME', NULL);
 SELECT alter_graph('GraphB', 'DUMMY', 'GraphA');
 
 --
--- End tests
+-- label id test
 --
+
+SELECT create_graph('g');
+
+-- label id starts from 1
+SELECT * FROM cypher('g', $$CREATE (:v1)$$) AS r(a agtype);
+SELECT name, id, kind, relation FROM ag_label;
+
+-- skip label id 2 to test the logic that gets an unused label id after cycle
+SELECT nextval('g._label_id_seq');
+
+-- label id is now 3
+SELECT * FROM cypher('g', $$CREATE (:v3)$$) as r(a agtype);
+SELECT name, id, kind, relation FROM ag_label;
+
+-- to use 65535 as the next label id, set label id to 65534
+SELECT setval('g._label_id_seq', 65534);
+
+-- label id is now 65535
+SELECT * FROM cypher('g', $$CREATE (:v65535)$$) as r(a agtype);
+SELECT name, id, kind, relation FROM ag_label;
+
+-- after cycle, label id is now 2
+SELECT * FROM cypher('g', $$CREATE (:v2)$$) as r(a agtype);
+SELECT name, id, kind, relation FROM ag_label;
+
+-- FIXME: ag_label entries in the dropped graph needs to be deleted
+DELETE FROM ag_label WHERE graph = (SELECT oid FROM ag_graph WHERE name = 'g');
+SELECT drop_graph('g', true);

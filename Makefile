@@ -54,7 +54,7 @@ DATA = agensgraph--0.0.0.sql
 REGRESS = scan \
           graphid \
           agtype \
-          commands \
+          catalog \
           cypher \
           expr \
           cypher_create \

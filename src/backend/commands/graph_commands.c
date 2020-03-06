@@ -28,9 +28,7 @@
 #include "nodes/value.h"
 
 #include "catalog/ag_graph.h"
-#include "utils/graphid.h"
-
-#define LABEL_ID_SEQ_NAME "_label_id_seq"
+#include "catalog/ag_label.h"
 
 static Oid create_schema_for_graph(const Name graph_name);
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade);
@@ -84,7 +82,7 @@ static Oid create_schema_for_graph(const Name graph_name)
      * CREATE SCHEMA `graph_name`
      *   CREATE SEQUENCE `LABEL_ID_SEQ_NAME`
      *     AS integer
-     *     MAXVALUE `GRAPHID_LABEL_ID_MAX`
+     *     MAXVALUE `LABEL_ID_MAX`
      *     CYCLE
      *
      * The sequence will be used to assign a unique id to a label in the graph.
@@ -103,8 +101,7 @@ static Oid create_schema_for_graph(const Name graph_name)
     integer = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"),
                                                   makeString("int4")));
     data_type = makeDefElem("as", (Node *)integer, -1);
-    maxvalue = makeDefElem("maxvalue",
-                           (Node *)makeInteger(GRAPHID_LABEL_ID_MAX), -1);
+    maxvalue = makeDefElem("maxvalue", (Node *)makeInteger(LABEL_ID_MAX), -1);
     cycle = makeDefElem("cycle", (Node *)makeInteger(true), -1);
     seq_stmt->options = list_make3(data_type, maxvalue, cycle);
     seq_stmt->ownerId = InvalidOid;

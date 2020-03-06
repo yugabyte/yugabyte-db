@@ -32,8 +32,6 @@ typedef int64 graphid;
 #define AG_GETARG_GRAPHID(a) DATUM_GET_GRAPHID(PG_GETARG_DATUM(a))
 #define AG_RETURN_GRAPHID(x) return GRAPHID_GET_DATUM(x)
 
-#define GRAPHID_LABEL_ID_MAX PG_UINT16_MAX
-
 // OID of graphid and _graphid
 #define GRAPHIDOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("graphid"), \

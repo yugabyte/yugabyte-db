@@ -41,6 +41,9 @@ Oid insert_graph(const Name graph_name, const Oid nsp_id)
     HeapTuple tuple;
     Oid graph_oid;
 
+    AssertArg(graph_name);
+    AssertArg(OidIsValid(nsp_id));
+
     values[Anum_ag_graph_name - 1] = NameGetDatum(graph_name);
     nulls[Anum_ag_graph_name - 1] = false;
 
@@ -142,13 +145,9 @@ void update_graph_name(const Name graph_name, const Name new_name)
 
 Oid get_graph_oid(const char *graph_name)
 {
-    NameData graph_name_key;
     graph_cache_data *cache_data;
 
-    AssertArg(graph_name);
-    namestrcpy(&graph_name_key, graph_name);
-
-    cache_data = search_graph_name_cache(&graph_name_key);
+    cache_data = search_graph_name_cache(graph_name);
     if (cache_data)
         return cache_data->oid;
     else
@@ -157,13 +156,9 @@ Oid get_graph_oid(const char *graph_name)
 
 Oid get_graph_namespace(const char *graph_name)
 {
-    NameData graph_name_key;
     graph_cache_data *cache_data;
 
-    AssertArg(graph_name);
-    namestrcpy(&graph_name_key, graph_name);
-
-    cache_data = search_graph_name_cache(&graph_name_key);
+    cache_data = search_graph_name_cache(graph_name);
     if (!cache_data)
     {
         ereport(ERROR, (errcode(ERRCODE_UNDEFINED_SCHEMA),
