@@ -429,14 +429,17 @@ void TryRunLsof(const Endpoint& addr, vector<string>* log) {
   // Little inline bash script prints the full ancestry of any pid listening
   // on the same port as 'addr'. We could use 'pstree -s', but that option
   // doesn't exist on el6.
+  //
+  // Note the sed command to check for the process name wrapped in ().
+  // Example prefix of /proc/$pid/stat output, with a process with spaces in the name:
+  // 3917 (tmux: server) S 1
   string cmd = strings::Substitute(
       "export PATH=$$PATH:/usr/sbin ; "
       "lsof -n -i 'TCP:$0' -sTCP:LISTEN ; "
       "for pid in $$(lsof -F p -n -i 'TCP:$0' -sTCP:LISTEN | cut -f 2 -dp) ; do"
       "  while [ $$pid -gt 1 ] ; do"
       "    ps h -fp $$pid ;"
-      "    stat=($$(</proc/$$pid/stat)) ;"
-      "    pid=$${stat[3]} ;"
+      "    pid=$$(sed 's/.* (.*) [^ ] \\([0-9]*\\).*/\\1/g' /proc/$$pid/stat);"
       "  done ; "
       "done",
       addr.port());
