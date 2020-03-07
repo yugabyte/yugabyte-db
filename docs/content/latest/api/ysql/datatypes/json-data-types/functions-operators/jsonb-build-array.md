@@ -1,20 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_build_array()
+linktitle: jsonb_build_array()
+summary: jsonb_build_array() and json_build_array()
+description: jsonb_build_array() and json_build_array()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-build-array
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-### _jsonb_build_array()_ and _json_build_array()_
 
 Here is the signature for the `jsonb` variant:
 

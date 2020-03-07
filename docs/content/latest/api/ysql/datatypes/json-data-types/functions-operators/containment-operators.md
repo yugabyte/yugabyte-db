@@ -1,11 +1,11 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
+title: Containment: the `@>` and `<@` operators
+linktitle: Containment: the `@>` and `<@` operators
 summary: Concatenation: the `||` operator
 description: Concatenation: the `||` operator
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: containment-operators
     parent: functions-operators
 isTocNested: true
 showAsideToc: true

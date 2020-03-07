@@ -1,20 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: Existence of keys: the `?`, `?|`, and `?&` operators
+linktitle: Existence of keys: the `?`, `?|`, and `?&` operators
+summary: Existence of keys: the `?`, `?|`, and `?&` operators
+description: Existence of keys: the `?`, `?|`, and `?&` operators
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: key-existence-operators
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-## Existence of keys: the `?`, `?|`, and `?&` operators
 
 These operators require that inputs are presented as `jsonb` value. They don't have overloads for `json`. The first variant allows a single `text` value to be provided. The second and third variants allow a list of `text` values to be provided. The second is the _or_ (any) flavor and the third is the _and_ (all) flavor.
 

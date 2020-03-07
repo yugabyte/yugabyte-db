@@ -1,20 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_object()
+linktitle: jsonb_object()
+summary: jsonb_object() and json_object()
+description: jsonb_object() and json_object()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-object
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-## _jsonb_object()_ and _json_object()_
 
 Here is the signature for the `jsonb` variant:
 

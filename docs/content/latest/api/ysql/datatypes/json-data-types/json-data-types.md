@@ -109,7 +109,7 @@ An _object_ is a set of key-value pairs separated by _commas_ and surrounded by 
 
 Keys are case-sensitive and whitespace within such keys is significant. They can even contain characters that must be escaped. However, if a key does include spaces and special characters, the syntax that you need to read its value becomes rather complex. It would seem to be sensible, therefore, to avoid exploiting this freedom.
 
-An object_ can include more than one key-value pair with the same key. This is not recommended, but the outcome is well-defined: the last-mentioned key-value pair, in left-to-right order, in the set of key-value pairs with the same key "wins". You can test this by reading the value for a specified key with an operator like `->`.
+An object can include more than one key-value pair with the same key. This is not recommended, but the outcome is well-defined: the last-mentioned key-value pair, in left-to-right order, in the set of key-value pairs with the same key "wins". You can test this by reading the value for a specified key with an operator like `->`.
 
 ## _Array_
 
@@ -119,7 +119,7 @@ An _array_ is an ordered list of unnamed JSON values  — in other words, the or
 '[1, 2, "Abc", true, false, null, {"x": 17, "y": 42}]'::jsonb
 ```
 
-The values in an _array_ are indexed from `0`. See the account of the `->` operator.
+The values in an array are indexed from `0`. See the account of the `->` operator.
 
 ## Example compound JSON value
 
@@ -138,14 +138,22 @@ The values in an _array_ are indexed from `0`. See the account of the `->` opera
 
 This is a JSON _object_ with eight fields. The first seven are primitive _string_ or _number_ values (one of which conventionally represents a date) and the eighth is an array of two primitive _string_ values. The text representations of the phone numbers follow a convention by starting with + and  (presumably) a country code. JSON has no mechanisms for defining such conventions and for enforcing conformance.
 
-_Note:_ the section _"Creating indexes and check constraints on `json` and `jsonb` columns"_, shows how these limitations can be ameliorated when a JSON document is stored in a column in a SQL table.
+{{< note title="Note" >}}
+
+To see how these limitations can be ameliorated when a JSON document is stored in a column in a SQL table, see [Create indexes and check constraints on `json` and `jsonb` columns](../create-indexes-constraints/).
+
+{{< /note >}}
 
 In general, the top-level JSON document is an arbitrarily deep and wide hierarchy of subdocuments whose leaves are primitive values.
 
 Notably, and in contrast to XML, JSON is not self-describing. Moreover, JSON does not support comments. But the intention is that the syntax should be reasonably intuitively obvious and human-readable.
 
-It is the responsibility of the consumers of JSON documents to discover the composition rules of any corpus that they have to deal with by _ad hoc_ methods—at best external documentation and at worst human (or mechanical) inspection.
+It is the responsibility of the consumers of JSON documents to discover the composition rules of any corpus that they have to deal with by _ad hoc_ methods — at best external documentation and at worst human (or mechanical) inspection.
 
 Most programming languages have data types that correspond directly to JSON's primitive data types and to its compound _object_ and _array_ data types.
 
-Because YSQL manipulates a JSON document as the value of a `json` or `jsonb` table-row intersection or PL/pgSQL variable, the terms "`json` [sub]value" or "`jsonb` [sub]value" (and JSON value as the superclass) are preferred from now on in this section—using "value" rather than "document".
+{{< note title="Note" >}}
+
+Because YSQL manipulates a JSON document as the value of a `json` or `jsonb` table-row intersection or PL/pgSQL variable, the terms "`json` [sub]value" or "`jsonb` [sub]value" (and JSON value as the superclass) are preferred from now on in this section — using "value" rather than "document".
+
+{{< /note >}}

@@ -1,20 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_pretty()
+linktitle: jsonb_pretty()
+summary: jsonb_pretty()
+description: jsonb_pretty()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-pretty
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-## _jsonb_pretty()_
 
 This function formats the text representation of the JSON value that the input `jsonb` actual argument represents, using whitespace to make it maximally easily human readable.
 

@@ -1,20 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
+title: Equality: the `=` operator
+linktitle: Equality: the `=` operator
 summary: Concatenation: the `||` operator
 description: Concatenation: the `||` operator
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: equality-operator
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-## Equality: the `=` operator
 
 This operator requires that the inputs are presented as `jsonb` values. It doesn't have an overload for `json`.
 

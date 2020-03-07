@@ -5,7 +5,7 @@ summary: Concatenation: the `||` operator
 description: Concatenation: the `||` operator
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: concatentation-operator
     parent: functions-operators
 isTocNested: true
 showAsideToc: true

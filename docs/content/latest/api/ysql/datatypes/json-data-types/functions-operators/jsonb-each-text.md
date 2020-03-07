@@ -1,23 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_each_text()
+linktitle: jsonb_each_text()
+summary: jsonb_each_text() and json_each_text()
+description: jsonb_each_text() and json_each_text()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-each-text
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-
-
-
-## _jsonb_each_text()_ and _json_each_text()_
 
 Here is the signature for the `jsonb` variant:
 

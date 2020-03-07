@@ -1,6 +1,6 @@
 ---
-title: jsonb_to_recordset() and json_to_recordset()
-linktitle: jsonb_to_recordset() and json_to_recordset()
+title: jsonb_to_recordset()
+linktitle: jsonb_to_recordset()
 summary: jsonb_to_recordset() and json_to_recordset()
 description: jsonb_to_recordset() and json_to_recordset()
 menu:

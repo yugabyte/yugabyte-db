@@ -1,20 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_populate_record()
+linktitle: jsonb_populate_record()
+summary: jsonb_populate_record() and json_populate_record()
+description: jsonb_populate_record() and json_populate_record()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-populate-record
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-### _jsonb_populate_record_ and _json_populate_record_
 
 Here is the signature for the `jsonb` variant:
 

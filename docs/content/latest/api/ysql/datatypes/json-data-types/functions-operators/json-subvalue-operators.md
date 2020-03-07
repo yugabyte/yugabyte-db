@@ -1,11 +1,11 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: Operators for reading JSON subvalues
+linktitle: Operators for reading JSON subvalues
+summary: Operators for reading JSON subvalues
+description: Operators for reading JSON subvalues
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: json-subvalue-operators
     parent: functions-operators
 isTocNested: true
 showAsideToc: true

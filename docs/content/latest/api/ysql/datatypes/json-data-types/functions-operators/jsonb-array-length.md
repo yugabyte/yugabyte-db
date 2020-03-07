@@ -1,17 +1,16 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_array_length() and json_array_length()
+linktitle: jsonb_array_length() and json_array_length()
+summary: jsonb_array_length() and json_array_length()
+description: jsonb_array_length() and json_array_length()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-array-length
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
 
-### _jsonb_array_length()_ and _json_array_length()_
 
 The functions in this pair require that the supplied JSON value is an _array_. Here is the signature for the `jsonb` variant:
 

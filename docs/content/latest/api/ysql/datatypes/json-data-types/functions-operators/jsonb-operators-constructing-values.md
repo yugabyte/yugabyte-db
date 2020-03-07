@@ -1,28 +1,23 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: Operators for constructing jsonb value
+linktitle: Operators for constructing jsonb value
+summary: Operators for constructing jsonb value
+description: Operators for constructing jsonb value
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-value-operators
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
 
-
-
-
-## Operators for constructing _jsonb_ values
-
 These operators require that the inputs are presented as `jsonb` values. They don't have overloads for `json`.
 
-### Remove single key-value pair from an _object_ or a single value from an _array_: the `-` operator
+## Remove single key-value pair from an _object_ or a single value from an _array_: the `-` operator
 
 Notice that, for all the operators whose behavior is described by using the term "remove", this is a convenient shorthand. The actual effect of these operators is to create a _new_ `jsonb` value from the `jsonb` value on the left of the operator according to the rule that the operator implements, parameterized by the SQL value on the right of the operator.
 
-#### Remove key-value pair(s) from an _object_
+### Remove key-value pair(s) from an _object_
 
 To remove a single key-value pair:
 
@@ -56,7 +51,7 @@ end;
 $body$;
 ```
 
-#### Remove single value from an _array_
+### Remove single value from an _array_
 
 Thus:
 
@@ -96,7 +91,7 @@ end;
 $body$;
 ```
 
-### Remove a single key-value pair from an _object_ or a single value from an _array_ at the specified path: `#-`
+## Remove a single key-value pair from an _object_ or a single value from an _array_ at the specified path: `#-`
 
 Thus:
 
@@ -116,7 +111,7 @@ $body$;
 
 Just as with the `#>` and `#>>` operators, array index values are presented as convertible `text` values. Notice that the address of each JSON array element along the path is specified JSON-style, where the index starts at zero.
 
-#### Semantics when _json_in_ is an _object_
+### Semantics when _json_in_ is an _object_
 
 An _object_ is a set of key-value pairs where each key is unique and the order is undefined and insignificant. (As explained earlier, when a JSON manifest constant is parsed, or when two JSON values are concatenated, and if a key is repeated, then the last-mentioned in left-to-right order wins.) The functionality is sufficiently illustrated by a `json_in` value that has just primitive values. The result of each function invocation is the same.
 
@@ -161,7 +156,7 @@ cannot replace existing key
 Try using the function jsonb_set to replace key value.
 ```
 
-And this `DO` block quitely succeeds, both when it's invoked with `create_if_missing=>false` and when it's invoked with `create_if_missing=>true`.
+And this `DO` block quietly succeeds, both when it's invoked with `create_if_missing=>false` and when it's invoked with `create_if_missing=>true`.
 
 ```postgresql
 do $body$
@@ -186,7 +181,7 @@ end;
 $body$;
 ```
 
-#### Semantics when _json_in_ is an _array_
+### Semantics when _json_in_ is an _array_
 
 An _array_ is a list of index-addressable values — in other words, the order is undefined and insignificant. Again, the functionality is sufficiently illustrated by a `json_in` value that has just primitive values. Now the result of `jsonb_set()` differs from that of `jsonb_insert()`. 
 

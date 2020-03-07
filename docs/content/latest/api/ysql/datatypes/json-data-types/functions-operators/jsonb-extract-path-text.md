@@ -1,20 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_extract_path_text()
+linktitle: jsonb_extract_path_text()
+summary: jsonb_extract_path_text() and json_extract_path_text()
+description: jsonb_extract_path_text() and json_extract_path_text()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-extract-path-text
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-## _jsonb_extract_path_text()_ and _json_extract_path_text()_
 
 Here is the signature for the `jsonb` variant:
 

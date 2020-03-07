@@ -1,20 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_to_record()
+linktitle: jsonb_to_record()
+summary: jsonb_to_record() and json_to_record()
+description: jsonb_to_record() and json_to_record()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-to-record
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-## _jsonb_to_record()_ and _json_to_record()_
 
 Here is the signature for the `jsonb` variant:
 

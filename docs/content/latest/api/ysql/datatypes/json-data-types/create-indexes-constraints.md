@@ -1,8 +1,8 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: Indexes and check constraints
+linktitle: Indexes and check constraints
+summary: Create indexes and check constraints on JSON columns
+description: Create indexes and check constraints on JSON columns
 menu:
   latest:
     identifier: to-jsonb
@@ -10,11 +10,6 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-## Creating indexes and check constraints on JSON columns
 
 Often, when JSON documents are inserted into a table, the table will have just the columns `k` (as a self-populating surrogate primary key) and `v` of data type `jsonb`. This choice allows the use of a broader range of operators and functions, and allows these to execute more efficiently, then when a `json` column is used.
 
@@ -73,7 +68,7 @@ You will almost certainly want to retrieve documents, not simply by providing th
 
 For example, a probable query will be "Show me the books whose hire publication year is between  and whose phone number list includes a _US_ number with area code _415_.
 
-Of course, then, you will want these queries to be supported by indexes. (The alternative – a table scan over a huge corpus where each document is analyzed on the fly to evaluate the selection predicates—is simply unworkabåle.)
+Of course, then, you will want these queries to be supported by indexes. (The alternative – a table scan over a huge corpus where each document is analyzed on the fly to evaluate the selection predicates is simply unworkabåle.)
 
 ### Indexes on _jsonb_ columns
 

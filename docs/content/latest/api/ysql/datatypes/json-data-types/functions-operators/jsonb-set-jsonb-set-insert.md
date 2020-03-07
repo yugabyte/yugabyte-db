@@ -1,21 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_set() and jsonb_insert()
+linktitle: jsonb_set() and jsonb_insert()
+summary: jsonb_set() and jsonb_insert()
+description: jsonb_set() and jsonb_insert()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-set-jsonb-insert
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-
-## _jsonb_set()_ and _jsonb_insert()_
 
 These two functions require a `jsonb` input. There are no variants for plain `json`.
 

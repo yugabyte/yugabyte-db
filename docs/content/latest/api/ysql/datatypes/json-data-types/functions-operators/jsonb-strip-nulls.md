@@ -1,21 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_strip_nulls()
+linktitle: jsonb_strip_nulls()
+summary: jsonb_strip_nulls() and json_strip_nulls()
+description: jsonb_strip_nulls() and json_strip_nulls()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-strip-nulls
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-
-## _jsonb_strip_nulls()_ and _json_strip_nulls()_
 
 Here is the signature for the `jsonb` variant:
 

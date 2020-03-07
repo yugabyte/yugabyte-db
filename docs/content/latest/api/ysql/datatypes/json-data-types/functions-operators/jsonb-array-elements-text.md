@@ -1,21 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_array_elements_text() and json_array_elements_text()
+linktitle: jsonb_array_elements_text() and json_array_elements_text()
+summary: jsonb_array_elements_text() and json_array_elements_text()
+description: jsonb_array_elements_text() and json_array_elements_text()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-array-elements-text
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-
-## _jsonb_array_elements_text()_ and _json_array_elements_text()_
 
 Here is the signature for the `jsonb` variant:
 

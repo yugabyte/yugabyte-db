@@ -1,21 +1,15 @@
 ---
-title: Concatenation (`||`)
-linktitle: Concatenation (`||`)
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: jsonb_typeof()
+linktitle: jsonb_typeof()
+summary: Concatenation: jsonb_typeof() and json_typeof()
+description: jsonb_typeof() and json_typeof()
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: jsonb-typeof
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
 ---
-
-
-
-
-
-### _jsonb_typeof()_ and _json_typeof()_
 
 These functions return the type of the JSON value as a SQL `text` value. Here is the signature for the `jsonb` variant:
 
