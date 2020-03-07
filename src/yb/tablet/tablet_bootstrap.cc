@@ -932,7 +932,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     // TODO: could be more granular here and log during the segments as well, plus give info about
     // number of MB processed, but this is better than nothing.
     auto status = Format(
-        "Bootstrap replayed $0/$1 log segments. Stats: $2. Pending: $3 replicates. "
+        "Bootstrap replayed $0/$1 log segments. $2. Pending: $3 replicates. "
             "Last read committed op id: $4",
         (iter - segments.begin()) + 1, segments.size(), stats_,
         state.pending_replicates.size(), read_result.committed_op_id);
@@ -1190,12 +1190,8 @@ void TabletBootstrap::CleanupSnapshots() {
 //  Class TabletBootstrap::Stats.
 // ============================================================================
 string TabletBootstrap::Stats::ToString() const {
-  return Substitute("ops{read=$0 overwritten=$1} "
-                    "inserts{seen=$2 ignored=$3} "
-                    "mutations{seen=$4 ignored=$5}",
-                    ops_read, ops_overwritten,
-                    inserts_seen, inserts_ignored,
-                    mutations_seen, mutations_ignored);
+  return Format("Read operations: $0, overwritten operations: $1",
+                ops_read, ops_overwritten);
 }
 
 } // namespace tablet

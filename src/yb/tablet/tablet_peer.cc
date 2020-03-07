@@ -742,12 +742,15 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
   }
 }
 
-Result<int64_t> TabletPeer::GetEarliestNeededLogIndex() const {
+Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
   auto latest_log_entry_op_id = log_->GetLatestEntryOpId();
   int64_t min_index = latest_log_entry_op_id.index;
+  if (details) {
+    *details += Format("Latest log entry op id: $0\n", latest_log_entry_op_id);
+  }
 
   // If we never have written to the log, no need to proceed.
   if (min_index == 0) {
@@ -763,24 +766,38 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex() const {
       DCHECK(s.IsNotFound()) << "Unexpected error calling LogAnchorRegistry: " << s.ToString();
     } else {
       min_index = std::min(min_index, min_anchor_index);
+      if (details) {
+        *details += Format("Min anchor index: $0\n", min_anchor_index);
+      }
     }
   }
 
   // Next, interrogate the OperationTracker.
+  int64_t min_pending_op_index = std::numeric_limits<int64_t>::max();
   for (const auto& driver : operation_tracker_.GetPendingOperations()) {
     auto tx_op_id = driver->GetOpId();
     // A operation which doesn't have an opid hasn't been submitted for replication yet and
     // thus has no need to anchor the log.
     if (tx_op_id != yb::OpId::Invalid()) {
-      min_index = std::min(min_index, tx_op_id.index);
+      min_pending_op_index = std::min(min_pending_op_index, tx_op_id.index);
     }
   }
 
-  min_index = std::min(min_index, consensus_->MinRetryableRequestOpId().index);
+  min_index = std::min(min_index, min_pending_op_index);
+  if (details && min_pending_op_index != std::numeric_limits<int64_t>::max()) {
+    *details += Format("Min pending op id index: $0\n", min_pending_op_index);
+  }
+
+  auto min_retryable_request_op_id = consensus_->MinRetryableRequestOpId();
+  min_index = std::min(min_index, min_retryable_request_op_id.index);
+  if (details) {
+    *details += Format("Min retryable request op id: $0\n", min_retryable_request_op_id);
+  }
 
   auto* transaction_coordinator = tablet()->transaction_coordinator();
   if (transaction_coordinator) {
-    min_index = std::min(min_index, transaction_coordinator->PrepareGC());
+    auto transaction_coordinator_min_op_index = transaction_coordinator->PrepareGC(details);
+    min_index = std::min(min_index, transaction_coordinator_min_op_index);
   }
 
   // We keep at least one committed operation in the log so that we can always recover safe time
@@ -802,7 +819,11 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex() const {
   // - New data gets written and Raft-committed, but not yet flushed to an SSTable.
   // - We still don't garbage-collect the logs containing the committed but unflushed data,
   //   because the earlier value of the last committed op id that we read prevents us from doing so.
-  min_index = std::min(min_index, consensus()->GetLastCommittedOpId().index);
+  auto last_committed_op_id = consensus()->GetLastCommittedOpId();
+  min_index = std::min(min_index, last_committed_op_id.index);
+  if (details) {
+    *details += Format("Last committed op id: $0\n", last_committed_op_id);
+  }
 
   if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     tablet_->FlushIntentsDbIfNecessary(latest_log_entry_op_id);
@@ -810,10 +831,20 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex() const {
         tablet_->MaxPersistentOpId(true /* invalid_if_no_new_data */));
     if (max_persistent_op_id.regular.valid()) {
       min_index = std::min(min_index, max_persistent_op_id.regular.index);
+      if (details) {
+        *details += Format("Max persistent regular op id: $0\n", max_persistent_op_id.regular);
+      }
     }
     if (max_persistent_op_id.intents.valid()) {
       min_index = std::min(min_index, max_persistent_op_id.intents.index);
+      if (details) {
+        *details += Format("Max persistent intents op id: $0\n", max_persistent_op_id.intents);
+      }
     }
+  }
+
+  if (details) {
+    *details += Format("Earliest needed log index: $0\n", min_index);
   }
 
   return min_index;
