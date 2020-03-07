@@ -16,10 +16,12 @@
 #define YB_UTIL_MAIN_UTIL_H
 
 #include <cstdlib>
+#include <iostream>
 
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
-#include "yb/util/env.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/path_util.h"
 
@@ -29,17 +31,26 @@ namespace yb {
 #define LOG_AND_RETURN_FROM_MAIN_NOT_OK(status) do { \
     auto&& _status = (status); \
     if (!_status.ok()) { \
-      LogOrPrintStatus(_status); \
+      if (IsLoggingInitialized()) { \
+        LOG(FATAL) << ToStatus(_status); \
+      } else { \
+        std::cerr << ToStatus(_status) << std::endl; \
+      } \
       return EXIT_FAILURE; \
     } \
   } while (false)
 
-// Log the given status.
-void LogOrPrintStatus(const Status& status);
 
+// Given a status, return a copy of it.
+// For use in the above macro, so it works with both Status and Result.
+Status ToStatus(const Status& status) {
+  return status;
+}
+
+// Generic template to extract status from a result, to be used in the above macro.
 template<class T>
-void LogOrPrintStatus(const Result<T>& result) {
-  LogOrPrintStatus(result.status());
+Status ToStatus(const Result<T>& result) {
+  return result.status();
 }
 
 } // namespace yb

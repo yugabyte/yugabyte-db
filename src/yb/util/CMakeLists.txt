@@ -186,7 +186,6 @@ set(UTIL_SRCS
   kernel_stack_watchdog.cc
   locks.cc
   logging.cc
-  main_util.cc
   malloc.cc
   math_util.cc
   mem_tracker.cc
