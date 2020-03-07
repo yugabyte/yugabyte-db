@@ -228,6 +228,15 @@ void HandleLogAnchorsPage(
 
   string dump = peer->log_anchor_registry()->DumpAnchorInfo();
   *output << "<pre>" << EscapeForHtmlToString(dump) << "</pre>" << std::endl;
+  std::string retain_op_id_details;
+  auto result = peer->GetEarliestNeededLogIndex(&retain_op_id_details);
+  *output << "<pre>";
+  if (result.ok()) {
+    *output << EscapeForHtmlToString(retain_op_id_details);
+  } else {
+    *output << EscapeForHtmlToString(result.status().ToString());
+  }
+  *output << "</pre>" << std::endl;
 }
 
 void HandleConsensusStatusPage(

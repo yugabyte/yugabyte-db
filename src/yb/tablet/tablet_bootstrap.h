@@ -172,26 +172,13 @@ class TabletBootstrap {
 
   // Statistics on the replay of entries in the log.
   struct Stats {
-    Stats()
-      : ops_read(0),
-        ops_overwritten(0),
-        inserts_seen(0),
-        inserts_ignored(0),
-        mutations_seen(0),
-        mutations_ignored(0) {
-    }
-
     std::string ToString() const;
 
     // Number of REPLICATE messages read from the log
-    int ops_read;
+    int ops_read = 0;
 
     // Number of REPLICATE messages which were overwritten by later entries.
-    int ops_overwritten;
-
-    // Number inserts/mutations seen and ignored.
-    int inserts_seen, inserts_ignored;
-    int mutations_seen, mutations_ignored;
+    int ops_overwritten = 0;
   } stats_;
 
   HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;

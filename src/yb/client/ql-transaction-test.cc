@@ -1747,5 +1747,15 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
   thread_holder.Stop();
 }
 
+TEST_F(QLTransactionTest, DeleteTableDuringWrite) {
+  DisableApplyingIntents();
+  ASSERT_NO_FATALS(WriteData());
+  ASSERT_OK(client_->DeleteTable(table_.table()->id()));
+  SetIgnoreApplyingProbability(0.0);
+  ASSERT_OK(WaitFor([this] {
+    return !HasTransactions();
+  }, 10s * kTimeMultiplier, "Cleanup transactions from coordinator"));
+}
+
 } // namespace client
 } // namespace yb
