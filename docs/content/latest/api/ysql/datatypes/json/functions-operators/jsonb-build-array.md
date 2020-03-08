@@ -1,12 +1,13 @@
 ---
-title: jsonb_build_array()
-linkTitle: jsonb_build_array()
-summary: jsonb_build_array() and json_build_array()
-description: jsonb_build_array() and json_build_array()
+title: jsonb_build_array 
+linkTitle: jsonb_build_array 
+summary: jsonb_build_array  and json_build_array 
+description: jsonb_build_array  and json_build_array 
 menu:
   latest:
     identifier: jsonb-build-array
     parent: functions-operators
+    weight: 90
 isTocNested: true
 showAsideToc: true
 ---

@@ -1,12 +1,13 @@
 ---
-title: jsonb_each_text()
-linkTitle: jsonb_each_text()
-summary: jsonb_each_text() and json_each_text()
-description: jsonb_each_text() and json_each_text()
+title: jsonb_each_text 
+linkTitle: jsonb_each_text 
+summary: jsonb_each_text  and json_each_text 
+description: jsonb_each_text  and json_each_text 
 menu:
   latest:
     identifier: jsonb-each-text
     parent: functions-operators
+    weight: 120
 isTocNested: true
 showAsideToc: true
 ---

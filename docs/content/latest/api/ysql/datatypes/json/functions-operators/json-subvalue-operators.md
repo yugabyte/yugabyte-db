@@ -7,6 +7,7 @@ menu:
   latest:
     identifier: json-subvalue-operators
     parent: functions-operators
+    weight: 50
 isTocNested: true
 showAsideToc: true
 ---

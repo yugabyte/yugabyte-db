@@ -7,6 +7,7 @@ menu:
   latest:
     identifier: jsonb-operators-constructing-values
     parent: functions-operators
+    weight: 170
 isTocNested: true
 showAsideToc: true
 ---

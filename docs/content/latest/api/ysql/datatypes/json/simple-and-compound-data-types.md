@@ -1,11 +1,11 @@
 ---
-title: JSON and JSONB data types
-linkTitle: JSON and JSONB
-summary: JSON and JSONB data types
-description: JSON and JSONB data types
+title: Simple and compound data types
+linkTitle: Simple and compound data types
+summary: Simple and compound data types
+description: Simple and compound JSON data types
 menu:
   latest:
-    identifier: json-data-types
+    identifier: simple-and-compound-data-types
     parent: json
 isTocNested: true
 showAsideToc: true

@@ -1,7 +1,7 @@
 ---
 title: Typecast operators
 linkTitle: Typecast operators
-summary: Typecast operators - `::jsonb`, `::json` and `::text`
+summary: Typecast operators
 description: Typecast operators - `::jsonb`, `::json` and `::text`
 menu:
   latest:

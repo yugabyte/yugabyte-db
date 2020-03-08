@@ -1,12 +1,13 @@
 ---
-title: row_to_json()
-linkTitle: row_to_json()
-summary: row_to_json()
-description: row_to_json()
+title: row_to_json 
+linkTitle: row_to_json 
+summary: row_to_json 
+description: row_to_json 
 menu:
   latest:
     identifier: row-to-json
     parent: functions-operators
+    weight: 270
 isTocNested: true
 showAsideToc: true
 ---

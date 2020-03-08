@@ -1,12 +1,13 @@
 ---
-title: jsonb_pretty()
-linkTitle: jsonb_pretty()
-summary: jsonb_pretty()
-description: jsonb_pretty()
+title: jsonb_pretty 
+linkTitle: jsonb_pretty 
+summary: jsonb_pretty 
+description: jsonb_pretty 
 menu:
   latest:
     identifier: jsonb-pretty
     parent: functions-operators
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---

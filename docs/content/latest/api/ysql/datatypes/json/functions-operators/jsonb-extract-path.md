@@ -1,12 +1,13 @@
 ---
-title: jsonb_extract_path()
-linkTitle: jsonb_extract_path()
-summary: jsonb_extract_path() and json_extract_path()
-description: jsonb_extract_path() and json_extract_path()
+title: jsonb_extract_path 
+linkTitle: jsonb_extract_path 
+summary: jsonb_extract_path  and json_extract_path 
+description: jsonb_extract_path  and json_extract_path 
 menu:
   latest:
     identifier: jsonb-extract-path
     parent: functions-operators
+    weight: 130
 isTocNested: true
 showAsideToc: true
 ---

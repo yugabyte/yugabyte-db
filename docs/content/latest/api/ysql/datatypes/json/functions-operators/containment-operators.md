@@ -1,12 +1,13 @@
 ---
 title: Containment
-linkTitle: Containment - the `@>` and `<@` operators
-summary: Containment - the `@>` and `<@` operators
-description: Containment - the `@>` and `<@` operators
+linkTitle: Containment
+summary: Containment
+description: Containment
 menu:
   latest:
     identifier: containment-operators
     parent: functions-operators
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

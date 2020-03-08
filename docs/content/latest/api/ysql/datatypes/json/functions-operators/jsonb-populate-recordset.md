@@ -1,12 +1,13 @@
 ---
-title: jsonb_populate_recordset()
-linkTitle: jsonb_populate_recordset()
-summary: jsonb_populate_recordset() and json_populate_recordset()
-description: jsonb_populate_recordset()
+title: jsonb_populate_recordset 
+linkTitle: jsonb_populate_recordset 
+summary: jsonb_populate_recordset  and json_populate_recordset 
+description: jsonb_populate_recordset 
 menu:
   latest:
     identifier: jsonb-populate-recordset
     parent: functions-operators
+    weight: 190
 isTocNested: true
 showAsideToc: true
 ---

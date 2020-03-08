@@ -1,11 +1,11 @@
 ---
-title: Functions and operators by purpose
-linkTitle: Functions and operators by purpose
-summary: Functions and operators by purpose
-description: Functions and operators by purpose
+title: Functions and operators
+linkTitle: Functions and operators
+summary: Functions and operators
+description: Functions and operators
 menu:
   latest:
-    identifier: functions-operators-by-purpose
+    identifier: functions-operators
     parent: json
 isTocNested: true
 showAsideToc: true
@@ -13,10 +13,10 @@ showAsideToc: true
 
 Four tables categorize the functions and operators by purpose:
 
-- [Create a JSON value from SQL values](../json-from-json/)
-- [Create a JSON value from an existing JSON value](../json-from-json/)
-- [Create a SQL value from a JSON value](../sql-from-json/)
-- [Get a property of a JSON value](../get-property/)
+- [Create a JSON value from SQL values](#create-a-json-value-from-sql-values/)
+- [Create a JSON value from an existing JSON value](#create-a-json-value-from-an-existing-json-value/)
+- [Create a SQL value from a JSON value](#create-a-sql-value-from-a-json-value/)
+- [Get a property of a JSON value](#get-a-property-of-a-json-value/)
 
 There are two trivial typecast operators for converting between a `text` value that conforms to RFC 7159 and a `jsonb` or `json` value, the ordinarily overloaded `=` operator, 12 dedicated JSON operators and 23 dedicated JSON functions.
 
@@ -90,7 +90,7 @@ The fact that a JSON array can have subvalues of mixed data type but a SQL array
 | Function or operator | Description |
 | ---- | ---- |
 | `::jsonb` | Typecasts SQL `text` value that conforms to RFC 7159 to a `jsonb` value. |
-| [`to_jsonb()`](./functions-operators/to-jsonb/) | Converts a single SQL value into a semantically equivalent JSON value. The SQL value can be an arbitrary tree. The intermediate nodes are either `record` (which corresponds to a JSON _object_) or `array` (which corresponds to a JSON _array_). And the terminal nodes a primitive `text`, `numeric`, `boolean`, or `null` (which correspond, respectively, to JSON _string_, _number_, _boolean_, and _null_). In the general case, the result is a JSON _object_ or JSON _array_. In the degenerate case (where the input is a primitive SQL value) the result is the corresponding primitive JSON value. |
+| [`to_jsonb()`](../functions-operators/to-jsonb/) | Converts a single SQL value into a semantically equivalent JSON value. The SQL value can be an arbitrary tree. The intermediate nodes are either `record` (which corresponds to a JSON _object_) or `array` (which corresponds to a JSON _array_). And the terminal nodes a primitive `text`, `numeric`, `boolean`, or `null` (which correspond, respectively, to JSON _string_, _number_, _boolean_, and _null_). In the general case, the result is a JSON _object_ or JSON _array_. In the degenerate case (where the input is a primitive SQL value) the result is the corresponding primitive JSON value. |
 | [`row_to_json()`](../row-to-json/) | A special case of `to_json` that requires that the input is a SQL `record`. The result is a JSON _object_. It has no practical advantage over `to_jsonb()`. |
 | [`array_to_json()`](../array-to-json/) | A special case of `to_json` that requires that the input is a SQL `array`. The result is a JSON _object_. It has no practical advantage over `to_jsonb()`. |
 | [`jsonb_build_array()`](../jsonb-build-array/) | Variadic function that takes an arbitrary number of actual arguments of mixed SQL data types and produce a JSON _array_. Valuable because the values in a JSON _array_  can each have a different data type from the others, but the values in a SQL `array` must all have the same data type. |

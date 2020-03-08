@@ -1,12 +1,13 @@
 ---
-title: jsonb_array_length() and json_array_length()
-linkTitle: jsonb_array_length() and json_array_length()
-summary: jsonb_array_length() and json_array_length()
-description: jsonb_array_length() and json_array_length()
+title: jsonb_array_length and json_array_length
+linkTitle: jsonb_array_length and json_array_length
+summary: jsonb_array_length and json_array_length
+description: jsonb_array_length and json_array_length
 menu:
   latest:
     identifier: jsonb-array-length
     parent: functions-operators
+    weight: 80
 isTocNested: true
 showAsideToc: true
 ---

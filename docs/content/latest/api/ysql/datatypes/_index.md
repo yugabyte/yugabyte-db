@@ -5,8 +5,8 @@ summary: YSQL data type overview and specification.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
-    identifier: api-ysql-datatypes
-    parent: api-ysql
+    identifier: datatypes
+    parent: ysql
     weight: 4200
 aliases:
   - /latest/api/ysql/datatypes/

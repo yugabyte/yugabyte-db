@@ -1,12 +1,13 @@
 ---
-title: array_to_json()
-linkTitle: array_to_json()
-summary: array_to_json()
-description: array_to_json()
+title: array_to_json
+linkTitle: array_to_json
+summary: 
+description: array_to_json
 menu:
   latest:
     identifier: array-to-json
     parent: functions-operators
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---

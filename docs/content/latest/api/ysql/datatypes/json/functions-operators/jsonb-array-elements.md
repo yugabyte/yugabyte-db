@@ -1,12 +1,13 @@
 ---
-title: jsonb_array_elements()_ and _json_array_elements()
-linkTitle: jsonb_array_elements()_ and _json_array_elements()
-summary: jsonb_array_elements()_ and _json_array_elements()
-description: jsonb_array_elements()_ and _json_array_elements()
+title: jsonb_array_elements() and json_array_elements()
+linkTitle: jsonb_array_elements() and json_array_elements()
+summary: jsonb_array_elements() and json_array_elements()
+description: jsonb_array_elements() and json_array_elements()
 menu:
   latest:
     identifier: jsonb-array-elements
     parent: functions-operators
+    weight: 60
 isTocNested: true
 showAsideToc: true
 ---

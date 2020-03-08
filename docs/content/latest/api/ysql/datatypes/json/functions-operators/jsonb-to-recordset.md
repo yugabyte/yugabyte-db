@@ -1,12 +1,13 @@
 ---
-title: jsonb_to_recordset()
-linkTitle: jsonb_to_recordset()
-summary: jsonb_to_recordset() and json_to_recordset()
-description: jsonb_to_recordset() and json_to_recordset()
+title: jsonb_to_recordset 
+linkTitle: jsonb_to_recordset 
+summary: jsonb_to_recordset  and json_to_recordset 
+description: jsonb_to_recordset  and json_to_recordset 
 menu:
   latest:
     identifier: jsonb-to-recordset
     parent: functions-operators
+    weight: 240
 isTocNested: true
 showAsideToc: true
 ---

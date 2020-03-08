@@ -1,12 +1,13 @@
 ---
-title: jsonb_to_record()
-linkTitle: jsonb_to_record()
-summary: jsonb_to_record() and json_to_record()
-description: jsonb_to_record() and json_to_record()
+title: jsonb_to_record 
+linkTitle: jsonb_to_record 
+summary: jsonb_to_record  and json_to_record 
+description: jsonb_to_record  and json_to_record 
 menu:
   latest:
     identifier: jsonb-to-record
     parent: functions-operators
+    weight: 230
 isTocNested: true
 showAsideToc: true
 ---

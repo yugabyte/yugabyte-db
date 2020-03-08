@@ -1,12 +1,13 @@
 ---
-title: jsonb_object()
-linkTitle: jsonb_object()
-summary: jsonb_object() and json_object()
-description: jsonb_object() and json_object()
+title: jsonb_object 
+linkTitle: jsonb_object 
+summary: jsonb_object  and json_object 
+description: jsonb_object  and json_object 
 menu:
   latest:
     identifier: jsonb-object
     parent: functions-operators
+    weight: 150
 isTocNested: true
 showAsideToc: true
 ---

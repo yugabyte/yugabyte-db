@@ -4,8 +4,9 @@ linkTitle: Concatenation
 description: Concatenation
 menu:
   latest:
-    identifier: concatentation-operator
+    identifier: concatenation-operator
     parent: functions-operators
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---

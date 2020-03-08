@@ -1,12 +1,13 @@
 ---
 title: Equality
-linkTitle: Equality - the `=` operator
+linkTitle: Equality
 summary: Equality - the `=` operator
 description: Equality - the `=` operator
 menu:
   latest:
     identifier: equality-operator
     parent: functions-operators
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

@@ -1,12 +1,13 @@
 ---
-title: jsonb_strip_nulls()
-linkTitle: jsonb_strip_nulls()
-summary: jsonb_strip_nulls() and json_strip_nulls()
-description: jsonb_strip_nulls() and json_strip_nulls()
+title: jsonb_strip_nulls 
+linkTitle: jsonb_strip_nulls 
+summary: jsonb_strip_nulls  and json_strip_nulls 
+description: jsonb_strip_nulls  and json_strip_nulls 
 menu:
   latest:
     identifier: jsonb-strip-nulls
     parent: functions-operators
+    weight: 220
 isTocNested: true
 showAsideToc: true
 ---

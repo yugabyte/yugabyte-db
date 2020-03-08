@@ -1,12 +1,13 @@
 ---
-title: jsonb_object_keys()
-linkTitle: jsonb_object_keys()
-summary: jsonb_object_keys() and json_object_keys()
-description: jsonb_object_keys() and json_object_keys()
+title: jsonb_object_keys 
+linkTitle: jsonb_object_keys 
+summary: jsonb_object_keys  and json_object_keys 
+description: jsonb_object_keys  and json_object_keys 
 menu:
   latest:
     identifier: jsonb-object-keys
     parent: functions-operators
+    weight: 160
 isTocNested: true
 showAsideToc: true
 ---

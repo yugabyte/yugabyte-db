@@ -27,6 +27,6 @@ type_specification ::= { `JSON` | `JSONB` }
 
 The remainder of the account of JSON data types and functionality is organized thus:
 
-- [JSON data types](../json-data-types)
-- [Functions and operators by purpose](../json-data-types/functions-operators-by-purpose/)
-- [Create indexes and check constraints on `json` and `jsonb` columns](../json-data-types/create-indexes-checck-constraints/)
+- [JSON simple and compound data types](../json/simple-and-compound-data-types/)
+- [Functions and operators](../json/functions-operators/)
+- [Create indexes and check constraints on `json` and `jsonb` columns](../json/create-indexes-checck-constraints/)

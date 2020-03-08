@@ -1,12 +1,13 @@
 ---
-title: jsonb_typeof()
-linkTitle: jsonb_typeof()
-summary: jsonb_typeof() and json_typeof()
-description: jsonb_typeof() and json_typeof()
+title: jsonb_typeof
+linkTitle: jsonb_typeof
+summary: jsonb_typeof and json_typeof
+description: jsonb_typeof and json_typeof
 menu:
   latest:
     identifier: jsonb-typeof
     parent: functions-operators
+    weight: 250
 isTocNested: true
 showAsideToc: true
 ---
