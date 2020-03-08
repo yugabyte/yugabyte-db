@@ -37,12 +37,12 @@ Check the full account of each to find its variant status. When an operator or f
 
 To avoid clutter in the tables, only the `jsonb` variants of the function names are mentioned except where only a `json` variant exists.
 
-##### Note about the code examples 
+## Note about the code examples
 
 The functionality of each operator and function is illustrated by a code example of this form:
 
 ```
-[operator or function]
+[function or operator]
   acts on
 [argument (list)]
   to produce
@@ -74,7 +74,7 @@ For these reasons, each code example is presented as a `DO` block with this patt
 - The expected output is declared as a value of the same data type.
 - An `assert` is used to show that the produced value is equal to the expected value, using an `is null` comparison where appropriate.
 
-##### Note about SQL array manifest constants
+## Note about SQL array manifest constants
 
 RFC 7159 defines the syntax for a JSON _array_ as a comma-separated list of items surrounded by `[]` and  the syntax for a JSON _object_ as a comma-separated list of key-value pairs surrounded by `{}`. SQL defines one form for an array manifest constant as a `text` value with an inner syntax: the value starts with `{` and ends with `}` and contains a comma-separated list whose items are not themselves quoted but are all taken to be values of the array's data type. So this SQL manifest constant:
 
@@ -92,9 +92,9 @@ This dramatic context-sensitive difference in meaning of `'{...}'` might confuse
 
 The fact that a JSON array can have subvalues of mixed data type but a SQL array can have only elements of the same data type means that special steps have to be taken when the goal is to construct a JSON array mixed subvalue data type from SQL values.
 
-### Create a JSON value from SQL values
+## Create a JSON value from SQL values
 
-| operator/function | description |
+| Function or operator | Description |
 | ---- | ---- |
 | `::jsonb` | Typecasts SQL `text` value that conforms to RFC 7159 to a `jsonb` value. |
 | [`to_jsonb()`](./functions-operators/to-jsonb/) | Converts a single SQL value into a semantically equivalent JSON value. The SQL value can be an arbitrary tree. The intermediate nodes are either `record` (which corresponds to a JSON _object_) or `array` (which corresponds to a JSON _array_). And the terminal nodes a primitive `text`, `numeric`, `boolean`, or `null` (which correspond, respectively, to JSON _string_, _number_, _boolean_, and _null_). In the general case, the result is a JSON _object_ or JSON _array_. In the degenerate case (where the input is a primitive SQL value) the result is the corresponding primitive JSON value. |
@@ -104,9 +104,9 @@ The fact that a JSON array can have subvalues of mixed data type but a SQL array
 | [`jsonb_build_object()`](../jsonb-build-object/) | Variadic function that is the obvious counterpart to `jsonb_build_array`. The keys and values can be specified in a few different ways, for example in an alternating list of keys (as `text` values) and their values (as values of any of `text`, `numeric`, `boolean` — or `null`. |
 | [`jsonb_object()`](../jsonb-object/)     | Non-variadic function that achieves roughly the same effect as `jsonb_build_object()` with simpler syntax by presenting the key-value pairs using an array of data type `::text`. However, the functionality is severely limited because all the SQL `text` values are mapped to JSON _string_ values. |
 
-### Create a JSON value from an existing JSON value
+## Create a JSON value from an existing JSON value
 
-| operator/function | description |
+| Function or operator | Description |
 | ---- | ---- |
 |   `->`   |   Reads a subvalue at a specified JSON _object_ key or JSON _array_ index as a JSON value.   |
 | `#>` | Like `->` except that the to-be-read JSON subvalue is specified by the path to it from the enclosing JSON value. |
@@ -117,9 +117,9 @@ The fact that a JSON array can have subvalues of mixed data type but a SQL array
 | [`jsonb_strip_nulls()`](../strip-nulls/) | Finds all key-value pairs at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an _object_) and return a JSON value where each pair whose value is _null_. has been removed. By definition, they leave _null_ values within _arrays_ untouched. |
 | [`jsonb_set()` and `jsonb_insert()`](../jsonb-set-jsonb-insert/) | These functions return a new JSON value modified from the input value in the specified way using the so-called replacement JSON value. Because the effect of `jsonb_set` is identical to that of `jsonb_insert` in some cases, they are grouped together here. However, in other cases, there are critical differences. They target a specific JSON value at a specified path. When the target is a key-value pair in a JSON _object_, they set it to the specified value when the key already exists and create it when it doesn't. When the target is a JSON value at a specified index in a JSON _array_, and the index already exists, they either set it or insert a new value after or before it. And when the index is before the _array_'s first value or after its last value, they insert it. |
 
-### Create a SQL value from a JSON value
+## Create a SQL value from a JSON value
 
-| operator/function | description |
+| Function or operator | Description |
 | ---- | ---- |
 | `::text` | Typecasts a `jsonb`  value to a SQL `text` value that conforms to RFC 7159. Single spaces (but not newlines) are inserted in conventioanally defined places. |
 | `->>` | Like `->` except that the targeted value is returned as a SQL `text` value: _either_ the `::text` typecast of a compound JSON value; _or_ a typecastable `text` value holding the actual value that a primitive JSON value represents. |
@@ -135,9 +135,9 @@ The fact that a JSON array can have subvalues of mixed data type but a SQL array
 | [`jsonb_each_text()`](../jsonb-each-text/) | Bears the same relationship to the result of `jsonb_each()` as does the result of the `->>` operator to that of the `->` operator. For that reason, `jsonb_each_text()` is useful when the results are primitive values. |
 | [`jsonb_pretty()`](../jsonb-pretty/) | Formats the text representation of the input JSON value  using whitespace to make it maximally easily human readable. |
 
-### Get a property of a JSON value
+## Get a property of a JSON value
 
-| operator/function | description |
+| Function or operator | Description |
 | ---- | ---- |
 | `=` | The `=` operator is overloaded for all the SQL data types including `jsonb`. By a strange oversight, there is _no overload_ for plain `json`. |
 | `@>` and `<@` | `@>` tests if the left-hand JSON value contains the right-hand JSON value. And `<@` tests if the right-hand JSON value contains the left-hand JSON value. Returns a SQL `boolean`. |
