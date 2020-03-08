@@ -6,7 +6,7 @@ description: JSON and JSONB data types
 menu:
   latest:
     identifier: json-data-types
-    parent: datatypes
+    parent: json
 isTocNested: true
 showAsideToc: true
 ---

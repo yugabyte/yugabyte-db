@@ -6,7 +6,7 @@ description: Create indexes and check constraints on JSON columns
 menu:
   latest:
     identifier: create-indexes-check-constraints
-    parent: functions-operators
+    parent: json
 isTocNested: true
 showAsideToc: true
 ---

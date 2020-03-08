@@ -6,7 +6,7 @@ description: Functions and operators by purpose
 menu:
   latest:
     identifier: functions-operators
-    parent: functions-operators
+    parent: json
 isTocNested: true
 showAsideToc: true
 ---
