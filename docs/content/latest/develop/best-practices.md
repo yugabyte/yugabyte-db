@@ -86,7 +86,7 @@ See [hardware sizing](/latest/deploy/checklist/) docs.
 ## Tablet leaders in multi-az and multi-region deployments
 In multi-region deployments, we can hint the database to try and keep all tablet-leaders
 in 1 region thus lowering the latency and network hops during read/write transactions.
-That can be done using the `set_preferred_zones` subcommand of [yb-admin](../../admin/yb-admin) cli.
+This can be done using the `set_preferred_zones` command of [yb-admin](../../admin/yb-admin) cli.
 
 ## Settings for ci/cd/integration-tests:
 Using YugabyteDB in (ci,cd,automated tests) scenarios we can set certain gflags 
