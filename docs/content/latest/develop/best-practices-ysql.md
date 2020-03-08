@@ -56,11 +56,12 @@ a database inside 1 tablet. This increases performance and lowers latency on wri
 since they happen in 1 tablet/node.
 
 ## Cluster aware drivers
-We are working hard to create cluster-aware clients in most popular languages. 
-Currently the drivers available are:
+We recommend using YugabyteDB's [cluster aware JDBC driver](https://github.com/yugabyte/jdbc-yugabytedb). 
+The driver automatically learns about the nodes being started/added or stopped/removed. 
+This makes applications more robust since the client driver is able to handle cluster changes automatically and connect 
+to appropriate nodes in the cluster. The driver also takes care of connection pooling and maintains a pool for each node.
 
-1. JDBC driver https://github.com/yugabyte/jdbc-yugabytedb
-2. More drivers are coming
+We are working hard to create cluster-aware clients in most popular languages. 
 
 In the meantime you can use [proxies and load balancers](#ysql-proxy--load-balancer) which work with all drivers.
 
