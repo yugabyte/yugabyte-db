@@ -596,13 +596,14 @@ class YBBackup:
         """
         output = self.run_yb_admin(
             ['create_snapshot'] + self.table_names_str(' ').split(' '))
-        parts = output.strip().split()
-        if (len(parts) >= 4 and parts[-4] != 'Started' or parts[-3] != 'snapshot' or
-                parts[-2] != 'creation:'):
+        # Ignores any string before and after the creation string + uuid.
+        # \S\s matches every character including newlines.
+        matched = re.match(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)', output)
+        if not matched:
             raise BackupException(
                     "Couldn't parse create snapshot output! Expected "
-                    "'Started snapshot creation: <id>' in the end: {}".format(parts))
-        snapshot_id = parts[-1]
+                    "'Started snapshot creation: <id>' in the end: {}".format(output))
+        snapshot_id = matched.group('uuid')
         if not UUID_ONLY_RE.match(snapshot_id):
             raise BackupException("Did not get a valid snapshot id out of yb-admin output:\n" +
                                   output)
