@@ -359,12 +359,29 @@ BackfillTable::BackfillTable(Master *master, ThreadPool *callback_pool,
       << "As of Dec 2019, we only support "
       << "building one index at a time. indices_to_build_.size() = "
       << indices_to_build_.size();
+
+  std::ostringstream out;
+  out << "{ ";
+  bool first = true;
+  for (const auto &index_info : indices_to_build_) {
+    if (!first) {
+      out << ", ";
+    }
+    out << master_->catalog_manager()->GetTableInfo(index_info.table_id())->name();
+    first = false;
+  }
+  out << " }";
+  index_ids_ = out.str();
+
   auto l = indexed_table_->LockForRead();
   schema_version_ = indexed_table_->metadata().state().pb.version();
   leader_term_ = master_->catalog_manager()->leader_ready_term();
 }
 
 void BackfillTable::Launch() {
+  backfill_job_ = std::make_shared<BackfillTableJob>(shared_from_this());
+  backfill_job_->SetState(MonitoredTaskState::kRunning);
+  master_->catalog_manager()->jobs_tracker_->AddTask(backfill_job_);
   LaunchComputeSafeTimeForRead();
 }
 
@@ -373,6 +390,7 @@ void BackfillTable::LaunchComputeSafeTimeForRead() {
   indexed_table_->GetAllTablets(&tablets);
 
   timestamp_chosen_.store(false, std::memory_order_release);
+  num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   auto min_cutoff = master()->clock()->Now();
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
@@ -383,8 +401,18 @@ void BackfillTable::LaunchComputeSafeTimeForRead() {
 }
 
 std::string BackfillTable::LogPrefix() const {
-  const TableId &index_table_id = indices()[0].table_id();
-  return Format("Backfill Index Table(s) <$0>", index_table_id);
+  return Format("Backfill Index Table(s) $0", index_ids_);
+}
+
+std::string BackfillTable::description() const {
+  auto num_pending = tablets_pending_.load(std::memory_order_acquire);
+  auto num_tablets = num_tablets_.load(std::memory_order_acquire);
+  return Format(
+      "Backfill Index Table(s) $0 : $1", index_ids_,
+      (timestamp_chosen()
+           ? (done() ? Format("Backfill $0/$1 tablets done", num_pending, num_tablets)
+                     : Format("Backfilling $0/$1 tablets", num_pending, num_tablets))
+           : Format("Waiting to GetSafeTime from $0/$1 tablets", num_pending, num_tablets)));
 }
 
 void BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
@@ -430,7 +458,7 @@ void BackfillTable::LaunchBackfill() {
   indexed_table_->GetAllTablets(&tablets);
 
   done_.store(false, std::memory_order_release);
-  // TODO: Keep track of explicit tablet names to handle RPC retries.
+  num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto backfill_tablet = std::make_shared<BackfillTablet>(shared_from_this(), tablet);
@@ -477,6 +505,7 @@ Status BackfillTable::AlterTableStateToSuccess() {
   VLOG(1) << __func__ << " done backfill on " << indexed_table_->ToString()
           << " for " << index_table_id;
   indexed_table_->SetIsBackfilling(false);
+  backfill_job_->SetState(MonitoredTaskState::kComplete);
   return ClearCheckpointStateInTablets();
 }
 
@@ -490,6 +519,7 @@ Status BackfillTable::AlterTableStateToAbort() {
                         "master-leader has changed.");
   master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
   indexed_table_->SetIsBackfilling(false);
+  backfill_job_->SetState(MonitoredTaskState::kFailed);
   return ClearCheckpointStateInTablets();
 }
 

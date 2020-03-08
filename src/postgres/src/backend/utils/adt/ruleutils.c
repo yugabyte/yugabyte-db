@@ -3381,7 +3381,7 @@ set_rtable_names(deparse_namespace *dpns, List *parent_namespaces,
 	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = NAMEDATALEN;
 	hash_ctl.entrysize = sizeof(NameHashEntry);
-	hash_ctl.hcxt = CurrentMemoryContext;
+	hash_ctl.hcxt = GetCurrentMemoryContext();
 	names_hash = hash_create("set_rtable_names names",
 							 list_length(dpns->rtable),
 							 &hash_ctl,

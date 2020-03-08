@@ -1099,7 +1099,7 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 			ScanKey		scanKey = indexScanKey + i;
 			int16		strategy;
 
-			sortKey->ssup_cxt = CurrentMemoryContext;
+			sortKey->ssup_cxt = GetCurrentMemoryContext();
 			sortKey->ssup_collation = scanKey->sk_collation;
 			sortKey->ssup_nulls_first =
 				(scanKey->sk_flags & SK_BT_NULLS_FIRST) != 0;

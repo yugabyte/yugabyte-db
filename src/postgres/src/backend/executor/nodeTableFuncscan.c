@@ -165,7 +165,7 @@ ExecInitTableFuncScan(TableFuncScan *node, EState *estate, int eflags)
 	scanstate->routine = &XmlTableRoutine;
 
 	scanstate->perTableCxt =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(GetCurrentMemoryContext(),
 							  "TableFunc per value context",
 							  ALLOCSET_DEFAULT_SIZES);
 	scanstate->opaque = NULL;	/* initialized at runtime */

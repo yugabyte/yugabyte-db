@@ -47,6 +47,9 @@ class PgExpr {
     PG_EXPR_MAX,
     PG_EXPR_MIN,
 
+    // Serialized YSQL/PG Expr node.
+    PG_EXPR_EVAL_EXPR_CALL,
+
     PG_EXPR_GENERATE_ROWID,
   };
 

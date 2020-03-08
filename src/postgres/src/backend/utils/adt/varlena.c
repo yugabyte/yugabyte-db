@@ -4431,7 +4431,7 @@ text_to_array_internal(PG_FUNCTION_ARGS)
 									  PointerGetDatum(result_text),
 									  is_null,
 									  TEXTOID,
-									  CurrentMemoryContext);
+									  GetCurrentMemoryContext());
 
 			pfree(result_text);
 
@@ -4476,7 +4476,7 @@ text_to_array_internal(PG_FUNCTION_ARGS)
 									  PointerGetDatum(result_text),
 									  is_null,
 									  TEXTOID,
-									  CurrentMemoryContext);
+									  GetCurrentMemoryContext());
 
 			pfree(result_text);
 
@@ -4486,7 +4486,7 @@ text_to_array_internal(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate,
-										  CurrentMemoryContext));
+										  GetCurrentMemoryContext()));
 }
 
 /*

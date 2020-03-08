@@ -73,7 +73,7 @@ static MemoryContext per_line_ctx = NULL;
 static void
 do_start(void)
 {
-	Assert(CurrentMemoryContext == CurTransactionContext);
+	Assert(GetCurrentMemoryContext() == CurTransactionContext);
 	/* First time through, create the per-line working context */
 	if (per_line_ctx == NULL)
 		per_line_ctx = AllocSetContextCreate(CurTransactionContext,

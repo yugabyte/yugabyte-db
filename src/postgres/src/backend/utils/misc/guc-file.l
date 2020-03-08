@@ -145,7 +145,7 @@ ProcessConfigFile(GucContext context)
 	 * not accumulate across repeated SIGHUP cycles, do the work in a private
 	 * context that we can free at exit.
 	 */
-	config_cxt = AllocSetContextCreate(CurrentMemoryContext,
+	config_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 									   "config file processing",
 									   ALLOCSET_DEFAULT_SIZES);
 	caller_cxt = MemoryContextSwitchTo(config_cxt);

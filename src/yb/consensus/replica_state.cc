@@ -1043,9 +1043,19 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
   old_leader_ht_lease_.TryUpdate(ht_lease);
 
   // Reset our lease, since we are non leader now. I.e. follower or candidate.
-  majority_replicated_lease_expiration_ = CoarseTimeLease::NoneValue();
-  majority_replicated_ht_lease_expiration_.store(PhysicalComponentLease::NoneValue(),
-                                                 std::memory_order_release);
+  auto existing_lease = majority_replicated_lease_expiration_;
+  if (existing_lease != CoarseTimeLease::NoneValue()) {
+    LOG_WITH_PREFIX(INFO)
+        << "Reset our lease: " << MonoDelta(CoarseMonoClock::now() - existing_lease);
+    majority_replicated_lease_expiration_ = CoarseTimeLease::NoneValue();
+  }
+
+  auto existing_ht_lease = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
+  if (existing_ht_lease != PhysicalComponentLease::NoneValue()) {
+    LOG_WITH_PREFIX(INFO) << "Reset our ht lease: " << HybridTime::FromMicros(existing_ht_lease);
+    majority_replicated_ht_lease_expiration_.store(PhysicalComponentLease::NoneValue(),
+                                                   std::memory_order_release);
+  }
 }
 
 template <class Policy>
@@ -1214,10 +1224,16 @@ void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
                                                  std::memory_order_release);
 
   if (flags.Test(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderLease)) {
+    LOG_WITH_PREFIX(INFO)
+        << "Revoked old leader " << old_leader_lease_.holder_uuid << " lease: "
+        << MonoDelta(old_leader_lease_.expiration - CoarseMonoClock::now());
     old_leader_lease_.Reset();
   }
 
   if (flags.Test(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderHtLease)) {
+    LOG_WITH_PREFIX(INFO)
+        << "Revoked old leader " << old_leader_ht_lease_.holder_uuid << " ht lease: "
+        << HybridTime::FromMicros(old_leader_ht_lease_.expiration);
     old_leader_ht_lease_.Reset();
   }
 

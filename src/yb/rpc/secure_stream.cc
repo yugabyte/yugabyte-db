@@ -19,6 +19,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/rpc_util.h"
 
@@ -27,6 +28,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/encryption_util.h"
 
 using namespace std::literals;
 
@@ -39,18 +41,6 @@ namespace rpc {
 namespace {
 
 const unsigned char kContextId[] = { 'Y', 'u', 'g', 'a', 'B', 'y', 't', 'e' };
-
-std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
-
-__attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS LockingCallback(
-    int mode, int n, const char* /*file*/, int /*line*/) {
-  CHECK_LT(static_cast<size_t>(n), crypto_mutexes.size());
-  if (mode & CRYPTO_LOCK) {
-    crypto_mutexes[n]->lock();
-  } else {
-    crypto_mutexes[n]->unlock();
-  }
-}
 
 std::string SSLErrorMessage(int error) {
   auto message = ERR_reason_error_string(error);
@@ -204,35 +194,6 @@ Result<detail::X509Ptr> CreateCertificate(
   return std::move(cert);
 }
 
-class OpenSSLInitializer {
- public:
-  OpenSSLInitializer() {
-    SSL_library_init();
-    SSL_load_error_strings();
-    OpenSSL_add_all_algorithms();
-    OpenSSL_add_all_ciphers();
-
-    while (crypto_mutexes.size() != CRYPTO_num_locks()) {
-      crypto_mutexes.emplace_back(std::make_unique<std::mutex>());
-    }
-    CRYPTO_set_locking_callback(&LockingCallback);
-  }
-
-  ~OpenSSLInitializer() {
-    CRYPTO_set_locking_callback(nullptr);
-    ERR_free_strings();
-    EVP_cleanup();
-    CRYPTO_cleanup_all_ex_data();
-    ERR_remove_thread_state(nullptr);
-    SSL_COMP_free_compression_methods();
-  }
-};
-
-OpenSSLInitializer* InitOpenSSL() {
-  static std::unique_ptr<OpenSSLInitializer> initializer = std::make_unique<OpenSSLInitializer>();
-  return initializer.get();
-}
-
 } // namespace
 
 namespace detail {
@@ -246,7 +207,7 @@ YB_RPC_SSL_TYPE_DEFINE(X509)
 }
 
 SecureContext::SecureContext() {
-  InitOpenSSL();
+  yb::enterprise::InitOpenSSL();
 
   context_.reset(SSL_CTX_new(SSLv23_method()));
   DCHECK(context_);
@@ -404,6 +365,7 @@ class SecureStream : public Stream, public StreamContext {
   size_t decrypted_bytes_to_skip_ = 0;
   SecureState state_ = SecureState::kInitial;
   bool need_connect_ = false;
+  bool connected_ = false;
   std::vector<OutboundDataPtr> pending_data_;
   std::vector<std::string> certificate_entries_;
 
@@ -424,6 +386,8 @@ void SecureStream::Close() {
 }
 
 void SecureStream::Shutdown(const Status& status) {
+  VLOG_WITH_PREFIX(1) << "SecureStream::Shutdown with status: " << status;
+
   for (auto& data : pending_data_) {
     if (data) {
       context_->Transferred(data, status);
@@ -487,7 +451,7 @@ bool SecureStream::Idle(std::string* reason) {
 }
 
 bool SecureStream::IsConnected() {
-  return lower_stream_->IsConnected();
+  return connected_;
 }
 
 void SecureStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) {
@@ -747,6 +711,7 @@ void SecureStream::Established(SecureState state) {
 
   state_ = state;
   ResetLogPrefix();
+  connected_ = true;
   context_->Connected();
   for (auto& data : pending_data_) {
     Send(std::move(data));

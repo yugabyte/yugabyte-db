@@ -127,7 +127,7 @@ class TransactionCoordinator {
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
 
   // Prepares log garbage collection. Return min index that should be preserved.
-  int64_t PrepareGC();
+  int64_t PrepareGC(std::string* details = nullptr);
 
   // Starts background processes of transaction coordinator.
   void Start();
@@ -141,6 +141,8 @@ class TransactionCoordinator {
                            tserver::GetTransactionStatusResponsePB* response);
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
+
+  std::string DumpTransactions();
 
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;

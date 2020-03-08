@@ -846,50 +846,51 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // Find the earliest log segment we need to read, so the rest can be ignored
   auto iter = FLAGS_skip_flushed_entries ? segments.end() : segments.begin();
   if (FLAGS_skip_flushed_entries) {
-      // Lower bound on op IDs that need to be replayed
-      yb::OpId regular_op_id = yb::OpId::FromPB(state.regular_stored_op_id);
-      yb::OpId intents_op_id = yb::OpId::FromPB(state.intents_stored_op_id);
-      yb::OpId op_id_replay_lowest = regular_op_id;
-      if (tablet_->doc_db().intents) {
-        op_id_replay_lowest = std::min(regular_op_id,
-                                       intents_op_id);
+    // Lower bound on op IDs that need to be replayed
+    yb::OpId regular_op_id = yb::OpId::FromPB(state.regular_stored_op_id);
+    yb::OpId intents_op_id = yb::OpId::FromPB(state.intents_stored_op_id);
+    yb::OpId op_id_replay_lowest = regular_op_id;
+    if (tablet_->doc_db().intents) {
+      op_id_replay_lowest = std::min(regular_op_id,
+                                     intents_op_id);
+    }
+    LOG(INFO) << "Bootstrap optimizer: op_id_replay_lowest=" << op_id_replay_lowest;
+
+    // Time point of the last WAL entry and
+    //    how far back in time from it we should retain other entries
+    bool read_last_time = false;
+    RestartSafeCoarseTimePoint last_time;
+    RestartSafeCoarseDuration retain_limit =
+        std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+
+    while (iter != segments.begin()) {
+      --iter;
+      const scoped_refptr <ReadableLogSegment>& segment = *iter;
+
+      Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> res =
+              segment->ReadFirstEntryMetadata();
+      if (res.ok()) {
+        yb::OpId op_id = res->first;
+        RestartSafeCoarseTimePoint time = res->second;
+
+        // This is the first entry
+        if (!read_last_time) {
+            last_time = time;
+            read_last_time = true;
+        }
+
+        // Previous segment would have op_id and time less than required,
+        // so we can ignore it.
+        if (op_id <= op_id_replay_lowest && time <= last_time - retain_limit) {
+          LOG(INFO) << "Bootstrap optimizer, found first mandatory segment op id: " << op_id
+                    << ", time: " << time.ToString() << ", last time: " << last_time.ToString()
+                    << ", number of segments to be skipped: " << (iter - segments.begin());
+          break;
+        }
       }
-      LOG(INFO) << "Bootstrap optimizer: op_id_replay_lowest=" << op_id_replay_lowest;
-
-      // Time point of the last WAL entry and
-      //    how far back in time from it we should retain other entries
-      bool read_last_time = false;
-      RestartSafeCoarseTimePoint last_time;
-      RestartSafeCoarseDuration retain_limit =
-              std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
-
-      while (iter != segments.begin()) {
-          --iter;
-          const scoped_refptr <ReadableLogSegment>& segment = *iter;
-
-          Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> res =
-                  segment->ReadFirstEntryMetadata();
-          if (res.ok()) {
-              yb::OpId op_id = res->first;
-              RestartSafeCoarseTimePoint time = res->second;
-
-              // This is the first entry
-              if (!read_last_time) {
-                  last_time = time;
-                  read_last_time = true;
-              }
-
-              // Previous segment would have op_id and time less than required,
-              // so we can ignore it.
-              if (op_id <= op_id_replay_lowest &&
-                  time <= last_time - retain_limit) {
-                  break;
-              }
-          }
-      }
+    }
   }
 
-  int segment_count = 0;
   yb::OpId last_committed_op_id;
   RestartSafeCoarseTimePoint last_entry_time;
   for (; iter != segments.end(); ++iter) {
@@ -930,12 +931,17 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
 
     // TODO: could be more granular here and log during the segments as well, plus give info about
     // number of MB processed, but this is better than nothing.
-    listener_->StatusMessage(Substitute("Bootstrap replayed $0/$1 log segments. "
-                                        "Stats: $2. Pending: $3 replicates",
-                                        segment_count + 1, segments.size(),
-                                        stats_.ToString(),
-                                        state.pending_replicates.size()));
-    segment_count++;
+    auto status = Format(
+        "Bootstrap replayed $0/$1 log segments. $2. Pending: $3 replicates. "
+            "Last read committed op id: $4",
+        (iter - segments.begin()) + 1, segments.size(), stats_,
+        state.pending_replicates.size(), read_result.committed_op_id);
+    if (read_result.entry_metadata.empty()) {
+      status += ", no entries in last segment";
+    } else {
+      status += ", last entry metadata: " + read_result.entry_metadata.back().ToString();
+    }
+    listener_->StatusMessage(status);
   }
 
   if (state.UpdateCommittedFromStored()) {
@@ -1184,12 +1190,8 @@ void TabletBootstrap::CleanupSnapshots() {
 //  Class TabletBootstrap::Stats.
 // ============================================================================
 string TabletBootstrap::Stats::ToString() const {
-  return Substitute("ops{read=$0 overwritten=$1} "
-                    "inserts{seen=$2 ignored=$3} "
-                    "mutations{seen=$4 ignored=$5}",
-                    ops_read, ops_overwritten,
-                    inserts_seen, inserts_ignored,
-                    mutations_seen, mutations_ignored);
+  return Format("Read operations: $0, overwritten operations: $1",
+                ops_read, ops_overwritten);
 }
 
 } // namespace tablet

@@ -93,6 +93,7 @@ ADD_YB_LIBRARY(pgsql_protocol_proto
                NONLINK_DEPS ${PGSQL_PROTOCOL_PROTO_TGTS})
 
 set(COMMON_SRCS
+  clock.cc
   id_mapping.cc
   entity_ids.cc
   key_encoder.cc

@@ -200,7 +200,7 @@ CheckIndexCompatible(Oid oldId,
 	indexInfo->ii_ExclusionStrats = NULL;
 	indexInfo->ii_Am = accessMethodId;
 	indexInfo->ii_AmCache = NULL;
-	indexInfo->ii_Context = CurrentMemoryContext;
+	indexInfo->ii_Context = GetCurrentMemoryContext();
 	typeObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
 	collationObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
 	classObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
@@ -682,7 +682,7 @@ DefineIndex(Oid relationId,
 	indexInfo->ii_ParallelWorkers = 0;
 	indexInfo->ii_Am = accessMethodId;
 	indexInfo->ii_AmCache = NULL;
-	indexInfo->ii_Context = CurrentMemoryContext;
+	indexInfo->ii_Context = GetCurrentMemoryContext();
 
 	typeObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
 	collationObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));

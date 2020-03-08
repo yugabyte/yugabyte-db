@@ -17,6 +17,7 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/pggate.h"
+#include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
@@ -243,11 +244,12 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
+                              const bool colocated,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, handle));
+      if_not_exist, add_primary_key, colocated, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -259,10 +261,6 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_tablets) {
   return ToYBCStatus(pgapi->CreateTableSetNumTablets(handle, num_tablets));
-}
-
-YBCStatus YBCPgCreateTableSetColocated(YBCPgStatement handle, bool colocated) {
-  return ToYBCStatus(pgapi->CreateTableSetColocated(handle, colocated));
 }
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
@@ -689,6 +687,46 @@ int32_t YBCGetOutputBufferSize() {
 
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
+}
+
+//------------------------------------------------------------------------------------------------
+// Thread-local variables.
+//------------------------------------------------------------------------------------------------
+
+void* YBCPgGetThreadLocalCurrentMemoryContext() {
+  return PgGetThreadLocalCurrentMemoryContext();
+}
+
+void* YBCPgSetThreadLocalCurrentMemoryContext(void *memctx) {
+  return PgSetThreadLocalCurrentMemoryContext(memctx);
+}
+
+void YBCPgResetCurrentMemCtxThreadLocalVars() {
+  PgResetCurrentMemCtxThreadLocalVars();
+}
+
+void* YBCPgGetThreadLocalStrTokPtr() {
+  return PgGetThreadLocalStrTokPtr();
+}
+
+void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
+  PgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
+}
+
+void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {
+  return PgSetThreadLocalJumpBuffer(new_buffer);
+}
+
+void* YBCPgGetThreadLocalJumpBuffer() {
+  return PgGetThreadLocalJumpBuffer();
+}
+
+void YBCPgSetThreadLocalErrMsg(const void* new_msg) {
+  PgSetThreadLocalErrMsg(new_msg);
+}
+
+const void* YBCPgGetThreadLocalErrMsg() {
+  return PgGetThreadLocalErrMsg();
 }
 
 } // extern "C"

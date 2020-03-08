@@ -320,6 +320,12 @@ Specifies the name of the cloud where this instance is deployed.
 
 Default: `cloud1`
 
+##### --placement_uuid
+
+The unique identifier for the cluster.
+
+Default: `""`
+
 ---
 
 ### YSQL options
@@ -503,6 +509,14 @@ their running total (summation of size of files considered so far) is
 within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `20`
+
+##### --timestamp_history_retention_interval_sec
+
+The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval  
+might not be allowed after a compaction and return a `Snapshot too old` error. 
+Set this to be greater than the expected maximum duration of any single transaction in your application.
+
+Default: `120`
 
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 

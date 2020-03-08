@@ -164,7 +164,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * well as the default creation target namespace.  This will be undone at
 	 * the end of this routine, or upon error.
 	 */
-	overridePath = GetOverrideSearchPath(CurrentMemoryContext);
+	overridePath = GetOverrideSearchPath(GetCurrentMemoryContext());
 	overridePath->schemas = lcons_oid(namespaceId, overridePath->schemas);
 	/* XXX should we clear overridePath->useTemp? */
 	PushOverrideSearchPath(overridePath);

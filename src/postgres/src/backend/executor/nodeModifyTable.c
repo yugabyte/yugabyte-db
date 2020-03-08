@@ -1149,14 +1149,10 @@ ExecUpdate(ModifyTableState *mtstate,
 		}
 
 		/*
-		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
-		 * For ON CONFLICT DO UPDATE, the INSERT returning clause is setup
-		 * differently, so junkFilter is not needed.
+		 * Update indexes if needed.
 		 */
-		if (resultRelInfo->ri_projectReturning && resultRelInfo->ri_junkFilter)
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
-
-		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
+		    !((ModifyTable *)mtstate->ps.plan)->no_index_update)
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 
@@ -1464,13 +1460,15 @@ lreplace:;
 	if (canSetTag)
 		(estate->es_processed)++;
 
-	/* AFTER ROW UPDATE Triggers */
-	ExecARUpdateTriggers(estate, resultRelInfo, tupleid, oldtuple, tuple,
-						 recheckIndexes,
-						 mtstate->operation == CMD_INSERT ?
-						 mtstate->mt_oc_transition_capture :
-						 mtstate->mt_transition_capture);
-
+	if (!((ModifyTable *)mtstate->ps.plan)->no_row_trigger)
+	{
+		/* AFTER ROW UPDATE Triggers */
+		ExecARUpdateTriggers(estate, resultRelInfo, tupleid, oldtuple, tuple,
+							recheckIndexes,
+							mtstate->operation == CMD_INSERT ?
+							mtstate->mt_oc_transition_capture :
+							mtstate->mt_transition_capture);
+	}
 	list_free(recheckIndexes);
 
 	/*
@@ -1485,9 +1483,20 @@ lreplace:;
 	if (resultRelInfo->ri_WithCheckOptions != NIL)
 		ExecWithCheckOptions(WCO_VIEW_CHECK, resultRelInfo, slot, estate);
 
+
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
+	{
+		/*
+		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
+		 * For ON CONFLICT DO UPDATE, the INSERT returning clause is setup
+		 * differently, so junkFilter is not needed.
+		 */
+		if (IsYBRelation(resultRelationDesc) && resultRelInfo->ri_junkFilter)
+			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+
 		return ExecProcessReturning(resultRelInfo, slot, planSlot);
+	}
 
 	return NULL;
 }

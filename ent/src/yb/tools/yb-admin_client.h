@@ -65,7 +65,13 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS DisableEncryptionInMemory();
 
+  CHECKED_STATUS WriteUniverseKeyToFile(const std::string& key_id, const std::string& file_name);
+
   CHECKED_STATUS CreateCDCStream(const TableId& table_id);
+
+  CHECKED_STATUS DeleteCDCStream(const std::string& stream_id);
+
+  CHECKED_STATUS ListCDCStreams(const TableId& table_id);
 
   CHECKED_STATUS SetupUniverseReplication(const std::string& producer_uuid,
                                           const std::vector<std::string>& producer_addresses,

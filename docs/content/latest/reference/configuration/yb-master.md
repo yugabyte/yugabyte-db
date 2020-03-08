@@ -61,7 +61,7 @@ Shows version and build information, then exits.
 
 ##### --flagfile
 
-Specifies the configuration file to load flags from.
+Specifies the configuration file to load options (flags) from.
 
 ##### --master_addresses
 
@@ -365,7 +365,13 @@ Name of the cloud where this instance is deployed.
 
 Default: `cloud1`
 
-##### --use_private_ip
+##### --placement_uuid
+
+The unique identifier for the cluster.
+
+Default: `""`
+
+##### -- use_private_ip
 
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration options.
 

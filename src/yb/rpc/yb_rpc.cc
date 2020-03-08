@@ -529,13 +529,13 @@ Result<ProcessDataResult> YBOutboundConnectionContext::ProcessCalls(
 
 void YBOutboundConnectionContext::UpdateLastRead(const ConnectionPtr& connection) {
   last_read_time_ = connection->reactor()->cur_time();
-  VLOG(4) << connection->ToString() << ": " << "Updated last_read_time_="
-          << AsString(last_read_time_);
+  VLOG(4) << Format("$0: Updated last_read_time_=$1", connection, last_read_time_);
 }
 
 void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   const auto connection = connection_.lock();
   if (connection) {
+    VLOG(5) << Format("$0: YBOutboundConnectionContext::HandleTimeout", connection);
     if (EV_ERROR & revents) {
       LOG(WARNING) << connection->ToString() << ": " << "Got an error in handle timeout";
       return;
@@ -545,6 +545,9 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
     const MonoDelta timeout = Timeout();
 
     auto deadline = last_read_time_ + timeout;
+    VLOG(5) << Format(
+        "$0: YBOutboundConnectionContext::HandleTimeout last_read_time_: $1, timeout: $2",
+        connection, last_read_time_, timeout);
     if (now > deadline) {
       auto passed = now - last_read_time_;
       const auto status = STATUS_FORMAT(

@@ -48,7 +48,7 @@ public class CertificateHelperTest extends FakeDBApplication{
   public void testCreateRootCA() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
+    UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp", true);
     assertNotNull(CertificateInfo.get(rootCA));
     try {
       InputStream in = new FileInputStream(certPath + String.format("/%s/ca.root.crt", rootCA));

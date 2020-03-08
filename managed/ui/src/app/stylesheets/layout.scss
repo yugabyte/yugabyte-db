@@ -47,9 +47,7 @@
 
   & > *:first-child {
     &:before {
-      left: 0;
-      box-shadow: unset;
-      background: unset;
+      display: none;
     }
   }
 }

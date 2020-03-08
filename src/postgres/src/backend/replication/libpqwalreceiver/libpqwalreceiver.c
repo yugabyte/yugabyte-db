@@ -879,7 +879,7 @@ libpqrcv_processTuples(PGresult *pgres, WalRcvExecResult *walres,
 		return;
 
 	/* Create temporary context for local allocations. */
-	rowcontext = AllocSetContextCreate(CurrentMemoryContext,
+	rowcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 									   "libpqrcv query result context",
 									   ALLOCSET_DEFAULT_SIZES);
 

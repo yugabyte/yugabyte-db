@@ -16,6 +16,8 @@
 
 #include <string>
 
+#include <boost/function.hpp>
+
 #include "yb/util/coding_consts.h"
 #include "yb/util/slice.h"
 #include "yb/util/result.h"
@@ -98,6 +100,15 @@ class FileWithUniqueId {
   virtual size_t GetUniqueId(char *id) const = 0;
 };
 
+// An interface for a function that validates a sequence of bytes we've just read. Could be used
+// e.g. for checksum validation. We are not using boost::function for efficiency, because this
+// validation happens on the critical read of read requests.
+class ReadValidator {
+ public:
+  virtual CHECKED_STATUS Validate(const Slice& s) const = 0;
+  virtual ~ReadValidator() = default;
+};
+
 // A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile : public FileWithUniqueId {
  public:
@@ -115,6 +126,13 @@ class RandomAccessFile : public FileWithUniqueId {
   // Safe for concurrent use by multiple threads.
   virtual CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result,
                               uint8_t *scratch) const = 0;
+
+  // Similar to Read, but uses the given callback to validate the result.
+  virtual CHECKED_STATUS ReadAndValidate(
+      uint64_t offset, size_t n, Slice* result, char* scratch, const ReadValidator& validator) {
+    RETURN_NOT_OK(Read(offset, n, result, scratch));
+    return validator.Validate(*result);
+  }
 
   CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, char* scratch) {
     return Read(offset, n, result, reinterpret_cast<uint8_t*>(scratch));

@@ -1499,8 +1499,12 @@ void Executor::FlushAsync() {
   }
   for (ExecContext& exec_context : exec_contexts_) {
     if (exec_context.HasTransaction()) {
-      if (exec_context.transactional_session()->CountBufferedOperations() > 0) {
-        flush_sessions.push_back({exec_context.transactional_session(), &exec_context});
+      auto transactional_session = exec_context.transactional_session();
+      if (transactional_session->CountBufferedOperations() > 0) {
+        // In case or retry we should ignore values that could be written by previous attempts
+        // of retried operation.
+        transactional_session->SetInTxnLimit(transactional_session->read_point()->Now());
+        flush_sessions.push_back({transactional_session, &exec_context});
       } else if (!exec_context.HasPendingOperations()) {
         commit_contexts.push_back(&exec_context);
       }

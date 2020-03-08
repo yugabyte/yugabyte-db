@@ -50,6 +50,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operation_order_verifier.h"
@@ -247,7 +248,9 @@ class TabletPeer : public consensus::ConsensusContext,
 
   // Returns the minimum known log index that is in-memory or in-flight.
   // Used for selection of log segments to delete during Log GC.
-  Result<int64_t> GetEarliestNeededLogIndex() const;
+  // If details is specified then this function appends explanation of how index was calculated
+  // to it.
+  Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
 
   // Returns a map of log index -> segment size, of all the segments that currently cannot be GCed
   // because in-memory structures have anchors in them.
@@ -435,7 +438,7 @@ class TabletPeer : public consensus::ConsensusContext,
  private:
   HybridTime ReportReadRestart() override;
 
-  HybridTime HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
+  FixedHybridTimeLease HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
   HybridTime PropagatedSafeTime() override;
   void MajorityReplicated() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;

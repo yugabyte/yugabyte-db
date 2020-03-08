@@ -160,7 +160,7 @@ DestroyTupleQueueReader(TupleQueueReader *reader)
  * nowait = true and no tuple is ready to return.  *done, if not NULL,
  * is set to true when there are no remaining tuples and otherwise to false.
  *
- * The returned tuple, if any, is allocated in CurrentMemoryContext.
+ * The returned tuple, if any, is allocated in GetCurrentMemoryContext().
  * Note that this routine must not leak memory!  (We used to allow that,
  * but not any more.)
  *

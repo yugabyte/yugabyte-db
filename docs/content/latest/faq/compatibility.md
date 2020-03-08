@@ -53,30 +53,30 @@ Allowing YCQL tables to be accessed from the PostgreSQL-compatible YSQL API as f
 
 You should pick YCQL over YSQL if your application:
 
-    * Does not require fully-relational data modeling constructs, such as foreign keys and JOINs. Note that strongly-consistent secondary indexes and unique constraints are supported by YCQL.
-    * Requires storing large amounts of data (for example, 10TB or more).
-    * Needs to serve low-latency (sub-millisecond) queries.
-    * Needs TTL-driven automatic data expiration.
-    * Needs to integrate with stream processors, such as Apache Spark and KSQL.
+- Does not require fully-relational data modeling constructs, such as foreign keys and JOINs. Note that strongly-consistent secondary indexes and unique constraints are supported by YCQL.
+- Requires storing large amounts of data (for example, 10TB or more).
+- Needs to serve low-latency (sub-millisecond) queries.
+- Needs TTL-driven automatic data expiration.
+- Needs to integrate with stream processors, such as Apache Spark and KSQL.
 
 If you have a specific use case in mind, share it in our [Slack community](https://www.yugabyte.com/slack) and the community can help you decide the best approach.
 
 ## YCQL compatibility with Apache Cassandra QL
 
-### Features where YCQL goes beyond Apache Cassandra QL
+YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions highlight how YCQL differs from CQL.
 
-- Following are the features that are present in YCQL but not present in Apache Cassandra QL.
+### Features present in YCQL but not present in CQL
 
 1. [JSONB](../../develop/learn/data-types/) column type for modeling document data
 2. [Distributed transactions](../../develop/learn/acid-transactions/) for multi-row ACID transactions
 3. [Official Jepsen tests](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/) to prove correctness under extreme failure conditions
 
-- Following are the features that are present in both YCQL and Apache Cassandra QL but YCQL provides stricter guarantees.
+### Features present in both YCQL and CQL but YCQL provides stricter guarantees
 
 1. [Secondary indexes](../../develop/learn/data-modeling/) are by default strongly consistent since internally they use distributed transactions.
 2. [INTEGER](../../api/ycql/type_int/) and [COUNTER](../../api/ycql/type_int/) data types are equivalent and both can be incremented without any lightweight transactions.
 
-- Following are the features that are either unnecessary or disallowed in YCQL.
+### CQL features that are either unnecessary or disallowed in YCQL
 
 1. Lightweight transactions for compare-and-swap operations (such as incrementing integers) are unnecessary because YCQL achieves single row linearizability by default.
 2. Tunable write consistency is disallowed in YCQL because writes are committed at quorum using Raft replication protocol.

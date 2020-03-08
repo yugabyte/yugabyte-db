@@ -48,6 +48,7 @@ const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
   { "count", PgExpr::Opcode::PG_EXPR_COUNT },
   { "max", PgExpr::Opcode::PG_EXPR_MAX },
   { "min", PgExpr::Opcode::PG_EXPR_MIN },
+  { "eval_expr_call", PgExpr::Opcode::PG_EXPR_EVAL_EXPR_CALL }
 };
 
 PgExpr::PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity)
@@ -103,6 +104,9 @@ bfpg::TSOpcode PgExpr::PGOpcodeToTSOpcode(const PgExpr::Opcode opcode) {
 
     case Opcode::PG_EXPR_MIN:
       return bfpg::TSOpcode::kMin;
+
+    case Opcode::PG_EXPR_EVAL_EXPR_CALL:
+      return bfpg::TSOpcode::kPgEvalExprCall;
 
     default:
       LOG(DFATAL) << "No supported TSOpcode for PG opcode: " << static_cast<int32_t>(opcode);
@@ -673,7 +677,9 @@ Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   }
   tscall->set_opcode(static_cast<int32_t>(tsopcode));
   for (const auto& arg : args_) {
-    RETURN_NOT_OK(arg->PrepareForRead(pg_stmt, tscall->add_operands()));
+    PgsqlExpressionPB *op = tscall->add_operands();
+    RETURN_NOT_OK(arg->PrepareForRead(pg_stmt, op));
+    RETURN_NOT_OK(arg->Eval(pg_stmt, op));
   }
   return Status::OK();
 }

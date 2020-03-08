@@ -21,7 +21,7 @@ SUBDIRS = access bootstrap catalog parser commands executor foreign lib libpq \
 	main nodes optimizer partitioning port postmaster \
 	regex replication rewrite \
 	statistics storage tcop tsearch utils $(top_builddir)/src/timezone \
-	jit
+	jit ybgate
 
 include $(srcdir)/common.mk
 
@@ -60,9 +60,28 @@ endif
 
 CCLD = $(CXX)
 
+# Shared library configuration (see Makefile_ybpostgres.shlib -- included below)
+PGFILEDESC = "Postgres shared library"
+NAME = yb_pgbackend
+SO_MAJOR_VERSION= 1
+SO_MINOR_VERSION= $(MAJORVERSION)
+
+SHLIB_LINK = $(LIBS)
+
+SHLIB_EXPORTS = exports.txt
+
+.NOTPARALLEL:
+
 ##########################################################################
 
-all: submake-libpgport submake-catalog-headers submake-utils-headers postgres $(POSTGRES_IMP)
+all: submake-libpgport submake-catalog-headers submake-utils-headers postgres $(POSTGRES_IMP) all-lib
+
+# Shared-library target all-lib.
+# Depends on postgres build, and Makefile_ybpostgres.shlib will add the other
+# deps (e.g. all-shared-lib and/or all-static-lib).
+all-lib: postgres all-lib
+include $(top_srcdir)/src/Makefile_ybpostgres.shlib
+
 
 ifneq ($(PORTNAME), cygwin)
 ifneq ($(PORTNAME), win32)
@@ -201,7 +220,7 @@ distprep:
 
 ##########################################################################
 
-install: all installdirs install-bin
+install: all installdirs install-bin install-lib
 ifeq ($(PORTNAME), cygwin)
 ifeq ($(MAKE_DLL), true)
 	$(INSTALL_DATA) libpostgres.a '$(DESTDIR)$(libdir)/libpostgres.a'

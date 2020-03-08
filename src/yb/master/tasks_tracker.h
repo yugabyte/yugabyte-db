@@ -23,14 +23,18 @@
 
 DECLARE_int32(tasks_tracker_num_tasks);
 DECLARE_int32(tasks_tracker_keep_time_multiplier);
+DECLARE_int32(tasks_tracker_num_long_term_tasks);
+DECLARE_int32(long_term_tasks_tracker_keep_time_multiplier);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 namespace yb {
 namespace master {
 
+YB_STRONGLY_TYPED_BOOL(IsUserInitiated);
+
 class TasksTracker : public RefCountedThreadSafe<TasksTracker> {
  public:
-  TasksTracker();
+  explicit TasksTracker(IsUserInitiated user_initiated = IsUserInitiated::kFalse);
   ~TasksTracker() = default;
 
   std::string ToString();
@@ -48,6 +52,7 @@ class TasksTracker : public RefCountedThreadSafe<TasksTracker> {
   std::vector<std::shared_ptr<MonitoredTask>> GetTasks();
 
  private:
+  const IsUserInitiated user_initiated_;
   // Lock protecting the buffer.
   mutable rw_spinlock lock_;
   // List of most recent tasks.

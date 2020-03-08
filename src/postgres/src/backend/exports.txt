@@ -1,0 +1,14 @@
+# src/backend/exports.txt
+# Functions to be exported by postgres DLLs
+
+# Memory Context API
+YbgPrepareMemoryContext
+YbgResetMemoryContext
+
+# Types API
+YbgGetTypeTable
+
+# Expression Evaluation API
+YbgExprContextCreate
+YbgExprContextAddColValue
+YbgEvalExpr

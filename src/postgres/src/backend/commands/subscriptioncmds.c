@@ -257,7 +257,7 @@ publicationListToArray(List *publist)
 	MemoryContext oldcxt;
 
 	/* Create memory context for temporary allocations. */
-	memcxt = AllocSetContextCreate(CurrentMemoryContext,
+	memcxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								   "publicationListToArray to array",
 								   ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(memcxt);

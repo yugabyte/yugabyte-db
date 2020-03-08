@@ -178,6 +178,7 @@ set(UTIL_SRCS
   flag_tags.cc
   flags.cc
   hdr_histogram.cc
+  header_manager_impl.cc
   hexdump.cc
   init.cc
   jsonreader.cc
@@ -275,6 +276,7 @@ set(UTIL_LIBS
   encryption_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
+  ${OPENSSL_SSL_LIBRARY}
   ${UTIL_LIBS_EXTENSIONS})
 
 if (NOT APPLE AND NOT USING_LINUXBREW)
@@ -485,3 +487,6 @@ endif()
 
 ADD_YB_TEST(encrypted_env-test)
 target_link_libraries(encrypted_env-test encryption_test_util)
+
+ADD_YB_TEST(ctr_cipher_stream-test)
+target_link_libraries(ctr_cipher_stream-test encryption_test_util)

@@ -387,12 +387,19 @@ class NodeChecker():
         e = self._new_entry("Connectivity with psql")
 
         psql = '{}/bin/psql'.format(YB_TSERVER_DIR)
-        remote_cmd = r'echo "\conninfo" | {} -h {} -p {} -U postgres'.format(
-            psql, self.node, self.ysql_port)
+        if not self.enable_tls_client:
+            user = "postgres"
+            remote_cmd = r'echo "\conninfo" | {} -h {} -p {} -U {}'.format(
+                psql, self.node, self.ysql_port, user)
+        else:
+            user = "yugabyte"
+            remote_cmd = r'echo "\conninfo" | {} -h {} -p {} -U {} {}'.format(
+                psql, self.node, self.ysql_port, user, '"sslmode=require"')
 
         errors = []
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database "postgres"')):
+        if not (output.startswith('You are connected to database "{}"'.format(user)) or
+                "Password for user {}:".format(user)):
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
@@ -728,7 +735,7 @@ def main():
                 coordinator.add_check(checker, "check_cqlsh")
                 coordinator.add_check(checker, "check_redis_cli")
                 # TODO: Enable check after addressing issue #1845.
-                if c.enable_ysql and not c.enable_tls_client:
+                if c.enable_ysql:
                     coordinator.add_check(checker, "check_psql")
             coordinator.add_check(checker, "check_disk_utilization")
             coordinator.add_check(checker, "check_for_core_files")

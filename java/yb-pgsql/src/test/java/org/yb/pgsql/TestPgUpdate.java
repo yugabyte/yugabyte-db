@@ -166,7 +166,7 @@ public class TestPgUpdate extends BasePgSQLTest {
     Collections.sort(expectedRows);
 
     try (Statement update_stmt = connection.createStatement()) {
-        // Update with RETURNING clause.
+      // Update with RETURNING clause.
       String update_text = String.format("UPDATE %s SET vi = vi + 1000 WHERE h = 2 OR h = 3 " +
                                          "RETURNING h + 100, r + 100, vi + 1000", tableName);
       update_stmt.execute(update_text);
@@ -232,7 +232,7 @@ public class TestPgUpdate extends BasePgSQLTest {
 
     connection.createStatement().execute("create table test_concurrent_update (k int primary key," +
                                          " v1 int, v2 int, v3 int, v4 int)");
-    connection.createStatement().execute("insert into test_concurrent_update values"+
+    connection.createStatement().execute("insert into test_concurrent_update values" +
                                          " (0, 0, 0, 0, 0)");
 
     final List<Throwable> errors = new ArrayList<Throwable>();
@@ -243,27 +243,27 @@ public class TestPgUpdate extends BasePgSQLTest {
     for (int i = 1; i <= 4; i++) {
       final int index = i;
       Thread thread = new Thread(() -> {
-          try {
-            PreparedStatement updateStmt = connection.prepareStatement(
-                String.format("update test_concurrent_update set v%d = ? where k = 0", index));
-            PreparedStatement selectStmt = connection.prepareStatement(
-                String.format("select v%d from test_concurrent_update where k = 0", index));
+        try {
+          PreparedStatement updateStmt = connection.prepareStatement(
+                  String.format("update test_concurrent_update set v%d = ? where k = 0", index));
+          PreparedStatement selectStmt = connection.prepareStatement(
+                  String.format("select v%d from test_concurrent_update where k = 0", index));
 
-            for (int j = 1; j <= 100; j++) {
-              // Update column.
-              updateStmt.setInt(1, j);
-              updateStmt.execute();
+          for (int j = 1; j <= 100; j++) {
+            // Update column.
+            updateStmt.setInt(1, j);
+            updateStmt.execute();
 
-              // Verify update.
-              ResultSet rs = selectStmt.executeQuery();
-              assertNextRow(rs, j);
-            }
-
-          } catch (Throwable e) {
-            synchronized (errors) {
-              errors.add(e);
-            }
+            // Verify update.
+            ResultSet rs = selectStmt.executeQuery();
+            assertNextRow(rs, j);
           }
+
+        } catch (Throwable e) {
+          synchronized (errors) {
+            errors.add(e);
+          }
+        }
       });
       thread.start();
       threads.add(thread);
@@ -282,5 +282,33 @@ public class TestPgUpdate extends BasePgSQLTest {
       LOG.error("Errors occurred", e);
     }
     assertTrue(errors.isEmpty());
+  }
+
+  /*
+   * Only test (the wire-protocol aspect of) prepared statements for expression pushdown here.
+   * Rest of the tests for expression pushdown are in yb_dml_single_row (TestPgRegressDml).
+   */
+  @Test
+  public void testExpressionPushdownPreparedStatements() throws Exception {
+    String tableName = "test_update_expr_pushdown";
+    setupSimpleTable(tableName);
+
+    PreparedStatement updateStmt = connection.prepareStatement(
+            "update test_update_expr_pushdown SET vi = vi + ?, vs = vs || ? " +
+                    "WHERE h = 2 AND r = 2.5");
+    int expected_vi = 22;
+    String expected_vs = "v22";
+    for (int i = 0; i < 20; i++) {
+      // Use float instead of int to check bind param casting.
+      float vi_inc = i * 10 + 5.4F;
+      String vs_concat = "," + i;
+      updateStmt.setFloat(1, vi_inc);
+      updateStmt.setString(2, vs_concat);
+      updateStmt.execute();
+      expected_vi += vi_inc;
+      expected_vs += vs_concat;
+      assertOneRow("select vi,vs from test_update_expr_pushdown where h = 2 and r = 2.5",
+                   expected_vi, expected_vs);
+    }
   }
 }

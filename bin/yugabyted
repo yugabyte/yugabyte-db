@@ -395,7 +395,8 @@ class ControlScript(object):
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
                 "--master_enable_metrics_snapshotter=true",
-                "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port"))
+                "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
+                "--default_memory_limit_to_ram_ratio=0.35"
             ]
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(
@@ -415,7 +416,8 @@ class ControlScript(object):
                     bind_ip, self.configs.saved_data.get("ysql_port")),
                 "--tserver_enable_metrics_snapshotter=true",
                 "--metrics_snapshotter_interval_ms=11000",
-                "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port"))
+                "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
+                "--default_memory_limit_to_ram_ratio=0.6"
             ]
 
         if self.configs.saved_data.get("tserver_flags"):

@@ -515,7 +515,7 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 	 */
 	if (node->strategy == SETOP_HASHED)
 		setopstate->tableContext =
-			AllocSetContextCreate(CurrentMemoryContext,
+			AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "SetOp hash table",
 								  ALLOCSET_DEFAULT_SIZES);
 

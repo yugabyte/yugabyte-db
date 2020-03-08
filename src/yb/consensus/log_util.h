@@ -115,6 +115,11 @@ struct LogEntryMetadata {
   RestartSafeCoarseTimePoint entry_time;
   int64_t offset;
   uint64_t active_segment_sequence_number;
+
+  std::string ToString() const {
+    return Format("{ entry_time: $0 offset: $1 active_segment_sequence_number: $2 }",
+                  entry_time, offset, active_segment_sequence_number);
+  }
 };
 
 // A sequence of segments, ordered by increasing sequence number.

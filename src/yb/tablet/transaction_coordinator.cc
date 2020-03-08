@@ -180,12 +180,11 @@ class TransactionState {
     return first_entry_raft_index_;
   }
 
-  // Returns debug string this representation of this class.
   std::string ToString() const {
     return Format("{ id: $0 last_touch: $1 status: $2 unnotified_tablets: $3 replicating: $4 "
-                  " request_queue: $5 }",
+                      " request_queue: $5 first_entry_raft_index: $6 }",
                   to_string(id_), last_touch_, TransactionStatus_Name(status_),
-                  involved_tablets_, replicating_, request_queue_);
+                  involved_tablets_, replicating_, request_queue_, first_entry_raft_index_);
   }
 
   // Whether this transaction expired at specified time.
@@ -413,6 +412,37 @@ class TransactionState {
       resend_applying_time_ = now_physical +
           std::chrono::microseconds(FLAGS_transaction_resend_applying_interval_usec);
     }
+  }
+
+  CHECKED_STATUS AppliedInOneOfInvolvedTablets(const tserver::TransactionStatePB& state) {
+    if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
+      // We could ignore this request, because it will be re-send if required.
+      LOG_WITH_PREFIX(DFATAL)
+          << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
+          << ", request: " << state.ShortDebugString();
+      return Status::OK();
+    }
+
+    if (state.tablets_size() != 1) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Expected exactly one tablet in $0: $1", __func__, state);
+    }
+
+    auto it = involved_tablets_.find(state.tablets(0));
+    if (it == involved_tablets_.end()) {
+      LOG_WITH_PREFIX(DFATAL) << "Applied in unknown tablet: " << state.tablets(0);
+      return Status::OK();
+    }
+    if (!it->second.all_intents_applied) {
+      --tablets_with_not_applied_intents_;
+      it->second.all_intents_applied = true;
+      VLOG_WITH_PREFIX(4) << "Applied to " << state.tablets(0) << ", left not applied: "
+                          << tablets_with_not_applied_intents_;
+      if (tablets_with_not_applied_intents_ == 0) {
+        SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
+      }
+    }
+    return Status::OK();
   }
 
  private:
@@ -661,37 +691,6 @@ class TransactionState {
     }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index();
-    return Status::OK();
-  }
-
-  CHECKED_STATUS AppliedInOneOfInvolvedTablets(const tserver::TransactionStatePB& state) {
-    if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
-      // We could ignore this request, because it will be resend if required.
-      LOG_WITH_PREFIX(DFATAL)
-          << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
-          << ", request: " << state.ShortDebugString();
-      return Status::OK();
-    }
-
-    if (state.tablets_size() != 1) {
-      return STATUS_FORMAT(
-          InvalidArgument, "Expected exactly one tablet in $0: $1", __func__, state);
-    }
-
-    auto it = involved_tablets_.find(state.tablets(0));
-    if (it == involved_tablets_.end()) {
-      LOG_WITH_PREFIX(DFATAL) << "Applied in unknown tablet: " << state.tablets(0);
-      return Status::OK();
-    }
-    if (!it->second.all_intents_applied) {
-      --tablets_with_not_applied_intents_;
-      it->second.all_intents_applied = true;
-      VLOG_WITH_PREFIX(4) << "Applied to " << state.tablets(0) << ", left not applied: "
-                          << tablets_with_not_applied_intents_;
-      if (tablets_with_not_applied_intents_ == 0) {
-        SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
-      }
-    }
     return Status::OK();
   }
 
@@ -961,10 +960,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
     for (size_t idx = 0; idx != expected_tablet_batches.size(); ++idx) {
       if (write_hybrid_times[idx] == HybridTime::kMin) {
-        Modify(txn_it).Aborted();
+        managed_transactions_.modify(txn_it, [](TransactionState& state) {
+          state.Aborted();
+        });
       } else if (write_hybrid_times[idx].is_valid()) {
-        Modify(txn_it).ReplicatedAllBatchesAt(
-            expected_tablet_batches[idx].tablet, write_hybrid_times[idx]);
+        managed_transactions_.modify(
+            txn_it, [idx, &expected_tablet_batches, &write_hybrid_times](TransactionState& state) {
+          state.ReplicatedAllBatchesAt(
+              expected_tablet_batches[idx].tablet, write_hybrid_times[idx]);
+        });
       }
     }
     auto result = VERIFY_RESULT(txn_it->GetStatus(/* expected_tablet_batches = */ nullptr));
@@ -995,10 +999,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         return;
       }
       postponed_leader_actions_.leader_term = term;
-      auto status = Modify(it).Abort(&callback);
+      boost::optional<TransactionStatusResult> status;
+      managed_transactions_.modify(it, [&status, &callback](TransactionState& state) {
+        status = state.Abort(&callback);
+      });
       if (callback) {
         lock.unlock();
-        callback(status);
+        callback(*status);
         return;
       }
       actions.Swap(&postponed_leader_actions_);
@@ -1027,7 +1034,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       if (it == managed_transactions_.end()) {
         return Status::OK();
       }
-      result = Modify(it).ProcessReplicated(data);
+      managed_transactions_.modify(it, [&result, &data](TransactionState& state) {
+        result = state.ProcessReplicated(data);
+      });
       CheckCompleted(it);
       actions.Swap(&postponed_leader_actions_);
     }
@@ -1104,24 +1113,40 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         }
       }
 
-      Modify(it).Handle(std::move(request));
+      managed_transactions_.modify(it, [&request](TransactionState& state) {
+        state.Handle(std::move(request));
+      });
       postponed_leader_actions_.Swap(&actions);
     }
 
     ExecutePostponedLeaderActions(&actions);
   }
 
-  int64_t PrepareGC() {
+  int64_t PrepareGC(std::string* details) {
     std::lock_guard<std::mutex> lock(managed_mutex_);
     if (!managed_transactions_.empty()) {
-      return managed_transactions_.get<FirstEntryIndexTag>().begin()->first_entry_raft_index();
+      auto& txn = *managed_transactions_.get<FirstEntryIndexTag>().begin();
+      if (details) {
+        *details += Format("Transaction coordinator: $0\n", txn);
+      }
+      return txn.first_entry_raft_index();
     }
     return std::numeric_limits<int64_t>::max();
   }
 
-  // Returns logs prefix for this transaction.
+  // Returns logs prefix for this transaction coordinator.
   const std::string& LogPrefix() {
     return log_prefix_;
+  }
+
+  std::string DumpTransactions() {
+    std::string result;
+    std::lock_guard<std::mutex> lock(managed_mutex_);
+    for (const auto& txn : managed_transactions_) {
+      result += txn.ToString();
+      result += "\n";
+    }
+    return result;
   }
 
  private:
@@ -1149,10 +1174,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           >
       >
   > ManagedTransactions;
-
-  static TransactionState& Modify(const ManagedTransactions::iterator& it) {
-    return const_cast<TransactionState&>(*it);
-  }
 
   void ExecutePostponedLeaderActions(PostponedLeaderActions* actions) {
     for (const auto& p : actions->complete_with_status) {
@@ -1184,11 +1205,24 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
               nullptr /* remote_tablet */,
               context_.client_future().get(),
               &req,
-              [this, handle](const Status& status,
-                             const tserver::UpdateTransactionResponsePB& resp) {
+              [this, handle, txn_id = action.transaction, tablet = action.tablet]
+                  (const Status& status, const tserver::UpdateTransactionResponsePB& resp) {
                 client::UpdateClock(resp, &context_);
                 rpcs_.Unregister(handle);
                 LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send apply: " << status;
+                // Tablet was deleted, so we should mark it as applied to cleanup transaction.
+                if (status.IsNotFound()) {
+                  std::lock_guard<std::mutex> lock(managed_mutex_);
+                  auto it = managed_transactions_.find(txn_id);
+                  if (it != managed_transactions_.end()) {
+                    managed_transactions_.modify(it, [&tablet](TransactionState& state) {
+                      tserver::TransactionStatePB transaction_state;
+                      transaction_state.add_tablets(tablet);
+                      WARN_NOT_OK(state.AppliedInOneOfInvolvedTablets(transaction_state),
+                                  "AppliedInOneOfInvolvedTablets for removed tabled failed: ");
+                    });
+                  }
+                }
               });
           (**handle).SendRpc();
         }
@@ -1313,7 +1347,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     if (it->Completed()) {
       auto status = STATUS_FORMAT(Expired, "Transaction completed: $0", *it);
       VLOG_WITH_PREFIX(1) << status;
-      Modify(it).ClearRequests(status);
+      managed_transactions_.modify(it, [&status](TransactionState& state) {
+        state.ClearRequests(status);
+      });
       managed_transactions_.erase(it);
     }
   }
@@ -1353,8 +1389,8 @@ void TransactionCoordinator::ProcessAborted(const AbortedData& data) {
   impl_->ProcessAborted(data);
 }
 
-int64_t TransactionCoordinator::PrepareGC() {
-  return impl_->PrepareGC();
+int64_t TransactionCoordinator::PrepareGC(std::string* details) {
+  return impl_->PrepareGC(details);
 }
 
 size_t TransactionCoordinator::test_count_transactions() const {
@@ -1385,6 +1421,10 @@ void TransactionCoordinator::Abort(const std::string& transaction_id,
                                    int64_t term,
                                    TransactionAbortCallback callback) {
   impl_->Abort(transaction_id, term, std::move(callback));
+}
+
+std::string TransactionCoordinator::DumpTransactions() {
+  return impl_->DumpTransactions();
 }
 
 std::string TransactionCoordinator::ReplicatedData::ToString() const {

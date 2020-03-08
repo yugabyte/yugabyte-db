@@ -124,8 +124,9 @@ declare -i -r YB_DEP_DOWNLOAD_LOCK_WAIT_SEC=120
 
 YB_NFS_DOWNLOAD_CACHE_DIR=${YB_NFS_DOWNLOAD_CACHE_DIR:-$YB_JENKINS_NFS_HOME_DIR/download_cache}
 
-readonly VALID_BUILD_TYPES=(
+readonly -a VALID_BUILD_TYPES=(
   asan
+  compilecmds
   debug
   fastdebug
   idebug
@@ -136,12 +137,11 @@ readonly VALID_BUILD_TYPES=(
   release
   tsan
   tsan_slow
-  compilecmds
 )
 
 # Valid values of CMAKE_BUILD_TYPE passed to the top-level CMake build. This is the same as the
 # above with the exclusion of ASAN/TSAN.
-readonly VALID_CMAKE_BUILD_TYPES=(
+readonly -a VALID_CMAKE_BUILD_TYPES=(
   debug
   fastdebug
   profile_build
@@ -149,9 +149,17 @@ readonly VALID_CMAKE_BUILD_TYPES=(
   release
 )
 
-readonly VALID_COMPILER_TYPES=( gcc clang zapcc gcc8 )
+readonly -a VALID_COMPILER_TYPES=(
+  clang
+  gcc
+  gcc8
+  zapcc
+)
 
-readonly VALID_LINKING_TYPES=( static dynamic )
+readonly -a VALID_LINKING_TYPES=(
+  dynamic
+  static
+)
 
 make_regexes_from_lists \
   VALID_BUILD_TYPES \
@@ -181,10 +189,10 @@ readonly YB_DOWNLOAD_LOCKS_DIR=/tmp/yb_download_locks
 
 readonly YB_NFS_PATH_RE="^/(n|z|u|net|Volumes/net|servers|nfusr)/"
 
-readonly MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
+readonly -a MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
+  dependency:go-offline
   dependency:resolve
   dependency:resolve-plugins
-  dependency:go-offline
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -516,6 +524,15 @@ set_cmake_build_type_and_compiler_type() {
       cmake_build_type=fastdebug
       ensure_using_clang
     ;;
+    compilecmds)
+      cmake_build_type=debug
+      export CMAKE_EXPORT_COMPILE_COMMANDS=1
+      export YB_EXPORT_COMPILE_COMMANDS=1
+    ;;
+    idebug|ifastdebug|irelease)
+      cmake_build_type=${build_type:1}
+      cmake_opts+=( -DYB_INSTRUMENT_FUNCTIONS=1 )
+    ;;
     tsan)
       enable_tsan
       cmake_build_type=fastdebug
@@ -523,15 +540,6 @@ set_cmake_build_type_and_compiler_type() {
     tsan_slow)
       enable_tsan
       cmake_build_type=debug
-    ;;
-    idebug|irelease|ifastdebug)
-      cmake_build_type=${build_type:1}
-      cmake_opts+=( -DYB_INSTRUMENT_FUNCTIONS=1 )
-    ;;
-    compilecmds)
-      cmake_build_type=debug
-      export CMAKE_EXPORT_COMPILE_COMMANDS=1
-      export YB_EXPORT_COMPILE_COMMANDS=1
     ;;
     *)
       cmake_build_type=$build_type
@@ -649,11 +657,11 @@ set_mvn_parameters() {
   fi
   export MVN_SETTINGS_PATH
 
-  mvn_common_options=(
+  declare -ag mvn_common_options=(
     --batch-mode
+    -DbinDir="$BUILD_ROOT/bin"
     -Dmaven.repo.local="$YB_MVN_LOCAL_REPO"
     -Dyb.thirdparty.dir="$YB_THIRDPARTY_DIR"
-    -DbinDir="$BUILD_ROOT/bin"
   )
   log "The result of set_mvn_parameters:" \
       "YB_MVN_LOCAL_REPO=$YB_MVN_LOCAL_REPO," \
@@ -727,7 +735,7 @@ build_yb_java_code_filter_save_output() {
     local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
     has_local_output=true
   fi
-  local mvn_opts=()
+  local -a mvn_opts=()
   append_common_mvn_opts
   if ! is_jenkins; then
     mvn_opts+=( -Dmaven.javadoc.skip )
@@ -2265,7 +2273,7 @@ if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
         "$YB_BUILD_SUPPORT_DIR does not exist."
 fi
 
-readonly YB_DEFAULT_CMAKE_OPTS=(
+readonly -a YB_DEFAULT_CMAKE_OPTS=(
   "-DCMAKE_C_COMPILER=$YB_COMPILER_WRAPPER_CC"
   "-DCMAKE_CXX_COMPILER=$YB_COMPILER_WRAPPER_CXX"
 )

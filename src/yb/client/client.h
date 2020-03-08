@@ -629,7 +629,7 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
-  FRIEND_TEST(ClientTest, TestReplicatedTabletWritesWithLeaderElection);
+  FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
   FRIEND_TEST(ClientTest, TestScanTimeout);
   FRIEND_TEST(ClientTest, TestWriteWithDeadMaster);

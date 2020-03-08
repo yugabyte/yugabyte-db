@@ -41,4 +41,3 @@ ADD_YB_TEST(yb_rocksdb_logger-test)
 
 ADD_YB_TEST(rocksdb_encrypted_env-test)
 target_link_libraries(rocksdb_encrypted_env-test encryption_test_util)
-

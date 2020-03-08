@@ -29,6 +29,8 @@ class CatalogManager : public yb::master::CatalogManager {
   typedef yb::master::CatalogManager super;
  public:
   explicit CatalogManager(yb::master::Master* master) : super(master) {}
+  virtual ~CatalogManager();
+  void Shutdown();
 
   CHECKED_STATUS RunLoaders(int64_t term) override;
 

@@ -20,6 +20,8 @@
 
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -663,7 +665,7 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
           break;
         }
       }
-      ASSERT_TRUE(op->succeeded());
+      ASSERT_TRUE(op->succeeded()) << "Read failed: " << op->response().ShortDebugString();
       auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
       ASSERT_EQ(rowblock->row_count(), 1);
       const auto& first_column = rowblock->row(0).column(0);
@@ -793,6 +795,52 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
 
   ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
                     "All tablets running"));
+}
+
+TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
+  SetIgnoreApplyingProbability(0.5);
+
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  auto session = CreateSession();
+  auto prev_ht = clock_->Now();
+  for (int i = 0; i != 4; ++i) {
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(isolation_level_));
+    session->SetTransaction(txn);
+    ASSERT_OK(WriteRow(session, i, -i));
+    ASSERT_OK(txn->CommitFuture().get());
+
+    auto peers = ListTabletPeers(
+        cluster_.get(), [](const std::shared_ptr<tablet::TabletPeer>& peer) {
+      if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+        return false;
+      }
+      return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+    });
+    ASSERT_EQ(peers.size(), 1);
+    auto peer = peers[0];
+    auto tablet = peer->tablet();
+    ASSERT_OK(tablet->transaction_participant()->ResolveIntents(
+        peer->clock().Now(), CoarseTimePoint::max()));
+    auto current_ht = clock_->Now();
+    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+    bool found = false;
+    auto files = tablet->TEST_db()->GetLiveFilesMetaData();
+    for (const auto& meta : files) {
+      auto min_ht = down_cast<docdb::ConsensusFrontier&>(
+          *meta.smallest.user_frontier).hybrid_time();
+      auto max_ht = down_cast<docdb::ConsensusFrontier&>(
+          *meta.largest.user_frontier).hybrid_time();
+      if (min_ht > prev_ht && max_ht < current_ht) {
+        found = true;
+        break;
+      }
+    }
+
+    ASSERT_TRUE(found) << "Cannot find SST file that fits into " << prev_ht << " - " << current_ht
+                       << " range, files: " << AsString(files);
+
+    prev_ht = current_ht;
+  }
 }
 
 } // namespace client

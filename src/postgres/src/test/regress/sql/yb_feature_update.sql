@@ -104,3 +104,39 @@ UPDATE feature_tab_dml
 --  Select updated rows.
 --
 SELECT * FROM feature_tab_dml WHERE col_smallint = 78;
+
+--
+-- Test RETURNING clause with indexes and foreign keys.
+--
+CREATE TABLE feature_tab_dml_returning (
+  id SERIAL PRIMARY KEY,
+  a TEXT UNIQUE,
+  b timestamp with time zone
+);
+
+INSERT INTO feature_tab_dml_returning (a) values ('foo');
+SELECT * FROM feature_tab_dml_returning;
+
+-- Using `NOW()` because it is not an immutable function, so it needs to be
+-- evaluated during execution.
+-- Do not select NOW() value to ensure expected output is stable, only
+-- check query succeeds and b is not null (same for queries below).
+UPDATE feature_tab_dml_returning SET b = NOW() where id = 1 RETURNING id, a, b IS NOT NULL;
+SELECT id, a, b IS NOT NULL FROM feature_tab_dml_returning;
+
+--
+-- Add a table referencing column 'a'.
+--
+CREATE TABLE feature_tab_dml_returning_fk (
+  id SERIAL NOT NULL PRIMARY KEY,
+  x TEXT NOT NULL,
+  y TEXT REFERENCES feature_tab_dml_returning(a) NOT NULL
+);
+
+-- Should succeed because no fkey references 'foo'
+UPDATE feature_tab_dml_returning SET a = 'bar', b = NOW() where id = 1 RETURNING id, a, b IS NOT NULL;
+SELECT id, a, b IS NOT NULL FROM feature_tab_dml_returning;
+
+INSERT INTO feature_tab_dml_returning_fk (x, y) VALUES ('x', 'bar');
+-- Should fail the foreign key check.
+UPDATE feature_tab_dml_returning SET a = 'bar2', b = NOW() where id = 1 RETURNING id, a, b IS NOT NULL;

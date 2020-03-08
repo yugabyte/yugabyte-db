@@ -239,6 +239,10 @@ typedef struct ModifyTable
 	Node	   *onConflictWhere;	/* WHERE for ON CONFLICT UPDATE */
 	Index		exclRelRTI;		/* RTI of the EXCLUDED pseudo relation */
 	List	   *exclRelTlist;	/* tlist of the EXCLUDED pseudo relation */
+
+	List	   *ybPushdownTlist; /* tlist for the pushed down SET expressions */
+	bool	   no_index_update; /* planner has checked no indexes need update */
+	bool	   no_row_trigger; /* planner has checked no triggers apply */
 } ModifyTable;
 
 struct PartitionPruneInfo;		/* forward reference to struct below */

@@ -482,7 +482,8 @@ CatalogManager::CatalogManager(Master* master)
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(new enterprise::ClusterLoadBalancer(this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
-      tasks_tracker_(new TasksTracker()),
+      tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
+      jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
@@ -803,6 +804,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
 
   // Clear recent tasks.
   tasks_tracker_->Reset();
+
+  // Clear recent jobs.
+  jobs_tracker_->Reset();
 
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
@@ -1339,8 +1343,9 @@ void CatalogManager::Shutdown() {
     sys_catalog_->Shutdown();
   }
 
-  // Reset the tasks tracker.
+  // Reset the jobs/tasks tracker.
   tasks_tracker_->Reset();
+  jobs_tracker_->Reset();
 
   if (initdb_future_ && initdb_future_->wait_for(0s) != std::future_status::ready) {
     LOG(WARNING) << "initdb is still running, waiting for it to complete.";
@@ -3731,6 +3736,10 @@ std::vector<std::shared_ptr<MonitoredTask>> CatalogManager::GetRecentTasks() {
   return tasks_tracker_->GetTasks();
 }
 
+std::vector<std::shared_ptr<MonitoredTask>> CatalogManager::GetRecentJobs() {
+  return jobs_tracker_->GetTasks();
+}
+
 NamespaceName CatalogManager::GetNamespaceNameUnlocked(const NamespaceId& id) const  {
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, id);
   return ns == nullptr ? NamespaceName() : ns->name();
@@ -3807,7 +3816,7 @@ bool CatalogManager::IsColocatedUserTable(const TableInfo& table) const {
 }
 
 bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
-  if (table.GetTableType() == PGSQL_TABLE_TYPE) {
+  if (table.GetTableType() == PGSQL_TABLE_TYPE && !IsColocatedParentTable(table)) {
     // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
     if (!IsPgsqlId(table.namespace_id()) || !IsPgsqlId(table.id())) {
       LOG(WARNING) << "Not PGSQL IDs " << table.namespace_id() << ", " << table.id();
@@ -4162,7 +4171,10 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
   if (tablet_needs_alter) {
     SendAlterTabletRequest(tablet);
   } else if (report.has_schema_version()) {
-    RETURN_NOT_OK(HandleTabletSchemaVersionReport(tablet.get(), report.schema_version()));
+    auto leader = tablet->GetLeader();
+    if (leader.ok() && leader.get()->permanent_uuid() == ts_desc->permanent_uuid()) {
+      RETURN_NOT_OK(HandleTabletSchemaVersionReport(tablet.get(), report.schema_version()));
+    }
   }
 
   return Status::OK();
