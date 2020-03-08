@@ -1,7 +1,7 @@
 ---
 title: NUMERIC data types
 linkTitle: Numeric
-description: Numeric Types
+description: Numeric data Types
 summary: Signed integers and Floating and Fixed point numbers
 menu:
   latest:

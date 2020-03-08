@@ -1,7 +1,7 @@
 ---
 title: Containment - the `@>` and `<@` operators
 linkTitle: Containment - the `@>` and `<@` operators
-summary: Containment: the `@>` and `<@` operators
+summary: Containment - the `@>` and `<@` operators
 description: Containment - the `@>` and `<@` operators
 menu:
   latest:
@@ -10,9 +10,6 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-
-
-## Containment: the `@>` and `<@` operators
 
 `The @>` operator tests if the left-hand JSON value contains the right-hand JSON value. And the `<@` operator tests if the right-hand JSON value contains the left-hand JSON value. These operators require that the inputs are presented as `jsonb` values. They don't have overloads for `json`. 
 

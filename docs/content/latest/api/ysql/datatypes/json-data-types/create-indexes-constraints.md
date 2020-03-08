@@ -5,7 +5,7 @@ summary: Create indexes and check constraints on JSON columns
 description: Create indexes and check constraints on JSON columns
 menu:
   latest:
-    identifier: to-jsonb
+    identifier: create-indexes-check-constraints
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
