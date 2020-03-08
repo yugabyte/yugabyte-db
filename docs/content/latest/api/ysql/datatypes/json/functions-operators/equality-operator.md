@@ -1,8 +1,8 @@
 ---
-title: Equality - the `=` operator
+title: Equality
 linkTitle: Equality - the `=` operator
-summary: Concatenation - the `||` operator
-description: Concatenation - the `||` operator
+summary: Equality - the `=` operator
+description: Equality - the `=` operator
 menu:
   latest:
     identifier: equality-operator

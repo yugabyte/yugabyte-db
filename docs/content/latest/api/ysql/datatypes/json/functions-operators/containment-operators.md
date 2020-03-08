@@ -1,5 +1,5 @@
 ---
-title: Containment - the `@>` and `<@` operators
+title: Containment
 linkTitle: Containment - the `@>` and `<@` operators
 summary: Containment - the `@>` and `<@` operators
 description: Containment - the `@>` and `<@` operators

@@ -5,7 +5,7 @@ summary: Operators for constructing jsonb value
 description: Operators for constructing jsonb value
 menu:
   latest:
-    identifier: jsonb-value-operators
+    identifier: jsonb-operators-constructing-values
     parent: functions-operators
 isTocNested: true
 showAsideToc: true

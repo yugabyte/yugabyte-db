@@ -5,7 +5,7 @@ summary: jsonb_set() and jsonb_insert()
 description: jsonb_set() and jsonb_insert()
 menu:
   latest:
-    identifier: jsonb-set-jsonb-insert
+    identifier: jsonb-set-jsonb-set-insert
     parent: functions-operators
 isTocNested: true
 showAsideToc: true
