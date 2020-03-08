@@ -1,6 +1,6 @@
 ---
 title: jsonb_set() and jsonb_insert()
-linktitle: jsonb_set() and jsonb_insert()
+linkTitle: jsonb_set() and jsonb_insert()
 summary: jsonb_set() and jsonb_insert()
 description: jsonb_set() and jsonb_insert()
 menu:

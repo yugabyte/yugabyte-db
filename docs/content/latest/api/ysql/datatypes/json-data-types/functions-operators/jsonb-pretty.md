@@ -1,6 +1,6 @@
 ---
 title: jsonb_pretty()
-linktitle: jsonb_pretty()
+linkTitle: jsonb_pretty()
 summary: jsonb_pretty()
 description: jsonb_pretty()
 menu:

@@ -1,6 +1,6 @@
 ---
 title: jsonb_each_text()
-linktitle: jsonb_each_text()
+linkTitle: jsonb_each_text()
 summary: jsonb_each_text() and json_each_text()
 description: jsonb_each_text() and json_each_text()
 menu:

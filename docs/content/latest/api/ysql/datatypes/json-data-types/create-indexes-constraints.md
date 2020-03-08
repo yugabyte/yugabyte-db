@@ -1,6 +1,6 @@
 ---
 title: Indexes and check constraints
-linktitle: Indexes and check constraints
+linkTitle: Indexes and check constraints
 summary: Create indexes and check constraints on JSON columns
 description: Create indexes and check constraints on JSON columns
 menu:

@@ -1,6 +1,6 @@
 ---
 title: jsonb_build_object()
-linktitle: jsonb_build_object()
+linkTitle: jsonb_build_object()
 summary: jsonb_build_object() and json_build_object()
 description: jsonb_build_object() and json_build_object()
 menu:

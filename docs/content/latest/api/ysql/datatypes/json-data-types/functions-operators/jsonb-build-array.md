@@ -1,6 +1,6 @@
 ---
 title: jsonb_build_array()
-linktitle: jsonb_build_array()
+linkTitle: jsonb_build_array()
 summary: jsonb_build_array() and json_build_array()
 description: jsonb_build_array() and json_build_array()
 menu:

@@ -1,6 +1,6 @@
 ---
 title: to_jsonb() and to_json()
-linktitle: to_jsonb() and to_json()
+linkTitle: to_jsonb() and to_json()
 summary: to_jsonb() and to_json()
 description: to_jsonb() and to_json()
 menu:

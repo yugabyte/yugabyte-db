@@ -1,6 +1,6 @@
 ---
 title: jsonb_typeof()
-linktitle: jsonb_typeof()
+linkTitle: jsonb_typeof()
 summary: Concatenation: jsonb_typeof() and json_typeof()
 description: jsonb_typeof() and json_typeof()
 menu:

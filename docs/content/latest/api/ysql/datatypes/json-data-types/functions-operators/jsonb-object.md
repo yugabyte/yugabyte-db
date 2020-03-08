@@ -1,6 +1,6 @@
 ---
 title: jsonb_object()
-linktitle: jsonb_object()
+linkTitle: jsonb_object()
 summary: jsonb_object() and json_object()
 description: jsonb_object() and json_object()
 menu:

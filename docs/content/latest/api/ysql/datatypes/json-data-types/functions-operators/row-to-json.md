@@ -1,6 +1,6 @@
 ---
 title: row_to_json()
-linktitle: row_to_json()
+linkTitle: row_to_json()
 summary: row_to_json()
 description: row_to_json()
 menu:

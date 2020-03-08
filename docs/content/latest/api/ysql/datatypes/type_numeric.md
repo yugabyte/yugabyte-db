@@ -1,6 +1,6 @@
 ---
 title: NUMERIC data types
-linktitle: Numeric
+linkTitle: Numeric
 description: Numeric Types
 summary: Signed integers and Floating and Fixed point numbers
 menu:

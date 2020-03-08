@@ -1,6 +1,6 @@
 ---
 title: JSON and JSONB data types
-linktitle: JSON and JSONB
+linkTitle: JSON and JSONB
 summary: JSON and JSONB data types
 description: JSON and JSONB data types
 menu:

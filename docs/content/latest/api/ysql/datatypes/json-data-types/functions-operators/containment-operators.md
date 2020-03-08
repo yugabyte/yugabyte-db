@@ -1,8 +1,8 @@
 ---
-title: Containment: the `@>` and `<@` operators
-linktitle: Containment: the `@>` and `<@` operators
-summary: Concatenation: the `||` operator
-description: Concatenation: the `||` operator
+title: Containment - the `@>` and `<@` operators
+linkTitle: Containment - the `@>` and `<@` operators
+summary: Containment: the `@>` and `<@` operators
+description: Containment - the `@>` and `<@` operators
 menu:
   latest:
     identifier: containment-operators

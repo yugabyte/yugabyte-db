@@ -1,6 +1,6 @@
 ---
 title: Operators for reading JSON subvalues
-linktitle: Operators for reading JSON subvalues
+linkTitle: Operators for reading JSON subvalues
 summary: Operators for reading JSON subvalues
 description: Operators for reading JSON subvalues
 menu:

@@ -1,6 +1,6 @@
 ---
 title: Operators for constructing jsonb value
-linktitle: Operators for constructing jsonb value
+linkTitle: Operators for constructing jsonb value
 summary: Operators for constructing jsonb value
 description: Operators for constructing jsonb value
 menu:

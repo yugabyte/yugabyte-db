@@ -1,6 +1,6 @@
 ---
 title: Functions and operators by purpose
-linktitle: Functions and operators by purpose
+linkTitle: Functions and operators by purpose
 summary: Functions and operators by purpose
 description: Functions and operators by purpose
 menu:

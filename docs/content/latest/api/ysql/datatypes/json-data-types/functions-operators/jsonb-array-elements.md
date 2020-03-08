@@ -1,6 +1,6 @@
 ---
 title: jsonb_array_elements()_ and _json_array_elements()
-linktitle: jsonb_array_elements()_ and _json_array_elements()
+linkTitle: jsonb_array_elements()_ and _json_array_elements()
 summary: jsonb_array_elements()_ and _json_array_elements()
 description: jsonb_array_elements()_ and _json_array_elements()
 menu:

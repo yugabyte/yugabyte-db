@@ -1,6 +1,6 @@
 ---
 title: array_to_json()
-linktitle: array_to_json()
+linkTitle: array_to_json()
 summary: array_to_json()
 description: array_to_json()
 menu:

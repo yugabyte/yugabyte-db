@@ -1,6 +1,6 @@
 ---
 title: jsonb_object_keys()
-linktitle: jsonb_object_keys()
+linkTitle: jsonb_object_keys()
 summary: jsonb_object_keys() and json_object_keys()
 description: jsonb_object_keys() and json_object_keys()
 menu:

@@ -1,6 +1,6 @@
 ---
 title: Get property of JSON value
-linktitle: Get property of JSON value
+linkTitle: Get property of JSON value
 summary: Get a property of a JSON value
 description: Get a property of a JSON value
 menu:

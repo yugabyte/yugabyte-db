@@ -1,6 +1,6 @@
 ---
 title: jsonb_to_record()
-linktitle: jsonb_to_record()
+linkTitle: jsonb_to_record()
 summary: jsonb_to_record() and json_to_record()
 description: jsonb_to_record() and json_to_record()
 menu:

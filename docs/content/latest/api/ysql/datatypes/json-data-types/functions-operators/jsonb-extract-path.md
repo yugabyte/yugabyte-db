@@ -1,6 +1,6 @@
 ---
 title: jsonb_extract_path()
-linktitle: jsonb_extract_path()
+linkTitle: jsonb_extract_path()
 summary: jsonb_extract_path() and json_extract_path()
 description: jsonb_extract_path() and json_extract_path()
 menu:
