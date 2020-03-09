@@ -5,8 +5,8 @@ summary: JSON and JSON B data types
 description: JSON data types and functionality
 menu:
   latest:
-    identifier: type-json
-    parent: datatypes
+    identifier: api-ysql-datatypes-json
+    parent: api-ysql-datatypes
 isTocNested: true
 showAsideToc: true
 ---
