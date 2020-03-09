@@ -215,5 +215,40 @@ TEST(ToStringTest, Uuid) {
   ASSERT_EQ(ToString(vec), ToString(std::vector<std::string>{str}));
 }
 
+TEST(ToStringTest, Struct) {
+  struct TestStruct {
+    int a;
+    std::string b;
+    std::vector<int> c;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(a, b, c);
+    }
+  };
+
+  TestStruct t = {
+    .a = 42,
+    .b = "test",
+    .c = {1, 2, 3},
+  };
+
+  ASSERT_EQ(t.ToString(), "{ a: 42 b: test c: [1, 2, 3] }");
+
+  class TestClass {
+   public:
+    TestClass(int a, std::string b) : a_(a), b_(std::move(b)) {}
+
+    std::string ToString() const {
+      return YB_CLASS_TO_STRING(a, b);
+    }
+
+   private:
+    int a_;
+    std::string b_;
+  };
+
+  ASSERT_EQ(TestClass(42, "test").ToString(), "{ a: 42 b: test }");
+}
+
 } // namespace util_test
 } // namespace yb
