@@ -80,15 +80,13 @@ cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
-The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-community`, and will also create the `build/latest` symlink to that directory.
+The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-ninja`, and will also create the `build/latest` symlink to that directory.
 
 {{< tip title="Tip" >}}
 
 You can find the binaries you just built in `build/latest` directory.
 
 {{< /tip >}}
-
-For Linux, it will first make sure our custom Linuxbrew distribution is installed into `~/.linuxbrew-yb-build/linuxbrew-<version>`.
 
 ## Build Java code
 
