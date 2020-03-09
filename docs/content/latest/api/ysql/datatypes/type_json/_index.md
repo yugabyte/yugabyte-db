@@ -3,6 +3,7 @@ title: JSONB and JSON
 linktitle: JSONB and JSON
 summary: JSON and JSONB data types
 description: JSONB and JSON data types
+image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: api-ysql-datatypes-json
