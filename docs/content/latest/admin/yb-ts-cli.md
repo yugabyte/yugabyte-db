@@ -49,7 +49,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 
 ##### count_intents
 
-Print the count of uncommitted intents (or [provisional records](../../../architecture/transactions/ditributed-txns/#provisional-records)). Useful for debugging transactional workloads.
+Print the count of uncommitted intents (or [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records)). Useful for debugging transactional workloads.
 
 **Syntax**
 

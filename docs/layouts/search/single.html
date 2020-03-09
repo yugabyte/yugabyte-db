@@ -25,7 +25,7 @@
 			<div class="wrapper">
 				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
 
-				<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}</h1>
+				<h1>{{ .Description }} {{ if .Draft }} (Draft){{ end }}</h1>
 
 				{{ .TableOfContents }}
 				{{ .Content }}

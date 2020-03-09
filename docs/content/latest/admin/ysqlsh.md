@@ -359,7 +359,7 @@ To print your current working directory, use `\! pwd`.
 
 Outputs information about the current database connection, including database, user, host, and port.
 
-##### \copy { *table* [ ( *column_list* ) ] | ( *query* ) } { from | to } { '*filename*' | program '*command*' | stdin | stdout | pstdin | pstdout } [ [ with ] ( *option* [, ...] ) ]
+##### \copy { *table* [ ( *column_list* ) ] | ( *query* ) } { from | to } { '*filename*' | program '*command*' | stdin | stdout | pstdin | pstdout } [ \[ with \] ( *option* [, ...] ) ]
 
 Performs a frontend (client) copy. This is an operation that runs an SQL `COPY` statement, but instead of the server reading or writing the specified file, `ysqlsh` reads or writes the file and routes the data between the server and the local file system. This means that file accessibility and privileges are those of the local user, not the server, and no SQL superuser privileges are required.
 
