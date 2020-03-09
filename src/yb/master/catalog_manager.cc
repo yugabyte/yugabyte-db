@@ -247,7 +247,7 @@ DEFINE_uint64(metrics_snapshots_table_num_tablets, 0,
     "0 to use the same default num tablets as for regular tables.");
 
 DEFINE_bool(disable_index_backfill, true,  // Temporarily disabled until all diffs land.
-    "A kill switch to disable multi-stage backfill for the created indices.");
+    "A kill switch to disable multi-stage backfill for the created indexes.");
 TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
 
