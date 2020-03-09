@@ -111,10 +111,9 @@ tserver to not lose data if the whole datacenter goes down (power failure etc).
 
 ## Use SSD instead of Hard Disk Drives (HDD)
 Currently HDD aren't supported by YugabyteDB. One of the reasons is that each tablet has it's own 
-WAL (write ahead log) and even though all writes are sequential, having multiple WALs, even though each WAL is written sequentially, 
-the writes may end up as random-writes when multiple WAL are flushing at the same time. 
-We're working hard on moving on per-server WAL 
-to reduce overhead and making HDD a possible alternative. You can track 
+WAL (write ahead log) and even though all writes are sequential, having multiple WALs, the writes may end up as random-writes 
+when multiple WAL are flushing at the same time. 
+We're working hard on moving on per-server WAL to reduce overhead and making HDD a possible alternative. You can track 
 [1K+ tablets issue](https://github.com/yugabyte/yugabyte-db/issues/1317).
 
 
