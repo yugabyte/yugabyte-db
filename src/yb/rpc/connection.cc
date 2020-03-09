@@ -149,7 +149,8 @@ void Connection::Shutdown(const Status& status) {
   stream_->Shutdown(status);
   timer_.Shutdown();
 
-  LOG_WITH_PREFIX(INFO) << "Connection::Shutdown completed, status: " << status;
+  // TODO(bogdan): re-enable once we decide how to control verbose logs better...
+  // LOG_WITH_PREFIX(INFO) << "Connection::Shutdown completed, status: " << status;
 }
 
 void Connection::OutboundQueued() {
