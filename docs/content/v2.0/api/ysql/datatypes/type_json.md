@@ -1,10 +1,10 @@
 ---
 title: JSON data types
-linktitle: Json
+linktitle: JSON
 summary: JSON data types
 description: JSON data types
 menu:
-  latest:
+  v2.0:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
 aliases:

@@ -6,7 +6,7 @@ image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: api-ysql-datatypes
-    parent: ysql
+    parent: api-ysql
     weight: 4200
 aliases:
   - /latest/api/ysql/datatypes/
@@ -34,8 +34,7 @@ The following table lists the primitive types in YSQL.
 | `INET` <sup>1</sup> | | IPv4 or IPv6 host address |
 | [`INTEGER`](type_numeric) | [`INT`, `INT4`](type_numeric) | Signed 4-byte integer |
 | [`INTERVAL [fields] [(p)]`](type_datetime) | | Time span |
-| [`JSON`](type_json) <sup>1</sup> | | Textual JSON data and functionality |
-| [`JSONB`](type_json) | | Binary JSON data |
+| [`JSONB and JSON`](type_json) <sup>1</sup> | | JSON (binary and text) data and functionality |
 | `LINE` <sup>1</sup> | | Infinite line |
 | `LSEG` <sup>1</sup> | | Line segment |
 | `MACADDR` <sup>1</sup> | | MAC address |

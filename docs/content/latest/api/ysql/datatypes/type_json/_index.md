@@ -1,12 +1,14 @@
 ---
-title: JSON and JSONB data types
-linkTitle: JSON and JSONB
+title: JSONB and JSON
+linktitle: JSONB and JSON
 summary: JSON and JSONB data types
-description: JSON data types and functionality
+description: JSONB and JSON data types
 menu:
   latest:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
+aliases:
+  - /latest/api/ysql/datatypes/type_json
 isTocNested: true
 showAsideToc: true
 ---
@@ -27,6 +29,6 @@ type_specification ::= { `JSON` | `JSONB` }
 
 The remainder of the account of JSON data types and functionality is organized thus:
 
-- [JSON simple and compound data types](../json/simple-and-compound-data-types/)
-- [Functions and operators](../json/functions-operators/)
-- [Create indexes and check constraints on `json` and `jsonb` columns](../json/create-indexes-checck-constraints/)
+- [JSON simple and compound data types](../json-details/simple-and-compound-data-types/)
+- [Functions and operators](../json-details/functions-operators/)
+- [Create indexes and check constraints on `jsonb` and `json` columns](../json/create-indexes-check-constraints/)
