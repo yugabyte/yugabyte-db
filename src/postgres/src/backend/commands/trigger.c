@@ -5949,22 +5949,6 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 			continue;
 
 		/*
-		 * In YugaByte mode we also use the tuplestore to store/pass tuples
-		 * within a query execution.
-		 */
-		if ((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger)
-		{
-			if (fdw_tuplestore == NULL)
-			{
-				fdw_tuplestore = GetCurrentFDWTuplestore();
-				new_event.ate_flags = AFTER_TRIGGER_FDW_FETCH;
-			}
-			else
-				/* subsequent event for the same tuple */
-				new_event.ate_flags = AFTER_TRIGGER_FDW_REUSE;
-		}
-
-		/*
 		 * If the trigger is a foreign key enforcement trigger, there are
 		 * certain cases where we can skip queueing the event because we can
 		 * tell by inspection that the FK constraint will still pass.
@@ -5997,6 +5981,22 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 					/* Not an FK trigger */
 					break;
 			}
+		}
+
+		/*
+		 * In YugaByte mode we also use the tuplestore to store/pass tuples
+		 * within a query execution.
+		 */
+		if ((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger)
+		{
+			if (fdw_tuplestore == NULL)
+			{
+				fdw_tuplestore = GetCurrentFDWTuplestore();
+				new_event.ate_flags = AFTER_TRIGGER_FDW_FETCH;
+			}
+			else
+				/* subsequent event for the same tuple */
+				new_event.ate_flags = AFTER_TRIGGER_FDW_REUSE;
 		}
 
 		/*
