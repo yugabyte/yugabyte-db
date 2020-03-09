@@ -119,7 +119,7 @@ to reduce overhead and making HDD a possible alternative. You can track
 
 
 ## Use Read Replicas for low latency timeline consistent reads in multi-region deployments
-In a YugabyteDB deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. 
+In a YugabyteDB multi-region deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. 
 
 Optionally, you can [create a read replica cluster](../deploy/multi-dc/read-replica-clusters.md) that asynchronously replicates data from the primary cluster and guarantees timeline 
 consistency (with bounded staleness). A synchronously replicated primary cluster can accept writes to the system. 
