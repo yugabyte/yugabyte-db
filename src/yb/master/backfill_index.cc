@@ -308,7 +308,7 @@ bool MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
           idx_pb.index_permissions() < INDEX_PERM_READ_WRITE_AND_DELETE) {
         index_info_to_update = idx_pb;
         // Until we get to #2784, we'll have only one index being built at a time.
-        LOG_IF(DFATAL, updated) << "For now, we cannot have multiple indices build in parallel.";
+        LOG_IF(DFATAL, updated) << "For now, we cannot have multiple indexes build in parallel.";
         updated = true;
       }
     }
@@ -352,18 +352,18 @@ bool MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
 // -----------------------------------------------------------------------------------------------
 BackfillTable::BackfillTable(Master *master, ThreadPool *callback_pool,
                              const scoped_refptr<TableInfo> &indexed_table,
-                             std::vector<IndexInfoPB> indices)
+                             std::vector<IndexInfoPB> indexes)
     : master_(master), callback_pool_(callback_pool),
-      indexed_table_(indexed_table), indices_to_build_(indices) {
-  LOG_IF(DFATAL, indices_to_build_.size() != 1)
+      indexed_table_(indexed_table), indexes_to_build_(indexes) {
+  LOG_IF(DFATAL, indexes_to_build_.size() != 1)
       << "As of Dec 2019, we only support "
-      << "building one index at a time. indices_to_build_.size() = "
-      << indices_to_build_.size();
+      << "building one index at a time. indexes_to_build_.size() = "
+      << indexes_to_build_.size();
 
   std::ostringstream out;
   out << "{ ";
   bool first = true;
-  for (const auto &index_info : indices_to_build_) {
+  for (const auto &index_info : indexes_to_build_) {
     if (!first) {
       out << ", ";
     }
@@ -489,7 +489,7 @@ void BackfillTable::Done(const Status& s) {
 }
 
 Status BackfillTable::AlterTableStateToSuccess() {
-  const TableId& index_table_id = indices()[0].table_id();
+  const TableId& index_table_id = indexes()[0].table_id();
   RETURN_NOT_OK_PREPEND(MultiStageAlterTable::UpdateIndexPermission(
                             master_->catalog_manager(), indexed_table_,
                             index_table_id, INDEX_PERM_READ_WRITE_AND_DELETE),
@@ -510,7 +510,7 @@ Status BackfillTable::AlterTableStateToSuccess() {
 }
 
 Status BackfillTable::AlterTableStateToAbort() {
-  const TableId& index_table_id = indices()[0].table_id();
+  const TableId& index_table_id = indexes()[0].table_id();
   RETURN_NOT_OK_PREPEND(MultiStageAlterTable::UpdateIndexPermission(
                             master_->catalog_manager(), indexed_table_,
                             index_table_id, INDEX_PERM_BACKFILL_FAILED),
@@ -808,7 +808,7 @@ bool BackfillChunk::SendRequest(int attempt) {
   req.set_read_at_hybrid_time(backfill_tablet_->read_time_for_backfill().ToUint64());
   req.set_schema_version(backfill_tablet_->schema_version());
   req.set_start_key(start_key_);
-  for (const IndexInfoPB& idx_info : backfill_tablet_->indices()) {
+  for (const IndexInfoPB& idx_info : backfill_tablet_->indexes()) {
     req.add_indexes()->CopyFrom(idx_info);
   }
   req.set_propagated_hybrid_time(backfill_tablet_->master()->clock()->Now().ToUint64());
