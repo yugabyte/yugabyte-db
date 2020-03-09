@@ -4,7 +4,7 @@ linkTitle: Connect to clusters
 description: Connect to clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     identifier: connect-to-clusters
