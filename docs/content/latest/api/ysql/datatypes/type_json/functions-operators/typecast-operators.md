@@ -1,8 +1,8 @@
 ---
 title: Typecast operators
-linkTitle: Typecast operators - `::jsonb`, `::json` and `::text`
-summary: Typecast operators - `::jsonb`, `::json` and `::text`
-description: Typecast operators - `::jsonb`, `::json` and `::text`
+linkTitle: ::jsonb, ::json, and ::text (Typecast operators)
+summary: Typecast operators - `::jsonb`, `::json`, and `::text`
+description: Typecast operators - `::jsonb`, `::json`, and `::text`
 menu:
   latest:
     identifier: typecast-operators

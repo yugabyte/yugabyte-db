@@ -7,6 +7,7 @@ menu:
   latest:
     identifier: create-indexes-check-constraints
     parent: api-ysql-datatypes-json
+    weight: 50
 isTocNested: true
 showAsideToc: true
 ---
@@ -70,10 +71,10 @@ For example, a probable query will be "Show me the books whose hire publication 
 
 Of course, then, you will want these queries to be supported by indexes. (The alternative – a table scan over a huge corpus where each document is analyzed on the fly to evaluate the selection predicates is simply unworkabåle.)
 
-### Indexes on _jsonb_ columns
+## Indexes on _jsonb_ columns
 
 Coming soon.
 
-### Check constraints  on _jsonb_ columns
+## Check constraints  on _jsonb_ columns
 
 Coming soon.

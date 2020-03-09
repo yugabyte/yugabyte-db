@@ -1,7 +1,7 @@
 ---
 title: Concatenation
-linkTitle: Concatenation (`||`)
-description: Concatenation - the `||` operator
+linkTitle: '|| (concatenation)'
+description:  '|| (concatenation)'
 menu:
   latest:
     identifier: concatenation-operator

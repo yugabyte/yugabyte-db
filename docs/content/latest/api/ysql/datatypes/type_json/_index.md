@@ -1,13 +1,14 @@
 ---
-title: JSONB and JSON
-linktitle: JSONB and JSON
+title: JSON
+linktitle: JSON
 summary: JSON and JSONB data types
-description: JSONB and JSON data types
+description: JSON data types and functionality
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
+    weight: 20
 aliases:
   - /latest/api/ysql/datatypes/type_json
 isTocNested: true
@@ -25,11 +26,12 @@ JSON was invented as a data interchange format, initially to allow an arbitrary 
 ## Description
 
 ```
-type_specification ::= { `JSON` | `JSONB` }
+type_specification ::= { json | jsonb }
 ```
 
 The remainder of the account of JSON data types and functionality is organized thus:
 
-- [JSON simple and compound data types](../json-details/simple-and-compound-data-types/)
-- [Functions and operators](../json-details/functions-operators/)
-- [Create indexes and check constraints on `jsonb` and `json` columns](../json/create-indexes-check-constraints/)
+- [ Primitive and compound JSON data types](../type_json/primitive-and-compound-data-types/)
+- [Code example conventions](../type_json/code-example-conventions/)
+- [Functions and operators](../type_json/functions-operators/)
+- [Create indexes and check constraints on `jsonb` and `json` columns](../type_json/create-indexes-check-constraints/)

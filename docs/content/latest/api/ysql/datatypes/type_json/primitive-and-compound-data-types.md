@@ -1,12 +1,13 @@
 ---
-title: Simple and compound data types
-linkTitle: Simple and compound data types
-summary: Simple and compound data types
-description: Simple and compound JSON data types
+title: Primitive and compound data types
+linkTitle: Primitive and compound data types
+summary: Primitive and compound data types
+description: Primitive and compound JSON data types
 menu:
   latest:
-    identifier: simple-and-compound-data-types
+    identifier: primitive-and-compound-data-types
     parent: api-ysql-datatypes-json
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
@@ -73,7 +74,7 @@ and:
 
 Notice that JSON makes no distinction between integers and real numbers.
 
-### _Boolean_ and _null_
+## _Boolean_ and _null_
 
 Here are some examples, shown as SQL manifest constants:
 
@@ -93,7 +94,7 @@ and:
 'null'::jsonb
 ```
 
-### _Object_
+## _Object_
 
 An _object_ is a set of key-value pairs separated by _commas_ and surrounded by _curly braces_. The order is insignificant. The values in an _object_ do not have to have the same data types as each other. For example:
 

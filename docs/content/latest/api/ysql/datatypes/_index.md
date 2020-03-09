@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following table lists the primitive types in YSQL.
+The following table lists the primitive and compound data types in YSQL.
 
 | Data type | Alias | Description |
 |-----------|-------|-------------|
@@ -34,7 +34,9 @@ The following table lists the primitive types in YSQL.
 | `INET` <sup>1</sup> | | IPv4 or IPv6 host address |
 | [`INTEGER`](type_numeric) | [`INT`, `INT4`](type_numeric) | Signed 4-byte integer |
 | [`INTERVAL [fields] [(p)]`](type_datetime) | | Time span |
-| [`JSONB and JSON`](type_json) <sup>1</sup> | | JSON (binary and text) data and functionality |
+| [`JSON`](type_json) <sup>1</sup> | | JSON text data and functionality |
+| [`JSONB`](type_json) <sup>1</sup> | | JSON binary data and functionality |
+
 | `LINE` <sup>1</sup> | | Infinite line |
 | `LSEG` <sup>1</sup> | | Line segment |
 | `MACADDR` <sup>1</sup> | | MAC address |
