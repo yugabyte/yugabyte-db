@@ -23,6 +23,9 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/mpl/and.hpp>
 
+#include <boost/preprocessor/facilities/apply.hpp>
+#include <boost/preprocessor/variadic/to_seq.hpp>
+
 #include "yb/gutil/strings/numbers.h"
 
 #include "yb/util/type_traits.h"
@@ -274,5 +277,20 @@ std::string AsString(const T& t) {
 }
 
 } // namespace yb
+
+#if BOOST_PP_VARIADICS
+
+#define YB_FIELD_TO_STRING(r, data, elem) \
+    " " BOOST_PP_STRINGIZE(elem) ": " + AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))) +
+#define YB_FIELDS_TO_STRING(data, ...) \
+    BOOST_PP_SEQ_FOR_EACH(YB_FIELD_TO_STRING, data(), BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__))
+#define YB_STRUCT_TO_STRING(...) \
+    "{" YB_FIELDS_TO_STRING(BOOST_PP_NIL, __VA_ARGS__) " }"
+#define YB_CLASS_TO_STRING(...) \
+    "{" YB_FIELDS_TO_STRING((BOOST_PP_IDENTITY(_)), __VA_ARGS__) " }"
+
+#else
+#error Compiler not supported
+#endif
 
 #endif // YB_UTIL_TOSTRING_H
