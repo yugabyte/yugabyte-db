@@ -411,7 +411,7 @@ Default: `false`
 
 ### Change data capture (CDC) options
 
-To learn more about CDC, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
+To learn more about CDC, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
 
 For other CDC configuration options, see [YB-TServer's CDC options](../yb-tserver/#change-data-capture-cdc-options).
 
