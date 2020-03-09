@@ -7,7 +7,7 @@ aliases:
   - /latest/benchmark/ycsb
 menu:
   latest:
-    identifier: ycsb-1-ycql
+    identifier: ycsb-2-ycql
     parent: benchmark
     weight: 5
 showAsideToc: true
