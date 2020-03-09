@@ -673,17 +673,17 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
 
   const IndexMap& index_map = tablet.peer->tablet_metadata()->index_map();
-  std::vector<IndexInfo> indices_to_backfill;
+  std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
-    indices_to_backfill.push_back(index_map.at(idx.table_id()));
+    indexes_to_backfill.push_back(index_map.at(idx.table_id()));
     index_ids.push_back(index_map.at(idx.table_id()).table_id());
   }
 
   Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(
-      indices_to_backfill, req->start_key(), deadline, read_at);
+      indexes_to_backfill, req->start_key(), deadline, read_at);
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id()
-           << ". Backfilled indices for : " << yb::ToString(index_ids)
+           << ". Backfilled indexes for : " << yb::ToString(index_ids)
            << " got " << resume_from.ToString();
   if (!resume_from) {
     auto s = resume_from.status();

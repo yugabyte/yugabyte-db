@@ -66,13 +66,13 @@ class BackfillTablet;
 class BackfillChunk;
 class BackfillTableJob;
 
-// This class is responsible for backfilling the specified indices on the
+// This class is responsible for backfilling the specified indexes on the
 // indexed_table.
 class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
  public:
   BackfillTable(Master *master, ThreadPool *callback_pool,
                 const scoped_refptr<TableInfo> &indexed_table,
-                std::vector<IndexInfoPB> indices);
+                std::vector<IndexInfoPB> indexes);
 
   void Launch();
 
@@ -84,7 +84,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   ThreadPool* threadpool() { return callback_pool_; }
 
-  const std::vector<IndexInfoPB>& indices() const { return indices_to_build_; }
+  const std::vector<IndexInfoPB>& indexes() const { return indexes_to_build_; }
 
   std::string index_ids() const {
     return index_ids_;
@@ -142,7 +142,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Master* master_;
   ThreadPool* callback_pool_;
   const scoped_refptr<TableInfo> indexed_table_;
-  const std::vector<IndexInfoPB> indices_to_build_;
+  const std::vector<IndexInfoPB> indexes_to_build_;
   int32_t schema_version_;
   int64_t leader_term_;
 
@@ -235,7 +235,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
     return backfill_table_->read_time_for_backfill();
   }
 
-  const std::vector<IndexInfoPB>& indices() { return backfill_table_->indices(); }
+  const std::vector<IndexInfoPB>& indexes() { return backfill_table_->indexes(); }
 
   std::string index_ids() { return backfill_table_->index_ids(); }
 
