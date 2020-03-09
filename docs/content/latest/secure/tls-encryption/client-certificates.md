@@ -51,9 +51,9 @@ $ cat > client-certs-temp/yugabyte.conf
 Paste in the following node configuration file.
 
 ```
-################################
+#################################
 # Example node configuration file
-################################
+#################################
 
 [ req ]
 prompt=no
@@ -110,7 +110,7 @@ Now, copy the required certificate files to the `/tmp/yugabyte` directory.
 ```sh
 $ mkdir /tmp/yugabyte
 $ cp secure-data/ca.crt /tmp/yugabyte/
-$ cp client-certs-temp/ysql.* /tmp/yugabyte/
+$ cp client-certs-temp/yugabyte.* /tmp/yugabyte/
 ```
 
 ### Generate client private key and certificate
@@ -120,6 +120,7 @@ Next, generate the client private key (`yugabyte.key`) and client certificate (`
 ```sh
 $ openssl genrsa -out ~/.yugabytedb/yugabytedb.key
 ```
+
 You should see output similar to this:
 
 ```
