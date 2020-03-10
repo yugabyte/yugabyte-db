@@ -39,15 +39,15 @@ Copy the universe key onto each master filesystem, in the same location on every
 ```sh
 $ for ip in ip1 ip2 ip3
   do
-    scp -i <ssh_key> -P 54422 universe_key ip:/mnt/d0/yb-data/master
+    scp -i <ssh_key> universe_key ip:/mnt/d0/yb-data/master
   done
 ```
 
 {{< note title="Note" >}}
-The key can live in any subdir of the master dir, as long as it lives in the same place on each
-node. In addition, the data dir may vary depending on how the cluster is created.
-{{< /note >}}
 
+The key can live in any subdirectory of the master directory, as long as it lives in the same place on each node. In addition, the data directory may vary depending on how the cluster is created.
+
+{{< /note >}}
 
 ### Step 3. Enable cluster-wide encryption
 
@@ -98,7 +98,7 @@ in the same location on every node.
 ```sh
 $ for ip in ip1 ip2 ip3
   do
-    scp -i <ssh_key> -P 54422 universe_key ip:/mnt/d0/yb-data/master/
+    scp -i <ssh_key> universe_key ip:/mnt/d0/yb-data/master/
   done
 ```
 

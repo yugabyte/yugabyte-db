@@ -1,10 +1,6 @@
 ---
 title: Indexes and check constraints
-<<<<<<< HEAD:docs/content/latest/api/ysql/datatypes/type_json/create-indexes-check-constraints.md
 linkTitle: Indexes and check constraints
-=======
-linktitle: Indexes and check constraints
->>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/create-indexes-constraints.md
 summary: Create indexes and check constraints on JSON columns
 description: Create indexes and check constraints on JSON columns
 menu:

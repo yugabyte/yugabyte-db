@@ -1,10 +1,6 @@
 ---
 title: jsonb_build_array()
-<<<<<<< HEAD:docs/content/latest/api/ysql/datatypes/type_json/functions-operators/jsonb-build-array.md
 linkTitle: jsonb_build_array()
-=======
-linktitle: jsonb_build_array()
->>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/jsonb-build-array.md
 summary: jsonb_build_array() and json_build_array()
 description: jsonb_build_array() and json_build_array()
 menu:
