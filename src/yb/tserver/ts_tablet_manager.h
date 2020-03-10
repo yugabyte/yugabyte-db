@@ -494,6 +494,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
 
+  std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
+
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
 
