@@ -14,7 +14,7 @@ showAsideToc: true
 
 Four tables categorize the functions and operators by purpose:
 
-- [Convert a SQL value to a JSON value](#convert-a-sql-value-to-json-value/)
+- [Convert a SQL value to a JSON value](#convert-a-sql-value-to-a-json-value/)
 - [Convert a JSON value to another JSON value](#convert-a-json-value-to-another-json-value/)
 - [Convert a JSON value to a SQL value](#convert-a-json-value-to-a-sql-value/)
 - [Get a property of a JSON value](#get-a-property-of-a-json-value/)
@@ -78,7 +78,7 @@ To avoid clutter in the tables, only the `jsonb` variants of the function names 
 
 | Function or operator | Description |
 | ---- | ---- |
-| `=` | The `=` operator is overloaded for all the SQL data types including `jsonb`. By a strange oversight, there is _no overload_ for plain `json`. |
+| [`=`](../jsonb-operators-constructing-values/#equality-the-operator) | The `=` operator is overloaded for all the SQL data types including `jsonb`. By a strange oversight, there is _no overload_ for plain `json`. |
 | `@>` and `<@` | `@>` tests if the left-hand JSON value contains the right-hand JSON value. And `<@` tests if the right-hand JSON value contains the left-hand JSON value. Returns a SQL `boolean`. |
 | `?`, `?|`, and `?&` | Test for existence of keys.  Returns a SQL `boolean`. |
 | [`jsonb_array_length()`](../jsonb-array-length/) | The input must be a JSON _array_. Returns the number of JSON values in the _array_ as a SQL `int`. |

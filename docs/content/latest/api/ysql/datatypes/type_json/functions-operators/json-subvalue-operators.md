@@ -1,18 +1,16 @@
 ---
-title: Operators for reading JSON subvalues
-linkTitle: "—>" Operators for reading JSON subvalues
-summary: "—>" Operators for reading JSON subvalues
-description: Operators for reading JSON subvalues
+title: JSON subvalue operators
+linkTitle: '->, ->>, #>, and #>> (JSON subvalues)'
+summary: JSON subvalue operators
+description: '->, ->>, #>, and #>> (JSON subvalues)'
 menu:
   latest:
     identifier: json-subvalue-operators
     parent: functions-operators
-    weight: 50
+    weight: 12
 isTocNested: true
 showAsideToc: true
 ---
-
-## Operators for reading JSON subvalues
 
 An arbitrarily deeply located JSON subvalue is identified by its path from the topmost JSON value. In general, a path is specified by a mixture of keys for _object_ subvalues and index values for _array_ subvalues. Consider this JSON value:
 

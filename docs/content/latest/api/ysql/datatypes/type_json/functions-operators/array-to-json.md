@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: array-to-json
     parent: functions-operators
-    weight: 10
+    weight: 15
 isTocNested: true
 showAsideToc: true
 ---

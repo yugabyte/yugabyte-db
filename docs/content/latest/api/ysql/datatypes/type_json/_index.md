@@ -8,7 +8,6 @@ menu:
   latest:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
-    weight: 20
 aliases:
   - /latest/api/ysql/datatypes/type_json
 isTocNested: true

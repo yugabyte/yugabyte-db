@@ -1,8 +1,8 @@
 ---
 title: Containment
-linkTitle: Containment
+linkTitle: '@> and <@ (containment)'
 summary: Containment (@> & <@)
-description: Containment - the @> and <@ operators
+description: '@> and <@ (containment)'
 menu:
   latest:
     identifier: containment-operators
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-`The @>` operator tests if the left-hand JSON value contains the right-hand JSON value. And the `<@` operator tests if the right-hand JSON value contains the left-hand JSON value. These operators require that the inputs are presented as `jsonb` values. They don't have overloads for `json`.
+The `@>` operator tests if the left-hand JSON value contains the right-hand JSON value. And the `<@` operator tests if the right-hand JSON value contains the left-hand JSON value. These operators require that the inputs are presented as `jsonb` values. They don't have overloads for `json`.
 
 ```postgresql
 do $body$

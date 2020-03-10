@@ -1,8 +1,8 @@
 ---
 title: Equality
-linkTitle: Equality
+linkTitle: '= (equality)'
 summary: Equality - the `=` operator
-description: Equality - the `=` operator
+description: = (equality)
 menu:
   latest:
     identifier: equality-operator

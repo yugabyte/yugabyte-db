@@ -1,12 +1,13 @@
 ---
 title: Typecast operators
-linkTitle: ::jsonb, ::json, and ::text (Typecast operators)
+linkTitle: '::jsonb, ::json, and ::text (typecast)'
 summary: Typecast operators - `::jsonb`, `::json`, and `::text`
-description: Typecast operators - `::jsonb`, `::json`, and `::text`
+description: '::jsonb, ::json, and ::text (typecast)'
 menu:
   latest:
     identifier: typecast-operators
     parent: functions-operators
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
