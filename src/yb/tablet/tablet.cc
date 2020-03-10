@@ -1457,9 +1457,17 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
       !response->has_paging_state() &&
       (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
        pgsql_read_request.return_paging_state())) {
+
+    // Check we did not reach the last tablet.
     const string& next_partition_key = metadata_->partition().partition_key_end();
     if (!next_partition_key.empty()) {
-      response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+      uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(next_partition_key);
+
+      // Check we did not reach the max partition key.
+      if (!pgsql_read_request.has_max_hash_code() ||
+          next_hash_code <= pgsql_read_request.max_hash_code()) {
+        response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+      }
     }
   }
 

@@ -268,6 +268,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id);
 
+  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
+      bool use_cache = false);
+
  private:
   CHECKED_STATUS FlushBufferedOperationsImpl();
   CHECKED_STATUS FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool transactional);

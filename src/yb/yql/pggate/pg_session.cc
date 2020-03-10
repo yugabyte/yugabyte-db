@@ -107,6 +107,43 @@ string GetStatusStringSet(const client::CollectedErrors& errors) {
   return RangeToString(status_strings.begin(), status_strings.end());
 }
 
+// Get a common Postgres error code from the status and all errors, and append it to a previous
+// result.
+// If any of those have different conflicting error codes, previous result is returned as-is.
+Status AppendPsqlErrorCode(const Status& prev_result,
+                           const Status& status,
+                           const client::CollectedErrors& errors) {
+  auto DecodeError = [](const Status& s) {
+    boost::optional<YBPgErrorCode> err_code_option;
+    const uint8_t* err_data = s.ErrorData(PgsqlErrorTag::kCategory);
+    if (err_data) {
+      err_code_option = PgsqlErrorTag::Decode(err_data);
+    }
+    return err_code_option;
+  };
+
+  auto err_code_option = DecodeError(status);
+
+  for (const auto& error : errors) {
+    auto err_code_option_2 = DecodeError(error->status());
+    if (err_code_option_2) {
+      if (!err_code_option) {
+        // Replacing no code with a given error code.
+        err_code_option = err_code_option_2;
+      } else if (err_code_option != err_code_option_2) {
+        // We have multiple conflicting error codes, don't set any.
+        return prev_result;
+      }
+    }
+  }
+
+  if (err_code_option) {
+    return prev_result.CloneAndAddErrorCode(PgsqlError(*err_code_option));
+  } else {
+    return prev_result;
+  }
+}
+
 // Given a set of errors from operations, this function attempts to combine them into one status
 // that is later passed to PostgreSQL and further converted into a more specific error code.
 Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
@@ -120,10 +157,15 @@ Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
       errors.size() == 1) {
     return errors.front()->status();
   }
-  if (status.ok()) {
-    return STATUS(InternalError, GetStatusStringSet(errors));
-  }
-  return status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
+
+  Status result =
+    status.ok()
+    ? STATUS(InternalError, GetStatusStringSet(errors))
+    : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
+
+  result = AppendPsqlErrorCode(result, status, errors);
+
+  return result;
 }
 
 docdb::PrimitiveValue NullValue(ColumnSchema::SortingType sorting) {
@@ -847,6 +889,10 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
   }
   s = s.CloneAndAddErrorCode(TransactionError(txn_error_code));
   return s;
+}
+
+Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
+  return client_->TabletServerCount(tserver_count, primary_only, use_cache);
 }
 
 }  // namespace pggate
