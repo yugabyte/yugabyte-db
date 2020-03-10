@@ -26,13 +26,17 @@ import os
 import re
 from six import iteritems
 
-UUID_LEN = 32
-UUID_RE_STR = '[0-9a-f]{32}'
+TABLET_UUID_LEN = 32
+UUID_RE_STR = '[0-9a-f-]{32,36}'
 UUID_ONLY_RE = re.compile('^' + UUID_RE_STR + '$')
 NEW_OLD_UUID_RE = re.compile(UUID_RE_STR + '[ ]*\t' + UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 FS_DATA_DIRS_ARG_PREFIX = '--fs_data_dirs='
 IMPORTED_TABLE_RE = re.compile('Table being imported: ([^\.]*)\.(.*)')
+
+SNAPSHOT_KEYSPACE_RE = re.compile("^[ \t]*Keyspace:.* name='(.*)' type")
+SNAPSHOT_TABLE_RE = re.compile("^[ \t]*Table:.* name='(.*)' type")
+SNAPSHOT_INDEX_RE = re.compile("^[ \t]*Index:.* name='(.*)' type")
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
@@ -658,25 +662,66 @@ class YBBackup:
                                   output)
         return snapshot_id
 
-    def wait_for_snapshot(self, snapshot_id, op, timeout_sec):
+    def wait_for_snapshot(self, snapshot_id, op, timeout_sec, update_table_list):
         """
-        Waits for the given snapshot to finish being created.
+        Waits for the given snapshot to finish being created or restored.
         """
         start_time = time.time()
         snapshot_done = False
+        snapshot_tables = []
+        snapshot_keyspaces = []
+
+        yb_admin_args = ['list_snapshots']
+        if update_table_list:
+            yb_admin_args += ['SHOW_DETAILS']
+
         while time.time() - start_time < timeout_sec and not snapshot_done:
-            output = self.run_yb_admin(['list_snapshots'])
+            output = self.run_yb_admin(yb_admin_args)
+            # Expected format:
+            # Snapshot UUID                         State
+            # 0436035d-c4c5-40c6-b45b-19538849b0d9  COMPLETE
+            #   {"type":"NAMESPACE","id":"e4c5591446db417f83a52c679de03118","data":{"name":"a",...}}
+            #   {"type":"TABLE","id":"d9603c2cab0b48ec807936496ac0e70e","data":{"name":"t2",...}}
+            #   {"type":"NAMESPACE","id":"e4c5591446db417f83a52c679de03118","data":{"name":"a",...}}
+            #   {"type":"TABLE","id":"28b5cebe9b0c4cdaa70ce9ceab31b1e5","data":{\
+            #       "name":"t2idx","indexed_table_id":"d9603c2cab0b48ec807936496ac0e70e",...}}
+            # c1ad61bf-a42b-4bbb-94f9-28516985c2c5  COMPLETE
+            #   ...
             for line in output.splitlines():
-                if line.find(snapshot_id) == 0:
-                    (snapshot_id, state) = line.split()
-                    if snapshot_id == snapshot_id and state == 'COMPLETE':
-                        snapshot_done = True
-                        break
-            logging.info('Waiting for snapshot %s to complete...' % (op))
-            time.sleep(5)
+                if not snapshot_done:
+                    if line.find(snapshot_id) == 0:
+                        (found_snapshot_id, state) = line.split()
+                        if found_snapshot_id == snapshot_id and state == 'COMPLETE':
+                            snapshot_done = True
+                            if not update_table_list:
+                                break
+                elif update_table_list:
+                    if line[0] == ' ':
+                        loaded_json = json.loads(line)
+                        object_type = loaded_json['type']
+                        if object_type == 'NAMESPACE':
+                            snapshot_keyspaces.append(loaded_json['data']['name'])
+                        elif object_type == 'TABLE':
+                            snapshot_tables.append(loaded_json['data']['name'])
+                    else:
+                        break  # Break search on the next snapshot id/state line.
+
+            if not snapshot_done:
+                logging.info('Waiting for snapshot %s to complete...' % (op))
+                time.sleep(5)
 
         if not snapshot_done:
             raise BackupException('Timed out waiting for snapshot!')
+
+        if update_table_list:
+            if len(snapshot_keyspaces) != len(snapshot_tables) or len(snapshot_tables) == 0:
+                raise BackupException(
+                    "In the snapshot found {} keyspaces and {} tables. The numbers must be equal "
+                    "and more than zero.".format(len(snapshot_keyspaces), len(snapshot_tables)))
+
+            self.args.keyspace = snapshot_keyspaces
+            self.args.table = snapshot_tables
+            logging.info('Updated list of processing tables: ' + self.table_names_str())
 
         logging.info('Snapshot id %s %s completed successfully' % (snapshot_id, op))
 
@@ -826,7 +871,7 @@ class YBBackup:
         return data_dirs
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
-                               tablets_by_tserver_ip, table_id):
+                               tablets_by_tserver_ip, table_ids):
         """
         Generate snapshot directories under the given data directory for the given snapshot id
         on the given tservers.
@@ -834,7 +879,7 @@ class YBBackup:
         :param snapshot_id: snapshot UUID
         :param tablets_by_tserver_ip: a map from tserver ip address to all tablets of our table
             that it is responsible for.
-        :param table_id: new table UUID
+        :param table_ids: new table UUIDs for all tables
         :return: a three-level map: tablet server ip address to a tablet id to all snapshot
             directories for that tablet id that we found.
         """
@@ -846,17 +891,18 @@ class YBBackup:
             data_dirs = data_dir_by_tserver[tserver_ip]
             deleted_tablets = deleted_tablets_by_tserver_ip.setdefault(tserver_ip, set())
 
-            for data_dir in data_dirs:
-                # Find all tablets for this table on this TS in this data_dir:
-                output = self.run_ssh_cmd(
-                    ['find', data_dir,
-                     '-mindepth', TABLET_DIR_DEPTH,
-                     '-maxdepth', TABLET_DIR_DEPTH,
-                     '-name', TABLET_MASK,
-                     '-and',
-                     '-wholename', TABLET_DIR_GLOB.format(table_id)],
-                    tserver_ip)
-                tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
+            for table_id in table_ids:
+                for data_dir in data_dirs:
+                    # Find all tablets for this table on this TS in this data_dir:
+                    output = self.run_ssh_cmd(
+                        ['find', data_dir,
+                         '-mindepth', TABLET_DIR_DEPTH,
+                         '-maxdepth', TABLET_DIR_DEPTH,
+                         '-name', TABLET_MASK,
+                         '-and',
+                         '-wholename', TABLET_DIR_GLOB.format(table_id)],
+                        tserver_ip)
+                    tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
 
             if self.args.verbose:
                 logging.info("Found tablet directories for table '{}' on  tablet server '{}': {}"
@@ -873,7 +919,7 @@ class YBBackup:
 
             tablet_dir_by_id = {}
             for tablet_dir in tablet_dirs:
-                tablet_dir_by_id[tablet_dir[-UUID_LEN:]] = tablet_dir
+                tablet_dir_by_id[tablet_dir[-TABLET_UUID_LEN:]] = tablet_dir
 
             for tablet_id in tablets:
                 if tablet_id in tablet_dir_by_id:
@@ -1218,7 +1264,13 @@ class YBBackup:
         else:
             snapshot_id = self.create_snapshot()
             logging.info("Snapshot started with id: %s" % snapshot_id)
-            self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC)
+            try:
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, True)
+            except Exception as ex:
+                logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
+                # In the compatibility mode repeat the command in old style
+                # (without new command line arguments).
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, False)
 
         if not self.args.no_snapshot_deleting:
             logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
@@ -1305,16 +1357,16 @@ class YBBackup:
         map containing all the metadata for the snapshot and mappings from old ids to new ids for
         table, keyspace, tablets and snapshot.
         """
+        yb_admin_args = ['import_snapshot', metadata_file_path]
         if self.args.table or self.args.keyspace:
             if not self.args.table:
                 raise BackupException('Need to specify --table')
             if not self.args.keyspace:
                 raise BackupException('Need to specify --keyspace')
 
-            output = self.run_yb_admin(
-                ['import_snapshot', metadata_file_path] + self.table_names_str(' ').split(' '))
-        else:
-            output = self.run_yb_admin(['import_snapshot', metadata_file_path])
+            yb_admin_args += self.table_names_str(' ').split(' ')
+
+        output = self.run_yb_admin(yb_admin_args)
 
         if self.args.verbose:
             logging.info('yb-admin tool output: {}'.format(output))
@@ -1330,10 +1382,14 @@ class YBBackup:
             if table_match:
                 snapshot_metadata['keyspace_name'].append(table_match.group(1))
                 snapshot_metadata['table_name'].append(table_match.group(2))
+                logging.info('Imported table: {}.{}'.format(table_match.group(1),
+                                                            table_match.group(2)))
             if NEW_OLD_UUID_RE.search(line):
                 (entity, old_id, new_id) = split_by_tab(line)
                 if entity == 'Table':
                     snapshot_metadata['table'][new_id] = old_id
+                    logging.info('Imported table id was changed from {} to {}'.format(old_id,
+                                                                                      new_id))
                 elif entity.startswith('Tablet'):
                     snapshot_metadata['tablet'][new_id] = old_id
                 elif entity == 'Snapshot':
@@ -1380,7 +1436,7 @@ class YBBackup:
         return (tablets_by_tserver_union, tablets_by_tserver_delta)
 
     def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_to_download,
-                                      snapshot_id, table_id):
+                                      snapshot_id, table_ids):
         pool = ThreadPool(self.args.parallelism)
 
         tserver_ips = tablets_by_tserver_to_download.keys()
@@ -1391,7 +1447,7 @@ class YBBackup:
 
         (tserver_to_tablet_to_snapshot_dirs, tserver_to_deleted_tablets) =\
             self.generate_snapshot_dirs(
-                data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_id)
+                data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_ids)
 
         # Remove deleted tablets from the list of planned to be downloaded tablets.
         for tserver_ip, deleted_tablets in tserver_to_deleted_tablets.iteritems():
@@ -1422,7 +1478,9 @@ class YBBackup:
         metadata_file_path = self.download_metadata_file()
         snapshot_metadata = self.import_snapshot(metadata_file_path)
         snapshot_id = snapshot_metadata['snapshot_id']['new']
-        table_id = snapshot_metadata['table'].keys()[0]
+        table_ids = snapshot_metadata['table'].keys()
+
+        self.wait_for_snapshot(snapshot_id, 'importing', CREATE_SNAPSHOT_TIMEOUT_SEC, False)
 
         if not self.args.no_snapshot_deleting:
             logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
@@ -1443,7 +1501,7 @@ class YBBackup:
 
             # Download tablets and get list of deleted tablets.
             tserver_to_deleted_tablets = self.download_snapshot_directories(
-                snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_id)
+                snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_ids)
 
             # Remove deleted tablets from the list of all tablets.
             for tserver_ip, deleted_tablets in tserver_to_deleted_tablets.iteritems():
@@ -1462,7 +1520,7 @@ class YBBackup:
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
         self.run_yb_admin(['restore_snapshot', snapshot_id])
-        self.wait_for_snapshot(snapshot_id, 'restoring', RESTORE_SNAPSHOT_TIMEOUT_SEC)
+        self.wait_for_snapshot(snapshot_id, 'restoring', RESTORE_SNAPSHOT_TIMEOUT_SEC, False)
 
         logging.info('Restored backup successfully!')
         print json.dumps({"success": True})

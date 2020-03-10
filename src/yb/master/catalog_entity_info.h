@@ -335,6 +335,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
   const std::string indexed_table_id() const;
 
+  bool is_index() const {
+    return !indexed_table_id().empty();
+  }
+
   // For index table
   bool is_local_index() const;
   bool is_unique_index() const;

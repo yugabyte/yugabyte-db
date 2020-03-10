@@ -218,6 +218,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                    IsCreateTableDoneResponsePB* resp);
 
+  CHECKED_STATUS IsCreateTableInProgress(const TableId& table_id,
+                                         CoarseTimePoint deadline,
+                                         bool* create_in_progress);
+
+  CHECKED_STATUS WaitForCreateTableToFinish(const TableId& table_id);
+
   // Check if the transaction status table creation is done.
   //
   // This is called at the end of IsCreateTableDone if the table has transactions enabled.
