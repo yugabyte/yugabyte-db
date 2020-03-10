@@ -446,7 +446,9 @@ class YBClient {
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
-  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false);
+  // If use_cache is set to true, we return old value.
+  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
+      bool use_cache = false);
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
@@ -644,6 +646,8 @@ class YBClient {
   ThreadPool* callback_threadpool();
 
   std::unique_ptr<Data> data_;
+
+  int tserver_count_cached_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };

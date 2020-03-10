@@ -23,6 +23,7 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/trace.h"
 
 DECLARE_bool(trace_docdb_calls);
@@ -30,6 +31,9 @@ DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
               "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
+
+DEFINE_test_flag(int32, TEST_slowdown_pgsql_aggregate_read_ms, 0,
+                 "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 namespace yb {
 namespace docdb {
@@ -494,6 +498,11 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
 
   if (request_.is_aggregate() && match_count > 0) {
     RETURN_NOT_OK(PopulateAggregate(row, resultset));
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms > 0) && request_.is_aggregate()) {
+    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_pgsql_aggregate_read_ms);
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms));
   }
 
   if (FLAGS_trace_docdb_calls) {
