@@ -6,7 +6,7 @@ summary: Equality - the `=` operator
 description: = (equality)
 =======
 title: Equality: the `=` operator
-linktitle: Equality: the `=` operator
+linkTitle: Equality: the `=` operator
 summary: Concatenation: the `||` operator
 description: Concatenation: the `||` operator
 >>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/equality-operator.md

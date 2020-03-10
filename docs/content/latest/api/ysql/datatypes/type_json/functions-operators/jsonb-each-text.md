@@ -3,7 +3,7 @@ title: jsonb_each_text()
 <<<<<<< HEAD:docs/content/latest/api/ysql/datatypes/type_json/functions-operators/jsonb-each-text.md
 linkTitle: jsonb_each_text()
 =======
-linktitle: jsonb_each_text()
+linkTitle: jsonb_each_text()
 >>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/jsonb-each-text.md
 summary: jsonb_each_text() and json_each_text()
 description: jsonb_each_text() and json_each_text()

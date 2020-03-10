@@ -6,7 +6,7 @@ summary: JSON subvalue operators
 description: '->, ->>, #>, and #>> (JSON subvalues)'
 =======
 title: Operators for reading JSON subvalues
-linktitle: Operators for reading JSON subvalues
+linkTitle: Operators for reading JSON subvalues
 summary: Operators for reading JSON subvalues
 description: Operators for reading JSON subvalues
 >>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/json-subvalue-operators.md

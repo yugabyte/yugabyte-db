@@ -12,12 +12,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
-
-
-
-
-
 ## Note about the code examples
 
 The functionality of each operator and function is illustrated by a code example of this form:

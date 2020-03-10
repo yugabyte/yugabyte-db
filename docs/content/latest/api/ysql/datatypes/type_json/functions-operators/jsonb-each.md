@@ -5,7 +5,7 @@ linkTitle: jsonb_each()
 summary: jsonb_each() and json_each()
 description: jsonb_each()  and json_each()
 =======
-linktitle: jsonb_each()
+linkTitle: jsonb_each()
 summary: jsonb_each() and json_each()
 description: jsonb_each() and json_each()
 >>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/jsonb-each.md
