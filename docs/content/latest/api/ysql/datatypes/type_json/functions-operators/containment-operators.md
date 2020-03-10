@@ -1,13 +1,20 @@
 ---
+<<<<<<< HEAD:docs/content/latest/api/ysql/datatypes/type_json/functions-operators/containment-operators.md
 title: Containment
 linkTitle: '@> and <@ (containment)'
 summary: Containment (@> & <@)
 description: '@> and <@ (containment)'
+=======
+title: Containment: the `@>` and `<@` operators
+linktitle: Containment: the `@>` and `<@` operators
+summary: Concatenation: the `||` operator
+description: Concatenation: the `||` operator
+>>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/containment-operators.md
 menu:
   latest:
     identifier: containment-operators
     parent: functions-operators
-    weight: 30
+    weight: 16
 isTocNested: true
 showAsideToc: true
 ---

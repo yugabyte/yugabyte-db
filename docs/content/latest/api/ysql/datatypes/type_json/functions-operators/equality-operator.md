@@ -1,13 +1,20 @@
 ---
+<<<<<<< HEAD:docs/content/latest/api/ysql/datatypes/type_json/functions-operators/equality-operator.md
 title: Equality
 linkTitle: '= (equality)'
 summary: Equality - the `=` operator
 description: = (equality)
+=======
+title: Equality: the `=` operator
+linktitle: Equality: the `=` operator
+summary: Concatenation: the `||` operator
+description: Concatenation: the `||` operator
+>>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/equality-operator.md
 menu:
   latest:
     identifier: equality-operator
     parent: functions-operators
-    weight: 40
+    weight: 15
 isTocNested: true
 showAsideToc: true
 ---

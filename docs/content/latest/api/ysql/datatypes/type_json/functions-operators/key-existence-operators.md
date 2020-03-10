@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: key-existence-operators
     parent: functions-operators
-    weight: 260
+    weight: 17
 isTocNested: true
 showAsideToc: true
 ---

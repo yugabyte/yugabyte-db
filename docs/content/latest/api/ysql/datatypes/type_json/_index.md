@@ -28,9 +28,9 @@ JSON was invented as a data interchange format, initially to allow an arbitrary 
 type_specification ::= { json | jsonb }
 ```
 
-The remainder of the account of JSON data types and functionality is organized thus:
+The remainder of the account of JSON data types and functionality can be found in the following topics:
 
-- [ Primitive and compound JSON data types](../type_json/primitive-and-compound-data-types/)
-- [Code example conventions](../type_json/code-example-conventions/)
-- [Functions and operators](../type_json/functions-operators/)
+- [Primitive and compound JSON data types](../type_json/primitive-and-compound-data-types/)
+- [JSON code example conventions](../type_json/functions-operators/code-example-conventions/)
+- [JSON functions and operators](../type_json/functions-operators/)
 - [Create indexes and check constraints on `jsonb` and `json` columns](../type_json/create-indexes-check-constraints/)
