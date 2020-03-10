@@ -56,7 +56,7 @@ class MultiStageAlterTable {
 
  private:
   // Start Index Backfill process/step for the specified table/index.
-  static void
+  static Status
   StartBackfillingData(CatalogManager *catalog_manager,
                        const scoped_refptr<TableInfo> &indexed_table,
                        IndexInfoPB idx_info);
@@ -76,7 +76,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   void Launch();
 
-  void UpdateSafeTime(const Status& s, HybridTime ht);
+  Status UpdateSafeTime(const Status& s, HybridTime ht);
 
   void Done(const Status& s);
 
@@ -222,9 +222,9 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   BackfillTablet(
       std::shared_ptr<BackfillTable> backfill_table, const scoped_refptr<TabletInfo>& tablet);
 
-  void Launch() { LaunchNextChunk(); }
+  void Launch() { LaunchNextChunkOrDone(); }
 
-  void LaunchNextChunk();
+  void LaunchNextChunkOrDone();
   void Done(const Status& status, const std::string& optional_next_row);
 
   Master* master() { return backfill_table_->master(); }
@@ -243,6 +243,10 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
   const scoped_refptr<TabletInfo> tablet() { return tablet_; }
 
+  bool done() const {
+    return done_.load(std::memory_order_acquire);
+  }
+
  private:
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
@@ -253,6 +257,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   // request to backfill has to start backfilling from this row till
   // the end of the tablet range.
   std::string next_row_to_backfill_;
+  std::atomic_bool done_{false};
 };
 
 class GetSafeTimeForTablet : public RetryingTSRpcTask {
