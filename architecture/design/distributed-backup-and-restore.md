@@ -82,10 +82,27 @@ YB-Master leader --> each of the YB-TServers (per tablet):
 Upon receiving this RPC call, the YB-TServers would resolve all provisional writes (writes that are a part of recent transactions) by consulting the transaction status table. Note that by virtue of waiting out the max clock skew, none of the currently `PENDING` transaction can get a commit timestamp lower than `snapshot-timestamp`.
 
 Once all the `APPLY` records for the provisional writes are replicated across the tablet peers, the tablet leader replicates a `SNAPSHOT` record containing the `snapshot-timestamp`. Applying this record into the tablet Raft log creates a DocDB checkpoint which includes the following:
-* A hardlink based snapshot of all the files (which are immutable).
-* Special snapshot metadata for each of the above files indicating all timestamps higher than the `snapshot-timestamp` should be ignored when reading these files.
+* A hardlink based snapshot of all the files (which are immutable) for the tablet. This snapshot is created in a temporary directory.
+* The temporary checkpoint above is updated with the necessary, such as the `snapshot-timestamp` above which all updates should be ignored when reading these files.
+* The temporary checkpoint is finalized and moved into the snapshot folder.
+* Once these steps are done, a response is sent to the YB-Master indicating the success of the tablet snapshot.
 
 The above steps ensure that the data does not have to be rewritten, making the operation efficient for larger data sets.
 
+#### Propagating history retention from the tablet leader
+In order to successfully snapshot data at a given hybrid time denoted by `snapshot-timestamp`, we need to guarantee that partitioned away nodes do not cleanup necessary information. For example, we would need to retain the hybrid timestamp of the actual updates in the data files so that entries later than `snapshot-timestamp` are ignored. The time window in the past for which these commit timestamps are retained is called the `flashback-read-cutoff-timestamp`. In order to ensure that these these timestamps are retained, the `flashback-read-cutoff-timestamp` is propagated from the tablet leaders to the followers, and use DocDB anchors while taking the snapshot.
+
+* An anchor on a tablet follower is taken the same way as a regular read operation on the tablet leader.
+* The anchor should be held for the duration of replication of the snapshot Raft record.
+* The tablet leader is the primary authority over assigning `flashback-read-cutoff-timestamp`. No tablet follower should start a compaction with a higher `flashback-read-cutoff-timestamp` than the committed `flashback-read-cutoff-timestamp`.
+* The `flashback-read-cutoff-timestamp` value is recorded in the Raft log.
+
+### 6. Marking the snapshot ads complete
+
+One the YB-Master hears from all the tablets with a success message for their snapshots, it marks the overall snapshot as a success in the system catalog. The snapshot is now ready to use.
+
+Note the following:
+* The snapshot represents a distributed, immutable set of files across the various nodes in the cluster.
+* The replication factor of the snapshot is the same as that of the table that was snapshotted. This is done to ensure the fault tolerance of the snapshot. 
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/distributed-backup-and-restore.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
