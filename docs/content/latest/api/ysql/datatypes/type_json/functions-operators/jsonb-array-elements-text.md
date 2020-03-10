@@ -1,11 +1,6 @@
 ---
-<<<<<<< HEAD:docs/content/latest/api/ysql/datatypes/type_json/functions-operators/jsonb-array-elements-text.md
 title: jsonb_array_elements_text()
 linkTitle: jsonb_array_elements_text()
-=======
-title: jsonb_array_elements_text() and json_array_elements_text()
-linkTitle: jsonb_array_elements_text() and json_array_elements_text()
->>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/jsonb-array-elements-text.md
 summary: jsonb_array_elements_text() and json_array_elements_text()
 description: jsonb_array_elements_text() and json_array_elements_text()
 menu:
