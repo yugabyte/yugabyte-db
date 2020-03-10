@@ -31,22 +31,32 @@ namespace client {
 Status TableHandle::Create(const YBTableName& table_name,
                            int num_tablets,
                            YBClient* client,
-                           YBSchemaBuilder* builder) {
+                           YBSchemaBuilder* builder,
+                           IndexInfoPB* index_info) {
   YBSchema schema;
   RETURN_NOT_OK(builder->Build(&schema));
-  return Create(table_name, num_tablets, schema, client);
+  return Create(table_name, num_tablets, schema, client, index_info);
 }
 
 Status TableHandle::Create(const YBTableName& table_name,
                            int num_tablets,
                            const YBSchema& schema,
-                           YBClient* client) {
+                           YBClient* client,
+                           IndexInfoPB* index_info) {
   std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
-  RETURN_NOT_OK(table_creator->table_name(table_name)
+  table_creator->table_name(table_name)
       .schema(&schema)
-      .num_tablets(num_tablets)
-      .Create());
+      .num_tablets(num_tablets);
 
+  // Setup Index properties.
+  if (index_info) {
+    table_creator->indexed_table_id(index_info->indexed_table_id())
+        .is_local_index(index_info->is_local())
+        .is_unique_index(index_info->is_unique())
+        .mutable_index_info()->CopyFrom(*index_info);
+  }
+
+  RETURN_NOT_OK(table_creator->Create());
   return Open(table_name, client);
 }
 

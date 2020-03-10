@@ -152,6 +152,7 @@
 #include "yb/util/uuid.h"
 
 #include "yb/client/client.h"
+#include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
@@ -273,6 +274,8 @@ DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
 
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
+
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {
 namespace master {
@@ -2521,6 +2524,35 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   }
 
   return Status::OK();
+}
+
+Status CatalogManager::IsCreateTableInProgress(const TableId& table_id,
+                                               CoarseTimePoint deadline,
+                                               bool* create_in_progress) {
+  DCHECK_ONLY_NOTNULL(create_in_progress);
+  DCHECK(!table_id.empty());
+
+  IsCreateTableDoneRequestPB req;
+  IsCreateTableDoneResponsePB resp;
+  req.mutable_table()->set_table_id(table_id);
+  RETURN_NOT_OK(IsCreateTableDone(&req, &resp));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *create_in_progress = !resp.done();
+  return Status::OK();
+}
+
+Status CatalogManager::WaitForCreateTableToFinish(const TableId& table_id) {
+  MonoDelta default_admin_operation_timeout(
+      MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec));
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout;
+
+  return client::RetryFunc(
+      deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
+      std::bind(&CatalogManager::IsCreateTableInProgress, this, table_id, _1, _2));
 }
 
 Status CatalogManager::IsTransactionStatusTableCreated(IsCreateTableDoneResponsePB* resp) {

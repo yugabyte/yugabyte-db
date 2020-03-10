@@ -72,7 +72,6 @@ set(MASTER_SRCS
   permissions_manager.cc
   flush_manager.cc
   master.cc
-  master_error.cc
   master_options.cc
   master_service_base.cc
   master_service.cc
@@ -141,6 +140,7 @@ ADD_YB_LIBRARY(master_rpc
   DEPS ${MASTER_RPC_LIBS})
 
 set(MASTER_UTIL_SRCS
+  master_error.cc
   master_util.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}

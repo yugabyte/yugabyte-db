@@ -10,25 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ENT_H
-#define ENT_SRC_YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ENT_H
+#ifndef YB_TOOLS_YB_ADMIN_UTIL_H
+#define YB_TOOLS_YB_ADMIN_UTIL_H
 
-#include "yb/integration-tests/external_mini_cluster.h"
-
-#include "yb/rpc/rpc_fwd.h"
+#include "yb/common/entity_ids.h"
 
 namespace yb {
+namespace tools {
 
-namespace rpc {
-class SecureContext;
-}
+std::string SnapshotIdToString(const SnapshotId& snapshot_id);
 
-void StartSecure(
-  std::unique_ptr<ExternalMiniCluster>* cluster,
-  std::unique_ptr<rpc::SecureContext>* secure_context,
-  std::unique_ptr<rpc::Messenger>* messenger,
-  const std::vector<std::string>& master_flags = std::vector<std::string>());
+SnapshotId StringToSnapshotId(const std::string& str);
 
-} // namespace yb
+}  // namespace tools
+}  // namespace yb
 
-#endif // ENT_SRC_YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ENT_H
+#endif // YB_TOOLS_YB_ADMIN_UTIL_H
