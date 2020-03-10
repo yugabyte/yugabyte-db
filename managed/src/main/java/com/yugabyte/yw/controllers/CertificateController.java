@@ -8,6 +8,9 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.ClientCertParams;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,7 +55,27 @@ public class CertificateController extends AuthenticatedController {
     } catch (Exception e) {
       return ApiResponse.error(BAD_REQUEST, "Couldn't upload certfiles");
     }
+  }
 
+  public Result getClientCert(UUID customerUUID, UUID rootCA) {
+    Form<ClientCertParams> formData = formFactory.form(ClientCertParams.class)
+                                                 .bindFromRequest();
+    if (Customer.get(customerUUID) == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+    Date certStart = new Date(formData.get().certStart);
+    Date certExpiry = new Date(formData.get().certExpiry);
+    try {
+      JsonNode result = CertificateHelper.createClientCertificate(
+          rootCA, null, formData.get().username, certStart, certExpiry);
+      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      return ApiResponse.success(result);
+    } catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't generate client cert.");
+    }
   }
 
   public Result list(UUID customerUUID) {

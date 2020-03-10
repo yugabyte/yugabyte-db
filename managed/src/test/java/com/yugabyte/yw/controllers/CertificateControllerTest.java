@@ -37,6 +37,7 @@ import java.util.LinkedHashMap;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNotNull;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 import static org.mockito.Mockito.when;
@@ -81,6 +82,13 @@ public class CertificateControllerTest extends FakeDBApplication {
   private Result getCertificate(UUID customerUUID, String label) {
     String uri = "/api/customers/" + customerUUID + "/certificates/" + label;
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
+  }
+
+  private Result createClientCertificate(UUID customerUUID, UUID rootUUID,
+                                         ObjectNode bodyJson) {
+    String uri = "/api/customers/" + customerUUID + "/certificates/" + rootUUID;
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(),
+                                                       bodyJson);
   }
 
   @Test
@@ -140,6 +148,25 @@ public class CertificateControllerTest extends FakeDBApplication {
     Result result = uploadCertificate(customer.uuid, bodyJson);
     assertBadRequest(result, "{\"keyContent\":[\"This field is required\"]}");
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCreateClientCertificate() {
+    ObjectNode bodyJson = Json.newObject();
+    Date date = new Date();
+    bodyJson.put("username", "test");
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid,
+                                                 "/tmp", false);
+    Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    String clientCert = json.get("yugabytedb.crt").asText();
+    String clientKey = json.get("yugabytedb.key").asText();
+    assertNotNull(clientCert);
+    assertNotNull(clientKey);
+    assertAuditEntry(1, customer.uuid);
   }
 
 }
