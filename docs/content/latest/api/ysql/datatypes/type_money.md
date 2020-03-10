@@ -1,6 +1,6 @@
 ---
 title: MONEY data types
-linktitle: Money
+linkTitle: Money
 summary: MONEY data types
 description: MONEY data types
 menu:

@@ -1,6 +1,6 @@
 ---
 title: JSON Datatypes
-linktitle: Json
+linktitle: JSON
 summary: JSON Datatypes
 description: JSON Datatypes
 menu:
