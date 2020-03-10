@@ -1568,6 +1568,7 @@ CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableRespon
 Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
                                            CreateTableResponsePB* resp,
                                            rpc::RpcContext* rpc) {
+  LOG(INFO) << "CreatePgsqlSysTable: " << req->name();
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   scoped_refptr<NamespaceInfo> ns;
