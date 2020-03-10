@@ -156,11 +156,6 @@ class SysCatalogTable {
 
   CHECKED_STATUS Visit(VisitorBase* visitor);
 
-  // Copy the content of a co-located table in sys catalog.
-  CHECKED_STATUS CopyPgsqlTable(const TableId& source_table_id,
-                                const TableId& target_table_id,
-                                int64_t leader_term);
-
   // Copy the content of co-located tables in sys catalog as a batch.
   CHECKED_STATUS CopyPgsqlTables(const std::vector<TableId>& source_table_ids,
                                  const std::vector<TableId>& target_table_ids,
