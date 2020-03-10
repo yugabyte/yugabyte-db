@@ -60,6 +60,7 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog.h"
@@ -97,7 +98,6 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
-#include "yb/gutil/sysinfo.h"
 #include "yb/util/shared_lock.h"
 
 using namespace std::literals;
@@ -785,6 +785,15 @@ Status HandleReplacingStaleTablet(
 }
 
 Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
+  // To prevent racing against Shutdown, we increment this as soon as we start. This should be done
+  // before checking for ClosingUnlocked, as on shutdown, we proceed in reverse:
+  // - first mark as closing
+  // - then wait for num_tablets_being_remote_bootstrapped_ == 0
+  ++num_tablets_being_remote_bootstrapped_;
+  auto decrement_num_rbs_se = ScopeExit([this](){
+    --num_tablets_being_remote_bootstrapped_;
+  });
+
   LongOperationTracker tracker("StartRemoteBootstrap", 5s);
 
   const string& tablet_id = req.tablet_id();
@@ -890,12 +899,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // to check what happens when this server receives raft consensus requests since at this point,
   // this tablet server could be a voter (if the ChangeRole request in Finish succeeded and its
   // initial role was PRE_VOTER).
-  //
-  // TODO(bogdan): This leads to a bunch of startup / shutdown race conditions, as this call is not
-  // executed on the thread pool, like the other OpenTablet calls, so on shutdown, it could be
-  // running initialization code for TabletPeer, Raft, Log, etc, which exposes some of these races.
   OpenTablet(meta, nullptr);
-
   // If OpenTablet fails, tablet_peer->error() will be set.
   RETURN_NOT_OK(ShutdownAndTombstoneTabletPeerNotOk(
       tablet_peer->error(), tablet_peer, meta, fs_manager_->uuid(),
@@ -1178,7 +1182,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 void TSTabletManager::StartShutdown() {
   async_client_init_->Shutdown();
 
-  if(background_task_) {
+  if (background_task_) {
     background_task_->Shutdown();
   }
 
@@ -1203,6 +1207,29 @@ void TSTabletManager::StartShutdown() {
         LOG(FATAL) << "Invalid state: " << TSTabletManagerStatePB_Name(state_);
       }
     }
+  }
+
+  // Wait for all RBS operations to finish.
+  const MonoDelta kSingleWait = 10ms;
+  const MonoDelta kReportInterval = 5s;
+  const MonoDelta kMaxWait = 30s;
+  MonoDelta waited = MonoDelta::kZero;
+  MonoDelta next_report_time = kReportInterval;
+  while (int remaining_rbs = num_tablets_being_remote_bootstrapped_ > 0) {
+    if (waited >= next_report_time) {
+      if (waited >= kMaxWait) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Waited for " << waited << "ms. Still had "
+            << remaining_rbs << " pending remote bootstraps";
+      } else {
+        LOG_WITH_PREFIX(WARNING)
+            << "Still waiting for " << remaining_rbs
+            << " ongoing RemoteBootstraps to finish after " << waited;
+      }
+      next_report_time = std::min(kMaxWait, waited + kReportInterval);
+    }
+    SleepFor(kSingleWait);
+    waited += kSingleWait;
   }
 
   // Shut down the bootstrap pool, so new tablets are registered after this point.
