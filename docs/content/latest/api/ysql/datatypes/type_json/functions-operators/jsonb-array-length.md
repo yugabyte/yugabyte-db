@@ -1,6 +1,11 @@
 ---
+<<<<<<< HEAD:docs/content/latest/api/ysql/datatypes/type_json/functions-operators/jsonb-array-length.md
 title: jsonb_array_length
 linkTitle: jsonb_array_length()
+=======
+title: jsonb_array_length() and json_array_length()
+linktitle: jsonb_array_length() and json_array_length()
+>>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/jsonb-array-length.md
 summary: jsonb_array_length() and json_array_length()
 description: jsonb_array_length() and json_array_length()
 menu:

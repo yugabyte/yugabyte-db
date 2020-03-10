@@ -2,7 +2,7 @@
 title: Code example conventions
 linkTitle: Code example conventions
 summary: Code example conventionss
-description: Code example conventions
+description: JSON code example conventions
 menu:
   latest:
     identifier: code-example-conventions
@@ -50,6 +50,7 @@ is insufficient for four reasons:
 - The result is non-negotiably typecast to text to print to the screen, with distracting conventions like inserting a space at the start of each printed line, showing the `boolean` value `true` as the `text` value `t`, showing `null` as just an absence, and showing a newline as the `text` value `+`.
 
 For these reasons, each code example is presented as a `DO` block with this pattern:
+
 - Each input value is declared using the appropriate SQL data type (sometimes building such values bottom-up from declared simpler values).
 - The output of the operator or expression is assigned to a variable of the appropriate data type.
 - The expected output is declared as a value of the same data type.
