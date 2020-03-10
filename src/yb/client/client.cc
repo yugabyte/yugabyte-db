@@ -987,12 +987,17 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
 }
 
-Status YBClient::TabletServerCount(int *tserver_count, bool primary_only) {
+Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
+  if (use_cache && tserver_count_cached_ > 0) {
+    *tserver_count = tserver_count_cached_;
+    return Status::OK();
+  }
+
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
   req.set_primary_only(primary_only);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
-  *tserver_count = resp.servers_size();
+  *tserver_count = tserver_count_cached_ = resp.servers_size();
   return Status::OK();
 }
 

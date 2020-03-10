@@ -97,3 +97,7 @@ DEFINE_bool(ysql_serializable_isolation_for_ddl_txn, false,
             "Whether to use serializable isolation for separate DDL-only transactions. "
             "By default, repeatable read isolation is used. "
             "This flag should go away once full transactional DDL is implemented.");
+
+DEFINE_int32(ysql_select_parallelism, -1,
+            "Number of read requests to issue in parallel to tablets of a table "
+            "for SELECT.");

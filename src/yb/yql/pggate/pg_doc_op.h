@@ -169,6 +169,7 @@ class PgDocReadOp : public PgDocOp {
 
   // Constructors & Destructors.
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+              const PgTableDesc::ScopedRefPtr& table_desc,
               size_t num_hash_key_columns,
               std::unique_ptr<client::YBPgsqlReadOp> read_op);
 
@@ -204,6 +205,8 @@ class PgDocReadOp : public PgDocOp {
   // Also updates the value of can_produce_more_ops_.
   void InitializeNextOps(int num_ops);
 
+  void InitializeParallelSelectCountOps(int select_parallelism);
+
   // Used internally for InitializeNextOps to keep track of which permutation should be used
   // to construct the next read_op.
   // Is valid as long as can_produce_more_ops_ is true.
@@ -228,6 +231,11 @@ class PgDocReadOp : public PgDocOp {
   // 1) Partition columns are not bound but the request hasn't been sent yet.
   // 2) Partition columns are bound and some permutations remain unprocessed.
   bool can_produce_more_ops_ = true;
+
+  PgTableDesc::ScopedRefPtr table_desc_;
+
+  // Offset to use for next element in partition_keys.
+  int partition_keys_next_to_use_ = 0;
 
   // Operation(s).
   //

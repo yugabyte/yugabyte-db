@@ -183,11 +183,13 @@ Status PgDocOp::ProcessResponse(const Status& status) {
 //-------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+                         const PgTableDesc::ScopedRefPtr& table_desc,
                          size_t num_hash_key_columns,
                          std::unique_ptr<client::YBPgsqlReadOp> read_op)
     : PgDocOp(pg_session),
       num_hash_key_columns_(num_hash_key_columns),
-      template_op_(std::move(read_op)) {
+      template_op_(std::move(read_op)),
+      table_desc_(table_desc) {
 }
 
 void PgDocReadOp::Initialize(const PgExecParameters *exec_params) {
@@ -373,9 +375,59 @@ void PgDocReadOp::InitializeNextOps(int num_ops) {
   DCHECK(!read_ops_.empty()) << "read_ops_ should not be empty after setting!";
 }
 
+void PgDocReadOp::InitializeParallelSelectCountOps(int select_parallelism) {
+  const auto& partition_keys = table_desc_->table()->GetPartitions();
+  for (auto it = partition_keys.cbegin(); it != partition_keys.cend(); ++it) {
+    // Construct a new YBPgsqlReadOp.
+    auto read_op(template_op_->DeepCopy());
+
+    auto req = read_op->mutable_request();
+    req->clear_partition_column_values();
+
+    PgsqlPagingStatePB* paging_state = req->mutable_paging_state();
+    paging_state->set_next_partition_key(*it);
+
+    // Set max_hash_code to end of tablet.
+    auto nx = std::next(it);
+    if (nx != partition_keys.cend()) {
+      req->set_max_hash_code(PartitionSchema::DecodeMultiColumnHashValue(*nx) - 1);
+    } else {
+      req->clear_max_hash_code();
+    }
+    partition_keys_next_to_use_++;
+
+    read_ops_.push_back(std::move(read_op));
+
+    if (read_ops_.size() == select_parallelism) {
+      break;
+    }
+  }
+
+  can_produce_more_ops_ = false;
+}
+
 Status PgDocReadOp::SendRequestImpl(bool force_non_bufferable) {
   DCHECK(!read_ops_.empty() || can_produce_more_ops_);
-  if (can_produce_more_ops_) {
+
+  if (template_op_->request().is_aggregate() && read_ops_.size() == 0) {
+    // Snapshot of flag to avoid handling change of flag value in long running reads.
+    int select_parallelism = FLAGS_ysql_select_parallelism;
+    if (select_parallelism < 0) {
+      // Auto.
+
+      int tserver_count = 0;
+      RETURN_NOT_OK(pg_session_->TabletServerCount(&tserver_count, true /* primary_only */,
+            true /* use_cache */));
+
+      // Establish lower and upper bounds on parallelism.
+      int kMinParSelCountParallelism = 1;
+      int kMaxParSelCountParallelism = 16;
+      select_parallelism = std::min(std::max(tserver_count * 2,
+            kMinParSelCountParallelism), kMaxParSelCountParallelism);
+    }
+
+    InitializeParallelSelectCountOps(select_parallelism);
+  } else if (can_produce_more_ops_) {
     InitializeNextOps(FLAGS_ysql_request_limit - read_ops_.size());
   }
 
@@ -408,10 +460,11 @@ Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
 
   // For each read_op, set up its request for the next batch of data, or remove it from the list
   // if no data is left.
-  read_ops_.erase(std::remove_if(read_ops_.begin(), read_ops_.end(), [](auto& read_op) {
+  read_ops_.erase(std::remove_if(read_ops_.begin(), read_ops_.end(), [this](auto& read_op) {
     auto& res = *read_op->mutable_response();
     if (res.has_paging_state()) {
       PgsqlReadRequestPB *req = read_op->mutable_request();
+
       // Set up paging state for next request.
       // A query request can be nested, and paging state belong to the innermost query which is
       // the read operator that is operated first and feeds data to other queries.
@@ -430,7 +483,34 @@ Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
 
       // Keep this read-op and resend for the next paging state.
       return false;
+    } else if (template_op_->request().is_aggregate()) {
+      // Mutate into new query for next unqueried tablet.
 
+      const auto& partition_keys = table_desc_->table()->GetPartitions();
+      auto it = std::next(partition_keys.begin(), partition_keys_next_to_use_);
+      if (it == partition_keys.end()) {
+        // No work left.
+        return true;
+      } else {
+        PgsqlReadRequestPB *req = read_op->mutable_request();
+        req->clear_partition_column_values();
+
+        PgsqlPagingStatePB* paging_state = req->mutable_paging_state();
+        paging_state->set_next_partition_key(*it);
+        paging_state->clear_next_row_key();
+
+        // Set max_hash_code to end of tablet.
+        auto nx = std::next(it);
+        if (nx != partition_keys.cend()) {
+          req->set_max_hash_code(PartitionSchema::DecodeMultiColumnHashValue(*nx) - 1);
+        } else {
+          req->clear_max_hash_code();
+        }
+        partition_keys_next_to_use_++;
+
+        req->clear_ysql_catalog_version();
+        return false;
+      }
     } else if (read_op->request().batch_arguments_size() > 0 &&
                res.batch_arg_count() < read_op->request().batch_arguments_size()) {
       // === THIS CODE IS FOR ROLLING UPGRADE ONLY ===

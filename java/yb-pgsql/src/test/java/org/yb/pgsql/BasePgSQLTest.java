@@ -226,7 +226,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
-  private Map<String, String> getMasterFlags() {
+  protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = new TreeMap<>();
     flagMap.put("client_read_write_timeout_ms", "120000");
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
@@ -540,7 +540,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return value;
   }
 
-  protected void verifyStatementMetric(Statement statement, String stmt, String metricName,
+  /** Time execution of a query. */
+  protected long verifyStatementMetric(Statement statement, String stmt, String metricName,
                                        int stmtMetricDelta, int txnMetricDelta,
                                        boolean validStmt) throws Exception {
     int oldValue = 0;
@@ -549,11 +550,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
     int oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
 
+    final long startTimeMillis = System.currentTimeMillis();
     if (validStmt) {
       statement.execute(stmt);
     } else {
       runInvalidQuery(statement, stmt);
     }
+
+    // Check the elapsed time.
+    long result = System.currentTimeMillis() - startTimeMillis;
 
     int newValue = 0;
     if (metricName != null) {
@@ -563,6 +568,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     assertEquals(oldValue + stmtMetricDelta, newValue);
     assertEquals(oldTxnValue + txnMetricDelta, newTxnValue);
+
+    return result;
   }
 
   protected void verifyStatementTxnMetric(Statement statement, String stmt,
