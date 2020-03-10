@@ -38,7 +38,7 @@
       name: ntp
       state: restarted
     when: ansible_distribution == "Ubuntu"
-  when: not should_setup_chrony and not air_gap and "{{ cloud_type != 'onprem' }}"
+  when: "{{ not should_setup_chrony and not air_gap and cloud_type != 'onprem' }}"
 
 - block:
   - name: Uninstall NTP if available
