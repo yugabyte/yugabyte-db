@@ -1,6 +1,6 @@
 ---
 title: SERIAL data types
-linktitle: Serial
+linkTitle: Serial
 summary: SERIAL data types
 description: SERIAL data types
 menu:

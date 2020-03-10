@@ -1,6 +1,6 @@
 ---
 title: Binary data types
-linktitle: Binary
+linkTitle: Binary
 summary: Binary data types
 description: Binary data types
 menu:

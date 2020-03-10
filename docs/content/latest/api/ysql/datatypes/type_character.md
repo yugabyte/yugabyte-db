@@ -1,6 +1,6 @@
 ---
 title: TEXT
-linktitle: Character
+linkTitle: Character
 description: Character Types
 summary: String of Unicode characters
 menu:

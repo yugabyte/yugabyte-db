@@ -1,6 +1,6 @@
 ---
 title: DATE-TIME data types
-linktitle: Date-time
+linkTitle: Date-time
 summary: DATE-TIME data types
 description: DATE-TIME data types
 menu:

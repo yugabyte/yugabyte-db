@@ -1,6 +1,6 @@
 ---
 title: BOOLEAN data types
-linktitle: Boolean
+linkTitle: Boolean
 summary: BOOLEAN data types
 description: BOOLEAN data types
 menu:
