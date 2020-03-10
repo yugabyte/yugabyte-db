@@ -1,15 +1,8 @@
 ---
-<<<<<<< HEAD:docs/content/latest/api/ysql/datatypes/type_json/functions-operators/json-subvalue-operators.md
 title: JSON subvalue operators
 linkTitle: '->, ->>, #>, and #>> (JSON subvalues)'
 summary: JSON subvalue operators
 description: '->, ->>, #>, and #>> (JSON subvalues)'
-=======
-title: Operators for reading JSON subvalues
-linktitle: Operators for reading JSON subvalues
-summary: Operators for reading JSON subvalues
-description: Operators for reading JSON subvalues
->>>>>>> Add front matter and link pages:docs/content/latest/api/ysql/datatypes/json-data-types/functions-operators/json-subvalue-operators.md
 menu:
   latest:
     identifier: json-subvalue-operators

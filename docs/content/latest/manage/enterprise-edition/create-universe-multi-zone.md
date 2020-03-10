@@ -82,7 +82,7 @@ This should bring up a dialog showing how to connect to the nodes.
 Copy the first command (highlighted above) and run it from the YugaWare machine. This will connect us to the first node, `yb-dev-helloworld1-n1`.
 
 ```
-centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4 -p 54422
+centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4
 Are you sure you want to continue connecting (yes/no)? yes
 [centos@yb-dev-helloworld1-n1 ~]$
 ```

@@ -1,6 +1,6 @@
 ---
 title: JSON
-linktitle: JSON
+linkTitle: JSON
 summary: JSON and JSONB data types
 description: JSON data types and functionality
 image: /images/section_icons/api/ysql.png
