@@ -139,6 +139,10 @@ class StronglyTypedUuid {
     return boost::uuids::uuid::static_size();
   }
 
+  static size_t StaticStringSize() {
+    return 36;
+  }
+
  private:
   // Represented as an optional UUID.
   boost::uuids::uuid uuid_;

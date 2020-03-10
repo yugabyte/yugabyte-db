@@ -57,23 +57,15 @@ message SysSnapshotEntryPB {
 message CreateSnapshotRequestPB {
   repeated TableIdentifierPB tables = 1;
   optional bool transaction_aware = 2;
+
+  // Automatically add table indexes into the snapshot.
+  optional bool add_indexes = 3 [default = false];
 }
 
 message CreateSnapshotResponsePB {
   optional MasterErrorPB error = 1;
 
   optional bytes snapshot_id = 2;
-}
-
-message IsSnapshotOpDoneRequestPB {
-  optional bytes snapshot_id = 1;
-}
-
-message IsSnapshotOpDoneResponsePB {
-  optional MasterErrorPB error = 1;
-
-  // true if the create operation is completed, false otherwise
-  optional bool done = 2;
 }
 
 message SnapshotInfoPB {
@@ -148,7 +140,6 @@ message ImportSnapshotMetaResponsePB {
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
-  rpc IsSnapshotOpDone(IsSnapshotOpDoneRequestPB) returns (IsSnapshotOpDoneResponsePB);
   rpc ListSnapshots(ListSnapshotsRequestPB) returns (ListSnapshotsResponsePB);
   rpc ListSnapshotRestorations(ListSnapshotRestorationsRequestPB)
       returns (ListSnapshotRestorationsResponsePB);

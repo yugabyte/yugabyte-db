@@ -830,6 +830,9 @@ Status YBClient::Data::FlushTable(YBClient* client,
   if (!table_id.empty()) {
     req.add_tables()->set_table_id(table_id);
   }
+
+  // TODO: flush related indexes
+
   req.set_is_compaction(is_compaction);
   RETURN_NOT_OK((SyncLeaderMasterRpc<FlushTablesRequestPB, FlushTablesResponsePB>(
       deadline, req, &resp, &attempts, "FlushTables", &MasterServiceProxy::FlushTables)));

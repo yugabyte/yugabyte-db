@@ -34,7 +34,13 @@ template<class RespClass>
 typename std::enable_if<HasMemberFunction_mutable_error<RespClass>::value, void>::type
 CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {
   if (PREDICT_FALSE(!s.ok() && !resp->has_error())) {
-    FillStatus(s, MasterErrorPB::UNKNOWN_ERROR, resp);
+    const MasterError master_error(s);
+    if (master_error.value() == MasterErrorPB::Code()) {
+      LOG(WARNING) << "Unknown master error in status: " << s;
+      FillStatus(s, MasterErrorPB::UNKNOWN_ERROR, resp);
+    } else {
+      FillStatus(s, master_error.value(), resp);
+    }
   }
 }
 
