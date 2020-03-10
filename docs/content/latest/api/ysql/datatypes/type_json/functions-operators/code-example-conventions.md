@@ -1,7 +1,7 @@
 ---
 title: Code example conventions
 linkTitle: Code example conventions
-summary: Code example conventionss
+summary: Code example conventions
 description: JSON code example conventions
 menu:
   latest:
