@@ -85,7 +85,7 @@ Using this qualifier will create a temporary table. Temporary tables are only vi
 
 ### Split Into
 
-The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets). 
+The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. Pre-splitting tablets using `SPLIT INTO` helps distrbute write and read workloads on a production cluster. For example, if you have 30 servers, splitting the table into 30 tablets prepares the cluster for maximum write loads. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets). 
 
 {{< note title="Note" >}}
 
@@ -232,7 +232,6 @@ yugabyte=# CREATE TABLE translations(message_id int UNIQUE,
 ### Create table specifying number of tablets
 
 You can use the `CREATE TABLE` statement with the `SPLIT INTO` clause to specify the number of tablets for the table.
-This is useful for two data center (2DC) deployments that require identical number of tablets on both clusters.
 
 ```postgresql
 yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT (INTO 10 TABLETS);
