@@ -23,7 +23,7 @@
   ec2:
    image: "{{ server01_ami.image_id }}"
    wait: yes
-   instance_type: t2.micro
+   instance_type: "{{ type_instance }}"
    region: "{{ region }}"
    group_id: "{{ security_group_ids }}"
    vpc_subnet_id: "{{ item }}"
@@ -55,7 +55,7 @@
   ec2:
    image: "{{ server01_ami.image_id }}"
    wait: yes
-   instance_type: t2.micro
+   instance_type: "{{ type_instance }}"
    region: "{{ region }}"
    group_id: "{{ security_group_ids }}"
    vpc_subnet_id: "{{ item }}"
