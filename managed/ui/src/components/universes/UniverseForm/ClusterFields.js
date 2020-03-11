@@ -63,7 +63,8 @@ const initialState = {
   useTimeSync: false,
   enableYSQL: false,
   enableNodeToNodeEncrypt: false,
-  enableClientToNodeEncrypt: false
+  enableClientToNodeEncrypt: false,
+  enableEncryptionAtRest: false
 };
 
 export default class ClusterFields extends Component {
@@ -140,7 +141,8 @@ export default class ClusterFields extends Component {
       const userIntent = clusterType === "async" ? readOnlyCluster && { ...readOnlyCluster.userIntent, universeName: primaryCluster.userIntent.universeName } : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       const encryptionAtRestEnabled = universeDetails.encryptionAtRestConfig &&
-          universeDetails.encryptionAtRestConfig.enableEncryptionAtRest;
+          universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
+
       if (userIntent && providerUUID) {
         const storageType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.storageType;
         this.setState({
@@ -1002,9 +1004,8 @@ export default class ClusterFields extends Component {
             component={YBSelectWithLabel}
             label="Key Management Service Config"
             options={kmsConfigList}
-            input={{
-              onChange: this.handleSelectAuthConfig
-            }}
+            onInputChanged={this.handleSelectAuthConfig}
+            readOnlySelect={isFieldReadOnly}
           />
         );
       }
