@@ -21,7 +21,7 @@ The JSON functions and operators available in YugabyteDB are categorized below b
 - [**Convert a JSON value to a SQL value**](#convert-a-json-value-to-a-sql-value)
 - [**Get a property of a JSON value**](#get-a-property-of-a-json-value)
 
-**Note:** To see an alphabetical listing of the JSON functions and operators, see the listing in the navigation bar.
+**Note:** For an alphabetical listing of the JSON functions and operators, see the listing in the navigation bar.
 
 There are two trivial typecast operators for converting between a `text` value that conforms to [RFC 7159](https://tools.ietf.org/html/rfc7159) and a `jsonb` or `json` value, the ordinarily overloaded `=` operator, 12 dedicated JSON operators, and 23 dedicated JSON functions.
 
@@ -53,7 +53,7 @@ To avoid clutter in the tables, only the `jsonb` variants of the function names 
 | ---- | ---- |
 | [`->`](./jsonb-subvalue-operators/) | Reads a subvalue at a specified JSON _object_ key or JSON _array_ index as a JSON value.   |
 | [`#>`](./jsonb-subvalue-operators/) | Like `->` except that the to-be-read JSON subvalue is specified by the path to it from the enclosing JSON value. |
-| [&#124;&#124;](./concatention-operator/) | Concatenates two JSON values to produce a new JSON value. |
+| [&#124;&#124;](./concatenation-operator/) | Concatenates two JSON values to produce a new JSON value. |
 | [`-`](./remove-operators/) | Creates a new JSON value from the input JSON value: _either_ by removing a key-value pair with the specified key from a JSON _object_; _or_ by removing a JSON value at the specified index in a JSON _array_. Error if the input is not a JSON _object_ or JSON _array_. |
 | [`#-`](./remove-operators) | Like `-` except that the to-be-removed key-value pair (from a JSON _object_) or JSON value (from a JSON _array_) is specified by a path from the enclosing JSON value. The path is specified in the same way as for the `#>` operator. |
 | [`jsonb_extract_path()`](./jsonb-extract-path/) | Functionally equivalent to the `#>` operator. The path is presented as a variadic list of steps that must all be `text` values. Its invocation more verbose than that of the `#>` operator and there seems to be no reason to prefer the function form to the operator form. |
