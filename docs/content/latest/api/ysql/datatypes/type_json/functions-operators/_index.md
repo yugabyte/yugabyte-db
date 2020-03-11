@@ -3,6 +3,7 @@ title: Functions and operators
 linkTitle: Functions & operators
 summary: Functions and operators
 description: JSON functions and operators
+image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: functions-operators
