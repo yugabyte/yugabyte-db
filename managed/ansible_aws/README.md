@@ -33,15 +33,36 @@ The repository contains a set of parametrized ansible playbooks and roles, with 
  - A multi-az Yugabyte DB cluster across three [Availability Zones](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html)
  - 1 master server is created per availability zone, the rest of instances are automatically allocated in the different public subnets and az's.
  - AWS secret and access keys have to be specified within creds.yml file via ansible-vault.
+ - The deployment is mostly dynamic meaning it is using instance groups based on aws tags.
 
 ## Deployment 📦
 
+The following roles are used:
+
+| Template | Description |
+| --- | --- | 
+| [roles/yugabyte_vpc](roles/yugabyte_vpc) | this does not only orchestrates a VPC including there public subnets distributed across three Availability Zones, but it also deploys an [Internet gateway]. (http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_Internet_Gateway.html), with a routing table on the public subnets.|
+| [roles/configure_region_placement](roles/configure_region_placement) | Configures AZ- and region-aware placement based on a replication factor of 3.  |
+| [roles/yugabyte_common](roles/yugabyte_common) | Installs required system packages (for centos in this case), configures ulimits, creates needed folders for deployment as well as installing yugabyte db on every node. |
+| [roles/yugabyte_ec2](infrastructure/ecs-cluster.yaml) | Deploys a dynamic set of ec2 instances as per the variable file (in this case 6) and attaches them to the public subnets (1 master instance per availability zone and the other ones spawned accross the all AZ) |
+| [roles/yugabyte_ec2_sg](services/WebService.yaml) | It is possible to configure the [security groups](http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_SecurityGroups.html) required by the entire stack on [roles/yugabyte_ec2_sg/defaults/main.yml](roles/yugabyte_ec2_sg/defaults/main.yml) |
+| [roles/yugabyte_setup](services/WebService.yaml) | Propagates Jinja template values for master.conf (YB-Master servers) and tserver.conf (YB-TServer servers) dinamically |
+| [roles/yugabyte_tbserver_startup](roles/yugabyte_tbserver_startup) | Initiliazes YB-Master servers as well as YB-TServer servers on the required nodes. |
+
+
 The orchestration as well as deployment happen through ansible initializing first a python virtual environment, thus, you can trigger it as follows:
 
-Create a python 3 virtual environment and install the requirenments by using the requirements.txt before running the ansible playbooks.
+Make sure to indicate your aws secret and access keys within creds.yml:
+```
+ansible-vault create creds.yml
 
-Steps are shown next:
-initialize the virtual environment with python 3:
+.......
+
+aws_access_key: "your access key"
+aws_secret_key: "your secret key"
+
+```
+Initialize the virtual environment with python 3:
 ```
 virtualenv3 -p python3 .venv
 ```
@@ -58,18 +79,39 @@ Run the ansible recipes
 ansible-playbook -i aws_ec2.yml main.yml --ask-vault-pass
 ```
 
-Output is as follows:
+Sample output is as follows:
 ```
+TASK [Gathering Facts] ***************************************************************************************
+ok: [localhost]
+
+TASK [yugabyte_vpc : create VPC] *****************************************************************************
+ok: [localhost]
+
+TASK [yugabyte_vpc : Set VPC ID in variable] *****************************************************************
+ok: [localhost]
+
+TASK [yugabyte_vpc : create IGW] *****************************************************************************
+ok: [localhost]
+
+TASK [yugabyte_vpc : Route IGW] ******************************************************************************
+ok: [localhost]
+
+TASK [yugabyte_ec2_sg : Create Security Group] ***
+
+.........
 
 ```
 
 ## Testing ⚙️
 
 The infrastructure orchestration can be depicted next:
-![stack-outputs](images/templates.png)
+![Instances created and tagged accordingly](images/nodes.png)
 
 Master Yugabyte DB details:
-![webservice in action](images/lb_site.png)
+![Cluster details summary](images/Master_Details.png)
+
+Cluster config:
+![Cluster config](images/cluster_config.png)
 
 ### Adjusting Instance types
 
@@ -82,34 +124,6 @@ By default, [t2.micro](https://aws.amazon.com/ec2/instance-types/) instances are
   region: "eu-central-1"
   type_instance: t2.micro
 cloud: aws
-# aws.networking
-aws_region:     'eu-central-1'
-vpc_name:       'Yugabyte_VPC_Res'
-vpc_cidr_2:     '185'
-vpc_cidr: '10.{{vpc_cidr_2}}.0.0/16'
-
-subnets:
-  - type: public
-    cidr: "10.{{vpc_cidr_2}}.10.0/24"
-    az: a
-  - type: public
-    cidr: "10.{{vpc_cidr_2}}.11.0/24"
-    az: b
-  - type: public
-    cidr: "10.{{vpc_cidr_2}}.21.0/24"
-    az: c
-
-route_name: "yugabyte_route"
-instances_per_subnet: 2
-
-# Internet Gateway Name
-igw_name: "Yugabyte_igw"
- 
-securitygroup_name: "Yugabyte_security_group"
-
-#master_dir: "~/master"
-#tserver_dir: "~/tserver"
-
 ec2_tag: "Yugabyte_nodes"
 ansible_user: centos 
 #The local path to which we would save our EC2 Private Key
@@ -134,6 +148,7 @@ tserver_dir: "~/tserver"
 
 linux_distribution: "centos"
 centos_release: "7"
+...........
 
 ```
 
@@ -183,9 +198,7 @@ or in the "license" file accompanying this file. This file is distributed on an 
 
 
 ## Built With 🛠️
-* [Ansible](https://www.ansible.com/) - Software configuration management tool
 * [Boto](https://github.com/boto/boto) - AWS interface for python and ansible 
-* [](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-ecs.html) - Used to generate templates to deploy infrastructure in AWS.
 * [Ansible](https://docs.ansible.com/ansible/latest/index.html) - Software configuration management tool to run the playbooks, basically an IT automation tool.
 
 ## Authors ✒️
