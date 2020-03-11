@@ -199,7 +199,6 @@ or in the "license" file accompanying this file. This file is distributed on an 
 
 ## Built With 🛠️
 * [Boto](https://github.com/boto/boto) - AWS interface for python and ansible 
-* [](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-ecs.html) - Used to generate templates to deploy infrastructure in AWS.
 * [Ansible](https://docs.ansible.com/ansible/latest/index.html) - Software configuration management tool to run the playbooks, basically an IT automation tool.
 
 ## Authors ✒️
