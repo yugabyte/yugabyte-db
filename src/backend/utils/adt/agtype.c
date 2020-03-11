@@ -1573,8 +1573,8 @@ Datum agtype_access_slice(PG_FUNCTION_ARGS)
     agtype_value *uidx_value = NULL;
     agtype_in_state result;
     agtype *array;
-    int64 upper_index;
-    int64 lower_index;
+    int64 upper_index = 0;
+    int64 lower_index = 0;
     uint32 array_size;
     int64 i;
 

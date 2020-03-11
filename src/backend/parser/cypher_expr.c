@@ -437,12 +437,14 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
     int location;
     ListCell *lc;
     Node *ind_arg_expr;
-    FuncExpr *func_expr;
+    FuncExpr *func_expr = NULL;
     Oid func_access_oid;
     Oid func_slice_oid;
     List *args = NIL;
     bool is_access = false;
 
+    /* validate that we have an indirection with at least 1 entry */
+    Assert(a_ind != NULL && list_length(a_ind->indirection));
     /* get the agtype_access_operator function */
     func_access_oid = get_ag_func_oid("agtype_access_operator", 1,
                                       AGTYPEARRAYOID);
@@ -536,6 +538,7 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
     if (is_access)
         func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
                                  InvalidOid, COERCE_EXPLICIT_CALL);
+    Assert(func_expr != NULL);
     func_expr->location = location;
 
     return (Node *)func_expr;
