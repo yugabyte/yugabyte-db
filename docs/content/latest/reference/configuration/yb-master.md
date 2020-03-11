@@ -339,7 +339,7 @@ Default: `3`
 
 The number of shards per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. If set using `yb-ctl` or `yb-docker-ctl`, then the default value is `2`.
+Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations like `yb-ctl` and `yb-docker-ctl` use a value of `2` for this gflag.
 
 ##### --ysql_num_shards_per_tserver
 
