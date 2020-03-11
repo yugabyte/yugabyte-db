@@ -85,7 +85,13 @@ Using this qualifier will create a temporary table. Temporary tables are only vi
 
 ### Split Into
 
-The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
+The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets). 
+
+{{< note title="Note" >}}
+
+The `SPLIT INTO` clause overrides the YB-Master configuration option [`--ysql_num_shards_per_tserver`](../../../../reference/configuration/yb-master/#ysql-num-shards-per-tserver).
+
+{{< /note >}}
 
 ### Colocated
 
