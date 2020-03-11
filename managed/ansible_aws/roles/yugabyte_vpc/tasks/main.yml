@@ -39,7 +39,8 @@
   debug: msg="{{ item.id }}"
   with_items:
     - "{{ subnet_details }}"
-    
+
+# get subnet id's
 - name: "Using json query"
   vars:
     server_name_cluster1_query: "[?item[?type == 'public']].subnet.id"
@@ -62,6 +63,7 @@
      Name: "{{ igw_name }}"
   register: igw
 
+# because of ec2_vpc_route_table limitation, we have to add here as set of items, the subnets
 - name: Route IGW
   ec2_vpc_route_table:
    vpc_id: "{{ vpc_id }}"
@@ -77,5 +79,3 @@
        gateway_id: "{{ igw.gateway_id  }}"
    tags:
      Name: "{{ route_name }}"
-  #with_items:
-  #  - "{{ subnet_ids }}"
