@@ -141,7 +141,7 @@ This is a JSON _object_ with eight fields. The first seven are primitive _string
 
 {{< note title="Note" >}}
 
-To see how these limitations can be ameliorated when a JSON document is stored in a column in a SQL table, see [Create indexes and check constraints on `json` and `jsonb` columns](../create-indexes-constraints/).
+To see how these limitations can be ameliorated when a JSON document is stored in a column in a SQL table, see [Create indexes and check constraints on `json` and `jsonb` columns](../create-indexes-check-constraints/).
 
 {{< /note >}}
 
