@@ -53,7 +53,7 @@ To avoid clutter in the tables, only the `jsonb` variants of the function names 
 | ---- | ---- |
 | [`->`](./jsonb-subvalue-operators/) | Reads a subvalue at a specified JSON _object_ key or JSON _array_ index as a JSON value.   |
 | [`#>`](./jsonb-subvalue-operators/) | Like `->` except that the to-be-read JSON subvalue is specified by the path to it from the enclosing JSON value. |
-| [`||`](./concatention-operator/) | Concatenates two JSON values to produce a new JSON value. |
+| [&#124;&#124;](./concatention-operator/) | Concatenates two JSON values to produce a new JSON value. |
 | [`-`](./remove-operators/) | Creates a new JSON value from the input JSON value: _either_ by removing a key-value pair with the specified key from a JSON _object_; _or_ by removing a JSON value at the specified index in a JSON _array_. Error if the input is not a JSON _object_ or JSON _array_. |
 | [`#-`](./remove-operators) | Like `-` except that the to-be-removed key-value pair (from a JSON _object_) or JSON value (from a JSON _array_) is specified by a path from the enclosing JSON value. The path is specified in the same way as for the `#>` operator. |
 | [`jsonb_extract_path()`](./jsonb-extract-path/) | Functionally equivalent to the `#>` operator. The path is presented as a variadic list of steps that must all be `text` values. Its invocation more verbose than that of the `#>` operator and there seems to be no reason to prefer the function form to the operator form. |
@@ -84,7 +84,7 @@ To avoid clutter in the tables, only the `jsonb` variants of the function names 
 | ---- | ---- |
 | [`=`](./equality-operator/) | The `=` operator is overloaded for all the SQL data types including `jsonb`. By a strange oversight, there is _no overload_ for plain `json`. |
 | [`@>` and `<@`](./containment-operators/) | `@>` tests if the left-hand JSON value contains the right-hand JSON value. And `<@` tests if the right-hand JSON value contains the left-hand JSON value. Returns a SQL `boolean`. |
-| [`?`, `?|`, and `?&`](./key-existence-operators/) | Test for existence of keys.  Returns a SQL `boolean`. |
+| [?, ?&#124;, and ?&](./key-existence-operators/) | Test for existence of keys.  Returns a SQL `boolean`. |
 | [`jsonb_array_length()`](./jsonb-array-length/) | The input must be a JSON _array_. Returns the number of JSON values in the _array_ as a SQL `int`. |
 | [`jsonb_typeof()`](./jsonb-typeof/) | Takes a single JSON value of arbitrary data type (_string_, _number_, _boolean_, _null_,  _object_, and _array_) and returns the data type name as a SQL `text` value. |
 | [`jsonb_object_keys()`](./jsonb-object-keys/) | Require that the supplied JSON value is an _object_. It transforms the list of key names into a set (i.e. table) of SQL `text` values. |
