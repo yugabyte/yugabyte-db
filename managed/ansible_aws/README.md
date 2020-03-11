@@ -36,10 +36,10 @@ The repository contains a set of parametrized ansible playbooks and roles, with 
 
 ## Deployment 📦
 
-The orchestration as well as deployment happen through ansible initializing first a python virtualenvironmnt, thus, you can trigger it as follows:
+The orchestration as well as deployment happen through ansible initializing first a python virtual environment, thus, you can trigger it as follows:
 
-## Running Healthcheck script
-Create a python 3 virtual environment and install the requirenments by using the requirements.txt. 
+Create a python 3 virtual environment and install the requirenments by using the requirements.txt before running the ansible playbooks.
+
 Steps are shown next:
 initialize the virtual environment with python 3:
 ```
@@ -80,6 +80,7 @@ By default, [t2.micro](https://aws.amazon.com/ec2/instance-types/) instances are
 ```
 - name: Change details for the Yugabyte DB cluster in group_vars/all.yml
   region: "eu-central-1"
+  type_instance: t2.micro
 cloud: aws
 # aws.networking
 aws_region:     'eu-central-1'
