@@ -7,17 +7,15 @@ The traditional way to take backups in an RDBMS is to *dump* the data across all
 # Goals
 
 #### 1. ACID consistency
-* A snapshot should be consistent with on-going transactions across different rows and tables
-* Example: a transaction should either be completely included into the snapshot or fully excluded
+* A snapshot should be consistent with on-going transactions. A transaction could affect rows across multiple tablets (potentially across multiple nodes). A snapshot should either completely include all the changes made by the transaction or fully exclude them.
 #### 2. Point-in-time consistency
-* Example: a newer transaction should not be included without all prior transactions being included in the snapshot
-#### 3. Recency
-* Ensure that all the changes made before the snapshot request are included in the snapshot
+* If any transaction `t` is included into a snapshot, then all transactions that committed prior to this `t` should be included into the snapshot.
+#### 3. Recency of updates
+* All updates/transactions committed before the snapshot request is initiated should be included in the snapshot. Transactions in progress at the time of issuing the snapshot request may or may not be included into the snapshot.
 #### 4. Efficiency for large data set sizes
-* Time to perform an in-cluster snapshot should not depend on the dataset size
-* This implies data should not be scanned in order to perform a backup
+* Time to perform an in-cluster snapshot should not depend on the dataset size. This implies that the database should not need to scan the data stored in order to perform a snapshot.
 #### 5. No dependency on cluster configuration or deployment topology
-* Example: possible to restore snapshots from a cluster into any target cluster (with different number/type of nodes)
+* It should be possible to restore snapshots from a cluster into the same cluster or any other target cluster (with different number/type of nodes).
 #### 6. Support for secure clusters
 * Authentication and authorization - support backing up users, roles and permissions
 * Encryption of data at rest - support backuping up data with encryption preserved as well as un-encrypted
