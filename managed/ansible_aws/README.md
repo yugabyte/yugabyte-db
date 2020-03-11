@@ -115,9 +115,7 @@ Cluster config:
 
 ### Adjusting Instance types
 
-This is specified in the main ansible playbook (main.yml)
-
-By default, [t2.micro](https://aws.amazon.com/ec2/instance-types/) instances are utilized and can be changed on the ansible group_vars/main.yml file.
+By default, [t2.micro](https://aws.amazon.com/ec2/instance-types/) instances are utilized and can be changed on the ansible [group_vars/all.yml](group_vars/all.yml) file.
 
 ```
 - name: Change details for the Yugabyte DB cluster in group_vars/all.yml
