@@ -36,7 +36,6 @@ The following table lists the primitive and compound data types in YSQL.
 | [`INTERVAL [fields] [(p)]`](type_datetime) | | Time span |
 | [`JSON`](type_json) <sup>1</sup> | | JSON text data and functionality |
 | [`JSONB`](type_json) <sup>1</sup> | | JSON binary data and functionality |
-
 | `LINE` <sup>1</sup> | | Infinite line |
 | `LSEG` <sup>1</sup> | | Line segment |
 | `MACADDR` <sup>1</sup> | | MAC address |
