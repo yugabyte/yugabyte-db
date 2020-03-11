@@ -1,10 +1,12 @@
-# Yugabyte DB automated cloud provisionking using AWS and Ansible  
+# Yugabyte DB automated cloud provisioning using AWS and Ansible  
 
 The goal is to create Ansible recipes/playbooks for deploying YugabyteDB on AWS by means of the following guidelines:
-- Multi AZ support (3 as per the current implementation, but configurable) 
+- Multi AZ support (3 as per the current implementation and configurable) 
 - based on terraform one: https://docs.yugabyte.com/latest/deploy/public-clouds/aws/#terraform
 - based on https://docs.yugabyte.com/latest/deploy/public-clouds/aws/#manual-deployment
 - Orchestration by using Ansible as a server configuration management tool
+- Number of public subnets, availability zones and instances can be parametrized.
+- Uses aws_ec2 for AWS dynamic inventory 
 
 ### Prerequisites 📋
 
@@ -19,18 +21,42 @@ IAM credentials to login to the AWS account
 Python 3+
 Virtualenv
 Boto
+Ansible-vault
 ```
 
 For reference, the webservice was deployed by using MacOS Mojave 10.14.5.
 
 ### Overview 🔧
+The repository contains a set of parametrized ansible playbooks and roles, with which multiple AZ and subnets can be created. 
 
-
+ - A [VPC](http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_Introduction.html) with 3 public subnets (more can be added), spanned within an AWS region.
+ - A multi-az Yugabyte DB cluster across three [Availability Zones](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html)
+ - 1 master server is created per availability zone, the rest of instances are automatically allocated in the different public subnets and az's.
+ - AWS secret and access keys have to be specified within creds.yml file via ansible-vault.
 
 ## Deployment 📦
 
-The orchestration as well as deployment happen through ansible, thus, you can trigger it as follows:
+The orchestration as well as deployment happen through ansible initializing first a python virtualenvironmnt, thus, you can trigger it as follows:
 
+## Running Healthcheck script
+Create a python 3 virtual environment and install the requirenments by using the requirements.txt. 
+Steps are shown next:
+initialize the virtual environment with python 3:
+```
+virtualenv3 -p python3 .venv
+```
+Acvitvate the virtualenvironment:
+```
+source .venv/bin/activate
+```
+Install dependencies:
+```
+pip3 install -r requirements.txt
+```
+Run the ansible recipes
+```
+ansible-playbook -i aws_ec2.yml main.yml --ask-vault-pass
+```
 
 Output is as follows:
 ```
@@ -45,11 +71,11 @@ The infrastructure orchestration can be depicted next:
 Master Yugabyte DB details:
 ![webservice in action](images/lb_site.png)
 
-### Adjusting ECS instance Type
+### Adjusting Instance types
 
 This is specified in the main ansible playbook (main.yml)
 
-By default, [t2.micro](https://aws.amazon.com/ec2/instance-types/) instances are utilized and can be changed on the ansible main.yml file.
+By default, [t2.micro](https://aws.amazon.com/ec2/instance-types/) instances are utilized and can be changed on the ansible group_vars/main.yml file.
 
 ```
 - name: Change details for the Yugabyte DB cluster in group_vars/all.yml
@@ -141,27 +167,6 @@ subnets:
     az: c
  .........
  .........
-```
-
-## Running Healthcheck script
-Create a python 3 virtual environment and install the requirenments by using the requirements.txt. 
-Steps are shown next:
-initialize the virtual environment with python 3:
-```
-virtualenv3 -p python3 .venv
-```
-Acvitvate the virtualenvironment:
-```
-source .venv/bin/activate
-```
-Install dependencies:
-```
-pip3 install -r requirements.txt
-```
-Run the healthcheck script by providing the Load balancer URL:
-```
-python3 status.py URL_SITE
-    URL_SITE is the url from the load balancer
 ```
 
 ## License
