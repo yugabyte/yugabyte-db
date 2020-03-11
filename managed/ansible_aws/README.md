@@ -41,7 +41,8 @@ The following roles are used:
 
 | Template | Description |
 | --- | --- | 
-| [roles/yugabyte_vpc](roles/yugabyte_vpc) | this does not only orchestrates a VPC including there public subnets distributed across three Availability Zones, but it also deploys an [Internet gateway]. (http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_Internet_Gateway.html), with a routing table on the public subnets.|
+| [roles/yugabyte_vpc](roles/yugabyte_vpc) | this does not only orchestrates a VPC including there public subnets distributed across three Availability Zones, but it also deploys an [Internet gateway]. (http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_Internet_Gateway.html), with a routing table on the public subnets. Due to a limitation on getting an array from module ec2_vpc_route_table, we have to add instances as set of strings there
+[main.yml](roles/yugabyte_vpc/tasks/main.yml)|
 | [roles/configure_region_placement](roles/configure_region_placement) | Configures AZ- and region-aware placement based on a replication factor of 3.  |
 | [roles/yugabyte_common](roles/yugabyte_common) | Installs required system packages (for centos in this case), configures ulimits, creates needed folders for deployment as well as installing yugabyte db on every node. |
 | [roles/yugabyte_ec2](infrastructure/ecs-cluster.yaml) | Deploys a dynamic set of ec2 instances as per the variable file (in this case 6) and attaches them to the public subnets (1 master instance per availability zone and the other ones spawned accross the all AZ) |
@@ -115,9 +116,7 @@ Cluster config:
 
 ### Adjusting Instance types
 
-This is specified in the main ansible playbook (main.yml)
-
-By default, [t2.micro](https://aws.amazon.com/ec2/instance-types/) instances are utilized and can be changed on the ansible group_vars/main.yml file.
+By default, [t2.micro](https://aws.amazon.com/ec2/instance-types/) instances are utilized and can be changed on the ansible [group_vars/all.yml](group_vars/all.yml) file.
 
 ```
 - name: Change details for the Yugabyte DB cluster in group_vars/all.yml
