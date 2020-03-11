@@ -30,15 +30,16 @@
 // under the License.
 //
 
-#include "yb/util/kernel_stack_watchdog.h"
-
-#include <gflags/gflags.h>
 #include <string>
 #include <vector>
+
+#include <gflags/gflags.h>
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
@@ -80,7 +81,7 @@ TEST_F(StackWatchdogTest, TestWatchdog) {
   }
   string s = JoinStrings(log, "\n");
   ASSERT_STR_CONTAINS(s, "TestWatchdog_Test::TestBody()");
-  ASSERT_STR_CONTAINS(s, "nanosleep");
+  ASSERT_STR_CONTAINS(s, "SleepForNanoseconds");
 }
 #endif
 
