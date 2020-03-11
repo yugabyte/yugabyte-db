@@ -52,7 +52,17 @@ The following roles are used:
 
 The orchestration as well as deployment happen through ansible initializing first a python virtual environment, thus, you can trigger it as follows:
 
-initialize the virtual environment with python 3:
+Make sure to indicate your aws secret and access keys within creds.yml:
+```
+ansible-vault create creds.yml
+
+.......
+
+aws_access_key: "your access key"
+aws_secret_key: "your secret key"
+
+```
+Initialize the virtual environment with python 3:
 ```
 virtualenv3 -p python3 .venv
 ```
@@ -188,7 +198,6 @@ or in the "license" file accompanying this file. This file is distributed on an 
 
 
 ## Built With 🛠️
-* [Ansible](https://www.ansible.com/) - Software configuration management tool
 * [Boto](https://github.com/boto/boto) - AWS interface for python and ansible 
 * [](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-ecs.html) - Used to generate templates to deploy infrastructure in AWS.
 * [Ansible](https://docs.ansible.com/ansible/latest/index.html) - Software configuration management tool to run the playbooks, basically an IT automation tool.
