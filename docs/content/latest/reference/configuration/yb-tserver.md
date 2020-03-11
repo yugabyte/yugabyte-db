@@ -524,12 +524,6 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 
 Default: `256MB`
 
-##### --yb_num_shards_per_tserver
-
-The number of shards per YB-TServer per table when a user table is created.
-
-Default: Server automatically picks a valid default internally, typically `8`.
-
 ---
 
 ### Security options
