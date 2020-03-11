@@ -5753,7 +5753,7 @@ Status DBImpl::DeleteFile(std::string name) {
         vstoreage->LevelFiles(0).back()->fd.GetNumber() != number) {
       RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
           "DeleteFile %s failed ---"
-          " target file in level 0 must be the oldest.", name.c_str());
+          " target file in level 0 must be the oldest. Expected: %" PRIu64, name.c_str(), number);
       job_context.Clean();
       return STATUS(InvalidArgument, "File in level 0, but not oldest");
     }

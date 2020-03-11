@@ -546,7 +546,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
       std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout) {
     rocksdb::FlushOptions options;
     options.wait = false;
-    regular_db_->Flush(options);
+    RETURN_NOT_OK(regular_db_->Flush(options));
   }
 
   return false;
@@ -716,12 +716,13 @@ void Tablet::DoCleanupIntentFiles() {
     const rocksdb::LiveFileMetaData* best_file = nullptr;
     files.clear();
     intents_db_->GetLiveFilesMetaData(&files);
+    auto min_largest_seq_no = std::numeric_limits<rocksdb::SequenceNumber>::max();
     for (const auto& file : files) {
-      auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
-      auto file_max_ht = frontier.hybrid_time();
-      if (file_max_ht < best_file_max_ht) {
+      if (file.largest.seqno < min_largest_seq_no) {
+        min_largest_seq_no = file.largest.seqno;
+        auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
+        best_file_max_ht = frontier.hybrid_time();
         best_file = &file;
-        best_file_max_ht = file_max_ht;
       }
     }
 
@@ -734,8 +735,17 @@ void Tablet::DoCleanupIntentFiles() {
         << "Intents SST file will be deleted: " << best_file->ToString()
         << ", max ht: " << best_file_max_ht << ", min running transaction start ht: "
         << min_running_start_ht;
-    regular_db_->Flush(rocksdb::FlushOptions());
-    intents_db_->DeleteFile(best_file->name);
+    auto flush_status = regular_db_->Flush(rocksdb::FlushOptions());
+    if (!flush_status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to flush regular db: " << flush_status;
+      break;
+    }
+    auto delete_status = intents_db_->DeleteFile(best_file->name);
+    if (!delete_status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to delete " << best_file->ToString()
+                               << ", all files " << AsString(files) << ": " << delete_status;
+      break;
+    }
   }
 
   if (best_file_max_ht != HybridTime::kMax) {
@@ -1621,7 +1631,7 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
   }
 
   if (flush_intents && mode == FlushMode::kSync) {
-    intents_db_->WaitForFlush();
+    RETURN_NOT_OK(intents_db_->WaitForFlush());
   }
 
   return Status::OK();
@@ -2242,7 +2252,7 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
             << FLAGS_num_raft_ops_to_force_idle_intents_db_to_flush << " is allowed";
         rocksdb::FlushOptions options;
         options.wait = false;
-        intents_db_->Flush(options);
+        WARN_NOT_OK(intents_db_->Flush(options), "Flush intents db failed");
       }
     }
   }
@@ -2537,7 +2547,7 @@ void Tablet::ForceRocksDBCompactInTest() {
     docdb::ForceRocksDBCompact(regular_db_.get());
   }
   if (intents_db_) {
-    intents_db_->Flush(rocksdb::FlushOptions());
+    CHECK_OK(intents_db_->Flush(rocksdb::FlushOptions()));
     docdb::ForceRocksDBCompact(intents_db_.get());
   }
 }

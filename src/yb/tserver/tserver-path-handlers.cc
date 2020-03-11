@@ -208,7 +208,8 @@ void HandleTabletPage(
   std::initializer_list<std::array<const char*, 2>> entries = {
       {"tablet-consensus-status", "Consensus Status"},
       {"log-anchors", "Tablet Log Anchors"},
-      {"transactions", "Transactions"} };
+      {"transactions", "Transactions"},
+      {"rocksdb", "RocksDB" }};
 
   auto encoded_tablet_id = UrlEncodeToString(tablet_id);
   for (const auto& entry : entries) {
@@ -273,6 +274,39 @@ void HandleTransactionsPage(
   *output << "Tablet is non transactional";
 }
 
+void DumpRocksDB(const char* title, rocksdb::DB* db, std::ostream* out) {
+  if (db) {
+    *out << "<h2>" << title << "</h2>" << std::endl;
+    *out << "<h3>Files</h3>" << std::endl;
+    auto files = db->GetLiveFilesMetaData();
+    *out << "<pre>" << std::endl;
+    for (const auto& file : files) {
+      *out << file.ToString() << std::endl;
+    }
+    *out << "</pre>" << std::endl;
+    rocksdb::TablePropertiesCollection properties;
+    auto status = db->GetPropertiesOfAllTables(&properties);
+    if (status.ok()) {
+      for (const auto& p : properties) {
+        *out << "<h3>" << EscapeForHtmlToString(p.first) << " properties</h3>" << std::endl;
+        *out << "<pre>" << p.second->ToString("\n") << "</pre>" << std::endl;
+      }
+    } else {
+      *out << "Failed to get properties: " << status << std::endl;
+    }
+  }
+}
+
+void HandleRocksDBPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, std::stringstream* output) {
+  *output << "<h1>RocksDB for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
+
+  auto doc_db = peer->tablet()->doc_db();
+  DumpRocksDB("Regular", doc_db.regular, output);
+  DumpRocksDB("Intents", doc_db.intents, output);
+}
+
 template<class F>
 void RegisterTabletPathHandler(
     Webserver* web_server, TabletServer* tserver, const std::string& path, const F& f) {
@@ -307,6 +341,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       server, tserver_, "/tablet-consensus-status", &HandleConsensusStatusPage);
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
   RegisterTabletPathHandler(server, tserver_, "/transactions", &HandleTransactionsPage);
+  RegisterTabletPathHandler(server, tserver_, "/rocksdb", &HandleRocksDBPage);
   server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
