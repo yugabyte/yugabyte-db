@@ -50,9 +50,8 @@ PG_FUNCTION_INFO_V1(graphid_out);
 // graphid type output function
 Datum graphid_out(PG_FUNCTION_ARGS)
 {
-    const int GRAPHID_LEN = 20; // -9223372036854775808
     graphid gid = AG_GETARG_GRAPHID(0);
-    char buf[GRAPHID_LEN + 1];
+    char buf[32]; // greater than MAXINT8LEN+1
     char *out;
 
     pg_lltoa(gid, buf);
@@ -157,4 +156,59 @@ static int graphid_btree_fast_cmp(Datum x, Datum y, SortSupport ssup)
         return 0;
     else
         return -1;
+}
+
+graphid make_graphid(const int32 label_id, const int64 entry_id)
+{
+    uint64 tmp;
+
+    if (!label_id_is_valid(label_id))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("label_id must be %d .. %d",
+                               LABEL_ID_MIN, LABEL_ID_MAX)));
+    }
+    if (!entry_id_is_valid(entry_id))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("entry_id must be " INT64_FORMAT " .. " INT64_FORMAT,
+                        ENTRY_ID_MIN, ENTRY_ID_MAX)));
+    }
+
+    tmp = (((uint64)label_id) << ENTRY_ID_BITS) |
+          (((uint64)entry_id) & ENTRY_ID_MASK);
+
+    return (graphid)tmp;
+}
+
+int32 get_graphid_label_id(const graphid gid)
+{
+    return (int32)(((uint64)gid) >> ENTRY_ID_BITS);
+}
+
+int64 get_graphid_entry_id(const graphid gid)
+{
+    return (int64)(((uint64)gid) & ENTRY_ID_MASK);
+}
+
+PG_FUNCTION_INFO_V1(_graphid);
+
+Datum _graphid(PG_FUNCTION_ARGS)
+{
+    int32 label_id;
+    int64 entry_id;
+    graphid gid;
+
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    {
+        ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+                        errmsg("label_id and entry_id must not be null")));
+    }
+    label_id = PG_GETARG_INT32(0);
+    entry_id = PG_GETARG_INT64(1);
+
+    gid = make_graphid(label_id, entry_id);
+
+    AG_RETURN_GRAPHID(gid);
 }

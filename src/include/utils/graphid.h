@@ -26,6 +26,21 @@
 
 typedef int64 graphid;
 
+#define LABEL_ID_MIN 1
+#define LABEL_ID_MAX PG_UINT16_MAX
+#define INVALID_LABEL_ID 0
+
+#define label_id_is_valid(id) (id >= LABEL_ID_MIN && id <= LABEL_ID_MAX)
+
+#define ENTRY_ID_MIN INT64CONST(1)
+#define ENTRY_ID_MAX INT64CONST(281474976710655) // 0x0000ffffffffffff
+#define INVALID_ENTRY_ID INT64CONST(0)
+
+#define entry_id_is_valid(id) (id >= ENTRY_ID_MIN && id <= ENTRY_ID_MAX)
+
+#define ENTRY_ID_BITS (32 + 16)
+#define ENTRY_ID_MASK INT64CONST(0x0000ffffffffffff)
+
 #define DATUM_GET_GRAPHID(d) DatumGetInt64(d)
 #define GRAPHID_GET_DATUM(x) Int64GetDatum(x)
 
@@ -39,5 +54,9 @@ typedef int64 graphid;
 #define GRAPHIDARRAYOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("_graphid"), \
                      ObjectIdGetDatum(ag_catalog_namespace_id())))
+
+graphid make_graphid(const int32 label_id, const int64 entry_id);
+int32 get_graphid_label_id(const graphid gid);
+int64 get_graphid_entry_id(const graphid gid);
 
 #endif

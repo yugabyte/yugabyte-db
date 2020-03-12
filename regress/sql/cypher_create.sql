@@ -20,15 +20,20 @@ SET search_path TO ag_catalog;
 SELECT create_graph('cypher_create');
 
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a agtype);
-SELECT * FROM cypher('cypher_create', $$CREATE (:label1)$$) as q(a agtype);
 
-SELECT * FROM cypher('cypher_create', $$CREATE ()-[]-()$$) as q(a agtype);
+-- vertex graphid
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)$$) AS (a agtype);
+-- FIXME: these must be replaced with actual CREATE clause implementation
+INSERT INTO cypher_create.v DEFAULT VALUES;
+INSERT INTO cypher_create.v DEFAULT VALUES;
+-- FIXME: this must be replaced with actual MATCH clause implementation
+SELECT * FROM cypher_create.v;
 
-SELECT * FROM cypher_create.label1;
+-- for now, edges are not supported
+SELECT * FROM cypher('cypher_create', $$CREATE ()-[]-()$$) AS (a agtype);
 
--- Column definition list for CREATE clause must contain a single agtype
--- attribute.
-
+-- column definition list for CREATE clause must contain a single agtype
+-- attribute
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a int);
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a agtype, b int);
 

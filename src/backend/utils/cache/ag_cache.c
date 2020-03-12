@@ -40,6 +40,7 @@
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "utils/ag_cache.h"
+#include "utils/graphid.h"
 
 typedef struct graph_name_cache_entry
 {

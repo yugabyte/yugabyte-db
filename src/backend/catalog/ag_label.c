@@ -20,13 +20,16 @@
 #include "access/htup.h"
 #include "access/htup_details.h"
 #include "catalog/indexing.h"
+#include "fmgr.h"
 #include "storage/lockdefs.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 
+#include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "utils/ag_cache.h"
+#include "utils/graphid.h"
 
 // INSERT INTO ag_catalog.ag_label
 // VALUES (label_name, label_graph, label_id, label_kind, label_relation)
@@ -91,6 +94,40 @@ Oid get_label_oid(const char *label_name, Oid label_graph)
         return cache_data->oid;
     else
         return InvalidOid;
+}
+
+int32 get_label_id(const char *label_name, Oid label_graph)
+{
+    label_cache_data *cache_data;
+
+    cache_data = search_label_name_graph_cache(label_name, label_graph);
+    if (cache_data)
+        return cache_data->id;
+    else
+        return INVALID_LABEL_ID;
+}
+
+PG_FUNCTION_INFO_V1(_label_id);
+
+Datum _label_id(PG_FUNCTION_ARGS)
+{
+    Name graph_name;
+    Name label_name;
+    Oid graph;
+    int32 id;
+
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    {
+        ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+                        errmsg("graph_name and label_name must not be null")));
+    }
+    graph_name = PG_GETARG_NAME(0);
+    label_name = PG_GETARG_NAME(1);
+
+    graph = get_graph_oid(NameStr(*graph_name));
+    id = get_label_id(NameStr(*label_name), graph);
+
+    PG_RETURN_INT32(id);
 }
 
 bool label_id_exists(Oid label_graph, int32 label_id)

@@ -26,9 +26,11 @@
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
+#include "parser/parser.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
+#include "utils/graphid.h"
 
 static Oid create_schema_for_graph(const Name graph_name);
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade);
@@ -38,7 +40,7 @@ static void rename_graph(const Name graph_name, const Name new_name);
  * Schema name doesn't have to be graph name but the same name is used so
  * that users can find the backed schema for a graph only by its name.
  */
-#define get_graph_schema_name(graph_name) (graph_name)
+#define get_graph_namespace_name(graph_name) (graph_name)
 
 PG_FUNCTION_INFO_V1(create_graph);
 
@@ -94,17 +96,17 @@ static Oid create_schema_for_graph(const Name graph_name)
      * so the event trigger will not be fired.
      */
     schema_stmt = makeNode(CreateSchemaStmt);
-    schema_stmt->schemaname = get_graph_schema_name(graph_name_str);
+    schema_stmt->schemaname = get_graph_namespace_name(graph_name_str);
     schema_stmt->authrole = NULL;
     seq_stmt = makeNode(CreateSeqStmt);
     seq_stmt->sequence = makeRangeVar(graph_name_str, LABEL_ID_SEQ_NAME, -1);
-    integer = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"),
-                                                  makeString("int4")));
+    integer = SystemTypeName("int4");
     data_type = makeDefElem("as", (Node *)integer, -1);
     maxvalue = makeDefElem("maxvalue", (Node *)makeInteger(LABEL_ID_MAX), -1);
     cycle = makeDefElem("cycle", (Node *)makeInteger(true), -1);
     seq_stmt->options = list_make3(data_type, maxvalue, cycle);
     seq_stmt->ownerId = InvalidOid;
+    seq_stmt->for_identity = false;
     seq_stmt->if_not_exists = false;
     schema_stmt->schemaElts = list_make1(seq_stmt);
     schema_stmt->if_not_exists = false;
@@ -163,7 +165,7 @@ static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
 
     // DROP SEQUENCE `graph_name_str`.`LABEL_ID_SEQ_NAME`
     drop_stmt = makeNode(DropStmt);
-    schema_name = makeString(get_graph_schema_name(graph_name_str));
+    schema_name = makeString(get_graph_namespace_name(graph_name_str));
     label_id_seq_name = list_make2(schema_name, makeString(LABEL_ID_SEQ_NAME));
     drop_stmt->objects = list_make1(label_id_seq_name);
     drop_stmt->removeType = OBJECT_SEQUENCE;
@@ -250,8 +252,8 @@ static void rename_graph(const Name graph_name, const Name new_name)
      *
      * CommandCounterIncrement() does not have to be called after this.
      */
-    RenameSchema(get_graph_schema_name(oldname),
-                 get_graph_schema_name(newname));
+    RenameSchema(get_graph_namespace_name(oldname),
+                 get_graph_namespace_name(newname));
 
     update_graph_name(graph_name, new_name);
     CommandCounterIncrement();

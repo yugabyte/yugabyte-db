@@ -54,6 +54,17 @@ ON ag_label
 USING btree (graph, id);
 
 --
+-- catalog lookup functions
+--
+
+CREATE FUNCTION _label_id(graph_name name, label_name name)
+RETURNS label_id
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
 -- utility functions
 --
 
@@ -264,6 +275,17 @@ CREATE OPERATOR CLASS graphid_ops DEFAULT FOR TYPE graphid USING btree AS
   OPERATOR 5 >,
   FUNCTION 1 graphid_btree_cmp (graphid, graphid),
   FUNCTION 2 graphid_btree_sort (internal);
+
+--
+-- graphid functions
+--
+
+CREATE FUNCTION _graphid(label_id int, entry_id bigint)
+RETURNS graphid
+LANGUAGE c
+IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
 
 --
 -- agtype type and its support functions
@@ -587,7 +609,7 @@ WITH FUNCTION bool_to_agtype(boolean);
 -- for series of `map.key` and `container[expr]`
 CREATE FUNCTION agtype_access_operator(VARIADIC agtype[])
 RETURNS agtype
-LANGUAGE C
+LANGUAGE c
 STABLE
 RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
@@ -595,14 +617,14 @@ AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION agtype_access_slice(agtype, agtype, agtype)
 RETURNS agtype
-LANGUAGE C
+LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION agtype_in_operator(agtype, agtype)
 RETURNS agtype
-LANGUAGE C
+LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
@@ -613,25 +635,25 @@ AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION agtype_string_match_starts_with(agtype, agtype)
 RETURNS agtype
-LANGUAGE C
+LANGUAGE c
 STABLE
-STRICT
+RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION agtype_string_match_ends_with(agtype, agtype)
 RETURNS agtype
-LANGUAGE C
+LANGUAGE c
 STABLE
-STRICT
+RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION agtype_string_match_contains(agtype, agtype)
 RETURNS agtype
-LANGUAGE C
+LANGUAGE c
 STABLE
-STRICT
+RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
