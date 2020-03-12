@@ -103,7 +103,7 @@ Where
 - The `transactions` property specifies if distributed transactions are enabled in the table. To enable distributed transactions, use `transactions = { 'enabled' : true }`.
 - Use the `AND` operator to use multiple table properties.
 - The other CQL table properties are allowed in the syntax but are currently ignored internally (have no effect).
-- The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL table. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create a CDC table specifying the number of tablets](#create-a-cdc-table-specifying-the-number-of-tablets).
+- The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL table. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create a table specifying the number of tablets](#create-a-cdc-table-specifying-the-number-of-tablets).
 
 ## Examples
 
