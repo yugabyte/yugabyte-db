@@ -96,14 +96,23 @@ Where
 - Columns in the primary key cannot be static.
 - A table without clustering columns cannot have static columns (without clustering columns the primary key and the partition key are identical so static columns would be the same as regular columns).
 
-### TABLE PROPERTIES
+### *table_properties*
 
 - The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
 - The `default_time_to_live` property sets the default expiration time (TTL) in seconds for a table. The expiration time can be overridden by setting TTL for individual rows. The default value is `0` and means rows do not expire.
 - The `transactions` property specifies if distributed transactions are enabled in the table. To enable distributed transactions, use `transactions = { 'enabled' : true }`.
-- The `tablets` property specifies the number of tablets to be used. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets)
 - Use the `AND` operator to use multiple table properties.
 - The other CQL table properties are allowed in the syntax but are currently ignored internally (have no effect).
+
+### *tablets_properties*
+
+- The `WITH TABLETS = <num>` clause specifies the number of tablets to be used for the specified YCQL table. For an example, see [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
+
+{{< note title="Note" >}}
+
+The YCQL [`CREATE TABLE ... WITH TABLETS = <num>`](#tablet-properties) statement overrides the `yb-tserver` and `yb-master` [`yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) configuration options on a per-table basis.
+
+{{< /note >}}
 
 ## Examples
 
@@ -127,7 +136,7 @@ cqlsh:example> CREATE TABLE devices(supplier_id INT,
                                     PRIMARY KEY((supplier_id, device_id), model_year));
 ```
 
-### Use column constraint to define a static column.
+### Use column constraint to define a static column
 
 You can do this as shown below.
 
@@ -244,9 +253,9 @@ cqlsh:example> SELECT * FROM sensor_data;
 
 ```
 
-### Create CDC table specifying number of tablets
+### Create a CDC table specifying the number of tablets
 
-For two data center (2DC) deployments that require the identical number of tablets on both clusters, you can use the `CREATE TABLE` statement with the `WITH` clause to specify the number of tablets.
+For deployments that use change data capture (CDC) and require the identical number of tablets on two YugabyteDB clusters, you can use the `CREATE TABLE` statement with the `WITH` clause to specify the number of tablets.
 
 ```sql
 cqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10;

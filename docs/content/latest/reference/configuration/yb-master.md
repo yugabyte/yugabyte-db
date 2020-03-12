@@ -339,7 +339,19 @@ Default: `3`
 
 The number of shards per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations like `yb-ctl` and `yb-docker-ctl` use a value of `2` for this option.
+Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations, created using `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this option.
+
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#with-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
+
+{{< /note >}}
 
 ##### --ysql_num_shards_per_tserver
 
@@ -349,7 +361,7 @@ Default: `8`
 
 {{< note title="Note" >}}
 
-The YSQL [`CREATE TABLE ..SPLIT INTO`](../../../api/ysql/commands/ddl_create_table/#split-into) clause overrides the `ysql_num_shards_per_tserver` value.
+On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/commands/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
 

@@ -46,6 +46,7 @@ $ ./bin/yb-tserver --help
 - [Logging](#logging-options)
 - [Raft](#raft-options)
   - [Write Ahead Log (WAL)](#write-ahead-log-wal-options)
+- [Cluster](#cluster-options)
 - [Geo-distribution](#geo-distribution-options)
 - [YSQL](#ysql-options)
 - [YCQL](#ycql-options)
@@ -295,6 +296,50 @@ Default: `2`
 The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reaches the specified size, then a log rollover occurs and a new WAL segment file is created.
 
 Default: `64`
+
+---
+
+### Cluster options
+
+##### --yb_num_shards_per_tserver
+
+The number of shards per YB-TServer for each YCQL table when a user table is created.
+
+Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this option.
+
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#with-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+##### --ysql_num_shards_per_tserver
+
+The number of shards per YB-TServer for each YSQL table when a user table is created.
+
+Default: `8`
+
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/commands/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+
+
+
 
 ---
 
