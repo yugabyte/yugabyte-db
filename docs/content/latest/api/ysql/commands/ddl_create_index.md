@@ -57,11 +57,10 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### WHERE clause
 
-A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. 
-It can be used to exclude NULL or common values from the index. 
+A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. 
+It can be used to exclude NULL or common values from the index, or include just the rows of interest.
 This will speed up any writes to the table since rows containing the common column values don't need to be indexed. 
 It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
-It can also be used to index just the rows of interest. [See below for example](#partial-indexes).
 
 #### *name*
 
