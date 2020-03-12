@@ -94,13 +94,13 @@ consul will return a new hostname which will be able to serve queries.
 7. [nginx](http://nginx.org/) can be used as a tcp proxy & load balancer in front
 of a cluster of YugabyteDB.
 8. When using kubernetes, YugabyteDB uses it's load balancer to proxy the tservers.
-9. In GCP you can use [Cloud Load Balancer](https://cloud.google.com/load-balancing/) as TCP proxy.
-10. In AZURE you can use [Load Balancer](https://azure.microsoft.com/en-us/services/load-balancer/) service. 
+9. In GCP you can use [Cloud Load Balancer](https://cloud.google.com/load-balancing/) as a TCP proxy.
+10. In AZURE you can use [Load Balancer](https://azure.microsoft.com/en-us/services/load-balancer/) as a TCP proxy. 
 
 {{< note title="Note" >}}
 - Make sure to set forwarding rules to port :5433.
 - Configure health checks using HTTP port :7000 and path `/status`.
-- The load balancer is only needed for tservers. Clients don't need to connect to Masters.
+- The load balancer is only needed for yb-tservers. Clients don't need to connect to Masters.
 {{< /note >}}
 
 ## Partial indexes
