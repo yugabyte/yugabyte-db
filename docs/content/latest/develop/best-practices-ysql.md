@@ -200,7 +200,7 @@ On deployments where we have many small tables and few big tables, we can use [c
 tables into 1 tablet.
 
 
-## Primary key and index sizing
+## Create Primary Key when creating the table
 YugabyteDB YSQL layer requires the `Primary Key` to be specified in the `CREATE TABLE` statement upfront. 
 
 
