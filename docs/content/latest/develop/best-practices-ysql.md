@@ -77,7 +77,7 @@ you can use and are tested in production:
 
 1. [haproxy](http://www.haproxy.org/) load balancer. Can be used with [pgsql-check](http://cbonte.github.io/haproxy-dconv/2.2/configuration.html#option%20pgsql-check) 
 plugin which periodically checks if servers are up and adds/removes them from the pool.
-2. [pgbouncer](https://www.pgbouncer.org/) proxy
+2. [pgbouncer](https://www.pgbouncer.org/) as connection pooler/proxy
 3. [pgbouncer-rr-patch](https://github.com/awslabs/pgbouncer-rr-patch) is a fork of pgbouncer
 from Amazon AWS with added functionality of programmable Query Routing & Rewriting.
 4. Custom logic in your code
@@ -198,6 +198,10 @@ We're [actively working](https://github.com/yugabyte/yugabyte-db/issues/1317) to
 
 On deployments where we have many small tables and few big tables, we can use [colocation](../explore/colocated-tables/linux.md) in YSQL layer to group small 
 tables into 1 tablet.
+
+
+## Primary key and index sizing
+YugabyteDB YSQL layer requires the `Primary Key` to be specified in the `CREATE TABLE` statement upfront. 
 
 
 ## Column size limit
