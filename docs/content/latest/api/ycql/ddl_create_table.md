@@ -255,7 +255,9 @@ cqlsh:example> SELECT * FROM sensor_data;
 
 ### Create a CDC table specifying the number of tablets
 
-For deployments that use change data capture (CDC) and require the identical number of tablets on two YugabyteDB clusters, you can use the `CREATE TABLE` statement with the `WITH` clause to specify the number of tablets.
+You can use the `CREATE TABLE` statement with the `WITH tablets = <num>` clause to specify the number of tablets for a table. This is useful to scale the table up / down based on requirements. For example, for smaller, static tables, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the table. Similarly, for a very large table, you can use this statement to pre-split the table into a large number of shards to get improved performance.
+
+Note that yugabyteDB, by default, pre-splits a table in `yb_num_shards_per_tserver * num_of_tserver` shards. This clause can be used to override that setting on per-table basis.
 
 ```sql
 cqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10;
