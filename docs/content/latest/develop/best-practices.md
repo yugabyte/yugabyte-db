@@ -89,21 +89,17 @@ in 1 region thus lowering the latency and network hops during read/write transac
 This can be done using the `set_preferred_zones` command of [yb-admin](../../admin/yb-admin) cli.
 
 ## Settings for ci/cd/integration-tests:
-Using YugabyteDB in (ci,cd,automated tests) scenarios we can set certain gflags 
-to lower durability and increase performance.
+Using YugabyteDB in (ci,cd,automated tests) scenarios we can set certain gflags to increase performance:
 
-Tserver gflags:
-
-1. `--fs_data_dirs` to temp/memory directory
-2. `--yb_num_shards_per_tserver=1`
-3. `--durable_wal_write=false`
-4. `--interval_durable_wal_write_ms=10000`
-5. `--bytes_durable_wal_write_mb=25`
-
-Master gflags:
-
-1. `--yb_num_shards_per_tserver=1`
-2. `--replication_factor=1`
+1. Point gflag `--fs_data_dirs` to a ramdisk directory. 
+This will make DML,DDL and create,destroy a cluster faster because data is not written to disk
+2. Set gflag `--yb_num_shards_per_tserver=1`.
+Reducing the number of shards lowers overhead when creating,dropping YCQL tables and writing,reading small amounts of data
+3. Set gflag `--ysql_num_shards_per_tserver here=1`
+Reducing the number of shards lowers overhead when creating,dropping YSQL tables and writing,reading small amounts of data
+4. Set gflag `--replication_factor=1`
+Keeping only the tablet leaders will remove replication overhead
+5. Use `TRUNCATE table1,table2,tablen;` instead of `CREATE TABLE` and `DROP TABLE` between test cases
 
 ## Single AZ deployments
 In single AZ deployments, you need to set `--durable_wal_write=true` [gflag](../../reference/configuration/yb-tserver) in 
