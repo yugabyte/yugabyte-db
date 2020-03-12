@@ -43,7 +43,7 @@ class TableTitle extends Component {
           <div className="backup-action-btn-group">
             <UniverseAction className="table-action" universe={currentUniverse}
               actionType="toggle-backup" btnClass={"btn-orange"}
-              disabled={isDisabled(currentCustomer.data.features, "universes.details.backups")}
+              disabled={isDisabled(currentCustomer.data.features, "universes.tableActions")}
             />
           </div>
         </div>

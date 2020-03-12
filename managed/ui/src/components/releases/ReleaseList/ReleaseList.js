@@ -9,6 +9,7 @@ import { YBButton, YBTextInput } from 'components/common/forms/fields';
 import { TableAction } from 'components/tables';
 import { YBLoadingCircleIcon } from 'components/common/indicators';
 import { getPromiseState } from 'utils/PromiseUtils';
+import { isAvailable } from 'utils/LayoutUtils';
 
 import { showOrRedirect } from 'utils/LayoutUtils';
 
@@ -133,9 +134,9 @@ export default class ReleaseList extends Component {
           {allowedActions.map((action, idx) => {
             const actionType = action.toLowerCase() + "-release";
             return (<TableAction key={action + "-" + idx} currentRow={row} actionType={actionType}
-                     onModalSubmit={self.onModalSubmit} />);
+                     onModalSubmit={self.onModalSubmit}
+                     disabled={!isAvailable(currentCustomer.data.features, "universes.actions")}/>);
           })}
-
         </DropdownButton>
       );
     };
@@ -150,10 +151,12 @@ export default class ReleaseList extends Component {
             <div className='pull-right'>
               <div className="release-list-action-btn-group">
                 <YBButton btnText={"Refresh"} btnIcon={"fa fa-refresh"}
-                  btnClass={'btn btn-primary'} onClick={this.refreshRelease} />
+                  btnClass={'btn btn-primary'} onClick={this.refreshRelease}
+                  disabled={!isAvailable(currentCustomer.data.features, "universes.actions")}/>
                 <TableAction className="table-action" btnClass={"btn-default"}
                   actionType="import-release" isMenuItem={false}
-                  onModalSubmit={self.onModalSubmit} />
+                  onModalSubmit={self.onModalSubmit}
+                  disabled={!isAvailable(currentCustomer.data.features, "universes.actions")}/>
               </div>
             </div>
             <h2 className='content-title'>{title}</h2>

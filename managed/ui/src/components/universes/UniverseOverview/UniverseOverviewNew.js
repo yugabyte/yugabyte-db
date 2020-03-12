@@ -561,13 +561,16 @@ export default class UniverseOverviewNew extends Component {
 
   getDatabaseWidget = (universeInfo, tasks) => {
     const lastUpdateDate = this.getLastUpdateDate();
-    const { updateAvailable } = this.props;
+    const { updateAvailable, currentCustomer } = this.props;
+    const showUpdate = updateAvailable &&
+                       isEnabled(currentCustomer.data.features, "universes.actions");
+
     const infoWidget = (<YBWidget
         headerLeft={
           "Info"
         }
         headerRight={
-          updateAvailable ? (
+          showUpdate ? (
             <a onClick={this.props.showSoftwareUpgradesModal}>Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span></a>
            ) : null
         }
