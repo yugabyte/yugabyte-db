@@ -142,8 +142,7 @@ lsm, for table "public.products"
 
 ### Partial indexes
 
-For example, an application maintaining a `shipments` table may have a column for shipment status. 
-If the application mostly accesses the in-flight shipments, then it can use a partial index to exclude rows whose shipment status is `delivered`.
+Consider an application maintaining shipments information. It has a `shipments` table with a column for `delivery_status`. If the application needs to access in-flight shipments frequently, then it can use a partial index to exclude rows whose shipment status is `delivered`.
 
 ```postgresql
 yugabyte=# create table shipments(id int, delivery_status text, address text, delivery_date date);
