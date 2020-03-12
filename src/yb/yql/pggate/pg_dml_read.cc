@@ -162,16 +162,27 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   RETURN_NOT_OK(DeleteEmptyPrimaryBinds());
 
   // First, process the secondary index request.
-  RETURN_NOT_OK(ProcessSecondaryIndexRequest(exec_params));
+  bool has_ybctid = VERIFY_RESULT(ProcessSecondaryIndexRequest(exec_params));
 
-  // Update bind values for constants and placeholders.
-  RETURN_NOT_OK(UpdateBindPBs());
+  if (!has_ybctid && secondary_index_query_ && secondary_index_query_->has_doc_op()) {
+    // No ybctid is found from the IndexScan. Instruct "doc_op_" to abandon the execution and not
+    // querying any data from tablet server.
+    //
+    // Note: For system catalog (colocated table), the secondary_index_query_ won't send a separate
+    // scan read request to DocDB.  For this case, the index request is embedded inside the SELECT
+    // request (PgsqlReadRequestPB::index_request).
+    doc_op_->AbandonExecution();
 
-  // NOTE: For SysTable, the secondary-index scan does not have its own DocOp (doc_op_ === null).
-  if (doc_op_) {
-    // Execute select statement asynchronously.
-    SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
-              "YSQL read operation was not sent");
+  } else {
+    // Update bind values for constants and placeholders.
+    RETURN_NOT_OK(UpdateBindPBs());
+
+    // Execute select statement and prefetching data from DocDB.
+    // Note: For SysTable, doc_op_ === null, IndexScan doesn't send separate request.
+    if (doc_op_) {
+      SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
+                "YSQL read operation was not sent");
+    }
   }
 
   return Status::OK();
