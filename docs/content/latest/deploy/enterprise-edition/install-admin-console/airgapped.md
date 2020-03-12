@@ -13,9 +13,9 @@ https://download.docker.com
 
 ### 2. Install Docker Engine
 
-A supported version of Docker Engine (`docker-engine`) (currently 1.7.1 to 17.03.1-ce) needs to be installed on the host. If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine on an air-gapped host. After Docker Engine (`docker-engine`) is installed, perform the following steps to install Replicated and then YugaWare.
+A supported version of Docker Engine (`docker-engine`) (currently 1.7.1 to 17.03.1-ce) needs to be installed on the host. If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install Docker Engine on an air-gapped host. After Docker Engine is installed, perform the following steps to install Replicated and then YugaWare.
 
-## Step 1. Install Replicated
+## Step 1 — Install Replicated
 
 On a machine connected to the Internet, perform the following steps.
 
@@ -37,16 +37,16 @@ Change to the directory.
 $ cd /opt/downloads
 ```
 
-Get the replicated binary.
+Download the `replicated.tar.gz` file.
 
 ```sh
 $ wget https://downloads.yugabyte.com/replicated.tar.gz
 ```
 
-Get the yugaware binary where the last 4 digits refer to the version of the binary. Change this number as needed.
+Download the `yugaware` binary. Change this number as needed.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-1.2.6.0.airgap
+$ wget https://downloads.yugabyte.com/yugaware-2.1.2.0-b10.airgap
 ```
 
 Change to the directory.
@@ -55,19 +55,19 @@ Change to the directory.
 $ cd /opt/downloads
 ```
 
-Expand the replicated binary.
+Extract the `replicated` binary.
 
 ```sh
 $ tar xzvf replicated.tar.gz
 ```
 
-Install replicated (yugaware will be installed via replicated ui after replicated install completes) pick `eth0` network interface in case multiple ones show up.
+Install Replicated. If multiple options appear, select the `eth0` network interface. The `yugaware` binary will be installed using the replicated UI after the replicated installation completes.
 
 ```sh
 $ cat ./install.sh | sudo bash -s airgap
 ```
 
-After replicated install completes, make sure it is running.
+After Replicated finishes installing, make sure it is running.
 
 ```sh
 $ sudo docker ps
@@ -77,13 +77,13 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-Next step is install YugaWare as described in the [section below](#step-2-install-yugaware-via-replicated).
+Next, install YugaWare as described in step 2.
 
-## Step 2. Install YugaWare using Replicated
+## Step 2 — Install YugaWare using Replicated
 
 ### Set up HTTPS for Replicated
 
-Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as we setup HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
+Launch the Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as you configure HTTPS for the Replicated Admin Console in the next step. Click **Continue to Setup** and then **ADVANCED** to bypass this warning and go to the **Replicated Admin Console**.
 
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
 
@@ -97,7 +97,7 @@ The simplest option is use a self-signed cert for now and add the custom SSL cer
 
 ### Upload license file
 
-Now upload the Yugabyte license file received from Yugabyte Support.
+Now, upload the Yugabyte license file received from Yugabyte Support.
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
@@ -121,6 +121,6 @@ Replicated will perform a set of pre-flight checks to ensure that the host is se
 
 ![Replicated Checks](/images/replicated/replicated-checks.png)
 
-Clicking Continue above will bring us to YugaWare configuration.
+Clicking **Continue** above will bring you to the YugaWare configuration.
 
-In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/enterprise-edition/) section below to identify the resolution.
+In case the pre-flight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/enterprise-edition/) to identify the resolution.
