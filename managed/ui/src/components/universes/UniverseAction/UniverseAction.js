@@ -126,7 +126,8 @@ class UniverseAction extends Component {
     return (
       <div>
         <YBButton btnText={btnLabel} btnIcon={btnIcon}
-                btnClass={`btn ${btnClass}`} disabled={disabled} onClick={this.openModal} />
+                btnClass={`btn ${btnClass}`} disabled={disabled}
+                onClick={disabled ? null: this.openModal} />
         {modalForm}
       </div>
     );

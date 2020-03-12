@@ -6,7 +6,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBButton } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
 import { browserHistory} from 'react-router';
-import { isNonAvailable, showOrRedirect } from 'utils/LayoutUtils';
+import { isNonAvailable, showOrRedirect, isDisabled } from 'utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
@@ -153,6 +153,7 @@ export default class UserProfileForm extends Component {
                         loading={getPromiseState(apiToken).isLoading()}
                         onClick={this.handleRefreshApiToken}
                         btnClass="btn btn-orange pull-right btn-api-token"
+                        disabled={isDisabled(customer.data.features, "universes.actions")}
                       />
                     </FlexShrink>
                   </FlexContainer>

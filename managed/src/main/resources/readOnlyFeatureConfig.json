@@ -18,9 +18,15 @@
         "editUniverse": "hidden",
         "readReplica": "hidden",
         "manageEncryption": "hidden",
-        "deleteUniverse": "hidden"
+        "deleteUniverse": "hidden",
+        "costs": "hidden"
       }
     },
-    "tableActions": "disabled"
+    "tableActions": "disabled",
+    "actions": "disabled",
+    "backup": "disabled"
+  },
+  "main": {
+    "stats": "hidden"
   }
 }
