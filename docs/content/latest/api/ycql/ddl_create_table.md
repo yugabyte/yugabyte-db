@@ -106,7 +106,7 @@ Where
 
 ### *tablets_properties*
 
-- The `WITH TABLETS = <num>` clause specifies the number of tablets to be used for the specified YCQL table. For an example, see [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
+- The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL table. For an example, see [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
 
 {{< note title="Note" >}}
 
