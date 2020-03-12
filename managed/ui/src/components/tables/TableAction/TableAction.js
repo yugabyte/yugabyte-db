@@ -142,8 +142,9 @@ export default class TableAction extends Component {
     }
     return (
       <div className={this.props.className}>
-        <YBButton btnText={btnLabel} btnIcon={btnIcon}
-                btnClass={'btn ' + this.props.btnClass} onClick={this.openModal} />
+        <YBButton btnText={btnLabel} btnIcon={btnIcon} disabled={disabled}
+                btnClass={'btn ' + this.props.btnClass}
+                onClick={disabled ? null : this.openModal} />
         {modalContainer}
       </div>
     );

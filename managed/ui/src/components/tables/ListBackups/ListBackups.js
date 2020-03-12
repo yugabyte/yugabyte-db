@@ -6,7 +6,7 @@ import { DropdownButton } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { isNotHidden } from 'utils/LayoutUtils';
+import { isAvailable } from 'utils/LayoutUtils';
 import { timeFormatter, successStringFormatter } from 'utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
@@ -55,7 +55,7 @@ export default class ListBackups extends Component {
     }).filter(Boolean);
 
     const formatActionButtons = function(item, row) {
-      if (row.showActions && isNotHidden(currentCustomer.data.features, "universe.backup")) {
+      if (row.showActions && isAvailable(currentCustomer.data.features, "universes.backup")) {
         return (
           <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
             <TableAction currentRow={row} actionType="restore-backup" />
@@ -63,7 +63,6 @@ export default class ListBackups extends Component {
         );
       }
     };
-
     return (
       <YBPanelItem
         header={
@@ -72,7 +71,7 @@ export default class ListBackups extends Component {
               <h2 className="task-list-header content-title pull-left">{title}</h2>
             </div>
             <div className="pull-right">
-              {isNotHidden(currentCustomer.data.features, "universe.backup") &&
+              {isAvailable(currentCustomer.data.features, "universes.backup") &&
                 <div className="backup-action-btn-group">
                   <TableAction className="table-action" btnClass={"btn-orange"}
                               actionType="create-backup" isMenuItem={false} />

@@ -12,11 +12,12 @@ import { Panel } from 'react-bootstrap';
 import { isNonEmptyArray, isEmptyArray } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
+import { isDisabled } from 'utils/LayoutUtils';
 
 import './UniverseHealthCheckList.scss';
 
 const UniverseHealthCheckList = props => {
-  const {universe: {healthCheck, currentUniverse}} = props;
+  const {universe: {healthCheck, currentUniverse}, currentCustomer} = props;
   let content = <span/>;
   if (getPromiseState(healthCheck).isLoading()) {
     content = <YBLoading />;
@@ -34,6 +35,8 @@ const UniverseHealthCheckList = props => {
     ));
   }
 
+  const actions_disabled = isDisabled(currentCustomer.data.features, "universes.actions");
+
   return (
     <YBPanelItem
       className=" UniverseHealthCheckList"
@@ -45,7 +48,7 @@ const UniverseHealthCheckList = props => {
           <div className="pull-right">
             <div className="backup-action-btn-group">
               <UniverseAction className="table-action" universe={currentUniverse.data}
-                actionType="alert-config" btnClass={"btn-orange"} />
+                actionType="alert-config" btnClass={"btn-orange"} disabled={actions_disabled} />
             </div>
           </div>
         </div>

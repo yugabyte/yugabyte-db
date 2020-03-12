@@ -6,7 +6,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { isNotHidden } from 'utils/LayoutUtils';
+import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import moment from 'moment';
@@ -107,14 +107,20 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeAction = function(cell, row, type) {
-      const hideIP = !isNotHidden(customer.currentCustomer.data.features, "universes.proxyIp");
+      const hideIP = !isNotHidden(customer.currentCustomer.data.features,
+                                  "universes.proxyIp");
+      const actions_disabled = isDisabled(customer.currentCustomer.data.features,
+                                          "universes.actions");
+
       if (hideIP) {
         const index = row.allowedActions.indexOf('CONNECT');
         if (index > -1) {
           row.allowedActions.splice(index, 1);
         }
       }
-      return <NodeAction currentRow={row} providerUUID={providerUUID} disableConnect={hideIP}/>;
+      return (<NodeAction currentRow={row} providerUUID={providerUUID}
+                         disableConnect={hideIP}
+                         disabled={actions_disabled} />);
     };
 
     const formatFloatValue = function(cell, row) {
