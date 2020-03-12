@@ -234,7 +234,7 @@ yugabyte=# CREATE TABLE translations(message_id int UNIQUE,
 To specify the number of tablets for a table, you can use the `CREATE TABLE` statement with the [`SPLIT INTO`](#split-into) clause.
 
 ```postgresql
-yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT (INTO 10 TABLETS);
+yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT INTO 10 TABLETS;
 ```
 
 ### Opt a table out of colocation
