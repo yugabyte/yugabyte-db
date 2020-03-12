@@ -55,6 +55,13 @@ Enforce that duplicate values in a table are not allowed.
 
 Specify a list of columns which will be included in the index as non-key columns.
 
+### WHERE clause
+
+A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. 
+It can be used to exclude NULL or common values from the index, or include just the rows of interest.
+This will speed up any writes to the table since rows containing the common column values don't need to be indexed. 
+It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
+
 #### *name*
 
  Specify the name of the index to be created.
@@ -129,4 +136,14 @@ yugabyte=# \d products_name_code;
  name   | text | yes  | name
  code   | text | no   | code
 lsm, for table "public.products"
+```
+
+
+### Partial indexes
+
+Consider an application maintaining shipments information. It has a `shipments` table with a column for `delivery_status`. If the application needs to access in-flight shipments frequently, then it can use a partial index to exclude rows whose shipment status is `delivered`.
+
+```postgresql
+yugabyte=# create table shipments(id int, delivery_status text, address text, delivery_date date);
+yugabyte=# create index shipment_delivery on shipments(delivery_status, address, delivery_date) where delivery_status != 'delivered';
 ```
