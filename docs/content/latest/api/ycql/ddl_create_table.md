@@ -244,7 +244,7 @@ cqlsh:example> SELECT * FROM sensor_data;
 
 ```
 
-### Create a CDC table specifying the number of tablets
+### Create a table specifying the number of tablets
 
 You can use the `CREATE TABLE` statement with the `WITH tablets = <num>` clause to specify the number of tablets for a table. This is useful to scale the table up or down based on requirements. For example, for smaller static tables, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the table. Similarly, for a very large table, you can use this statement to pre-split the table into a large number of shards to get improved performance.
 
