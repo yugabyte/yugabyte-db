@@ -143,10 +143,22 @@ class TransactionStatusResolver::Impl {
     auto it = queues_.begin();
     auto& queue = it->second;
     for (size_t i = 0; i != response.status().size(); ++i) {
-      VLOG_WITH_PREFIX(4) << "Status of " << queue.front() << ": "
-                          << TransactionStatus_Name(response.status(i));
-      status_infos_.push_back({
-          queue.front(), response.status(i), HybridTime(response.status_hybrid_time(i))});
+      auto txn_status = response.status(i);
+      VLOG_WITH_PREFIX(4)
+          << "Status of " << queue.front() << ": " << TransactionStatus_Name(txn_status);
+      HybridTime status_hybrid_time;
+      if (i < response.status_hybrid_time().size()) {
+        status_hybrid_time = HybridTime(response.status_hybrid_time(i));
+      // Could happend only when coordinator has an old version.
+      } else if (txn_status == TransactionStatus::ABORTED) {
+        status_hybrid_time = HybridTime::kMax;
+      } else {
+        Complete(STATUS_FORMAT(
+            IllegalState, "Missing status hybrid time for transaction status: $0",
+            TransactionStatus_Name(txn_status)));
+        return;
+      }
+      status_infos_.push_back({queue.front(), txn_status, status_hybrid_time});
       queue.pop_front();
     }
     if (queue.empty()) {
