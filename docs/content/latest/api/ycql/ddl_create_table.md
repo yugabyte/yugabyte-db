@@ -103,13 +103,7 @@ Where
 - The `transactions` property specifies if distributed transactions are enabled in the table. To enable distributed transactions, use `transactions = { 'enabled' : true }`.
 - Use the `AND` operator to use multiple table properties.
 - The other CQL table properties are allowed in the syntax but are currently ignored internally (have no effect).
-- The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL table. For an example, see [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
-
-    {{< note title="Note" >}}
-
-    The YCQL [`CREATE TABLE ... WITH TABLETS = <num>`](#tablet-properties) statement overrides the `yb-tserver` and `yb-master` [`yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) configuration options on a per-table basis.
-
-    {{< /note >}}
+- The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL table. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create a CDC table specifying the number of tablets](#create-a-cdc-table-specifying-the-number-of-tablets).
 
 ## Examples
 
@@ -252,9 +246,9 @@ cqlsh:example> SELECT * FROM sensor_data;
 
 ### Create a CDC table specifying the number of tablets
 
-You can use the `CREATE TABLE` statement with the `WITH tablets = <num>` clause to specify the number of tablets for a table. This is useful to scale the table up / down based on requirements. For example, for smaller, static tables, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the table. Similarly, for a very large table, you can use this statement to pre-split the table into a large number of shards to get improved performance.
+You can use the `CREATE TABLE` statement with the `WITH tablets = <num>` clause to specify the number of tablets for a table. This is useful to scale the table up or down based on requirements. For example, for smaller static tables, it may be wasteful to have a large number of shards (tablets). In that case, you can use this to reduce the number of tablets created for the table. Similarly, for a very large table, you can use this statement to pre-split the table into a large number of shards to get improved performance.
 
-Note that yugabyteDB, by default, pre-splits a table in `yb_num_shards_per_tserver * num_of_tserver` shards. This clause can be used to override that setting on per-table basis.
+Note that YugabyteDB, by default, pre-splits a table in `yb_num_shards_per_tserver * num_of_tserver` shards. This clause can be used to override that setting on per-table basis.
 
 ```sql
 cqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10;
