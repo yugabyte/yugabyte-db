@@ -117,6 +117,13 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   Result<int32_t> GetRowsAffectedCount() const;
 
+  // Instruct this doc_op to abandon execution and querying data by setting end_of_data_ to 'true'.
+  // - This op will not send request to tablet server.
+  // - This op will return empty result-set when being requested for data.
+  void AbandonExecution() {
+    end_of_data_ = true;
+  }
+
  protected:
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
