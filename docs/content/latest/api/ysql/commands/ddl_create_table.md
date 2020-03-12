@@ -89,7 +89,7 @@ The `SPLIT INTO` clause specifies the number of tablets that will be created for
 
 {{< note title="Note" >}}
 
-The `SPLIT INTO` clause overrides the YB-TServer and YB-Master [`--ysql_num_shards_per_tserver`](../../../../reference/configuration/yb-tserver/#ysql-num-shards-per-tserver) configuration option on a per-table basis.
+By default, yugabyteDB pre-splits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
 
 {{< /note >}}
 
