@@ -85,7 +85,7 @@ Using this qualifier will create a temporary table. Temporary tables are only vi
 
 ### SPLIT INTO
 
-The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. Pre-splitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 30 servers, splitting the table into 30 tablets prepares the cluster for maximum write loads. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. Pre-splitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
