@@ -312,7 +312,7 @@ class FileManager : public EnvWrapper {
 
   Status DeleteRandomFileInDir(const std::string& dir) {
     std::vector<std::string> children;
-    GetChildren(dir, &children);
+    RETURN_NOT_OK(GetChildren(dir, &children));
     if (children.size() <= 2) { // . and ..
       return STATUS(NotFound, "");
     }
@@ -330,7 +330,7 @@ class FileManager : public EnvWrapper {
   Status AppendToRandomFileInDir(const std::string& dir,
                                  const std::string& data) {
     std::vector<std::string> children;
-    GetChildren(dir, &children);
+    RETURN_NOT_OK(GetChildren(dir, &children));
     if (children.size() <= 2) {
       return STATUS(NotFound, "");
     }
@@ -474,7 +474,7 @@ class BackupableDBTest : public testing::Test {
     DBOptions logger_options;
     logger_options.env = env_;
     logger_options.db_log_dir = backupdir_;
-    CreateLoggerFromOptions(dbname_, logger_options, &logger_);
+    CHECK_OK(CreateLoggerFromOptions(dbname_, logger_options, &logger_));
 
     // set up backup db options
     backupable_options_.reset(new BackupableDBOptions(
@@ -484,7 +484,7 @@ class BackupableDBTest : public testing::Test {
     backupable_options_->max_background_operations = 7;
 
     // delete old files in db
-    DestroyDB(dbname_, Options());
+    WARN_NOT_OK(DestroyDB(dbname_, Options()), "Failed to destroy " + dbname_);
 
     const Status s = EnsureBackupSharedDirExists();
     if (!s.ok()) {
@@ -579,13 +579,13 @@ class BackupableDBTest : public testing::Test {
 
   void DeleteLogFiles() {
     std::vector<std::string> delete_logs;
-    env_->GetChildren(dbname_, &delete_logs);
+    env_->GetChildrenWarnNotOk(dbname_, &delete_logs);
     for (auto f : delete_logs) {
       uint64_t number;
       FileType type;
       bool ok = ParseFileName(f, &number, &type);
       if (ok && type == kLogFile) {
-        env_->DeleteFile(dbname_ + "/" + f);
+        env_->CleanupFile(dbname_ + "/" + f);
       }
     }
   }
@@ -653,16 +653,15 @@ TEST_P(BackupableDBTestWithParam, VerifyBackup) {
 
   OpenDBAndBackupEngine();
   // ---------- case 1. - valid backup -----------
-  ASSERT_TRUE(backup_engine_->VerifyBackup(1).ok());
+  ASSERT_OK(backup_engine_->VerifyBackup(1));
 
   // ---------- case 2. - delete a file -----------i
-  file_manager_->DeleteRandomFileInDir(backupdir_ + "/private/1");
+  ASSERT_OK(file_manager_->DeleteRandomFileInDir(backupdir_ + "/private/1"));
   ASSERT_TRUE(backup_engine_->VerifyBackup(1).IsNotFound());
 
   // ---------- case 3. - corrupt a file -----------
   std::string append_data = "Corrupting a random file";
-  file_manager_->AppendToRandomFileInDir(backupdir_ + "/private/2",
-                                         append_data);
+  ASSERT_OK(file_manager_->AppendToRandomFileInDir(backupdir_ + "/private/2", append_data));
   ASSERT_TRUE(backup_engine_->VerifyBackup(2).IsCorruption());
 
   // ---------- case 4. - invalid backup -----------
@@ -679,7 +678,7 @@ TEST_P(BackupableDBTestWithParam, OfflineIntegrationTest) {
   // second iter -- don't flush before backup
   for (int iter = 0; iter < 2; ++iter) {
     // delete old data
-    DestroyDB(dbname_, Options());
+    ASSERT_OK(DestroyDB(dbname_, Options()));
     bool destroy_data = true;
 
     // every iteration --
@@ -696,7 +695,7 @@ TEST_P(BackupableDBTestWithParam, OfflineIntegrationTest) {
       FillDB(db_.get(), keys_iteration * i, fill_up_to);
       ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), iter == 0));
       CloseDBAndBackupEngine();
-      DestroyDB(dbname_, Options());
+      ASSERT_OK(DestroyDB(dbname_, Options()));
 
       // ---- make sure it's empty ----
       DB* db = OpenDB();
@@ -724,7 +723,7 @@ TEST_P(BackupableDBTestWithParam, OnlineIntegrationTest) {
   const int max_key = keys_iteration * 4 + 10;
   Random rnd(7);
   // delete old data
-  DestroyDB(dbname_, Options());
+  ASSERT_OK(DestroyDB(dbname_, Options()));
 
   OpenDBAndBackupEngine(true);
   // write some data, backup, repeat
@@ -743,7 +742,7 @@ TEST_P(BackupableDBTestWithParam, OnlineIntegrationTest) {
   }
   // close and destroy
   CloseDBAndBackupEngine();
-  DestroyDB(dbname_, Options());
+  ASSERT_OK(DestroyDB(dbname_, Options()));
 
   // ---- make sure it's empty ----
   DB* db = OpenDB();
@@ -833,9 +832,9 @@ TEST_F(BackupableDBTest, NoDoubleCopy) {
 
   // MANIFEST file size should be only 100
   uint64_t size;
-  test_backup_env_->GetFileSize(backupdir_ + "/private/2/MANIFEST-01", &size);
+  ASSERT_OK(test_backup_env_->GetFileSize(backupdir_ + "/private/2/MANIFEST-01", &size));
   ASSERT_EQ(100UL, size);
-  test_backup_env_->GetFileSize(backupdir_ + "/shared/00015.sst", &size);
+  ASSERT_OK(test_backup_env_->GetFileSize(backupdir_ + "/shared/00015.sst", &size));
   ASSERT_EQ(200UL, size);
 
   CloseDBAndBackupEngine();
@@ -870,7 +869,7 @@ TEST_F(BackupableDBTest, DifferentEnvs) {
   FillDB(db_.get(), 0, 100);
   ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), true));
   CloseDBAndBackupEngine();
-  DestroyDB(dbname_, Options());
+  ASSERT_OK(DestroyDB(dbname_, Options()));
 
   test_backup_env_->SetFilenamesForMockedAttrs({});
   AssertBackupConsistency(0, 0, 100, 500);
@@ -929,8 +928,7 @@ TEST_F(BackupableDBTest, CorruptionsTest) {
   // assert that we wrote 6 to LATEST_BACKUP
   {
     std::string latest_backup_contents;
-    ReadFileToString(env_, backupdir_ + "/LATEST_BACKUP",
-                     &latest_backup_contents);
+    ASSERT_OK(ReadFileToString(env_, backupdir_ + "/LATEST_BACKUP", &latest_backup_contents));
     ASSERT_EQ(std::atol(latest_backup_contents.c_str()), 6);
   }
 
@@ -1142,9 +1140,9 @@ TEST_F(BackupableDBTest, DeleteTmpFiles) {
   std::string shared_tmp = backupdir_ + "/shared/00006.sst.tmp";
   std::string private_tmp_dir = backupdir_ + "/private/10.tmp";
   std::string private_tmp_file = private_tmp_dir + "/00003.sst";
-  file_manager_->WriteToFile(shared_tmp, "tmp");
-  file_manager_->CreateDir(private_tmp_dir);
-  file_manager_->WriteToFile(private_tmp_file, "tmp");
+  ASSERT_OK(file_manager_->WriteToFile(shared_tmp, "tmp"));
+  ASSERT_OK(file_manager_->CreateDir(private_tmp_dir));
+  ASSERT_OK(file_manager_->WriteToFile(private_tmp_file, "tmp"));
   ASSERT_OK(file_manager_->FileExists(private_tmp_dir));
   OpenDBAndBackupEngine();
   // Need to call this explicitly to delete tmp files

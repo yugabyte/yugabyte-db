@@ -2390,7 +2390,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         "Deleting manifest %" PRIu64 " current manifest %" PRIu64 "\n",
         manifest_file_number_, pending_manifest_file_number_);
       descriptor_log_.reset();
-      env_->DeleteFile(
+      env_->CleanupFile(
           DescriptorFileName(dbname_, pending_manifest_file_number_));
     }
   }

@@ -18,6 +18,9 @@
 // under the License.
 //
 
+#ifndef YB_ROCKSDB_TABLE_PLAIN_TABLE_INDEX_H
+#define YB_ROCKSDB_TABLE_PLAIN_TABLE_INDEX_H
+
 #pragma once
 
 #ifndef ROCKSDB_LITE
@@ -77,7 +80,7 @@ class PlainTableIndex {
     kSubindex = 2
   };
 
-  explicit PlainTableIndex(Slice data) { InitFromRawData(data); }
+  explicit PlainTableIndex(Slice data) { CHECK_OK(InitFromRawData(data)); }
 
   PlainTableIndex()
       : index_size_(0),
@@ -238,3 +241,5 @@ class PlainTableIndexBuilder {
 };  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
+
+#endif // YB_ROCKSDB_TABLE_PLAIN_TABLE_INDEX_H

@@ -229,7 +229,7 @@ PosixMmapFile::PosixMmapFile(const std::string& fname, int fd, size_t page_size,
 
 PosixMmapFile::~PosixMmapFile() {
   if (fd_ >= 0) {
-    PosixMmapFile::Close();
+    WARN_NOT_OK(PosixMmapFile::Close(), "Failed to close posix mmap file");
   }
 }
 
@@ -367,7 +367,7 @@ PosixWritableFile::PosixWritableFile(const std::string& fname, int fd,
 
 PosixWritableFile::~PosixWritableFile() {
   if (fd_ >= 0) {
-    PosixWritableFile::Close();
+    WARN_NOT_OK(PosixWritableFile::Close(), "Failed to close posix writable file");
   }
 }
 

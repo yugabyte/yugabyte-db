@@ -250,7 +250,7 @@ void WalManager::PurgeObsoleteWALFiles() {
 
   size_t files_del_num = log_files_num - files_keep_num;
   VectorLogPtr archived_logs;
-  GetSortedWalsOfType(archival_dir, &archived_logs, kArchivedLogFile);
+  CHECK_OK(GetSortedWalsOfType(archival_dir, &archived_logs, kArchivedLogFile));
 
   if (files_del_num > archived_logs.size()) {
     RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,

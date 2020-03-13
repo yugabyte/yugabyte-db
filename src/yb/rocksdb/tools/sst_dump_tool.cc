@@ -98,15 +98,15 @@ Status SstFileReader::GetTableReader(const std::string& file_path) {
     if (magic_number == kPlainTableMagicNumber ||
         magic_number == kLegacyPlainTableMagicNumber) {
       soptions_.use_mmap_reads = true;
-      options_.env->NewRandomAccessFile(file_path, &file, soptions_);
+      RETURN_NOT_OK(options_.env->NewRandomAccessFile(file_path, &file, soptions_));
       file_.reset(new RandomAccessFileReader(std::move(file)));
     }
     options_.comparator = internal_comparator_.get();
     // For old sst format, ReadTableProperties might fail but file can be read
     if (ReadTableProperties(magic_number, file_.get(), file_size).ok()) {
-      SetTableOptionsByMagicNumber(magic_number);
+      RETURN_NOT_OK(SetTableOptionsByMagicNumber(magic_number));
     } else {
-      SetOldTableOptions();
+      RETURN_NOT_OK(SetOldTableOptions());
     }
   }
 
@@ -115,7 +115,8 @@ Status SstFileReader::GetTableReader(const std::string& file_path) {
                        &table_reader_);
     if (s.ok() && table_reader_->IsSplitSst()) {
       unique_ptr<RandomAccessFile> data_file;
-      options_.env->NewRandomAccessFile(TableBaseToDataFileName(file_path), &data_file, soptions_);
+      RETURN_NOT_OK(options_.env->NewRandomAccessFile(
+          TableBaseToDataFileName(file_path), &data_file, soptions_));
       unique_ptr<RandomAccessFileReader> data_file_reader(
           new RandomAccessFileReader(std::move(data_file)));
       table_reader_->SetDataFileReader(std::move(data_file_reader));
@@ -152,9 +153,9 @@ Status SstFileReader::NewTableReader(
 Status SstFileReader::DumpTable(const std::string& out_filename) {
   unique_ptr<WritableFile> out_file;
   Env* env = Env::Default();
-  env->NewWritableFile(out_filename, &out_file, soptions_);
+  RETURN_NOT_OK(env->NewWritableFile(out_filename, &out_file, soptions_));
   Status s = table_reader_->DumpTable(out_file.get());
-  out_file->Close();
+  RETURN_NOT_OK(out_file->Close());
   return s;
 }
 
@@ -162,7 +163,7 @@ uint64_t SstFileReader::CalculateCompressedTableSize(
     const TableBuilderOptions& tb_options, size_t block_size) {
   unique_ptr<WritableFile> out_file;
   unique_ptr<Env> env(NewMemEnv(Env::Default()));
-  env->NewWritableFile(testFileName, &out_file, soptions_);
+  CHECK_OK(env->NewWritableFile(testFileName, &out_file, soptions_));
   unique_ptr<WritableFileWriter> dest_writer;
   dest_writer.reset(new WritableFileWriter(std::move(out_file), soptions_));
   BlockBasedTableOptions table_options;
@@ -187,7 +188,7 @@ uint64_t SstFileReader::CalculateCompressedTableSize(
     exit(1);
   }
   uint64_t size = table_builder->TotalFileSize();
-  env->DeleteFile(testFileName);
+  CHECK_OK(env->DeleteFile(testFileName));
   return size;
 }
 

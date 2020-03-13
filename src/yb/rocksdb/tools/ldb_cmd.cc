@@ -486,7 +486,7 @@ void CompactorCommand::DoCommand() {
   CompactRangeOptions cro;
   cro.bottommost_level_compaction = BottommostLevelCompaction::kForce;
 
-  db_->CompactRange(cro, begin, end);
+  CHECK_OK(db_->CompactRange(cro, begin, end));
   exec_state_ = LDBCommandExecuteResult::Succeed("");
 
   delete begin;
@@ -551,7 +551,7 @@ void DBLoaderCommand::DoCommand() {
     string key;
     string value;
     if (ParseKeyValue(line, &key, &value, is_key_hex_, is_value_hex_)) {
-      db_->Put(write_options, GetCfHandle(), Slice(key), Slice(value));
+      CHECK_OK(db_->Put(write_options, GetCfHandle(), Slice(key), Slice(value)));
     } else if (0 == line.find("Keys in range:")) {
       // ignore this line
     } else if (0 == line.find("Created bg thread 0x")) {
@@ -565,7 +565,7 @@ void DBLoaderCommand::DoCommand() {
     std::cout << "Warning: " << bad_lines << " bad lines ignored." << std::endl;
   }
   if (compact_) {
-    db_->CompactRange(CompactRangeOptions(), GetCfHandle(), nullptr, nullptr);
+    CHECK_OK(db_->CompactRange(CompactRangeOptions(), GetCfHandle(), nullptr, nullptr));
   }
 }
 
@@ -1334,7 +1334,7 @@ void ReduceDBLevelsCommand::DoCommand() {
   }
   // Compact the whole DB to put all files to the highest level.
   fprintf(stdout, "Compacting the db...\n");
-  db_->CompactRange(CompactRangeOptions(), GetCfHandle(), nullptr, nullptr);
+  CHECK_OK(db_->CompactRange(CompactRangeOptions(), GetCfHandle(), nullptr, nullptr));
   CloseDB();
 
   EnvOptions soptions;
@@ -1443,7 +1443,7 @@ void ChangeCompactionStyleCommand::DoCommand() {
   CompactRangeOptions compact_options;
   compact_options.change_level = true;
   compact_options.target_level = 0;
-  db_->CompactRange(compact_options, GetCfHandle(), nullptr, nullptr);
+  CHECK_OK(db_->CompactRange(compact_options, GetCfHandle(), nullptr, nullptr));
 
   // verify compaction result
   files_per_level = "";
@@ -2112,12 +2112,12 @@ void DBQuerierCommand::DoCommand() {
               "delete <key>\n");
     } else if (cmd == DELETE_CMD && tokens.size() == 2) {
       key = (is_key_hex_ ? HexToString(tokens[1]) : tokens[1]);
-      db_->Delete(write_options, GetCfHandle(), Slice(key));
+      CHECK_OK(db_->Delete(write_options, GetCfHandle(), Slice(key)));
       fprintf(stdout, "Successfully deleted %s\n", tokens[1].c_str());
     } else if (cmd == PUT_CMD && tokens.size() == 3) {
       key = (is_key_hex_ ? HexToString(tokens[1]) : tokens[1]);
       value = (is_value_hex_ ? HexToString(tokens[2]) : tokens[2]);
-      db_->Put(write_options, GetCfHandle(), Slice(key), Slice(value));
+      CHECK_OK(db_->Put(write_options, GetCfHandle(), Slice(key), Slice(value)));
       fprintf(stdout, "Successfully put %s %s\n",
               tokens[1].c_str(), tokens[2].c_str());
     } else if (cmd == GET_CMD && tokens.size() == 2) {

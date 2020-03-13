@@ -50,12 +50,6 @@ struct ResultTraits<TValue&> {
   static TValue* GetPtr(const Stored* value) { return *value; }
 };
 
-#ifdef __clang__
-#define NODISCARD_CLASS [[nodiscard]] // NOLINT
-#else
-#define NODISCARD_CLASS // NOLINT
-#endif
-
 template<class TValue>
 class NODISCARD_CLASS Result {
  public:

@@ -907,8 +907,10 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
             << "</td></tr>\n";
     *output << "</table>\n";
 
-    SchemaFromPB(l->data().pb.schema(), &schema);
-    Status s = PartitionSchema::FromPB(l->data().pb.partition_schema(), schema, &partition_schema);
+    Status s = SchemaFromPB(l->data().pb.schema(), &schema);
+    if (s.ok()) {
+      s = PartitionSchema::FromPB(l->data().pb.partition_schema(), schema, &partition_schema);
+    }
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
       return;

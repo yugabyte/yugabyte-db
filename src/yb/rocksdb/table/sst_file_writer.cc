@@ -220,7 +220,7 @@ Status SstFileWriter::Finish(ExternalSstFileInfo* file_info) {
   }
 
   if (!s.ok()) {
-    r->ioptions.env->DeleteFile(r->file_info.file_path);
+    r->ioptions.env->CleanupFile(r->file_info.file_path);
   }
 
   if (s.ok() && file_info != nullptr) {

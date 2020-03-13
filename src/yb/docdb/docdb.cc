@@ -362,7 +362,7 @@ Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_writ
       }
 
       // Ensure we set appropriate error in the response object for QL errors.
-      SetDocOpQLErrorResponse(doc_op.get(), error_msg);
+      RETURN_NOT_OK(SetDocOpQLErrorResponse(doc_op.get(), error_msg));
       continue;
     }
 
@@ -482,7 +482,8 @@ Status EnumerateWeakIntents(
   }
 
   // For any non-empty key we already know that the empty key intent is weak.
-  functor(IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse);
+  RETURN_NOT_OK(functor(
+      IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
 
   auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::UP_TO_HASH));
 

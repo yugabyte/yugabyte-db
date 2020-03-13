@@ -84,6 +84,15 @@ yb::Result<uint64_t> Env::GetFileSize(const std::string& fname) {
   return result;
 }
 
+void Env::CleanupFile(const std::string& fname) {
+  WARN_NOT_OK(DeleteFile(fname), "Failed to cleanup " + fname);
+}
+
+void Env::GetChildrenWarnNotOk(const std::string& dir,
+                               std::vector<std::string>* result) {
+  WARN_NOT_OK(GetChildren(dir, result), "Failed to get children " + dir);
+}
+
 WritableFile::~WritableFile() {
 }
 
@@ -350,7 +359,7 @@ Status WriteStringToFile(Env* env, const Slice& data, const std::string& fname,
     s = file->Sync();
   }
   if (!s.ok()) {
-    env->DeleteFile(fname);
+    env->CleanupFile(fname);
   }
   return s;
 }
@@ -420,6 +429,5 @@ EnvOptions::EnvOptions() {
   DBOptions options;
   AssignEnvOptions(this, options);
 }
-
 
 }  // namespace rocksdb

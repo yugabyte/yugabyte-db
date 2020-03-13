@@ -686,11 +686,15 @@ Status BlockBasedTableBuilder::InsertBlockInCache(const Slice& block_contents,
         static_cast<size_t> (end - writer_info->compressed_cache_key_prefix.data));
 
     // Insert into compressed block cache.
-    block_cache_compressed->Insert(key, kDefaultQueryId, block, block->usable_size(),
-                                   &DeleteCachedBlock);
+    RETURN_NOT_OK(block_cache_compressed->Insert(
+        key, kDefaultQueryId, block, block->usable_size(), &DeleteCachedBlock));
 
     // Invalidate OS cache.
-    writer_info->writer->InvalidateCache(static_cast<size_t>(writer_info->offset), size);
+    auto status = writer_info->writer->InvalidateCache(
+        static_cast<size_t>(writer_info->offset), size);
+    if (!status.ok() && !status.IsNotSupported()) {
+      return status;
+    }
   }
   return Status::OK();
 }
@@ -872,7 +876,7 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
     for (const auto& prop : collector->GetReadableProperties()) {
       ret.readable_properties.insert(prop);
     }
-    collector->Finish(&ret.user_collected_properties);
+    CHECK_OK(collector->Finish(&ret.user_collected_properties));
   }
   return ret;
 }

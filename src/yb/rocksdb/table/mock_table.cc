@@ -121,7 +121,7 @@ uint32_t MockTableFactory::GetAndWriteNextID(WritableFileWriter* file) const {
   uint32_t next_id = next_id_.fetch_add(1);
   char buf[4];
   EncodeFixed32(buf, next_id);
-  file->Append(Slice(buf, 4));
+  CHECK_OK(file->Append(Slice(buf, 4)));
   return next_id;
 }
 

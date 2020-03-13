@@ -387,7 +387,8 @@ void CompactionIterator::NextFromInput() {
       // have hit (A)
       // We encapsulate the merge related state machine in a different
       // object to minimize change to the existing flow.
-      merge_helper_->MergeUntil(input_, prev_snapshot, bottommost_level_);
+      WARN_NOT_OK(merge_helper_->MergeUntil(input_, prev_snapshot, bottommost_level_),
+                  "Merge until failed");
       merge_out_iter_.SeekToFirst();
 
       if (merge_out_iter_.Valid()) {

@@ -166,14 +166,15 @@ struct ReplayState {
   bool CanApply(log::LogEntryPB* entry);
 
   template<class Handler>
-  void ApplyCommittedPendingReplicates(const Handler& handler) {
+  CHECKED_STATUS ApplyCommittedPendingReplicates(const Handler& handler) {
     auto iter = pending_replicates.begin();
     while (iter != pending_replicates.end() && CanApply(iter->second.entry.get())) {
       std::unique_ptr<log::LogEntryPB> entry = std::move(iter->second.entry);
-      handler(entry.get(), iter->second.entry_time);
+      RETURN_NOT_OK(handler(entry.get(), iter->second.entry_time));
       iter = pending_replicates.erase(iter);  // erase and advance the iterator (C++11)
       ++num_entries_applied_to_rocksdb;
     }
+    return Status::OK();
   }
 
   bool UpdateCommittedFromStored();
@@ -693,10 +694,8 @@ Status TabletBootstrap::HandleReplicateMessage(
   // that entry. This allows us to decide when we can replay a REPLICATE entry during bootstrap.
   state->UpdateCommittedOpId(replicate.committed_op_id());
 
-  state->ApplyCommittedPendingReplicates(
+  return state->ApplyCommittedPendingReplicates(
       std::bind(&TabletBootstrap::HandleEntryPair, this, state, _1, _2));
-
-  return Status::OK();
 }
 
 Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
@@ -945,8 +944,8 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   }
 
   if (state.UpdateCommittedFromStored()) {
-    state.ApplyCommittedPendingReplicates(
-        std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2));
+    RETURN_NOT_OK(state.ApplyCommittedPendingReplicates(
+        std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2)));
   }
 
   if (last_committed_op_id.index > state.committed_op_id.index()) {
@@ -956,8 +955,8 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       // be overriden by a new leader.
       if (last_committed_op_id.term == it->second.entry->replicate().id().term()) {
         state.UpdateCommittedOpId(last_committed_op_id.ToPB<consensus::OpId>());
-        state.ApplyCommittedPendingReplicates(
-            std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2));
+        RETURN_NOT_OK(state.ApplyCommittedPendingReplicates(
+            std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2)));
       } else {
         LOG_WITH_PREFIX(DFATAL)
             << "Invalid last committed op id: " << last_committed_op_id

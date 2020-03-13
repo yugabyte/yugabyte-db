@@ -68,7 +68,7 @@ Status DeleteScheduler::DeleteFile(const std::string& file_path) {
     // Rate limiting is disabled
     s = env_->DeleteFile(file_path);
     if (s.ok() && sst_file_manager_) {
-      sst_file_manager_->OnDeleteFile(file_path);
+      RETURN_NOT_OK(sst_file_manager_->OnDeleteFile(file_path));
     }
     return s;
   }
@@ -82,7 +82,7 @@ Status DeleteScheduler::DeleteFile(const std::string& file_path) {
         trash_dir_.c_str());
     s = env_->DeleteFile(file_path);
     if (s.ok() && sst_file_manager_) {
-      sst_file_manager_->OnDeleteFile(file_path);
+      RETURN_NOT_OK(sst_file_manager_->OnDeleteFile(file_path));
     }
     return s;
   }
@@ -139,7 +139,7 @@ Status DeleteScheduler::MoveToTrash(const std::string& file_path,
     }
   }
   if (s.ok() && sst_file_manager_) {
-    sst_file_manager_->OnMoveFile(file_path, *path_in_trash);
+    RETURN_NOT_OK(sst_file_manager_->OnMoveFile(file_path, *path_in_trash));
   }
   return s;
 }
@@ -211,7 +211,7 @@ Status DeleteScheduler::DeleteTrashFile(const std::string& path_in_trash,
   } else {
     *deleted_bytes = file_size;
     if (sst_file_manager_) {
-      sst_file_manager_->OnDeleteFile(path_in_trash);
+      RETURN_NOT_OK(sst_file_manager_->OnDeleteFile(path_in_trash));
     }
   }
 

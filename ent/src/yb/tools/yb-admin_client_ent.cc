@@ -483,7 +483,7 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
     zones.emplace(zone);
   }
 
-  master_proxy_->SetPreferredZones(req, &resp, &rpc);
+  RETURN_NOT_OK(master_proxy_->SetPreferredZones(req, &resp, &rpc));
 
   if (resp.has_error()) {
     return STATUS(ServiceUnavailable, resp.error().status().message());
@@ -674,7 +674,7 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  master_proxy_->CreateCDCStream(req, &resp, &rpc);
+  RETURN_NOT_OK(master_proxy_->CreateCDCStream(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error creating stream: " << resp.error().status().message() << endl;
@@ -692,7 +692,7 @@ Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id) {
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  master_proxy_->DeleteCDCStream(req, &resp, &rpc);
+  RETURN_NOT_OK(master_proxy_->DeleteCDCStream(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error deleting stream: " << resp.error().status().message() << endl;
@@ -712,7 +712,7 @@ Status ClusterAdminClient::ListCDCStreams(const TableId& table_id) {
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  master_proxy_->ListCDCStreams(req, &resp, &rpc);
+  RETURN_NOT_OK(master_proxy_->ListCDCStreams(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error getting CDC stream list: " << resp.error().status().message() << endl;
@@ -751,7 +751,7 @@ Status ClusterAdminClient::SetupUniverseReplication(
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  master_proxy_->SetupUniverseReplication(req, &resp, &rpc);
+  RETURN_NOT_OK(master_proxy_->SetupUniverseReplication(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
@@ -769,7 +769,7 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  master_proxy_->DeleteUniverseReplication(req, &resp, &rpc);
+  RETURN_NOT_OK(master_proxy_->DeleteUniverseReplication(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error deleting universe replication: " << resp.error().status().message() << endl;
@@ -813,7 +813,7 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  master_proxy_->AlterUniverseReplication(req, &resp, &rpc);
+  RETURN_NOT_OK(master_proxy_->AlterUniverseReplication(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error altering universe replication: " << resp.error().status().message() << endl;
@@ -834,7 +834,7 @@ CHECKED_STATUS ClusterAdminClient::SetUniverseReplicationEnabled(const std::stri
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  master_proxy_->SetUniverseReplicationEnabled(req, &resp, &rpc);
+  RETURN_NOT_OK(master_proxy_->SetUniverseReplicationEnabled(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error " << toggle << "ing "
@@ -871,7 +871,7 @@ Status ClusterAdminClient::BootstrapProducer(const vector<TableId>& table_ids) {
   }
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
-  cdc_proxy->BootstrapProducer(bootstrap_req, &bootstrap_resp, &rpc);
+  RETURN_NOT_OK(cdc_proxy->BootstrapProducer(bootstrap_req, &bootstrap_resp, &rpc));
 
   if (bootstrap_resp.has_error()) {
     cout << "Error bootstrapping consumer: " << bootstrap_resp.error().status().message() << endl;

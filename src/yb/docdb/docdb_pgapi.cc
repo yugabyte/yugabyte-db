@@ -112,7 +112,7 @@ Status DocPgEvalExpr(const std::string& expr_str,
       const QLValuePB* val = table_row->GetColumn(col_id.rep());
       bool is_null = false;
       uint64_t datum = 0;
-      PgValueFromPB(ret_type, type_attrs, *val, &datum, &is_null);
+      RETURN_NOT_OK(PgValueFromPB(ret_type, type_attrs, *val, &datum, &is_null));
       PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, column->order(), datum, is_null));
     }
   }

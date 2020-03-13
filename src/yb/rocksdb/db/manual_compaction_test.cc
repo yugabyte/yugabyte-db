@@ -89,10 +89,10 @@ TEST_F(ManualCompactionTest, CompactTouchesAllKeys) {
     options.compaction_filter = new DestroyAllCompactionFilter();
     ASSERT_OK(DB::Open(options, dbname_, &db));
 
-    db->Put(WriteOptions(), Slice("key1"), Slice("destroy"));
-    db->Put(WriteOptions(), Slice("key2"), Slice("destroy"));
-    db->Put(WriteOptions(), Slice("key3"), Slice("value3"));
-    db->Put(WriteOptions(), Slice("key4"), Slice("destroy"));
+    ASSERT_OK(db->Put(WriteOptions(), Slice("key1"), Slice("destroy")));
+    ASSERT_OK(db->Put(WriteOptions(), Slice("key2"), Slice("destroy")));
+    ASSERT_OK(db->Put(WriteOptions(), Slice("key3"), Slice("value3")));
+    ASSERT_OK(db->Put(WriteOptions(), Slice("key4"), Slice("destroy")));
 
     Slice key4("key4");
     db->CompactRange(CompactRangeOptions(), nullptr, &key4);
@@ -106,7 +106,7 @@ TEST_F(ManualCompactionTest, CompactTouchesAllKeys) {
 
     delete options.compaction_filter;
     delete db;
-    DestroyDB(dbname_, options);
+    ASSERT_OK(DestroyDB(dbname_, options));
   }
 }
 
@@ -148,7 +148,7 @@ TEST_F(ManualCompactionTest, Test) {
   rocksdb::Slice greatest(end_key.data(), end_key.size());
 
   // commenting out the line below causes the example to work correctly
-  db->CompactRange(CompactRangeOptions(), &least, &greatest);
+  ASSERT_OK(db->CompactRange(CompactRangeOptions(), &least, &greatest));
 
   // count the keys
   rocksdb::Iterator* iter = db->NewIterator(rocksdb::ReadOptions());
@@ -161,7 +161,7 @@ TEST_F(ManualCompactionTest, Test) {
 
   // close database
   delete db;
-  DestroyDB(dbname_, rocksdb::Options());
+  ASSERT_OK(DestroyDB(dbname_, rocksdb::Options()));
 }
 
 }  // anonymous namespace

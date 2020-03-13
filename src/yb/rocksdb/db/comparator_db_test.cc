@@ -94,7 +94,7 @@ void DoRandomIteraratorTest(DB* db, std::vector<std::string> source_strings,
 
   for (int i = 0; i < num_writes; i++) {
     if (num_trigger_flush > 0 && i != 0 && i % num_trigger_flush == 0) {
-      db->Flush(FlushOptions());
+      ASSERT_OK(db->Flush(FlushOptions()));
     }
 
     int type = rnd->Uniform(2);
