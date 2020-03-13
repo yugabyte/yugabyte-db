@@ -168,8 +168,7 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
         return;
       }
 
-      ColumnId col_id = schema_.column_id(condition.operands(0).column_id());
-      int col_idx = schema_.find_column_by_id(col_id);
+      int col_idx = schema_.find_column_by_id(ColumnId(condition.operands(0).column_id()));
 
       // Skip any non-range columns.
       if (!schema_.is_range_column(col_idx)) {
