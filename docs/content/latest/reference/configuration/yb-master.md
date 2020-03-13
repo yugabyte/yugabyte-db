@@ -349,7 +349,7 @@ This value must match on all `yb-master` and `yb-tserver` configurations of a Yu
 
 {{< note title="Note" >}}
 
-On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#with-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
+On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
 
 {{< /note >}}
 
