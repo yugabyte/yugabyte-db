@@ -783,7 +783,7 @@ class MemTableInserter : public WriteBatch::Handler {
       if (cf_handle == nullptr) {
         cf_handle = db_->DefaultColumnFamily();
       }
-      db_->Get(read_options, cf_handle, key, &get_value);
+      RETURN_NOT_OK(db_->Get(read_options, cf_handle, key, &get_value));
       Slice get_value_slice = Slice(get_value);
 
       // 2) Apply this merge

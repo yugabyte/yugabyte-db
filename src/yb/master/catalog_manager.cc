@@ -6395,7 +6395,7 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
     DumpMasterStateResponsePB peer_resp;
     rpc.Reset();
 
-    peer_proxy->DumpState(peer_req, &peer_resp, &rpc);
+    RETURN_NOT_OK(peer_proxy->DumpState(peer_req, &peer_resp, &rpc));
 
     if (peer_resp.has_error()) {
       LOG(WARNING) << "Hit err " << peer_resp.ShortDebugString() << " during peer "

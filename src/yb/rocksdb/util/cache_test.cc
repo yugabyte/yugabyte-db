@@ -170,8 +170,8 @@ TEST_F(CacheTest, UsageTest) {
   // make sure the cache will be overloaded
   for (uint64_t i = 1; i < kCapacity; ++i) {
     auto key = ToString(i);
-    cache->Insert(key, kTestQueryId, reinterpret_cast<void*>(value), key.size() + 5,
-                  dumbDeleter);
+    ASSERT_OK(cache->Insert(
+        key, kTestQueryId, reinterpret_cast<void*>(value), key.size() + 5, dumbDeleter));
   }
 
   // the usage should be close to the capacity
@@ -195,8 +195,8 @@ TEST_F(CacheTest, PinnedUsageTest) {
     std::string key(i, 'a');
     auto kv_size = key.size() + 5;
     Cache::Handle* handle;
-    cache->Insert(key, kTestQueryId, reinterpret_cast<void*>(value), kv_size, dumbDeleter,
-                  &handle);
+    ASSERT_OK(cache->Insert(
+        key, kTestQueryId, reinterpret_cast<void*>(value), kv_size, dumbDeleter, &handle));
     pinned_usage += kv_size;
     ASSERT_EQ(pinned_usage, cache->GetPinnedUsage());
     if (i % 2 == 0) {
@@ -220,8 +220,8 @@ TEST_F(CacheTest, PinnedUsageTest) {
   // check that overloading the cache does not change the pinned usage
   for (uint64_t i = 1; i < 2 * kCapacity; ++i) {
     auto key = ToString(i);
-    cache->Insert(key, kTestQueryId, reinterpret_cast<void*>(value), key.size() + 5,
-                  dumbDeleter);
+    ASSERT_OK(cache->Insert(
+        key, kTestQueryId, reinterpret_cast<void*>(value), key.size() + 5, dumbDeleter));
   }
   ASSERT_EQ(pinned_usage, cache->GetPinnedUsage());
 
@@ -234,17 +234,17 @@ TEST_F(CacheTest, PinnedUsageTest) {
 TEST_F(CacheTest, HitAndMiss) {
   ASSERT_EQ(-1, Lookup(100));
 
-  Insert(100, 101);
+  ASSERT_OK(Insert(100, 101));
   ASSERT_EQ(101, Lookup(100));
   ASSERT_EQ(-1,  Lookup(200));
   ASSERT_EQ(-1,  Lookup(300));
 
-  Insert(200, 201);
+  ASSERT_OK(Insert(200, 201));
   ASSERT_EQ(101, Lookup(100));
   ASSERT_EQ(201, Lookup(200));
   ASSERT_EQ(-1,  Lookup(300));
 
-  Insert(100, 102);
+  ASSERT_OK(Insert(100, 102));
   ASSERT_EQ(102, Lookup(100));
   ASSERT_EQ(201, Lookup(200));
   ASSERT_EQ(-1,  Lookup(300));
@@ -259,8 +259,8 @@ TEST_F(CacheTest, Erase) {
   Erase(200);
   ASSERT_EQ(0U, deleted_keys_.size());
 
-  Insert(100, 101);
-  Insert(200, 201);
+  ASSERT_OK(Insert(100, 101));
+  ASSERT_OK(Insert(200, 201));
   Erase(100);
   ASSERT_EQ(-1,  Lookup(100));
   ASSERT_EQ(201, Lookup(200));
@@ -275,12 +275,12 @@ TEST_F(CacheTest, Erase) {
 }
 
 TEST_F(CacheTest, EntriesArePinned) {
-  Insert(100, 101);
+  ASSERT_OK(Insert(100, 101));
   Cache::Handle* h1 = cache_->Lookup(EncodeKey(100), kTestQueryId);
   ASSERT_EQ(101, DecodeValue(cache_->Value(h1)));
   ASSERT_EQ(1U, cache_->GetUsage());
 
-  Insert(100, 102);
+  ASSERT_OK(Insert(100, 102));
   Cache::Handle* h2 = cache_->Lookup(EncodeKey(100), kTestQueryId);
   ASSERT_EQ(102, DecodeValue(cache_->Value(h2)));
   ASSERT_EQ(0U, deleted_keys_.size());
@@ -305,12 +305,12 @@ TEST_F(CacheTest, EntriesArePinned) {
 }
 
 TEST_F(CacheTest, EvictionPolicy) {
-  Insert(100, 101);
-  Insert(200, 201);
+  ASSERT_OK(Insert(100, 101));
+  ASSERT_OK(Insert(200, 201));
 
   // Frequently used entry must be kept around
   for (int i = 0; i < kCacheSize + 100; i++) {
-    Insert(1000 + i, 2000 + i);
+    ASSERT_OK(Insert(1000 + i, 2000 + i));
     ASSERT_EQ(2000 + i, Lookup(1000 + i));
     ASSERT_EQ(101, Lookup(100));
   }
@@ -319,26 +319,26 @@ TEST_F(CacheTest, EvictionPolicy) {
 }
 
 TEST_F(CacheTest, EvictionPolicyRef) {
-  Insert(100, 101);
-  Insert(101, 102);
-  Insert(102, 103);
-  Insert(103, 104);
-  Insert(200, 101);
-  Insert(201, 102);
-  Insert(202, 103);
-  Insert(203, 104);
+  ASSERT_OK(Insert(100, 101));
+  ASSERT_OK(Insert(101, 102));
+  ASSERT_OK(Insert(102, 103));
+  ASSERT_OK(Insert(103, 104));
+  ASSERT_OK(Insert(200, 101));
+  ASSERT_OK(Insert(201, 102));
+  ASSERT_OK(Insert(202, 103));
+  ASSERT_OK(Insert(203, 104));
   Cache::Handle* h201 = cache_->Lookup(EncodeKey(200), kTestQueryId);
   Cache::Handle* h202 = cache_->Lookup(EncodeKey(201), kTestQueryId);
   Cache::Handle* h203 = cache_->Lookup(EncodeKey(202), kTestQueryId);
   Cache::Handle* h204 = cache_->Lookup(EncodeKey(203), kTestQueryId);
-  Insert(300, 101);
-  Insert(301, 102);
-  Insert(302, 103);
-  Insert(303, 104);
+  ASSERT_OK(Insert(300, 101));
+  ASSERT_OK(Insert(301, 102));
+  ASSERT_OK(Insert(302, 103));
+  ASSERT_OK(Insert(303, 104));
 
   // Insert entries much more than Cache capacity
   for (int i = 0; i < kCacheSize + 100; i++) {
-    Insert(1000 + i, 2000 + i);
+    ASSERT_OK(Insert(1000 + i, 2000 + i));
   }
 
   // Check whether the entries inserted in the beginning
@@ -368,7 +368,7 @@ TEST_F(CacheTest, EvictionPolicyRef) {
 
 TEST_F(CacheTest, ErasedHandleState) {
   // insert a key and get two handles
-  Insert(100, 1000);
+  ASSERT_OK(Insert(100, 1000));
   Cache::Handle* h1 = cache_->Lookup(EncodeKey(100), kTestQueryId);
   Cache::Handle* h2 = cache_->Lookup(EncodeKey(100), kTestQueryId);
   ASSERT_EQ(h1, h2);
@@ -391,10 +391,10 @@ TEST_F(CacheTest, ErasedHandleState) {
 TEST_F(CacheTest, EvictionPolicyAllSingleTouch) {
   FLAGS_cache_single_touch_ratio = 1;
   const int kCapacity = 100;
-  auto cache = NewLRUCache(kCapacity , 0, true);
+  auto cache = NewLRUCache(kCapacity, 0, true);
   Status s;
   for (int i = 0; i < kCapacity; i++) {
-    Insert(cache, i, i + 1, kTestQueryId);
+    ASSERT_OK(Insert(cache, i, i + 1, kTestQueryId));
   }
 
   // Check that all values are in the cache and are all single touch.
@@ -414,7 +414,7 @@ TEST_F(CacheTest, EvictionPolicyNoSingleTouch) {
   auto cache = NewLRUCache(kCapacity , 0, true);
   Status s;
   for (int i = 0; i < kCapacity; i++) {
-    Insert(cache, i, i + 1, kTestQueryId);
+    ASSERT_OK(Insert(cache, i, i + 1, kTestQueryId));
   }
 
   // Check that all values are in the cache and are all multi touch.
@@ -446,16 +446,16 @@ TEST_F(CacheTest, EvictionPolicyMultiTouch) {
   QueryId qid1 = 1000;
   QueryId qid2 = 1001;
   QueryId qid3 = 1002;
-  Insert(100, 101, 1, qid1);
-  Insert(100, 101, 1, qid2);
+  ASSERT_OK(Insert(100, 101, 1, qid1));
+  ASSERT_OK(Insert(100, 101, 1, qid2));
   ASSERT_TRUE(LookupAndCheckInMultiTouch(100, 101, qid2));
-  Insert(200, 201, 1, qid3);
+  ASSERT_OK(Insert(200, 201, 1, qid3));
   ASSERT_FALSE(LookupAndCheckInMultiTouch(200, 201, qid3));
 
   // We are adding a single element (key: 100, value: 101) to multi touch cache.
   // Even if we overload the cache with single touch items, multi touch item should not be evicted.
   for (int i = 0; i < kCacheSize + 100; i++) {
-    Insert(1000 + i, 2000 + i);
+    ASSERT_OK(Insert(1000 + i, 2000 + i));
     ASSERT_EQ(2000 + i, Lookup(1000 + i));
   }
   ASSERT_TRUE(LookupAndCheckInMultiTouch(100, 101, qid2));
@@ -473,7 +473,7 @@ TEST_F(CacheTest, HeavyEntries) {
   int index = 0;
   while (added < 2*kCacheSize) {
     const int weight = (index & 1) ? kLight : kHeavy;
-    Insert(index, 1000 + index, weight);
+    ASSERT_OK(Insert(index, 1000 + index, weight));
     added += weight;
     index++;
   }
@@ -665,7 +665,7 @@ TEST_F(CacheTest, ApplyToAllCacheEntiresTest) {
   callback_state.clear();
 
   for (int i = 0; i < 10; ++i) {
-    Insert(i, i * 2, i + 1);
+    ASSERT_OK(Insert(i, i * 2, i + 1));
     inserted.push_back({i * 2, i + 1});
   }
   cache_->ApplyToAllCacheEntries(callback, true);

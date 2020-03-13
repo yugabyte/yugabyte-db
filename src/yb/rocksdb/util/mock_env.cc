@@ -407,7 +407,7 @@ class TestMemLogger : public Logger {
       assert(p <= limit);
       const size_t write_size = p - base;
 
-      file_->Append(Slice(base, write_size));
+      CHECK_OK(file_->Append(Slice(base, write_size)));
       flush_pending_ = true;
       log_size_ += write_size;
       uint64_t now_micros = static_cast<uint64_t>(now_tv.tv_sec) * 1000000 +

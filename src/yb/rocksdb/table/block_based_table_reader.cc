@@ -1623,17 +1623,17 @@ bool BlockBasedTable::TEST_index_reader_loaded() const {
 
 Status BlockBasedTable::DumpTable(WritableFile* out_file) {
   // Output Footer
-  out_file->Append(
+  RETURN_NOT_OK(out_file->Append(
       "Footer Details:\n"
       "--------------------------------------\n"
-      "  ");
-  out_file->Append(rep_->footer.ToString().c_str());
-  out_file->Append("\n");
+      "  "));
+  RETURN_NOT_OK(out_file->Append(rep_->footer.ToString().c_str()));
+  RETURN_NOT_OK(out_file->Append("\n"));
 
   // Output MetaIndex
-  out_file->Append(
+  RETURN_NOT_OK(out_file->Append(
       "Metaindex Details:\n"
-      "--------------------------------------\n");
+      "--------------------------------------\n"));
   std::unique_ptr<Block> meta;
   std::unique_ptr<InternalIterator> meta_iter;
   Status s = ReadMetaBlock(rep_, &meta, &meta_iter);
@@ -1644,17 +1644,17 @@ Status BlockBasedTable::DumpTable(WritableFile* out_file) {
         return s;
       }
       if (meta_iter->key() == rocksdb::kPropertiesBlock) {
-        out_file->Append("  Properties block handle: ");
-        out_file->Append(meta_iter->value().ToString(true).c_str());
-        out_file->Append("\n");
+        RETURN_NOT_OK(out_file->Append("  Properties block handle: "));
+        RETURN_NOT_OK(out_file->Append(meta_iter->value().ToString(true).c_str()));
+        RETURN_NOT_OK(out_file->Append("\n"));
       } else if (strstr(meta_iter->key().ToString().c_str(),
                         "filter.rocksdb.") != nullptr) {
-        out_file->Append("  Filter block handle: ");
-        out_file->Append(meta_iter->value().ToString(true).c_str());
-        out_file->Append("\n");
+        RETURN_NOT_OK(out_file->Append("  Filter block handle: "));
+        RETURN_NOT_OK(out_file->Append(meta_iter->value().ToString(true).c_str()));
+        RETURN_NOT_OK(out_file->Append("\n"));
       }
     }
-    out_file->Append("\n");
+    RETURN_NOT_OK(out_file->Append("\n"));
   } else {
     return s;
   }
@@ -1664,12 +1664,12 @@ Status BlockBasedTable::DumpTable(WritableFile* out_file) {
   table_properties = rep_->table_properties.get();
 
   if (table_properties != nullptr) {
-    out_file->Append(
+    RETURN_NOT_OK(out_file->Append(
         "Table Properties:\n"
         "--------------------------------------\n"
-        "  ");
-    out_file->Append(table_properties->ToString("\n  ", ": ").c_str());
-    out_file->Append("\n");
+        "  "));
+    RETURN_NOT_OK(out_file->Append(table_properties->ToString("\n  ", ": ").c_str()));
+    RETURN_NOT_OK(out_file->Append("\n"));
   }
 
   // Output Filter blocks
@@ -1696,12 +1696,12 @@ Status BlockBasedTable::DumpTable(WritableFile* out_file) {
     }
   }
   if (rep_->filter) {
-    out_file->Append(
+    RETURN_NOT_OK(out_file->Append(
         "Filter Details:\n"
         "--------------------------------------\n"
-        "  ");
-    out_file->Append(rep_->filter->ToString().c_str());
-    out_file->Append("\n");
+        "  "));
+    RETURN_NOT_OK(out_file->Append(rep_->filter->ToString().c_str()));
+    RETURN_NOT_OK(out_file->Append("\n"));
   }
 
   // Output Index block
@@ -1716,20 +1716,20 @@ Status BlockBasedTable::DumpTable(WritableFile* out_file) {
 }
 
 Status BlockBasedTable::DumpIndexBlock(WritableFile* out_file) {
-  out_file->Append(
+  RETURN_NOT_OK(out_file->Append(
       "Index Details:\n"
-      "--------------------------------------\n");
+      "--------------------------------------\n"));
 
   std::unique_ptr<InternalIterator> blockhandles_iter(
       NewIndexIterator(ReadOptions::kDefault));
   Status s = blockhandles_iter->status();
   if (!s.ok()) {
-    out_file->Append("Can not read Index Block \n\n");
+    RETURN_NOT_OK(out_file->Append("Can not read Index Block \n\n"));
     return s;
   }
 
-  out_file->Append("  Block key hex dump: Data block handle\n");
-  out_file->Append("  Block key ascii\n\n");
+  RETURN_NOT_OK(out_file->Append("  Block key hex dump: Data block handle\n"));
+  RETURN_NOT_OK(out_file->Append("  Block key ascii\n\n"));
   for (blockhandles_iter->SeekToFirst(); blockhandles_iter->Valid();
        blockhandles_iter->Next()) {
     s = blockhandles_iter->status();
@@ -1739,11 +1739,11 @@ Status BlockBasedTable::DumpIndexBlock(WritableFile* out_file) {
     Slice key = blockhandles_iter->key();
     InternalKey ikey = InternalKey::DecodeFrom(key);
 
-    out_file->Append("  HEX    ");
-    out_file->Append(ikey.user_key().ToString(true).c_str());
-    out_file->Append(": ");
-    out_file->Append(blockhandles_iter->value().ToString(true).c_str());
-    out_file->Append("\n");
+    RETURN_NOT_OK(out_file->Append("  HEX    "));
+    RETURN_NOT_OK(out_file->Append(ikey.user_key().ToString(true).c_str()));
+    RETURN_NOT_OK(out_file->Append(": "));
+    RETURN_NOT_OK(out_file->Append(blockhandles_iter->value().ToString(true).c_str()));
+    RETURN_NOT_OK(out_file->Append("\n"));
 
     std::string str_key = ikey.user_key().ToString();
     std::string res_key("");
@@ -1752,11 +1752,11 @@ Status BlockBasedTable::DumpIndexBlock(WritableFile* out_file) {
       res_key.append(&str_key[i], 1);
       res_key.append(1, cspace);
     }
-    out_file->Append("  ASCII  ");
-    out_file->Append(res_key.c_str());
-    out_file->Append("\n  ------\n");
+    RETURN_NOT_OK(out_file->Append("  ASCII  "));
+    RETURN_NOT_OK(out_file->Append(res_key.c_str()));
+    RETURN_NOT_OK(out_file->Append("\n  ------\n"));
   }
-  out_file->Append("\n");
+  RETURN_NOT_OK(out_file->Append("\n"));
   return Status::OK();
 }
 
@@ -1765,7 +1765,7 @@ Status BlockBasedTable::DumpDataBlocks(WritableFile* out_file) {
       NewIndexIterator(ReadOptions::kDefault));
   Status s = blockhandles_iter->status();
   if (!s.ok()) {
-    out_file->Append("Can not read Index Block \n\n");
+    RETURN_NOT_OK(out_file->Append("Can not read Index Block \n\n"));
     return s;
   }
 
@@ -1777,12 +1777,12 @@ Status BlockBasedTable::DumpDataBlocks(WritableFile* out_file) {
       break;
     }
 
-    out_file->Append("Data Block # ");
-    out_file->Append(rocksdb::ToString(block_id));
-    out_file->Append(" @ ");
-    out_file->Append(blockhandles_iter->value().ToString(true).c_str());
-    out_file->Append("\n");
-    out_file->Append("--------------------------------------\n");
+    RETURN_NOT_OK(out_file->Append("Data Block # "));
+    RETURN_NOT_OK(out_file->Append(rocksdb::ToString(block_id)));
+    RETURN_NOT_OK(out_file->Append(" @ "));
+    RETURN_NOT_OK(out_file->Append(blockhandles_iter->value().ToString(true).c_str()));
+    RETURN_NOT_OK(out_file->Append("\n"));
+    RETURN_NOT_OK(out_file->Append("--------------------------------------\n"));
 
     std::unique_ptr<InternalIterator> datablock_iter;
     datablock_iter.reset(
@@ -1791,7 +1791,7 @@ Status BlockBasedTable::DumpDataBlocks(WritableFile* out_file) {
     s = datablock_iter->status();
 
     if (!s.ok()) {
-      out_file->Append("Error reading the block - Skipped \n\n");
+      RETURN_NOT_OK(out_file->Append("Error reading the block - Skipped \n\n"));
       continue;
     }
 
@@ -1799,18 +1799,18 @@ Status BlockBasedTable::DumpDataBlocks(WritableFile* out_file) {
          datablock_iter->Next()) {
       s = datablock_iter->status();
       if (!s.ok()) {
-        out_file->Append("Error reading the block - Skipped \n");
+        RETURN_NOT_OK(out_file->Append("Error reading the block - Skipped \n"));
         break;
       }
       Slice key = datablock_iter->key();
       Slice value = datablock_iter->value();
       InternalKey ikey = InternalKey::DecodeFrom(key);
 
-      out_file->Append("  HEX    ");
-      out_file->Append(ikey.user_key().ToString(true).c_str());
-      out_file->Append(": ");
-      out_file->Append(value.ToString(true).c_str());
-      out_file->Append("\n");
+      RETURN_NOT_OK(out_file->Append("  HEX    "));
+      RETURN_NOT_OK(out_file->Append(ikey.user_key().ToString(true).c_str()));
+      RETURN_NOT_OK(out_file->Append(": "));
+      RETURN_NOT_OK(out_file->Append(value.ToString(true).c_str()));
+      RETURN_NOT_OK(out_file->Append("\n"));
 
       std::string str_key = ikey.user_key().ToString();
       std::string str_value = value.ToString();
@@ -1825,13 +1825,13 @@ Status BlockBasedTable::DumpDataBlocks(WritableFile* out_file) {
         res_value.append(1, cspace);
       }
 
-      out_file->Append("  ASCII  ");
-      out_file->Append(res_key.c_str());
-      out_file->Append(": ");
-      out_file->Append(res_value.c_str());
-      out_file->Append("\n  ------\n");
+      RETURN_NOT_OK(out_file->Append("  ASCII  "));
+      RETURN_NOT_OK(out_file->Append(res_key.c_str()));
+      RETURN_NOT_OK(out_file->Append(": "));
+      RETURN_NOT_OK(out_file->Append(res_value.c_str()));
+      RETURN_NOT_OK(out_file->Append("\n  ------\n"));
     }
-    out_file->Append("\n");
+    RETURN_NOT_OK(out_file->Append("\n"));
   }
   return Status::OK();
 }

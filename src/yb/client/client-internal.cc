@@ -1122,7 +1122,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
 
       info_->table_name.GetFromTableIdentifierPB(resp_.identifier());
       info_->table_id = resp_.identifier().table_id();
-      YBTable::PBToClientTableType(resp_.table_type(), &info_->table_type);
+      CHECK_OK(YBTable::PBToClientTableType(resp_.table_type(), &info_->table_type));
       info_->index_map.FromPB(resp_.indexes());
       if (resp_.has_index_info()) {
         info_->index_info.emplace(resp_.index_info());

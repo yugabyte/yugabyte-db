@@ -423,8 +423,10 @@ void SysCatalogTable::SysCatalogStateChanged(
                   Substitute("Could not find uuid=$0 in config.", context->remove_uuid));
       WARN_NOT_OK(
           inform_removed_master_pool_->SubmitFunc(
-              std::bind(&Master::InformRemovedMaster, master_,
-                        DesiredHostPort(peer, master_->MakeCloudInfoPB()))),
+              [this, host_port = DesiredHostPort(peer, master_->MakeCloudInfoPB())]() {
+            WARN_NOT_OK(master_->InformRemovedMaster(host_port),
+                        "Failed to inform removed master " + host_port.ShortDebugString());
+          }),
           Substitute("Error submitting removal task for uuid=$0", context->remove_uuid));
     }
   } else {

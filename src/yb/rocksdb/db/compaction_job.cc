@@ -513,7 +513,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   }
 
   if (output_directory_ && !db_options_.disableDataSync) {
-    output_directory_->Fsync();
+    RETURN_NOT_OK(output_directory_->Fsync());
   }
 
   compaction_stats_.micros = env_->NowMicros() - start_micros;
@@ -923,9 +923,9 @@ Status CompactionJob::FinishCompactionOutputFile(
     ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
     auto fn = TableFileName(cfd->ioptions()->db_paths, meta->fd.GetNumber(),
                             meta->fd.GetPathId());
-    sfm->OnAddFile(fn);
+    RETURN_NOT_OK(sfm->OnAddFile(fn));
     if (is_split_sst) {
-      sfm->OnAddFile(TableBaseToDataFileName(fn));
+      RETURN_NOT_OK(sfm->OnAddFile(TableBaseToDataFileName(fn)));
     }
     if (sfm->IsMaxAllowedSpaceReached()) {
       InstrumentedMutexLock l(db_mutex_);
