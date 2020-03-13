@@ -42,7 +42,7 @@ void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
   req.set_table_id(table_id);
 
   rpc::RpcController rpc;
-  cdc_proxy->CreateCDCStream(req, &resp, &rpc);
+  ASSERT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
 
   if (stream_id) {

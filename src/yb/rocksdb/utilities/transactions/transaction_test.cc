@@ -55,7 +55,7 @@ class TransactionTest : public testing::Test {
     options.merge_operator = MergeOperators::CreateFromStringId("stringappend");
     dbname = test::TmpDir() + "/transaction_testdb";
 
-    DestroyDB(dbname, options);
+    CHECK_OK(DestroyDB(dbname, options));
     txn_db_options.transaction_lock_timeout = 0;
     txn_db_options.default_lock_timeout = 0;
     Status s = TransactionDB::Open(options, txn_db_options, dbname, &db);
@@ -64,12 +64,12 @@ class TransactionTest : public testing::Test {
 
   ~TransactionTest() {
     delete db;
-    DestroyDB(dbname, options);
+    CHECK_OK(DestroyDB(dbname, options));
   }
 
   Status ReOpen() {
     delete db;
-    DestroyDB(dbname, options);
+    RETURN_NOT_OK(DestroyDB(dbname, options));
 
     Status s = TransactionDB::Open(options, txn_db_options, dbname, &db);
 
@@ -94,8 +94,8 @@ TEST_F(TransactionTest, SuccessTest) {
   string value;
   Status s;
 
-  db->Put(write_options, Slice("foo"), Slice("bar"));
-  db->Put(write_options, Slice("foo2"), Slice("bar"));
+  ASSERT_OK(db->Put(write_options, Slice("foo"), Slice("bar")));
+  ASSERT_OK(db->Put(write_options, Slice("foo2"), Slice("bar")));
 
   Transaction* txn = db->BeginTransaction(write_options, TransactionOptions());
   ASSERT_TRUE(txn);
@@ -186,8 +186,8 @@ TEST_F(TransactionTest, WriteConflictTest) {
   string value;
   Status s;
 
-  db->Put(write_options, "foo", "A");
-  db->Put(write_options, "foo2", "B");
+  ASSERT_OK(db->Put(write_options, "foo", "A"));
+  ASSERT_OK(db->Put(write_options, "foo2", "B"));
 
   Transaction* txn = db->BeginTransaction(write_options);
   ASSERT_TRUE(txn);
@@ -208,9 +208,9 @@ TEST_F(TransactionTest, WriteConflictTest) {
   s = txn->Commit();
   ASSERT_OK(s);
 
-  db->Get(read_options, "foo", &value);
+  ASSERT_OK(db->Get(read_options, "foo", &value));
   ASSERT_EQ(value, "A2");
-  db->Get(read_options, "foo2", &value);
+  ASSERT_OK(db->Get(read_options, "foo2", &value));
   ASSERT_EQ(value, "B2");
 
   delete txn;
@@ -223,7 +223,7 @@ TEST_F(TransactionTest, WriteConflictTest2) {
   string value;
   Status s;
 
-  db->Put(write_options, "foo", "bar");
+  ASSERT_OK(db->Put(write_options, "foo", "bar"));
 
   txn_options.set_snapshot = true;
   Transaction* txn = db->BeginTransaction(write_options, txn_options);
@@ -252,13 +252,13 @@ TEST_F(TransactionTest, WriteConflictTest2) {
   ASSERT_OK(s);  // Txn should commit, but only write foo2 and foo3
 
   // Verify that transaction wrote foo2 and foo3 but not foo
-  db->Get(read_options, "foo", &value);
+  ASSERT_OK(db->Get(read_options, "foo", &value));
   ASSERT_EQ(value, "barz");
 
-  db->Get(read_options, "foo2", &value);
+  ASSERT_OK(db->Get(read_options, "foo2", &value));
   ASSERT_EQ(value, "X");
 
-  db->Get(read_options, "foo3", &value);
+  ASSERT_OK(db->Get(read_options, "foo3", &value));
   ASSERT_EQ(value, "Y");
 
   delete txn;
@@ -271,8 +271,8 @@ TEST_F(TransactionTest, ReadConflictTest) {
   string value;
   Status s;
 
-  db->Put(write_options, "foo", "bar");
-  db->Put(write_options, "foo2", "bar");
+  ASSERT_OK(db->Put(write_options, "foo", "bar"));
+  ASSERT_OK(db->Put(write_options, "foo2", "bar"));
 
   txn_options.set_snapshot = true;
   Transaction* txn = db->BeginTransaction(write_options, txn_options);
@@ -281,7 +281,7 @@ TEST_F(TransactionTest, ReadConflictTest) {
   txn->SetSnapshot();
   snapshot_read_options.snapshot = txn->GetSnapshot();
 
-  txn->GetForUpdate(snapshot_read_options, "foo", &value);
+  ASSERT_OK(txn->GetForUpdate(snapshot_read_options, "foo", &value));
   ASSERT_EQ(value, "bar");
 
   // This Put outside of a transaction will conflict with the previous read
@@ -327,21 +327,21 @@ TEST_F(TransactionTest, FlushTest) {
   string value;
   Status s;
 
-  db->Put(write_options, Slice("foo"), Slice("bar"));
-  db->Put(write_options, Slice("foo2"), Slice("bar"));
+  ASSERT_OK(db->Put(write_options, Slice("foo"), Slice("bar")));
+  ASSERT_OK(db->Put(write_options, Slice("foo2"), Slice("bar")));
 
   Transaction* txn = db->BeginTransaction(write_options);
   ASSERT_TRUE(txn);
 
   snapshot_read_options.snapshot = txn->GetSnapshot();
 
-  txn->GetForUpdate(snapshot_read_options, "foo", &value);
+  ASSERT_OK(txn->GetForUpdate(snapshot_read_options, "foo", &value));
   ASSERT_EQ(value, "bar");
 
   s = txn->Put(Slice("foo"), Slice("bar2"));
   ASSERT_OK(s);
 
-  txn->GetForUpdate(snapshot_read_options, "foo", &value);
+  ASSERT_OK(txn->GetForUpdate(snapshot_read_options, "foo", &value));
   ASSERT_EQ(value, "bar2");
 
   // Put a random key so we have a memtable to flush
@@ -350,13 +350,13 @@ TEST_F(TransactionTest, FlushTest) {
 
   // force a memtable flush
   FlushOptions flush_ops;
-  db->Flush(flush_ops);
+  ASSERT_OK(db->Flush(flush_ops));
 
   s = txn->Commit();
   // txn should commit since the flushed table is still in MemtableList History
   ASSERT_OK(s);
 
-  db->Get(read_options, "foo", &value);
+  ASSERT_OK(db->Get(read_options, "foo", &value));
   ASSERT_EQ(value, "bar2");
 
   delete txn;
@@ -391,9 +391,9 @@ TEST_F(TransactionTest, FlushTest2) {
 
     DBImpl* db_impl = reinterpret_cast<DBImpl*>(db->GetBaseDB());
 
-    db->Put(write_options, Slice("foo"), Slice("bar"));
-    db->Put(write_options, Slice("foo2"), Slice("bar2"));
-    db->Put(write_options, Slice("foo3"), Slice("bar3"));
+    ASSERT_OK(db->Put(write_options, Slice("foo"), Slice("bar")));
+    ASSERT_OK(db->Put(write_options, Slice("foo2"), Slice("bar2")));
+    ASSERT_OK(db->Put(write_options, Slice("foo3"), Slice("bar3")));
 
     txn_options.set_snapshot = true;
     Transaction* txn = db->BeginTransaction(write_options, txn_options);
@@ -401,13 +401,13 @@ TEST_F(TransactionTest, FlushTest2) {
 
     snapshot_read_options.snapshot = txn->GetSnapshot();
 
-    txn->GetForUpdate(snapshot_read_options, "foo", &value);
+    ASSERT_OK(txn->GetForUpdate(snapshot_read_options, "foo", &value));
     ASSERT_EQ(value, "bar");
 
     s = txn->Put(Slice("foo"), Slice("bar2"));
     ASSERT_OK(s);
 
-    txn->GetForUpdate(snapshot_read_options, "foo", &value);
+    ASSERT_OK(txn->GetForUpdate(snapshot_read_options, "foo", &value));
     ASSERT_EQ(value, "bar2");
     // verify foo is locked by txn
     s = db->Delete(write_options, "foo");
@@ -492,7 +492,7 @@ TEST_F(TransactionTest, FlushTest2) {
     s = db->Delete(write_options, "foo3");
     ASSERT_TRUE(s.IsTimedOut());
 
-    db_impl->TEST_WaitForCompact();
+    ASSERT_OK(db_impl->TEST_WaitForCompact());
 
     s = txn->Commit();
     ASSERT_OK(s);
@@ -519,16 +519,16 @@ TEST_F(TransactionTest, NoSnapshotTest) {
   string value;
   Status s;
 
-  db->Put(write_options, "AAA", "bar");
+  ASSERT_OK(db->Put(write_options, "AAA", "bar"));
 
   Transaction* txn = db->BeginTransaction(write_options);
   ASSERT_TRUE(txn);
 
   // Modify key after transaction start
-  db->Put(write_options, "AAA", "bar1");
+  ASSERT_OK(db->Put(write_options, "AAA", "bar1"));
 
   // Read and write without a snapshot
-  txn->GetForUpdate(read_options, "AAA", &value);
+  ASSERT_OK(txn->GetForUpdate(read_options, "AAA", &value));
   ASSERT_EQ(value, "bar1");
   s = txn->Put("AAA", "bar2");
   ASSERT_OK(s);
@@ -537,7 +537,7 @@ TEST_F(TransactionTest, NoSnapshotTest) {
   s = txn->Commit();
   ASSERT_OK(s);
 
-  txn->GetForUpdate(read_options, "AAA", &value);
+  ASSERT_OK(txn->GetForUpdate(read_options, "AAA", &value));
   ASSERT_EQ(value, "bar2");
 
   delete txn;
@@ -549,41 +549,41 @@ TEST_F(TransactionTest, MultipleSnapshotTest) {
   string value;
   Status s;
 
-  db->Put(write_options, "AAA", "bar");
-  db->Put(write_options, "BBB", "bar");
-  db->Put(write_options, "CCC", "bar");
+  ASSERT_OK(db->Put(write_options, "AAA", "bar"));
+  ASSERT_OK(db->Put(write_options, "BBB", "bar"));
+  ASSERT_OK(db->Put(write_options, "CCC", "bar"));
 
   Transaction* txn = db->BeginTransaction(write_options);
   ASSERT_TRUE(txn);
 
-  db->Put(write_options, "AAA", "bar1");
+  ASSERT_OK(db->Put(write_options, "AAA", "bar1"));
 
   // Read and write without a snapshot
-  txn->GetForUpdate(read_options, "AAA", &value);
+  ASSERT_OK(txn->GetForUpdate(read_options, "AAA", &value));
   ASSERT_EQ(value, "bar1");
   s = txn->Put("AAA", "bar2");
   ASSERT_OK(s);
 
   // Modify BBB before snapshot is taken
-  db->Put(write_options, "BBB", "bar1");
+  ASSERT_OK(db->Put(write_options, "BBB", "bar1"));
 
   txn->SetSnapshot();
   snapshot_read_options.snapshot = txn->GetSnapshot();
 
   // Read and write with snapshot
-  txn->GetForUpdate(snapshot_read_options, "BBB", &value);
+  ASSERT_OK(txn->GetForUpdate(snapshot_read_options, "BBB", &value));
   ASSERT_EQ(value, "bar1");
   s = txn->Put("BBB", "bar2");
   ASSERT_OK(s);
 
-  db->Put(write_options, "CCC", "bar1");
+  ASSERT_OK(db->Put(write_options, "CCC", "bar1"));
 
   // Set a new snapshot
   txn->SetSnapshot();
   snapshot_read_options.snapshot = txn->GetSnapshot();
 
   // Read and write with snapshot
-  txn->GetForUpdate(snapshot_read_options, "CCC", &value);
+  ASSERT_OK(txn->GetForUpdate(snapshot_read_options, "CCC", &value));
   ASSERT_EQ(value, "bar1");
   s = txn->Put("CCC", "bar2");
   ASSERT_OK(s);
@@ -626,8 +626,8 @@ TEST_F(TransactionTest, MultipleSnapshotTest) {
   txn = db->BeginTransaction(write_options);
 
   // Potentially conflicting writes
-  db->Put(write_options, "ZZZ", "zzz");
-  db->Put(write_options, "XXX", "xxx");
+  ASSERT_OK(db->Put(write_options, "ZZZ", "zzz"));
+  ASSERT_OK(db->Put(write_options, "XXX", "xxx"));
 
   txn->SetSnapshot();
 
@@ -714,7 +714,7 @@ TEST_F(TransactionTest, ColumnFamiliesTest) {
   batch.Put(handles[1], "AAAZZZ", "bar");
   s = db->Write(write_options, &batch);
   ASSERT_OK(s);
-  db->Delete(write_options, handles[1], "AAAZZZ");
+  ASSERT_OK(db->Delete(write_options, handles[1], "AAAZZZ"));
 
   // These keys do not conflict with existing writes since they're in
   // different column families
@@ -798,7 +798,7 @@ TEST_F(TransactionTest, ColumnFamiliesTest) {
   ASSERT_TRUE(s.IsNotFound());
 
   // Put a key which will conflict with the next txn using the previous snapshot
-  db->Put(write_options, handles[2], "foo", "000");
+  ASSERT_OK(db->Put(write_options, handles[2], "foo", "000"));
 
   results = txn2->MultiGetForUpdate(snapshot_read_options, multiget_cfh,
                                     multiget_keys, &values);

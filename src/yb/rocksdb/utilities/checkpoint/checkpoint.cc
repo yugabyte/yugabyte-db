@@ -78,7 +78,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
     s = db->GetSortedWalFiles(&live_wal_files);
   }
   if (!s.ok()) {
-    db->EnableFileDeletions(false);
+    WARN_NOT_OK(db->EnableFileDeletions(false), "Failed to disable file deletions");
     return s;
   }
 
@@ -168,7 +168,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
   }
 
   // we copied all the files, enable file deletions
-  db->EnableFileDeletions(false);
+  RETURN_NOT_OK(db->EnableFileDeletions(false));
 
   if (s.ok()) {
     // move tmp private backup to real snapshot directory
@@ -176,7 +176,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
   }
   if (s.ok()) {
     unique_ptr<Directory> checkpoint_directory;
-    db->GetCheckpointEnv()->NewDirectory(checkpoint_dir, &checkpoint_directory);
+    RETURN_NOT_OK(db->GetCheckpointEnv()->NewDirectory(checkpoint_dir, &checkpoint_directory));
     if (checkpoint_directory != nullptr) {
       s = checkpoint_directory->Fsync();
     }
@@ -188,7 +188,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
          s.ToString().c_str());
     // we have to delete the dir and all its children
     std::vector<std::string> subchildren;
-    db->GetCheckpointEnv()->GetChildren(full_private_path, &subchildren);
+    db->GetCheckpointEnv()->GetChildrenWarnNotOk(full_private_path, &subchildren);
     for (auto& subchild : subchildren) {
       Status s1 = db->GetCheckpointEnv()->DeleteFile(full_private_path + subchild);
       if (s1.ok()) {

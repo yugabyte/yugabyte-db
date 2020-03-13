@@ -247,7 +247,7 @@ Status RpcServerBase::Init() {
 
   InitSpinLockContentionProfiling();
 
-  SetStackTraceSignal(SIGUSR2);
+  RETURN_NOT_OK(SetStackTraceSignal(SIGUSR2));
 
   // Initialize the clock immediately. This checks that the clock is synchronized
   // so we're less likely to get into a partially initialized state on disk during startup

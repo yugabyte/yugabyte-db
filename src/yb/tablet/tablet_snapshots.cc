@@ -246,11 +246,6 @@ Status TabletSnapshots::RestoreCheckpoint(
     return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
   }
 
-  if (!intents_db_dir.empty()) {
-    auto intents_tmp_dir = JoinPathSegments(dir, tablet::kIntentsSubdir);
-    rocksdb_env().RenameFile(intents_db_dir, intents_db_dir);
-  }
-
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
   s = OpenRocksDBs();

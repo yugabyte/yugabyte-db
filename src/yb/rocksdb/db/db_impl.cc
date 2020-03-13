@@ -588,7 +588,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
       bg_compaction_paused_(0),
       refitting_level_(false),
       opened_successfully_(false) {
-  env_->GetAbsolutePath(dbname, &db_absolute_path_);
+  CHECK_OK(env_->GetAbsolutePath(dbname, &db_absolute_path_));
 
   // Reserve ten files or so for other uses and give the rest to TableCache.
   // Give a large number for setting of "infinite" open files.
@@ -654,7 +654,7 @@ DBImpl::~DBImpl() {
             LOG_WITH_PREFIX(INFO) << "Skipping mem table flush - disable_flush_on_shutdown_ is set";
           } else if (FLAGS_flush_rocksdb_on_shutdown) {
             LOG_WITH_PREFIX(INFO) << "Flushing mem table on shutdown";
-            FlushMemTable(cfd, FlushOptions());
+            CHECK_OK(FlushMemTable(cfd, FlushOptions()));
           } else {
             RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
                 "Skipping mem table flush - flush_rocksdb_on_shutdown is unset");
@@ -743,7 +743,7 @@ DBImpl::~DBImpl() {
   versions_.reset();
   mutex_.Unlock();
   if (db_lock_ != nullptr) {
-    env_->UnlockFile(db_lock_);
+    CHECK_OK(env_->UnlockFile(db_lock_));
   }
 
   LogFlush(db_options_.info_log);
@@ -783,7 +783,7 @@ Status DBImpl::NewDB() {
     // Make "CURRENT" file that points to the new manifest file.
     s = SetCurrentFile(env_, dbname_, 1, directories_.GetDbDir(), db_options_.disableDataSync);
   } else {
-    env_->DeleteFile(manifest);
+    env_->CleanupFile(manifest);
   }
   return s;
 }
@@ -911,8 +911,7 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
       // set of all files in the directory. We'll exclude files that are still
       // alive in the subsequent processings.
       std::vector<std::string> files;
-      env_->GetChildren(db_options_.db_paths[path_id].path,
-                        &files);  // Ignore errors
+      env_->GetChildrenWarnNotOk(db_options_.db_paths[path_id].path, &files);
       for (std::string file : files) {
         uint64_t number;
         FileType type;
@@ -929,7 +928,7 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
     // Add log files in wal_dir
     if (db_options_.wal_dir != dbname_) {
       std::vector<std::string> log_files;
-      env_->GetChildren(db_options_.wal_dir, &log_files);  // Ignore errors
+      env_->GetChildrenWarnNotOk(db_options_.wal_dir, &log_files);
       for (std::string log_file : log_files) {
         job_context->full_scan_candidate_files.emplace_back(log_file, 0);
       }
@@ -938,7 +937,7 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
     if (!db_options_.db_log_dir.empty() && db_options_.db_log_dir != dbname_) {
       std::vector<std::string> info_log_files;
       // Ignore errors
-      env_->GetChildren(db_options_.db_log_dir, &info_log_files);
+      env_->GetChildrenWarnNotOk(db_options_.db_log_dir, &info_log_files);
       for (std::string log_file : info_log_files) {
         job_context->full_scan_candidate_files.emplace_back(log_file, 0);
       }
@@ -1897,9 +1896,9 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
     // Notify sst_file_manager that a new file was added
     std::string file_path = MakeTableFileName(db_options_.db_paths[0].path,
                                               file_meta.fd.GetNumber());
-    sfm->OnAddFile(file_path);
+    RETURN_NOT_OK(sfm->OnAddFile(file_path));
     if (cfd->ioptions()->table_factory->IsSplitSstForWriteSupported()) {
-      sfm->OnAddFile(TableBaseToDataFileName(file_path));
+      RETURN_NOT_OK(sfm->OnAddFile(TableBaseToDataFileName(file_path)));
     }
     if (sfm->IsMaxAllowedSpaceReached() && bg_error_.ok()) {
       bg_error_ = STATUS(IOError, "Max allowed space was reached");
@@ -2107,7 +2106,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
     if (s.ok()) {
       s = ReFitLevel(cfd, final_output_level, options.target_level);
     }
-    ContinueBackgroundWork();
+    CHECK_OK(ContinueBackgroundWork());
   }
   LogFlush(db_options_.info_log);
 
@@ -4717,7 +4716,7 @@ const Snapshot* DBImpl::GetSnapshotForWriteConflictBoundary() {
 
 const Snapshot* DBImpl::GetSnapshotImpl(bool is_write_conflict_boundary) {
   int64_t unix_time = 0;
-  env_->GetCurrentTime(&unix_time);  // Ignore error
+  WARN_NOT_OK(env_->GetCurrentTime(&unix_time), "Failed to get current time");
   SnapshotImpl* s = new SnapshotImpl;
 
   InstrumentedMutexLock l(&mutex_);
@@ -5618,7 +5617,7 @@ ColumnFamilyHandle* DBImpl::GetColumnFamilyHandleUnlocked(
 Status DBImpl::Import(const std::string& source_dir) {
   const auto seqno = versions_->LastSequence();
   FlushOptions options;
-  Flush(options);
+  RETURN_NOT_OK(Flush(options));
   VersionEdit edit;
   auto status = versions_->Import(source_dir, seqno, &edit);
   if (!status.ok()) {
@@ -5638,7 +5637,7 @@ bool DBImpl::NeedsDelay() {
 void DBImpl::TEST_SwitchMemtable() {
   std::lock_guard<InstrumentedMutex> lock(mutex_);
   WriteContext context;
-  SwitchMemtable(default_cf_handle_->cfd(), &context);
+  CHECK_OK(SwitchMemtable(default_cf_handle_->cfd(), &context));
 }
 
 void DBImpl::GetApproximateSizes(ColumnFamilyHandle* column_family,
@@ -6258,14 +6257,14 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     // db_paths[0] when the DB is opened.
     auto& db_path = impl->db_options_.db_paths[0];
     std::vector<std::string> existing_files;
-    impl->db_options_.env->GetChildren(db_path.path, &existing_files);
+    RETURN_NOT_OK(impl->db_options_.env->GetChildren(db_path.path, &existing_files));
     for (auto& file_name : existing_files) {
       uint64_t file_number;
       FileType file_type;
       std::string file_path = db_path.path + "/" + file_name;
       if (ParseFileName(file_name, &file_number, &file_type) &&
           (file_type == kTableFile || file_type == kTableSBlockFile)) {
-        sfm->OnAddFile(file_path);
+        RETURN_NOT_OK(sfm->OnAddFile(file_path));
       }
     }
   }
@@ -6326,7 +6325,7 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
   std::vector<std::string> filenames;
 
   // Ignore error in case directory does not exist
-  env->GetChildren(dbname, &filenames);
+  env->GetChildrenWarnNotOk(dbname, &filenames);
 
   FileLock* lock;
   const std::string lockname = LockFileName(dbname);
@@ -6355,7 +6354,7 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
 
     for (size_t path_id = 0; path_id < options.db_paths.size(); path_id++) {
       const auto& db_path = options.db_paths[path_id];
-      env->GetChildren(db_path.path, &filenames);
+      env->GetChildrenWarnNotOk(db_path.path, &filenames);
       for (size_t i = 0; i < filenames.size(); i++) {
         if (ParseFileName(filenames[i], &number, &type) &&
             // Lock file will be deleted at end
@@ -6373,7 +6372,7 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
     std::vector<std::string> walDirFiles;
     std::string archivedir = ArchivalDirectory(dbname);
     if (dbname != soptions.wal_dir) {
-      env->GetChildren(soptions.wal_dir, &walDirFiles);
+      env->GetChildrenWarnNotOk(soptions.wal_dir, &walDirFiles);
       archivedir = ArchivalDirectory(soptions.wal_dir);
     }
 
@@ -6388,7 +6387,7 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
     }
 
     std::vector<std::string> archiveFiles;
-    env->GetChildren(archivedir, &archiveFiles);
+    env->GetChildrenWarnNotOk(archivedir, &archiveFiles);
     // Delete archival files.
     for (size_t i = 0; i < archiveFiles.size(); ++i) {
       if (ParseFileName(archiveFiles[i], &number, &type) &&
@@ -6401,12 +6400,12 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
     }
 
     // ignore case where no archival directory is present.
-    env->DeleteDir(archivedir);
+    WARN_NOT_OK(env->DeleteDir(archivedir), "Failed to cleanup dir " + archivedir);
 
-    env->UnlockFile(lock);  // Ignore error since state is already gone
-    env->DeleteFile(lockname);
-    env->DeleteDir(dbname);  // Ignore error in case dir contains other files
-    env->DeleteDir(soptions.wal_dir);
+    WARN_NOT_OK(env->UnlockFile(lock), "Unlock file failed");
+    env->CleanupFile(lockname);
+    WARN_NOT_OK(env->DeleteDir(dbname), "Failed to cleanup dir " + dbname);
+    WARN_NOT_OK(env->DeleteDir(soptions.wal_dir), "Failed to cleanup wal dir " + soptions.wal_dir);
   }
   return result;
 }
@@ -6505,7 +6504,7 @@ Status DBImpl::RenameTempFileToOptionsFile(const std::string& file_name) {
   // Retry if the file name happen to conflict with an existing one.
   s = GetEnv()->RenameFile(file_name, options_file_name);
 
-  DeleteObsoleteOptionsFiles();
+  WARN_NOT_OK(DeleteObsoleteOptionsFiles(), "Failed to cleanup obsolete options file");
   return s;
 #else
   return Status::OK();

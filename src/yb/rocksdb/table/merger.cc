@@ -287,7 +287,7 @@ class MergingIterator : public InternalIterator {
       if (!s.ok()) {
         // We failed to pin an iterator, clean up
         for (size_t j = 0; j < i; j++) {
-          children_[j].ReleasePinnedData();
+          WARN_NOT_OK(children_[j].ReleasePinnedData(), "Failed to release pinned data");
         }
         break;
       }

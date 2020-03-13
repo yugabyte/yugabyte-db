@@ -426,7 +426,8 @@ void CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id,
       update_index_req.set_replicated_index(min_index);
       rpc::RpcController rpc;
       rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-      proxy->UpdateCdcReplicatedIndex(update_index_req, &update_index_resp, &rpc);
+      WARN_NOT_OK(proxy->UpdateCdcReplicatedIndex(update_index_req, &update_index_resp, &rpc),
+                  "UpdateCdcReplicatedIndex failed");
       // For now ignore the response.
     }
   }
@@ -675,9 +676,8 @@ void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
   // TODO(NIC): Change to GetCheckpointAsync like CDCPoller::DoPoll.
-  cdc_proxy->GetCheckpoint(*req, resp, &rpc);
-  RPC_STATUS_RETURN_ERROR(rpc.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
-                          *context);
+  auto status = cdc_proxy->GetCheckpoint(*req, resp, &rpc);
+  RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context);
   context->RespondSuccess();
 }
 
@@ -769,8 +769,8 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
     GetLatestEntryOpIdRequestPB req;
     GetLatestEntryOpIdResponsePB resp;
     req.set_tablet_id(tablet_id);
-    cdc_proxy->GetLatestEntryOpId(req, &resp, &rpc);
-    if (!rpc.status().ok()) {
+    auto status = cdc_proxy->GetLatestEntryOpId(req, &resp, &rpc);
+    if (!status.ok()) {
       // If we failed to get the latest entry op id, we try other tservers. The leader is guaranteed
       // to have the most up-to-date information, but for our purposes, it's ok to be slightly
       // behind.
@@ -782,13 +782,13 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
           continue;
         }
         auto follower_cdc_proxy = GetCDCServiceProxy(server);
-        follower_cdc_proxy->GetLatestEntryOpId(req, &resp, &rpc);
-        if (rpc.status().ok()) {
+        status = follower_cdc_proxy->GetLatestEntryOpId(req, &resp, &rpc);
+        if (status.ok()) {
           return OpId::FromPB(resp.op_id());
         }
       }
-      DCHECK(!rpc.status().ok());
-      return rpc.status();
+      DCHECK(!status.ok());
+      return status;
     }
     return OpId::FromPB(resp.op_id());
   }

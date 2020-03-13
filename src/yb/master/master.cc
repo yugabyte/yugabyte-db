@@ -403,7 +403,7 @@ Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   RemovedMasterUpdateResponsePB resp;
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms));
-  proxy.RemovedMasterUpdate(req, &resp, &controller);
+  RETURN_NOT_OK(proxy.RemovedMasterUpdate(req, &resp, &controller));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }

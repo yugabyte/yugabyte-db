@@ -20,6 +20,9 @@
 // Logger implementation that can be shared by all environments
 // where enough posix functionality is available.
 
+#ifndef YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H
+#define YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H
+
 #pragma once
 #include <list>
 #include <string>
@@ -51,10 +54,10 @@ class AutoRollLogger : public Logger {
         cached_now_access_count(0),
         call_NowMicros_every_N_records_(100),
         mutex_() {
-    env->GetAbsolutePath(dbname, &db_absolute_path_);
+    CHECK_OK(env->GetAbsolutePath(dbname, &db_absolute_path_));
     log_fname_ = InfoLogFileName(dbname_, db_absolute_path_, db_log_dir_);
     RollLogFile();
-    ResetLogger();
+    CHECK_OK(ResetLogger());
   }
 
   using Logger::Logv;
@@ -142,3 +145,5 @@ Status CreateLoggerFromOptions(const std::string& dbname,
                                std::shared_ptr<Logger>* logger);
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H

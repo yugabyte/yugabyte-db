@@ -359,7 +359,19 @@ struct StatusCategoryDescription {
   }
 };
 
-class Status {
+#ifdef __clang__
+#define NODISCARD_CLASS [[nodiscard]] // NOLINT
+#else
+#define NODISCARD_CLASS // NOLINT
+#endif
+
+#ifndef DISABLE_STATUS_NODISCARD
+#define STATUS_NODISCARD_CLASS NODISCARD_CLASS
+#else
+#define STATUS_NODISCARD_CLASS
+#endif
+
+class STATUS_NODISCARD_CLASS Status {
  public:
   // Wrapper class for OK status to forbid creation of Result from Status::OK in compile time
   class OK {

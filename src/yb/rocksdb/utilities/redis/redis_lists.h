@@ -23,13 +23,18 @@
  *
  */
 
+#ifndef YB_ROCKSDB_UTILITIES_REDIS_REDIS_LISTS_H
+#define YB_ROCKSDB_UTILITIES_REDIS_REDIS_LISTS_H
+
 #ifndef ROCKSDB_LITE
 #pragma once
 
 #include <string>
+
 #include "yb/rocksdb/db.h"
-#include "redis_list_iterator.h"
-#include "redis_list_exception.h"
+
+#include "yb/rocksdb/utilities/redis/redis_list_iterator.h"
+#include "yb/rocksdb/utilities/redis/redis_list_exception.h"
 
 namespace rocksdb {
 
@@ -108,6 +113,8 @@ class RedisLists {
   int Insert(const std::string& key, const std::string& pivot,
              const std::string& value, bool insert_after);
  private:
+  std::string Get(const std::string& key);
+
   std::string db_name_;       // The actual database name/path
   WriteOptions put_option_;
   ReadOptions get_option_;
@@ -121,3 +128,5 @@ class RedisLists {
 
 } // namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif // YB_ROCKSDB_UTILITIES_REDIS_REDIS_LISTS_H

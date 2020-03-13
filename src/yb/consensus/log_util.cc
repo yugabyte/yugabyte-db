@@ -161,7 +161,7 @@ ReadableLogSegment::ReadableLogSegment(
       readable_file_(std::move(readable_file)),
       is_initialized_(false),
       footer_was_rebuilt_(false) {
-  env_util::OpenFileForRandom(Env::Default(), path_, &readable_file_checkpoint_);
+  CHECK_OK(env_util::OpenFileForRandom(Env::Default(), path_, &readable_file_checkpoint_));
 }
 
 Status ReadableLogSegment::Init(const LogSegmentHeaderPB& header,

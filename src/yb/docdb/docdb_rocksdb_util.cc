@@ -572,7 +572,12 @@ Status RocksDBPatcher::SetHybridTimeFilter(HybridTime value) {
 }
 
 void ForceRocksDBCompact(rocksdb::DB* db) {
-  db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr);
+  auto status = db->CompactRange(
+      rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr);
+  if (!status.ok()) {
+    LOG(WARNING) << "Compact range failed: " << status;
+    return;
+  }
   while (true) {
     uint64_t compaction_pending = 0;
     uint64_t running_compactions = 0;

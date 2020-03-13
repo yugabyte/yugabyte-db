@@ -409,8 +409,8 @@ Status TableCache::Get(const ReadOptions& options,
     size_t charge =
         row_cache_key.Size() + row_cache_entry->size() + sizeof(std::string);
     void* row_ptr = new std::string(std::move(*row_cache_entry));
-    ioptions_.row_cache->Insert(row_cache_key.GetKey(), options.query_id, row_ptr, charge,
-                                &DeleteEntry<std::string>);
+    s = ioptions_.row_cache->Insert(row_cache_key.GetKey(), options.query_id, row_ptr, charge,
+                                    &DeleteEntry<std::string>);
   }
 #endif  // ROCKSDB_LITE
 

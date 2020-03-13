@@ -75,8 +75,8 @@ TEST_F(DBBloomFilterTest, KeyMayExist) {
               TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 
     ASSERT_OK(Flush(1));
-    dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1],
-        true /* disallow trivial move */);
+    ASSERT_OK(dbfull()->TEST_CompactRange(
+        0, nullptr, nullptr, handles_[1], true /* disallow trivial move */));
 
     numopen = TestGetTickerCount(options, NO_FILE_OPENS);
     cache_added = TestGetTickerCount(options, BLOCK_CACHE_ADD);
@@ -116,20 +116,20 @@ TEST_F(DBBloomFilterTest, FilterDeletes) {
     WriteBatch batch;
 
     batch.Delete(handles_[1], "a");
-    dbfull()->Write(WriteOptions(), &batch);
+    ASSERT_OK(dbfull()->Write(WriteOptions(), &batch));
     ASSERT_EQ(AllEntriesFor("a", 1), "[ ]");  // Delete skipped
     batch.Clear();
 
     batch.Put(handles_[1], "a", "b");
     batch.Delete(handles_[1], "a");
-    dbfull()->Write(WriteOptions(), &batch);
+    ASSERT_OK(dbfull()->Write(WriteOptions(), &batch));
     ASSERT_EQ(Get(1, "a"), "NOT_FOUND");
     ASSERT_EQ(AllEntriesFor("a", 1), "[ DEL, b ]");  // Delete issued
     batch.Clear();
 
     batch.Delete(handles_[1], "c");
     batch.Put(handles_[1], "c", "d");
-    dbfull()->Write(WriteOptions(), &batch);
+    ASSERT_OK(dbfull()->Write(WriteOptions(), &batch));
     ASSERT_EQ(Get(1, "c"), "d");
     ASSERT_EQ(AllEntriesFor("c", 1), "[ d ]");  // Delete skipped
     batch.Clear();
@@ -137,7 +137,7 @@ TEST_F(DBBloomFilterTest, FilterDeletes) {
     ASSERT_OK(Flush(1));  // A stray Flush
 
     batch.Delete(handles_[1], "c");
-    dbfull()->Write(WriteOptions(), &batch);
+    ASSERT_OK(dbfull()->Write(WriteOptions(), &batch));
     ASSERT_EQ(AllEntriesFor("c", 1), "[ DEL, d ]");  // Delete issued
     batch.Clear();
   } while (ChangeCompactOptions());
@@ -163,7 +163,7 @@ TEST_F(DBBloomFilterTest, GetFilterByPrefixBloom) {
   ASSERT_OK(dbfull()->Put(wo, "barbarbar2", "foo2"));
   ASSERT_OK(dbfull()->Put(wo, "foofoofoo", "bar"));
 
-  dbfull()->Flush(fo);
+  ASSERT_OK(dbfull()->Flush(fo));
 
   ASSERT_EQ("foo", Get("barbarbar"));
   ASSERT_EQ(TestGetTickerCount(options, BLOOM_FILTER_USEFUL), 0);
@@ -201,7 +201,7 @@ TEST_F(DBBloomFilterTest, WholeKeyFilterProp) {
   // ranges.
   ASSERT_OK(dbfull()->Put(wo, "aaa", ""));
   ASSERT_OK(dbfull()->Put(wo, "zzz", ""));
-  dbfull()->Flush(fo);
+  ASSERT_OK(dbfull()->Flush(fo));
 
   Reopen(options);
   ASSERT_EQ("NOT_FOUND", Get("foo"));
@@ -232,7 +232,7 @@ TEST_F(DBBloomFilterTest, WholeKeyFilterProp) {
   // ranges.
   ASSERT_OK(dbfull()->Put(wo, "aaa", ""));
   ASSERT_OK(dbfull()->Put(wo, "zzz", ""));
-  db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(CompactRangeOptions(), nullptr, nullptr));
 
   // Reopen with both of whole key off and prefix extractor enabled.
   // Still no bloom filter should be used.
@@ -255,7 +255,7 @@ TEST_F(DBBloomFilterTest, WholeKeyFilterProp) {
   // ranges.
   ASSERT_OK(dbfull()->Put(wo, "aaa", ""));
   ASSERT_OK(dbfull()->Put(wo, "zzz", ""));
-  db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(CompactRangeOptions(), nullptr, nullptr));
 
   options.prefix_extractor.reset();
   bbto.whole_key_filtering = true;
@@ -268,7 +268,7 @@ TEST_F(DBBloomFilterTest, WholeKeyFilterProp) {
   // not filtered out by key ranges.
   ASSERT_OK(dbfull()->Put(wo, "aaa", ""));
   ASSERT_OK(dbfull()->Put(wo, "zzz", ""));
-  Flush();
+  ASSERT_OK(Flush());
 
   // Now we have two files:
   // File 1: An older file with prefix bloom.
@@ -354,7 +354,7 @@ TEST_F(DBBloomFilterTest, BloomFilter) {
     for (int i = 0; i < N; i += 100) {
       ASSERT_OK(Put(1, Key(i), Key(i)));
     }
-    Flush(1);
+    ASSERT_OK(Flush(1));
 
     // Prevent auto compactions triggered by seeks
     env_->delay_sstable_sync_.store(true, std::memory_order_release);
@@ -407,7 +407,7 @@ TEST_F(DBBloomFilterTest, BloomFilterIndex) {
     for (int i = key_begin; i < key_end; i++) {
       ASSERT_OK(Put(1, Key(i), Key(i)));
     }
-    Flush(1);
+    ASSERT_OK(Flush(1));
 
     // Prevent auto compactions triggered by seeks
     env_->delay_sstable_sync_.store(true, std::memory_order_release);
@@ -442,7 +442,7 @@ TEST_F(DBBloomFilterTest, BloomFilterRate) {
     }
     // Add a large key to make the file contain wide range
     ASSERT_OK(Put(1, Key(maxKey + 55555), Key(maxKey + 55555)));
-    Flush(1);
+    ASSERT_OK(Flush(1));
 
     // Check if they can be found
     for (int i = 0; i < maxKey; i++) {
@@ -473,7 +473,7 @@ TEST_F(DBBloomFilterTest, BloomFilterCompatibility) {
     ASSERT_OK(Put(1, Key(i), Key(i)));
   }
   ASSERT_OK(Put(1, Key(maxKey + 55555), Key(maxKey + 55555)));
-  Flush(1);
+  ASSERT_OK(Flush(1));
 
   // Check db with full filter
   table_options.filter_policy.reset(NewBloomFilterPolicy(10, false));
@@ -502,7 +502,7 @@ TEST_F(DBBloomFilterTest, BloomFilterReverseCompatibility) {
     ASSERT_OK(Put(1, Key(i), Key(i)));
   }
   ASSERT_OK(Put(1, Key(maxKey + 55555), Key(maxKey + 55555)));
-  Flush(1);
+  ASSERT_OK(Flush(1));
 
   // Check db with block_based filter
   table_options.filter_policy.reset(NewBloomFilterPolicy(10, true));
@@ -575,7 +575,7 @@ TEST_F(DBBloomFilterTest, BloomFilterWrapper) {
   // Add a large key to make the file contain wide range
   ASSERT_OK(Put(1, Key(maxKey + 55555), Key(maxKey + 55555)));
   ASSERT_EQ(0U, policy->GetCounter());
-  Flush(1);
+  ASSERT_OK(Flush(1));
 
   // Check if they can be found
   for (int i = 0; i < maxKey; i++) {
@@ -745,7 +745,7 @@ TEST_P(BloomStatsTestWithParam, BloomStatsTest) {
   ASSERT_EQ(0, perf_context.bloom_sst_hit_count);
   ASSERT_EQ(0, perf_context.bloom_sst_miss_count);
 
-  Flush();
+  ASSERT_OK(Flush());
 
   // sanity checks
   ASSERT_EQ(0, perf_context.bloom_sst_hit_count);
@@ -798,7 +798,7 @@ TEST_P(BloomStatsTestWithParam, BloomStatsTestWithIter) {
   ASSERT_EQ(1, perf_context.bloom_memtable_miss_count);
   ASSERT_EQ(2, perf_context.bloom_memtable_hit_count);
 
-  Flush();
+  ASSERT_OK(Flush());
 
   iter.reset(dbfull()->NewIterator(ReadOptions()));
 
@@ -850,9 +850,9 @@ void PrefixScanInit(DBBloomFilterTest* dbtest) {
   snprintf(buf, sizeof(buf), "%02d______:end", 10);
   keystr = std::string(buf);
   ASSERT_OK(dbtest->Put(keystr, keystr));
-  dbtest->Flush();
-  dbtest->dbfull()->CompactRange(CompactRangeOptions(), nullptr,
-      nullptr);  // move to level 1
+  ASSERT_OK(dbtest->Flush());
+  ASSERT_OK(dbtest->dbfull()->CompactRange(
+      CompactRangeOptions(), nullptr, nullptr)); // move to level 1
 
   // GROUP 1
   for (int i = 1; i <= small_range_sstfiles; i++) {
@@ -862,7 +862,7 @@ void PrefixScanInit(DBBloomFilterTest* dbtest) {
     snprintf(buf, sizeof(buf), "%02d______:end", i + 1);
     keystr = std::string(buf);
     ASSERT_OK(dbtest->Put(keystr, keystr));
-    dbtest->Flush();
+    ASSERT_OK(dbtest->Flush());
   }
 
   // GROUP 2
@@ -873,7 +873,7 @@ void PrefixScanInit(DBBloomFilterTest* dbtest) {
     snprintf(buf, sizeof(buf), "%02d______:end", small_range_sstfiles + i + 1);
     keystr = std::string(buf);
     ASSERT_OK(dbtest->Put(keystr, keystr));
-    dbtest->Flush();
+    ASSERT_OK(dbtest->Flush());
   }
 }
 }  // namespace
@@ -970,21 +970,21 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   for (int key : keys) {
     ASSERT_OK(Put(1, Key(key), "val"));
     if (++num_inserted % 1000 == 0) {
-      dbfull()->TEST_WaitForFlushMemTable();
-      dbfull()->TEST_WaitForCompact();
+      ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+      ASSERT_OK(dbfull()->TEST_WaitForCompact());
     }
   }
   ASSERT_OK(Put(1, Key(0), "val"));
   ASSERT_OK(Put(1, Key(numkeys), "val"));
   ASSERT_OK(Flush(1));
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   if (NumTableFilesAtLevel(0, 1) == 0) {
     // No Level 0 file. Create one.
     ASSERT_OK(Put(1, Key(0), "val"));
     ASSERT_OK(Put(1, Key(numkeys), "val"));
     ASSERT_OK(Flush(1));
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
   }
 
   for (int i = 1; i < numkeys; i += 2) {
@@ -1084,7 +1084,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
       BottommostLevelCompaction::kSkip;
   compact_options.change_level = true;
   compact_options.target_level = 7;
-  db_->CompactRange(compact_options, handles_[1], nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(compact_options, handles_[1], nullptr, nullptr));
 
   ASSERT_EQ(trivial_move, 1);
   ASSERT_EQ(non_trivial_move, 0);

@@ -289,6 +289,9 @@ class Env {
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) = 0;
 
+  void GetChildrenWarnNotOk(const std::string& dir,
+                            std::vector<std::string>* result);
+
   // Store in *result the attributes of the children of the specified directory.
   // In case the implementation lists the directory prior to iterating the files
   // and files are concurrently deleted, the deleted files will be omitted from
@@ -300,6 +303,9 @@ class Env {
 
   // Delete the named file.
   virtual Status DeleteFile(const std::string& fname) = 0;
+
+  // Delete file, print warning on failure.
+  void CleanupFile(const std::string& fname);
 
   // Create the specified directory. Returns error if directory exists.
   virtual Status CreateDir(const std::string& dirname) = 0;
@@ -627,8 +633,9 @@ class WritableFile : public yb::FileWithUniqueId {
     if (new_last_preallocated_block > last_preallocated_block_) {
       size_t num_spanned_blocks =
         new_last_preallocated_block - last_preallocated_block_;
-      Allocate(block_size * last_preallocated_block_,
-               block_size * num_spanned_blocks);
+      WARN_NOT_OK(
+          Allocate(block_size * last_preallocated_block_, block_size * num_spanned_blocks),
+          "Failed to pre-allocate space for a file");
       last_preallocated_block_ = new_last_preallocated_block;
     }
   }
@@ -880,6 +887,9 @@ class EnvWrapper : public Env {
   }
   Status FileExists(const std::string& f) override {
     return target_->FileExists(f);
+  }
+  bool DirExists(const std::string& f) override {
+    return target_->DirExists(f);
   }
   Status GetChildren(const std::string& dir,
                      std::vector<std::string>* r) override {

@@ -132,38 +132,28 @@ void SstFileManagerImpl::OnDeleteFileImpl(const std::string& file_path) {
   tracked_files_.erase(tracked_file);
 }
 
-SstFileManager* NewSstFileManager(Env* env, std::shared_ptr<Logger> info_log,
-                                  std::string trash_dir,
-                                  int64_t rate_bytes_per_sec,
-                                  bool delete_exisitng_trash, Status* status) {
+yb::Result<SstFileManager*> NewSstFileManager(Env* env, std::shared_ptr<Logger> info_log,
+                                              std::string trash_dir,
+                                              int64_t rate_bytes_per_sec,
+                                              bool delete_exisitng_trash) {
   SstFileManagerImpl* res =
       new SstFileManagerImpl(env, info_log, trash_dir, rate_bytes_per_sec);
 
-  Status s;
   if (trash_dir != "" && rate_bytes_per_sec > 0) {
-    s = env->CreateDirIfMissing(trash_dir);
-    if (s.ok() && delete_exisitng_trash) {
+    RETURN_NOT_OK(env->CreateDirIfMissing(trash_dir));
+    if (delete_exisitng_trash) {
       std::vector<std::string> files_in_trash;
-      s = env->GetChildren(trash_dir, &files_in_trash);
-      if (s.ok()) {
-        for (const std::string& trash_file : files_in_trash) {
-          if (trash_file == "." || trash_file == "..") {
-            continue;
-          }
-
-          std::string path_in_trash = trash_dir + "/" + trash_file;
-          res->OnAddFile(path_in_trash);
-          Status file_delete = res->ScheduleFileDeletion(path_in_trash);
-          if (s.ok() && !file_delete.ok()) {
-            s = file_delete;
-          }
+      RETURN_NOT_OK(env->GetChildren(trash_dir, &files_in_trash));
+      for (const std::string& trash_file : files_in_trash) {
+        if (trash_file == "." || trash_file == "..") {
+          continue;
         }
+
+        std::string path_in_trash = trash_dir + "/" + trash_file;
+        RETURN_NOT_OK(res->OnAddFile(path_in_trash));
+        RETURN_NOT_OK(res->ScheduleFileDeletion(path_in_trash));
       }
     }
-  }
-
-  if (status) {
-    *status = s;
   }
 
   return res;

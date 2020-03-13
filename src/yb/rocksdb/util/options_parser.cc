@@ -61,52 +61,54 @@ Status PersistRocksDBOptions(const DBOptions& db_opt,
   }
   std::string options_file_content;
 
-  writable->Append(option_file_header + "[" +
-                   opt_section_titles[kOptionSectionVersion] +
-                   "]\n"
-                   "  yugabyte_version=" + yb::VersionInfo::GetShortVersionString() + "\n");
-  writable->Append("  options_file_version=" +
-                   ToString(ROCKSDB_OPTION_FILE_MAJOR) + "." +
-                   ToString(ROCKSDB_OPTION_FILE_MINOR) + "\n");
-  writable->Append("\n[" + opt_section_titles[kOptionSectionDBOptions] +
-                   "]\n  ");
+  RETURN_NOT_OK(writable->Append(
+      option_file_header + "[" +
+      opt_section_titles[kOptionSectionVersion] +
+      "]\n"
+      "  yugabyte_version=" + yb::VersionInfo::GetShortVersionString() + "\n"));
+  RETURN_NOT_OK(writable->Append("  options_file_version=" +
+                                 ToString(ROCKSDB_OPTION_FILE_MAJOR) + "." +
+                                 ToString(ROCKSDB_OPTION_FILE_MINOR) + "\n"));
+  RETURN_NOT_OK(writable->Append("\n[" + opt_section_titles[kOptionSectionDBOptions] +
+                   "]\n  "));
 
   s = GetStringFromDBOptions(&options_file_content, db_opt, "\n  ");
   if (!s.ok()) {
-    writable->Close();
+    WARN_NOT_OK(writable->Close(), "Failed to close writable");
     return s;
   }
-  writable->Append(options_file_content + "\n");
+  RETURN_NOT_OK(writable->Append(options_file_content + "\n"));
 
   for (size_t i = 0; i < cf_opts.size(); ++i) {
     // CFOptions section
-    writable->Append("\n[" + opt_section_titles[kOptionSectionCFOptions] +
-                     " \"" + EscapeOptionString(cf_names[i]) + "\"]\n  ");
+    RETURN_NOT_OK(writable->Append("\n[" + opt_section_titles[kOptionSectionCFOptions] +
+                     " \"" + EscapeOptionString(cf_names[i]) + "\"]\n  "));
     s = GetStringFromColumnFamilyOptions(&options_file_content, cf_opts[i],
                                          "\n  ");
     if (!s.ok()) {
-      writable->Close();
+      WARN_NOT_OK(writable->Close(), "Failed to close writable");
       return s;
     }
-    writable->Append(options_file_content + "\n");
+    RETURN_NOT_OK(writable->Append(options_file_content + "\n"));
     // TableOptions section
     auto* tf = cf_opts[i].table_factory.get();
     if (tf != nullptr) {
-      writable->Append("[" + opt_section_titles[kOptionSectionTableOptions] +
-                       tf->Name() + " \"" + EscapeOptionString(cf_names[i]) +
-                       "\"]\n  ");
+      RETURN_NOT_OK(writable->Append(
+          "[" + opt_section_titles[kOptionSectionTableOptions] +
+          tf->Name() + " \"" + EscapeOptionString(cf_names[i]) +
+          "\"]\n  "));
       s = GetStringFromTableFactory(&options_file_content, tf, "\n  ");
       if (!s.ok()) {
         return s;
       }
-      writable->Append(options_file_content + "\n");
+      RETURN_NOT_OK(writable->Append(options_file_content + "\n"));
     }
   }
-  writable->Flush();
+  RETURN_NOT_OK(writable->Flush());
   if (!db_opt.disableDataSync) {
-    writable->Fsync();
+    RETURN_NOT_OK(writable->Fsync());
   }
-  writable->Close();
+  RETURN_NOT_OK(writable->Close());
 
   return RocksDBOptionsParser::VerifyRocksDBOptionsFromFile(
       db_opt, cf_names, cf_opts, file_name, env);

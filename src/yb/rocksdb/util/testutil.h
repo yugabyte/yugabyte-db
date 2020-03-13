@@ -475,9 +475,9 @@ class StringEnv : public EnvWrapper {
     if (!s.ok()) {
       return s;
     }
-    r->Append(content);
-    r->Flush();
-    r->Close();
+    RETURN_NOT_OK(r->Append(content));
+    RETURN_NOT_OK(r->Flush());
+    RETURN_NOT_OK(r->Close());
     assert(files_[file_name] == content);
     return Status::OK();
   }

@@ -195,7 +195,7 @@ class LogTest : public ::testing::TestWithParam<int> {
   }
 
   void Write(const std::string& msg) {
-    writer_.AddRecord(Slice(msg));
+    ASSERT_OK(writer_.AddRecord(Slice(msg)));
   }
 
   size_t WrittenBytes() const {

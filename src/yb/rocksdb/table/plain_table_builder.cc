@@ -161,8 +161,7 @@ void PlainTableBuilder::Add(const Slice& key, const Slice& value) {
   assert(offset_ <= std::numeric_limits<uint32_t>::max());
   auto prev_offset = static_cast<uint32_t>(offset_);
   // Write out the key
-  encoder_.AppendKey(key, file_, &offset_, meta_bytes_buf,
-                     &meta_bytes_buf_size);
+  CHECK_OK(encoder_.AppendKey(key, file_, &offset_, meta_bytes_buf, &meta_bytes_buf_size));
   if (SaveIndexInFile()) {
     index_builder_->AddKeyPrefix(GetPrefix(internal_key), prev_offset);
   }
@@ -173,10 +172,10 @@ void PlainTableBuilder::Add(const Slice& key, const Slice& value) {
       EncodeVarint32(meta_bytes_buf + meta_bytes_buf_size, value_size);
   assert(end_ptr <= meta_bytes_buf + sizeof(meta_bytes_buf));
   meta_bytes_buf_size = end_ptr - meta_bytes_buf;
-  file_->Append(Slice(meta_bytes_buf, meta_bytes_buf_size));
+  CHECK_OK(file_->Append(Slice(meta_bytes_buf, meta_bytes_buf_size)));
 
   // Write value
-  file_->Append(value);
+  CHECK_OK(file_->Append(value));
   offset_ += value_size + meta_bytes_buf_size;
 
   properties_.num_entries++;

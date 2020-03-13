@@ -110,7 +110,7 @@ class DBIter: public Iterator {
     assert(iter_ == nullptr);
     iter_ = iter;
     if (iter_ && iter_pinned_) {
-      iter_->PinData();
+      CHECK_OK(iter_->PinData());
     }
   }
   bool Valid() const override { return valid_; }
@@ -860,7 +860,7 @@ Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,
                  false, max_sequential_skip_in_iterations, version_number,
                  iterate_upper_bound, prefix_same_as_start);
   if (pin_data) {
-    db_iter->PinData();
+    CHECK_OK(db_iter->PinData());
   }
   return db_iter;
 }
@@ -913,7 +913,7 @@ ArenaWrappedDBIter* NewArenaWrappedDbIterator(
 
   iter->SetDBIter(db_iter);
   if (pin_data) {
-    iter->PinData();
+    CHECK_OK(iter->PinData());
   }
 
   return iter;
