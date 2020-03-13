@@ -117,7 +117,19 @@ AtomicInt<int32_t> mem_tracker_id_counter(-1);
 
 std::string kServerMemTrackerName = "server";
 
-std::vector<MemTrackerPtr> common_mem_trackers;
+struct CommonMemTrackers {
+  std::vector<MemTrackerPtr> trackers;
+
+  ~CommonMemTrackers() {
+#if defined(TCMALLOC_ENABLED)
+    // Prevent root mem tracker from accessing common mem trackers.
+    auto root = MemTracker::GetRootTracker();
+    root->SetPollChildrenConsumptionFunctors(nullptr);
+#endif
+  }
+};
+
+std::unique_ptr<CommonMemTrackers> common_mem_trackers;
 
 } // anonymous namespace
 
@@ -132,7 +144,7 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
 
 #if defined(TCMALLOC_ENABLED)
 void RegisterTCMallocTracker(const char* name, const char* prop) {
-  common_mem_trackers.push_back(MemTracker::CreateTracker(
+  common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
       -1, "TCMalloc "s + name, std::bind(&MemTracker::GetTCMallocProperty, prop)));
 }
 #endif
@@ -155,6 +167,8 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   // When mem tracker for first server is created we register mem trackers that report tc malloc
   // status.
   if (mem_tracker_->id() == kServerMemTrackerName) {
+    common_mem_trackers = std::make_unique<CommonMemTrackers>();
+
     RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free_bytes");
     RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
     RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
@@ -162,7 +176,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
 
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors([]() {
-          for (auto& tracker : common_mem_trackers) {
+          for (auto& tracker : common_mem_trackers->trackers) {
             tracker->UpdateConsumption();
           }
         });
