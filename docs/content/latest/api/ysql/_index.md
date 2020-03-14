@@ -1,7 +1,8 @@
 ---
 title: YSQL
 linkTitle: YSQL
-description: Yugabyte Structured Query Language (YSQL)
+headerTitle: Yugabyte Structured Query Language (YSQL)
+description: The Yugabyte Structured Query Language (YSQL) is the distributed SQL API for YugabyteDB and is compatible with the SQL dialect of PostgreSQL.
 summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 menu:

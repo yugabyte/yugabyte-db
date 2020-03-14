@@ -1,7 +1,7 @@
 ---
 title: Date & Time Types
 summary: DATE, TIME and TIMESTAMP
-description: Date & Time Types
+description: Datetime data types are used to specify data of date and time at a timezone.
 menu:
   latest:
     parent: api-cassandra

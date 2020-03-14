@@ -2,7 +2,8 @@
 title: jsonb_extract_path_text()
 linkTitle: jsonb_extract_path_text() 
 summary: jsonb_extract_path_text() and json_extract_path_text()
-description: jsonb_extract_path_text()  and json_extract_path_text()
+headerTitle: jsonb_extract_path_text()  and json_extract_path_text()
+description: The result jsonb_extract_path_text() bears the same relationship to the result of its jsonb_extract_path() as does the \#>> operator to taht of the \#> operator.
 menu:
   latest:
     identifier: jsonb-extract-path-text

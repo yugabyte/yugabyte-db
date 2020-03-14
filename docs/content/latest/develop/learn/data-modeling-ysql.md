@@ -1,7 +1,8 @@
 ---
 title: 2. Data modeling
 linkTitle: 2. Data modeling
-description: Data modeling
+headerTitle: Data modeling
+description: Data modeling in YSQL is a process that involves identifying the entities (items to be stored) and the relationships between entities.
 menu:
   latest:
     identifier: data-modeling-2-ysql

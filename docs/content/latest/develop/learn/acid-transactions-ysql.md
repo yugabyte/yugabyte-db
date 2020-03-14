@@ -1,7 +1,8 @@
 ---
 title: 4. ACID transactions
 linkTitle: 4. ACID transactions
-description: ACID transactions
+headerTitle: ACID transactions
+description: ACID transaction is a sequence of operations performed as a single logical unit of work. Learn how ACID transactions work in YSQL.
 aliases:
   - /latest/explore/transactional/acid-transactions/
   - /latest/develop/learn/acid-transactions/

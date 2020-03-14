@@ -2,6 +2,7 @@
 title: jsonb_object()
 linkTitle: jsonb_object() 
 summary: jsonb_object()  and json_object()
+headerTitle: jsonb_object() and json_object()
 description: jsonb_object() and json_object()
 menu:
   latest:

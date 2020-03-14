@@ -1,7 +1,7 @@
 ---
 title: CREATE POLICY
 linkTitle: CREATE POLICY
-description: CREATE POLICY
+description: Use the CREATE POLICY statement to create a new row level security policy for a table to select, insert, update, or delete rows that match the relevant policy expression.
 summary: Create row level security policy
 menu:
   latest:

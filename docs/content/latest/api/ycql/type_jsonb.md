@@ -1,7 +1,7 @@
 ---
 title: JSONB
 summary: JSONB types
-description: JSONB
+description: JSONB data type is used to efficiently model json data. This data type makes it easy to model json data which does not have a set schema and might change often.
 menu:
   latest:
     parent: api-cassandra

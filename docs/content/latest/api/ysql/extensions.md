@@ -1,7 +1,8 @@
 ---
 title: Extensions
 linkTitle: Extensions
-description: Install and use Extensions
+headerTitle: Install and use Extensions
+description: This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL.
 summary: Reference for YSQL Extensions
 menu:
   latest:

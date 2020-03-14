@@ -1,7 +1,7 @@
 ---
 title: CREATE GROUP
 linkTitle: CREATE GROUP
-description: CREATE GROUP
+description: Use the CREATE GROUP statement to create a group role. CREATE GROUP is an alias for CREATE ROLE and is used to create a group role.
 summary: Groups and roles
 menu:
   latest:

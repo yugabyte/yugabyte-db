@@ -2,7 +2,8 @@
 title: Existence of keys
 linkTitle: '?, ?|, and ? (key existence)'
 summary: Existence of keys
-description: '?, ?|, and ? (key existence)'
+headerTitle: '?, ?|, and ? (key existence)'
+description: The ?, ?|, and ? (key existence) operators require that inputs are presented as jsonb value. They don't have overloads for json.
 menu:
   latest:
     identifier: key-existence-operators

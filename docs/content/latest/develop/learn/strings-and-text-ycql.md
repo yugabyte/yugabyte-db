@@ -1,6 +1,7 @@
 ---
 title: 8. Strings and text
 linkTitle: 8. Strings and text
+headerTitle: String and text data types
 description: String and text data types
 menu:
   latest:

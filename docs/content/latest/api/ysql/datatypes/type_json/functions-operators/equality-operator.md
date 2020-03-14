@@ -2,7 +2,8 @@
 title: Equality
 linkTitle: '= (equality)'
 summary: Equality - the `=` operator
-description: = (equality)
+headerTitle: = (equality)
+description: The = operator checks for equality and requires that the inputs are presented as jsonb values.
 menu:
   latest:
     identifier: equality-operator
