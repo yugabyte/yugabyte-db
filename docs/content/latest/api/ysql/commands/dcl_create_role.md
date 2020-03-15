@@ -1,7 +1,7 @@
 ---
 title: CREATE ROLE
 linkTitle: CREATE ROLE
-description: CREATE ROLE
+description: CREATE ROLE adds a new role to a YugabyteDB database cluster. A role is an entity that can own database objects and have database privileges.
 summary: Roles (users and groups)
 menu:
   latest:

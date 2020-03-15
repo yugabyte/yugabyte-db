@@ -1,7 +1,7 @@
 ---
 title: ALTER ROLE
 linkTitle: ALTER ROLE
-description: ALTER ROLE
+description: ALTER ROLE changes the attributes of a role (user or group). Superusers can change the attributes of any role.
 summary: Roles (users and groups)
 menu:
   latest:

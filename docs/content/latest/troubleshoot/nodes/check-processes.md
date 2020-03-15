@@ -1,7 +1,8 @@
 ---
 title: Check processes
 linkTitle: Check processes
-description: Check YugabyteDB processes
+headerTitle: Check YugabyteDB processes
+description: How to check if your YugabyteDB processes are running
 aliases:
   - /troubleshoot/nodes/check-processes/
 menu:

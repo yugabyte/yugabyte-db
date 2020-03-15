@@ -1,7 +1,8 @@
 ---
 title: Non-integer
 summary: FLOAT, DOUBLE, and DECIMAL
-description: Non-integer numbers
+headerTitle: Non-integer numbers
+description: Floating-point and fixed-point numbers are used to specify non-integer numbers. Different floating point data types represent different precision numbers.
 menu:
   latest:
     parent: api-cassandra

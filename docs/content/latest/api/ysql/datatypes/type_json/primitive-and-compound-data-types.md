@@ -2,7 +2,8 @@
 title: Primitive and compound data types
 linkTitle: Primitive and compound data types
 summary: Primitive and compound data types
-description: Primitive and compound JSON data types
+headerTitle: Primitive and compound JSON data types
+description: JSON can represent (sub)values of four primitive data types and of two compound data types. The primitive data types are string, number, boolean, and null.
 menu:
   latest:
     identifier: primitive-and-compound-data-types

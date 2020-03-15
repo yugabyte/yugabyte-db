@@ -2,7 +2,8 @@
 title: jsonb_each_text()
 linkTitle: jsonb_each_text()
 summary: jsonb_each_text() and json_each_text()
-description: jsonb_each_text() and json_each_text()
+headerTitle: jsonb_each_text() and json_each_text()
+description: The result of jsonb_each_text() bears the same relationship to the result of jsonb_each() as does the result of the ->> operator to that of the -> operator
 menu:
   latest:
     identifier: jsonb-each-text

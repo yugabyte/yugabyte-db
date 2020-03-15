@@ -2,7 +2,8 @@
 title: JSON subvalue operators
 linkTitle: '->, ->>, #>, and #>> (JSON subvalues)'
 summary: JSON subvalue operators
-description: '->, ->>, #>, and #>> (JSON subvalues)'
+headerTitle: '->, ->>, #>, and #>> (JSON subvalues)'
+description: An arbitrarily deeply located JSON subvalue is identified by its path from the topmost JSON value.
 menu:
   latest:
     identifier: json-subvalue-operators

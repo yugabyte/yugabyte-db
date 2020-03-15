@@ -1,7 +1,8 @@
 ---
 title: Isolation Levels
 linkTitle: Isolation Levels
-description: Transaction isolation Levels
+headerTitle: Transaction isolation Levels
+description: YugabyteDB supports two isolation levels. Snapshot isolation and Serializable isolation
 aliases:
   - /architecture/transactions/isolation-levels/
 menu:

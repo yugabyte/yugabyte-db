@@ -1,7 +1,8 @@
 ---
 title: Concatenation
 linkTitle: '|| (concatenation)'
-description:  '|| (concatenation)'
+headerTitle:  '|| (concatenation)'
+description:  'The concatenation operator takes two values. If both sides of the operator are primitive JSON values, then the result is an array of these values'
 menu:
   latest:
     identifier: concatentation-operator

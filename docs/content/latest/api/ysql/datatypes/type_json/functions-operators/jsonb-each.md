@@ -2,7 +2,8 @@
 title: jsonb_each()
 linkTitle: jsonb_each()
 summary: jsonb_each() and json_each()
-description: jsonb_each()  and json_each()
+headerTitle: jsonb_each() and json_each()
+description: The functions in this pair require that the supplied JSON value is an object. They return a row set with columns "key" and "value"
 menu:
   latest:
     identifier: jsonb-each
