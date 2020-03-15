@@ -40,7 +40,10 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/server/metadata.h"
+
+#include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 

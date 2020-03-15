@@ -64,7 +64,7 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
   TabletSnapshotOpRequestPB req;
   TabletSnapshotOpResponsePB resp;
 
-  req.set_operation(TabletSnapshotOpRequestPB::CREATE);
+  req.set_operation(TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
   req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
   req.set_snapshot_id(snapshot_id);
 
@@ -77,7 +77,7 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
     ASSERT_NOK(StatusFromPB(resp.error().status()));
   }
 
-  req.set_tablet_id(kTabletId);
+  req.add_tablet_id(kTabletId);
 
   ASSERT_TRUE(fs->Exists(rocksdb_dir));
   ASSERT_TRUE(fs->Exists(top_snapshots_dir));
@@ -128,10 +128,10 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
   TabletSnapshotOpResponsePB resp;
 
   // Send the create snapshot request.
-  req.set_operation(TabletSnapshotOpRequestPB::CREATE);
+  req.set_operation(TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
   req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
   req.set_snapshot_id(snapshot_id);
-  req.set_tablet_id(kTabletId);
+  req.add_tablet_id(kTabletId);
   {
     RpcController rpc;
     SCOPED_TRACE(req.DebugString());

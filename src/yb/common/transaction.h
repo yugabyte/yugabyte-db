@@ -32,6 +32,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uuid.h"
 
 namespace rocksdb {
@@ -42,11 +43,8 @@ class DB;
 
 namespace yb {
 
-using TransactionId = boost::uuids::uuid;
-typedef boost::hash<TransactionId> TransactionIdHash;
+YB_STRONGLY_TYPED_UUID(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
-
-inline TransactionId GenerateTransactionId() { return Uuid::Generate(); }
 
 // Decodes transaction id from its binary representation.
 // Checks that slice contains only TransactionId.
@@ -215,7 +213,7 @@ inline std::ostream& operator<<(std::ostream& out, const TransactionOperationCon
 }
 
 struct TransactionMetadata {
-  TransactionId transaction_id = boost::uuids::nil_uuid();
+  TransactionId transaction_id = TransactionId::Nil();
   IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
   TabletId status_tablet;
 

@@ -68,6 +68,7 @@ class CountDownLatch {
   // Waits for the count on the latch to reach zero, or until 'until' time is reached.
   // Returns true if the count became zero, false otherwise.
   bool WaitUntil(MonoTime when) const;
+  bool WaitUntil(CoarseTimePoint when) const;
 
   // Waits for the count on the latch to reach zero, or until 'delta' time elapses.
   // Returns true if the count became zero, false otherwise.

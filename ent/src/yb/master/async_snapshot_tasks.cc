@@ -88,7 +88,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
   if (state() == MonitoredTaskState::kComplete) {
     bool handled = false;
     switch (operation_) {
-      case tserver::TabletSnapshotOpRequestPB::CREATE: {
+      case tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET: {
         handled = true;
         // TODO: this class should not know CatalogManager API,
         //       remove circular dependency between classes.
@@ -112,6 +112,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
             snapshot_id_, tablet_.get(), resp_.has_error());
         break;
       }
+      case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
       case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
     }
 
@@ -126,9 +127,12 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
 bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   tserver::TabletSnapshotOpRequestPB req;
   req.set_dest_uuid(permanent_uuid());
-  req.set_tablet_id(tablet_->tablet_id());
+  req.add_tablet_id(tablet_->tablet_id());
   req.set_snapshot_id(snapshot_id_);
   req.set_operation(operation_);
+  if (snapshot_hybrid_time_) {
+    req.set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
+  }
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 
   ts_backup_proxy_->TabletSnapshotOpAsync(req, &resp_, &rpc_, BindRpcCallback());

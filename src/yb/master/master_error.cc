@@ -9,16 +9,17 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+//
 
-#ifndef ENT_SRC_YB_COMMON_ENTITY_IDS_H
-#define ENT_SRC_YB_COMMON_ENTITY_IDS_H
-
-#include "../../../../src/yb/common/entity_ids.h"
+#include "yb/master/master_error.h"
 
 namespace yb {
+namespace master {
 
-using SnapshotId = std::string;
+static const std::string kMasterErrorCategoryName = "master error";
 
-}  // namespace yb
+static StatusCategoryRegisterer master_error_category_registerer(
+    StatusCategoryDescription::Make<MasterErrorTag>(&kMasterErrorCategoryName));
 
-#endif // ENT_SRC_YB_COMMON_ENTITY_IDS_H
+} // namespace master
+} // namespace yb

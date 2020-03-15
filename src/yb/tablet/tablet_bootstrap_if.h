@@ -113,23 +113,10 @@ class TabletStatusListener {
 };
 
 struct BootstrapTabletData {
-  RaftGroupMetadataPtr meta;
-  std::shared_future<client::YBClient*> client_future;
-  scoped_refptr<server::Clock> clock;
-  std::shared_ptr<MemTracker> mem_tracker;
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker;
-  MetricRegistry* metric_registry = nullptr;
+  TabletInitData tablet_init_data;
   TabletStatusListener* listener = nullptr;
-  scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
-  TabletOptions tablet_options;
-  std::string log_prefix_suffix;
-  TransactionParticipantContext* transaction_participant_context = nullptr;
-  client::LocalTabletFilter local_tablet_filter;
-  TransactionCoordinatorContext* transaction_coordinator_context = nullptr;
   ThreadPool* append_pool = nullptr;
   consensus::RetryableRequests* retryable_requests = nullptr;
-  TransactionsEnabled txns_enabled = TransactionsEnabled::kTrue;
-  IsSysCatalogTablet is_sys_catalog = IsSysCatalogTablet::kFalse;
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet

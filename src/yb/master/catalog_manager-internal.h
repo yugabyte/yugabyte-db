@@ -35,6 +35,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/basictypes.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_error.h"
 #include "yb/rpc/rpc_context.h"
 
 namespace yb {
@@ -50,6 +51,15 @@ inline CHECKED_STATUS SetupError(MasterErrorPB* error,
                                  const Status& s) {
   StatusToPB(s, error->mutable_status());
   error->set_code(code);
+  return s;
+}
+
+inline CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s) {
+  StatusToPB(s, error->mutable_status());
+  MasterError master_error(s);
+  if (master_error.value() != MasterErrorPB::Code()) {
+    error->set_code(master_error.value());
+  }
   return s;
 }
 

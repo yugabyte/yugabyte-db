@@ -257,9 +257,6 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
 
-typedef scoped_refptr<TabletInfo> TabletInfoPtr;
-typedef std::vector<TabletInfoPtr> TabletInfos;
-
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
@@ -672,6 +669,13 @@ typedef std::unordered_map<UDTypeId, scoped_refptr<UDTypeInfo>> UDTypeInfoMap;
 typedef std::pair<NamespaceId, UDTypeName> UDTypeNameKey;
 typedef std::unordered_map<
     UDTypeNameKey, scoped_refptr<UDTypeInfo>, boost::hash<UDTypeNameKey>> UDTypeInfoByNameMap;
+
+template <class Info>
+void FillInfoEntry(const Info& info, SysRowEntry* entry) {
+  entry->set_id(info.id());
+  entry->set_type(info.metadata().state().type());
+  entry->set_data(info.metadata().state().pb.SerializeAsString());
+}
 
 }  // namespace master
 }  // namespace yb

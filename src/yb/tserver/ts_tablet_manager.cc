@@ -1101,25 +1101,28 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       return;
     }
 
+    tablet::TabletInitData tablet_init_data = {
+      .metadata = meta,
+      .client_future = async_client_init_->get_client_future(),
+      .clock = scoped_refptr<server::Clock>(server_->clock()),
+      .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+      .block_based_table_mem_tracker = block_based_table_mem_tracker_,
+      .metric_registry = metric_registry_,
+      .log_anchor_registry = tablet_peer->log_anchor_registry(),
+      .tablet_options = tablet_options_,
+      .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
+      .transaction_participant_context = tablet_peer.get(),
+      .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
+      .transaction_coordinator_context = tablet_peer.get(),
+      .txns_enabled = tablet::TransactionsEnabled::kTrue,
+      // We are assuming we're never dealing with the system catalog tablet in TSTabletManager.
+      .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse
+    };
     tablet::BootstrapTabletData data = {
-        .meta = meta,
-        .client_future = async_client_init_->get_client_future(),
-        .clock = scoped_refptr<server::Clock>(server_->clock()),
-        .mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
-        .block_based_table_mem_tracker = block_based_table_mem_tracker_,
-        .metric_registry = metric_registry_,
-        .listener = tablet_peer->status_listener(),
-        .log_anchor_registry = tablet_peer->log_anchor_registry(),
-        .tablet_options = tablet_options_,
-        .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
-        .transaction_participant_context = tablet_peer.get(),
-        .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
-        .transaction_coordinator_context = tablet_peer.get(),
-        .append_pool = append_pool(),
-        .retryable_requests = &retryable_requests,
-        .txns_enabled = tablet::TransactionsEnabled::kTrue,
-        // We are assuming we're never dealing with the system catalog tablet in TSTabletManager.
-        .is_sys_catalog = tablet::IsSysCatalogTablet::kFalse
+      .tablet_init_data = tablet_init_data,
+      .listener = tablet_peer->status_listener(),
+      .append_pool = append_pool(),
+      .retryable_requests = &retryable_requests,
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {

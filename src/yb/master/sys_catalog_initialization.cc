@@ -125,7 +125,7 @@ Status RestoreInitialSysCatalogSnapshot(
     int64_t term) {
   TabletSnapshotOpRequestPB tablet_snapshot_req;
   tablet_snapshot_req.set_operation(yb::tserver::TabletSnapshotOpRequestPB::RESTORE);
-  tablet_snapshot_req.set_tablet_id(kSysCatalogTabletId);
+  tablet_snapshot_req.add_tablet_id(kSysCatalogTabletId);
   tablet_snapshot_req.set_snapshot_dir_override(
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotRocksDbSubDir));
 

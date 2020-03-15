@@ -134,7 +134,7 @@ void RunningTransaction::Abort(client::YBClient* client,
   }
   tserver::AbortTransactionRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
-  req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+  req.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
   req.set_propagated_hybrid_time(context_.participant_context_.Now().ToUint64());
   context_.rpcs_.RegisterAndStart(
       client::AbortTransaction(
@@ -186,7 +186,7 @@ void RunningTransaction::SendStatusRequest(
   tserver::GetTransactionStatusRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
   req.add_transaction_id()->assign(
-      pointer_cast<const char*>(metadata_.transaction_id.data), metadata_.transaction_id.size());
+      pointer_cast<const char*>(metadata_.transaction_id.data()), metadata_.transaction_id.size());
   req.set_propagated_hybrid_time(context_.participant_context_.Now().ToUint64());
   context_.rpcs_.RegisterAndStart(
       client::GetTransactionStatus(

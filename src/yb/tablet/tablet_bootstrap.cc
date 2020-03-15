@@ -309,13 +309,9 @@ bool ReplayState::CanApply(LogEntryPB* entry) {
 // ============================================================================
 TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
     : data_(data),
-      meta_(data.meta),
-      mem_tracker_(data.mem_tracker),
-      block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
-      metric_registry_(data.metric_registry),
+      meta_(data.tablet_init_data.metadata),
+      mem_tracker_(data.tablet_init_data.parent_mem_tracker),
       listener_(data.listener),
-      log_anchor_registry_(data.log_anchor_registry),
-      tablet_options_(data.tablet_options),
       append_pool_(data.append_pool),
       skip_wal_rewrite_(FLAGS_skip_wal_rewrite) {
 }
@@ -423,11 +419,7 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
 Result<bool> TabletBootstrap::OpenTablet() {
   CleanupSnapshots();
 
-  auto tablet = std::make_shared<Tablet>(
-      meta_, data_.client_future, data_.clock, mem_tracker_, block_based_table_mem_tracker_,
-      metric_registry_, log_anchor_registry_, tablet_options_, data_.log_prefix_suffix,
-      data_.transaction_participant_context, data_.local_tablet_filter,
-      data_.transaction_coordinator_context, data_.is_sys_catalog, data_.txns_enabled);
+  auto tablet = std::make_shared<Tablet>(data_.tablet_init_data);
   // Doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());
@@ -1136,7 +1128,7 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(
 }
 
 void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
-  data_.clock->Update(HybridTime(hybrid_time));
+  data_.tablet_init_data.clock->Update(HybridTime(hybrid_time));
 }
 
 string TabletBootstrap::LogPrefix() const {
@@ -1144,8 +1136,8 @@ string TabletBootstrap::LogPrefix() const {
 }
 
 Env* TabletBootstrap::GetEnv() {
-  if (tablet_options_.env) {
-    return tablet_options_.env;
+  if (data_.tablet_init_data.tablet_options.env) {
+    return data_.tablet_init_data.tablet_options.env;
   }
   return meta_->fs_manager()->env();
 }

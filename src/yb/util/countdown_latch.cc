@@ -55,6 +55,10 @@ void CountDownLatch::Wait() const {
   }
 }
 
+bool CountDownLatch::WaitUntil(CoarseTimePoint when) const {
+  return WaitUntil(ToSteady(when));
+}
+
 bool CountDownLatch::WaitUntil(MonoTime deadline) const {
   if (count_.load(std::memory_order_acquire) == 0) {
     return true;

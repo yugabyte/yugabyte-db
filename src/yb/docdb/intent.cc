@@ -141,7 +141,7 @@ CHECKED_STATUS DecodeIntentValue(
   RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kTransactionId));
   INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
       "wrong transaction id");
-  intent_value.remove_prefix(TransactionId::static_size());
+  intent_value.remove_prefix(TransactionId::StaticSize());
 
   RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
   INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
