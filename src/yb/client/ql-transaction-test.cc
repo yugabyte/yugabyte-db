@@ -1221,7 +1221,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
       tserver::GetTransactionStatusRequestPB req;
       req.set_tablet_id(state.metadata.status_tablet);
       req.add_transaction_id()->assign(
-          pointer_cast<const char*>(state.metadata.transaction_id.data),
+          pointer_cast<const char*>(state.metadata.transaction_id.data()),
           state.metadata.transaction_id.size());
       state.status_future = rpc::WrapRpcFuture<tserver::GetTransactionStatusResponsePB>(
           GetTransactionStatus, &rpcs)(

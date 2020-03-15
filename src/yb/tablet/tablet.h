@@ -186,21 +186,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
   // within the provided registry. Otherwise, no metrics are collected.
-  Tablet(
-      const RaftGroupMetadataPtr& metadata,
-      const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<server::Clock>& clock,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      std::shared_ptr<MemTracker> block_based_table_mem_tracker,
-      MetricRegistry* metric_registry,
-      const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
-      const TabletOptions& tablet_options,
-      std::string log_prefix_suffix,
-      TransactionParticipantContext* transaction_participant_context,
-      client::LocalTabletFilter local_tablet_filter,
-      TransactionCoordinatorContext* transaction_coordinator_context,
-      IsSysCatalogTablet is_sys_catalog,
-      TransactionsEnabled txns_enabled = TransactionsEnabled::kTrue);
+  explicit Tablet(const TabletInitData& data);
 
   ~Tablet();
 
@@ -569,6 +555,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return *snapshots_;
   }
 
+  SnapshotCoordinator* snapshot_coordinator() {
+    return snapshot_coordinator_;
+  }
+
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
   void AddAdditionalMetadata(const std::string& key, std::shared_ptr<void> additional_metadata) {
     std::lock_guard<std::mutex> lock(control_path_mutex_);
@@ -580,6 +570,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     auto val = additional_metadata_.find(key);
     return (val != additional_metadata_.end()) ? val->second : nullptr;
   }
+
+  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
 
  private:
   friend class Iterator;
@@ -792,6 +784,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 
   std::unique_ptr<TabletSnapshots> snapshots_;
+
+  SnapshotCoordinator* snapshot_coordinator_ = nullptr;
 
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_

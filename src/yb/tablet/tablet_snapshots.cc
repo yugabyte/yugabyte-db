@@ -15,6 +15,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/common/snapshot.h"
+
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
@@ -60,7 +62,7 @@ Status TabletSnapshots::Bootstrap(SnapshotOperationState* tx_state) {
 Status TabletSnapshots::Apply(SnapshotOperationState* tx_state) {
   // Apply the snapshot operation to the tablet.
   switch (tx_state->request()->operation()) {
-    case tserver::TabletSnapshotOpRequestPB::CREATE: {
+    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET: {
       return Create(tx_state);
     }
     case tserver::TabletSnapshotOpRequestPB::RESTORE: {
@@ -69,6 +71,7 @@ Status TabletSnapshots::Apply(SnapshotOperationState* tx_state) {
     case tserver::TabletSnapshotOpRequestPB::DELETE: {
       return Delete(tx_state);
     }
+    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
   }
 
@@ -115,8 +118,16 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
       Format("Unable to create snapshots directory $0", top_snapshots_dir));
 
   Env* const env = metadata().fs_manager()->env();
-  const string snapshot_dir = JoinPathSegments(top_snapshots_dir,
-                                               tx_state->request()->snapshot_id());
+  HybridTime snapshot_hybrid_time;
+  if (tx_state->request()->has_snapshot_hybrid_time()) {
+    snapshot_hybrid_time = HybridTime(tx_state->request()->snapshot_hybrid_time());
+  }
+  auto is_transactional_snapshot = snapshot_hybrid_time.is_valid();
+  auto dirname = is_transactional_snapshot
+      ? VERIFY_RESULT(FullyDecodeTxnSnapshotId(tx_state->request()->snapshot_id())).ToString()
+      : tx_state->request()->snapshot_id();
+
+  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dirname);
   // Delete previous snapshot in the same directory if it exists.
   if (env->FileExists(snapshot_dir)) {
     LOG_WITH_PREFIX(INFO) << "Deleting old snapshot dir " << snapshot_dir;
@@ -179,6 +190,15 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Cannot create RocksDB checkpoint: " << s;
     return s.CloneAndPrepend("Cannot create RocksDB checkpoint");
+  }
+
+  if (is_transactional_snapshot) {
+    rocksdb::Options rocksdb_options;
+    tablet().InitRocksDBOptions(&rocksdb_options, /* log_prefix= */ std::string());
+    docdb::RocksDBPatcher patcher(tmp_snapshot_dir, rocksdb_options);
+
+    RETURN_NOT_OK(patcher.Load());
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
   }
 
   RETURN_NOT_OK_PREPEND(

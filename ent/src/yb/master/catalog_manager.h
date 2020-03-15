@@ -17,6 +17,7 @@
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/master/master_snapshot_coordinator.h"
 
 namespace yb {
 
@@ -25,10 +26,12 @@ class UniverseKeyRegistryPB;
 namespace master {
 namespace enterprise {
 
-class CatalogManager : public yb::master::CatalogManager {
+class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorContext {
   typedef yb::master::CatalogManager super;
  public:
-  explicit CatalogManager(yb::master::Master* master) : super(master) {}
+  explicit CatalogManager(yb::master::Master* master)
+      : super(master), snapshot_coordinator_(this) {}
+
   virtual ~CatalogManager();
   void Shutdown();
 
@@ -36,7 +39,8 @@ class CatalogManager : public yb::master::CatalogManager {
 
   // API to start a snapshot creation.
   CHECKED_STATUS CreateSnapshot(const CreateSnapshotRequestPB* req,
-                                CreateSnapshotResponsePB* resp);
+                                CreateSnapshotResponsePB* resp,
+                                rpc::RpcContext* rpc);
 
   // API to check if this snapshot creation operation has finished.
   CHECKED_STATUS IsSnapshotOpDone(const IsSnapshotOpDoneRequestPB* req,
@@ -148,6 +152,10 @@ class CatalogManager : public yb::master::CatalogManager {
   // Delete specified CDC streams.
   CHECKED_STATUS CleanUpDeletedCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
+  tablet::SnapshotCoordinator& snapshot_coordinator() {
+    return snapshot_coordinator_;
+  }
+
  private:
   friend class SnapshotLoader;
   friend class ClusterLoadBalancer;
@@ -186,8 +194,13 @@ class CatalogManager : public yb::master::CatalogManager {
   CHECKED_STATUS ImportTabletEntry(
       const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
 
+  // Returns tablet infos for specified tablet ids, for unknown id corresponding entry
+  // will be nullptr.
+  TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
+
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                       const std::string& snapshot_id);
+                                       const std::string& snapshot_id,
+                                       HybridTime snapshot_hybrid_time) override;
 
   void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                         const std::string& snapshot_id);
@@ -253,6 +266,12 @@ class CatalogManager : public yb::master::CatalogManager {
   void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe);
 
+  CHECKED_STATUS CreateTransactionAwareSnapshot(
+      const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc);
+
+  CHECKED_STATUS CreateNonTransactionAwareSnapshot(
+      const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc);
+
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo> > SnapshotInfoMap;
   SnapshotInfoMap snapshot_ids_map_;
@@ -280,6 +299,8 @@ class CatalogManager : public yb::master::CatalogManager {
 
   // YBClient used to modify the cdc_state table from the master.
   std::unique_ptr<client::YBClient> cdc_ybclient_;
+
+  MasterSnapshotCoordinator snapshot_coordinator_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

@@ -17,6 +17,8 @@
 #include <memory>
 #include <vector>
 
+#include "yb/gutil/ref_counted.h"
+
 namespace yb {
 namespace master {
 
@@ -38,8 +40,12 @@ class ChangeEncryptionInfoRequestPB;
 class ChangeEncryptionInfoResponsePB;
 class IsEncryptionEnabledRequestPB;
 class IsEncryptionEnabledResponsePB;
+class TabletInfo;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
+
+typedef scoped_refptr<TabletInfo> TabletInfoPtr;
+typedef std::vector<TabletInfoPtr> TabletInfos;
 
 } // namespace master
 } // namespace yb

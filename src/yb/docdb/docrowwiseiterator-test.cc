@@ -771,7 +771,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
   const auto txn_context = TransactionOperationContext(
-      GenerateTransactionId(), &txn_status_manager);
+      TransactionId::GenerateRandom(), &txn_status_manager);
 
   {
     DocRowwiseIterator iter(

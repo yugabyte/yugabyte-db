@@ -82,7 +82,7 @@ class YBTransaction::Impl final {
         transaction_(transaction),
         read_point_(manager->clock()),
         child_(Child::kFalse) {
-    metadata_.transaction_id = GenerateTransactionId();
+    metadata_.transaction_id = TransactionId::GenerateRandom();
     metadata_.priority = RandomUniformInt<uint64_t>();
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
@@ -547,7 +547,7 @@ class YBTransaction::Impl final {
 
  private:
   void CompleteConstruction() {
-    log_prefix_ = Format("$0: ", to_string(metadata_.transaction_id));
+    log_prefix_ = Format("$0: ", metadata_.transaction_id);
     heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     commit_handle_ = manager_->rpcs().InvalidHandle();
     abort_handle_ = manager_->rpcs().InvalidHandle();
@@ -607,7 +607,7 @@ class YBTransaction::Impl final {
     req.set_tablet_id(status_tablet_->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
-    state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+    state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     state.set_status(seal_only ? TransactionStatus::SEALED : TransactionStatus::COMMITTED);
     state.mutable_tablets()->Reserve(tablets_.size());
     for (const auto& tablet : tablets_) {
@@ -633,7 +633,7 @@ class YBTransaction::Impl final {
     tserver::AbortTransactionRequestPB req;
     req.set_tablet_id(status_tablet_->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
-    req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+    req.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
 
     manager_->rpcs().RegisterAndStart(
         AbortTransaction(
@@ -817,7 +817,7 @@ class YBTransaction::Impl final {
     req.set_tablet_id(status_tablet_->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
-    state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+    state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     state.set_status(status);
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(

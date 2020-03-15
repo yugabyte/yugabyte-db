@@ -42,25 +42,39 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     return;
   }
 
-  if (!req->has_tablet_id()) {
-    auto status = STATUS(InvalidArgument, "Tablet id missing");
+  if (req->tablet_id_size() != 1) {
+    auto status = STATUS_FORMAT(
+        InvalidArgument, "Wrong number of tablets: expected one, but found $0",
+        req->tablet_id_size());
     SetupErrorAndRespond(
-        resp->mutable_error(), status, TabletServerErrorPB_Code_UNKNOWN_ERROR, &context);
+        resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;
   }
 
   server::UpdateClock(*req, tablet_manager_->server()->Clock());
 
-  TRACE_EVENT1("tserver", "TabletSnapshotOp",
-               "tablet_id: ", req->tablet_id());
+  const auto& tablet_id = req->tablet_id(0);
 
-  LOG(INFO) << "Processing TabletSnapshotOp for tablet " << req->tablet_id()
-            << " from " << context.requestor_string();
+  TRACE_EVENT1("tserver", "TabletSnapshotOp", "tablet_id: ", tablet_id);
+
+  LOG(INFO) << "Processing TabletSnapshotOp for tablet " << tablet_id << " from "
+            << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
-  auto tablet = LookupLeaderTabletOrRespond(tablet_manager_, req->tablet_id(), resp, &context);
+  auto tablet = LookupLeaderTabletOrRespond(tablet_manager_, tablet_id, resp, &context);
   if (!tablet) {
     return;
+  }
+
+  // Transaction aware snapshot
+  if (req->has_snapshot_hybrid_time()) {
+    HybridTime snapshot_hybrid_time(req->snapshot_hybrid_time());
+    auto status = tablet.peer->tablet()->transaction_participant()->ResolveIntents(
+        snapshot_hybrid_time, context.GetClientDeadline());
+    if (!status.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
+    }
   }
 
   auto tx_state = std::make_unique<SnapshotOperationState>(tablet.peer->tablet(), req);
@@ -69,6 +83,7 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   tx_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
 
+  // TODO(txn_snapshot) Avoid duplicate snapshots.
   // Submit the create snapshot op. The RPC will be responded to asynchronously.
   tablet.peer->Submit(
       std::make_unique<tablet::SnapshotOperation>(std::move(tx_state)), tablet.leader_term);

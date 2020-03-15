@@ -13,6 +13,7 @@
 #ifndef ENT_SRC_YB_MASTER_ASYNC_SNAPSHOT_TASKS_H
 #define ENT_SRC_YB_MASTER_ASYNC_SNAPSHOT_TASKS_H
 
+#include "yb/common/hybrid_time.h"
 #include "yb/master/async_ts_rpc_tasks.h"
 #include "yb/tserver/backup.pb.h"
 
@@ -35,6 +36,10 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
 
   std::string description() const override;
 
+  void SetSnapshotHybridTime(HybridTime value) {
+    snapshot_hybrid_time_ = value;
+  }
+
  private:
   TabletId tablet_id() const override;
   TabletServerId permanent_uuid() const;
@@ -45,6 +50,7 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   scoped_refptr<TabletInfo> tablet_;
   const std::string snapshot_id_;
   tserver::TabletSnapshotOpRequestPB::Operation operation_;
+  HybridTime snapshot_hybrid_time_;
   tserver::TabletSnapshotOpResponsePB resp_;
 };
 

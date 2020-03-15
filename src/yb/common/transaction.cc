@@ -27,40 +27,10 @@ namespace yb {
 const std::string kTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 
-namespace {
-
-// Makes transaction id from its binary representation.
-// If check_exact_size is true, checks that slice contains only TransactionId.
-Result<TransactionId> DoDecodeTransactionId(const Slice &slice, const bool check_exact_size) {
-  if (check_exact_size ? slice.size() != TransactionId::static_size()
-                       : slice.size() < TransactionId::static_size()) {
-    return STATUS_FORMAT(
-        Corruption, "Invalid length of binary data with transaction id '$0': $1 (expected $2$3)",
-        slice.ToDebugHexString(), slice.size(), check_exact_size ? "" : "at least ",
-        TransactionId::static_size());
-  }
-  TransactionId id;
-  memcpy(id.data, slice.data(), TransactionId::static_size());
-  return id;
-}
-
-} // namespace
-
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
     : status(status_), status_time(status_time_) {
   DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
       << "Status: " << status << ", status_time: " << status_time;
-}
-
-Result<TransactionId> FullyDecodeTransactionId(const Slice& slice) {
-  return DoDecodeTransactionId(slice, true);
-}
-
-Result<TransactionId> DecodeTransactionId(Slice* slice) {
-  Result<TransactionId> id = DoDecodeTransactionId(*slice, false);
-  RETURN_NOT_OK(id);
-  slice->remove_prefix(TransactionId::static_size());
-  return id;
 }
 
 Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadataPB& source) {
@@ -81,12 +51,12 @@ void TransactionMetadata::ToPB(TransactionMetadataPB* dest) const {
   if (isolation != IsolationLevel::NON_TRANSACTIONAL) {
     ForceToPB(dest);
   } else {
-    dest->set_transaction_id(transaction_id.data, transaction_id.size());
+    dest->set_transaction_id(transaction_id.data(), transaction_id.size());
   }
 }
 
 void TransactionMetadata::ForceToPB(TransactionMetadataPB* dest) const {
-  dest->set_transaction_id(transaction_id.data, transaction_id.size());
+  dest->set_transaction_id(transaction_id.data(), transaction_id.size());
   dest->set_isolation(isolation);
   dest->set_status_tablet(status_tablet);
   dest->set_priority(priority);
@@ -115,7 +85,7 @@ CoarseTimePoint TransactionRpcDeadline() {
 }
 
 bool TransactionOperationContext::transactional() const {
-  return !transaction_id.is_nil();
+  return !transaction_id.IsNil();
 }
 
 } // namespace yb

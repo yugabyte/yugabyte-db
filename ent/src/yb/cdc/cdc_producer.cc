@@ -89,8 +89,7 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
             msg->write_request().write_batch().transaction().transaction_id()));
         const auto txn_status = txn_map.find(txn_id);
         if (txn_status == txn_map.end()) {
-          return STATUS(IllegalState, "Unexpected transaction ID",
-                        boost::uuids::to_string(txn_id));
+          return STATUS(IllegalState, "Unexpected transaction ID", txn_id.ToString());
         }
 
         if (txn_status->second.status == PENDING || txn_status->second.status == CREATED) {
@@ -258,9 +257,9 @@ CHECKED_STATUS SetRecordTxnAndTime(const TransactionId& txn_id,
                                    CDCRecordPB* record) {
   auto txn_status = txn_map.find(txn_id);
   if (txn_status == txn_map.end()) {
-    return STATUS(IllegalState, "Unexpected transaction ID", boost::uuids::to_string(txn_id));
+    return STATUS(IllegalState, "Unexpected transaction ID", txn_id.ToString());
   }
-  record->mutable_transaction_state()->set_transaction_id(txn_id.data, txn_id.size());
+  record->mutable_transaction_state()->set_transaction_id(txn_id.data(), txn_id.size());
   record->set_time(txn_status->second.status_time.ToUint64());
   return Status::OK();
 }

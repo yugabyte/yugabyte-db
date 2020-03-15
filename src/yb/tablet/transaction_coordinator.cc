@@ -135,7 +135,7 @@ class TransactionStateContext {
 };
 
 std::string BuildLogPrefix(const std::string& parent_log_prefix, const TransactionId& id) {
-  auto id_string = boost::uuids::to_string(id);
+  auto id_string = id.ToString();
   return parent_log_prefix.substr(0, parent_log_prefix.length() - 2) + " ID " + id_string + ": ";
 }
 
@@ -183,7 +183,7 @@ class TransactionState {
   std::string ToString() const {
     return Format("{ id: $0 last_touch: $1 status: $2 unnotified_tablets: $3 replicating: $4 "
                       " request_queue: $5 first_entry_raft_index: $6 }",
-                  to_string(id_), last_touch_, TransactionStatus_Name(status_),
+                  id_, last_touch_, TransactionStatus_Name(status_),
                   involved_tablets_, replicating_, request_queue_, first_entry_raft_index_);
   }
 
@@ -557,7 +557,7 @@ class TransactionState {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
 
     tserver::TransactionStatePB state;
-    state.set_transaction_id(id_.begin(), id_.size());
+    state.set_transaction_id(id_.data(), id_.size());
     state.set_status(status);
 
     auto request = context_.coordinator_context().CreateUpdateTransactionState(&state);
@@ -906,7 +906,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         tserver::GetTransactionStatusAtParticipantRequestPB req;
         req.set_tablet_id(p.tablet);
         req.set_transaction_id(
-            pointer_cast<const char*>(transaction_id.data), transaction_id.size());
+            pointer_cast<const char*>(transaction_id.data()), transaction_id.size());
         req.set_propagated_hybrid_time(now_ht.ToUint64());
         if (abort_if_not_replicated) {
           req.set_required_num_replicated_batches(p.batches);
@@ -1192,7 +1192,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         tserver::UpdateTransactionRequestPB req;
         req.set_tablet_id(action.tablet);
         auto& state = *req.mutable_state();
-        state.set_transaction_id(action.transaction.begin(), action.transaction.size());
+        state.set_transaction_id(action.transaction.data(), action.transaction.size());
         state.set_status(TransactionStatus::APPLYING);
         state.add_tablets(context_.tablet_id());
         state.set_commit_hybrid_time(action.commit_time.ToUint64());

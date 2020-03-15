@@ -32,7 +32,13 @@
 #define YB_STRONGLY_TYPED_UUID(TypeName) \
   struct BOOST_PP_CAT(TypeName, _Tag); \
   typedef ::yb::StronglyTypedUuid<BOOST_PP_CAT(TypeName, _Tag)> TypeName; \
-  typedef boost::hash<TypeName> BOOST_PP_CAT(TypeName, Hash);
+  typedef boost::hash<TypeName> BOOST_PP_CAT(TypeName, Hash); \
+  inline Result<TypeName> BOOST_PP_CAT(FullyDecode, TypeName)(const Slice& slice) { \
+    return TypeName(VERIFY_RESULT(yb::FullyDecodeUuid(slice))); \
+  } \
+  inline Result<TypeName> BOOST_PP_CAT(Decode, TypeName)(Slice* slice) { \
+    return TypeName(VERIFY_RESULT(yb::DecodeUuid(slice))); \
+  }
 
 namespace yb {
 
@@ -102,6 +108,26 @@ class StronglyTypedUuid {
     return StronglyTypedUuid(boost::uuids::random_generator()());
   }
 
+  uint8_t* data() {
+    return uuid_.data;
+  }
+
+  const uint8_t* data() const {
+    return uuid_.data;
+  }
+
+  size_t size() const {
+    return uuid_.size();
+  }
+
+  Slice AsSlice() const {
+    return Slice(uuid_.data, uuid_.size());
+  }
+
+  static size_t StaticSize() {
+    return boost::uuids::uuid::static_size();
+  }
+
  private:
   // Represented as an optional UUID.
   boost::uuids::uuid uuid_;
@@ -147,6 +173,9 @@ template <class Tag>
 std::size_t hash_value(const StronglyTypedUuid<Tag>& u) noexcept {
   return hash_value(*u);
 }
+
+Result<boost::uuids::uuid> FullyDecodeUuid(const Slice& slice);
+Result<boost::uuids::uuid> DecodeUuid(Slice* slice);
 
 } // namespace yb
 

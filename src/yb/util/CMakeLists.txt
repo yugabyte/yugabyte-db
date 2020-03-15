@@ -236,6 +236,7 @@ set(UTIL_SRCS
   string_trim.cc
   string_util.cc
   striped64.cc
+  strongly_typed_uuid.cc
   subprocess.cc
   sync_point.cc
   test_graph.cc

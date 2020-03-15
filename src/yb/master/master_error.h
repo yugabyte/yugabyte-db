@@ -11,31 +11,28 @@
 // under the License.
 //
 
-#include "yb/common/transaction.h"
-#include "yb/docdb/docdb-internal.h"
+#ifndef YB_MASTER_MASTER_ERROR_H
+#define YB_MASTER_MASTER_ERROR_H
+
+#include "yb/master/master.pb.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
-namespace docdb {
+namespace master {
 
-KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
-  if (slice.empty()) {
-    return KeyType::kEmpty;
+struct MasterErrorTag : IntegralErrorTag<MasterErrorPB::Code> {
+  // This category id is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 9;
+
+  static const std::string& ToMessage(Value code) {
+    return MasterErrorPB::Code_Name(code);
   }
+};
 
-  if (db_type == StorageDbType::kRegular) {
-    return KeyType::kValueKey;
-  }
+typedef StatusErrorCodeImpl<MasterErrorTag> MasterError;
 
-  if (slice.size() > 0 && slice[0] == ValueTypeAsChar::kTransactionId) {
-    if (slice.size() == TransactionId::StaticSize() + 1) {
-      return KeyType::kTransactionMetadata;
-    } else {
-      return KeyType::kReverseTxnKey;
-    }
-  } else {
-    return KeyType::kIntentKey;
-  }
-}
-
-} // namespace docdb
+} // namespace master
 } // namespace yb
+
+#endif // YB_MASTER_MASTER_ERROR_H

@@ -112,7 +112,7 @@ NonTransactionalStatusProvider kNonTransactionalStatusProvider;
 } // namespace
 
 const TransactionOperationContext kNonTransactionalOperationContext = {
-    boost::uuids::nil_uuid(), &kNonTransactionalStatusProvider
+    TransactionId::Nil(), &kNonTransactionalStatusProvider
 };
 
 PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {

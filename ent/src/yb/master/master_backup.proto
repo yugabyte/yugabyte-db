@@ -53,6 +53,7 @@ message SysSnapshotEntryPB {
 
 message CreateSnapshotRequestPB {
   repeated TableIdentifierPB tables = 1;
+  optional bool transaction_aware = 2;
 }
 
 message CreateSnapshotResponsePB {
