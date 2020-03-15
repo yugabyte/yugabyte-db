@@ -12,9 +12,7 @@
     <title>{{ .Title }}{{ if not .IsHome }} | {{ .Site.Title }}{{ end }}</title>
     {{ hugo.Generator }}
 
-    {{ with .Site.Params.description }}
-    <meta name="description" content="{{ . }}">
-    {{ end }}
+    <meta name="description" content="{{ if .Description }}{{ .Description }}{{ else if .Site.Params.Description }}{{ .Site.Params.Description }}{{ else }}YugabyteDB is a transactional, high-performance database.{{ end }}">
     <link rel="canonical" href="{{ .Permalink }}">
     {{ with .Site.Params.author }}
     <meta name="author" content="{{ . }}">

@@ -1,7 +1,8 @@
 ---
 title: Function Call
 summary: Combination of one or more values.
-description: Built-in Function Call
+headerTitle: Built-in Function Call
+description: Function call expression applies the specified function to to given arguments between parentheses and return the result of the computation.
 menu:
   latest:
     parent: api-cassandra

@@ -1,6 +1,7 @@
 ---
 title: Inspect logs
 linkTitle: Inspect logs
+headerTitle: Inspect YugabyteDB logs
 description: Inspect YugabyteDB logs
 aliases:
   - /troubleshoot/nodes/check-logs/

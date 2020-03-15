@@ -1,5 +1,5 @@
 ---
-title: Grammar xiagrams
+title: Grammar diagrams
 summary: Diagrams of the grammar rules.
 ---
 

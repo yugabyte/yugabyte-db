@@ -2,7 +2,8 @@
 title: jsonb_array_elements_text()
 linkTitle: jsonb_array_elements_text()
 summary: jsonb_array_elements_text() and json_array_elements_text()
-description: jsonb_array_elements_text() and json_array_elements_text()
+headerTitle: jsonb_array_elements_text() and json_array_elements_text()
+description: The function jsonb_array_elements_text() bears the same relationship to jsonb_array_elements() that the other *text() functions bear to their plain counterparts.
 menu:
   latest:
     identifier: jsonb-array-elements-text

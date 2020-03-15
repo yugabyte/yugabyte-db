@@ -2,7 +2,8 @@
 title: jsonb_array_length
 linkTitle: jsonb_array_length()
 summary: jsonb_array_length() and json_array_length()
-description: jsonb_array_length() and json_array_length()
+headerTitle: jsonb_array_length() and json_array_length()
+description: The functions in this pair require that the supplied JSON value and return the count of values in the array.
 menu:
   latest:
     identifier: jsonb-array-length

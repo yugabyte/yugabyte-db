@@ -2,7 +2,8 @@
 title: jsonb_array_elements()
 linkTitle: jsonb_array_elements()
 summary: jsonb_array_elements() and json_array_elements()
-description: jsonb_array_elements() and json_array_elements()
+headerTitle: jsonb_array_elements() and json_array_elements()
+description: The functions in this pair require that the supplied JSON value is an array, and transform the list into a table.
 menu:
   latest:
     identifier: jsonb-array-elements

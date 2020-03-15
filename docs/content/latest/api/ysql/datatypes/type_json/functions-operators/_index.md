@@ -2,7 +2,8 @@
 title: Functions and operators
 linkTitle: Functions & operators
 summary: Functions and operators
-description: JSON functions and operators
+headerTitle: JSON functions and operators
+description: The JSON functions and operators available in YugabyteDB are categorized below by purpose, that is based upon the goals you want to accomplish.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

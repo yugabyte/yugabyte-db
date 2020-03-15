@@ -1,3 +1,7 @@
+---
+title: Multi-zone Kubernetes
+linkTitle: Multi-zone-Kubernetes
+---
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

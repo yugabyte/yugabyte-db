@@ -2,7 +2,8 @@
 title: JSON
 linkTitle: JSON
 summary: JSON and JSONB data types
-description: JSON data types and functionality
+headerTitle: JSON data types and functionality
+description: YSQL supports two data types for representing a JSON document in json and jsonb. Both data types reject any JSON document that does not conform to RFC 7159
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

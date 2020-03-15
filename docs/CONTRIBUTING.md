@@ -19,7 +19,8 @@ All docs pages must start with a front matter as shown below.
 ---
 title: Browser-Title
 linkTitle: My-Left-Nav-Link
-description: Doc-Page-Title
+headerTitle: Doc-Page-Title (if different from Browser-Title)
+description: SEO-Meta-Description
 image: Icon-For-Page-Title
 headcontent: Brief-description
 menu:

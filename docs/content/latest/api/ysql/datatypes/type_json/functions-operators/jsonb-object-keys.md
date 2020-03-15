@@ -2,7 +2,8 @@
 title: jsonb_object_keys()
 linkTitle: jsonb_object_keys() 
 summary: jsonb_object_keys() and json_object_keys()
-description: jsonb_object_keys()  and json_object_keys() 
+headerTitle: jsonb_object_keys()  and json_object_keys()
+description: The functions in this pair require that the supplied JSON value is an object and transform the list of key names into a set of text values.
 menu:
   latest:
     identifier: jsonb-object-keys

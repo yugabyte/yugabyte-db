@@ -2,7 +2,8 @@
 title: Containment
 linkTitle: '@> and <@ (containment)'
 summary: Containment (@> & <@)
-description: '@> and <@ (containment)'
+headerTitle: '@> and <@ (containment)'
+description: The @> operator tests if the left-hand JSON value contains the right-hand JSON value. And the <@ operator tests if the right-hand JSON value contains the left-hand JSON value. 
 menu:
   latest:
     identifier: containment-operators
