@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 
 #
 # Copyright (c) YugaByte, Inc.
@@ -517,7 +517,6 @@ class Builder:
                     "/tmp/making_sure_we_have_enough_room_to_set_rpath_later_{}_end_of_rpath"
                     .format('_' * 256))
 
-            self.cxx_flags.append('-D_GLIBCXX_USE_CXX11_ABI=0')
             self.dylib_suffix = "so"
         elif is_mac():
             self.dylib_suffix = "dylib"

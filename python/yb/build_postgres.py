@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -328,7 +328,9 @@ class PostgresBuilder:
 
         self.set_env_var(
             'YB_REMOTE_COMPILATION',
-            '1' if self.remote_compilation_allowed and self.build_uses_remote_compilation else '0'
+            '1' if (self.remote_compilation_allowed and
+                    self.build_uses_remote_compilation and
+                    step == 'make') else '0'
         )
 
         self.set_env_var('YB_BUILD_TYPE', self.build_type)

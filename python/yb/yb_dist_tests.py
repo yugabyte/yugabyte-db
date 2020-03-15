@@ -18,8 +18,17 @@ import logging
 import os
 import re
 import time
+import glob
+import subprocess
+import random
+import sys
+import tempfile
+import atexit
 
-from yb.common_util import get_build_type_from_build_root, is_macos  # nopep8
+
+from yb.common_util import get_build_type_from_build_root, \
+                           get_compiler_type_from_build_root, \
+                           is_macos  # nopep8
 
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
@@ -44,10 +53,11 @@ MAX_TIME_TO_WAIT_FOR_CLOCK_SYNC_SEC = 60
 class TestDescriptor:
     """
     A "test descriptor" identifies a particular test we could run on a distributed test worker.
-    A string representation of a "test descriptor" is one of the following:
+    A string representation of a "test descriptor" is an optional "attempt_<index>:::" followed by
+    one of the options below:
     - A C++ test program name relative to the build root. This implies running all tests within
       the test program. This has the disadvantage that a failure of one of those tests will cause
-      the rest of tests to not be run.
+      the rest of tests not to be run.
     - A C++ test program name relative to the build root followed by the ':::' separator and the
       gtest filter identifying a test within that test program,
     - A string like 'com.yugabyte.jedis.TestYBJedis#testPool[1]' describing a Java test. This is
@@ -140,20 +150,32 @@ class TestDescriptor:
 
 
 class GlobalTestConfig:
-    def __init__(self, build_root, build_type, yb_src_root):
-        self.build_root = build_root
+    def __init__(self,
+                 build_root,
+                 build_type,
+                 yb_src_root,
+                 archive_for_workers,
+                 rel_build_root,
+                 archive_sha256sum,
+                 compiler_type):
+        self.build_root = os.path.abspath(build_root)
         self.build_type = build_type
         self.yb_src_root = yb_src_root
+        self.archive_for_workers = archive_for_workers
+        self.rel_build_root = rel_build_root
+        self.archive_sha256sum = archive_sha256sum
+        self.compiler_type = compiler_type
 
     def get_run_test_script_path(self):
         return os.path.join(self.yb_src_root, 'build-support', 'run-test.sh')
 
-    def set_env(self, propagated_env_vars={}):
+    def set_env_on_spark_worker(self, propagated_env_vars={}):
         """
         Used on the distributed worker side (inside functions that run on Spark) to configure the
         necessary environment.
         """
-        os.environ['BUILD_ROOT'] = self.build_root
+        os.environ['BUILD_ROOT'] = os.path.abspath(self.build_root)
+        os.environ['YB_COMPILER_TYPE'] = self.compiler_type
         # This is how we tell run-test.sh what set of C++ binaries to use for mini-clusters in Java
         # tests.
         for env_var_name, env_var_value in propagated_env_vars.iteritems():
@@ -165,12 +187,9 @@ TestResult = collections.namedtuple(
         ['test_descriptor',
          'exit_code',
          'elapsed_time_sec',
-         'failed_without_output'])
-
-ClockSyncCheckResult = collections.namedtuple(
-        'ClockSyncCheckResult',
-        ['is_synchronized',
-         'cmd_result'])
+         'failed_without_output',
+         'artifact_paths',
+         'num_errors_copying_artifacts'])
 
 
 def set_global_conf_from_args(args):
@@ -184,14 +203,43 @@ def set_global_conf_from_args(args):
 
     build_type = get_build_type_from_build_root(build_root)
 
+    archive_for_workers = None
+    if args.send_archive_to_workers:
+        archive_for_workers = os.path.abspath(os.path.join(
+            build_root, 'archive_for_tests_on_spark.tar.gz.spark-no-extract'))
+
     assert yb_src_root == yb_src_root_from_build_root, \
         ("An inconstency between YB_SRC_ROOT derived from module location ({}) vs. the one derived "
          "from BUILD_ROOT ({})").format(yb_src_root, yb_src_root_from_build_root)
+
+    rel_build_root = os.path.relpath(
+            os.path.abspath(build_root),
+            os.path.abspath(yb_src_root))
+    if len(rel_build_root.split('/')) != 2:
+        raise ValueError(
+                "Unexpected number of components in the relative path of build root to "
+                "source root: %s. build_root=%s, yb_src_root=%s" % (
+                    rel_build_root, build_root, yb_src_root))
+
+    compiler_type = get_compiler_type_from_build_root(build_root)
+    compiler_type_from_env = os.environ.get('YB_COMPILER_TYPE')
+    if compiler_type_from_env is not None and compiler_type_from_env != compiler_type:
+        raise ValueError(
+                "Build root '%s' implies compiler type '%s' but YB_COMPILER_TYPE is '%s'" % (
+                    build_root, compiler_type, compiler_type_from_env))
+    from yb import common_util
+    os.environ['YB_COMPILER_TYPE'] = compiler_type
+
     global global_conf
     global_conf = GlobalTestConfig(
             build_root=build_root,
             build_type=build_type,
-            yb_src_root=yb_src_root)
+            yb_src_root=yb_src_root,
+            archive_for_workers=archive_for_workers,
+            rel_build_root=rel_build_root,
+            compiler_type=compiler_type,
+            # The archive might not even exist yet.
+            archive_sha256sum=None)
     return global_conf
 
 
@@ -210,38 +258,177 @@ def set_global_conf_from_dict(global_conf_dict):
     return global_conf
 
 
-def is_clock_synchronized():
-    assert not is_macos()
-    result = command_util.run_program('ntpstat', error_ok=True)
-    return ClockSyncCheckResult(
-        is_synchronized=result.stdout.startswith('synchron'),
-        cmd_result=result)
+# -------------------------------------------------------------------------------------------------
+# Archive generation for running tests on Spark workers
+# -------------------------------------------------------------------------------------------------
+
+ARCHIVED_PATHS_IN_BUILD_DIR = [
+    'bin',
+    'ent',
+    'lib',
+    'postgres',
+    'share',
+    'version_metadata.json',
+    'linuxbrew_path.txt',
+    'thirdparty_path.txt',
+    'thirdparty_url.txt',
+    'postgres_build/src/test/regress'
+]
+
+ARCHIVED_PATHS_IN_SRC_DIR = [
+    'bin',
+    'build-support',
+    'managed/src/main/resources/version.txt',
+    'managed/version.txt',
+    'python',
+    'submodules',
+    'version.txt',
+    'www',
+    'yb_build.sh',
+    'build/python_virtual_env',
+    'python_requirements_frozen.txt',
+]
 
 
-def wait_for_clock_sync():
-    if is_macos():
+def find_rel_java_paths_to_archive(yb_src_root):
+    paths = []
+    for ent in [False, True]:
+        path_components = []
+        if ent:
+            path_components.append('ent')
+        path_components.append('java')
+        java_dir_path = os.path.join(yb_src_root, *path_components)
+        paths.append(os.path.join(java_dir_path, 'pom.xml'))
+        for submodule_dir_path in glob.glob(os.path.join(java_dir_path, '*')):
+            for name in ['pom.xml', 'src']:
+                paths.append(os.path.join(submodule_dir_path, name))
+            for classes_dir_name in ['classes', 'test-classes']:
+                paths.append(os.path.join(submodule_dir_path, 'target', classes_dir_name))
+    return [os.path.relpath(p, yb_src_root) for p in paths]
+
+
+def create_archive_for_workers():
+    dest_path = global_conf.archive_for_workers
+    if dest_path is None:
         return
+    tmp_dest_path = '%s.tmp.%d' % (dest_path, random.randint(0, 2 ** 64 - 1))
 
-    start_time = time.time()
-    last_log_time = start_time
-    waited_for_clock_sync = False
-    check_result = is_clock_synchronized()
-    while not check_result.is_synchronized:
-        if not waited_for_clock_sync:
-            logging.info("Clock not synchronized, waiting...")
-            waited_for_clock_sync = True
-        time.sleep(0.25)
-        cur_time = time.time()
-        if cur_time - last_log_time > CLOCK_SYNC_WAIT_LOGGING_INTERVAL_SEC:
-            logging.info("Waiting for clock to be synchronized for %.2f sec" %
-                         (cur_time - last_log_time))
-            last_log_time = cur_time
-        if cur_time - start_time > MAX_TIME_TO_WAIT_FOR_CLOCK_SYNC_SEC:
-            raise RuntimeError(
-                "Waited for %.2f sec for clock synchronization, still not synchronized, "
-                "check result: %s" % (cur_time - start_time, check_result))
-        check_result = is_clock_synchronized()
+    start_time_sec = time.time()
+    try:
+        build_root = os.path.abspath(global_conf.build_root)
+        yb_src_root = os.path.abspath(global_conf.yb_src_root)
+        build_root_parent = os.path.join(yb_src_root, 'build')
+        rel_build_root = global_conf.rel_build_root
+        if os.path.exists(dest_path):
+            logging.info("Removing existing archive file %s", dest_path)
+            os.remove(dest_path)
+        paths_in_src_dir = ARCHIVED_PATHS_IN_SRC_DIR + find_rel_java_paths_to_archive(yb_src_root)
 
-    if waited_for_clock_sync:
-        cur_time = time.time()
-        logging.info("Waited for %.2f for clock synchronization" % (cur_time - start_time))
+        added_local_repo = False
+        mvn_local_repo = os.environ.get('YB_MVN_LOCAL_REPO')
+        if mvn_local_repo:
+            mvn_local_repo = os.path.abspath(mvn_local_repo)
+            if mvn_local_repo.startswith(build_root_parent + '/'):
+                # Here, the path we're adding has to be relative to YB_SRC_ROOT.
+                paths_in_src_dir.append(os.path.relpath(mvn_local_repo, yb_src_root))
+                logging.info("Will add YB_MVN_LOCAL_REPO to archive: %s", mvn_local_repo)
+                added_local_repo = True
+        if not added_local_repo:
+            raise ValueError("YB_MVN_LOCAL_REPO (%s) must be within $YB_SRC_ROOT/build (%s)" % (
+                mvn_local_repo, build_root_parent))
+
+        files_that_must_exist_in_build_dir = ['thirdparty_path.txt']
+        if sys.platform == 'linux':
+            files_that_must_exist_in_build_dir.append('linuxbrew_path.txt')
+
+        for rel_file_path in files_that_must_exist_in_build_dir:
+            full_path = os.path.join(build_root, rel_file_path)
+            if not os.path.exists(full_path):
+                raise IOError("Path does not exist: %s" % full_path)
+
+        # TODO: save the list of files added to the archive to a separate file for debuggability.
+        # TODO: use zip instead of tar/gz.
+        tar_args = [
+            'tar',
+            'cz',
+            '-f',
+            tmp_dest_path
+        ] + [
+            path_rel_to_src_dir
+            for path_rel_to_src_dir in paths_in_src_dir
+            if os.path.exists(os.path.join(yb_src_root, path_rel_to_src_dir))
+        ] + [
+            os.path.join(rel_build_root, path_rel_to_build_root)
+            for path_rel_to_build_root in ARCHIVED_PATHS_IN_BUILD_DIR
+            if os.path.exists(os.path.join(build_root, path_rel_to_build_root))
+        ] + [
+            os.path.relpath(test_program_path, yb_src_root)
+            for test_program_path in glob.glob(os.path.join(build_root, 'tests-*'))
+            if os.path.exists(test_program_path)
+        ]
+
+        logging.info("Running the tar command: %s", tar_args)
+        subprocess.check_call(tar_args, cwd=global_conf.yb_src_root)
+        if not os.path.exists(tmp_dest_path):
+            raise IOError(
+                    "Archive '%s' did not get created after command %s" % (
+                        tmp_dest_path, tar_args))
+        os.rename(tmp_dest_path, dest_path)
+        logging.info("Size of the archive: %.1f MiB", os.path.getsize(dest_path) / (1024.0 * 1024))
+    finally:
+        elapsed_time_sec = time.time() - start_time_sec
+        logging.info("Elapsed archive creation time: %.1f seconds", elapsed_time_sec)
+        if os.path.exists(tmp_dest_path):
+            logging.warning("Removing unfinished temporary archive file %s", tmp_dest_path)
+            os.remove(tmp_dest_path)
+
+
+# These SHA256-related functions are duplicated in download_and_extract_archive.py, because that
+# script should not depend on any Python modules.
+
+def validate_sha256sum(checksum_str):
+    if not re.match(r'^[0-9a-f]{64}$', checksum_str):
+        raise ValueError("Invalid SHA256 checksum: '%s', expected 64 hex characters", checksum_str)
+
+
+def compute_sha256sum(file_path):
+    cmd_line = None
+    if sys.platform.startswith('linux'):
+        cmd_line = ['sha256sum', file_path]
+    elif sys.platform.startswith('darwin'):
+        cmd_line = ['shasum', '--portable', '--algorithm', '256', file_path]
+    else:
+        raise ValueError("Don't know how to compute SHA256 checksum on platform %s" % sys.platform)
+
+    checksum_str = subprocess.check_output(cmd_line).strip().split()[0]
+    validate_sha256sum(checksum_str)
+    return checksum_str
+
+
+def compute_archive_sha256sum():
+    if global_conf.archive_for_workers is not None:
+        global_conf.archive_sha256sum = compute_sha256sum(global_conf.archive_for_workers)
+        logging.info("SHA256 checksum of archive %s: %s" % (
+            global_conf.archive_for_workers, global_conf.archive_sha256sum))
+
+
+def to_real_nfs_path(path):
+    assert path.startswith('/'), "Expecting the path to be absolute: %s" % path
+    path = os.path.abspath(path)
+    return '/real_%s' % path[1:]
+
+
+def get_tmp_filename(prefix='', suffix='', auto_remove=False):
+    fd, file_path = tempfile.mkstemp(prefix=prefix, suffix=suffix)
+    os.close(fd)
+    os.remove(file_path)
+    if auto_remove:
+        def cleanup():
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        atexit.register(cleanup)
+    return file_path
+
+
+if __name__ == '__main__':
+    main()

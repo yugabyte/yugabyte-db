@@ -86,7 +86,7 @@ if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then
   exit 0
 fi
 
-# Create group-writable files by default. Useful in an NFS environment.
+# Create group-writable files by default.
 umask 0002
 
 echo "Test is running on host $HOSTNAME, arguments: $*"
@@ -112,6 +112,7 @@ if [[ -z ${BUILD_ROOT:-} ]]; then
   handle_build_root_from_current_dir
 fi
 
+yb_ninja_not_needed=true
 if [[ -z ${BUILD_ROOT:-} ]]; then
   set_build_root
 else
@@ -126,8 +127,17 @@ else
   unset preset_build_root
 fi
 
+find_or_download_thirdparty
+log_thirdparty_and_toolchain_details
+detect_brew
+
 set_common_test_paths
 add_brew_bin_to_path
+
+# -------------------------------------------------------------------------------------------------
+# Java tests
+# -------------------------------------------------------------------------------------------------
+
 if [[ $# -eq 1 && $1 == *\#* ]]; then
   # We are trying to run a specific test method or even a parameterized test.
   resolve_and_run_java_test "$1"
@@ -144,6 +154,10 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   # $YB_TEST_INVOCATION_ID pattern.
   exit
 fi
+
+# -------------------------------------------------------------------------------------------------
+# C++ tests
+# -------------------------------------------------------------------------------------------------
 
 TEST_PATH=${1:-}
 if [[ -z $TEST_PATH ]]; then

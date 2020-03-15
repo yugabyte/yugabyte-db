@@ -66,8 +66,6 @@ pthread .*: Device or resource busy|\
 FATAL: could not create shared memory segment: No space left on device"
 
 # We use this to submit test jobs for execution on Spark.
-readonly SPARK_SUBMIT_CMD_PATH_NON_ASAN_TSAN=/n/tools/spark/current/bin/spark-submit
-readonly SPARK_SUBMIT_CMD_PATH_ASAN_TSAN=/n/tools/spark/current-tsan/bin/spark-submit
 readonly INITIAL_SPARK_DRIVER_CORES=8
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
@@ -473,6 +471,9 @@ prepare_for_running_cxx_test() {
   test_cmd_line=( "$abs_test_binary_path" ${YB_EXTRA_GTEST_FLAGS:-} )
 
   test_log_path_prefix="$YB_TEST_LOG_ROOT_DIR/$rel_test_log_path_prefix"
+  register_test_artifact_files \
+      "$test_log_path_prefix.*" \
+      "${test_log_path_prefix}_test_report.json"
   xml_output_file="$test_log_path_prefix.xml"
   if is_known_non_gtest_test_by_rel_path "$rel_test_binary"; then
     is_gtest_test=false
@@ -1233,7 +1234,7 @@ find_test_binary() {
 }
 
 show_disk_usage() {
-  header "Disk usage (df -h)"
+  heading "Disk usage (df -h)"
 
   df -h
 
@@ -1243,11 +1244,22 @@ show_disk_usage() {
 }
 
 find_spark_submit_cmd() {
-  if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
-    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_ASAN_TSAN
-  else
-    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_NON_ASAN_TSAN
+  if [[ -n ${YB_SPARK_SUBMIT_CMD_OVERRIDE:-} ]]; then
+    spark_submit_cmd_path=$YB_SPARK_SUBMIT_CMD_OVERRIDE
+    return
   fi
+
+  if is_mac; then
+    spark_submit_cmd_path=$YB_MACOS_SPARK_SUBMIT_CMD
+    return
+  fi
+
+  if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
+    spark_submit_cmd_path=$YB_ASAN_TSAN_SPARK_SUBMIT_CMD
+    return
+  fi
+
+  spark_submit_cmd_path=$YB_LINUX_SPARK_SUBMIT_CMD
 }
 
 spark_available() {
@@ -1493,9 +1505,19 @@ run_java_test() {
     fatal "Maven not found on PATH. PATH: $PATH"
   fi
 
+  # Note: "$surefire_reports_dir" contains the test method name as well.
   local junit_xml_path=$surefire_reports_dir/TEST-$test_class.xml
+  local test_report_json_path=$surefire_reports_dir/TEST-${test_class}_test_report.json
   local log_files_path_prefix=$surefire_reports_dir/$test_class
   local test_log_path=$log_files_path_prefix-output.txt
+
+  # For the log file prefix, remember the pattern with a trailing "*" -- we will expand it
+  # after the test has run.
+  register_test_artifact_files \
+    "$junit_xml_path" \
+    "$test_log_path" \
+    "$test_report_json_path" \
+    "${log_files_path_prefix}*"
   log "Using surefire reports directory: $surefire_reports_dir"
   log "Test log path: $test_log_path"
 
@@ -1683,6 +1705,7 @@ collect_java_tests() {
 }
 
 run_all_java_test_methods_separately() {
+  # Create a subshell to be able to export environment variables temporarily.
   (
     export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     export YB_REDIRECT_MVN_OUTPUT_TO_FILE=1
@@ -1738,7 +1761,7 @@ run_python_doctest() {
           $python_file =~ managed/.* ]]; then
       continue
     fi
-    ( set -x; python -m doctest "$python_file" )
+    python -m doctest "$python_file"
   done
 }
 
@@ -1870,6 +1893,24 @@ resolve_and_run_java_test() {
   else
     # TODO: support enterprise case by passing rel_module_dir here.
     run_repeat_unit_test "$module_name" "$java_test_name" --java
+  fi
+}
+
+# Allows remembering all the generated test log files in a file whose path is specified by the
+# YB_TEST_ARTIFACT_LIST_PATH variable.
+# Example patterns for Java test results (relative to $YB_SRC_ROOT, and broken over multiple lines):
+#
+# java/yb-jedis-tests/target/surefire-reports_redis.clients.jedis.tests.commands.
+# AllKindOfValuesCommandsTest__expireAt/TEST-redis.clients.jedis.tests.commands.
+# AllKindOfValuesCommandsTest{.xml,-output.txt,_test_report.json}
+register_test_artifact_files() {
+  if [[ -n ${YB_TEST_ARTIFACT_LIST_PATH:-} ]]; then
+    local file_path
+    (
+      for file_path in "$@"; do
+        echo "$file_path"
+      done
+    ) >>"$YB_TEST_ARTIFACT_LIST_PATH"
   fi
 }
 

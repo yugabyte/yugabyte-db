@@ -233,7 +233,9 @@ endfunction()
 # CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
 # These flags apply to both YB and RocksDB parts of the codebase.
 function(ADD_LINKER_FLAGS FLAGS)
-  message("Adding to linker flags: ${FLAGS}")
+  if ($ENV{YB_VERBOSE})
+    message("Adding to linker flags: ${FLAGS}")
+  endif()
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
@@ -265,7 +267,9 @@ endfunction()
 #     hard to debug crashes.
 
 function(ADD_CXX_FLAGS FLAGS)
-  message("Adding C++ flags: ${FLAGS}")
+  if ($ENV{YB_VERBOSE})
+    message("Adding C++ flags: ${FLAGS}")
+  endif()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
 
@@ -708,16 +712,6 @@ elseif(NOT "${USING_SANITIZERS}")
 else()
   message("Not specifying linker flags to not allow any undefined symbols: this is ASAN/TSAN")
 endif()
-
-# Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], any
-# generated code (which always uses clang) must be built against the old ABI.
-# (Note: we are not using any LLVM codegen in YugaByte as of 08/2016).
-# There's no recourse for using both ABIs in the same process; gcc's advice [2]
-# is to build everything against the old ABI.
-#
-# 1. https://llvm.org/bugs/show_bug.cgi?id=23529
-# 2. https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html
-ADD_CXX_FLAGS(-D_GLIBCXX_USE_CXX11_ABI=0)
 
 # We don't want to use any stubs; that's exclusively for builds using our
 # exported client headers).

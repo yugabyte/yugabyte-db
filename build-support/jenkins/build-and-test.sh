@@ -124,9 +124,7 @@ build_cpp_code() {
     )
   fi
 
-  time "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
-    "${yb_build_args[@]}" 2>&1 | \
-    filter_boring_cpp_build_output
+  time "$YB_SRC_ROOT/yb_build.sh" $remote_opt "${yb_build_args[@]}"
 
   log "Finished building C++ code (see timing information above)"
 
@@ -147,7 +145,12 @@ cleanup() {
 # Main script
 # =================================================================================================
 
+log "Running with Bash version $BASH_VERSION"
+
 cd "$YB_SRC_ROOT"
+if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
+  fatal "Test of the common build environment failed, cannot proceed."
+fi
 
 log "Removing old JSON-based test report files"
 (
@@ -157,10 +160,6 @@ log "Removing old JSON-based test report files"
 )
 
 export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
-log "Running with Bash version $BASH_VERSION"
-if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
-  fatal "Test of the common build environment failed, cannot proceed."
-fi
 
 export TSAN_OPTIONS=""
 
@@ -184,59 +183,27 @@ readonly BUILD_TYPE
 export BUILD_TYPE
 
 export YB_USE_NINJA=1
-log "YB_USE_NINJA=$YB_USE_NINJA"
 
 set_cmake_build_type_and_compiler_type
-log "YB_NINJA_PATH=${YB_NINJA_PATH:-undefined}"
 
-set_build_root --no-readonly
-
-set_common_test_paths
-set_java_home
-
-export YB_DISABLE_LATEST_SYMLINK=1
-remove_latest_symlink
-
-if is_jenkins; then
-  log "Running on Jenkins, will re-create the Python virtualenv"
-  YB_RECREATE_VIRTUALENV=1
+if [[ ${YB_DOWNLOAD_THIRDPARTY:-auto} == "auto" ]]; then
+  if is_linux; then
+    log "Setting YB_DOWNLOAD_THIRDPARTY=1 automatically on Linux"
+    export YB_DOWNLOAD_THIRDPARTY=1
+  else
+    log "Setting YB_DOWNLOAD_THIRDPARTY=0 automatically (not Linux)"
+    export YB_DOWNLOAD_THIRDPARTY=0
+  fi
 fi
+log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
 
-log "Running with PATH: $PATH"
+# -------------------------------------------------------------------------------------------------
+# Build root setup and build directory cleanup
+# -------------------------------------------------------------------------------------------------
 
-check_python_interpreter_versions
+set_build_root
 
-set +e
-for python_command in python python2 python2.7 python3; do
-  log "Location of $python_command: $( which "$python_command" )"
-done
-set -e
-
-log "Running Python tests"
-time run_python_tests
-log "Finished running Python tests (see timing information above)"
-
-log "Running a light-weight lint script on our Java code"
-time lint_java_code
-log "Finished running a light-weight lint script on the Java code"
-
-# TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
-YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
-YB_BUILD_CPP=${YB_BUILD_CPP:-1}
-
-if [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && is_jenkins_phabricator_build; then
-  log "YB_RUN_AFFECTED_TESTS_ONLY is not set, and this is a Jenkins Phabricator test." \
-      "Setting YB_RUN_AFFECTED_TESTS_ONLY=1 automatically."
-  export YB_RUN_AFFECTED_TESTS_ONLY=1
-fi
-export YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
-log "YB_RUN_AFFECTED_TESTS_ONLY=$YB_RUN_AFFECTED_TESTS_ONLY"
-
-export YB_SKIP_BUILD=${YB_SKIP_BUILD:-0}
-if [[ $YB_SKIP_BUILD == "1" ]]; then
-  export NO_REBUILD_THIRDPARTY=1
-fi
-
+# As soon as we know build root, we need to do the necessary workspace cleanup.
 if is_jenkins; then
   # Delete the build root by default on Jenkins.
   DONT_DELETE_BUILD_ROOT=${DONT_DELETE_BUILD_ROOT:-0}
@@ -245,11 +212,6 @@ else
   # Don't delete the build root by default.
   DONT_DELETE_BUILD_ROOT=${DONT_DELETE_BUILD_ROOT:-1}
 fi
-YB_SKIP_CPP_COMPILATION=${YB_SKIP_CPP_COMPILATION:-0}
-YB_COMPILE_ONLY=${YB_COMPILE_ONLY:-0}
-
-CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
-CTEST_FULL_OUTPUT_PATH="$BUILD_ROOT"/ctest-full.log
 
 # Remove testing artifacts from the previous run before we do anything else. Otherwise, if we fail
 # during the "build" step, Jenkins will archive the test logs from the previous run, thinking they
@@ -292,13 +254,71 @@ fi
 
 mkdir_safe "$BUILD_ROOT"
 
-if [[ -h $BUILD_ROOT ]]; then
-  # If we ended up creating BUILD_ROOT as a symlink to an ephemeral drive, now make BUILD_ROOT
-  # actually point to the target of that symlink.
-  BUILD_ROOT=$( readlink "$BUILD_ROOT" )
-fi
 readonly BUILD_ROOT
 export BUILD_ROOT
+
+# -------------------------------------------------------------------------------------------------
+# End of build root setup and build directory cleanup
+# -------------------------------------------------------------------------------------------------
+
+find_or_download_thirdparty
+validate_thirdparty_dir
+detect_brew
+log_thirdparty_and_toolchain_details
+find_make_or_ninja_and_update_cmake_opts
+
+log "YB_USE_NINJA=$YB_USE_NINJA"
+log "YB_NINJA_PATH=${YB_NINJA_PATH:-undefined}"
+
+set_common_test_paths
+set_java_home
+
+export YB_DISABLE_LATEST_SYMLINK=1
+remove_latest_symlink
+
+if is_jenkins; then
+  log "Running on Jenkins, will re-create the Python virtualenv"
+  YB_RECREATE_VIRTUALENV=1
+fi
+
+log "Running with PATH: $PATH"
+
+set +e
+for python_command in python python2 python2.7 python3; do
+  log "Location of $python_command: $( which "$python_command" )"
+done
+set -e
+
+log "Running Python tests"
+time run_python_tests
+log "Finished running Python tests (see timing information above)"
+
+log "Running a light-weight lint script on our Java code"
+time lint_java_code
+log "Finished running a light-weight lint script on the Java code"
+
+# TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
+YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
+YB_BUILD_CPP=${YB_BUILD_CPP:-1}
+
+if [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && is_jenkins_phabricator_build; then
+  log "YB_RUN_AFFECTED_TESTS_ONLY is not set, and this is a Jenkins Phabricator test." \
+      "Setting YB_RUN_AFFECTED_TESTS_ONLY=1 automatically."
+  export YB_RUN_AFFECTED_TESTS_ONLY=1
+fi
+export YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
+log "YB_RUN_AFFECTED_TESTS_ONLY=$YB_RUN_AFFECTED_TESTS_ONLY"
+
+export YB_SKIP_BUILD=${YB_SKIP_BUILD:-0}
+if [[ $YB_SKIP_BUILD == "1" ]]; then
+  export NO_REBUILD_THIRDPARTY=1
+fi
+
+YB_SKIP_CPP_COMPILATION=${YB_SKIP_CPP_COMPILATION:-0}
+YB_COMPILE_ONLY=${YB_COMPILE_ONLY:-0}
+
+CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
+CTEST_FULL_OUTPUT_PATH="$BUILD_ROOT"/ctest-full.log
 
 TEST_LOG_DIR="$BUILD_ROOT/test-logs"
 TEST_TMP_ROOT_DIR="$BUILD_ROOT/test-tmp"
@@ -310,25 +330,6 @@ if is_jenkins; then
 fi
 
 configure_remote_compilation
-
-log "YB_THIRDPARTY_DIR=$YB_THIRDPARTY_DIR"
-if using_default_thirdparty_dir; then
-  log "Found that YB_THIRDPARTY_DIR is the default location"
-  find_thirdparty_dir
-  if ! "$found_shared_thirdparty_dir"; then
-    if [[ ${NO_REBUILD_THIRDPARTY:-} == "1" ]]; then
-      log "Skiping third-party build because NO_REBUILD_THIRDPARTY is set."
-    else
-      log "Starting third-party dependency build"
-      time thirdparty/build_thirdparty.sh
-      log "Third-party dependency build finished (see timing information above)"
-    fi
-  fi
-else
-  log "YB_THIRDPARTY_DIR is explicitly specified as a non-default location '$YB_THIRDPARTY_DIR'," \
-      "not looking for a shared third-party directory."
-fi
-validate_thirdparty_dir
 
 export NO_REBUILD_THIRDPARTY=1
 
@@ -530,8 +531,7 @@ if [[ $BUILD_TYPE != "tsan" ]]; then
     let initdb_attempt_index+=1
   done
   if [[ $initdb_attempt_index -gt $MAX_INITDB_ATTEMPTS ]]; then
-    log "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
-    log "We will still run the tests. They will take longer because they will have to run initdb."
+    fatal "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
   fi
 fi
 
@@ -564,6 +564,11 @@ random_build_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
 
 # -------------------------------------------------------------------------------------------------
 # Java build
+# -------------------------------------------------------------------------------------------------
+
+if is_linux; then
+  export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
+fi
 
 java_build_failed=false
 if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
@@ -581,7 +586,6 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   build_yb_java_code_in_all_dirs clean
 
   heading "Java 'clean' build is complete, will now actually build Java code"
-
 
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     pushd "$java_project_dir"
@@ -606,6 +610,15 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   if "$java_build_failed"; then
     fatal "Java build failed, stopping here."
   fi
+
+  heading "Running a test locally to force Maven to download all test-time dependencies"
+  (
+    cd "$YB_SRC_ROOT/java"
+    build_yb_java_code test \
+                       -Dtest=org.yb.client.TestTestUtils#testDummy \
+                       "${MVN_OPTS_TO_DOWNLOAD_ALL_DEPS[@]}"
+  )
+  heading "Finished running a test locally to force Maven to download all test-time dependencies"
 
   # Tell gen_version_info.py to store the Git SHA1 of the commit really present in the code
   # being built, not our temporary commit to update pom.xml files.
@@ -714,6 +727,10 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
             affected
         extra_args+=( "--test_conf" "$test_conf_path" )
         unset test_conf_path
+      fi
+      if is_linux; then
+        log "Will create an archive for Spark workers with all the code instead of using NFS."
+        extra_args+=( "--send_archive_to_workers" )
       fi
       set +u  # because extra_args can be empty
       if ! run_tests_on_spark "${extra_args[@]}"; then
