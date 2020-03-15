@@ -1,7 +1,8 @@
 ---
 title: Subscript
 summary: Subscripted columns
-description: Subscripted expressions
+headerTitle: Subscripted expressions
+description: Subscripted expression allows access to an element in a multi-element value such as a map collection
 menu:
   latest:
     parent: api-cassandra

@@ -1,7 +1,7 @@
 ---
 title: yb-ctl
 linkTitle: yb-ctl
-description: yb-ctl
+description: The yb-ctl utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning.
 menu:
   latest:
     identifier: yb-ctl

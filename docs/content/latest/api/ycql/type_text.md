@@ -1,7 +1,8 @@
 ---
 title: TEXT
 summary: String of Unicode characters
-description: TEXT type
+headerTitle: TEXT type
+description: TEXT data type is used to specify data of a string of unicode characters.
 menu:
   latest:
     parent: api-cassandra

@@ -1,7 +1,7 @@
 ---
 title: DROP GROUP
 linkTitle: DROP GROUP
-description: DROP GROUP
+description: Use the DROP GROUP to drop a role. DROP GROUP is an alias for DROP ROLE and is used to drop a role.
 summary: DROP GROUP
 menu:
   latest:

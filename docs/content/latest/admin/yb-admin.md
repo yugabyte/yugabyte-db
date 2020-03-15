@@ -1,7 +1,7 @@
 ---
 title: yb-admin
 linkTitle: yb-admin
-description: yb-admin
+description: The yb-admin utility, located in the bin directory of YugabyteDB home, provides a commandl ine interface for adminstering clusters.
 menu:
   latest:
     identifier: yb-admin

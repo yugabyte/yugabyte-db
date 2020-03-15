@@ -1,7 +1,8 @@
 ---
 title: Operator call
 summary: Compounding expression using operators.
-description: Built-in operator call
+headerTitle: Built-in operator call
+description: An expression with operators is a compound expression that combines multiple expressions using builtin operators.
 menu:
   latest:
     parent: api-cassandra

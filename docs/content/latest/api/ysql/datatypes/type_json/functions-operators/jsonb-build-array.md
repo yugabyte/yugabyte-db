@@ -3,6 +3,7 @@ title: jsonb_build_array()
 linkTitle: jsonb_build_array()
 summary: jsonb_build_array() and json_build_array()
 description: jsonb_build_array() and json_build_array()
+description: These two functions take an arbitrary number of actual arguments of mixed SQL data types.
 menu:
   latest:
     identifier: jsonb-build-array

@@ -1,7 +1,8 @@
 ---
 title: BOOLEAN
 summary: Boolean values of false or true
-description: BOOLEAN type
+headerTitle: BOOLEAN type
+description: BOOLEAN data type is used to specify values of either true or false.
 menu:
   latest:
     parent: api-cassandra

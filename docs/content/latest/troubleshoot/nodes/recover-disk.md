@@ -1,7 +1,8 @@
 ---
 title: Disk failure
 linkTitle: Disk failure
-description: Recover failing disk
+headerTitle: Recover failing disk
+description: Learn how to recover failing disk
 aliases:
   - /troubleshoot/nodes/disk-failure/
 menu:

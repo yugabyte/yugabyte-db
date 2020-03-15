@@ -1,7 +1,8 @@
 ---
 title: TEXT
 linkTitle: Character
-description: Character Types
+headerTitle: Character Types
+description: Character-based data types are used to specify data of a string of Unicode characters.
 summary: String of Unicode characters
 menu:
   latest:

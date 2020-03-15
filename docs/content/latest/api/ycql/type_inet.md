@@ -1,7 +1,8 @@
 ---
 title: INET
 summary: IP Address String
-description: INET type
+headerTitle: INET type
+description: INET data type is used to specify columns for data of IP addresses.
 menu:
   latest:
     parent: api-cassandra

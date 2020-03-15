@@ -1,7 +1,8 @@
 ---
 title: 3. Data types
 linkTitle: 3. Data types
-description: Data types
+headerTitle: Data types
+description: There are various Data types in YCQL listed here
 menu:
   latest:
     identifier: data-types-1-ycql

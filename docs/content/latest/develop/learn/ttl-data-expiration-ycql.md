@@ -1,6 +1,7 @@
 ---
 title: 9. TTL for data expiration
 linkTitle: 9. TTL for data expiration
+headerTitle: TTL for data expiration
 description: TTL for data expiration
 menu:
   latest:

@@ -1,6 +1,7 @@
 ---
 title: Troubleshooting
 linkTitle: Troubleshooting
+headerTitle: Troubleshooting overview
 description: Troubleshooting overview
 aliases:
   - /troubleshoot/overview/

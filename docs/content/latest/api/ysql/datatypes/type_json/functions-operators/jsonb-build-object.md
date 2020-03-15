@@ -2,7 +2,8 @@
 title: jsonb_build_object() 
 linkTitle: jsonb_build_object() 
 summary: jsonb_build_object() and json_build_object() 
-description: jsonb_build_object() and json_build_object() 
+headerTitle: jsonb_build_object() and json_build_object() 
+description: The jsonb_build_object() variadic function is the obvious counterpart to jsonb_build_array().
 menu:
   latest:
     identifier: jsonb-build-object

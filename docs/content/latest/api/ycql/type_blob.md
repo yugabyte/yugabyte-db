@@ -1,7 +1,8 @@
 ---
 title: BLOB
 summary: Binary strings of variable length
-description: BLOB type
+headerTitle: BLOB type
+description: BLOB data type is used to represent arbitrary binary data of variable length.
 menu:
   latest:
     parent: api-cassandra

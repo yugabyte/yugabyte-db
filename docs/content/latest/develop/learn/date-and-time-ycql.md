@@ -1,7 +1,8 @@
 ---
 title: 7. Date and time
 linkTitle: 7. Date and time
-description: Date and time
+headerTitle: Date and time
+description: Date and time in YCQL
 menu:
   latest:
     parent: learn
