@@ -101,6 +101,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_retention_policy.h"
@@ -353,49 +354,35 @@ string DocDbOpIds::ToString() const {
   return Format("{ regular: $0 intents: $1 }", regular, intents);
 }
 
-Tablet::Tablet(
-    const RaftGroupMetadataPtr& metadata,
-    const std::shared_future<client::YBClient*> &client_future,
-    const server::ClockPtr& clock,
-    const shared_ptr<MemTracker>& parent_mem_tracker,
-    std::shared_ptr<MemTracker> block_based_table_mem_tracker,
-    MetricRegistry* metric_registry,
-    const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
-    const TabletOptions& tablet_options,
-    std::string log_prefix_suffix,
-    TransactionParticipantContext* transaction_participant_context,
-    client::LocalTabletFilter local_tablet_filter,
-    TransactionCoordinatorContext* transaction_coordinator_context,
-    IsSysCatalogTablet is_sys_catalog,
-    TransactionsEnabled txns_enabled)
-    : key_schema_(metadata->schema().CreateKeyProjection()),
-      metadata_(metadata),
-      table_type_(metadata->table_type()),
-      log_anchor_registry_(log_anchor_registry),
+Tablet::Tablet(const TabletInitData& data)
+    : key_schema_(data.metadata->schema().CreateKeyProjection()),
+      metadata_(data.metadata),
+      table_type_(data.metadata->table_type()),
+      log_anchor_registry_(data.log_anchor_registry),
       mem_tracker_(MemTracker::CreateTracker(
-          Format("tablet-$0", tablet_id()), parent_mem_tracker, AddToParent::kTrue,
+          Format("tablet-$0", tablet_id()), data.parent_mem_tracker, AddToParent::kTrue,
           CreateMetrics::kFalse)),
-      block_based_table_mem_tracker_(std::move(block_based_table_mem_tracker)),
-      clock_(clock),
-      mvcc_(Format("T $0$1: ", metadata_->raft_group_id(), log_prefix_suffix), clock),
-      tablet_options_(tablet_options),
-      client_future_(client_future),
-      local_tablet_filter_(std::move(local_tablet_filter)),
-      log_prefix_suffix_(std::move(log_prefix_suffix)),
-      is_sys_catalog_(is_sys_catalog),
-      txns_enabled_(txns_enabled) {
+      block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
+      clock_(data.clock),
+      mvcc_(Format("T $0$1: ", data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
+      tablet_options_(data.tablet_options),
+      client_future_(data.client_future),
+      local_tablet_filter_(data.local_tablet_filter),
+      log_prefix_suffix_(data.log_prefix_suffix),
+      is_sys_catalog_(data.is_sys_catalog),
+      txns_enabled_(data.txns_enabled) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << " Schema version for  " << metadata_->table_name() << " is "
                         << metadata_->schema_version();
 
-  if (metric_registry) {
+  if (data.metric_registry) {
     MetricEntity::AttributeMap attrs;
     // TODO(KUDU-745): table_id is apparently not set in the metadata.
     attrs["table_id"] = metadata_->table_id();
     attrs["table_name"] = metadata_->table_name();
     attrs["partition"] = metadata_->partition_schema().PartitionDebugString(metadata_->partition(),
                                                                             *schema());
-    metric_entity_ = METRIC_ENTITY_tablet.Instantiate(metric_registry, tablet_id(), attrs);
+    metric_entity_ = METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
     rocksdb_statistics_ = rocksdb::CreateDBStatistics();
     auto rocksdb_statistics = rocksdb_statistics_;
@@ -418,11 +405,10 @@ Tablet::Tablet(
   }
 
   if (txns_enabled_ &&
-      (is_sys_catalog_ || (
-        transaction_participant_context &&
-        metadata->schema().table_properties().is_transactional()))) {
+      data.transaction_participant_context &&
+      (is_sys_catalog_ || data.metadata->schema().table_properties().is_transactional())) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        transaction_participant_context, this, metric_entity_);
+        data.transaction_participant_context, this, metric_entity_);
     // Create transaction manager for secondary index update.
     if (!metadata_->index_map().empty()) {
       transaction_manager_.emplace(client_future_.get(),
@@ -444,15 +430,17 @@ Tablet::Tablet(
                                                                     &*unique_index_key_schema_));
   }
 
-  if (transaction_coordinator_context &&
+  if (data.transaction_coordinator_context &&
       metadata_->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
-        metadata->fs_manager()->uuid(),
-        transaction_coordinator_context,
+        metadata_->fs_manager()->uuid(),
+        data.transaction_coordinator_context,
         metrics_->expired_transactions.get());
   }
 
   snapshots_ = std::make_unique<TabletSnapshots>(this);
+
+  snapshot_coordinator_ = data.snapshot_coordinator;
 }
 
 Tablet::~Tablet() {
@@ -579,9 +567,7 @@ Status Tablet::OpenKeyValueTablet() {
   static const std::string kIntentsDB = "IntentsDB"s;
 
   rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(
-      &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), rocksdb_statistics_,
-      tablet_options_);
+  InitRocksDBOptions(&rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular));
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
   rocksdb_options.block_based_table_mem_tracker =
       MemTracker::FindOrCreateTracker(
@@ -881,7 +867,7 @@ CHECKED_STATUS ResetRocksDB(
 Status Tablet::ResetRocksDBs(bool destroy) {
   rocksdb::Options rocksdb_options;
   if (destroy) {
-    docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
+    InitRocksDBOptions(&rocksdb_options, LogPrefix());
   }
 
   Status intents_status = ResetRocksDB(destroy, rocksdb_options, &intents_db_);
@@ -2677,7 +2663,8 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
   } else if (metadata_->schema().table_properties().is_transactional() || is_ysql_catalog_table) {
     // We still need context with transaction participant in order to resolve intents during
     // possible reads.
-    return TransactionOperationContext(GenerateTransactionId(), transaction_participant());
+    return TransactionOperationContext(
+        TransactionId::GenerateRandom(), transaction_participant());
   } else {
     return boost::none;
   }
@@ -2755,6 +2742,10 @@ void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
   LOG_IF_WITH_PREFIX(DFATAL, has_new_listener == has_old_listener)
       << __func__ << " in wrong state, has_old_listener: " << has_old_listener;
   num_sst_files_changed_listener_ = std::move(listener);
+}
+
+void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix) {
+  docdb::InitRocksDBOptions(options, log_prefix, rocksdb_statistics_, tablet_options_);
 }
 
 // ------------------------------------------------------------------------------------------------

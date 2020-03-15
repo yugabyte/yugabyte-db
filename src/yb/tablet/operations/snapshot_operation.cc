@@ -8,6 +8,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -58,6 +59,12 @@ std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_d
   return JoinPathSegments(top_snapshots_dir, request_->snapshot_id());
 }
 
+tserver::TabletSnapshotOpRequestPB* SnapshotOperationState::AllocateRequest() {
+  request_holder_ = std::make_unique<tserver::TabletSnapshotOpRequestPB>();
+  request_ = request_holder_.get();
+  return request_holder_.get();
+}
+
 // ------------------------------------------------------------------------------------------------
 // SnapshotOperation
 // ------------------------------------------------------------------------------------------------
@@ -99,7 +106,24 @@ Status SnapshotOperation::DoAborted(const Status& status) {
 
 Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY SNAPSHOT: Starting");
-  return state()->tablet()->snapshots().Replicated(state());
+  auto operation = state()->request()->operation();
+  switch (operation) {
+    case TabletSnapshotOpRequestPB::CREATE_ON_MASTER: {
+      auto snapshot_coordinator = state()->tablet()->snapshot_coordinator();
+      if (!snapshot_coordinator) {
+        return STATUS_FORMAT(IllegalState, "Replicated $0 to tablet without snapshot coordinator",
+                             TabletSnapshotOpRequestPB::Operation_Name(operation));
+      }
+      return snapshot_coordinator->Replicated(leader_term, *state());
+    }
+    case TabletSnapshotOpRequestPB::CREATE_ON_TABLET: FALLTHROUGH_INTENDED;
+    case TabletSnapshotOpRequestPB::RESTORE: FALLTHROUGH_INTENDED;
+    case TabletSnapshotOpRequestPB::DELETE:
+      return state()->tablet()->snapshots().Replicated(state());
+    case TabletSnapshotOpRequestPB::UNKNOWN:
+      break;
+  }
+  FATAL_INVALID_ENUM_VALUE(TabletSnapshotOpRequestPB::Operation, operation);
 }
 
 string SnapshotOperation::ToString() const {

@@ -124,7 +124,7 @@ void AddIntent(
 
   std::array<Slice, 3> reverse_key = {{
       Slice(reverse_key_prefix, sizeof(reverse_key_prefix)),
-      Slice(transaction_id.data, transaction_id.size()),
+      transaction_id.AsSlice(),
       doc_ht_slice,
   }};
   rocksdb_write_batch->Put(key, value);
@@ -630,7 +630,7 @@ class PrepareTransactionWriteBatchHelper {
     IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(*intra_txn_write_id_);
     std::array<Slice, 5> value = {{
         Slice(&transaction_value_type, 1),
-        Slice(transaction_id_.data, transaction_id_.size()),
+        transaction_id_.AsSlice(),
         Slice(&write_id_value_type, 1),
         Slice(pointer_cast<char*>(&big_endian_write_id), sizeof(big_endian_write_id)),
         value_slice,
@@ -671,7 +671,7 @@ class PrepareTransactionWriteBatchHelper {
 
     std::array<Slice, 2> value = {{
         Slice(&transaction_id_value_type, 1),
-        Slice(transaction_id_.data, transaction_id_.size()),
+        transaction_id_.AsSlice(),
     }};
 
     if (PREDICT_TRUE(!FLAGS_docdb_sort_weak_intents_in_tests)) {
@@ -1403,7 +1403,7 @@ void DocDBDebugDumpToContainer(
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* out) {
   out->AppendValueType(ValueType::kTransactionId);
-  out->AppendRawBytes(Slice(transaction_id.data, transaction_id.size()));
+  out->AppendRawBytes(transaction_id.AsSlice());
 }
 
 DocHybridTimeBuffer::DocHybridTimeBuffer() {
@@ -1492,7 +1492,7 @@ Status PrepareApplyIntentsBatch(
   // appropriate DB.
 
   KeyBytes txn_reverse_index_prefix;
-  Slice transaction_id_slice(transaction_id.data, TransactionId::static_size());
+  Slice transaction_id_slice = transaction_id.AsSlice();
   AppendTransactionKeyPrefix(transaction_id, &txn_reverse_index_prefix);
   txn_reverse_index_prefix.AppendValueType(ValueType::kMaxByte);
   Slice key_prefix = txn_reverse_index_prefix.AsSlice();

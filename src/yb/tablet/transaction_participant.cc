@@ -115,12 +115,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       : RunningTransactionContext(context, applier),
         log_prefix_(context->LogPrefix()),
         status_resolver_(context, &rpcs_, FLAGS_max_transactions_in_status_request,
-                         std::bind(&Impl::TransactionsStatus, this, _1)) {
+                         std::bind(&Impl::TransactionsStatus, this, _1)),
+        last_loaded_(TransactionId::Nil()) {
     LOG_WITH_PREFIX(INFO) << "Create";
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_load_attempts_ = METRIC_transaction_load_attempts.Instantiate(entity);
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
-    memset(&last_loaded_, 0, sizeof(last_loaded_));
   }
 
   ~Impl() {
@@ -226,7 +226,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {
       ++result.first;
       // Count number of transaction, by counting metadata records.
-      if (iter.key().size() == TransactionId::static_size() + 1) {
+      if (iter.key().size() == TransactionId::StaticSize() + 1) {
         ++result.second;
         auto key = iter.key();
         key.remove_prefix(1);
@@ -479,7 +479,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       tserver::UpdateTransactionRequestPB req;
       req.set_tablet_id(data.status_tablet);
       auto& state = *req.mutable_state();
-      state.set_transaction_id(data.transaction_id.begin(), data.transaction_id.size());
+      state.set_transaction_id(data.transaction_id.data(), data.transaction_id.size());
       state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
       state.add_tablets(participant_context_.tablet_id());
 
@@ -948,8 +948,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         scoped_pending_operation);
     std::unique_ptr<docdb::BoundedRocksDbIterator> iterator_holder(iterator);
     docdb::KeyBytes key_bytes;
-    TransactionId id;
-    memset(&id, 0, sizeof(id));
+    TransactionId id = TransactionId::Nil();
     AppendTransactionKeyPrefix(id, &key_bytes);
     iterator->Seek(key_bytes.AsSlice());
     size_t loaded_transactions = 0;
@@ -1058,8 +1057,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
               << ": " << docdb::SubDocKey::DebugSliceToString(iterator->key())
               << " => " << iterator->value().ToDebugHexString();
           auto status = docdb::DecodeIntentValue(
-              iterator->value(), Slice(id.data, id.size()), &last_batch_data.write_id,
-              nullptr /* body */);
+              iterator->value(), id.AsSlice(), &last_batch_data.write_id, nullptr /* body */);
           LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
               << "Failed to decode intent value: " << status << ", "
               << docdb::SubDocKey::DebugSliceToString(iterator->key()) << " => "

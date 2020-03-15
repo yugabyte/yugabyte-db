@@ -11,31 +11,25 @@
 // under the License.
 //
 
-#include "yb/common/transaction.h"
-#include "yb/docdb/docdb-internal.h"
+#ifndef YB_TABLET_SNAPSHOT_COORDINATOR_H
+#define YB_TABLET_SNAPSHOT_COORDINATOR_H
+
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
-namespace docdb {
+namespace tablet {
 
-KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
-  if (slice.empty()) {
-    return KeyType::kEmpty;
-  }
+// Interface for snapshot coordinator.
+class SnapshotCoordinator {
+ public:
+  virtual CHECKED_STATUS Replicated(int64_t leader_term, const SnapshotOperationState& state) = 0;
 
-  if (db_type == StorageDbType::kRegular) {
-    return KeyType::kValueKey;
-  }
+  virtual ~SnapshotCoordinator() = default;
+};
 
-  if (slice.size() > 0 && slice[0] == ValueTypeAsChar::kTransactionId) {
-    if (slice.size() == TransactionId::StaticSize() + 1) {
-      return KeyType::kTransactionMetadata;
-    } else {
-      return KeyType::kReverseTxnKey;
-    }
-  } else {
-    return KeyType::kIntentKey;
-  }
-}
-
-} // namespace docdb
+} // namespace tablet
 } // namespace yb
+
+#endif // YB_TABLET_SNAPSHOT_COORDINATOR_H

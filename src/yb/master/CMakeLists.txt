@@ -72,6 +72,7 @@ set(MASTER_SRCS
   permissions_manager.cc
   flush_manager.cc
   master.cc
+  master_error.cc
   master_options.cc
   master_service_base.cc
   master_service.cc
@@ -79,6 +80,7 @@ set(MASTER_SRCS
   master_tserver.cc
   master-path-handlers.cc
   mini_master.cc
+  master_snapshot_coordinator.cc
   sys_catalog.cc
   sys_catalog_initialization.cc
   system_tablet.cc

@@ -11,31 +11,17 @@
 // under the License.
 //
 
-#include "yb/common/transaction.h"
-#include "yb/docdb/docdb-internal.h"
+#ifndef YB_COMMON_SNAPSHOT_H
+#define YB_COMMON_SNAPSHOT_H
+
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
-namespace docdb {
 
-KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
-  if (slice.empty()) {
-    return KeyType::kEmpty;
-  }
+YB_STRONGLY_TYPED_UUID(TxnSnapshotId);
 
-  if (db_type == StorageDbType::kRegular) {
-    return KeyType::kValueKey;
-  }
+typedef boost::hash<TxnSnapshotId> TxnSnapshotIdHash;
 
-  if (slice.size() > 0 && slice[0] == ValueTypeAsChar::kTransactionId) {
-    if (slice.size() == TransactionId::StaticSize() + 1) {
-      return KeyType::kTransactionMetadata;
-    } else {
-      return KeyType::kReverseTxnKey;
-    }
-  } else {
-    return KeyType::kIntentKey;
-  }
-}
-
-} // namespace docdb
 } // namespace yb
+
+#endif // YB_COMMON_SNAPSHOT_H

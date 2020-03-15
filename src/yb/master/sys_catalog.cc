@@ -485,15 +485,14 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   consensus::ConsensusBootstrapInfo consensus_info;
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
-  tablet::BootstrapTabletData data = {
-      .meta = metadata,
+  tablet::TabletInitData tablet_init_data = {
+      .metadata = metadata,
       .client_future = master_->async_client_initializer().get_client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
-      .mem_tracker = master_->mem_tracker(),
+      .parent_mem_tracker = master_->mem_tracker(),
       .block_based_table_mem_tracker =
           MemTracker::FindOrCreateTracker("BlockBasedTable", master_->mem_tracker()),
       .metric_registry = metric_registry_,
-      .listener = tablet_peer()->status_listener(),
       .log_anchor_registry = tablet_peer()->log_anchor_registry(),
       .tablet_options = tablet_options,
       .log_prefix_suffix = " P " + tablet_peer()->permanent_uuid(),
@@ -504,12 +503,17 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       // the TabletPeer here in case we need this for rolling master upgrades when we do enable
       // storing transaction status records in the sys catalog tablet.
       .transaction_coordinator_context = tablet_peer().get(),
-      .append_pool = append_pool(),
-      .retryable_requests = nullptr,
       // Disable transactions if we are creating the initial sys catalog snapshot.
       // initdb is much faster with transactions disabled.
       .txns_enabled = tablet::TransactionsEnabled(!FLAGS_create_initial_sys_catalog_snapshot),
-      .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue
+      .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
+      .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
+  };
+  tablet::BootstrapTabletData data = {
+      .tablet_init_data = tablet_init_data,
+      .listener = tablet_peer()->status_listener(),
+      .append_pool = append_pool(),
+      .retryable_requests = nullptr,
   };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 

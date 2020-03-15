@@ -288,7 +288,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
     req_.set_batch_idx(ops_.front()->batch_idx);
   }
   auto& transaction_metadata = batcher_->transaction_metadata();
-  if (!transaction_metadata.transaction_id.is_nil()) {
+  if (!transaction_metadata.transaction_id.IsNil()) {
     SetTransactionMetadata(transaction_metadata, &req_);
     bool serializable = transaction_metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
     LOG_IF(DFATAL, has_read_time && serializable)

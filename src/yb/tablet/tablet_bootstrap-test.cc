@@ -119,24 +119,27 @@ class BootstrapTest : public LogTestBase {
     scoped_refptr<LogAnchorRegistry> log_anchor_registry(new LogAnchorRegistry());
     // Now attempt to recover the log
     TabletOptions tablet_options;
+    TabletInitData tablet_init_data = {
+      .metadata = meta,
+      .client_future = std::shared_future<client::YBClient*>(),
+      .clock = scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitial)),
+      .parent_mem_tracker = shared_ptr<MemTracker>(),
+      .block_based_table_mem_tracker = shared_ptr<MemTracker>(),
+      .metric_registry = nullptr,
+      .log_anchor_registry = log_anchor_registry,
+      .tablet_options = tablet_options,
+      .log_prefix_suffix = std::string(),
+      .transaction_participant_context = nullptr,
+      .local_tablet_filter = client::LocalTabletFilter(),
+      .transaction_coordinator_context = nullptr,
+      .txns_enabled = TransactionsEnabled::kTrue,
+      .is_sys_catalog = IsSysCatalogTablet::kFalse
+    };
     BootstrapTabletData data = {
-        .meta = meta,
-        .client_future = std::shared_future<client::YBClient*>(),
-        .clock = scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitial)),
-        .mem_tracker = shared_ptr<MemTracker>(),
-        .block_based_table_mem_tracker = shared_ptr<MemTracker>(),
-        .metric_registry = nullptr,
-        .listener = listener.get(),
-        .log_anchor_registry = log_anchor_registry,
-        .tablet_options = tablet_options,
-        .log_prefix_suffix = std::string(),
-        .transaction_participant_context = nullptr,
-        .local_tablet_filter = client::LocalTabletFilter(),
-        .transaction_coordinator_context = nullptr,
-        .append_pool = append_pool_.get(),
-        .retryable_requests = nullptr,
-        .txns_enabled = TransactionsEnabled::kTrue,
-        .is_sys_catalog = IsSysCatalogTablet::kFalse
+      .tablet_init_data = tablet_init_data,
+      .listener = listener.get(),
+      .append_pool = append_pool_.get(),
+      .retryable_requests = nullptr,
     };
     RETURN_NOT_OK(BootstrapTablet(data, tablet, &log_, boot_info));
     return Status::OK();

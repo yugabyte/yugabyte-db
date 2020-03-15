@@ -634,7 +634,7 @@ class DocOperationScanTest : public DocOperationTest {
         boost::optional<TransactionId> txn_id;
         if (txn_status_manager) {
           if (RandomActWithProbability(0.5, &rng_)) {
-            txn_id = GenerateTransactionId();
+            txn_id = TransactionId::GenerateRandom();
             SetCurrentTransactionId(*txn_id);
             txn_op_context = std::make_unique<TransactionOperationContext>(*txn_id,
                 txn_status_manager);
@@ -827,7 +827,7 @@ class DocOperationTxnScanTest : public DocOperationScanTest {
     InsertRows(num_rows_per_key, &txn_status_manager);
 
     PerformScans(is_forward_scan,
-                 TransactionOperationContext(GenerateTransactionId(), &txn_status_manager),
+                 TransactionOperationContext(TransactionId::GenerateRandom(), &txn_status_manager),
                  [](size_t){});
   }
 };

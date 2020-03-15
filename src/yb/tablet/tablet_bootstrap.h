@@ -156,16 +156,12 @@ class TabletBootstrap {
   BootstrapTabletData data_;
   RaftGroupMetadataPtr meta_;
   std::shared_ptr<MemTracker> mem_tracker_;
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
-  MetricRegistry* metric_registry_;
   TabletStatusListener* listener_;
   TabletPtr tablet_;
-  const scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<log::Log> log_;
   std::unique_ptr<log::LogReader> log_reader_;
 
   std::unique_ptr<consensus::ConsensusMetadata> cmeta_;
-  TabletOptions tablet_options_;
 
   // Thread pool for append task for bootstrap.
   ThreadPool* append_pool_;

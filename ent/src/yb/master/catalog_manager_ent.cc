@@ -37,6 +37,9 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/encryption_manager.h"
+
+#include "yb/tablet/operations/snapshot_operation.h"
+
 #include "yb/tserver/backup.proxy.h"
 #include "yb/util/cast.h"
 #include "yb/util/service_util.h"
@@ -246,11 +249,23 @@ Status CatalogManager::RunLoaders(int64_t term) {
 }
 
 Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
-                                      CreateSnapshotResponsePB* resp) {
+                                      CreateSnapshotResponsePB* resp,
+                                      RpcContext* rpc) {
   LOG(INFO) << "Servicing CreateSnapshot request: " << req->ShortDebugString();
 
   RETURN_NOT_OK(CheckOnline());
 
+  if (req->transaction_aware()) {
+    return CreateTransactionAwareSnapshot(*req, resp, rpc);
+  }
+
+  return CreateNonTransactionAwareSnapshot(req, resp, rpc);
+}
+
+Status CatalogManager::CreateNonTransactionAwareSnapshot(
+    const CreateSnapshotRequestPB* req,
+    CreateSnapshotResponsePB* resp,
+    RpcContext* rpc) {
   {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
@@ -274,18 +289,15 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
 
   // Create in memory snapshot data descriptor.
   for (const TableIdentifierPB& table_id_pb : req->tables()) {
-    scoped_refptr<TableInfo> table;
-    scoped_refptr<NamespaceInfo> ns;
-    MasterErrorPB::Code error = MasterErrorPB::UNKNOWN_ERROR;
-
-    const Result<TabletInfos> res_tablets = GetTabletsOrSetupError(
-        table_id_pb, &error, &table, &ns);
-    if (!res_tablets.ok()) {
-      return SetupError(resp->mutable_error(), error, res_tablets.status());
+    const auto table_description = DescribeTable(table_id_pb);
+    if (!table_description.ok()) {
+      return SetupError(resp->mutable_error(), table_description.status());
     }
 
-    RETURN_NOT_OK(snapshot->AddEntries(ns, table, *res_tablets));
-    all_tablets.insert(all_tablets.end(), res_tablets->begin(), res_tablets->end());
+    RETURN_NOT_OK(snapshot->AddEntries(*table_description));
+    all_tablets.insert(
+        all_tablets.end(), table_description->tablet_infos.begin(),
+        table_description->tablet_infos.end());
   }
 
   VLOG(1) << "Snapshot " << snapshot->ToString()
@@ -324,11 +336,45 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
     LOG(INFO) << "Sending CreateTabletSnapshot to tablet: " << tablet->ToString();
 
     // Send Create Tablet Snapshot request to each tablet leader.
-    SendCreateTabletSnapshotRequest(tablet, snapshot_id);
+    SendCreateTabletSnapshotRequest(tablet, snapshot_id, HybridTime::kInvalid);
   }
 
   resp->set_snapshot_id(snapshot_id);
   LOG(INFO) << "Successfully started snapshot " << snapshot_id << " creation";
+  return Status::OK();
+}
+
+Status CatalogManager::CreateTransactionAwareSnapshot(
+    const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
+  auto latch = std::make_shared<CountDownLatch>(1);
+  auto operation_state = std::make_unique<tablet::SnapshotOperationState>(tablet_peer()->tablet());
+  auto request = operation_state->AllocateRequest();
+
+  request->set_snapshot_hybrid_time(master_->clock()->MaxGlobalNow().ToUint64());
+  request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
+  auto snapshot_id = Uuid::Generate();
+  request->set_snapshot_id(snapshot_id.data, snapshot_id.size());
+
+  for (const auto& table_id : req.tables()) {
+    // TODO(txn_snapshot) use single lock to resolve all tables to tablets
+    auto table_description = DescribeTable(table_id);
+    if (!table_description.ok()) {
+      return SetupError(resp->mutable_error(), table_description.status());
+    }
+
+    for (const auto& tablet : table_description->tablet_infos) {
+      request->add_tablet_id(tablet->id());
+    }
+  }
+
+  operation_state->set_completion_callback(
+      tablet::MakeLatchOperationCompletionCallback(latch, resp));
+  auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
+
+  tablet_peer()->Submit(std::move(operation), leader_ready_term_);
+  if (!latch->WaitUntil(rpc->GetClientDeadline())) {
+    return STATUS(TimedOut, "Replication timed out");
+  }
   return Status::OK();
 }
 
@@ -901,11 +947,24 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   return Status::OK();
 }
 
-void CatalogManager::SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                                     const string& snapshot_id) {
+TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
+  TabletInfos result;
+  result.reserve(ids.size());
+  SharedLock<LockType> l(lock_);
+  for (const auto& id : ids) {
+    auto it = tablet_map_->find(id);
+    result.push_back(it != tablet_map_->end() ? it->second : nullptr);
+  }
+  return result;
+}
+
+void CatalogManager::SendCreateTabletSnapshotRequest(
+    const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
+    HybridTime snapshot_hybrid_time) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, worker_pool_.get(), tablet, snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::CREATE);
+      tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
+  call->SetSnapshotHybridTime(snapshot_hybrid_time);
   tablet->table()->AddTask(call);
   WARN_NOT_OK(call->Run(), "Failed to send create snapshot request");
 }
@@ -2784,9 +2843,7 @@ bool SnapshotInfo::IsDeleteInProgress() const {
   return l->data().is_deleting();
 }
 
-Status SnapshotInfo::AddEntries(const scoped_refptr<NamespaceInfo> ns,
-                                const scoped_refptr<TableInfo>& table,
-                                const vector<scoped_refptr<TabletInfo>>& tablets) {
+Status SnapshotInfo::AddEntries(const TableDescription& table_description) {
   // Note: SysSnapshotEntryPB includes PBs for stored (1) namespaces (2) tables (3) tablets.
   SysSnapshotEntryPB& snapshot_pb = mutable_metadata()->mutable_dirty()->pb;
 
@@ -2794,26 +2851,20 @@ Status SnapshotInfo::AddEntries(const scoped_refptr<NamespaceInfo> ns,
   SysRowEntry* entry = snapshot_pb.add_entries();
   {
     TRACE("Locking namespace");
-    auto l = ns->LockForRead();
-
-    entry->set_id(ns->id());
-    entry->set_type(ns->metadata().state().type());
-    entry->set_data(ns->metadata().state().pb.SerializeAsString());
+    auto l = table_description.namespace_info->LockForRead();
+    FillInfoEntry(*table_description.namespace_info, entry);
   }
 
   // Add table entry.
   entry = snapshot_pb.add_entries();
   {
     TRACE("Locking table");
-    auto l = table->LockForRead();
-
-    entry->set_id(table->id());
-    entry->set_type(table->metadata().state().type());
-    entry->set_data(table->metadata().state().pb.SerializeAsString());
+    auto l = table_description.table_info->LockForRead();
+    FillInfoEntry(*table_description.table_info, entry);
   }
 
   // Add tablet entries.
-  for (const scoped_refptr<TabletInfo> tablet : tablets) {
+  for (const scoped_refptr<TabletInfo>& tablet : table_description.tablet_infos) {
     SysSnapshotEntryPB_TabletSnapshotPB* const tablet_info = snapshot_pb.add_tablet_snapshots();
     entry = snapshot_pb.add_entries();
 
@@ -2823,9 +2874,7 @@ Status SnapshotInfo::AddEntries(const scoped_refptr<NamespaceInfo> ns,
     tablet_info->set_id(tablet->id());
     tablet_info->set_state(SysSnapshotEntryPB::CREATING);
 
-    entry->set_id(tablet->id());
-    entry->set_type(tablet->metadata().state().type());
-    entry->set_data(tablet->metadata().state().pb.SerializeAsString());
+    FillInfoEntry(*tablet, entry);
   }
 
   return Status::OK();

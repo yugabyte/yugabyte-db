@@ -596,10 +596,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
                            scoped_refptr<TableInfo>* table_info);
 
-  Result<TabletInfos> GetTabletsOrSetupError(const TableIdentifierPB& table_identifier,
-                                             MasterErrorPB::Code* error,
-                                             scoped_refptr<TableInfo>* table = nullptr,
-                                             scoped_refptr<NamespaceInfo>* ns = nullptr);
+  Result<TableDescription> DescribeTable(const TableIdentifierPB& table_identifier);
 
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();

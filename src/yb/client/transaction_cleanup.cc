@@ -80,7 +80,7 @@ class TransactionCleanup : public std::enable_shared_from_this<TransactionCleanu
       request.set_tablet_id(tablet_id);
       request.set_propagated_hybrid_time(now);
       auto& state = *request.mutable_state();
-      state.set_transaction_id(transaction_id_.begin(), transaction_id_.size());
+      state.set_transaction_id(transaction_id_.data(), transaction_id_.size());
       state.set_status(TransactionStatus::CLEANUP);
       state.set_sealed(sealed_);
 

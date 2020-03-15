@@ -182,7 +182,7 @@ class ConflictResolver {
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
-            Slice(existing_value.data(), TransactionId::static_size())));
+            Slice(existing_value.data(), TransactionId::StaticSize())));
 
         if (!context_.IgnoreConflictsWith(transaction_id)) {
           conflicts_.insert(transaction_id);

@@ -97,6 +97,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog_initialization.h"
@@ -2731,45 +2732,45 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
   return FindNamespaceUnlocked(ns_identifier, ns_info);
 }
 
-Result<TabletInfos> CatalogManager::GetTabletsOrSetupError(
-    const TableIdentifierPB& table_identifier,
-    MasterErrorPB::Code* error,
-    scoped_refptr<TableInfo>* table,
-    scoped_refptr<NamespaceInfo>* ns) {
-  DCHECK_ONLY_NOTNULL(error);
+Result<TableDescription> CatalogManager::DescribeTable(const TableIdentifierPB& table_identifier) {
+  TableDescription result;
+
   // Lookup the table and verify it exists.
   TRACE("Looking up table");
-  scoped_refptr<TableInfo> local_table_info;
-  scoped_refptr<TableInfo>& table_obj = table ? *table : local_table_info;
-  RETURN_NOT_OK(FindTable(table_identifier, &table_obj));
-  if (table_obj == nullptr) {
-    *error = MasterErrorPB::OBJECT_NOT_FOUND;
-    return STATUS(NotFound, "Object does not exist", table_identifier.ShortDebugString());
+  RETURN_NOT_OK(FindTable(table_identifier, &result.table_info));
+  if (result.table_info == nullptr) {
+    return STATUS(NotFound, "Object does not exist", table_identifier.ShortDebugString(),
+                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
-  TRACE("Locking table");
-  auto l = table_obj->LockForRead();
+  NamespaceId namespace_id;
+  {
+    TRACE("Locking table");
+    auto l = result.table_info->LockForRead();
 
-  if (table_obj->IsCreateInProgress()) {
-    *error = MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS;
-    return STATUS(IllegalState, "Table creation is in progress", table_obj->ToString());
+    if (result.table_info->IsCreateInProgress()) {
+      return STATUS(IllegalState, "Table creation is in progress", result.table_info->ToString(),
+                    MasterError(MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS));
+    }
+
+    result.table_info->GetAllTablets(&result.tablet_infos);
+
+    namespace_id = result.table_info->namespace_id();
   }
 
-  if (ns) {
+  {
     TRACE("Looking up namespace");
     SharedLock<LockType> l(lock_);
 
-    *ns = FindPtrOrNull(namespace_ids_map_, table_obj->namespace_id());
-    if (*ns == nullptr) {
-      *error = MasterErrorPB::NAMESPACE_NOT_FOUND;
+    result.namespace_info = FindPtrOrNull(namespace_ids_map_, namespace_id);
+    if (result.namespace_info == nullptr) {
       return STATUS(
-          InvalidArgument, "Could not find namespace by namespace id", table_obj->namespace_id());
+          InvalidArgument, "Could not find namespace by namespace id", namespace_id,
+          MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
   }
 
-  TabletInfos tablets;
-  table_obj->GetAllTablets(&tablets);
-  return std::move(tablets);
+  return result;
 }
 
 // Truncate a Table.

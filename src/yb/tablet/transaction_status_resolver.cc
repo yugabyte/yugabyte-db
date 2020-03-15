@@ -88,7 +88,7 @@ class TransactionStatusResolver::Impl {
     for (size_t i = 0; i != request_size; ++i) {
       const auto& txn_id = tablet_queue[i];
       VLOG_WITH_PREFIX(4) << "Checking txn status: " << txn_id;
-      req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.begin()), txn_id.size());
+      req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
     }
     rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
