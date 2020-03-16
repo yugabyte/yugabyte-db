@@ -2079,7 +2079,7 @@ create_hintstate(Query *parse, const char *hints)
 		hstate->num_hints[HINT_TYPE_LEADING]);
 	hstate->rows_hints = (RowsHint **) (hstate->set_hints +
 		hstate->num_hints[HINT_TYPE_SET]);
-	hstate->parallel_hints = (ParallelHint **) (hstate->set_hints +
+	hstate->parallel_hints = (ParallelHint **) (hstate->rows_hints +
 		hstate->num_hints[HINT_TYPE_ROWS]);
 
 	return hstate;
