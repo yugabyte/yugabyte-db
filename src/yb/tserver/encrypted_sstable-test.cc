@@ -188,9 +188,9 @@ TEST_F(EncryptedSSTableTest, CounterOverflow10MKeys) {
   CounterOverflow(10 * 1000 * 1000, 0xfffff000);
 }
 
-TEST_F(EncryptedSSTableTest, DISABLED_CounterOverflow100000Keys) {
-  // This test is disabled because we don't have a workaround for the variant of the counter
-  // overflow issue that this test reproduces.
+TEST_F(EncryptedSSTableTest, CounterOverflow100000Keys) {
+  // This test fails if meta block checksums are not being verified.
+  // https://github.com/yugabyte/yugabyte-db/issues/3974
   CounterOverflow(100 * 1000, 0xffffff00);
 }
 
