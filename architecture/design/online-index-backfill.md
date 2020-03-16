@@ -128,10 +128,13 @@ Requirement 1) is similar to what a unique index would do anyways. Condition 2) 
 
 The rate at which the backfill should proceed can be specified by the desired number of rows of the primary table `MyTable` to process per minute. In order to enforce this rate, the index backfill process keeps track of the number of rows being processed per minute from the primary table `MyTable`. Note that this counter is maintained per backfill task.
 
-### Waiting for pending transactions to finish.
-The above discussion assumes that each “update/write” happens at a point in time, and based on the state of IndexPermissions that were set in that time, the backfill algorithm will make sure to update the index as required.
+### Waiting for pending transactions to finish
 
-This may not hold true for “transactions” where the write/index-permission checking is done at “apply” time. However the backfill algorithm, that may kick in later, will only see the “commit” time.
+So far, the discussion has made the assumption that all the concurrent updates (happening at the same time as the index rebuild) on the `MyTable` table  are instantaneous operations. Specifically, this implies that:
+* All the concurrent updates finish at a point in time
+* The resulting updates on the index table (`MyIndex` in our example) can be handled based on its state as of that time (as determined by the value set in `IndexPermissions`).
+
+However, this may not hold true for “transactions” where the write/index-permission checking is done at “apply” time. However the backfill algorithm, that may kick in later, will only see the “commit” time.
 
 This means that if a write was “applied” before getting to update the index (wrt deleting the old value), and commits “after” the backfill timestamp is chosen, then neither operations may be updating the “index” to delete the overwritten value. 
 
