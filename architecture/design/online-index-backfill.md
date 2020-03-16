@@ -88,7 +88,7 @@ After the index state is updated to `BACKFILLING`, the YB-Master orchestrates th
 
 ### 5. Finalizing the index
 
-Once the index rebuild is successfully completed on all the tablets of the table, the table state is updated to `READ_WRITE_AND_DELETE, at which point the index is completely rebuilt.
+Once the index rebuild is successfully completed on all the tablets of the table, the table state is updated to `READ_WRITE_AND_DELETE`, at which point the index is completely rebuilt.
 
 
 ## The index backfill process
