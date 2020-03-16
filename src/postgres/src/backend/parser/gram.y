@@ -873,6 +873,9 @@ stmt :
 			| AlterDatabaseSetStmt
 			| AlterDatabaseStmt
 			| AlterDomainStmt
+			| AlterObjectSchemaStmt
+			| AlterOperatorStmt
+			| AlterOpFamilyStmt
 			| AlterSeqStmt
 			| AlterTableStmt
 			| CallStmt
@@ -881,6 +884,7 @@ stmt :
 			| CopyStmt
 			| CreateCastStmt
 			| CreateDomainStmt
+			| CreateOpFamilyStmt
 			| CreateSchemaStmt
 			| CreateUserStmt
 			| CreatedbStmt
@@ -889,6 +893,7 @@ stmt :
 			| DeleteStmt
 			| DiscardStmt
 			| DropCastStmt
+			| DropOpFamilyStmt
 			| DropStmt
 			| DropdbStmt
 			| ExecuteStmt
@@ -913,6 +918,8 @@ stmt :
 			| ViewStmt
 
 			/* BETA features */
+			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension"); }
+			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension"); }
 			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze"); }
 			| CreateFunctionStmt { parser_ybc_beta_feature(@1, "function"); }
 			| CreateOpClassStmt { parser_ybc_beta_feature(@1, "opclass"); }
@@ -946,15 +953,11 @@ stmt :
 			| AlterEventTrigStmt { parser_ybc_signal_unsupported(@1, "This statement", 1156); }
 			| AlterCollationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterEnumStmt { parser_ybc_signal_unsupported(@1, "This statement", 1893); }
-			| AlterExtensionStmt { parser_ybc_signal_unsupported(@1, "This statement", 1154); }
-			| AlterExtensionContentsStmt { parser_ybc_signal_unsupported(@1, "This statement", 1154); }
 			| AlterFdwStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterForeignServerStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterForeignTableStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterFunctionStmt { parser_ybc_signal_unsupported(@1, "This statement", 2717); }
 			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterObjectSchemaStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterOperatorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -973,9 +976,7 @@ stmt :
 			| CreateForeignServerStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateForeignTableStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -985,7 +986,6 @@ stmt :
 			| CreateUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTableSpaceStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
@@ -4803,7 +4803,6 @@ create_extension_opt_item:
 
 AlterExtensionStmt: ALTER EXTENSION name UPDATE alter_extension_opt_list
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionStmt *n = makeNode(AlterExtensionStmt);
 					n->extname = $3;
 					n->options = $5;
@@ -4834,7 +4833,6 @@ alter_extension_opt_item:
 AlterExtensionContentsStmt:
 			ALTER EXTENSION name add_drop ACCESS METHOD name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4844,7 +4842,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop AGGREGATE aggregate_with_argtypes
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4854,7 +4851,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop CAST '(' Typename AS Typename ')'
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4864,7 +4860,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop COLLATION any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4874,7 +4869,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop CONVERSION_P any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4884,7 +4878,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop DOMAIN_P Typename
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4894,7 +4887,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop FUNCTION function_with_argtypes
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4904,7 +4896,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop opt_procedural LANGUAGE name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4914,7 +4905,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop OPERATOR operator_with_argtypes
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4924,7 +4914,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop OPERATOR CLASS any_name USING access_method
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4934,7 +4923,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop OPERATOR FAMILY any_name USING access_method
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4944,7 +4932,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop PROCEDURE function_with_argtypes
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4954,7 +4941,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop ROUTINE function_with_argtypes
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4964,7 +4950,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4974,7 +4959,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop EVENT TRIGGER name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4984,7 +4968,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop TABLE any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -4994,7 +4977,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop TEXT_P SEARCH PARSER any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5004,7 +4986,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop TEXT_P SEARCH DICTIONARY any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5014,7 +4995,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop TEXT_P SEARCH TEMPLATE any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5024,7 +5004,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop TEXT_P SEARCH CONFIGURATION any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5034,7 +5013,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop SEQUENCE any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5044,7 +5022,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop VIEW any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5054,7 +5031,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop MATERIALIZED VIEW any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5064,7 +5040,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop FOREIGN TABLE any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5074,7 +5049,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop FOREIGN DATA_P WRAPPER name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5084,7 +5058,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop SERVER name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5094,7 +5067,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop TRANSFORM FOR Typename LANGUAGE name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -5104,7 +5076,6 @@ AlterExtensionContentsStmt:
 				}
 			| ALTER EXTENSION name add_drop TYPE_P Typename
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION", 1154);
 					AlterExtensionContentsStmt *n = makeNode(AlterExtensionContentsStmt);
 					n->extname = $3;
 					n->action = $4;
@@ -6474,7 +6445,6 @@ opt_recheck:	RECHECK
 CreateOpFamilyStmt:
 			CREATE OPERATOR FAMILY any_name USING access_method
 				{
-					parser_ybc_not_support(@1, "CREATE OPERATOR FAMILY");
 					CreateOpFamilyStmt *n = makeNode(CreateOpFamilyStmt);
 					n->opfamilyname = $4;
 					n->amname = $6;
@@ -6485,7 +6455,6 @@ CreateOpFamilyStmt:
 AlterOpFamilyStmt:
 			ALTER OPERATOR FAMILY any_name USING access_method ADD_P opclass_item_list
 				{
-					parser_ybc_not_support(@1, "ALTER OPERATOR FAMILY");
 					AlterOpFamilyStmt *n = makeNode(AlterOpFamilyStmt);
 					n->opfamilyname = $4;
 					n->amname = $6;
@@ -6495,7 +6464,6 @@ AlterOpFamilyStmt:
 				}
 			| ALTER OPERATOR FAMILY any_name USING access_method DROP opclass_drop_list
 				{
-					parser_ybc_not_support(@1, "ALTER OPERATOR FAMILY");
 					AlterOpFamilyStmt *n = makeNode(AlterOpFamilyStmt);
 					n->opfamilyname = $4;
 					n->amname = $6;
@@ -6556,7 +6524,6 @@ DropOpClassStmt:
 DropOpFamilyStmt:
 			DROP OPERATOR FAMILY any_name USING access_method opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP OPERATOR FAMILY");
 					DropStmt *n = makeNode(DropStmt);
 					n->objects = list_make1(lcons(makeString($6), $4));
 					n->removeType = OBJECT_OPFAMILY;
@@ -6567,7 +6534,6 @@ DropOpFamilyStmt:
 				}
 			| DROP OPERATOR FAMILY IF_P EXISTS any_name USING access_method opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP OPERATOR FAMILY");
 					DropStmt *n = makeNode(DropStmt);
 					n->objects = list_make1(lcons(makeString($8), $6));
 					n->removeType = OBJECT_OPFAMILY;
@@ -9143,7 +9109,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER OPERATOR FAMILY any_name USING access_method RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER OPERATOR FAMILY");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_OPFAMILY;
 					n->object = (Node *) lcons(makeString($6), $4);
@@ -9713,7 +9678,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER EXTENSION name SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER EXTENSION SET SCHEMA", 1154);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_EXTENSION;
 					n->object = (Node *) makeString($3);
@@ -9733,7 +9697,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER OPERATOR operator_with_argtypes SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER OPERATOR SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_OPERATOR;
 					n->object = (Node *) $3;
@@ -9753,7 +9716,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER OPERATOR FAMILY any_name USING access_method SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER OPERATOR FAMILY SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_OPFAMILY;
 					n->object = (Node *) lcons(makeString($6), $4);
@@ -9952,7 +9914,6 @@ AlterObjectSchemaStmt:
 AlterOperatorStmt:
 			ALTER OPERATOR operator_with_argtypes SET '(' operator_def_list ')'
 				{
-					parser_ybc_not_support(@1, "ALTER OPERATOR SET <define>");
 					AlterOperatorStmt *n = makeNode(AlterOperatorStmt);
 					n->opername = $3;
 					n->options = $6;
@@ -10059,7 +10020,6 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 				}
 			| ALTER OPERATOR operator_with_argtypes OWNER TO RoleSpec
 				{
-					parser_ybc_beta_feature(@1, "roles");
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_OPERATOR;
 					n->object = (Node *) $3;
