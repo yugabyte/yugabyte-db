@@ -22,7 +22,7 @@ Let us say that we have a table `MyTable` with pre-existing data and we are addi
 
 Once the updates are made, the YB-Master leader then creates the desired number of new tablets for the index table `MyIndex` and sends asynchronous `HandleAlterTable()` requests to each tablet leader of the table. Typically, until the backfill process is complete, the newly created index will *not* be available for any reads. However, incoming write operations that are concurrent with the backfill process may need to update the index. 
 
-The backfill process moves through the following 4 phases (after the `MyIndex` index table has already been created). The currently active phase of the `MyIndex` index is persisted against the `MyIndex` entry in the `IndexPermissions` table. The `IndexPermissions` state entry for `MyIndex` os used to determine what kind of index updates/access will be allowed against the index at any point in time.
+The backfill process moves through the following 4 states (after the `MyIndex` index table has already been created). The currently active state of the `MyIndex` index is persisted by the YB-Master and replicated across all the YB-TServers as a part of the system catalog / metadata. The `IndexPermissions` state entry for `MyIndex` is used to determine what kind of index updates/access will be allowed against the index at any point in time.
 
 * **`DELETE_ONLY`:** In this state, whenever a row in `MyTable` is updated, the delete operation on the index (corresponding to the old value) is applied to the `MyIndex` index table. However, writes to the index (corresponding to the new value) are prohibited. All the queries/updates continue against `MyTable` (and the existing indexes if any). 
 
@@ -39,10 +39,10 @@ The backfill process moves through the following 4 phases (after the `MyIndex` i
     - delete the old value
     - update the new value
 
-    The update to the index is performed using the *current hybrid timestamp*, which is the same hybrid time as the insert to the primary table. The index can still not be used to perform read operations.
+    The update to the index is performed using the *current* hybrid timestamp, which is the same hybrid time used to insert the values into the primary table. This ensures that once the update completes, the hybrid timestamp of the entry in primary table and the index table are the same. The index can still not be used to perform read operations.
 
 
-* **`BACKFILLING`:** This is the state where the YB-TServers actually perform the backfill. This state could take a long time to complete, this depends on the dataset size. In terms of operations applied to the `MyIndex` table, this state is similar to `WRITE_AND_DELETE` - all inserts, updates and deletes are applied to the `MyIndex` index table. The index cannot be used to perform read operations, which still are satisfied by the primary table `MyTable` (and any existing indexes if any).
+* **`DB_REORG`:** This is the state where the YB-TServers actually perform the backfill. This state could take a long time to complete, this depends on the dataset size. In terms of operations applied to the `MyIndex` table, this state is similar to `WRITE_AND_DELETE` - all inserts, updates and deletes are applied to the `MyIndex` index table. The index cannot be used to perform read operations, which still are satisfied by the primary table `MyTable` (and any existing indexes if any).
 
     > **Note:** The details of the backfill process are covered in a dedicated section below.
 
@@ -73,20 +73,19 @@ Upon receiving the `AlterTable()` RPC call, the YB-Master first performs the req
 
 > **Note:** The exact set of updates to the system catalog vary based on the API, meaning the set of updates performed in the case of YSQL would differ from YCQL since the metadata organization is different between the two APIs.
 
-
-### 3. Perform schema change(s) across all nodes
-
 After setting the `MyIndex` index state to the `DELETE_ONLY`, the YB-Master leader sends the `HandleAlterTable()` RPC calls to the various YB-TServers. The `HandleAlterTable()` RPC call initiates a schema change on all the nodes in the cluster. Once the `HandleAlterTable()` call completes on all the tablets of the table, the YB-Master performs checks to see if another schema change is required (for example, in the case of adding multiple indexes to a table and rebuilding all of them at the same time). If another change is required, this results in another round of schema changes across all the tablets.
 
-Once all the schema changes are propagated to all the nodes, the index state is updated from `DELETE_ONLY` to `WRITE_AND_DELETE`. Once all the schema changes converge, the index state finally gets set to `BACKFILLING`.
+Once all the schema changes are propagated to all the nodes, the index state is updated from `DELETE_ONLY` to `WRITE_AND_DELETE`. Once all the schema changes converge, the index state finally gets set to `DB_REORG`.
 
-### 4. Backfilling the data
 
-After the index state is updated to `BACKFILLING`, the YB-Master orchestrates the backfill process by issuing `BackfillIndex()` RPC calls to each tablet. This starts rebuilding the index across all the tablets of the table `MyTable`. The YB-Master keeps track of how many tablets have completed the rebuild. At this point, the YB-Master  needs to wait for the backfill to complete on all the tablets before updating the table to the `READ_WRITE_AND_DELETE` state. 
+### 3. Backfilling the data
+
+After the index state is updated to `DB_REORG`, the YB-Master orchestrates the backfill process by issuing `BackfillIndex()` RPC calls to each tablet. This starts rebuilding the index across all the tablets of the table `MyTable`. The YB-Master keeps track of how many tablets have completed the rebuild. At this point, the YB-Master  needs to wait for the backfill to complete on all the tablets before updating the table to the `READ_WRITE_AND_DELETE` state. 
 
 > **Note:** Details of how the index backfill works on any tablet is covered in detail in the next section.
 
-### 5. Finalizing the index
+
+### 4. Finalizing the index
 
 Once the index rebuild is successfully completed on all the tablets of the table, the table state is updated to `READ_WRITE_AND_DELETE`, at which point the index is completely rebuilt.
 
@@ -99,7 +98,7 @@ The backfill process is a background job that runs on each of the tablets of the
 
 The index rebuild on a single tablet does the following:
 
-* The index rebuild requires a scan of the entire tablet data. However, there could be new updates happening on the dataset which would affect the values read by this scan. In order to prevent this, a hybrid logical timestamp `t_read` is picked at which the data is scanned so that subsequent writes do not affect the values read by this scan.
+* The index rebuild requires a scan of the entire tablet data. However, there could be new updates happening on the dataset which would affect the values read by this scan. In order to prevent this, the scan is performed at a fixed timestamp. This hybrid logical timestamp `t_read` is picked by the YB-Master and send to all the tablets. The data is scanned using this timestamp `t_read` as the read point so that subsequent writes do not affect the values read by this scan.
 
 * The data is then scanned to generate the writes that need to be applied to the index table. These generated writes are batched and a batched write is performed to update the index table.
 
