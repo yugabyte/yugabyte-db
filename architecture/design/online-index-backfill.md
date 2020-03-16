@@ -124,11 +124,11 @@ A unique index will accept the writes only if **both** the following conditions 
 Requirement 1) is similar to what a unique index would do anyways. Condition 2) is require to detect cases where a concurrent insert/update - that violates uniqueness - may have been accepted; because the conflicting row was not backfilled. Having this criteria will help detect the conflict when the backfilled entry arrives after the concurrent write. 
 
 
-## Throttling index rebuild rate
+### Throttling index rebuild rate
 
 The rate at which the backfill should proceed can be specified by the desired number of rows of the primary table `MyTable` to process per minute. In order to enforce this rate, the index backfill process keeps track of the number of rows being processed per minute from the primary table `MyTable`. Note that this counter is maintained per backfill task.
 
-## Waiting for pending transactions to finish.
+### Waiting for pending transactions to finish.
 The above discussion assumes that each “update/write” happens at a point in time, and based on the state of IndexPermissions that were set in that time, the backfill algorithm will make sure to update the index as required.
 
 This may not hold true for “transactions” where the write/index-permission checking is done at “apply” time. However the backfill algorithm, that may kick in later, will only see the “commit” time.
