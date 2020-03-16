@@ -62,7 +62,7 @@ CREATE INDEX MyIndex on MyTable (...);
 
 This statement is parsed and executed by the YB-TServer, which results in an `AlterTable()` RPC call to the YB-Master leader. This RPC call which kicks off the multi-stage online schema change, of which the the index rebuild is one stage. The `CREATE INDEX` command is asynchronous, it does not wait for the index backfill to complete. It would be possible to query and determine the status (`IN-PROGRESS`, `SUCCESS`, `FAILED`) of the asynchronous job.
 
-### 2. Perform changes to system catalog
+### 2. Create the index table
 
 Upon receiving the `AlterTable()` RPC call, the YB-Master first performs the requisite updates to the system catalog / metadata in a transactional manner. The updates essentially do the following:
 
@@ -78,14 +78,14 @@ After setting the `MyIndex` index state to the `DELETE_ONLY`, the YB-Master lead
 Once all the schema changes are propagated to all the nodes, the index state is updated from `DELETE_ONLY` to `WRITE_AND_DELETE`. Once all the schema changes converge, the index state finally gets set to `DB_REORG`.
 
 
-### 3. Backfilling the data
+### 3. Backfill the data
 
 After the index state is updated to `DB_REORG`, the YB-Master orchestrates the backfill process by issuing `BackfillIndex()` RPC calls to each tablet. This starts rebuilding the index across all the tablets of the table `MyTable`. The YB-Master keeps track of how many tablets have completed the rebuild. At this point, the YB-Master  needs to wait for the backfill to complete on all the tablets before updating the table to the `READ_WRITE_AND_DELETE` state. 
 
 > **Note:** Details of how the index backfill works on any tablet is covered in detail in the next section.
 
 
-### 4. Finalizing the index
+### 4. Finalize the index
 
 Once the index rebuild is successfully completed on all the tablets of the table, the table state is updated to `READ_WRITE_AND_DELETE`, at which point the index is completely rebuilt.
 
@@ -113,19 +113,23 @@ The index rebuild on a single tablet does the following:
 
 A unique index will accept the writes only if **both** the following conditions hold true
 1) Scan backwards in time and either:
-    * there is no previous entry, or 
-    * there is an entry. But the value matches the value being written.
+    * there is no previous entry.
+    * there is an entry and the immediately previous entry is a delete.
+    * there is an entry and the immediately previous entry value matches the value being written.
 
 2) Scan forward in time and either:
-    * there is no next entry for that key, or
-    * there is an entry. But the value matches the value being written.
+    * there is no next entry for that key.
+    * there is an entry and the immediately next entry is a delete.
+    * there is an entry and the immediately next entry value matches the value being written.
 
 Requirement 1) is similar to what a unique index would do anyways. Condition 2) is require to detect cases where a concurrent insert/update - that violates uniqueness - may have been accepted; because the conflicting row was not backfilled. Having this criteria will help detect the conflict when the backfilled entry arrives after the concurrent write. 
 
 
 ### Throttling index rebuild rate
 
-The rate at which the backfill should proceed can be specified by the desired number of rows of the primary table `MyTable` to process per minute. In order to enforce this rate, the index backfill process keeps track of the number of rows being processed per minute from the primary table `MyTable`. Note that this counter is maintained per backfill task.
+The rate at which the backfill should proceed can be specified by the desired number of rows of the primary table `MyTable` to process per second. In order to enforce this rate, the index backfill process keeps track of the number of rows being processed per second from the primary table `MyTable`. Note that this counter is maintained per backfill task.
+
+Additionally, the maximum number of backfill operations happening on any YB-TServer across tablets can also be specified in order to rate-limit backfilling. 
 
 ### Waiting for pending transactions to finish
 
@@ -137,10 +141,11 @@ However, this may not hold true for “transactions” where the write/index-per
 
 This means that if a write was “applied” before getting to update the index (wrt deleting the old value), and commits “after” the backfill timestamp is chosen, then neither operations may be updating the “index” to delete the overwritten value. 
 
-To guard against this case, the GetSafeTime operation will wait for all “pending transactions” to finish (i.e. commit or abort) before determining the timestamp at which the scan is to be performed for backfill.
-* Note that this strategy causes the backfill to “wait on” pending transactions, and if somebody has a terminal open with an ongoing txn that never commits. Backfill may be stalled indefinitely.
-* Add a timeout mechanism after which, pending txns (that started before getting to W+D state) will be aborted.
-* For user-enforced txns, there is no way for the tablet to know if a txn is in progress or not. The tablet will thus just “wait for a specific duration” -- which is chosen as something larger than the timeout set at the cql_proxy layer before considering it safe to pick a time for backfill. (--index_backfill_upperbound_for_user_enforced_txn_duration_ms)
+To guard against this case, the `GetSafeTime()` operation will wait for all “pending transactions” to finish (i.e. commit or abort) before determining the timestamp at which the scan is to be performed for backfill.
+
+* Note that this strategy causes the backfill to “wait on” pending transactions, and if somebody has a terminal open with an ongoing txn that never commits. Backfill may be stalled indefinitely unless the very long running transaction is forcibly aborted.
+* Add a timeout mechanism after which, pending txns (that started before getting to `WRITE_AND_DELETE` state) will be aborted.
+* For user-enforced txns, there is no way for the tablet to know if a txn is in progress or not. The tablet will thus just “wait for a specific duration” which is a system flag `--index_backfill_upperbound_for_user_enforced_txn_duration_ms` and can be controlled by the user. In order to be safe, this value should be set to at least the RPC timeout (or a greater value).
 
 
 # Fault tolerance using checkpointing
@@ -151,7 +156,7 @@ The YB-TServers, as a part of handling each of these RPC calls, will backfill **
 
 ## Handling node restarts and leadership changes
 
-The backfill process itself does not require that the job be restarted if there is a leadership change. The peer that has already started doing the backfill may be allowed to complete. However, it may be easier in terms of maintaining the state if the leader is the one running the backfill, and the job is abandoned/restarted upon leadership change. With pre-elections this should be a rare occurrence.
+The backfill process itself does not require that the job be restarted if there is a leadership change. The peer that has already started doing the backfill may be allowed to complete.
 
 
 # Future Work
