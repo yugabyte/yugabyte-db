@@ -1,5 +1,6 @@
 ---
 title: PostgreSQL JDBC Driver
+headerTitle: PostgreSQL JDBC Driver
 linkTitle: PostgreSQL JDBC Driver
 description: PostgreSQL JDBC Driver
 section: REFERENCE
