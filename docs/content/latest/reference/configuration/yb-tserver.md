@@ -1,7 +1,8 @@
 ---
-title: yb-tserver
+title: yb-tserver configuration
+headerTitle: yb-tserver
 linkTitle: yb-tserver
-description: yb-tserver
+description: Configuration options for YugabyteDB YB-TServer (yb-tserver) nodes
 menu:
   latest:
     identifier: yb-tserver
@@ -46,7 +47,7 @@ $ ./bin/yb-tserver --help
 - [Logging](#logging-options)
 - [Raft](#raft-options)
   - [Write Ahead Log (WAL)](#write-ahead-log-wal-options)
-- [Cluster](#cluster-options)
+- [Sharding](#sharding-options)
 - [Geo-distribution](#geo-distribution-options)
 - [YSQL](#ysql-options)
 - [YCQL](#ycql-options)
@@ -299,7 +300,7 @@ Default: `64`
 
 ---
 
-### Cluster options
+### Sharding options
 
 ##### --yb_num_shards_per_tserver
 
