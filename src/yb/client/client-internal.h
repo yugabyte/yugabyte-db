@@ -95,17 +95,20 @@ class YBClient::Data {
                              CoarseTimePoint deadline,
                              std::string* table_id);
 
+  // Take one of table id or name.
   CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
                                          const YBTableName& table_name,
                                          const std::string& table_id,
                                          CoarseTimePoint deadline,
                                          bool *create_in_progress);
 
+  // Take one of table id or name.
   CHECKED_STATUS WaitForCreateTableToFinish(YBClient* client,
                                             const YBTableName& table_name,
                                             const std::string& table_id,
                                             CoarseTimePoint deadline);
 
+  // Take one of table id or name.
   CHECKED_STATUS DeleteTable(YBClient* client,
                              const YBTableName& table_name,
                              const std::string& table_id,
@@ -141,6 +144,7 @@ class YBClient::Data {
                             const master::AlterTableRequestPB& req,
                             CoarseTimePoint deadline);
 
+  // Take one of table id or name.
   CHECKED_STATUS IsAlterTableInProgress(YBClient* client,
                                         const YBTableName& table_name,
                                         string table_id,
@@ -151,6 +155,23 @@ class YBClient::Data {
                                            const YBTableName& alter_name,
                                            string table_id,
                                            CoarseTimePoint deadline);
+
+  // Take one of table id or name.
+  // TODO(jason): it would be nice to have this take a list of table_names or table_ids.
+  CHECKED_STATUS FlushTable(YBClient* client,
+                            const YBTableName& table_name,
+                            const std::string& table_id,
+                            const CoarseTimePoint deadline,
+                            const bool is_compaction);
+
+  CHECKED_STATUS IsFlushTableInProgress(YBClient* client,
+                                        const FlushRequestId& flush_id,
+                                        const CoarseTimePoint deadline,
+                                        bool *flush_in_progress);
+
+  CHECKED_STATUS WaitForFlushTableToFinish(YBClient* client,
+                                           const FlushRequestId& flush_id,
+                                           const CoarseTimePoint deadline);
 
   CHECKED_STATUS GetTableSchema(YBClient* client,
                                 const YBTableName& table_name,

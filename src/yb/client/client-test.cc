@@ -188,7 +188,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
  protected:
-
   static const string kKeyspaceName;
   static const YBTableName kTableName;
   static const YBTableName kTable2Name;
@@ -825,7 +824,6 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     EXPECT_EQ(all_rows[0], rows.front());
     EXPECT_EQ(all_rows[14], rows.back());
   }
-
 }
 
 static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
@@ -1112,7 +1110,6 @@ TEST_F(ClientTest, TestApplyToSessionWithoutFlushing_OpsBuffered) {
 // that we get an error on Apply() rather than sending a too-large
 // RPC to the server.
 TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
-
   // Applying a bunch of small rows without a flush should result
   // in an error.
   {
@@ -2153,5 +2150,65 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
   EXPECT_OK(session->Apply(write_op));
 }
+
+// TODO(jason): enable the test in clang when we use clang version at least 9 (otherwise, there is a
+// compilation error: P0428R2).
+#if !defined(__clang__)
+TEST_F(ClientTest, FlushTable) {
+  const tablet::Tablet* tablet;
+  constexpr int kTimeoutSecs = 30;
+  int current_row = 0;
+
+  {
+    std::shared_ptr<TabletPeer> tablet_peer;
+    string tablet_id = GetFirstTabletId(client_table2_.get());
+    for (auto& ts : cluster_->mini_tablet_servers()) {
+      ASSERT_TRUE(ts->server()->tablet_manager()->LookupTablet(tablet_id, &tablet_peer));
+      if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+        break;
+      }
+    }
+    tablet = tablet_peer->tablet();
+  }
+
+  auto test_good_flush_and_compact = ([&]<class T>(T table_id_or_name) {
+    int initial_num_sst_files = tablet->GetCurrentVersionNumSSTFiles();
+
+    // Test flush table.
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 1);
+
+    // Insert and flush more rows.
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+
+    // Test compact table.
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 3);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), 1);
+  });
+
+  test_good_flush_and_compact(client_table2_.table()->id());
+  test_good_flush_and_compact(client_table2_.table()->name());
+
+  auto test_bad_flush_and_compact = ([&]<class T>(T table_id_or_name) {
+    // Test flush table.
+    ASSERT_NOK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    // Test compact table.
+    ASSERT_NOK(client_->FlushTable(table_id_or_name, kTimeoutSecs, true /* is_compaction */));
+  });
+
+  test_bad_flush_and_compact("bad table id");
+  test_bad_flush_and_compact(YBTableName(
+      YQLDatabase::YQL_DATABASE_CQL,
+      "bad namespace name",
+      "bad table name"));
+}
+#endif  // !defined(__clang__)
+
 }  // namespace client
 }  // namespace yb
