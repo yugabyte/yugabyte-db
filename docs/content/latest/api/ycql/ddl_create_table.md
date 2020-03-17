@@ -1,7 +1,8 @@
 ---
-title: CREATE TABLE
+title: CREATE TABLE statement [YCQL]
+headerTitle: YCQL
 summary: Create a new table in a keyspace
-description: CREATE TABLE
+description: Use the `CREATE TABLE` statement to create a new table in a keyspace.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE TABLE` statement is used to create a new table in a keyspace. It defines the table name, column names and types, primary key, and table properties.
+Use the `CREATE TABLE` statement to create a new table in a keyspace. It defines the table name, column names and types, primary key, and table properties.
 
 ## Syntax
 

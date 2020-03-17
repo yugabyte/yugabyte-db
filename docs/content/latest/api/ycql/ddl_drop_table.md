@@ -1,7 +1,8 @@
 ---
-title: DROP TABLE
+title: DROP TABLE statement [YCQL]
+headerTitle: DROP TABLE
 summary: Remove a table
-description: DROP TABLE
+description: Use the DROP TABLE statement to remove a table and all of its data from the database.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP TABLE` statement removes a table and all of its data from the database.
+Use the `DROP TABLE` statement to remove a table and all of its data from the database.
 
 ## Syntax
 
