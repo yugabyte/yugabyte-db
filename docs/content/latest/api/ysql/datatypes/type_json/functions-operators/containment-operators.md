@@ -13,7 +13,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The `@>` operator tests if the left-hand JSON value contains the right-hand JSON value. And the `<@` operator tests if the right-hand JSON value contains the left-hand JSON value. These operators require that the inputs are presented as `jsonb` values. They don't have overloads for `json`.
+**Purpose:** the `@>` operator tests if the left-hand JSON value contains the right-hand JSON value. The `<@` operator tests if the right-hand JSON value contains the left-hand JSON value.
+
+**Signatures:**
+
+```
+input values:       jsonb @> jsonb
+return value:       boolean
+```
+and:
+```
+input values:       jsonb <@ jsonb
+return value:       boolean
+```
+
+**Notes:** these operators require that the inputs are presented as `jsonb` values. They don't have overloads for `json`.
 
 ```postgresql
 do $body$
@@ -24,7 +38,7 @@ begin
   assert
     (j_left @> j_right) and
     (j_right <@ j_left),
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```

@@ -13,14 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** transform the list of key names int the supplied JSON _object_ into a set (i.e. table) of `text` values.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        jsonb
-return value       SETOF text
+input value:       jsonb
+return value:      SETOF text
 ```
 
-The functions in this pair require that the supplied JSON value is an _object_. They transform the list of key names into a set (i.e. table) of `text` values. Notice that the returned keys are ordered alphabetically.
+**Notes:** The functions in this pair require that the supplied JSON value is an _object_. The returned keys are ordered alphabetically.
 
 ```
 do $body$

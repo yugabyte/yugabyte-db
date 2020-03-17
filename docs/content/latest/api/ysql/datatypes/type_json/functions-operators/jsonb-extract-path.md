@@ -13,14 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** provide the identical functionality to the `#>` operator.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        jsonb, VARIADIC text
-return value       jsonb
+input value:       jsonb, VARIADIC text
+return value:      jsonb
 ```
 
-These are functionally identical to the `#>` operator. The invocation of `#>` can be mechanically transformed to use `jsonb_extract_path()` by these steps:
+The invocation of `#>` can be mechanically transformed to use `jsonb_extract_path()` by these steps:
 
 - Add the function invocation with its required parentheses.
 - Replace `#>` with a comma.
@@ -47,6 +49,6 @@ end;
 $body$;
 ```
 
-Strangely, even though `jsonb_extract_path()`is variadic, each step that defines the path must be presented as a convertible SQL `text`, even when its meaning is a properly expressed by a SQL `integer`.
+Notice that even though `jsonb_extract_path()`is variadic, each step that defines the path must be presented as a convertible SQL `text`, even when its meaning is a properly expressed by a SQL `integer`.
 
-The function form is more verbose than the operator form. Moreover, the fact that the function is variadic makes it impossible to invoke it statically (in PL/pgSQL code) when the path length isn't known until run time. There seems, therefore, to be no reason to prefer the function form to the operator form.
+The function form is more verbose than the operator form. Moreover, the fact that the function is variadic makes it impossible to invoke it statically (in PL/pgSQL code) when the path length isn't known until run time. There is, therefore, no reason to prefer the function form to the operator form.

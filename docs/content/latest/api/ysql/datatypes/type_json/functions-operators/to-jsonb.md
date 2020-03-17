@@ -11,11 +11,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Each takes a single value of any single SQL primitive or compound data type that allows a JSON representation. Here is the signature for the `jsonb` variant:
+**Purpose:** convert a single SQL value of any primitive or compound data type, that allows a JSON representation, to a sematically equivaent `jsonb` value..
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        anyelement
-return value       jsonb
+input value:       anyelement
+return value:      jsonb
 ```
 
 Use this _ysqlsh_ script to create types `t1` and `t2` and then to execute the `do` block that asserts that the behavior is as expected. For an arbitrary nest of SQL `record` and SQL `array` values, readability is improved by building the compound value from the bottom up.
@@ -51,12 +53,13 @@ declare
       "y": true,
       "z": [{"a": 17, "b": "dog"}, {"a": 42, "b": "cat"}]}';
 begin
-  assert
-    j1_dog   = j2_dog  and
-    j1_42    = j2_42   and
-    j1_true  = j2_true and
-    j1_array = j2_array,
- 'assert failed';
+assert
+    j1_dog    = j2_dog   and
+    j1_42     = j2_42    and
+    j1_true   = j2_true  and
+    j1_array  = j2_array and
+    j1_object = j2_object,
+  'unexpected';
 end;
 $body$;
 ```

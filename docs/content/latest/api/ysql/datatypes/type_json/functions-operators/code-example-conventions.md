@@ -50,9 +50,9 @@ For these reasons, each code example is presented as a `DO` block with this patt
 - The expected output is declared as a value of the same data type.
 - An `assert` is used to show that the produced value is equal to the expected value, using an `is null` comparison where appropriate.
 
-## Note about SQL array manifest constants
+## Note about SQL _array_ manifest constants
 
-RFC 7159 defines the syntax for a JSON _array_ as a comma-separated list of items surrounded by `[]` and  the syntax for a JSON _object_ as a comma-separated list of key-value pairs surrounded by `{}`. SQL defines one form for an array manifest constant as a `text` value with an inner syntax: the value starts with `{` and ends with `}` and contains a comma-separated list whose items are not themselves quoted but are all taken to be values of the array's data type. So this SQL manifest constant:
+RFC 7159 defines the syntax for a JSON _array_ as a comma-separated list of items surrounded by `[]` and  the syntax for a JSON _object_ as a comma-separated list of key-value pairs surrounded by `{}`. SQL defines one form for an _array_ manifest constant as a `text` value with an inner syntax: the value starts with `{` and ends with `}` and contains a comma-separated list whose items are not themselves quoted but are all taken to be values of the _array_'s data type. So this SQL manifest constant:
 
 ```
 array['a', 'b', 'c']::text[]
@@ -64,6 +64,6 @@ can also be written thus:
 '{a, b, c}'::text[]
 ```
 
-This dramatic context-sensitive difference in meaning of `'{...}'` might confuse the reader. Therefore, in the major section _"JSON data types and functionality"_,  the `array[...]` form will be used for a SQL array manifest constant — and the `'{...}'`form will be avoided.
+This dramatic context-sensitive difference in meaning of `'{...}'` might confuse the reader. Therefore, in the major section _"JSON data types and functionality"_,  the `array[...]` form will be used for a SQL _array_ manifest constant — and the `'{...}'`form will be avoided.
 
-The fact that a JSON array can have subvalues of mixed data type but a SQL array can have only elements of the same data type means that special steps have to be taken when the goal is to construct a JSON array mixed subvalue data type from SQL values.
+The fact that a JSON _array_ can have subvalues of mixed data type but a SQL _array_ can have only elements of the same data type means that special steps have to be taken when the goal is to construct a JSON _array_ mixed subvalue data type from SQL values.
