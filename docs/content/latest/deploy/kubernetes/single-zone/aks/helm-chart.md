@@ -4,12 +4,13 @@ linkTitle: Azure Kubernetes Service (AKS)
 description: Azure Kubernetes Service (AKS)
 menu:
   latest:
-    parent: deploy-kubernetes
+    parent: deploy-kubernetes-sz
     name: Azure Kubernetes Service
     identifier: k8s-aks-1
     weight: 624
 aliases:
   - /latest/deploy/kubernetes/aks/
+  - /latest/deploy/kubernetes/single-zone/aks/
 type: page
 isTocNested: true
 showAsideToc: true
@@ -18,13 +19,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/aks/helm-chart" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/aks/statefulset-yaml" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
