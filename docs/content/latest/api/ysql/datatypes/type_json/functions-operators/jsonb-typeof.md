@@ -13,14 +13,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-These functions return the type of the JSON value as a SQL `text` value. Here is the signature for the `jsonb` variant:
+**Purpose:** return the data type of the JSON value as a SQL `text` value.
+
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        jsonb
-return value       text
+input value:       jsonb
+return value:      text
 ```
 
-Possible types are _string_, _number_, _boolean_, _null_,  _object_, and _array_ — as follows.
+**Notes:** possible return values are _string_, _number_, _boolean_, _null_,  _object_, and _array_ — as follows.
 
 ```postgresql
 do $body$
@@ -39,7 +42,7 @@ begin
     jsonb_typeof(j_null)     = 'null'    and
     jsonb_typeof(j_object)   = 'object'  and
     jsonb_typeof(j_array)    = 'array',
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```

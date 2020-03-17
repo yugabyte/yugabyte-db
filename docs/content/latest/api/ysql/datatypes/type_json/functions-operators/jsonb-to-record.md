@@ -12,14 +12,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** convert a JSON _object_ into the equivalent SQL `record`.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        jsonb
-return value       record
+input value:       jsonb
+return value:      record
 ```
 
-The `jsonb_to_record()` function is a syntax variant of the same functionality that  `jsonb_populate_record()` provides. It doesn't need a schema-level type but, rather, uses the special SQL locution `select... as on_the_fly(<record definition>)`. Notice that `on_the_fly` is a nonce name, made up for this example. Anything will suffice. Use this _ysqlsh_ script to create the  type `t` that just `jsonb_populate_record()` requires, to convert the input `jsonb` into a SQL `record` using each of  `jsonb_populate_record()` and `jsonb_to_record`, and then to execute the `assert`.
+**Notes:** the `jsonb_to_record()` function is a syntax variant of the same functionality that [`jsonb_populate_record`](./jsonb-populate-record/) provides. It doesn't need a schema-level type but, rather, uses the special SQL locution `select... as on_the_fly(<record definition>)`.
+
+Use this _ysqlsh_ script to create the  type `t` that just `jsonb_populate_record()` requires, to convert the input `jsonb` into a SQL `record` using each of  `jsonb_populate_record()` and `jsonb_to_record`, and then to execute the `assert`. Notice that `on_the_fly` is a nonce name, made up for this example. Anything will suffice.
 
 ```postgresql
 create type t as (a int, b text);
@@ -82,4 +86,4 @@ It does show that `jsonb_populate_record()` and `jsonb_to_record()` both produce
 
 So the outer type `t2` can be defined on the fly in the `as` clause but it references the inner schema-level type `t1`. It isn't possible to absorb `t1`'s definition into the `as` clause. Moreover, the fact that `jsonb_to_record()` cannot be used in an ordinary assignment but requires a SQL `select ... into` statement is a serious drawback.
 
-It would seem, therefore, that the `jsonb_to_record()` variant has no practical advantage over the `jsonb_populate_record()` variant.
+The `jsonb_to_record()` syntax variant therefore has no practical advantage over the `jsonb_populate_record()` variant.

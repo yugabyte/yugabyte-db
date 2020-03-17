@@ -13,20 +13,26 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** create a JSON _object_ from a variadic list that specifies keys with values of arbitrary SQL data type.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        VARIADIC "any"
-return value       jsonb
+input value:       VARIADIC "any"
+return value:      jsonb
 ```
 
-The `jsonb_build_object()` variadic function is the obvious counterpart to `jsonb_build_array()`. The argument list has the form:
+**Notes:** The key names are given as SQL `text` values. The SQL data type of key's value argument must have a direct JSON equivalent or allow implicit conversion to such an equivalent.
+
+The `jsonb_build_object()` variadic function is the obvious counterpart to `jsonb_build_array()`.
+
+The argument list has the form:
 
 ```
-key1::text, value1::the_data type1,
-key1::text, value2::the_data type2,
+key1::text, value1::the_data_type1,
+key1::text, value2::the_data_type2,
 ...
-keyN::text, valueN::the_data typeN
+keyN::text, valueN::the_data_typeN
 ```
 
 Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
@@ -75,12 +81,19 @@ begin
 end;
 $body$;
 
+-- Relies on "type t as (a int, b text)" created above.
 do $body$
 declare
   v_17 constant int := 17;
   v_dog constant text := 'dog';
   v_true constant boolean := true;
   v_t constant t := (17::int, 'cat'::text);
+
+  expected_j constant jsonb := jsonb_build_object(
+    'a', v_17,
+    'b', v_dog,
+    'c', v_true,
+    'd', v_t);
 
   j constant jsonb :=  f(
     $$
@@ -89,8 +102,6 @@ declare
       'c'::text, true::boolean,
       'd'::text, (17::int, 'cat'::text)::t
     $$);
-  expected_j constant jsonb := 
-    '{"a": 17, "b": "dog", "c": true, "d": {"a": 17, "b": "cat"}}';
 begin
   assert
     j = expected_j,

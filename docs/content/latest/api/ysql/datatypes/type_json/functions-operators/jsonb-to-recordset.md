@@ -12,14 +12,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        jsonb
-return value       SETOF record
+input value:       jsonb
+return value:      SETOF record
 ```
 
-The function `jsonb_to_recordset()` bears the same relationship to `jsonb_to_record()` as  `json_populate_recordset()` bears to `json_populate_record()`. Therefore the `DO` block that demonstrated `json_populate_recordset()`'s functionality can be easily extended to demonstrate `jsonb_to_recordset()`'s functionality as well and to show that their results are identical. The `DO` block needs the same type `t` and function `same_as()` that the _ysqlsh_ script for `json_populate_recordset()`defined.
+**Notes:** the function `jsonb_to_recordset()` bears the same relationship to `jsonb_to_record()` as  `jsonb_populate_recordset()` bears to `jsonb_populate_record()`.
+
+Therefore the `DO` block that demonstrated `jsonb_populate_recordset()`'s functionality can be easily extended to demonstrate `jsonb_to_recordset()`'s functionality as well and to show that their results are identical. The `DO` block needs the same type `t` and function `same_as()` that the _ysqlsh_ script for `jsonb_populate_recordset()`defined.
 
 ```postgresql
 do $body$
@@ -73,4 +77,4 @@ end;
 $body$;
 ```
 
-The same considerations apply if the target `record` data type has a non-primitive field. It would seem, therefore, that the `jsonb_to_recordset()` variant has no practical advantage over the `jsonb_populate_recordset()` variant.
+The same considerations apply here as do for `to jsonb_to_record()` if the target `record` data type has a non-primitive field. The `jsonb_to_recordset()` syntax variant therefore has no practical advantage over the `jsonb_populate_recordset()` variant.
