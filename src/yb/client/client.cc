@@ -81,7 +81,6 @@ using yb::master::CreateTableResponsePB;
 using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
 using yb::master::GetTableSchemaRequestPB;
-using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
@@ -481,6 +480,28 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             deadline,
                             indexed_table_name,
                             wait);
+}
+
+Status YBClient::FlushTable(const std::string& table_id,
+                            int timeout_secs,
+                            bool is_compaction) {
+  auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
+  return data_->FlushTable(this,
+                           YBTableName(),
+                           table_id,
+                           deadline,
+                           is_compaction);
+}
+
+Status YBClient::FlushTable(const YBTableName& table_name,
+                            int timeout_secs,
+                            bool is_compaction) {
+  auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(timeout_secs);
+  return data_->FlushTable(this,
+                           table_name,
+                           "" /* table_id */,
+                           deadline,
+                           is_compaction);
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {

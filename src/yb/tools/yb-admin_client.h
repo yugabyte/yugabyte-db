@@ -160,6 +160,10 @@ class ClusterAdminClient {
                             int timeout_secs,
                             bool is_compaction);
 
+  CHECKED_STATUS FlushTableById(const TableId &table_id,
+                                int timeout_secs,
+                                bool is_compaction);
+
   CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos,
                                      int replication_factor,
                                      const std::string& optional_uuid);

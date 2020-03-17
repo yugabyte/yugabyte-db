@@ -280,6 +280,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetCDCStream);
 // These are not actually exposed outside, but it's nice to auto-add using directive.
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterTable);
+YB_CLIENT_SPECIALIZE_SIMPLE(FlushTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ChangeMasterClusterConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateTable);
@@ -287,6 +288,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetMasterClusterConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTableSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsAlterTableDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
@@ -806,6 +808,68 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
       deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
       std::bind(&YBClient::Data::IsAlterTableInProgress, this, client,
               alter_name, table_id, _1, _2));
+}
+
+Status YBClient::Data::FlushTable(YBClient* client,
+                                  const YBTableName& table_name,
+                                  const std::string& table_id,
+                                  const CoarseTimePoint deadline,
+                                  const bool is_compaction) {
+  FlushTablesRequestPB req;
+  FlushTablesResponsePB resp;
+  int attempts = 0;
+
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.add_tables());
+  }
+  if (!table_id.empty()) {
+    req.add_tables()->set_table_id(table_id);
+  }
+  req.set_is_compaction(is_compaction);
+  RETURN_NOT_OK((SyncLeaderMasterRpc<FlushTablesRequestPB, FlushTablesResponsePB>(
+      deadline, client, req, &resp, &attempts, "FlushTables", &MasterServiceProxy::FlushTables)));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  // Spin until the table is flushed.
+  if (!resp.flush_request_id().empty()) {
+    RETURN_NOT_OK(WaitForFlushTableToFinish(client, resp.flush_request_id(), deadline));
+  }
+
+  LOG(INFO) << (is_compaction ? "Compacted" : "Flushed")
+            << " table "
+            << req.tables(0).ShortDebugString();
+  return Status::OK();
+}
+
+Status YBClient::Data::IsFlushTableInProgress(YBClient* client,
+                                              const FlushRequestId& flush_id,
+                                              const CoarseTimePoint deadline,
+                                              bool *flush_in_progress) {
+  DCHECK_ONLY_NOTNULL(flush_in_progress);
+  IsFlushTablesDoneRequestPB req;
+  IsFlushTablesDoneResponsePB resp;
+
+  req.set_flush_request_id(flush_id);
+  RETURN_NOT_OK((SyncLeaderMasterRpc<IsFlushTablesDoneRequestPB, IsFlushTablesDoneResponsePB>(
+      deadline, client, req, &resp, nullptr /* num_attempts */, "IsFlushTableDone",
+      &MasterServiceProxy::IsFlushTablesDone)));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *flush_in_progress = !resp.done();
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
+                                                 const FlushRequestId& flush_id,
+                                                 const CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline, "Waiting for FlushTables to be completed", "Timed out waiting for FlushTables",
+      std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
+  return Status::OK();
 }
 
 Status YBClient::Data::InitLocalHostNames() {
