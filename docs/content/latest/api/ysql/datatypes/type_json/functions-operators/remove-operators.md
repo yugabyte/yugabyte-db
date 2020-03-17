@@ -12,11 +12,20 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Remove single key-value pair from an _object_ or a single value from an _array_: the `-` operator
+**Purpose:** remove key-value pair(s) from an _object_ or a single value from an _array_. The plain `-` variant takes the specified object itself. The `#-` variant takes the path from the specified object.
 
-Notice that, for all the operators whose behavior is described by using the term "remove", this is a convenient shorthand. The actual effect of these operators is to create a _new_ `jsonb` value from the `jsonb` value on the left of the operator according to the rule that the operator implements, parameterized by the SQL value on the right of the operator.
+**Notes:** describing the behavior by using the term "remove" is a convenient shorthand. The actual effect of these operators is to create a _new_ `jsonb` value from the specified `jsonb` value according to the rule that the operator implements, parameterized by the SQL value on the right of the operator.
 
-### Remove key-value pairs from an _object_
+### The `-` operator
+
+**Purpose:** remove key-value pair(s) from an _object_ or a single value from an _array_.
+
+**Signature:**
+```
+input values:       jsonb - [int | text]
+return value:       jsonb
+```
+**Notes:** there is no `json` overload.
 
 To remove a single key-value pair:
 
@@ -29,7 +38,7 @@ declare
 begin
   assert
     j_left - key = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
@@ -45,14 +54,12 @@ declare
 begin
   assert
     j_left - key_list = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
 
-### Remove single value from an _array_
-
-Thus:
+To remove a single value from an _array_:
 
 ```postgresql
 do $body$
@@ -63,18 +70,18 @@ declare
 begin
   assert
     j_left - idx = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
 
-There seems not to be a way to remove several values from an _array_ at a list of indexes analogous to the ability to remove several key-value pairs from an _object_ with a list of pair keys. The obvious attempt fails with this error:
+There is no direct way to remove several values from an _array_ at a list of indexes, analogous to the ability to remove several key-value pairs from an _object_ with a list of pair keys. The obvious attempt fails with this error:
 
 ```
 operator does not exist: jsonb - integer[]
 ```
 
-Obviously, you can achieve the result at the cost of verbosity thus:
+You can achieve the result thus:
 
 ```postgresql
 do $body$
@@ -85,14 +92,23 @@ declare
 begin
   assert
     ((j_left - idx) - idx) - idx = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
 
-## Remove a single key-value pair from an _object_ or a single value from an _array_ at the specified path: `#-`
+### The `#-` operator
 
-Thus:
+**Purpose:** remove a single key-value pair from an _object_ or a single value from an _array_ at the specified path.
+
+**Signature:**
+```
+input values:       jsonb - text[]
+return value:       jsonb
+```
+
+**Notes:** there is no `json` overload.
+
 
 ```postgresql
 do $body$

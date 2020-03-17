@@ -12,14 +12,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** convert a JSON _object_ into the equivalent SQL `record`.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        anyelement, jsonb
-return value       anyelement
+input value:       anyelement, jsonb
+return value:      anyelement
 ```
 
-The functions in this pair require that the supplied JSON value is an _object_. They translate the JSON _object_ into the equivalent SQL` record`. The data type of the `record` must be defined as a schema-level `type` whose name is passed via the function's first formal parameter using the locution `null:type_identifier`. The JSON value is passed via the second formal parameter. Use this _ysqlsh_ script to create the required types `t1` and `t2`, and then to execute the `assert`.
+**Notes:** require that the supplied JSON value is an _object_. The data type of the `record` must be defined as a schema-level `type` whose name is passed via the function's first formal parameter using the locution `null:type_identifier`. The JSON value is passed via the second formal parameter.
+
+Use this _ysqlsh_ script to create the required types `t1` and `t2`, and then to execute the `assert`.
 
 ```
 create type t1 as ( d int, e text);

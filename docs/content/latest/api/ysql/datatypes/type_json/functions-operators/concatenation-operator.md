@@ -12,6 +12,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
+**Purpose:** concatenate two `jsonb` values. The rule for deriving the output value depends upon the JSON data types of the operands. 
+
+**Signature:**
+```
+input values:       jsonb || jsonb
+return value:       jsonb
+```
+
+**Notes:** this operator doesn't have an overload for `json`.
+
 If both sides of the operator are primitive JSON values, then the result is an _array_ of these values:
 
 ```postgresql
@@ -23,7 +33,7 @@ declare
 begin
   assert
     j_left || j_right = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
@@ -39,7 +49,7 @@ declare
 begin
   assert
     j_left || j_right = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
@@ -55,7 +65,7 @@ declare
 begin
   assert
     j_left || j_right = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
@@ -71,7 +81,7 @@ declare
 begin
   assert
     j_left || j_right = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
@@ -87,7 +97,7 @@ declare
 begin
   assert
     j_left || j_right = j_expected,
- 'assert failed';
+ 'unexpected';
 end;
 $body$;
 ```
