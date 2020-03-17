@@ -1,7 +1,8 @@
 ---
-title: DROP KEYSPACE
+title: DROP KEYSPACE statement [YCQL]
+headerTitle: DROP KEYSPACE
 summary: Removes a keyspace
-description: DROP KEYSPACE
+description: Use the DROP KEYSPACE statement to remove a keyspace from the system.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP KEYSPACE` statement removes a keyspace from the system.
+Use the `DROP KEYSPACE` statement to remove a keyspace from the system.
 
 ## Syntax
 

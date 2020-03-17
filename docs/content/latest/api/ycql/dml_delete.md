@@ -1,7 +1,8 @@
 ---
-title: DELETE
+title: DELETE statement [YCQL]
+headerTitle: DELETE
 summary: Deletes rows from a table.
-description: DELETE
+description: Use the DELETE statement to remove rows from a specified table that meet a given condition. 
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DELETE` statement removes rows from a specified table that meet a given condition. Currently, YugabyteDB can deletes one row at a time. Deleting multiple rows is not yet supported.
+Use the `DELETE` statement to remove rows from a specified table that meet a given condition. Currently, YugabyteDB can deletes one row at a time. Deleting multiple rows is not yet supported.
 
 ## Syntax
 

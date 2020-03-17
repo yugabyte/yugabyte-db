@@ -1,7 +1,8 @@
 ---
-title: DROP ROLE
+title: DROP ROLE statement [YCQL]
+headerTitle: DROP ROLE
 summary: Drop role
-description: DROP ROLE
+description: Use the DROP ROLE statement to delete an existing role.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP ROLE` deletes an existing role.
+Use the `DROP ROLE` statement to delete an existing role.
 
 This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 

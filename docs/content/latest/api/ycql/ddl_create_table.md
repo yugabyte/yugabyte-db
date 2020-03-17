@@ -1,8 +1,8 @@
 ---
 title: CREATE TABLE statement [YCQL]
-headerTitle: YCQL
+headerTitle: CREATE TABLE
 summary: Create a new table in a keyspace
-description: Use the `CREATE TABLE` statement to create a new table in a keyspace.
+description: Use the CREATE TABLE statement to create a new table in a keyspace.
 menu:
   latest:
     parent: api-cassandra

@@ -1,7 +1,8 @@
 ---
-title: ALTER TABLE
+title: ALTER TABLE statement [YCQL]
+headerTitle: ALTER TABLE
 summary: Change the schema of a table
-description: ALTER TABLE
+description: Use the ALTER TABLE statement to change the schema or definition of an existing table.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `ALTER TABLE` statement changes the schema or definition of an existing table.
+Use the `ALTER TABLE` statement to change the schema or definition of an existing table.
 It allows adding, dropping, or renaming a column as well as updating a table property.
 
 ## Syntax

@@ -1,7 +1,9 @@
 ---
-title: DROP INDEX
+title: DROP INDEX statement [YCQL]
+headerTitle: DROP INDEX
 summary: Remove an index
-description: DROP INDEX
+description: Use the DROP INDEX statement to remove an index and all of its data from the database.
+
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP INDEX` statement removes an index and all of its data from the database.
+Use the `DROP INDEX` statement to remove an index and all of its data from the database.
 
 ## Syntax
 

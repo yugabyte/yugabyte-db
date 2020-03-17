@@ -1,8 +1,9 @@
 ---
-title: Function Call
+title: Built-in function call [YCQL]
+headerTitle: Built-in function call
+linkTitle: Function call
 summary: Combination of one or more values.
-headerTitle: Built-in Function Call
-description: Function call expression applies the specified function to to given arguments between parentheses and return the result of the computation.
+description: Use a function call expression to apply the specified function to to given arguments between parentheses and return the result of the computation.
 menu:
   latest:
     parent: api-cassandra
@@ -16,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Function call expression applies the specified function to to given arguments between parentheses and return the result of the computation.
+Use a function call expression to apply the specified function to to given arguments between parentheses and return the result of the computation.
 
 ## Syntax
 

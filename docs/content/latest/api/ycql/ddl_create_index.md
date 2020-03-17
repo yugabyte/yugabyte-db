@@ -1,7 +1,8 @@
 ---
-title: CREATE INDEX
+title: CREATE INDEX statement [YCQL]
+headerTitle: CREATE INDEX
 summary: Create a new index on a table
-description: CREATE INDEX
+description: Use the CREATE INDEX statement to create a new index on a table.
 menu:
   latest:
     parent: api-cassandra
@@ -15,11 +16,11 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE INDEX` statement is used to create a new index on a table. It defines the index name, index columns, and additional columns to include.
+Use the `CREATE INDEX` statement to create a new index on a table. It defines the index name, index columns, and additional columns to include.
 
 ## Syntax
 
-### Diagram 
+### Diagram
 
 #### create_index
 

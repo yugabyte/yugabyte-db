@@ -1,8 +1,8 @@
 ---
-title: BOOLEAN
+title: BOOLEAN data type [YCQL]
+headerTitle: BOOLEAN data type
 summary: Boolean values of false or true
-headerTitle: BOOLEAN type
-description: BOOLEAN data type is used to specify values of either true or false.
+description: Use the `BOOLEAN` data type to specify values of either "true" or "false".
 menu:
   latest:
     parent: api-cassandra
@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`BOOLEAN` data type is used to specify values of either `true` or `false`.
+Use the `BOOLEAN` data type to specify values of either `true` or `false`.
 
 ## Syntax
 

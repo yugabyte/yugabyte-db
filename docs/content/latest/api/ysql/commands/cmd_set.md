@@ -3,7 +3,7 @@ title: SET statement [YSQL]
 headerTitle: SET
 linkTitle: SET 
 summary: Set a session or system variable
-description: Use the `SET` statement to update a run-time control parameter.
+description: Use the SET statement to update a run-time control parameter.
 menu:
   latest:
     identifier: api-ysql-commands-set

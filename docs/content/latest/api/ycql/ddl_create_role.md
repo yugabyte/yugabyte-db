@@ -1,7 +1,8 @@
 ---
-title: CREATE ROLE
+title: CREATE ROLE statement [YCQL]
+headerTitle: CREATE ROLE
 summary: Create a new role
-description: CREATE ROLE
+description: Use the `CREATE ROLE` statement to create a new role that is used to authenticate into YCQL and as a group of permissions used to restrict operations on the database objects.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE ROLE` statement is used to create a new role that is used to authenticate into YCQL and as a group of permissions used to restrict operations on the database objects. Note that users are specific roles that are login enabled. There is no explicit `CREATE USER` command in YCQL.
+Use the `CREATE ROLE` statement to create a new role that is used to authenticate into YCQL and as a group of permissions is used to restrict operations on the database objects. Note that users are specific roles that are login enabled. There is no explicit `CREATE USER` command in YCQL.
 
 This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 
