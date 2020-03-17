@@ -4,11 +4,12 @@ linkTitle: Open Source Kubernetes
 description: Open Source Kubernetes 
 aliases:
   - /latest/deploy/kubernetes/oss/
+  - /latest/deploy/kubernetes/single-zone/oss/
   - /latest/deploy/kubernetes/helm-chart/
   - /latest/deploy/kubernetes/helm-configuration/
 menu:
   latest:
-    parent: deploy-kubernetes
+    parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-1
     weight: 621
@@ -20,25 +21,25 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/oss/helm-chart" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/single-zone/oss/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/oss/yugabyte-operator" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/oss/yugabyte-operator" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YugabyteDB operator
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/oss/operator-hub" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/oss/operator-hub" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/kubernetes/oss/rook-operator" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/oss/rook-operator" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Rook operator
     </a>
@@ -53,15 +54,15 @@ showAsideToc: true
 
 You must have a Kubernetes cluster that has Helm configured. If you have not installed the Helm client (`helm`), see [Installing Helm](https://helm.sh/docs/intro/install/).
 
-The Helm chart for YugabyteDB (`yugabyte-helm`) has been tested with the following software versions:
+The YugabyteDB Helm chart has been tested with the following software versions:
 
 - Kubernetes 1.10+
 - Helm 2.8+ or 3.0+
-- YugabyteDB docker image (yugabytedb/yugabyte) 1.1.0+
+- YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0+
 - Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
 - For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
 
-Confirm that `helm` is configured correctly.
+Confirm that `helm` and `kubectl` are configured correctly.
 
 ```sh
 $ helm version
@@ -78,6 +79,10 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 
 ```
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
+```
+
+```sh
+$ kubectl version
 ```
 
 ## Create cluster

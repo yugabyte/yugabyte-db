@@ -4,10 +4,12 @@ linkTitle: Google Kubernetes Engine (GKE)
 description: Google Kubernetes Engine (GKE)
 menu:
   latest:
-    parent: deploy-kubernetes
+    parent: deploy-kubernetes-sz
     name: Google Kubernetes Engine
     identifier: k8s-gke-3
     weight: 623
+aliases:
+  - /latest/deploy/kubernetes/gke/statefulset-yaml-local-ssd
 type: page
 isTocNested: true
 showAsideToc: true
@@ -16,19 +18,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/gke/helm-chart" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/gke/statefulset-yaml" class="nav-link">
+    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (Remote Disk)
     </a>
   </li>
    <li >
-    <a href="/latest/deploy/kubernetes/gke/statefulset-yaml-local-ssd" class="nav-link active">
+    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (Local Disk)
     </a>
