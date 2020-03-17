@@ -34,6 +34,7 @@
 
 #include "utils/agtype.h"
 #include "utils/agtype_parser.h"
+#include "utils/graphid.h"
 
 typedef struct agtype_in_state
 {
@@ -51,12 +52,13 @@ typedef enum /* type categories for datum_to_agtype */
     AGT_TYPE_DATE, /* we use special formatting for datetimes */
     AGT_TYPE_TIMESTAMP, /* we use special formatting for timestamp */
     AGT_TYPE_TIMESTAMPTZ, /* ... and timestamptz */
-    AGT_TYPE_AGTYPE, /*AGTYPE */
+    AGT_TYPE_AGTYPE, /* AGTYPE */
     AGT_TYPE_JSON, /* JSON */
     AGT_TYPE_JSONB, /* JSONB */
     AGT_TYPE_ARRAY, /* array */
     AGT_TYPE_COMPOSITE, /* composite */
     AGT_TYPE_JSONCAST, /* something with an explicit cast to JSON */
+    AGT_TYPE_VERTEX,
     AGT_TYPE_OTHER /* all else */
 } agt_type_category;
 
@@ -94,6 +96,7 @@ static void cannot_cast_agtype_value(enum agtype_value_type type,
 static bool agtype_extract_scalar(agtype_container *agtc, agtype_value *res);
 static agtype *execute_array_access_operator(agtype *array, agtype *element);
 static agtype *execute_map_access_operator(agtype *map, agtype *key);
+agtype_value *string_to_agtype_value(char *s);
 
 PG_FUNCTION_INFO_V1(agtype_in);
 
@@ -253,6 +256,15 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
         else
             appendBinaryStringInfo(out, "false", 5);
         break;
+    case AGTV_VERTEX:
+    {
+        agtype *prop;
+        scalar_val->type = AGTV_OBJECT;
+        prop = agtype_value_to_agtype(scalar_val);
+        agtype_to_cstring_worker(out, &prop->root, prop->vl_len_, false);
+        appendBinaryStringInfo(out, "::vertex", 8);
+        break;
+    }
     default:
         elog(ERROR, "unknown agtype scalar type");
     }
@@ -703,6 +715,11 @@ static void agtype_categorize_type(Oid typoid, agt_type_category *tcategory,
         else if (type_is_rowtype(typoid)) /* includes RECORDOID */
         {
             *tcategory = AGT_TYPE_COMPOSITE;
+        }
+        else if (typoid == GRAPHIDOID)
+        {
+            getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
+            *tcategory = AGT_TYPE_INTEGER;
         }
         else
         {
@@ -1203,6 +1220,88 @@ static void add_agtype(Datum val, bool is_null, agtype_in_state *result,
     datum_to_agtype(val, is_null, result, tcategory, outfuncoid, key_scalar);
 }
 
+agtype_value *string_to_agtype_value(char *s)
+{
+    agtype_value *agtv = palloc(sizeof(agtype_value));
+
+    agtv->type = AGTV_STRING;
+    agtv->val.string.len = check_string_length(strlen(s));
+    agtv->val.string.val = s;
+
+    return agtv;
+}
+
+PG_FUNCTION_INFO_V1(_agtype_build_vertex);
+
+/*
+ * SQL function agtype_build_vertex(graphid, cstring, agtype)
+ */
+Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
+{
+    agtype_in_state result;
+    graphid id;
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
+                                   NULL);
+
+    /* process graphid */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("id"));
+
+    if (fcinfo->argnull[0])
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("agtype_build_vertex() graphid cannot be NULL")));
+
+    id = AG_GETARG_GRAPHID(0);
+    add_agtype(id, false, &result, GRAPHIDOID, false);
+
+    /* process label */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("label"));
+
+    if (fcinfo->argnull[1])
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("agtype_build_vertex() label cannot be NULL")));
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   string_to_agtype_value(PG_GETARG_CSTRING(1)));
+
+    /* process properties */
+    result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
+                                   string_to_agtype_value("properties"));
+
+    //if the properties object is null, push an empty object
+    if (fcinfo->argnull[2])
+    {
+        result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
+                                       NULL);
+        result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT,
+                                       NULL);
+    }
+    else
+    {
+        agtype *properties = AG_GET_ARG_AGTYPE_P(2);
+
+        if (!AGT_ROOT_IS_OBJECT(properties))
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg(
+                     "agtype_build_vertex() properties argument must be an object")));
+
+        add_agtype((Datum)properties, false, &result, AGTYPEOID, false);
+    }
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+
+    result.res->type = AGTV_VERTEX;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
 PG_FUNCTION_INFO_V1(agtype_build_map);
 
 /*
@@ -1535,6 +1634,18 @@ Datum agtype_access_operator(PG_FUNCTION_ARGS)
         PG_RETURN_NULL();
 
     object = DATUM_GET_AGTYPE_P(args[0]);
+    if (AGT_ROOT_IS_SCALAR(object))
+    {
+        agtype_value *v;
+        v = get_ith_agtype_value_from_container(&object->root, 0);
+
+        if (v->type != AGTV_VERTEX)
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("container must be an array or object")));
+
+        object = agtype_value_to_agtype(&v->val.object.pairs[2].value);
+    }
+
     for (i = 1; i < nargs; i++)
     {
         /* if we have a null, return null */

@@ -270,6 +270,46 @@ SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2');
 SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2.0');
 
 --
+-- Vertex
+--
+--Basic Vertex Creation
+SELECT _agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map());
+SELECT _agtype_build_vertex('1'::graphid, $$label$$, agtype_build_map('id', 2));
+
+--Null properties
+SELECT _agtype_build_vertex('1'::graphid, $$label_name$$, NULL);
+
+--Test access operator
+SELECT agtype_access_operator(_agtype_build_vertex('1'::graphid, $$label$$,
+                              agtype_build_map('id', 2)), '"id"');
+SELECT _agtype_build_vertex('1'::graphid, $$label$$, agtype_build_list());
+
+--Vertex in a map
+SELECT agtype_build_map(
+	'vertex',
+	_agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map()));
+
+
+SELECT agtype_access_operator(
+        agtype_build_map(
+            'vertex', _agtype_build_vertex('1'::graphid, $$label_name$$,
+                                           agtype_build_map('key', 'value')),
+            'other_vertex', _agtype_build_vertex('1'::graphid, $$label_name$$,
+                                           agtype_build_map('key', 'other_value'))),
+        '"vertex"');
+--Vertex in a list
+SELECT agtype_build_list(
+	_agtype_build_vertex('1'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()));
+
+SELECT agtype_access_operator(
+	agtype_build_list(
+		_agtype_build_vertex('1'::graphid, $$label_name$$,
+                                     agtype_build_map('id', 3)),
+		_agtype_build_vertex('2'::graphid, $$label_name$$,
+                                     agtype_build_map('id', 4))), '0');
+
+--
 -- Test STARTS WITH, ENDS WITH, and CONTAINS
 --
 SELECT agtype_string_match_starts_with('"abcdefghijklmnopqrstuvwxyz"', '"abcd"');

@@ -33,6 +33,7 @@
 
 #include "utils/agtype.h"
 #include "utils/agtype_ext.h"
+#include "utils/graphid.h"
 
 /*
  * Maximum number of elements in an array (or key/value pairs in an object).
@@ -191,16 +192,18 @@ static int get_type_sort_priority(enum agtype_value_type type)
 {
     if (type == AGTV_OBJECT)
         return 0;
-    if (type == AGTV_ARRAY)
+    if (type == AGTV_VERTEX)
         return 1;
-    if (type == AGTV_STRING)
+    if (type == AGTV_ARRAY)
         return 2;
-    if (type == AGTV_BOOL)
+    if (type == AGTV_STRING)
         return 3;
-    if (type == AGTV_NUMERIC || type == AGTV_INTEGER || type == AGTV_FLOAT)
+    if (type == AGTV_BOOL)
         return 4;
-    if (type == AGTV_NULL)
+    if (type == AGTV_NUMERIC || type == AGTV_INTEGER || type == AGTV_FLOAT)
         return 5;
+    if (type == AGTV_NULL)
+        return 6;
     return -1;
 }
 
@@ -265,6 +268,7 @@ int compare_agtype_containers_orderability(agtype_container *a,
                 case AGTV_BOOL:
                 case AGTV_INTEGER:
                 case AGTV_FLOAT:
+                case AGTV_VERTEX:
                     res = compare_agtype_scalar_values(&va, &vb);
                     break;
                 case AGTV_ARRAY:
@@ -1396,6 +1400,14 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
             hashfloat8extended, Float8GetDatum(scalar_val->val.float_value),
             UInt64GetDatum(seed)));
         break;
+    case AGTV_VERTEX:
+        {
+            graphid id;
+            id = scalar_val->val.object.pairs[0].value.val.int_value;
+            tmp = DatumGetUInt64(DirectFunctionCall2(
+                hashfloat8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
+            break;
+        }
     default:
         ereport(
             ERROR,
@@ -1473,6 +1485,15 @@ static bool equals_agtype_scalar_value(agtype_value *a, agtype_value *b)
             return a->val.int_value == b->val.int_value;
         case AGTV_FLOAT:
             return a->val.float_value == b->val.float_value;
+        case AGTV_VERTEX:
+        {
+            graphid a_graphid, b_graphid;
+            a_graphid = a->val.object.pairs[0].value.val.int_value;
+            b_graphid = b->val.object.pairs[0].value.val.int_value;
+
+            return a_graphid == b_graphid;
+        }
+
         default:
             ereport(ERROR, (errmsg("invalid agtype scalar type %d for equals",
                                    a->type)));
@@ -1521,6 +1542,19 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
         case AGTV_FLOAT:
             return compare_two_floats_orderability(a->val.float_value,
                                                    b->val.float_value);
+        case AGTV_VERTEX:
+        {
+            graphid a_graphid, b_graphid;
+            a_graphid = a->val.object.pairs[0].value.val.int_value;
+            b_graphid = b->val.object.pairs[0].value.val.int_value;
+
+            if (a_graphid == b_graphid)
+                return 0;
+            else if (a_graphid > b_graphid)
+                return 1;
+            else
+                return -1;
+        }
         default:
             ereport(ERROR, (errmsg("invalid agtype scalar type %d for compare",
                                    a->type)));
@@ -1774,6 +1808,12 @@ static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
 
     /* Initialize the header of this node in the container's agtentry array */
     *pheader = AGTENTRY_IS_CONTAINER | totallen;
+}
+
+void convert_vertex_object(StringInfo buffer, agtentry *pheader,
+                           agtype_value *val)
+{
+    convert_agtype_object(buffer, pheader, val, 0);
 }
 
 static void convert_agtype_object(StringInfo buffer, agtentry *pheader,

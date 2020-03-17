@@ -266,6 +266,7 @@ enum agtype_value_type
     AGTV_INTEGER,
     AGTV_FLOAT,
     AGTV_BOOL,
+    AGTV_VERTEX,
     /* Composite types */
     AGTV_ARRAY = 0x10,
     AGTV_OBJECT,
@@ -317,7 +318,7 @@ struct agtype_value
 };
 
 #define IS_A_AGTYPE_SCALAR(agtype_val) \
-    ((agtype_val)->type >= AGTV_NULL && (agtype_val)->type <= AGTV_BOOL)
+    ((agtype_val)->type >= AGTV_NULL && (agtype_val)->type < AGTV_ARRAY)
 
 /*
  * Key/value pair within an Object.
@@ -414,6 +415,9 @@ bool agtype_deep_contains(agtype_iterator **val,
 void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash);
 void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
                                        uint64 *hash, uint64 seed);
+void convert_vertex_object(StringInfo buffer, agtentry *pheader,
+                           agtype_value *val);
+
 /* agtype.c support functions */
 char *agtype_to_cstring(StringInfo out, agtype_container *in,
                         int estimated_len);

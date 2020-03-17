@@ -532,6 +532,18 @@ CREATE OPERATOR >= (
 );
 
 --
+-- agtype - vertex
+--
+CREATE FUNCTION _agtype_build_vertex(graphid, cstring, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+
+--
 -- agtype - map literal (`{key: expr, ...}`)
 --
 

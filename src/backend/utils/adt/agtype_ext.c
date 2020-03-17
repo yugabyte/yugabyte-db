@@ -15,6 +15,8 @@
  */
 
 #include "utils/agtype_ext.h"
+#include "utils/agtype.h"
+#include "utils/graphid.h"
 
 /* define the type and size of the agt_header */
 #define AGT_HEADER_TYPE uint32
@@ -23,6 +25,9 @@
 /* values for the AGTYPE header field to denote the stored data type */
 #define AGT_HEADER_INTEGER 0x00000000
 #define AGT_HEADER_FLOAT 0x00000001
+#define AGT_HEADER_VERTEX 0x00000002
+
+static void ag_deserialize_vertex(char *base_addr, agtype_value *result);
 
 static short ag_serialize_header(StringInfo buffer, uint32 type)
 {
@@ -71,6 +76,16 @@ bool ag_serialize_extended_type(StringInfo buffer, agtentry *agtentry,
         *agtentry = AGTENTRY_IS_AGTYPE | (padlen + numlen + AGT_HEADER_SIZE);
         break;
 
+    case AGTV_VERTEX:
+    {
+        uint32 object_ae = 0;
+        padlen = ag_serialize_header(buffer, AGT_HEADER_VERTEX);
+        convert_vertex_object(buffer, &object_ae, scalar_val);
+
+        *agtentry = AGTENTRY_IS_AGTYPE |
+                    ((AGTENTRY_OFFLENMASK & (int)object_ae) + AGT_HEADER_SIZE);
+        break;
+    }
     default:
         return false;
     }
@@ -100,7 +115,34 @@ void ag_deserialize_extended_type(char *base_addr, uint32 offset,
         result->val.float_value = *((float8 *)(base + AGT_HEADER_SIZE));
         break;
 
+    case AGT_HEADER_VERTEX:
+        ag_deserialize_vertex(base, result);
+        break;
     default:
         elog(ERROR, "Invalid AGT header value.");
     }
+}
+
+static void ag_deserialize_vertex(char *base, agtype_value *result)
+{
+    agtype_iterator *it;
+    agtype_iterator_token tok;
+    agtype_parse_state *parse_state = NULL;
+    agtype_value *r;
+    agtype_value *parsed_agtype_value = NULL;
+    //offset container by the extended type header
+    char *container_base = base + AGT_HEADER_SIZE;
+
+    r = palloc(sizeof(agtype_value));
+
+    it = agtype_iterator_init((agtype_container *)container_base);
+    while ((tok = agtype_iterator_next(&it, r, true)) != WAGT_DONE)
+    {
+        parsed_agtype_value = push_agtype_value(
+            &parse_state, tok, tok < WAGT_BEGIN_ARRAY ? r : NULL);
+
+    }
+
+    result->type = AGTV_VERTEX;
+    result->val = parsed_agtype_value->val;
 }
