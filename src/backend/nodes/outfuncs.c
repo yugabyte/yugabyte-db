@@ -137,6 +137,7 @@ void out_cypher_path(StringInfo str, const ExtensibleNode *node)
     DEFINE_AG_NODE(cypher_path);
 
     write_node_field(path);
+    write_location_field(location);
 }
 
 void out_cypher_node(StringInfo str, const ExtensibleNode *node)
@@ -146,6 +147,7 @@ void out_cypher_node(StringInfo str, const ExtensibleNode *node)
     write_string_field(name);
     write_string_field(label);
     write_node_field(props);
+    write_location_field(location);
 }
 
 void out_cypher_relationship(StringInfo str, const ExtensibleNode *node)

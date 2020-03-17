@@ -36,12 +36,6 @@ static Oid create_schema_for_graph(const Name graph_name);
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade);
 static void rename_graph(const Name graph_name, const Name new_name);
 
-/*
- * Schema name doesn't have to be graph name but the same name is used so
- * that users can find the backed schema for a graph only by its name.
- */
-#define get_graph_namespace_name(graph_name) (graph_name)
-
 PG_FUNCTION_INFO_V1(create_graph);
 
 Datum create_graph(PG_FUNCTION_ARGS)

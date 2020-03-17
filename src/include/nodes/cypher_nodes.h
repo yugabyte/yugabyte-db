@@ -93,6 +93,7 @@ typedef struct cypher_path
 {
     ExtensibleNode extensible;
     List *path; // [ node ( , relationship , node , ... ) ]
+    int location;
 } cypher_path;
 
 // ( name :label props )
@@ -102,6 +103,7 @@ typedef struct cypher_node
     char *name;
     char *label;
     Node *props; // map or parameter
+    int location;
 } cypher_node;
 
 typedef enum

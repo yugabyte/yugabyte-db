@@ -34,6 +34,7 @@
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
 
+#include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "commands/label_commands.h"
 #include "nodes/ag_nodes.h"
@@ -44,6 +45,10 @@
 #include "parser/cypher_parse_node.h"
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
+#include "utils/graphid.h"
+
+typedef Query *(*transform_method) (cypher_parsestate *cpstate,
+                                    cypher_clause *clause);
 
 // projection
 static Query *transform_cypher_return(cypher_parsestate *cpstate,
@@ -59,6 +64,21 @@ static Node *transform_cypher_limit(cypher_parsestate *cpstate, Node *node,
                                     const char *construct_name);
 static Query *transform_cypher_with(cypher_parsestate *cpstate,
                                     cypher_clause *clause);
+static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
+                                                 transform_method transform,
+                                                 cypher_clause *clause,
+                                                 Node *where);
+
+// reading clause
+static Query *transform_cypher_match(cypher_parsestate *cpstate,
+                                     cypher_clause *clause);
+static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
+                                             cypher_clause *clause);
+static cypher_node *get_node_from_pattern(ParseState *pstate, List *pattern);
+static void transform_cypher_node(cypher_parsestate *cpstate,
+                                  cypher_node *node, List **target_list);
+static Node *make_vertex_expr(cypher_parsestate *cpstate, RangeTblEntry *rte,
+                              char *label);
 
 // updating clause
 static Query *transform_cypher_create(cypher_parsestate *cpstate,
@@ -68,9 +88,15 @@ static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
 static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
                                                  cypher_path *cp);
 
-static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
-                                                   cypher_clause *prev_clause);
-static Query *analyze_cypher_clause(cypher_clause *clause,
+// transform
+#define transform_prev_cypher_clause(cpstate, prev_clause) \
+    transform_cypher_clause_as_subquery(cpstate, transform_cypher_clause, \
+                                        prev_clause)
+static RangeTblEntry *transform_cypher_clause_as_subquery(
+    cypher_parsestate *cpstate, transform_method transform,
+    cypher_clause *clause);
+static Query *analyze_cypher_clause(transform_method transform,
+                                    cypher_clause *clause,
                                     cypher_parsestate *parent_cpstate);
 
 Query *transform_cypher_clause(cypher_parsestate *cpstate,
@@ -85,7 +111,7 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     else if (is_ag_node(self, cypher_with))
         return transform_cypher_with(cpstate, clause);
     else if (is_ag_node(self, cypher_match))
-        return NULL;
+        return transform_cypher_match(cpstate, clause);
     else if (is_ag_node(self, cypher_create))
         result = transform_cypher_create(cpstate, clause);
     else if (is_ag_node(self, cypher_set))
@@ -239,15 +265,13 @@ static Node *transform_cypher_limit(cypher_parsestate *cpstate, Node *node,
 static Query *transform_cypher_with(cypher_parsestate *cpstate,
                                     cypher_clause *clause)
 {
-    ParseState *pstate = (ParseState *)cpstate;
     cypher_with *self = (cypher_with *)clause->self;
     cypher_return *return_clause;
-    cypher_clause *prev_clause;
-    Query *query;
-    RangeTblEntry *rte;
-    int rtindex;
-    Node *qual;
+    cypher_clause *wrapper;
 
+    // TODO: check that all items have an alias for each
+
+    // WITH clause is basically RETURN clause with optional WHERE subclause
     return_clause = make_ag_node(cypher_return);
     return_clause->distinct = self->distinct;
     return_clause->items = self->items;
@@ -255,38 +279,225 @@ static Query *transform_cypher_with(cypher_parsestate *cpstate,
     return_clause->skip = self->skip;
     return_clause->limit = self->limit;
 
-    prev_clause = palloc(sizeof(*prev_clause));
-    prev_clause->self = (Node *)return_clause;
-    prev_clause->prev = clause->prev;
+    wrapper = palloc(sizeof(*wrapper));
+    wrapper->self = (Node *)return_clause;
+    wrapper->prev = clause->prev;
+
+    return transform_cypher_clause_with_where(cpstate, transform_cypher_return,
+                                              wrapper, self->where);
+}
+
+static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
+                                                 transform_method transform,
+                                                 cypher_clause *clause,
+                                                 Node *where)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    Query *query;
+
+    if (where)
+    {
+        RangeTblEntry *rte;
+        int rtindex;
+        Node *qual;
+
+        query = makeNode(Query);
+        query->commandType = CMD_SELECT;
+
+        rte = transform_cypher_clause_as_subquery(cpstate, transform, clause);
+        rtindex = list_length(pstate->p_rtable);
+        Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
+
+        query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+
+        markTargetListOrigins(pstate, query->targetList);
+
+        // see transformWhereClause()
+        qual = transform_cypher_expr(cpstate, where, EXPR_KIND_WHERE);
+        qual = coerce_to_boolean(pstate, qual, "WHERE");
+
+        query->rtable = pstate->p_rtable;
+        query->jointree = makeFromExpr(pstate->p_joinlist, qual);
+
+        assign_query_collations(pstate, query);
+    }
+    else
+    {
+        query = transform(cpstate, clause);
+    }
+
+    return query;
+}
+
+static Query *transform_cypher_match(cypher_parsestate *cpstate,
+                                     cypher_clause *clause)
+{
+    cypher_match *self = (cypher_match *)clause->self;
+
+    return transform_cypher_clause_with_where(cpstate,
+                                              transform_cypher_match_pattern,
+                                              clause, self->where);
+}
+
+static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
+                                             cypher_clause *clause)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_match *self = (cypher_match *)clause->self;
+    Query *query;
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
 
-    rte = transform_prev_cypher_clause(cpstate, prev_clause);
-    rtindex = list_length(pstate->p_rtable);
-    Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
+    if (clause->prev)
+    {
+        RangeTblEntry *rte;
+        int rtindex;
 
-    query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+        rte = transform_prev_cypher_clause(cpstate, clause->prev);
+        rtindex = list_length(pstate->p_rtable);
+        Assert(rtindex == 1); // rte is the first RangeTblEntry in pstate
+
+        /*
+         * add all the target entries in rte to the current target list to pass
+         * all the variables that are introduced in the previous clause to the
+         * next clause
+         */
+        query->targetList = expandRelAttrs(pstate, rte, rtindex, 0, -1);
+    }
+
+    // TODO: transform self->pattern into a connected component
+
+    /*
+     * TODO: transform the connected component into RangeTblEntry's and
+     *       TargetEntry's
+     */
+    // NOTE: for now, only patterns that have a single node are supported
+    transform_cypher_node(cpstate,
+                          get_node_from_pattern(pstate, self->pattern),
+                          &query->targetList);
 
     markTargetListOrigins(pstate, query->targetList);
 
-    // see transformWhereClause()
-    if (self->where)
-    {
-        qual = transform_cypher_expr(cpstate, self->where, EXPR_KIND_WHERE);
-        qual = coerce_to_boolean(pstate, qual, "WHERE");
-    }
-    else
-    {
-        qual = NULL;
-    }
-
     query->rtable = pstate->p_rtable;
-    query->jointree = makeFromExpr(pstate->p_joinlist, qual);
+    query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
     assign_query_collations(pstate, query);
 
     return query;
+}
+
+/*
+ * NOTE: a temporary logic that checks whether given pattern has only 1 node
+ *       and returns the node
+ */
+static cypher_node *get_node_from_pattern(ParseState *pstate, List *pattern)
+{
+    cypher_path *path;
+    cypher_node *node;
+
+    // a pattern has at least 1 path that has at least 1 node
+    path = linitial(pattern);
+    node = linitial(path->path);
+
+    // only 1 path
+    if (list_length(pattern) > 1 || list_length(path->path) > 1)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("MATCH clause can have only 1 node"),
+                 parser_errposition(pstate, path->location)));
+    }
+
+    return node;
+}
+
+static void transform_cypher_node(cypher_parsestate *cpstate,
+                                  cypher_node *node, List **target_list)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    char *schema_name;
+    char *rel_name;
+    RangeVar *label_range_var;
+    Alias *alias;
+    RangeTblEntry *rte;
+    int resno;
+    TargetEntry *te;
+
+    /*
+     * NOTE: for now, nodes without a name are not supported because
+     *       patterns can have only 1 node
+     */
+    if (!node->name)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("nodes without a name are not supported"),
+                 parser_errposition(pstate, node->location)));
+    }
+
+    // NOTE: for now, nodes without a label are not supported
+    if (!node->label)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("nodes without a label are not supported"),
+                 parser_errposition(pstate, node->location)));
+    }
+
+    // NOTE: for now, nodes with a property condition are not supported
+    if (node->props)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("nodes with a property condition are not supported"),
+                 parser_errposition(pstate, node->location)));
+    }
+
+    schema_name = get_graph_namespace_name(cpstate->graph_name);
+    rel_name = get_label_relation_name(node->label);
+    label_range_var = makeRangeVar(schema_name, rel_name, -1);
+    alias = makeAlias(node->name, NIL);
+
+    rte = addRangeTableEntry(pstate, label_range_var, alias,
+                             label_range_var->inh, true);
+    /*
+     * relation is visible (r.a in expression works) but attributes in the
+     * relation are not visible (a in expression doesn't work)
+     */
+    addRTEtoQuery(pstate, rte, true, true, false);
+
+    resno = pstate->p_next_resno++;
+    te = makeTargetEntry((Expr *)make_vertex_expr(cpstate, rte, node->label),
+                         resno, node->name, false);
+    *target_list = lappend(*target_list, te);
+}
+
+static Node *make_vertex_expr(cypher_parsestate *cpstate, RangeTblEntry *rte,
+                              char *label)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    Oid func_oid;
+    Node *id;
+    Const *label_const;
+    Node *props;
+    List *args;
+    FuncExpr *func_expr;
+
+    func_oid = get_ag_func_oid("_agtype_build_vertex", 3, GRAPHIDOID,
+                               CSTRINGOID, AGTYPEOID);
+
+    id = scanRTEForColumn(pstate, rte, "id", -1, 0, NULL);
+    label_const = makeConst(UNKNOWNOID, -1, InvalidOid, -2,
+                            CStringGetDatum(pstrdup(label)), false, false);
+    props = scanRTEForColumn(pstate, rte, "properties", -1, 0, NULL);
+    args = list_make3(id, label_const, props);
+
+    func_expr = makeFuncExpr(func_oid, AGTYPEOID, args, InvalidOid, InvalidOid,
+                             COERCE_EXPLICIT_CALL);
+    func_expr->location = -1;
+
+    return (Node *)func_expr;
 }
 
 static Query *transform_cypher_create(cypher_parsestate *cpstate,
@@ -394,8 +605,9 @@ static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
  * This function is similar to transformFromClause() that is called with a
  * single RangeSubselect.
  */
-static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
-                                                   cypher_clause *prev_clause)
+static RangeTblEntry *transform_cypher_clause_as_subquery(
+    cypher_parsestate *cpstate, transform_method transform,
+    cypher_clause *clause)
 {
     ParseState *pstate = (ParseState *)cpstate;
     const bool lateral = false;
@@ -407,7 +619,7 @@ static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
     // p_lateral_active is false since query is the only FROM clause item here.
     pstate->p_lateral_active = lateral;
 
-    query = analyze_cypher_clause(prev_clause, cpstate);
+    query = analyze_cypher_clause(transform, clause, cpstate);
 
     pstate->p_lateral_active = false;
     pstate->p_expr_kind = EXPR_KIND_NONE;
@@ -421,12 +633,14 @@ static RangeTblEntry *transform_prev_cypher_clause(cypher_parsestate *cpstate,
      */
 
     Assert(list_length(pstate->p_rtable) == 1);
-    addRTEtoQuery(pstate, rte, true, true, true);
+    // all variables(attributes) from the previous clause(subquery) are visible
+    addRTEtoQuery(pstate, rte, true, false, true);
 
     return rte;
 }
 
-static Query *analyze_cypher_clause(cypher_clause *clause,
+static Query *analyze_cypher_clause(transform_method transform,
+                                    cypher_clause *clause,
                                     cypher_parsestate *parent_cpstate)
 {
     cypher_parsestate *cpstate;
@@ -434,7 +648,7 @@ static Query *analyze_cypher_clause(cypher_clause *clause,
 
     cpstate = make_cypher_parsestate(parent_cpstate);
 
-    query = transform_cypher_clause(cpstate, clause);
+    query = transform(cpstate, clause);
 
     free_cypher_parsestate(cpstate);
 

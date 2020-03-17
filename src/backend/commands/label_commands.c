@@ -53,12 +53,6 @@ static void alter_sequence_owned_by_for_label(RangeVar *seq_range_var,
                                               char *rel_name);
 static int32 get_new_label_id(Oid graph_oid, Oid nsp_id);
 
-/*
- * Relation name doesn't have to be label name but the same name is used so
- * that users can find the backed relation for a label only by its name.
- */
-#define get_label_relation_name(label_name) (label_name)
-
 Oid create_vertex_label(char *graph_name, char *label_name)
 {
     graph_cache_data *cache_data;

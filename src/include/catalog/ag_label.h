@@ -45,6 +45,13 @@ Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
 
 Oid get_label_oid(const char *label_name, Oid label_graph);
 int32 get_label_id(const char *label_name, Oid label_graph);
+
+/*
+ * Relation name doesn't have to be label name but the same name is used so
+ * that users can find the backed relation for a label only by its name.
+ */
+#define get_label_relation_name(label_name) (label_name)
+
 bool label_id_exists(Oid label_graph, int32 label_id);
 
 #define label_exists(label_name, label_graph) \

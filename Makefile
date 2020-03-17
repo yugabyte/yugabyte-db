@@ -58,7 +58,8 @@ REGRESS = scan \
           cypher \
           expr \
           cypher_create \
-          cypher_with \
+          cypher_match \
+          cypher_with
 
 ag_regress_dir = $(srcdir)/regress
 REGRESS_OPTS = --load-extension=agensgraph --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958

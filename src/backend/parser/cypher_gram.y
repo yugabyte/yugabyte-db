@@ -480,10 +480,6 @@ match:
             n->where = $3;
 
             $$ = (Node *)n;
-
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("MATCH clause not implemented"),
-                            ag_scanner_errposition(@1, scanner)));
         }
     ;
 
@@ -684,6 +680,7 @@ anonymous_path:
 
             n = make_ag_node(cypher_path);
             n->path = $1;
+            n->location = @1;
 
             $$ = (Node *)n;
         }
@@ -717,6 +714,7 @@ path_node:
             n->name = $2;
             n->label = $3;
             n->props = $4;
+            n->location = @1;
 
             $$ = (Node *)n;
         }

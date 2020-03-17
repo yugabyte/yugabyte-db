@@ -22,6 +22,7 @@
 #include "nodes/extensible.h"
 #include "nodes/nodes.h"
 
+// This list must match node_names and node_methods.
 typedef enum ag_node_tag
 {
     ag_node_invalid_t = 0,

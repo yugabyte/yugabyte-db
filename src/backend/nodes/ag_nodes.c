@@ -56,6 +56,7 @@ const char *node_names[] = {
         read_ag_node \
     }
 
+// This list must match ag_node_tag.
 const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS(cypher_return),
     DEFINE_NODE_METHODS(cypher_with),
