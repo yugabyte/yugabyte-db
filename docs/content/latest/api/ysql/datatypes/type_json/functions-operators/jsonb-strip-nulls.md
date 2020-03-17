@@ -12,14 +12,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** find all key-value pairs at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an _object_) and return a JSON value where each pair whose value is _null_ has been removed.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        jsonb
-return value       jsonb
+input value:       jsonb
+return value:      jsonb
 ```
 
-Each function returns a value of the same data type as that of the actual with which it is invoked. They find all key-value pairs at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an _object_) and return a JSON value where each pair whose value is _null_. has been removed. By definition, they leave _null_ values within _arrays_ untouched.
+**Notes:** by definition, these functions leave _null_ values within _arrays_ untouched.
 
 ```postgresql
 do $body$

@@ -12,15 +12,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This has one variant that returns a `json` value. Here is the signature:
+**Purpose:** create a JSON _array_ from a SQL _array_.
+
+**Signature:**
 
 ```
-input value        anyarray
-pretty             boolean
-return value       json
+input value:       anyarray
+pretty:            boolean (optional)
+return value:      json
 ```
 
-The first (mandatory) formal parameter is any SQL `array` whose elements might be compound values. The second formal parameter is optional. When it is _true_, line feeds are added between dimension-1 elements.
+**Notes:** this has only the `json` variant. The first (mandatory) formal parameter is any SQL `array` whose elements might be compound values. The second formal parameter is optional. When it is _true_, line feeds are added between dimension-1 elements.
 
 ```postgresql
 do $body$

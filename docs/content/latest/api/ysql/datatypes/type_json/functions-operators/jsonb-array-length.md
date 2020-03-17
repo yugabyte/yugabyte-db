@@ -13,15 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
+**Purpose:** return the count of values (primitive or compound) in the array. You can use this to iterate over the elements of a JSON _array_ using the  `->` operator.
 
-The functions in this pair require that the supplied JSON value is an _array_. Here is the signature for the `jsonb` variant:
+**Signature** for the `jsonb` variant:
 
 ```
-input value        jsonb
-return value       integer
+input value:       jsonb
+return value:      integer
 ```
 
-The functions return the count of values (primitive or compound) in the array. You can use this to iterate over the elements of a JSON _array_ using the  `->` operator.
+**Notes:** The functions in this pair require that the supplied JSON value is an _array_.
 
 ```postgresql
 do $body$
@@ -31,10 +32,8 @@ declare
 
   expected_typeof constant text[] :=
     array['string', 'number', 'boolean', 'null'];
-
-  n int := 0;
 begin
-  for n in 1..last_idx loop
+  for n in 0..last_idx loop
     assert
       jsonb_typeof(j -> n) = expected_typeof[n + 1],
     'unexpected';

@@ -13,14 +13,20 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** transform the JSON values of JSON _array_ into a SQL table of (i.e. `setof`) `text` values.
+
+**Signature:** for the `jsonb` variant:
 
 ```
-input value        jsonb
-return value       SETOF text
+input value:       jsonb
+return value:      SETOF text
 ```
 
-The function `jsonb_array_elements_text()` bears the same relationship to `jsonb_array_elements()` that the other `*text()` functions bear to their plain counterparts: it's the same relationship that the `->>` and `#>>` operators bear, respectively to `->` and `#>`. This example uses the same JSON _array_ input that was used to illustrate `jsonb_array_elements()` .
+**Notes:** The function `jsonb_array_elements_text()` bears the same relationship to `jsonb_array_elements()` that the other `*text()` functions bear to their plain counterparts: it's the same relationship that the `->>` and `#>>` operators bear, respectively to `->` and `#>`. (Compound values become the RFC 7159 text of the value; primitive values become the `::text` representation of the SQL value that the JSON primitive value corresponds to.)
+
+This example uses the same JSON _array_ input that was used to illustrate `jsonb_array_elements()`.
+
+Notice that the JSON value _null_ becomes a genuine SQL `null` and so needs the dedicated `is null` test.
 
 ```postgresql
 do $body$

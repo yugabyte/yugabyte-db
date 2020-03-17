@@ -13,14 +13,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** create a JSON _array_ from a variadic list of _array_ values of arbirary SQL data type.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        VARIADIC "any"
-return value       jsonb
+input value:       VARIADIC "any"
+return value:      jsonb
 ```
 
-These two functions take an arbitrary number of actual arguments of mixed SQL data types. (The PostgreSQL documentation uses the term _"[variadic](https://en.wikipedia.org/wiki/Variadic_function)"_ to characterize this.) The data type of each argument must have a direct JSON equivalent or allow implicit conversion to such an equivalent. Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
+**Notes:** these two functions take an arbitrary number of actual arguments of mixed SQL data types. The data type of each argument must have a direct JSON equivalent or allow implicit conversion to such an equivalent.
+
+Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
 
 ```postgresql
 create type t as (a int, b text);
@@ -61,6 +65,7 @@ begin
 end;
 $body$;
 
+-- Relies on "type t as (a int, b text)" created above.
 do $body$
 declare
   v_17 constant int := 17;
@@ -68,8 +73,8 @@ declare
   v_true constant boolean := true;
   v_t constant t := (17::int, 'cat'::text);
 
-  j constant jsonb := jsonb_build_array(v_17, v_dog, v_true, v_t);
-  expected_j constant jsonb := f(
+  expected_j constant jsonb := jsonb_build_array(v_17, v_dog, v_true, v_t);
+  j constant jsonb := f(
     $$
       17::integer,
       'dog'::text,
