@@ -165,10 +165,14 @@
       }
       a.section-link {
         padding: 25px 32px 30px;
-        height: 215px;
         display: flex;
         flex-direction: column;
         position: relative;
+        background-color: #ffffff;
+        border: none !important;
+        height: 180px;
+        color: $YB_DARK;
+
         @include transition(0.125s);
 
         @media only screen and (min-width:768px) and (max-width:1024px) {
@@ -196,19 +200,12 @@
           display: block;
           position: absolute;
           @include transition(0.15s);
-        }
-
-        &, &:hover {
-          background-color: #ffffff;
-          border: none !important;
-          height: 180px;
-          color: $YB_DARK;
-        }
+        }        
 
         &:hover {
           @include transition(0.3s);
           transform: scale(1.03, 1.03);
-          z-index: 1000;
+          z-index: 2000;
           &:before {
             color: rgba($YB_DARK_BLUE, 0.7);
             padding-right: 37px;
