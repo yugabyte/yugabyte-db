@@ -24,6 +24,25 @@ Application clients connect to these addresses.
 | ycql    | 9042  | yb-tserver | [`--cql_proxy_bind_address 0.0.0.0:9042`](../yb-tserver/#cql-proxy-bind-address)   |
 | yedis   | 6379  | yb-tserver | [`--redis_proxy_bind_address 0.0.0.0:6379`](../yb-tserver/#redis-proxy-bind-address) |
 
+
+## Internode RPC communication
+
+Internode (server-to-server or node-to-node) communication is managed using RPC calls on these addresses.
+
+| Server    | Port | Configuration setting (default)                              |
+| ---------- | ---- | ------------------------------------------------------------ |
+| yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
+| yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
+
+## Admin web server
+
+Admin web server UI can be viewed at these addresses.
+
+| Server    | Port  | Configuration setting (default)                             |
+| ---------- | ----- | ------------------------------------------------------------ |
+| yb-master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 7000`](../yb-master/#webserver-port) |
+| yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 9000`](../yb-master/#webserver-port) |
+
 ## Monitoring with Prometheus
 
 Use the following targets to configure [Prometheus](https://prometheus.io/) to scrape available metrics (in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format)) from the YugabyteDB HTTP endpoint:
@@ -53,22 +72,5 @@ Use the following `yb-tserver` targets to more API metrics.
 | ycql    | `<tserver-address>:12000` |
 | yedis   | `<tserver-address>:11000` |
 
-## Internode RPC communication
-
-Internode (server-to-server or node-to-node) communication is managed using RPC calls on these addresses.
-
-| Server    | Port | Configuration setting (default)                              |
-| ---------- | ---- | ------------------------------------------------------------ |
-| yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
-| yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
-
-## Admin web server
-
-Admin web server UI can be viewed at these addresses.
-
-| Server    | Port  | Configuration setting (default)                             |
-| ---------- | ----- | ------------------------------------------------------------ |
-| yb-master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 7000`](../yb-master/#webserver-port) |
-| yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 9000`](../yb-master/#webserver-port) |
 
 
