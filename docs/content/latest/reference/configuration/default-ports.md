@@ -1,7 +1,8 @@
 ---
-title: Default ports
+title: YugabyteDB default ports reference
+headerTitle: Default ports
 linkTitle: Default ports
-description: Default ports reference
+description: Default ports for YugabyteDB clusters, including RPC communication, monitoring, servers, and APIs.
 section: REFERENCE
 menu:
   latest:
@@ -23,7 +24,6 @@ Application clients connect to these addresses.
 | ysql    | 5433  | yb-tserver | [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../yb-tserver/#pgsql-proxy-bind-address) |
 | ycql    | 9042  | yb-tserver | [`--cql_proxy_bind_address 0.0.0.0:9042`](../yb-tserver/#cql-proxy-bind-address)   |
 | yedis   | 6379  | yb-tserver | [`--redis_proxy_bind_address 0.0.0.0:6379`](../yb-tserver/#redis-proxy-bind-address) |
-
 
 ## Internode RPC communication
 
@@ -71,6 +71,3 @@ Use the following `yb-tserver` targets to more API metrics.
 | ysql    | `<tserver-address>:13000` |
 | ycql    | `<tserver-address>:12000` |
 | yedis   | `<tserver-address>:11000` |
-
-
-
