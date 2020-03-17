@@ -958,51 +958,18 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(bool is_enabled) {
 Status ClusterAdminClient::FlushTable(const YBTableName& table_name,
                                       int timeout_secs,
                                       bool is_compaction) {
-  FlushTablesRequestPB req;
-  req.set_is_compaction(is_compaction);
-  table_name.SetIntoTableIdentifierPB(req.add_tables());
-  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::FlushTables,
-      master_proxy_.get(), req));
+  RETURN_NOT_OK(yb_client_->FlushTable(table_name, timeout_secs, is_compaction));
+  cout << (is_compaction ? "Compacted " : "Flushed ") << table_name.ToString() << endl;
+  return Status::OK();
+}
 
-  if (is_compaction) {
-    cout << "Started compaction of table " << table_name.ToString() << endl
-         << "Compaction request id: " << resp.flush_request_id() << endl;
-  } else {
-    cout << "Started flushing table " << table_name.ToString() << endl
-         << "Flush request id: " << resp.flush_request_id() << endl;
-  }
-
-  IsFlushTablesDoneRequestPB wait_req;
-  // Wait for table creation.
-  wait_req.set_flush_request_id(resp.flush_request_id());
-
-  for (int k = 0; k < timeout_secs; ++k) {
-    const auto wait_resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
-        &MasterServiceProxy::IsFlushTablesDone, master_proxy_.get(), wait_req));
-
-    if (wait_resp.has_error()) {
-      if (wait_resp.error().status().code() == AppStatusPB::NOT_FOUND) {
-        cout << (is_compaction ? "Compaction" : "Flush") << " request was deleted: "
-             << resp.flush_request_id() << endl;
-      }
-
-      return StatusFromPB(wait_resp.error().status());
-    }
-
-    if (wait_resp.done()) {
-      cout << (is_compaction ? "Compaction" : "Flushing") << " complete: "
-           << (wait_resp.success() ? "SUCCESS" : "FAILED") << endl;
-      return Status::OK();
-    }
-
-    cout << "Waiting for " << (is_compaction ? "compaction..." : "flushing...")
-         << (wait_resp.success() ? "" : " Already FAILED") << endl;
-    std::this_thread::sleep_for(1s);
-  }
-
-  return STATUS(TimedOut,
-      Substitute("Expired timeout ($0 seconds) for table $1 $2",
-          timeout_secs, table_name.ToString(), is_compaction ? "compaction" : "flushing"));
+Status ClusterAdminClient::FlushTableById(
+    const TableId& table_id,
+    int timeout_secs,
+    bool is_compaction) {
+  RETURN_NOT_OK(yb_client_->FlushTable(table_id, timeout_secs, is_compaction));
+  cout << (is_compaction ? "Compacted " : "Flushed ") << table_id << endl;
+  return Status::OK();
 }
 
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
