@@ -2,7 +2,7 @@
 title: yb-tserver configuration
 headerTitle: yb-tserver
 linkTitle: yb-tserver
-description: Configuration options for YugabyteDB YB-TServer (yb-tserver) nodes
+description: Configure YugabyteDB YB-TServer (yb-tserver) nodes to store and manages data for client applications.
 menu:
   latest:
     identifier: yb-tserver

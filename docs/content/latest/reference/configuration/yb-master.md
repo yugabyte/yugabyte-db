@@ -2,7 +2,7 @@
 title: yb-master configuration
 headerTitle: yb-master
 linkTitle: yb-master
-description: Configuration options for YugabyteDB YB-Master (yb-master) nodes
+description: Configure YugabyteDB YB-Master (yb-master) nodes to manage cluster metadata, tablets, and coordination of cluster-wide operations.
 menu:
   latest:
     identifier: yb-master
