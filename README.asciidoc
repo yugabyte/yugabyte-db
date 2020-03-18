@@ -59,7 +59,7 @@ year. The 16th of July will be rounded to August.
 ----
 	next_day(date '2005-05-24', 1) -> 2005-05-30
 ----
-* months_between(date, date) float8 - Returns the number of months between date1 and date2. If a fractional month is calculated, the months_between  function calculates the fraction based on a 31-day month. 
+* months_between(date, date) numeric - Returns the number of months between date1 and date2. If a fractional month is calculated, the months_between  function calculates the fraction based on a 31-day month. 
 +
 ----
 	months_between(date '1995-02-02', date '1995-01-01') -> 1.0322580645161
