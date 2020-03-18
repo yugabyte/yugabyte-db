@@ -1,6 +1,7 @@
 ---
 title: ALTER ROLE statement [YCQL]
 headerTitle: ALTER ROLE
+linkTitle: ALTER ROLE
 summary: Change the properties of a role
 description: Use the ALTER ROLE statement to change the properties of an existing role.
 menu:

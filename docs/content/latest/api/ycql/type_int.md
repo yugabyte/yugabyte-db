@@ -1,6 +1,7 @@
 ---
 title: Integer and counter data types [YCQL]
 headerTitle: Integer and counter data types
+linkTitle: Integer and counter
 summary: Signed integers of different ranges
 description: There are several different data types for integers of different value ranges. Integers can be set, inserted, incremented, and decremented.
 menu:

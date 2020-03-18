@@ -1,6 +1,7 @@
 ---
 title: UUID and TIMEUUID data types [YCQL]
 headerTitle: UUID and TIMEUUID
+linkTitle: UUID and TIMEUUID
 summary: UUID types
 description: Use the UUID data type to specify columns for data of universally unique ids. TIMEUUID is a universal unique identifier variant that includes time information.
 menu:

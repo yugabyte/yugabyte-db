@@ -1,6 +1,7 @@
 ---
 title: Date and time data types (DATE, TIME, and TIMESTAMP) [YCQL]
 summary: DATE, TIME and TIMESTAMP
+linkTitle: Date and time
 description: Use the date and time data types (DATE, TIME, and TIMESTAMP) to specify data of date and time at a time zone.
 menu:
   latest:

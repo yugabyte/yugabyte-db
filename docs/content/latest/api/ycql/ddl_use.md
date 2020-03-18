@@ -1,6 +1,7 @@
 ---
 title: USE statement [YCQL]
 headerTitle: USE
+linkTitle: USE
 summary: Create a new database
 description: Use the USE statement to specify a default keyspace for the current client session.
 menu:

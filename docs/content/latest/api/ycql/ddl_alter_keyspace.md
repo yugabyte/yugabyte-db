@@ -1,6 +1,7 @@
 ---
 title: ALTER KEYSPACE statement [YCQL]
 headerTitle: ALTER KEYSPACE
+linkTitle: ALTER KEYSPACE
 summary: Alter a keyspace
 description: Use the ALTER KEYSPACE statement to change the properties of an existing keyspace.
 menu:

@@ -1,6 +1,7 @@
 ---
 title: Collection data types (MAP, LIST, and SET) [YSQL]
 headerTitle: Collection data types (MAP, LIST, and SET)
+linkTitle: Collection
 summary: MAP, SET and LIST types
 description: Use collection data types to specify columns for data objects that can contain more than one value.
 menu:

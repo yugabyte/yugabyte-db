@@ -1,6 +1,7 @@
 ---
 title: TRANSACTION statement [YCQL]
 headerTitle: TRANSACTION
+linkTitle: TRANSACTION
 summary: Make changes to multiple rows in a transaction
 description: Use the TRANSACTION statement block to make changes to multiple rows in one or more tables in a distributed ACID transaction.
 menu:

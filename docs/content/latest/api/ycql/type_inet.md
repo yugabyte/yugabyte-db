@@ -1,6 +1,7 @@
 ---
 title: INET data type [YCQL]
 headerTitle: INET type
+linkTitle: INET
 summary: IP Address String
 description: Use the INET data type to specify columns for data of IP addresses.
 menu:
