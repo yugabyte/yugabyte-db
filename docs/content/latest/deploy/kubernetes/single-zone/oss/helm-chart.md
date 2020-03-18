@@ -4,6 +4,7 @@ linkTitle: Open Source Kubernetes
 description: Open Source Kubernetes 
 aliases:
   - /latest/deploy/kubernetes/oss/
+  - /latest/deploy/kubernetes/oss/helm-chart/
   - /latest/deploy/kubernetes/single-zone/oss/
   - /latest/deploy/kubernetes/helm-chart/
   - /latest/deploy/kubernetes/helm-configuration/
