@@ -137,6 +137,13 @@ body {
     }
   }
 
+  @media screen and (max-width: 350px) {
+    .container-fluid, .container {
+      padding-left: 15px;
+      padding-right: 15px;
+    }
+  }
+
   img.scrolled {
     display: none !important;
   }
@@ -168,6 +175,11 @@ body {
 
     @media screen and (min-width: 992px) {
       display: none;
+    }
+
+    @media screen and (max-width: 320px) {
+      flex-grow: unset;
+      margin: unset;
     }
     .search-container {
       margin-right: 5px;
