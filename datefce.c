@@ -292,7 +292,7 @@ days_of_month(int y, int m)
  *
  * Syntax:
  *
- * float8 months_between(date date1, date date2)
+ * numeric months_between(date date1, date date2)
  *
  * Purpose:
  *
