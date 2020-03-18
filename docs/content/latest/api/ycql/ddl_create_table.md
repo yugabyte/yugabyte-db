@@ -38,7 +38,7 @@ The `CREATE TABLE` statement is used to create a new table in a keyspace. It def
 ```
 create_table ::= CREATE TABLE [ IF NOT EXISTS ] table_name
                      '(' table_element [ ',' table_element ...] ')'
-                     [ table_option [ AND table_option ] ];
+                     [WITH table_options];
 
 table_element ::= table_column | table_constraints
 
@@ -52,11 +52,11 @@ partition_key_column_list ::= '(' column_name [ ',' column_name ...] ')' | colum
 
 clustering_key_column_list ::= [ ',' column_name ...]
 
-table_option ::= WITH table_property [ AND table_property ...]
-
 table_property ::= { property_name = property_literal
                      | CLUSTERING ORDER BY '(' column_ordering_property [ ',' column_ordering_property ...] ')'
                      | COMPACT STORAGE }
+
+table_options = table_property [AND table_property ...]
 
 column_ordering_property ::= column_name [ ASC | DESC ]
 ```
