@@ -1,8 +1,8 @@
 ---
-title: 4. ACID transactions
-linkTitle: 4. ACID transactions
+title: ACID transactions in YCQL
 headerTitle: ACID transactions
-description: ACID transaction is a sequence of operations performed as a single logical unit of work. Learn how ACID transactions work in YCQL.
+linkTitle: 4. ACID transactions
+description: Learn how ACID transactions work in YCQL on YugabyteDB.
 menu:
   latest:
     identifier: acid-transactions-1-ycql

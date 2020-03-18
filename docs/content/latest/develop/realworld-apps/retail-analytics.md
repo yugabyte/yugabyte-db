@@ -1,7 +1,8 @@
 ---
-title: Retail Analytics
+title: Retail analytics sample application using YugabyteDB YSQL
+headerTitle: Retail analytics sample application
 linkTitle: Retail Analytics
-description: Retail Analytics
+description: Run a retail analytics sample application on YugabyteDB and explore YSQL.
 aliases:
   - /develop/realworld-apps/retail-analytics/
 menu:

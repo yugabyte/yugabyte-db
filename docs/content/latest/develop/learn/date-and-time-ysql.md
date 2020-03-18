@@ -1,8 +1,8 @@
 ---
-title: 7. Date and time
-linkTitle: 7. Date and time
+title: Date and time in YSQL
 headerTitle: Date and time
-description: Date and time in YSQL
+linkTitle: 7. Date and time
+description: Learn how to work with date and time in YSQL.
 aliases:
   - /latest/explore/date-and-time/
   - /latest/develop/learn/date-and-time/

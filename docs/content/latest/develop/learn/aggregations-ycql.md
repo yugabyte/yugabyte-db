@@ -1,8 +1,8 @@
 ---
-title: 5. Aggregations
-linkTitle: 5. Aggregations
+title: Aggregations in YCQL
 headerTitle: Aggregations
-description: YugabyteDB YCQL supports a number of standard aggregation functions. Let us go through some of these using an example.
+linkTitle: 5. Aggregations
+description: Learn how YugabyteDB YCQL supports standard aggregation functions.
 menu:
   latest:
     identifier: aggregations-1-ycql
