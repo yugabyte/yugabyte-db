@@ -1,7 +1,8 @@
 ---
 title: Create client certificates
+headerTitle: Client client certificates
 linkTitle: Create client certificates
-description: Create client certificates
+description: Generate client certificates to connect to YugabyteDB clusters.
 headcontent: Generate client certificates to connect to YugabyteDB clusters.
 image: /images/section_icons/secure/prepare-nodes.png
 menu:

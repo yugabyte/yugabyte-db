@@ -1,7 +1,8 @@
 ---
-title: PgExercises sample database 
+title: PgExercises sample database
+headerTitle: PgExercises
 linkTitle: PgExercises
-description: PgExercises sample database
+description: Use the PgExercises sample database on YugabyteDB to learn SQL or test your knowledge.
 image: /images/sample-data/pgexercises/pgsql.png
 menu:
   latest:

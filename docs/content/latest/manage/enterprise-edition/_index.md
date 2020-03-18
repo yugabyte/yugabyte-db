@@ -1,7 +1,8 @@
 ---
 title: Yugabyte Platform
+headerTitle: Yugabyte Platform
 linkTitle: Yugabyte Platform
-description: Yugabyte Platform
+description: Manage YugabyteDB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Manage YugabyteDB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
 aliases:

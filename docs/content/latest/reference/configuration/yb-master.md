@@ -1,7 +1,8 @@
 ---
-title: yb-master
+title: yb-master configuration
+headerTitle: yb-master
 linkTitle: yb-master
-description: yb-master
+description: Use the YugabyteDB master server (yb-master) binary and configuration options to manage cluster metadata, tablets and coordinate cluster-wide operations.
 menu:
   latest:
     identifier: yb-master

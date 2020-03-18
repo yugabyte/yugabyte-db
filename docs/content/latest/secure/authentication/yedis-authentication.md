@@ -1,8 +1,9 @@
 ---
 title: YEDIS authentication
+headerTitle: YEDIS authentication
 linkTitle: YEDIS authentication
-description: Authentication
-headcontent: Identify that your YSQL users are who they say they are
+description: Identify that your YEDIS users are who they say they are.
+headcontent: Identify that your YEDIS users are who they say they are.
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:

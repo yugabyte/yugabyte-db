@@ -1,7 +1,8 @@
 ---
-title: Create and edit instance tags
+title: Create and edit instance tags using YugaWare
+headerTitle: Create and edit instance tags
 linkTitle: Create and edit instance tags
-description: Create and edit instance tags
+description: Create and edit instance tags using YugaWare
 aliases:
   - /manage/enterprise-edition/instance-tags/
 menu:
@@ -13,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On AWS they referred to as
+The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On AWS, they referred to as
 [instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). We provide a way to create and edit these from the
 YugaWare universe dashboard.
 

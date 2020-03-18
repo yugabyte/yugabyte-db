@@ -1,7 +1,8 @@
 ---
-title: Default ports
+title: Default ports reference
+headerTitle: Default ports
 linkTitle: Default ports
-description: Default ports reference
+description: Default ports for YugabyteDB APIs, client APIs, servers, monitoring, and monitoring.
 section: REFERENCE
 menu:
   latest:
@@ -70,5 +71,3 @@ Admin web server UI can be viewed at these addresses.
 | ---------- | ----- | ------------------------------------------------------------ |
 | yb-master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 7000`](../yb-master/#webserver-port) |
 | yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 9000`](../yb-master/#webserver-port) |
-
-

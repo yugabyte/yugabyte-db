@@ -1,8 +1,9 @@
 ---
-title: Encryption at rest
+title: Enable encryption at rest in YugabyteDB clusters
+headerTitle: Encryption at rest
 linkTitle: Encryption at rest
-description: Encryption at rest
-headcontent: Enable encryption at rest with a user generated key
+description: Enable encryption at rest in a YugabyteDB cluster with a user-generated key.
+headcontent: Enable encryption at rest with a user-generated key
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:
   - /secure/encryption-at-rest
@@ -16,7 +17,7 @@ showAsideToc: true
 ---
 
 This page describes how to enable and disable encryption at rest in a YugabyteDB cluster with a
-user generated key.
+user-generated key.
 
 ## Enabling encryption
 

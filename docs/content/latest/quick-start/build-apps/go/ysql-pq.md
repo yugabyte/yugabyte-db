@@ -1,7 +1,8 @@
 ---
-title: Build a Go application
+title: Use Go to build a YugabyteDB application
+headerTitle: Build a Go application
 linkTitle: Build a Go application
-description: Build a Go application
+description: Use Go to build a simple YugabyteDB application that uses the PostgreSQL JDBC driver and performs basic database operations.
 aliases:
   - /develop/client-drivers/go/
   - /latest/develop/client-drivers/go/

@@ -1,7 +1,8 @@
 ---
-title: yb-tserver
+title: yb-tserver configuration
+headerTitle: yb-tserver
 linkTitle: yb-tserver
-description: yb-tserver
+description: Use the YugabyteDB tablet server (yb-tserver) binary and configuration options to store and manages data for client applications.
 menu:
   latest:
     identifier: yb-tserver

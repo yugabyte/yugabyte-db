@@ -1,7 +1,8 @@
 ---
-title: SportsDB sample database 
+title: SportsDB sample database
+headerTitle: SportsDB sample database
 linkTitle: SportsDB
-description: SportsDB sample database
+description: Use the SportsDB to query sports statistics while learning YugabyteDB.
 menu:
   latest:
     identifier: sportsdb

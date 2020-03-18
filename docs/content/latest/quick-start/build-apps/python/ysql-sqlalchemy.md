@@ -1,7 +1,8 @@
 ---
-title: Build a Python application
-linkTitle: Build a Python application
-description: Build a Python application
+title: Use Python and SQLAlchemy to build a YugabyteDB application
+headerTitle: Build a Python app
+linkTitle: Build a Python app
+description: Use Python and SQLAlchemy to build a YugabyteDB e-commerce application.
 menu:
   latest:
     parent: build-apps

@@ -1,7 +1,8 @@
 ---
 title: Northwind sample database
+headerTitle: Northwind sample database
 linkTitle: Northwind
-description: Northwind sample database
+description: Use the Northwind sample database to explore and learn YugabyteDB.
 menu:
   latest:
     identifier: northwind
