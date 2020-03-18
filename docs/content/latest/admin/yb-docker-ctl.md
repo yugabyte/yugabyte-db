@@ -1,7 +1,8 @@
 ---
-title: yb-docker-ctl
+title: yb-docker-ctl - command line tool for local Docker-based clusters
+headerTitle: yb-docker-ctl
 linkTitle: yb-docker-ctl
-description: yb-docker-ctl
+description: Use the yb-docker-ctl command line tool to administer local Docker-based YugabyteDB clusters for development and learning.
 menu:
   latest:
     identifier: yb-docker-ctl

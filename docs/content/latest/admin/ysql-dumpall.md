@@ -1,8 +1,9 @@
 ---
-title: ysql_dumpall
+title: ysql_dumpall - YugabyteDB backup utility
+headerTitle: ysql_dumpall
 linkTitle: ysql_dumpall
 description: ysql_dumpall
-headcontent: Extract all YugabyteDB databases and roles into a SQL script file.
+headcontent: Use ysql_dumpall to extract all YugabyteDB databases and roles into a SQL script file.
 menu:
   latest:
     identifier: ysql-dumpall

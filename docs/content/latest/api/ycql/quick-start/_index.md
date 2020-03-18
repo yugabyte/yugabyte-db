@@ -2,7 +2,7 @@
 title: Quick start YCQL
 headerTitle: Quick start YCQL
 linkTitle: Quick start YCQL
-description: Quick start YCQL
+description: Quick start explore YCQL in YugabyteDB.
 image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
   - /quick-start/test-cassandra/
