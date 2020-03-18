@@ -1,5 +1,6 @@
 ---
-title: Apache Cassandra
+title: Compare Apache Cassandra with YugabyteDB
+headerTitle: Apache Cassandra
 linkTitle: Apache Cassandra
 description: Apache Cassandra
 aliases:

@@ -1,7 +1,8 @@
 ---
 title: Resilience
+headerTitle: Resilience
 linkTitle: Resilience
-description: Resilience
+description: Learn how YugabyteDB offers fault tolerance to withstand component failure.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmarking the ability to withstand component failure.
 menu:

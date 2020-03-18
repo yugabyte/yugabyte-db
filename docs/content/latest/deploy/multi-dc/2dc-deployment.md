@@ -1,7 +1,8 @@
 ---
-title: Two data center (2DC)
+title: Two data center (2DC) deployments with YugabyteDB distributed SQL
+headerTitle: Two data center (2DC)
 linkTitle: Two data center (2DC)
-description: Two data center (2DC) deployments
+description: Set up a 2DC deployment using either unidirectional (master-follower) or bidirectional (multi-master) replication between the data centers.
 menu:
   latest:
     parent: multi-dc

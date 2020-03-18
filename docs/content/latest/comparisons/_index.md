@@ -1,8 +1,8 @@
 ---
-title: Comparisons
+title: Comparisons between YugabyteDB and other distributed SQL and NoSQL databases
 linkTitle: Comparisons
 headerTitle: Compare YugabyteDB to other databases
-description: See how YugabyteDB compares against other operational databases in the distributed SQL and NoSQL categories. Click the database name in the table header to see a more detailed comparison.
+description: See how YugabyteDB compares against other operational databases in the distributed SQL and NoSQL categories.
 image: /images/section_icons/index/comparisons.png
 headcontent: See how YugabyteDB compares against other operational databases in the distributed SQL and NoSQL categories. Click the database name in the table header to see a more detailed comparison.
 aliases:
