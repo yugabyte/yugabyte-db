@@ -321,13 +321,13 @@ Access the yb-master Admin UI for the cluster at http://\<external-ip\>:7000 whe
 
 ![mz-ybmaster](/images/deploy/kubernetes/aws-multizone-ybmaster.png) 
 
-## 4. Configure zone-aware data placement
+## 4. Configure zone-aware replica placement
 
-Default data placement policy treats every yb-tserver as equal irrespective of its `placement_*` setting. Go to http://\<external-ip\>:7000/cluster-config to confirm that the default configuration is still in effect. 
+Default replica placement policy treats every yb-tserver as equal irrespective of its `placement_*` setting. Go to http://\<external-ip\>:7000/cluster-config to confirm that the default configuration is still in effect. 
 
 ![before-zoneaware](/images/deploy/kubernetes/gke-aws-multizone-before-zoneaware.png)
 
-Run the following command to make the data placement zone aware so that one replica is placed on each zone.
+Run the following command to make the replica placement zone aware so that one replica is placed on each zone.
 
 ```sh
 kubectl exec -it -n yb-demo-us-east-1a yb-master-0 bash \
