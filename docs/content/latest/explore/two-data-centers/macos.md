@@ -278,5 +278,5 @@ $ ./bin/yb-ctl destroy --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-we
 
 For more information, see the following in the Architecture section:
 
-- [Two data center (2DC) deployments](../../architecture/2dc-deployments/)
-- [Change data capture (CDC)](../../architecture/cdc-architecture)
+- [Two data center (2DC) deployments](../../../architecture/2dc-deployments/)
+- [Change data capture (CDC)](../../../architecture/cdc-architecture)
