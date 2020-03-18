@@ -98,3 +98,8 @@ To run the other workloads (for example, `workloadb`), all we need to do is chan
 ```sh
 $ ./bin/ycsb run yugabyteCQL -P yugabyteCQL/db.properties -P workloads/workloadb
 ```
+
+{{< note title="Note" >}}
+Within the tar-ball there is a handy script (run_cql.sh), that runs all the workloads for you. You would need to just specify the paths to the binary and the proper IPs.
+To get the maximum performance out of the system, you would have to tune the threadcount parameter there. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, we used a threadcount of 32 for the loading phase and 256 for the execution phase.
+{{< /note >}}

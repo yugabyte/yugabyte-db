@@ -72,10 +72,14 @@ Set the following connection configurations in `db.properties`:
 
 ```sh
 db.driver=org.postgresql.Driver
-db.url=jdbc:postgresql://<ip>:5433/ycsb;
+db.url=jdbc:postgresql://<ip1>:5433/ycsb;jdbc:postgresql://<ip2>:5433/ycsb;jdbc:postgresql://<ip3>:5433/ycsb;
 db.user=yugabyte
 db.passwd=
 ```
+
+{{< note title="Note" >}}
+The db.url field should be populated with the IPs of all the nodes that are part of the cluster.
+{{< /note >}}
 
 The other configuration parameters, are described in detail at [this page](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties)
 
@@ -98,3 +102,8 @@ To run the other workloads (for example, `workloadb`), all you need to do is cha
 ```sh
 $ ./bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloadb
 ```
+
+{{< note title="Note" >}}
+Within the tar-ball there is a handy script (run_sql.sh), that runs all the workloads for you. You would need to just specify the paths to the binary and the proper IPs.
+To get the maximum performance out of the system, you would have to tune the threadcount parameter there. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, we used a threadcount of 32 for the loading phase and 256 for the execution phase.
+{{< /note >}}
