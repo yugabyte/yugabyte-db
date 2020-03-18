@@ -1,5 +1,6 @@
 ---
-title: Apache HBase
+title: Compare Apache HBase to YugabyteDB
+headerTitle: Apache HBase
 linkTitle: Apache HBase
 description: Apache HBase
 aliases:

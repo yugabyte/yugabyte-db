@@ -1,5 +1,6 @@
 ---
-title: Large datasets
+title: Large datasets with YSQL
+headerTitle: Large datasets
 linkTitle: Large datasets
 description: Large datasets
 image: /images/section_icons/architecture/concepts.png

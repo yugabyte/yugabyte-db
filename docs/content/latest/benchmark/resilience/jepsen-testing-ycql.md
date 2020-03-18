@@ -1,5 +1,6 @@
 ---
-title: Jepsen testing
+title: Jepsen testing of YCQL
+headerTitle: Jepsen testing
 linkTitle: Jepsen testing
 description: Jepsen testing
 image: /images/section_icons/explore/high_performance.png

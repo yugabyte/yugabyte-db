@@ -1,5 +1,6 @@
 ---
 title: YB-Master
+headerTitle: YugabyteDB Master Server (YB-Master)
 linkTitle: YB-Master
 description: YB-Master
 aliases:

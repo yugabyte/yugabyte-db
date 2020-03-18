@@ -1,5 +1,6 @@
 ---
-title: Vitess
+title: Compare Vitess to YugabyteDB
+headerTitle: Vitess
 linkTitle: Vitess
 description: Vitess
 aliases:

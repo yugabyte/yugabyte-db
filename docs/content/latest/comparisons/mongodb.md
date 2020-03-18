@@ -1,5 +1,6 @@
 ---
-title: MongoDB
+title: Compare MongoDB to YugabyteDB
+headerTitle: MongoDB
 linkTitle: MongoDB
 description: MongoDB
 aliases:

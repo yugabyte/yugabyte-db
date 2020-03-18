@@ -1,5 +1,6 @@
 ---
-title: YB-TServer
+title: YugabyteDB Tablet Server (YB-TServer)
+headerTitle: YB-TServer
 linkTitle: YB-TServer
 description: YB-TServer
 aliases:

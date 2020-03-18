@@ -1,5 +1,6 @@
 ---
-title: TPC-C
+title: Benchmark YugabyteDB using TPC-C
+headerTitle: TPC-C
 linkTitle: TPC-C
 description: TPC-C
 headcontent: Benchmark YugabyteDB using TPC-C

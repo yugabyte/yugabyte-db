@@ -1,5 +1,6 @@
 ---
 title: Write IO path
+headerTitle: Write IO path
 linkTitle: Write IO path
 description: Write IO path (single shard)
 menu:

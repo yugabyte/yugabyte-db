@@ -1,5 +1,6 @@
 ---
 title: Colocated tables
+headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Colocated tables
 aliases:
@@ -21,7 +22,7 @@ There are practical limitations to the number of tablets that YugabyteDB can han
 adds some CPU, disk, and network overhead. If most or all of the tables in YugabyteDB cluster are small tables,
 then having separate tablets for each table unnecessarily adds pressure on CPU, network and disk.
 
-To help accomodate such relational tables and workloads, we've added support for colocating SQL tables.
+To help accommodate such relational tables and workloads, we've added support for colocating SQL tables.
 Colocating tables puts all of their data into a single tablet, called the colocation tablet.
 This can dramatically increase the number of relations (tables, indexes, etc) that can
 be supported per node while keeping the number of tablets per node low.
@@ -31,12 +32,14 @@ Note that all the data in the colocation tablet is still replicated across 3 nod
 
 This feature is desirable in a number of scenarios, some of which are described below.
 
-### 1. Small datasets needing HA or geo-distribution
+### Small datasets needing HA or geo-distribution
+
 Applications that have a smaller dataset may fall into the following pattern:
-* They require large number of tables, indexes and other relations created in a single database.
-* The size of the entire dataset is small. Typically, this entire database is less than 500GB in size.
-* Need high availability and/or geographic data distribution.
-* Scaling the dataset or the number of IOPS is not an immediate concern.
+
+- They require large number of tables, indexes and other relations created in a single database.
+- The size of the entire dataset is small. Typically, this entire database is less than 500GB in size.
+- Need high availability and/or geographic data distribution.
+- Scaling the dataset or the number of IOPS is not an immediate concern.
 
 In this scenario, it is undesirable to have the small dataset spread across multiple nodes because
 this might affect performance of certain queries due to more network hops (for example, joins).
@@ -45,11 +48,13 @@ this might affect performance of certain queries due to more network hops (for e
 large, but is accessed in a relational manner, requires high availability and might need to be
 geo-distributed for low latency access.
 
-### 2. Large datasets - a few large tables with many small tables
+### Large datasets - a few large tables with many small tables
+
 Applications that have a large dataset may fall into the pattern where:
-* They need a large number of tables and indexes.
-* A handful of tables are expected to grow large, needing to be scaled out.
-* The rest of the tables will continue to remain small.
+
+- They need a large number of tables and indexes.
+- A handful of tables are expected to grow large, needing to be scaled out.
+- The rest of the tables will continue to remain small.
 
 In this scenario, only the few large tables would need to be sharded and scaled out.
 All other tables would benefit from colocation, because queries involving all tables except the
@@ -58,7 +63,8 @@ larger ones would not need network hops.
 **Example:** An IoT use case, where one table records the data from the IoT devices while
 there are a number of other tables that store data pertaining to user identity, device profiles, privacy, etc.
 
-### 3. Scaling the number of databases, each database with a small dataset
+### Scaling the number of databases, each database with a small dataset
+
 There may be scenarios where the number of databases grows rapidly, while the dataset of each database is small.
 This is characteristic of a microservices-oriented architecture, where each microservice needs its own database.
 These microservices are hosted in dev, test, staging, production and other environments.
@@ -74,15 +80,15 @@ and fault-tolerance of each database.
 
 Fundamentally, colocated tables have the following tradeoffs:
 
-* **Higher performance - no network reads for joins**.
+- **Higher performance - no network reads for joins**.
 All of the data across the various colocated tables is local, which means joins no longer have to
 read data over the network. This improves the speed of joins.
 
-* **Support higher number of tables - using fewer tablets**.
+- **Support higher number of tables - using fewer tablets**.
 Because multiple tables and indexes can share one underlying tablet, a much higher number of tables
 can be supported using colocated tables.
 
-* **Lower scalability - until removal from colocation tablet**. The assumptions behind tables that
+- **Lower scalability - until removal from colocation tablet**. The assumptions behind tables that
 are colocated is that their data need not be automatically sharded and distributed across nodes.
 If it is known apriori that a table will get large, it can be opted out of the colocation tablet at
 creation time. If a table already present in the colocation tablet gets too large, it can

@@ -1,5 +1,5 @@
 ---
-title: FoundationDB
+title: Compare FoundationDB to YugabyteDB
 linkTitle: FoundationDB
 description: FoundationDB
 aliases:

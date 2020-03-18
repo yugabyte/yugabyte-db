@@ -1,5 +1,6 @@
 ---
 title: Replication
+headerTitle: Replication
 linkTitle: Replication
 description: Replication with Raft consensus
 aliases:

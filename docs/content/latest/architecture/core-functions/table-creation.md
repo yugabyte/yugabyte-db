@@ -1,5 +1,6 @@
 ---
 title: Table creation
+headerTitle: Table creation
 linkTitle: Table creation
 description: Table creation
 aliases:

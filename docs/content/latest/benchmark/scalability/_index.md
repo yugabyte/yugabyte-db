@@ -1,5 +1,6 @@
 ---
 title: Scalability
+headerTitle: Scalability
 linkTitle: Scalability
 description: Scalability
 image: /images/section_icons/deploy/enterprise.png

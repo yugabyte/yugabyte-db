@@ -1,5 +1,6 @@
 ---
 title: Azure Cosmos DB
+headerTitle: Azure Cosmos DB
 linkTitle: Azure Cosmos DB
 description: Azure Cosmos DB
 aliases:

@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A YugabyteDB universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
+A YugabyteDB universe is a group of nodes (VMs, physical machines, or containers) that collectively function as a highly available and resilient database.
 
 {{< note title="Note" >}}
 

@@ -1,5 +1,6 @@
 ---
-title: Google Cloud Spanner
+title: Compare Google Cloud Spanner to YugabyteDB
+headerTitle: Google Cloud Spanner
 linkTitle: Google Cloud Spanner
 description: Google Cloud Spanner
 aliases:

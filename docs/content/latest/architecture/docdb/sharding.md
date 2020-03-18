@@ -1,5 +1,6 @@
 ---
 title: Sharding
+headerTitle: Sharding
 linkTitle: Sharding
 description: Sharding into tablets
 aliases:

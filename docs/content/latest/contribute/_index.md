@@ -1,5 +1,6 @@
 ---
 title: Get involved with YugabyteDB
+headerTitle: Get involved with YugabyteDB
 linkTitle: Get involved
 description: Get involved with YugabyteDB
 image: /images/section_icons/index/quick_start.png

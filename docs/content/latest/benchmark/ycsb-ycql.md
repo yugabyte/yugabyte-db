@@ -1,5 +1,6 @@
 ---
-title: YCSB
+title: Benchmark YugabyteDB YCQL using YCSB
+headerTitle: YCSB
 linkTitle: YCSB
 description: YCSB
 headcontent: Benchmark YugabyteDB using YCSB.

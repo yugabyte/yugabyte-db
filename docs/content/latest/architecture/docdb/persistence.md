@@ -1,5 +1,6 @@
 ---
 title: Persistence
+headerTitle: Persistence
 linkTitle: Persistence
 description: Persistence on top of RocksDB
 aliases:

@@ -1,7 +1,8 @@
 ---
 title: Performance
+headerTitle: Performance
 linkTitle: Performance
-description: Making DocDB High-Performance
+description: Learn about how DocDB's enhancements to RocksDB that help YugabyteDB achieve scale and performance.
 aliases:
   - /latest/architecture/concepts/docdb/performance/
 menu:

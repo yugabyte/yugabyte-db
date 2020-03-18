@@ -1,5 +1,6 @@
 ---
 title: Read IO path
+headerTitle: Read IO path
 linkTitle: Read IO path
 description: Read IO path (single shard)
 menu:

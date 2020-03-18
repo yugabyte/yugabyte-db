@@ -1,5 +1,6 @@
 ---
 title: High availability
+headerTitle: High availability
 linkTitle: High availability
 description: High availability
 aliases:

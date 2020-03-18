@@ -1,5 +1,6 @@
 ---
-title: Scaling queries
+title: Scaling queries in YSQL
+headerTitles: Scaling queries
 linkTitle: Scaling queries
 description: Scaling queries
 image: /images/section_icons/explore/high_performance.png

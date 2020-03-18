@@ -1,5 +1,6 @@
 ---
-title: Amazon Aurora
+title: Compare Amazon Aurora to YugabyteDB
+headerTitle: Amazon Aurora
 linkTitle: Amazon Aurora
 description: Amazon Aurora
 aliases:

@@ -1,5 +1,6 @@
 ---
-title: Build the source code
+title: Build the source code on Ubuntu
+headerTitle: Build the source code
 linkTitle: Build the source
 description: Build the source code
 image: /images/section_icons/index/quick_start.png

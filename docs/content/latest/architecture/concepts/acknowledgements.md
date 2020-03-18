@@ -1,5 +1,6 @@
 ---
 title: Acknowledgements
+headerTitle: Acknowledgements
 linkTitle: Acknowledgements
 description: Acknowledgements
 aliases:
