@@ -10,6 +10,7 @@ menu:
     weight: 622
 aliases:
   - /latest/deploy/kubernetes/eks/
+  - /latest/deploy/kubernetes/eks/helm-chart/
   - /latest/deploy/kubernetes/single-zone/eks/
 type: page
 isTocNested: true
