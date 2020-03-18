@@ -2,7 +2,7 @@
 title: Colocated tables
 headerTitle: Colocated tables
 linkTitle: Colocated tables
-description: Colocated tables
+description: Learn about how colocated tables by aggregating data into a single tablet.
 aliases:
   - /latest/architecture/docdb/colocated_tables/
 menu:
@@ -26,7 +26,7 @@ To help accommodate such relational tables and workloads, we've added support fo
 Colocating tables puts all of their data into a single tablet, called the colocation tablet.
 This can dramatically increase the number of relations (tables, indexes, etc) that can
 be supported per node while keeping the number of tablets per node low.
-Note that all the data in the colocation tablet is still replicated across 3 nodes (or whatever the replication factor is).
+Note that all the data in the colocation tablet is still replicated across three nodes (or whatever the replication factor is).
 
 ## Motivation
 

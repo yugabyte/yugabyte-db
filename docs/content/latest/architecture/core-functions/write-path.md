@@ -2,7 +2,7 @@
 title: Write IO path
 headerTitle: Write IO path
 linkTitle: Write IO path
-description: Write IO path (single shard)
+description: Learn how YugabyteDB manages a single key write and replicates the data.
 menu:
   latest:
     identifier: write-path
@@ -48,7 +48,7 @@ The leader of the tablet's Raft group performs the following sequence:
   does not exist on followers.
 * Reads data if necessary (for read-modify-write or conditional update operations).
 * Prepares the batch of changes to be written to DocDB. This *write batch* is very close to the
-  final set of RocksDB key/value pairs to be written, only lacking the final hybrid timestamp
+  final set of RocksDB key-value pairs to be written, only lacking the final hybrid timestamp
   at the end of each key.
 
 ## Step 3. Raft replication of the write operation

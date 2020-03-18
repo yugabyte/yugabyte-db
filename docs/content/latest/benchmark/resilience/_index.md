@@ -1,8 +1,8 @@
 ---
-title: Resilience
+title: Benchmark resilience (fault tolerance) of YugabyteDB
 headerTitle: Resilience
 linkTitle: Resilience
-description: Learn how YugabyteDB offers fault tolerance to withstand component failure.
+description: Benchmark YugabyteDB's ability to withstand component failure.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmarking the ability to withstand component failure.
 menu:
@@ -23,7 +23,7 @@ For a tutorial that explores how YugabyteDB handles component failure and provid
               <div class="title">Jepsen testing</div>
           </div>
           <div class="body">
-              Read the Jepsen test results for YSQL.
+              Read the Jepsen test results for YSQL and YCQL.
           </div>
       </a>
   </div>

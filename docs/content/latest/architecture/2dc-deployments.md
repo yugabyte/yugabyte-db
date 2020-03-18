@@ -1,8 +1,8 @@
 ---
-title: Two data center deployments
-headerTitle: Two data center deployments
+title: Two data center (2DC) deployments with YugabyteDB
+headerTitle: Two data center (2DC) deployments
 linkTitle: Two data center (2DC) deployments
-description: YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of change data capture (CDC).
+description: Learn how YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of change data capture (CDC).
 menu:
   latest:
     parent: architecture

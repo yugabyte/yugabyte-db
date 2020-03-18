@@ -1,8 +1,8 @@
 ---
-title: Persistence
+title: Persistence in YugabyteDB
 headerTitle: Persistence
 linkTitle: Persistence
-description: Persistence on top of RocksDB
+description: Learn how YugabyteDB manages persistence using DocDB, based on RocksDB.
 aliases:
   - /latest/architecture/docdb/persistence/
   - /latest/architecture/concepts/persistence/

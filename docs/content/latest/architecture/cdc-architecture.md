@@ -2,7 +2,7 @@
 title: Change data capture (CDC)
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
-description: Use CDC to capture changes in data  and asynchronously replicate them to other databases or applications.
+description: Learn how YugabyteDB CDC captures changes in data and asynchronously replicates the changes to other databases or applications.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:

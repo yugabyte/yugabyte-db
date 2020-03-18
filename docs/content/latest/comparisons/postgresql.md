@@ -2,7 +2,7 @@
 title: Compare PostgreSQL with YugabyteDB
 headerTitle: PostgreSQL
 linkTitle: PostgreSQL
-description: Learn about the benefits of YugabyteDB clusters and distributed SQL.
+description: Compare YugabyteDB, with clusters and distributed SQL, to PostgreSQL.
 aliases:
   - /comparisons/postgresql/
 menu:

@@ -1,8 +1,8 @@
 ---
-title: Scaling queries in YSQL
+title: Benchmark scaling YSQL queries in YugabyteDB
 headerTitles: Scaling queries
 linkTitle: Scaling queries
-description: Scaling queries
+description: Benchmark scaling YSQL queries in YugabyteDB
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmark YugabyteDB using different queries
 menu:

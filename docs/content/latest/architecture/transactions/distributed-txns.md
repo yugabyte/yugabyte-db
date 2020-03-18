@@ -45,7 +45,7 @@ instance altogether, the approach we have chosen has the following benefits:
 
 ### Encoding details of provisional records
 
-There are three types of RocksDB key/value pairs corresponding to provisional records, omitting
+There are three types of RocksDB key-value pairs corresponding to provisional records, omitting
 the one-byte prefix that puts these records before all regular records in RocksDB.
 
 ![DocDB storage, including provisional records](/images/architecture/txn/provisional_record_storage.svg)
@@ -108,7 +108,7 @@ TxnId, HybridTime -> primary provisional record key
 
   This mapping allows us to find all RocksDB records belonging to a particular transaction.  This is
   being used when cleaning up committed or aborted transactions. Note that because multiple RocksDB
-  key/value pairs belonging to primary provisional records can we written for the same transaction
+  key-value pairs belonging to primary provisional records can we written for the same transaction
   with the same hybrid time, we need to use an increasing counter (which we call a *write id*) at
   the end of the encoded representation of hybrid time in order to obtain unique RocksDB keys for
   this reverse index. This write ID is shown as `.0`, `.1`, etc. in `T130.0`, `T130.1` in the figure

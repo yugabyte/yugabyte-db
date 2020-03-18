@@ -2,9 +2,8 @@
 title: Jepsen testing of YCQL
 headerTitle: Jepsen testing
 linkTitle: Jepsen testing
-description: Jepsen testing
+description: Learn the results from Jepsen testing on YCQL.
 image: /images/section_icons/explore/high_performance.png
-headcontent: Run Jepsen tests to test failures
 menu:
   latest:
     identifier: jepsen-testing-2-ycql

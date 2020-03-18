@@ -28,7 +28,7 @@ During the universe creation step, with an AWS cloud provider, YugaWare will pro
 
 ![Create instance tags](/images/ee/inst-tags-1.png)
 
-User can provide these key/values in any order.
+User can provide these key-values in any order.
 
 ### Templated tags
 

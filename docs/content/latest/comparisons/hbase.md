@@ -2,7 +2,7 @@
 title: Compare Apache HBase to YugabyteDB
 headerTitle: Apache HBase
 linkTitle: Apache HBase
-description: Apache HBase
+description: Compare Apache HBase to YugabyteDB
 aliases:
   - /comparisons/hbase/
 menu:

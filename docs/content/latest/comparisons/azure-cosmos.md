@@ -1,8 +1,8 @@
 ---
-title: Azure Cosmos DB
+title: Compare Azure Cosmos DB to YugabyteDB
 headerTitle: Azure Cosmos DB
 linkTitle: Azure Cosmos DB
-description: Azure Cosmos DB
+description: Learn about how Azure Cosmos DB compares to YugabyteDB.
 aliases:
   - /comparisons/azure-cosmos/
 menu:

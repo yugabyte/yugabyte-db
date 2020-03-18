@@ -2,7 +2,7 @@
 title: Read IO path
 headerTitle: Read IO path
 linkTitle: Read IO path
-description: Read IO path (single shard)
+description: Learn how the YugabyteDB query layer manages read operations using Raft.
 menu:
   latest:
     identifier: read-path
@@ -39,5 +39,5 @@ and a value column V. The read flow is depicted below.
 
 Note that the read queries can be quite complex - even though the example here talks about a simple
 key-value like table lookup. The YQL query layer has a fully optimized query engine to handle
-queries which contain expressions, built-in function calls, arithmetic operations in cases where
+queries which contain expressions, built-in function calls, and arithmetic operations in cases where
 valid, etc.

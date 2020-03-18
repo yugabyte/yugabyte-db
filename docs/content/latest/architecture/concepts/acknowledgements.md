@@ -2,7 +2,7 @@
 title: Acknowledgements
 headerTitle: Acknowledgements
 linkTitle: Acknowledgements
-description: Acknowledgements
+description: Acknowledgements of open source projects used in YugabyteDB
 aliases:
   - /architecture/concepts/acknowledgements/
 menu:

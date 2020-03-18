@@ -1,7 +1,8 @@
 ---
 title: Universe
+headerTitle: Universe
 linkTitle: Universe
-description: Universe
+description: Learn about the YugabyteDB universe (or cluster).
 aliases:
   - /latest/architecture/concepts/universe/
   - /latest/architecture/concepts/single-node/

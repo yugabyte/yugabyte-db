@@ -1,8 +1,8 @@
 ---
-title: Sharding
+title: Sharding in DocDB
 headerTitle: Sharding
 linkTitle: Sharding
-description: Sharding into tablets
+description: Learn how YugabyteDB uses hash and range sharding to manage tables.
 aliases:
   - /latest/architecture/docdb/sharding/
   - /latest/architecture/concepts/sharding/

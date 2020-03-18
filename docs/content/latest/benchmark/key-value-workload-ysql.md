@@ -2,7 +2,7 @@
 title: Key-value workload benchmarking for YSQL
 headerTitle: Key-value workload
 linkTitle: Key-value workload
-description: Benchmark YugabyteDB performance using key-value workloads.
+description: Benchmark YugabyteDB YSQL performance using key-value workloads.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Test YugabyteDB performance with a key-value workload.
 menu:
