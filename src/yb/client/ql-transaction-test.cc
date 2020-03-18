@@ -442,6 +442,7 @@ TEST_F(QLTransactionTest, Expire) {
 }
 
 TEST_F(QLTransactionTest, PreserveLogs) {
+  FLAGS_transaction_rpc_timeout_ms = 60000;
   SetDisableHeartbeatInTests(true);
   DisableTransactionTimeout();
   std::vector<std::shared_ptr<YBTransaction>> transactions;
@@ -480,7 +481,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   }
 
   // Ensure that we had enough log segments, otherwise this test is pretty useless.
-  ASSERT_GE(max_active_segment_sequence_number, kTransactions / 2);
+  ASSERT_GE(max_active_segment_sequence_number, kTransactions / 4);
 }
 
 TEST_F(QLTransactionTest, ResendApplying) {
