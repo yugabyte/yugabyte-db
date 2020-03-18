@@ -1,7 +1,8 @@
 ---
-title: UPDATE
+title: UPDATE statement [YCQL]
+headerTitle: UPDATE
 summary: Change values of a row in a table
-description: UPDATE
+description: Use the UPDATE statement to update one or more column values for a row in table.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +16,13 @@ showAsideToc: true
 
 ## Synopsis
 
-The `UPDATE` statement updates one or more column values for a row in table. Currently, YugabyteDB can only update one row at a time, updating multiple rows is not yet supported.
+Use the `UPDATE` statement to update one or more column values for a row in table.
+
+{{< note title="Note" >}}
+
+YugabyteDB can only update one row at a time. Updating multiple rows is currently not supported.
+
+{{< /note >}}
 
 ## Syntax
 

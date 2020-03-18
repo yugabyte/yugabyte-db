@@ -2,7 +2,7 @@
 title: ALTER KEYSPACE statement [YCQL]
 headerTitle: ALTER KEYSPACE
 summary: Alter a keyspace
-description: Use the `ALTER KEYSPACE` statement to change the properties of an existing keyspace.
+description: Use the ALTER KEYSPACE statement to change the properties of an existing keyspace.
 menu:
   latest:
     parent: api-cassandra

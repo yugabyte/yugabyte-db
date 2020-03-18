@@ -1,8 +1,9 @@
 ---
-title: CREATE SEQUENCE
+title: CREATE SEQUENCE statement [YSQL]
+headerTitle: CREATE SEQUENCE
 linkTitle: CREATE SEQUENCE
 summary: Create a sequence in the current schema
-description: CREATE SEQUENCE
+description: Use the CREATE SEQUENCE statement to create a new sequence in the current schema.
 menu:
   latest:
     identifier: api-ysql-commands-create-sequence

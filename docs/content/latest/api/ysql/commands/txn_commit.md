@@ -1,7 +1,8 @@
 ---
-title: COMMIT
+title: COMMIT statement [YSQL]
+headerTitle: COMMIT
 linkTitle: COMMIT
-description: COMMIT
+description: Use the COMMIT statement to commit the current transaction.
 summary: COMMIT
 menu:
   latest:

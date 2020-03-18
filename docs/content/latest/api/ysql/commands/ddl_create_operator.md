@@ -1,8 +1,9 @@
 ---
-title: CREATE OPERATOR
+title: CREATE OPERATOR statement [YSQL]
+headerTitle: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
 summary: Create a new operator
-description: CREATE OPERATOR
+description: Use the CREATE OPERATOR statement to create a new operator.
 menu:
   latest:
     identifier: api-ysql-commands-create-operator
