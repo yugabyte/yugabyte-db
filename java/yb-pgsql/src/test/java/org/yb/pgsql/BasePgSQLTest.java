@@ -191,11 +191,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
-  protected String pgPrefetchLimit() {
+  protected Integer getYsqlPrefetchLimit() {
     return null;
   }
 
-  protected String pgRequestLimit() {
+  protected Integer getYsqlRequestLimit() {
     return null;
   }
 
@@ -213,12 +213,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
 
     // Setup flag for postgres test on prefetch-limit when starting tserver.
-    if (pgPrefetchLimit() != null) {
-      flagMap.put("ysql_prefetch_limit", pgPrefetchLimit());
+    if (getYsqlPrefetchLimit() != null) {
+      flagMap.put("ysql_prefetch_limit", getYsqlPrefetchLimit().toString());
     }
 
-    if (pgRequestLimit() != null) {
-      flagMap.put("ysql_request_limit", pgRequestLimit());
+    if (getYsqlRequestLimit() != null) {
+      flagMap.put("ysql_request_limit", getYsqlRequestLimit().toString());
     }
 
     flagMap.put("ysql_beta_features", "true");
@@ -1265,7 +1265,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
 
   public static class ConnectionBuilder {
-    private static final int MAX_CONNECTION_ATTEMPTS = 10;
+    private static final int MAX_CONNECTION_ATTEMPTS = 15;
     private static final int INITIAL_CONNECTION_DELAY_MS = 500;
 
     private final MiniYBCluster miniCluster;
