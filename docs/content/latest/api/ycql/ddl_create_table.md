@@ -38,7 +38,7 @@ The `CREATE TABLE` statement is used to create a new table in a keyspace. It def
 ```
 create_table ::= CREATE TABLE [ IF NOT EXISTS ] table_name
                      '(' table_element [ ',' table_element ...] ')'
-                     [WITH table_options];
+                     [WITH table_properties];
 
 table_element ::= table_column | table_constraints
 
