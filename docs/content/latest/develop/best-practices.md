@@ -94,14 +94,6 @@ Keeping only the tablet leaders will remove replication overhead
 In single AZ deployments, you need to set `--durable_wal_write=true` [gflag](../../reference/configuration/yb-tserver) in 
 tserver to not lose data if the whole datacenter goes down (power failure etc).
 
-## Use SSD instead of Hard Disk Drives (HDD)
-Currently HDD aren't supported by YugabyteDB. One of the reasons is that each tablet has it's own 
-WAL (write ahead log) and even though all writes are sequential, having multiple WALs, the writes may end up as random-writes 
-when multiple WAL are flushing at the same time. 
-We're working hard on moving on per-server WAL to reduce overhead and making HDD a possible alternative. You can track 
-[1K+ tablets issue](https://github.com/yugabyte/yugabyte-db/issues/1317).
-
-
 ## Use Read Replicas for low latency timeline consistent reads in multi-region deployments
 In a YugabyteDB multi-region deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. 
 
