@@ -35,9 +35,9 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgPrefetchControl.class);
 
   @Override
-  protected String pgPrefetchLimit() {
+  protected Integer getYsqlPrefetchLimit() {
     // Set the prefetch limit to 100 for this test.
-    return "100";
+    return 100;
   }
 
   protected void createPrefetchTable(String tableName) throws SQLException {
