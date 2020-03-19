@@ -155,8 +155,13 @@ $ chmod a+x cassandra-unloader
 
 For additional options to cassandra-unloader, see [here](https://github.com/yugabyte/cassandra-loader#cassandra-unloader).
 
-{{< note title="Note" >}}
+{{< note title="Always specify timezone" >}}
 `cassnadra-loader` & `cassandra-unloader` don't add the timezone on their default timestamp format.
 Make sure that timestamps are exported/imported with the same format and including the timezone.
 Examples:  `yyyy-MM-dd HH:mm:ss.SSSZ` and `yyyy-MM-dd HH:mm:ss.SSSXXX`.
+{{< /note >}}
+
+
+{{< note title="Use tab character for delim on JSONB columns" >}}
+The default delim `,` doesn't work with `JSONB` columns. Use tab character for delim `-delim $'\t'`.
 {{< /note >}}
