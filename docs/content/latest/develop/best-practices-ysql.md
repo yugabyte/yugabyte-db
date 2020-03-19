@@ -196,9 +196,11 @@ You have to keep this number in mind depending on the number of tables and numbe
 of tablets per-server that you intend to create.
 We're [actively working](https://github.com/yugabyte/yugabyte-db/issues/1317) to increase this limit.
 
-On deployments where we have many small tables and few big tables, we can use [colocation](../explore/colocated-tables/linux.md) in YSQL layer to group small 
-tables into 1 tablet.
+There are different ways to reduce number of tablets:
 
+1. Use [colocation](../explore/colocated-tables/linux.md) to group small tables into 1 tablet.
+2. Reduce number of tablets per table using [`--ysql_num_shards_per_tserver`](../reference/configuration/yb-tserver.md) gflag.
+3. Use [`SPLIT INTO`](../api/ysql/commands/ddl_create_table.md#split-into) clause when creating the table.
 
 ## Create Primary Key when creating the table
 YugabyteDB YSQL layer requires the `Primary Key` to be specified in the `CREATE TABLE` statement upfront. 
