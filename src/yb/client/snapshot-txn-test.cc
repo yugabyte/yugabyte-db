@@ -583,7 +583,6 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
   TestThreadHolder thread_holder;
 
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
-    SetFlagOnExit set_flag_on_exit(&stop);
     int ts_idx_to_restart = 0;
     while (!stop.load(std::memory_order_acquire)) {
       std::this_thread::sleep_for(5s);
@@ -599,8 +598,6 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
   for (int i = 0; i != 25; ++i) {
     thread_holder.AddThreadFunctor(
         [this, &stop = thread_holder.stop_flag(), &pool, &key, &keys_to_check, &good_keys] {
-      SetFlagOnExit set_flag_on_exit(&stop);
-
       auto session = CreateSession();
       while (!stop.load(std::memory_order_acquire)) {
         int k = key.fetch_add(1, std::memory_order_acq_rel);
@@ -645,8 +642,6 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
 
   thread_holder.AddThreadFunctor(
       [this, &stop = thread_holder.stop_flag(), &keys_to_check, kNumWritesPerKey] {
-    SetFlagOnExit set_flag_on_exit(&stop);
-
     auto session = CreateSession();
     for (;;) {
       std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
@@ -706,16 +701,15 @@ void SnapshotTxnTest::TestRemoteBootstrap() {
       for (int transaction_idx = 0; !stop.load(std::memory_order_acquire); ++transaction_idx) {
         auto txn = CreateTransaction();
         session->SetTransaction(txn);
-        WriteRows(session, transaction_idx);
-        if (txn->CommitFuture().get().ok()) {
+        if (WriteRows(session, transaction_idx).ok() && txn->CommitFuture().get().ok()) {
           transactions.fetch_add(1);
         }
       }
     });
 
-    while (transactions.load(std::memory_order_acquire) < kTransactionsCount) {
-      std::this_thread::sleep_for(100ms);
-    }
+    ASSERT_OK(thread_holder.WaitCondition([&transactions] {
+      return transactions.load(std::memory_order_acquire) >= kTransactionsCount;
+    }));
 
     cluster_->mini_tablet_server(0)->Shutdown();
 
@@ -724,9 +718,10 @@ void SnapshotTxnTest::TestRemoteBootstrap() {
     std::this_thread::sleep_for(FLAGS_log_min_seconds_to_retain * 1s);
 
     auto start_transactions = transactions.load(std::memory_order_acquire);
-    while (transactions.load(std::memory_order_acquire) < start_transactions + kTransactionsCount) {
-      std::this_thread::sleep_for(100ms);
-    }
+    ASSERT_OK(thread_holder.WaitCondition([&transactions, start_transactions] {
+      return transactions.load(std::memory_order_acquire) >=
+             start_transactions + kTransactionsCount;
+    }));
 
     thread_holder.Stop();
 
@@ -774,8 +769,7 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
     for (int transaction_idx = 0; !stop.load(std::memory_order_acquire); ++transaction_idx) {
       auto txn = CreateTransaction();
       session->SetTransaction(txn);
-      WriteRows(session, transaction_idx);
-      if (txn->CommitFuture().get().ok()) {
+      if (WriteRows(session, transaction_idx).ok() && txn->CommitFuture().get().ok()) {
         transactions.fetch_add(1);
       }
     }
