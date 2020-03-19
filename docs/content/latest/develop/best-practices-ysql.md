@@ -95,9 +95,11 @@ In cases when range queries become important after the data is already loaded in
 a range sharded secondary index can be created on that column. Once the secondary index is rebuilt, range queries would become efficient.
 
 ## Co-location
-Co-location is a [new feature in beta](../explore/colocated-tables/linux.md) in development where you can put tables of 
+Co-location is a [new feature in beta](../explore/colocated-tables/linux.md) where you can put tables of 
 a database inside 1 tablet. This increases performance and lowers latency on write transactions, joined queries and aggregations
 since they happen in 1 tablet/node.
+
+If you have a small dataset (<500GB) that requires HA, or a DB with only few scale out tables, then colocation is a good option.
 
 ## Cluster aware drivers
 We recommend using YugabyteDB's [cluster aware JDBC driver](https://github.com/yugabyte/jdbc-yugabytedb). 
