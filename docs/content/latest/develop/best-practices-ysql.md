@@ -70,32 +70,23 @@ Currently YugabyteDB uses the same drivers as Postgresql. Usually they are imple
 [libpq](https://www.postgresql.org/docs/current/libpq.html) c client. 
 Postgresql drivers aren't created with assumptions of a 
 distributed/sharded database and they're not cluster-aware to redirect & load balance reads/writes
-to the cluster. See [cluster aware drivers](#cluster-aware-drivers) that we've implemented.
-
+to the cluster. 
 For all scenarios, there are several solutions using proxies & load-balancers that 
 you can use and are tested in production:
 
-1. [haproxy](http://www.haproxy.org/) load balancer. Can be used with [pgsql-check](http://cbonte.github.io/haproxy-dconv/2.2/configuration.html#option%20pgsql-check) 
+1. You can specify multiple hosts in the connection string for any driver that uses [`libpq`](https://www.postgresql.org/docs/11/libpq-connect.html)
+2. [haproxy](http://www.haproxy.org/) load balancer. Can be used with [pgsql-check](http://cbonte.github.io/haproxy-dconv/2.2/configuration.html#option%20pgsql-check) 
 plugin which periodically checks if servers are up and adds/removes them from the pool.
-2. [pgbouncer](https://www.pgbouncer.org/) as connection pooler/proxy
-3. [pgbouncer-rr-patch](https://github.com/awslabs/pgbouncer-rr-patch) is a fork of pgbouncer
-from Amazon AWS with added functionality of programmable Query Routing & Rewriting.
-4. Custom logic in your code
-You can keep a list of servers on the client, have a connection pool for each client and use them
-randomly or by a defined logic. You can consult our [JDBC driver](https://github.com/yugabyte/jdbc-yugabytedb) 
-for implementation details.
-5. [odyssey pooler](https://github.com/yandex/odyssey) as connection pooler/proxy.
-See [comparisons](https://github.com/yandex/odyssey/issues/3) to pgbouncer.
-6. [consul](https://www.consul.io/) can be used for service discovery of the tserver nodes
+3. [consul](https://www.consul.io/) can be used for service discovery of the tserver nodes
 On the client node the consul agent will provide a hostname which will point to a 
 server that is up. You can use that hostname in the connection string to YugabyteDB.
 This way you keep only 1 connection pool to 1 server. When the server goes down,
 consul will return a new hostname which will be able to serve queries.
-7. [nginx](http://nginx.org/) can be used as a tcp proxy & load balancer in front
+4. [nginx](http://nginx.org/) can be used as a tcp proxy & load balancer in front
 of a cluster of YugabyteDB.
-8. When using kubernetes, YugabyteDB uses it's load balancer to proxy the tservers.
-9. In GCP you can use [Cloud Load Balancer](https://cloud.google.com/load-balancing/) as a TCP proxy.
-10. In AZURE you can use [Load Balancer](https://azure.microsoft.com/en-us/services/load-balancer/) as a TCP proxy. 
+5. On kubernetes, YugabyteDB uses it's [load balancer](../deploy/kubernetes/_index.html) to proxy the tservers.
+6. In GCP you can use [Cloud Load Balancer](https://cloud.google.com/load-balancing/) as a TCP proxy.
+7. In AZURE you can use [Load Balancer](https://azure.microsoft.com/en-us/services/load-balancer/) as a TCP proxy. 
 
 {{< note title="Note" >}}
 - Make sure to set forwarding rules to port :5433.
@@ -123,15 +114,17 @@ that are faster.
 
 ## Connection pooling
 YugabyteDB uses the upper half of Postgresql to implement it's YSQL layer.
-Connection in Postgresql fork a new process, have at least 10MB of overhead in RAM, 
-have context-switching overhead and are generally slow to create. This is
-usually mitigated by keeping connection poolers in the client code or in a 
- [proxy/loadbalancer](#ysql-proxy--load-balancer).
+Each connection in Postgresql forks a new process, has at least 10MB of overhead in RAM, 
+has context-switching overhead and is generally slow to create. 
 
 Because of each connections overhead, we have to be careful regarding the number
 of opened connections that we keep for each tserver. Currently the maximum number 
-per-tserver is 300 and is set by the `--ysql_max_connections` gflag.
+per-tserver is `300` and is set by the [`--ysql_max_connections`](../reference/configuration/yb-tserver.md) gflag.
 
+This overhead is usually mitigated by pooling connections in the client code or in an external connection pooler.
+One connection pooler that we've tested is [pgbouncer](https://www.pgbouncer.org/).
+
+But any connection pooler that works with Postgresql should work with YugabyteDB.
 We're also working to lower the overhead of connections.
 
 ## Use `TRUNCATE` to empty tables instead of `DELETE`
