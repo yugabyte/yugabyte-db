@@ -1010,12 +1010,12 @@ class ControlScript(object):
         parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
         subparsers = parser.add_subparsers(dest="parser")
+        subparsers.required = True
         for cmd, description in (
                 ("start", "Start {}.".format(SCRIPT_NAME)),
                 ("stop", "Stop running {}.".format(SCRIPT_NAME)),
                 ("status", "Print status of {}.".format(SCRIPT_NAME)),
                 ("version", "Version of {}.".format(SCRIPT_NAME)),
-                ("demo", "Load and interact with preset demo data."),
                 ("collect_logs", "Collect and package logs for troubleshooting.")):
             subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
             func = getattr(self, cmd, None)
@@ -1025,7 +1025,8 @@ class ControlScript(object):
         # Add ysql and ycql CLI options
         connect = subparsers.add_parser("connect", help="Connect to an API through the CLI.")
         all_parsers["connect"] = connect
-        connect_subparser = connect.add_subparsers()
+        connect_subparser = connect.add_subparsers(dest="parser")
+        connect_subparser.required = True
         for api in YUGABYTE_API_CLIENT_PROGRAMS:
             cur_parser = connect_subparser.add_parser(
                 api, help="Use {} through the CLI.".format(api.upper()), parents=[common_parser])
@@ -1034,8 +1035,11 @@ class ControlScript(object):
             all_parsers[api] = cur_parser
 
         # Add demo commands to create, connect, and destroy.
-        demo_parser = all_parsers["demo"]
-        demo_subparsers = demo_parser.add_subparsers()
+
+        demo_parser = subparsers.add_parser("demo", help="Load and interact with preset demo data.")
+        all_parsers["demo"] = demo_parser
+        demo_subparsers = demo_parser.add_subparsers(dest="parser")
+        demo_subparsers.required = True
         for cmd, description in (
                 ("connect", "Connect to the demo database."),
                 ("destroy", "Destroy the demo database.")):
