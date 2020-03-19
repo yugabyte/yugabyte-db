@@ -122,16 +122,17 @@ uint64_t TransactionTestBase::log_segment_size_bytes() const {
   return 128;
 }
 
-void TransactionTestBase::WriteRows(
+Status TransactionTestBase::WriteRows(
     const YBSessionPtr& session, size_t transaction, const WriteOpType op_type, Flush flush) {
   for (size_t r = 0; r != kNumRows; ++r) {
-    ASSERT_OK(WriteRow(
+    RETURN_NOT_OK(WriteRow(
         session,
         KeyForTransactionAndIndex(transaction, r),
         ValueForTransactionAndIndex(transaction, r, op_type),
         op_type,
         flush));
   }
+  return Status::OK();
 }
 
 void TransactionTestBase::VerifyRow(
@@ -146,7 +147,7 @@ void TransactionTestBase::VerifyRow(
 
 void TransactionTestBase::WriteData(const WriteOpType op_type, size_t transaction) {
   auto txn = CreateTransaction();
-  WriteRows(CreateSession(txn), transaction, op_type);
+  ASSERT_OK(WriteRows(CreateSession(txn), transaction, op_type));
   ASSERT_OK(txn->CommitFuture().get());
   LOG(INFO) << "Committed: " << txn->id();
 }
