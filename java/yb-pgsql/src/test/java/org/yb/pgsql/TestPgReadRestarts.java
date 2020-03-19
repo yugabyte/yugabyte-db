@@ -40,6 +40,8 @@ import org.postgresql.util.PSQLException;
 import org.postgresql.util.PSQLState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.yb.util.ThreadUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 /**
@@ -53,10 +55,17 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgReadRestarts.class);
 
   /**
-   * Size (in bytes) of PG output buffer, longer stuff is flushed immediately.
-   * This is controlled by ysql_output_buffer_size gflag, but we're testing the default value.
+   * Size of PG output buffer, longer stuff is flushed immediately. We're setting this to be
+   * relatively low to more consistently hit read restarts on long strings.
    */
-  private static final int PG_OUTPUT_BUFFER_SIZE = 262144; // 256 KiB
+  private static final int PG_OUTPUT_BUFFER_SIZE_BYTES = 1024;
+
+  /**
+   * Size of long strings to provoke read restart errors. This should be significantly larger than
+   * {@link #PG_OUTPUT_BUFFER_SIZE_BYTES} to force buffer flushes - thus preventing YSQL from doing
+   * a transparent restart.
+   */
+  private static final int LONG_STRING_LENGTH = PG_OUTPUT_BUFFER_SIZE_BYTES * 100;
 
   /** How many inserts we attempt to do? */
   private static final int NUM_INSERTS = 2000;
@@ -65,12 +74,28 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   private static final int MAX_INT_TO_INSERT = 5;
 
   /**
-   * How long do we wait until NUM_INSERTS inserts finish?
+   * How long do we wait until {@link #NUM_INSERTS} {@code INSERT}s finish?
    * <p>
-   * This should be way more than average local execution time of a single test, to account
-   * for slow CI machines.
+   * This should be way more than average local execution time of a single test, to account for slow
+   * CI machines.
    */
   private static final int INSERTS_AWAIT_TIME_SEC = 300;
+
+  /**
+   * How long do we wait for {@code SELECT}s to finish after {@code INSERT}s are completed and
+   * {@code SELECT} threads are interrupted?
+   * <p>
+   * Ideally they shouldn't take long, but we need to account for potential network and YB-side
+   * slowdown. Overstepping this limit might mean a bug in the {@code SELECT} threads code.
+   */
+  private static final int SELECTS_AWAIT_TIME_SEC = 20;
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
+    return flags;
+  }
 
   @Before
   public void setUp() throws Exception {
@@ -96,8 +121,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     new RegularStatementTester(
         "SELECT COUNT(*) FROM test_rr",
         getShortString(),
-        false /* expectNonTxnRestartErrors */,
-        false /* expectSnapshotRestartErrors */
+        false /* expectRestartErrors */
     ).runTest();
   }
 
@@ -109,8 +133,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     new PreparedStatementTester(
         "SELECT COUNT(*) FROM test_rr",
         getShortString(),
-        false /* expectNonTxnRestartErrors */,
-        false /* expectSnapshotRestartErrors */
+        false /* expectRestartErrors */
     ).runTest();
   }
 
@@ -120,10 +143,9 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectCountPreparedParameterized() throws Exception {
     new PreparedStatementTester(
-        "SELECT COUNT(*) FROM test_rr WHERE i > ?",
+        "SELECT COUNT(*) FROM test_rr WHERE i >= ?",
         getShortString(),
-        false /* expectNonTxnRestartErrors */,
-        false /* expectSnapshotRestartErrors */) {
+        false /* expectRestartErrors */) {
 
       @Override
       public PreparedStatement createStatement(Connection conn) throws Exception {
@@ -145,8 +167,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     new RegularStatementTester(
         "SELECT * FROM test_rr LIMIT 10",
         getShortString(),
-        false /* expectNonTxnRestartErrors */,
-        false /* expectSnapshotRestartErrors */
+        false /* expectRestartErrors */
     ).runTest();
   }
 
@@ -158,8 +179,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     new PreparedStatementTester(
         "SELECT * FROM test_rr LIMIT 10",
         getShortString(),
-        false /* expectNonTxnRestartErrors */,
-        false /* expectSnapshotRestartErrors */
+        false /* expectRestartErrors */
     ).runTest();
   }
 
@@ -169,10 +189,9 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarShortPreparedParameterized() throws Exception {
     new PreparedStatementTester(
-        "SELECT * FROM test_rr WHERE i > ? LIMIT 10",
+        "SELECT * FROM test_rr WHERE i >= ? LIMIT 10",
         getShortString(),
-        false /* expectNonTxnRestartErrors */,
-        false /* expectSnapshotRestartErrors */) {
+        false /* expectRestartErrors */) {
 
       @Override
       public PreparedStatement createStatement(Connection conn) throws Exception {
@@ -184,7 +203,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   }
 
   /**
-   * Doing SELECT * operation on long strings and expect restarts to NEVER happen.
+   * Doing SELECT * operation on long strings, we MIGHT get read restart errors.
    * <p>
    * We expect data retrieved to be longer than what PG output buffer could handle, thus making
    * transparent read restarts impossible.
@@ -192,10 +211,9 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarLong() throws Exception {
     new RegularStatementTester(
-        "SELECT * FROM test_rr LIMIT 10",
+        "SELECT * FROM test_rr LIMIT 100",
         getLongString(),
-        true /* expectNonTxnRestartErrors */,
-        true /* expectSnapshotRestartErrors */
+        true /* expectRestartErrors */
     ).runTest();
   }
 
@@ -205,10 +223,9 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarLongPrepared() throws Exception {
     new PreparedStatementTester(
-        "SELECT * FROM test_rr LIMIT 10",
+        "SELECT * FROM test_rr LIMIT 100",
         getLongString(),
-        true /* expectNonTxnRestartErrors */,
-        true /* expectSnapshotRestartErrors */
+        true /* expectRestartErrors */
     ).runTest();
   }
 
@@ -218,10 +235,9 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarLongPreparedParameterized() throws Exception {
     new PreparedStatementTester(
-        "SELECT * FROM test_rr WHERE i > ? LIMIT 10",
+        "SELECT * FROM test_rr WHERE i >= ? LIMIT 100",
         getLongString(),
-        true /* expectNonTxnRestartErrors */,
-        true /* expectSnapshotRestartErrors */) {
+        true /* expectRestartErrors */) {
 
       @Override
       public PreparedStatement createStatement(Connection conn) throws Exception {
@@ -245,7 +261,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   private static String getLongString() {
     StringBuffer sb = new StringBuffer();
     // Making string one char longer than buffer size, hence the "<=" condition
-    for (int i = 0; i <= PG_OUTPUT_BUFFER_SIZE; ++i) {
+    for (int i = 0; i < LONG_STRING_LENGTH; ++i) {
       sb.append("a");
     }
     return sb.toString();
@@ -341,18 +357,15 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     private static final int NUM_THREADS = 4;
 
     private final String valueToInsert;
-    private final boolean expectNonTxnRestartErrors;
-    private final boolean expectSnapshotRestartErrors;
-    /** We never expect SERIALIZABLE transaction to result in "restart read" */
-    private final boolean expectSerializableRestartErrors = false;
+
+    /** Whether we expect errors to happen without transactions/in SNAPSHOT isolated transactions */
+    private final boolean expectRestartErrors;
 
     public ConcurrentInsertSelectTester(
         String valueToInsert,
-        boolean expectNonTxnRestartErrors,
-        boolean expectSnapshotRestartErrors) {
+        boolean expectRestartErrors) {
       this.valueToInsert = valueToInsert;
-      this.expectNonTxnRestartErrors = expectNonTxnRestartErrors;
-      this.expectSnapshotRestartErrors = expectSnapshotRestartErrors;
+      this.expectRestartErrors = expectRestartErrors;
     }
 
     public abstract Stmt createStatement(Connection conn) throws Exception;
@@ -367,9 +380,9 @@ public class TestPgReadRestarts extends BasePgSQLTest {
       Future<?> insertFuture = es.submit(insertRunnable);
       futures.add(insertFuture);
 
-      /*
-       * Singular SELECT
-       */
+      //
+      // Singular SELECT
+      //
       futures.add(es.submit(() -> {
         int selectsAttempted = 0;
         int selectsRestartRequired = 0;
@@ -392,35 +405,38 @@ public class TestPgReadRestarts extends BasePgSQLTest {
             }
           }
         }
-        if (onlyEmptyResults) {
-          fail("SELECT thread didn't yield any meaningful result! Flawed test?");
-        }
-        if (expectNonTxnRestartErrors) {
+        LOG.info("SELECT (non-txn): " + selectsSucceeded + " of "
+            + selectsAttempted + " succeeded");
+        if (expectRestartErrors) {
           assertTrue(
-              "No SELECTs resulted in 'restart read required' - but we expected them to!"
+              "No SELECTs (non-txn) resulted in 'restart read required' - but we expected them to!"
                   + " " + selectsAttempted + " attempted, " + selectsSucceeded + " succeeded",
               selectsRestartRequired > 0);
         } else {
+          if (onlyEmptyResults) {
+            fail("SELECT (non-txn) thread didn't yield any meaningful result! Flawed test?");
+          }
           assertTrue(
               selectsRestartRequired + " of " + selectsAttempted
-                  + " SELECTs resulted in 'restart read required', likely a regression!",
+                  + " SELECTs (non-txn) resulted in 'restart read required', likely a regression!",
               selectsRestartRequired == 0);
         }
       }));
 
+      // We never expect SERIALIZABLE transaction to result in "restart read required"
       Map<IsolationLevel, Boolean> isoLevelsWithRestartsExpected = new LinkedHashMap<>();
       isoLevelsWithRestartsExpected.put(
-          IsolationLevel.REPEATABLE_READ, expectSnapshotRestartErrors);
+          IsolationLevel.REPEATABLE_READ, this.expectRestartErrors);
       isoLevelsWithRestartsExpected.put(
-          IsolationLevel.SERIALIZABLE, expectSerializableRestartErrors);
+          IsolationLevel.SERIALIZABLE, false);
 
-      /*
-       * Two SELECTs grouped in a transaction. Their result should match.
-       */
+      //
+      // Two SELECTs grouped in a transaction. Their result should match.
+      //
       for (Entry<IsolationLevel, Boolean> isoEntry : isoLevelsWithRestartsExpected.entrySet()) {
         futures.add(es.submit(() -> {
           IsolationLevel isolation = isoEntry.getKey();
-          boolean expectRestart = isoEntry.getValue();
+          boolean expectRestartInIsolation = isoEntry.getValue();
           int selectsAttempted = 0;
           int selectsFirstOpRestartRequired = 0;
           int selectsSucceeded = 0;
@@ -434,6 +450,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
               try (Stmt stmt = createStatement(selectTxnConn)) {
                 List<Row> rows1 = getRowList(executeQuery(stmt));
                 ++numCompletedOps;
+                if (Thread.interrupted()) return; // Skips all post-loop checks
                 List<Row> rows2 = getRowList(executeQuery(stmt));
                 ++numCompletedOps;
                 selectTxnConn.commit();
@@ -461,14 +478,12 @@ public class TestPgReadRestarts extends BasePgSQLTest {
           }
           LOG.info("SELECT in " + isolation + ": " + selectsSucceeded + " of "
               + selectsAttempted + " succeeded");
-          assertTrue("No SELECT operations in " + isolation
-              + " succeeded, ever! Flawed test?", selectsSucceeded > 0);
-          if (expectRestart) {
+          if (expectRestartInIsolation) {
             assertTrue(
                 "No SELECTs in " + isolation
                     + " resulted in 'restart read required' on first operation"
                     + " - but we expected them to!"
-                    + " " + selectsAttempted +" attempted, " + selectsSucceeded + " succeeded",
+                    + " " + selectsAttempted + " attempted, " + selectsSucceeded + " succeeded",
                 selectsFirstOpRestartRequired > 0);
           } else {
             assertTrue(
@@ -477,24 +492,43 @@ public class TestPgReadRestarts extends BasePgSQLTest {
                     + " resulted in 'restart read required' on first operation!",
                 selectsFirstOpRestartRequired == 0);
           }
+          // If we (at all) expect restart errors, then we cannot guarantee that any operation
+          // would succeed.
+          if (!this.expectRestartErrors) {
+            assertTrue("No SELECT operations in " + isolation
+                + " succeeded, ever! Flawed test?", selectsSucceeded > 0);
+          }
         }));
       }
 
       insertRunnable.unpause();
       try {
-        LOG.info("Waiting for INSERT thread");
-        insertFuture.get(INSERTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
-        LOG.info("Waiting for SELECT threads");
-        for (Future<?> future : futures) {
-          future.get(10, TimeUnit.SECONDS);
+        try {
+          LOG.info("Waiting for INSERT thread");
+          insertFuture.get(INSERTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
+        } catch (TimeoutException ex) {
+          LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
+          fail("Test timed out! Try increasing waiting time?");
         }
-      } catch (TimeoutException ex) {
-        fail("Test timed out! Try increasing waiting time?");
+        try {
+          LOG.info("Waiting for SELECT threads");
+          for (Future<?> future : futures) {
+            future.get(SELECTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
+          }
+        } catch (TimeoutException ex) {
+          LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
+          // It's very likely that cause lies on a YB side (e.g. unexpected performance slowdown),
+          // not in test.
+          fail("Waiting for SELECT threads timed out, this is unexpected!");
+        }
       } finally {
         LOG.info("Shutting down executor service");
         es.shutdownNow(); // This should interrupt all submitted threads
-        es.awaitTermination(10, TimeUnit.SECONDS);
-        LOG.info("Executor shutdown complete");
+        if (es.awaitTermination(10, TimeUnit.SECONDS)) {
+          LOG.info("Executor shutdown complete");
+        } else {
+          LOG.info("Executor shutdown failed (timed out)");
+        }
       }
     }
   }
@@ -506,9 +540,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     public RegularStatementTester(
         String queryString,
         String valueToInsert,
-        boolean expectNonTxnRestartErrors,
-        boolean expectSnapshotRestartErrors) {
-      super(valueToInsert, expectNonTxnRestartErrors, expectSnapshotRestartErrors);
+        boolean expectRestartErrors) {
+      super(valueToInsert, expectRestartErrors);
       this.queryString = queryString;
     }
 
@@ -530,9 +563,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     public PreparedStatementTester(
         String queryString,
         String valueToInsert,
-        boolean expectNonTxnRestartErrors,
-        boolean expectSnapshotRestartErrors) {
-      super(valueToInsert, expectNonTxnRestartErrors, expectSnapshotRestartErrors);
+        boolean expectRestartErrors) {
+      super(valueToInsert, expectRestartErrors);
       this.queryString = queryString;
     }
 
