@@ -51,7 +51,7 @@ void SealTxnTest::TestNumBatches(bool restart) {
 
   size_t prev_num_non_empty = 0;
   for (auto op_type : {WriteOpType::INSERT, WriteOpType::UPDATE}) {
-    WriteRows(session, /* transaction= */ 0, op_type, Flush::kFalse);
+    ASSERT_OK(WriteRows(session, /* transaction= */ 0, op_type, Flush::kFalse));
     ASSERT_OK(session->Flush());
 
     size_t num_non_empty = 0;
@@ -106,7 +106,7 @@ TEST_F(SealTxnTest, NumBatchesDisable) {
 
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
-  WriteRows(session);
+  ASSERT_OK(WriteRows(session));
   ASSERT_OK(cluster_->RestartSync());
   ASSERT_OK(txn->CommitFuture().get());
 }
@@ -114,7 +114,7 @@ TEST_F(SealTxnTest, NumBatchesDisable) {
 TEST_F(SealTxnTest, Simple) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
-  WriteRows(session, /* transaction = */ 0, WriteOpType::INSERT, Flush::kFalse);
+  ASSERT_OK(WriteRows(session, /* transaction = */ 0, WriteOpType::INSERT, Flush::kFalse));
   auto flush_future = session->FlushFuture();
   auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
   ASSERT_OK(flush_future.get());
@@ -130,9 +130,9 @@ TEST_F(SealTxnTest, Update) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
   LOG(INFO) << "Inserting rows";
-  WriteRows(session, /* transaction = */ 0);
+  ASSERT_OK(WriteRows(session, /* transaction = */ 0));
   LOG(INFO) << "Updating rows";
-  WriteRows(session, /* transaction = */ 0, WriteOpType::UPDATE, Flush::kFalse);
+  ASSERT_OK(WriteRows(session, /* transaction = */ 0, WriteOpType::UPDATE, Flush::kFalse));
   auto flush_future = session->FlushFuture();
   auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
   ASSERT_OK(flush_future.get());
