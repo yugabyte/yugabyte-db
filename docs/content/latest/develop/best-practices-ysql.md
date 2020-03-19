@@ -203,6 +203,8 @@ tables into 1 tablet.
 ## Create Primary Key when creating the table
 YugabyteDB YSQL layer requires the `Primary Key` to be specified in the `CREATE TABLE` statement upfront. 
 
+## Create indexes and foreign keys when creating the table
+It is better to create indexes and foreign keys at the time of table creation instead of adding them after loading data.
 
 ## Use multi row inserts wherever possible
 If you're inserting multiple rows, it's faster to batch them together whenever possible. You can start with 128 rows per-batch
