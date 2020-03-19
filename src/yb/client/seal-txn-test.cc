@@ -22,10 +22,11 @@
 
 using namespace std::literals;
 
-DECLARE_int32(TEST_write_rejection_percentage);
-DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_transaction_sealing);
+DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+DECLARE_int32(TEST_write_rejection_percentage);
+DECLARE_int64(transaction_rpc_timeout_ms);
 
 namespace yb {
 namespace client {
@@ -97,6 +98,9 @@ TEST_F(SealTxnTest, NumBatchesWithRejection) {
 // Check that we could disable writing information about the number of batches,
 // since it is required for backward compatibility.
 TEST_F(SealTxnTest, NumBatchesDisable) {
+  DisableTransactionTimeout();
+  // Should be enough for the restarted servers to be back online
+  FLAGS_transaction_rpc_timeout_ms = 20000 * kTimeMultiplier;
   FLAGS_enable_transaction_sealing = false;
   FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record = true;
 
