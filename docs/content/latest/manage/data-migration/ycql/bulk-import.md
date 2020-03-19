@@ -1,3 +1,31 @@
+---
+title: Bulk import
+linkTitle: Bulk import
+description: Bulk import
+image: /images/section_icons/manage/enterprise.png
+headcontent: Bulk import data into YugabyteDB.
+menu:
+  latest:
+    identifier: manage-bulk-import
+    parent: manage-bulk-import-export
+    weight: 704
+aliases:
+  - /latest/manage/data-migration/bulk-import/
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
+Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB.
+
 This page documents bulk import for YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql).
 
 We will first export data from existing Apache Cassandra and MySQL tables. Thereafter, we will import the data using the various bulk load options supported by YugabyteDB. We will use a generic IoT timeseries data use case as a running example to illustrate the import process.

@@ -1,3 +1,29 @@
+---
+title: Bulk export
+linkTitle: Bulk export
+description: Bulk export
+image: /images/section_icons/manage/enterprise.png
+headcontent: Bulk export data from YugabyteDB.
+menu:
+  latest:
+    identifier: manage-bulk-export
+    parent: manage-bulk-import-export
+    weight: 707
+aliases:
+  - /latest/manage/data-migration/bulk-export/
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
 This page documents bulk export for YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql). To export data from a YugabyteDB (or even an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
 
 We will first create a source YugabyteDB table and populate it with data. Then we will export the data out using the cassandra-unloader tool. We will use a generic gaming user profile use case as a running example to illustrate the export process.
