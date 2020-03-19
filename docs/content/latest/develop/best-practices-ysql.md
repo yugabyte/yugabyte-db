@@ -50,6 +50,17 @@ Hash primary keys:
 - Have slower inefficient global range scanning 
 
 
+### Consistent hash as the default sharding strategy
+Defaults are meant to serve the target use case. Users turn to YugabyteDB primarily for scalability reasons. 
+Most use cases requiring scalability often do not need to perform range lookups on the primary key, hence we picked consistent 
+hash sharding as the default in YugabyteDB. User identity (user ids do not need ordering), 
+product catalog (product ids are not related to one another) and stock ticker data (one stock symbol is independent of all other stock symbol) 
+are some common examples.
+
+In use cases when range lookups are desired, YugabyteDB allows specifying range sharding, along with optionally pre-splitting the data. 
+In cases when range queries become important after the data is already loaded into a hash sharded table, 
+a range sharded secondary index can be created on that column. Once the secondary index is rebuilt, range queries would become efficient.
+
 ## Co-location
 Co-location is a [new feature in beta](../explore/colocated-tables/linux.md) in development where you can put tables of 
 a database inside 1 tablet. This increases performance and lowers latency on write transactions, joined queries and aggregations
