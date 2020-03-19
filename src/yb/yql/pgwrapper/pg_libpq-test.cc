@@ -425,11 +425,18 @@ Result<int64_t> ReadSumBalance(
     }
   });
 
-  int64_t sum = 0;
+  std::string query = "";
   for (int i = 1; i <= accounts; ++i) {
-    LOG(INFO) << "Reading: " << i;
-    sum += VERIFY_RESULT(conn->FetchValue<int64_t>(
-        Format("SELECT balance FROM account_$0 WHERE id = $0", i)));
+    if (!query.empty()) {
+      query += " UNION ";
+    }
+    query += Format("SELECT balance, id FROM account_$0 WHERE id = $0", i);
+  }
+
+  auto res = VERIFY_RESULT(conn->FetchMatrix(query, accounts, 2));
+  int64_t sum = 0;
+  for (int i = 0; i != accounts; ++i) {
+    sum += VERIFY_RESULT(GetValue<int64_t>(res.get(), i, 0));
   }
 
   failed = false;
@@ -567,7 +574,15 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   ASSERT_LE(total_not_found, 200);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot)) {
+class PgLibPqSmallClockSkewTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Use small clock skew, to decrease number of read restarts.
+    options->extra_tserver_flags.push_back("--max_clock_skew_usec=5000");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot),
+          PgLibPqSmallClockSkewTest) {
   TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
