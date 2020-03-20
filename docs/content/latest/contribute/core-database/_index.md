@@ -1,5 +1,6 @@
 ---
 title: Contribute to the core database
+headerTitle: Contribute to the core database
 linkTitle: Core database
 description: Contribute to the core database
 image: /images/section_icons/index/quick_start.png

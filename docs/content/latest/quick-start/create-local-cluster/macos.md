@@ -1,7 +1,8 @@
 ---
-title: 2. Create a local cluster
+title: Create a local YugabyteDB cluster on macOS
+headerTitle: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
-description: Create a local cluster
+description: Create a local cluster on macOS in less than five minutes.
 aliases:
   - /quick-start/create-local-cluster/
   - /latest/quick-start/create-local-cluster/

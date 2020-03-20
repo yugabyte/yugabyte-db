@@ -1,8 +1,8 @@
 ---
-title: Single row transactions
+title: Single row transactions in YugabyteDB
 linkTitle: Single row transactions
 headerTitle: Single row ACID transactions
-description: YugabyteDB offers ACID semantics for mutations involving a single row or rows that fall within the same shard (partition, tablet).
+description: Learn how YugabyteDB offers ACID semantics for mutations involving a single row or rows that fall within the same shard (partition, tablet).
 aliases:
   - /architecture/transactions/single-row-transactions/
 menu:

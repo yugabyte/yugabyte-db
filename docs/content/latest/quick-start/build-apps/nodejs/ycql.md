@@ -1,5 +1,6 @@
 ---
-title: Build a NodeJS application
+title: Use NodeJS to build a YugabyteDB application
+headerTitle: Build a NodeJS application
 linkTitle: Build a NodeJS application
 description: Build a NodeJS application
 menu:

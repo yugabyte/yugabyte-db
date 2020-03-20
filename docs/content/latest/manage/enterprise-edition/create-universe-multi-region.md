@@ -1,7 +1,8 @@
 ---
-title: Create universe - Multi-region
+title: Create a multi-region Yugabyte Platform universe
+headerTitle: Create universe - Multi-region
 linkTitle: Create universe  - Multi-region
-description: Create universe - Multi-region
+description: Create a Yugabyte Platform universe that spans multiple geographic regions.
 menu:
   latest:
     identifier: manage-create-universe-multi-region
@@ -11,12 +12,12 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to create a universe spanning multiple geographic region. In this example, we are first going to deploy a universe across Oregon (US-West), Northern Virginia (US-East) and Tokyo (Asia-Pacific). Once ready, we are going to connect to each node and perform the following:
+This section will describe how to create a universe spanning multiple geographic regions. In this example, we are first going to deploy a universe across Oregon (US-West), Northern Virginia (US-East) and Tokyo (Asia-Pacific). Once ready, we are going to connect to each node and perform the following:
 
-* Run the CassandraKeyValue workload
-* Write data with global consistency (higher latencies because we chose nodes in far away regions)
-* Read data from the local data center (low latency timeline consistent reads)
-* Verify the latencies of the overall app
+- Run the CassandraKeyValue workload
+- Write data with global consistency (higher latencies because we chose nodes in far away regions)
+- Read data from the local data center (low latency timeline consistent reads)
+- Verify the latencies of the overall app
 
 ## 1. Create the universe
 

@@ -1,7 +1,8 @@
 ---
-title: MongoDB
+title: Compare MongoDB to YugabyteDB
+headerTitle: MongoDB
 linkTitle: MongoDB
-description: MongoDB
+description: Compare MongoDB to YugabyteDB
 aliases:
   - /comparisons/mongodb/
 menu:

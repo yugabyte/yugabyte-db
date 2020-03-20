@@ -1,8 +1,9 @@
 ---
-title: DELETE
+title: DELETE statement [YSQL]
+headerTitle: DELETE
 linkTitle: DELETE
 summary: DELETE
-description: DELETE
+description: Use the DELETE statement to remove rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted.
 menu:
   latest:
     identifier: api-ysql-commands-delete

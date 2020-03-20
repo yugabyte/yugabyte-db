@@ -1,7 +1,9 @@
 ---
-title: TRUNCATE
+title: TRUNCATE statement [YCQL]
+headerTitle: TRUNCATE
+linkTitle: TRUNCATE
 summary: Removes all rows from a table.
-description: TRUNCATE
+description: Use the TRUNCATE statement to remove all rows from a specified table.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `TRUNCATE` statement removes all rows from a specified table.
+Use the `TRUNCATE` statement to remove all rows from a specified table.
 
 ## Syntax
 

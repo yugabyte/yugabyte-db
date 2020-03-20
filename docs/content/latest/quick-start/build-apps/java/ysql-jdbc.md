@@ -1,7 +1,8 @@
 ---
-title: Build a Java app
+title: Use Java to build a YugabyteDB application
+headerTitle: Build a Java app
 linkTitle: Build a Java app
-description: Build a Java application
+description: Follow this tutorial to use Java to build a simple YugabyteDB application.
 aliases:
   - /develop/client-drivers/java/
   - /latest/develop/client-drivers/java/

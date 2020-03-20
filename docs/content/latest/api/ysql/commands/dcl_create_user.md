@@ -1,5 +1,6 @@
 ---
-title: CREATE USER
+title: CREATE USER statement [YSQL]
+headerTitle: CREATE USER
 linkTitle: CREATE USER
 description: Use the CREATE USER statement to create a user. The CREATE USER statement is an alias for CREATE ROLE, but creates a role that has LOGIN privileges by default.
 summary: CREATE USER

@@ -1,8 +1,9 @@
 ---
-title: FROZEN
+title: FROZEN data type [YCQL]
 summary: Binary format for complex data types.
-headerTitle: FROZEN data types
-description: FROZEN data data type is used to specify columns of binary strings that result from serializing either collections, tuples, or user-defined types.
+headerTitle: FROZEN data type
+linkTitle: FROZEN
+description: Use the FROZEN data type to specify columns of binary strings that result from serializing collections, tuples, or user-defined types.
 menu:
   latest:
     parent: api-cassandra
@@ -16,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`FROZEN` data type is used to specify columns of binary strings that result from serializing either collections, tuples, or user-defined types.
+Use the `FROZEN` data type to specify columns of binary strings that result from serializing collections, tuples, or user-defined types.
 
 ## Syntax
 

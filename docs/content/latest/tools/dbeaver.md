@@ -1,7 +1,8 @@
 ---
-title: DBeaver
+title: Use DBeaver with YugabyteDB
+headerTitle: DBeaver
 linkTitle: DBeaver
-description: DBeaver
+description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
 menu:
   latest:
     identifier: dbeaver

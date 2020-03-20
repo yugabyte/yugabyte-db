@@ -1,7 +1,8 @@
 ---
-title: TiDB
+title: Compare TiDB to YugabyteDB
+headerTitle: TiDB
 linkTitle: TiDB
-description: TiDB
+description: Compare TiDB to YugabyteDB/
 aliases:
   - /comparisons/tidb/
 menu:

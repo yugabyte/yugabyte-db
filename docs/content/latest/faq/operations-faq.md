@@ -1,7 +1,8 @@
 ---
-title: Operations FAQ
+title: FAQs about operating YugabyteDB clusters
+headerTitle: Operations FAQ
 linkTitle: Operations FAQ
-description: Operations FAQ
+description: Get answers to common questions about operating YugabyteDB clusters
 menu:
   latest:
     identifier: faq-operations

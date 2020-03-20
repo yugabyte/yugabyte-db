@@ -1,7 +1,8 @@
 ---
-title: Visual Studio Code
+title: Use Visual Studio Code with YugabyteDB
+headerTitle: Visual Studio Code
 linkTitle: Visual Studio Code
-description: Visual Studio Code 
+description: Configure Visual Studio Code to work with YCQL.
 menu:
   latest:
     identifier: visualstudioworkbench

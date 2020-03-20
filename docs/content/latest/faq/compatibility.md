@@ -1,7 +1,8 @@
 ---
-title: API compatibility FAQ
+title: FAQs about YugabyteDB API compatibility
+headerTitle: API compatibility FAQ
 linkTitle: API compatibility FAQ
-description: API compatibility FAQ
+description: Get answers to common questions about YugabyteDB API compatibility.
 aliases:
   - /faq/cassandra/
   - /latest/faq/cassandra/

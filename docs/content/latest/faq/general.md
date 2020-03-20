@@ -1,7 +1,8 @@
 ---
-title: General FAQ
+title: FAQs on YugabyteDB
+headerTitle: General FAQ
 linkTitle: General FAQ
-description: General FAQ
+description: Get answers to common questions about YugabyteDB.
 aliases:
   - /latest/faq/product/
   - /latest/introduction/overview/

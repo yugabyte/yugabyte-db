@@ -1,7 +1,8 @@
 ---
-title: Grant privileges
+title: Grant YSQL privileges in YugabyteDB
+headerTitle: Grant privileges
 linkTitle: Grant privileges
-description: Grant privileges
+description: Grant YSQL privileges in YugabyteDB
 menu:
   latest:
     name: Grant privileges

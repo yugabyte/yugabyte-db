@@ -1,7 +1,9 @@
 ---
-title: ALTER ROLE
+title: ALTER ROLE statement [YCQL]
+headerTitle: ALTER ROLE
+linkTitle: ALTER ROLE
 summary: Change the properties of a role
-description: ALTER ROLE
+description: Use the ALTER ROLE statement to change the properties of an existing role.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `ALTER ROLE` statement changes the properties of an existing role.
+Use the `ALTER ROLE` statement to change the properties of an existing role.
 It allows modifying properties `SUPERUSER`, `PASSWORD`, and `LOGIN`.
 
 This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.

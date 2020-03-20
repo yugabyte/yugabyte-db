@@ -1,7 +1,8 @@
 ---
-title: Build a Python application
+title: Use Python to build a YugabyteDB application
+headerTitle: Build a Python application
 linkTitle: Build a Python application
-description: Build a Python application
+description: Use Python and YSQL to build a YugabyteDB application
 aliases:
   - /develop/client-drivers/python/
   - /latest/develop/client-drivers/python/

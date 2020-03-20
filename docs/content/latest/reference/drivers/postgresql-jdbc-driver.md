@@ -1,7 +1,8 @@
 ---
 title: PostgreSQL JDBC Driver
+headerTitle: PostgreSQL JDBC Driver
 linkTitle: PostgreSQL JDBC Driver
-description: PostgreSQL JDBC Driver
+description: Use the PostgreSQL JDBC Driver with YugabyteDB
 section: REFERENCE
 menu:
   latest:

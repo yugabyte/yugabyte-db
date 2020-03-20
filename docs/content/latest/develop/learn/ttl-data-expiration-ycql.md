@@ -1,8 +1,8 @@
 ---
-title: 9. TTL for data expiration
-linkTitle: 9. TTL for data expiration
+title: TTL for data expiration in YCQL
 headerTitle: TTL for data expiration
-description: TTL for data expiration
+linkTitle: 9. TTL for data expiration
+description: Learn how to use TTL for data expiration in YCQL.
 menu:
   latest:
     identifier: ttl-data-expiration-ycql

@@ -1,5 +1,6 @@
 ---
 title: Contribution checklist
+headerTitle: Contribution checklist
 linkTitle: Contribution checklist
 description: Contribution checklist
 image: /images/section_icons/index/quick_start.png

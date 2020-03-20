@@ -1,7 +1,8 @@
 ---
-title: Edit configuration options
+title: Edit configuration options using YugaWare
+headerTitle: Edit configuration options
 linkTitle: Edit configuration options
-description: Edit configuration options
+description: Edit configuration options using YugaWare
 aliases:
   - /manage/enterprise-edition/edit-flags/
 menu:

@@ -1,7 +1,8 @@
 ---
-title: YB-TServer
-linkTitle: YB-TServer
-description: YB-TServer
+title: YB-TServer Service
+headerTitle: YB-TServer Service
+linkTitle: YB-TServer Service
+description: Learn about how the YB-TServer Service and nodes store and serve application data using tablets (shards).
 aliases:
   - /latest/architecture/concepts/yb-tserver/
 menu:

@@ -1,7 +1,9 @@
 ---
-title: Date and time functions
+title: Date and time functions [YCQL]
+headerTitle: Date and time functions
+linkTitle: Date and time
 summary: Functions that work on data types related to date and time.
-description: Date and time functions
+description: Use date and time functions to work on date and time data types.
 menu:
   latest:
     parent: api-cassandra
@@ -13,12 +15,11 @@ isTocNested: false
 showAsideToc: true
 ---
 
-This section covers the set of CQL built-in functions that work on the data types related to
-date and time, i.e [`DATE`, `TIME`, `TIMESTAMP`](../type_datetime) or [`TIMEUUID`](../type_uuid).
+This section covers the set of CQL built-in functions that work on the date and time data types: [`DATE`, `TIME`, `TIMESTAMP`](../type_datetime), or [`TIMEUUID`](../type_uuid).
 
 ## currentdate(), currenttime(), and currenttimestamp()
 
-These functions return the current system date and time in UTC time zone.
+Use these functions to return the current system date and time in UTC time zone.
 
 - They take in no arguments.
 - The return value is a `DATE`, `TIME` or `TIMESTAMP` respectively.

@@ -1,8 +1,9 @@
 ---
-title: CREATE OPERATOR CLASS
+title: CREATE OPERATOR CLASS statement [YSQL]
+headerTitle: CREATE OPERATOR CLASS
 linkTitle: CREATE OPERATOR CLASS
 summary: Create a new operator class
-description: CREATE OPERATOR CLASS
+description: Use the CREATE OPERATOR CLASS statement to create a new operator class.
 menu:
   latest:
     identifier: api-ysql-commands-create-operator-class

@@ -1,7 +1,8 @@
 ---
 title: yugabyted
+headerTitle: yugabyted
 linkTitle: yugabyted
-description: yugabyted
+description: Get started with YugabyteDB by using yugabyted to simplify creating, running, and managing yb-tserver and yb-master servers.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -20,7 +21,7 @@ The `yugabyted` executable file is located in the YugabyteDB home's `bin` direct
 
 yugabyted currently supports creating a 1-node cluster only. Ability to create multi-node clusters is under active development. 
 
-- For local multi-node clusers, use [`yb-ctl`](../../../admin/yb-ctl). 
+- For local multi-node clusters, use [`yb-ctl`](../../../admin/yb-ctl). 
 
 - For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
 

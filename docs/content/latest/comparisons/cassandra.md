@@ -1,7 +1,8 @@
 ---
-title: Apache Cassandra
+title: Compare Apache Cassandra with YugabyteDB
+headerTitle: Apache Cassandra
 linkTitle: Apache Cassandra
-description: Apache Cassandra
+description: Learn about how Apache Cassandra compares with YugabyteDB.
 aliases:
   - /comparisons/cassandra/
 menu:

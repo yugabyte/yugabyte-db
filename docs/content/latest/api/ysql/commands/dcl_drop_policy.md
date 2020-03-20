@@ -1,7 +1,8 @@
 ---
-title: DROP POLICY
+title: DROP POLICY statement [YSQL]
+headerTitle: DROP POLICY
 linkTitle: DROP POLICY
-description: DROP POLICY
+description: Use the DROP POLICY statement to remove the specified row level security policy from the table.
 summary: Drop row level security policy
 menu:
   latest:
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`DROP POLICY` removes the specified row level security policy from the table. Note that if all
+Use the `DROP POLICY` statement to remove the specified row level security policy from the table. Note that if all
 policies for a table are removed and the table still has `ENABLE ROW LEVEL SECURITY`, then a default
 deny all policy will be applied for the table.
 

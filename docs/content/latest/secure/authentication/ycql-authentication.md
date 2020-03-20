@@ -1,8 +1,9 @@
 ---
 title: YCQL authentication
+headerTitle: YCQL authentication
 linkTitle: YCQL authentication
-description: Authentication
-headcontent: Identify that your YCQL users are who they say they are
+description: Identify that your YCQL users are who they say they are.
+headcontent: Identify that your YCQL users are who they say they are.
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:

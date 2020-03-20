@@ -1,7 +1,7 @@
 ---
-title: DROP GROUP
+title: DROP GROUP statement [YSQL]
 linkTitle: DROP GROUP
-description: Use the DROP GROUP to drop a role. DROP GROUP is an alias for DROP ROLE and is used to drop a role.
+description: Use the DROP GROUP statement to drop a role. DROP GROUP is an alias for DROP ROLE and is used to drop a role.
 summary: DROP GROUP
 menu:
   latest:
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `DROP GROUP` to drop a role. `DROP GROUP` is an alias for [`DROP ROLE`](../dcl_drop_role) and is used to drop a role.
+Use the `DROP GROUP` statement to drop a role. `DROP GROUP` is an alias for [`DROP ROLE`](../dcl_drop_role) and is used to drop a role.
 
 ## Syntax
 

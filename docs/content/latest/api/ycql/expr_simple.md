@@ -1,7 +1,9 @@
 ---
-title: Simple expressions
+title: Simple expressions [YCQL]
+headerTitle: Simple expressions
+linkTitle: Simple expressions
 summary: Columns, constants, and null.
-description: Simple expressions
+description: A simple expression can be a column, constant, or NULL.
 menu:
   latest:
     parent: api-cassandra
@@ -13,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Simple expression can be either a column, a constant, or NULL.
+A simple expression can be a column, a constant, or NULL.
 
 ## Column expression
 
@@ -25,7 +27,7 @@ column_expression ::= [keyspace_name.][table_name.][column_name]
 
 ## Constant expression
 
-A constant expression represents a simple value by using literals. 
+A constant expression represents a simple value by using literals.
 
 ```
 constant_expression ::= string | number

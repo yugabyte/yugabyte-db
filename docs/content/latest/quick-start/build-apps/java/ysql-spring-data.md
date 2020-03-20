@@ -1,7 +1,8 @@
 ---
-title: Build a Java App
-linkTitle: Build a Java App
-description: Build a Java application
+title: Use Java to build a YugabyteDB application
+headerTitle: Build a Java app
+linkTitle: Build a Java app
+description: Use Java and Spring Boot to build a simple YugabyteDB e-commerce application.
 menu:
   latest:
     parent: build-apps

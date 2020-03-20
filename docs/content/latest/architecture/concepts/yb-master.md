@@ -1,7 +1,8 @@
 ---
-title: YB-Master
-linkTitle: YB-Master
-description: YB-Master
+title: YB-Master Service
+headerTitle: YB-Master Service
+linkTitle: YB-Master Service
+description: Learn about how the YB-Master Service and nodes manage tablet (shard) metadata and coordinate configuration changes.
 aliases:
   - /latest/architecture/concepts/yb-master/
 menu:
