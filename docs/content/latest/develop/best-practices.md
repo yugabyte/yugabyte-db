@@ -36,37 +36,15 @@ showAsideToc: true
 
 
 Developing applications using distributed databases requires more thought about 
-schemas and queries to keep a well balancer cluster, low query latency and preventing 
+schemas and queries to keep a well balanced cluster, low query latency and preventing 
 data hotspots. Below is a list of best of practices that you can keep in mind
-while using YugabyteDB using all layers.
+while using YugabyteDB.
 
 ## YSQL compared to YCQL
+The first step is which API to use. In terms of language capabilities, YCQL is a subset of YSQL.
+In a nutshell, YSQL is a clear choice when apps need advanced features like triggers,procedures,relations,subqueries,joins, range sharding etc.
+While if app only has few tables (that are typically large) and point reads/writes, and uses TTL, then YCQL is a better option. 
 
-The first step is which API to use. For an in depth comparison see below:
-
-- The YCQL API doesn't support client-controlled multi-step transactions where you can issue multiple DML/SELECT requests across separate calls, and then finally choose to commit or rollback. This more general version of multi-row/multi-table transactions is only available in the YSQL API of YugabyteDB.
-- YCQL does support multi-row transactions in the more limited form (usually called `autocommit`) where the entire block from `BEGIN TRANS .. END TRANS` is a single compound statement that comes to the server in one shot. 
-It is not as flexible as a `BEGIN... END` block where you can mix control-flow (e.g. if/then/else) or have local variables for things you are SELECTing in between etc. 
-It only supports DML statement, not SELECTs.
-- YCQL doesn't at the moment support range sharding.
-- YCQL has cluster aware drivers meaning they can discover all nodes of the cluster, get notified of node add/remove and therefore do not need a loadbalancer.
-The client drivers are also topology aware, and can perform reads from nearest region/datacenter.
-The drivers are also shard aware, they know the location of tablet leaders in the cluster and can query them directly.
-YSQL clients aren't yet cluster aware and need to use loadbalancers or custom code to keep track of the cluster state.
-We're working on cluster aware drivers starting with [JDBC](https://github.com/yugabyte/jdbc-yugabytedb)  
-- YCQL supports automatic expiry of data using the TTL feature - you can set a retention policy for data at table/row/column level and the older data is automatically purged from the DB.
-- YCQL supports collection data types such as sets, maps, lists. Note that both YCQL and YSQL support JSONB which can be used to model collections.
-- YCQL uses threads to handle client queries, while the YSQL PostgreSQL code uses processes. 
-These processes are heavier weight, so this cuts throughput and affects connection scalability. 
-- In YCQL, each insert is treated as an upsert (update or insert) by default and needs special syntax to perform pure inserts. 
-In YSQL, each insert needs to read the data before performing the insert since if the key already exists, it is treated as a failure.
-- YCQL is Cassandra API compatible, and therefore supports the Cassandra ecosystem (like Spark and Kafka connectors, JanusGraph and KairosDB compatibility, etc). 
-Note that these ecosystem integrations can be built on top of YSQL easily.
-- YSQL is built on top of Postgresql and has a lot more features like foreign keys, stored procedures, SERIAL types, 
-CTE queries, joins, subqueries, extensions, etc.
-
-Currently, we have focused only on correctness + functionality for YSQL and are just getting started with performance, 
-while YCQL performance has been worked on quite a bit. Over time YSQL performance will be on parity with YCQL.
 
 ## Hardware sizing
 See [hardware sizing](/latest/deploy/checklist/) docs.
