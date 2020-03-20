@@ -1885,7 +1885,9 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
       }
     }
   }
+  std::vector<std::string> index_names;
   for (const IndexInfo& idx : indexes) {
+    index_names.push_back(idx.table_id());
     for (const auto& idx_col : idx.columns()) {
       if (col_ids_set.find(idx_col.indexed_column_id) == col_ids_set.end()) {
         col_ids_set.insert(idx_col.indexed_column_id);
@@ -1934,7 +1936,7 @@ Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexe
   VLOG(1) << "Processed " << num_rows_processed << " rows";
   RETURN_NOT_OK(FlushIndexBatchIfRequired(&index_requests, /* forced */ true));
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for "
-            << yb::ToString(indexes) << " until "
+            << yb::ToString(index_names) << " until "
             << (resume_from.empty() ? "<end of the tablet>"
                                     : b2a_hex(resume_from));
   return resume_from;
