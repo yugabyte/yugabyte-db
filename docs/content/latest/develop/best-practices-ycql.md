@@ -30,6 +30,9 @@ showAsideToc: true
 </ul>
 
 
+## Use YugabyteDB drivers
+Use YugabyteDB specific [client drivers](../../quick-start/build-apps/) because they are cluster and partition aware and support `jsonb` columns.
+
 ## JSONB datatype
 YugabyteDB has [`jsonb`](https://docs.yugabyte.com/latest/api/ycql/type_jsonb/) datatype that makes it easy to model 
 json data which does not have a set schema and might change often. 
