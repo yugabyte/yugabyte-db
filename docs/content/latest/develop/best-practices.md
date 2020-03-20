@@ -52,7 +52,10 @@ See [hardware sizing](/latest/deploy/checklist/) docs.
 
 ## Tablet leaders in multi-az and multi-region deployments
 In multi-region deployments, we can hint the database to try and keep all tablet-leaders
-in 1 region thus lowering the latency and network hops during read/write transactions.
+in 1 region thus.
+
+This will lower the latency and network hops during read/write transactions. If your app is running in only 1 region, tablet-leaders residing 
+in the same region helps cut latency between app<>db.
 This can be done using the `set_preferred_zones` command of [yb-admin](../../admin/yb-admin) cli.
 
 ## Settings for ci/cd/integration-tests:
