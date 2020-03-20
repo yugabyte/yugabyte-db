@@ -69,7 +69,7 @@ bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
                              RespClass* resp,
                              rpc::RpcContext* context) {
   const string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
-  if (PREDICT_FALSE(!req->has_dest_uuid())) {
+  if (req->dest_uuid().empty()) {
     // Maintain compat in release mode, but complain.
     string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
         method_name, context->requestor_string(), req->ShortDebugString());
