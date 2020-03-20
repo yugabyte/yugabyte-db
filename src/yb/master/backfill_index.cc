@@ -351,6 +351,44 @@ bool MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
 }
 
 // -----------------------------------------------------------------------------------------------
+// BackfillTableJob
+// -----------------------------------------------------------------------------------------------
+std::string BackfillTableJob::description() const {
+  const std::shared_ptr<BackfillTable> retain_bt = backfill_table_;
+  auto curr_state = state();
+  if (!IsStateTerminal(curr_state) && retain_bt) {
+    return retain_bt->description();
+  } else if (curr_state == MonitoredTaskState::kFailed) {
+    return Format("Backfilling $0 Failed", index_ids_);
+  } else if (curr_state == MonitoredTaskState::kAborted) {
+    return Format("Backfilling $0 Aborted", index_ids_);
+  } else {
+    DCHECK(curr_state == MonitoredTaskState::kComplete);
+    return Format("Backfilling $0 Done", index_ids_);
+  }
+}
+
+MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState() {
+  auto old_state = state();
+  while (!IsStateTerminal(old_state)) {
+    if (state_.compare_exchange_strong(old_state,
+                                       MonitoredTaskState::kAborted)) {
+      return old_state;
+    }
+    old_state = state();
+  }
+  return old_state;
+}
+
+void BackfillTableJob::SetState(MonitoredTaskState new_state) {
+  auto old_state = state();
+  if (!IsStateTerminal(old_state)) {
+    if (state_.compare_exchange_strong(old_state, new_state) && IsStateTerminal(new_state)) {
+      MarkDone();
+    }
+  }
+}
+// -----------------------------------------------------------------------------------------------
 // BackfillTable
 // -----------------------------------------------------------------------------------------------
 BackfillTable::BackfillTable(Master *master, ThreadPool *callback_pool,

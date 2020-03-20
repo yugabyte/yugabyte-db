@@ -158,20 +158,13 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
 class BackfillTableJob : public MonitoredTask {
  public:
-  explicit BackfillTableJob(std::weak_ptr<BackfillTable> backfill_table)
-      : start_timestamp_(MonoTime::Now()), backfill_table_(backfill_table) {}
+  explicit BackfillTableJob(std::shared_ptr<BackfillTable> backfill_table)
+      : start_timestamp_(MonoTime::Now()), backfill_table_(backfill_table),
+        index_ids_(backfill_table_->index_ids()) {}
 
   Type type() const override { return BACKFILL_TABLE; }
 
   std::string type_name() const override { return "Backfill Table"; }
-
-  std::string description() const override {
-    auto retain_bt = backfill_table_;
-    if (!IsStateTerminal(state()) && retain_bt) {
-      return retain_bt->description();
-    }
-    return "Backfilling Table Done";
-  }
 
   MonoTime start_timestamp() const override { return start_timestamp_; }
 
@@ -179,30 +172,15 @@ class BackfillTableJob : public MonitoredTask {
     return completion_timestamp_;
   }
 
-  MonitoredTaskState AbortAndReturnPrevState() override {
-    auto old_state = state();
-    while (!IsStateTerminal(old_state)) {
-      if (state_.compare_exchange_strong(old_state,
-                                         MonitoredTaskState::kAborted)) {
-        return old_state;
-      }
-      old_state = state();
-    }
-    return old_state;
-  }
+  std::string description() const override;
 
   MonitoredTaskState state() const override {
     return state_.load(std::memory_order_acquire);
   }
 
-  void SetState(MonitoredTaskState new_state) {
-    auto old_state = state();
-    if (!IsStateTerminal(old_state)) {
-      if (state_.compare_exchange_strong(old_state, new_state) && IsStateTerminal(new_state)) {
-        MarkDone();
-      }
-    }
-  }
+  void SetState(MonitoredTaskState new_state);
+
+  MonitoredTaskState AbortAndReturnPrevState() override;
 
   void MarkDone() {
     completion_timestamp_ = MonoTime::Now();
@@ -213,6 +191,7 @@ class BackfillTableJob : public MonitoredTask {
   MonoTime start_timestamp_, completion_timestamp_;
   std::atomic<MonitoredTaskState> state_{MonitoredTaskState::kWaiting};
   std::shared_ptr<BackfillTable> backfill_table_;
+  std::string index_ids_;
 };
 
 // A background task which is responsible for backfilling rows from a given
