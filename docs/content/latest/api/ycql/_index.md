@@ -1,5 +1,5 @@
 ---
-title: YCQL
+title: Yugabyte Cloud Query Language (YCQL)
 headerTitle: Yugabyte Cloud Query Language (YCQL)
 linkTitle: YCQL
 description: YCQL is a SQL-based, flexible-schema API that is best fit for internet-scale OLTP application needing a semi-relational API.

@@ -1,5 +1,5 @@
 ---
-title: Sharding in DocDB
+title: Hash and range sharding in DocDB
 headerTitle: Sharding
 linkTitle: Sharding
 description: Learn how YugabyteDB uses hash and range sharding to manage tables.

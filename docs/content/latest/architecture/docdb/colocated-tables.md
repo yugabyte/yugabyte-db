@@ -2,7 +2,7 @@
 title: Colocated tables
 headerTitle: Colocated tables
 linkTitle: Colocated tables
-description: Learn about how colocated tables by aggregating data into a single tablet.
+description: Learn about how colocated tables aggregate data into a single tablet.
 aliases:
   - /latest/architecture/docdb/colocated_tables/
 menu:

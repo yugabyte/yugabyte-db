@@ -1,5 +1,5 @@
 ---
-title: Universe
+title: Universe 
 headerTitle: Universe
 linkTitle: Universe
 description: Learn about the YugabyteDB universe (or cluster).

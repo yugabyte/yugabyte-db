@@ -2,7 +2,7 @@
 title: Read IO path
 headerTitle: Read IO path
 linkTitle: Read IO path
-description: Learn how the YugabyteDB query layer manages read operations using Raft.
+description: Learn how the YugabyteDB query layer manages read operations using the Raft algorithm.
 menu:
   latest:
     identifier: read-path
