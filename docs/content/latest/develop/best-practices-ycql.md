@@ -37,6 +37,11 @@ Each batch operation has higher latency compared to single rows operations but h
 Use prepared statements wherever possible. This will ensure that YB partition aware drivers are able to route 
 queries to the tablet leader, improve throughput and server doesn't have to parse the query on each operation.
 
+## Connection pooling
+Single client (say a multi-threaded application) should ideally use a single cluster object. 
+The single cluster object typically holds underneath the covers a configurable number of connections to yb-tservers. 
+Typically 1 or 2 per TServer suffices to serve even 64-128 application threads). 
+The same connection can be used for multiple outstanding requests, also known as multiplexing.
 
 ## Use TTL for expiring older records
 YCQL supports automatic expiry of data using the [`TTL feature`](../api/ycql/ddl_create_table.md#use-table-property-to-define-the-default-expiration-time-for-rows). 
