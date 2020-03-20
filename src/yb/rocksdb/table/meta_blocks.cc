@@ -32,19 +32,22 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
+DEFINE_bool(verify_encrypted_meta_block_checksums, true,
+            "Whether to verify checksums for meta blocks of encrypted SSTables.");
+
 namespace rocksdb {
 
 namespace {
 
 ReadOptions CreateMetaBlockReadOptions(RandomAccessFileReader* file) {
   ReadOptions read_options;
-  if (!file->file()->IsEncrypted()) {
-    // This is needed to prevent a lot of RocksDB unit tests from failing as described at
-    // https://github.com/yugabyte/yugabyte-db/issues/3974. However, we need to verify checksums
-    // for meta blocks in order to recover from the encryption format issue described at
-    // at https://github.com/yugabyte/yugabyte-db/issues/3707.
-    read_options.verify_checksums = false;
-  }
+
+  // We need to verify checksums for meta blocks in order to recover from the encryption format
+  // issue described at https://github.com/yugabyte/yugabyte-db/issues/3707.
+  // However, we only do that for encrypted files in order to prevent lots of RocksDB unit tests
+  // from failing as described at https://github.com/yugabyte/yugabyte-db/issues/3974.
+  read_options.verify_checksums = file->file()->IsEncrypted() &&
+                                  FLAGS_verify_encrypted_meta_block_checksums;
   return read_options;
 }
 

@@ -185,8 +185,13 @@ void EncryptedSSTableTest::CounterOverflow(
     it->Next();
   }
   ASSERT_EQ(num_keys, i);
-  ASSERT_GE(eraf->TEST_GetNumOverflowWorkarounds(), 0);
-  ASSERT_GE(eraf_data->TEST_GetNumOverflowWorkarounds(), 0);
+  if (GetParam()) {
+    ASSERT_EQ(eraf->TEST_GetNumOverflowWorkarounds(), 0);
+    ASSERT_EQ(eraf_data->TEST_GetNumOverflowWorkarounds(), 0);
+  } else {
+    ASSERT_GE(eraf->TEST_GetNumOverflowWorkarounds(), 0);
+    ASSERT_GE(eraf_data->TEST_GetNumOverflowWorkarounds(), 0);
+  }
 }
 
 TEST_P(EncryptedSSTableTest, CounterOverflow10MKeys) {
