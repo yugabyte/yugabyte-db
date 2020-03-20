@@ -1,8 +1,9 @@
 ---
-title: YCSB
+title: Benchmark YugabyteDB YSQL performance using YCSB
+headerTitle: YCSB
 linkTitle: YCSB
-description: YCSB
-headcontent: Benchmark YugabyteDB using YCSB.
+description: Benchmark YugabyteDB YSQL performance using YCSB.
+headcontent: Benchmark YugabyteDB YSQL performance using YCSB.
 menu:
   latest:
     identifier: ycsb-1-ysql

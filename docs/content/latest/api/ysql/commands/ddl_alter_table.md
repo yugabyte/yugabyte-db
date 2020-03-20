@@ -1,8 +1,9 @@
 ---
-title: ALTER TABLE
+title: ALTER TABLE statement [YSQL]
+headerTitle: ALTER TABLE
 linkTitle: ALTER TABLE
 summary: Alter a table in a database
-description: ALTER TABLE
+description: Use the `ALTER TABLE` statement to change the definition of an existing table.
 menu:
   latest:
     identifier: api-ysql-commands-alter-table

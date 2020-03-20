@@ -1,7 +1,8 @@
 ---
-title: Build a Go application
+title: Use Go to build a YugabyteDB application
+headerTitle: Build a Go application
 linkTitle: Build a Go application
-description: Build a Go application
+description: Follow this tutorial to build an e-commerce YugabyteDB application that uses Go and GORM.
 menu:
   latest:
     parent: build-apps

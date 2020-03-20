@@ -1,8 +1,8 @@
 ---
-title: CREATE ROLE
+title: CREATE ROLE statement [YSQL]
 linkTitle: CREATE ROLE
-description: CREATE ROLE adds a new role to a YugabyteDB database cluster. A role is an entity that can own database objects and have database privileges.
 summary: Roles (users and groups)
+description: Use the CREATE ROLE statement to add a new role to a YugabyteDB database cluster.
 menu:
   latest:
     identifier: api-ysql-commands-create-role
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`CREATE ROLE` adds a new role to a YugabyteDB database cluster. A role is an entity that can own database objects and have database privileges.
+Use the `CREATE ROLE` statement to add a new role to a YugabyteDB database cluster. A role is an entity that can own database objects and have database privileges.
 A role can be a user or a group, depending on how it is used. A role with atttribute `LOGIN` can be considered as a "user".
 You must have `CREATEROLE` privilege or be a database superuser to use this command.
 

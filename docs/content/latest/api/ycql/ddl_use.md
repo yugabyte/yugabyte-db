@@ -1,7 +1,9 @@
 ---
-title: USE
+title: USE statement [YCQL]
+headerTitle: USE
+linkTitle: USE
 summary: Create a new database
-description: USE
+description: Use the USE statement to specify a default keyspace for the current client session.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `USE` keyspace statement specifies a default keyspace for the current client session. When a database object (such as [table](../ddl_create_table) or [type](../ddl_create_type)) name does not identify a keyspace, this default keyspace is used.
+Use the `USE` statement to specify a default keyspace for the current client session. When a database object (such as [table](../ddl_create_table) or [type](../ddl_create_type)) name does not identify a keyspace, this default keyspace is used.
 
 ## Syntax
 

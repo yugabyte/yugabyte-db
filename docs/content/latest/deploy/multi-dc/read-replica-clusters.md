@@ -1,7 +1,8 @@
 ---
-title: Read replica clusters
+title: Read replica clusters using YugabyteDB
+headerTitle: Read replica clusters
 linkTitle: Read replica clusters
-description: Read replica clusters
+description: Deploy a read replica cluster to asynchronously replicate data from the primary cluster and guarantee timeline consistency.
 menu:
   latest:
     parent: multi-dc

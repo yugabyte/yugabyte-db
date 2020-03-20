@@ -1,8 +1,9 @@
 ---
 title: YSQL authentication
+headerTitle: YSQL authentication
 linkTitle: YSQL authentication
-description: Authentication
-headcontent: Identify that your YSQL users are who they say they are
+description: Identify that your YSQL users are who they say they are.
+headcontent: Identify that your YSQL users are who they say they are.
 image: /images/section_icons/secure/authentication.png
 menu:
   latest:

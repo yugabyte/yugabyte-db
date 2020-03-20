@@ -1,7 +1,8 @@
 ---
-title: PostgreSQL
+title: Compare PostgreSQL with YugabyteDB
+headerTitle: PostgreSQL
 linkTitle: PostgreSQL
-description: PostgreSQL
+description: Compare YugabyteDB, with clusters and distributed SQL, to PostgreSQL.
 aliases:
   - /comparisons/postgresql/
 menu:
@@ -30,7 +31,6 @@ Most distributed databases do a quorum read to serve more consistent data but in
 
 PostgreSQL can be thought of as a single-shard database which means it supports for single row (e.g. an INSERT statement) and single shard transactions (e.g. database operations bounded by BEGIN TRANSACTION and END TRANSACTION). The notion of multiple shards is not applicable to PostgreSQL and as a result, multi-shard transactions too are not applicable. On the other hand, YugabyteDB takes inspiration from Google Spanner, Google’s globally distributed database, and supports all the 3 flavors of transactions. As described in “Yes We Can! Distributed ACID Transactions with High Performance”, it is designed to ensure the single row/shard transactions can be served with lowest latency possible while the distributed transactions can be served with absolute correctness.
 
-
 ## Relevant blog posts
 
 The following posts cover some more details around how YugabyteDB differs from PostgreSQL.
@@ -39,4 +39,3 @@ The following posts cover some more details around how YugabyteDB differs from P
 - [YugabyteDB High Availability & Transactions for PostgreSQL & MongoDB Developers](https://blog.yugabyte.com/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
 - [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
 - [Distributed PostgreSQL on a Google Spanner Architecture – Storage Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)
-

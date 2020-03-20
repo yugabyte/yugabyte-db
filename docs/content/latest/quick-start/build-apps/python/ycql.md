@@ -1,7 +1,8 @@
 ---
-title: Build a Python App
-linkTitle: Build a Python App
-description: Build a Python App
+title: Use Python to build a YugabyteDB application
+headerTitle: Build a Python app
+linkTitle: Build a Python app
+description: Use Python and YCQL to build a YugabyteDB application.
 menu:
   latest:
     parent: build-apps

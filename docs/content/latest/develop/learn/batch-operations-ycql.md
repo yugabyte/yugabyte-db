@@ -1,8 +1,8 @@
 ---
-title: 6. Batch operations
-linkTitle: 6. Batch operations
+title: Batch operations in YCQL
 headerTitle: Batch operations
-description: Batch operations in YCQL is the ability to send a set of operations as one operation (RPC call) to the database instead of sending the operations one by one as individual RPC calls.
+linkTitle: 6. Batch operations
+description: Learn how batch operations in YCQL send a set of operations as a single RPC call rather than one by one as individual RPC calls.
 menu:
   latest:
     identifier: batch-operations-1-ycql

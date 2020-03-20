@@ -1,8 +1,9 @@
 ---
-title: SET CONSTRAINTS
+title: SET CONSTRAINTS statement [YSQL]
+headerTitle: SET CONSTRAINTS
 linkTitle: SET CONSTRAINTS
 summary: SET CONSTRAINTS
-description: SET CONSTRAINTS
+description: Use the `SET CONSTRAINTS` statement to set the timing of constraint checking within the current transaction.
 menu:
   latest:
     identifier: api-ysql-commands-set-constraints

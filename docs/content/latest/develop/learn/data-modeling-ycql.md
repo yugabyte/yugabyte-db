@@ -1,8 +1,8 @@
 ---
-title: 2. Data modeling
-linkTitle: 2. Data modeling
+title: Data modeling in YCQL
 headerTitle: Data modeling
-description: Data modeling in YCQL is a process that involves identifying the entities (items to be stored) and the relationships between entities.
+linkTitle: 2. Data modeling
+description: Learn data modeling in YCQL and how to identify the patterns used to access data and the types of queries to be performed.
 aliases:
   - /develop/learn/data-modeling/
   - /latest/explore/transactional/secondary-indexes/

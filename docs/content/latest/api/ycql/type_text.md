@@ -1,8 +1,9 @@
 ---
-title: TEXT
+title: TEXT data type [YCQL]
 summary: String of Unicode characters
 headerTitle: TEXT type
-description: TEXT data type is used to specify data of a string of unicode characters.
+linkTitle: TEXT
+description: Use the TEXT data type to specify data of a string of Unicode characters.
 menu:
   latest:
     parent: api-cassandra
@@ -16,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`TEXT` data type is used to specify data of a string of unicode characters.
+Use the `TEXT` data type to specify data of a string of Unicode characters.
 
 ## Syntax
 
