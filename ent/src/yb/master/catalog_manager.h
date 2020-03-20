@@ -47,8 +47,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                   IsSnapshotOpDoneResponsePB* resp);
 
   // API to list all available snapshots.
-  CHECKED_STATUS ListSnapshots(const ListSnapshotsRequestPB*,
+  CHECKED_STATUS ListSnapshots(const ListSnapshotsRequestPB* req,
                                ListSnapshotsResponsePB* resp);
+
+  CHECKED_STATUS ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
+                                          ListSnapshotRestorationsResponsePB* resp);
 
   // API to restore a snapshot.
   CHECKED_STATUS RestoreSnapshot(const RestoreSnapshotRequestPB* req,
@@ -164,6 +167,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id);
 
+  Result<TxnSnapshotRestorationId> DoRestoreSnapshot(const std::string& snapshot_id);
+
   // Per table structure for external cluster snapshot importing to this cluster.
   // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
   struct ExternalTableSnapshotData {
@@ -194,16 +199,16 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS ImportTabletEntry(
       const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
 
-  // Returns tablet infos for specified tablet ids, for unknown id corresponding entry
-  // will be nullptr.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id,
-                                       HybridTime snapshot_hybrid_time) override;
+                                       HybridTime snapshot_hybrid_time,
+                                       TabletSnapshotOperationCallback callback) override;
 
   void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                        const std::string& snapshot_id);
+                                        const std::string& snapshot_id,
+                                        TabletSnapshotOperationCallback callback) override;
 
   void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id);
@@ -272,9 +277,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS CreateNonTransactionAwareSnapshot(
       const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc);
 
+  Result<bool> IsNonTransactionAwareSnapshotDone(const SnapshotId& snapshot_id);
+
+  CHECKED_STATUS RestoreNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
+
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo> > SnapshotInfoMap;
-  SnapshotInfoMap snapshot_ids_map_;
+  SnapshotInfoMap non_txn_snapshot_ids_map_;
   SnapshotId current_snapshot_id_;
 
   // mutex on should_send_universe_key_registry_mutex_.

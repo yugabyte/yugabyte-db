@@ -38,6 +38,15 @@ Result<boost::uuids::uuid> FullyDecodeUuid(const Slice& slice) {
   return DoDecodeUuid(slice, /* check_exact_size= */ true);
 }
 
+boost::uuids::uuid TryFullyDecodeUuid(const Slice& slice) {
+  if (slice.size() != boost::uuids::uuid::static_size()) {
+    return boost::uuids::nil_uuid();
+  }
+  boost::uuids::uuid id;
+  memcpy(id.data, slice.data(), boost::uuids::uuid::static_size());
+  return id;
+}
+
 Result<boost::uuids::uuid> DecodeUuid(Slice* slice) {
   auto id = VERIFY_RESULT(DoDecodeUuid(*slice, /* check_exact_size= */ false));
   slice->remove_prefix(boost::uuids::uuid::static_size());

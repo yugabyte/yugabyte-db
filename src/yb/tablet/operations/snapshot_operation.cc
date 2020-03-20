@@ -4,6 +4,7 @@
 
 #include "yb/tablet/operations/snapshot_operation.h"
 
+#include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 #include "yb/rpc/rpc_context.h"
@@ -53,10 +54,18 @@ void SnapshotOperationState::ReleaseSchemaLock() {
 }
 
 std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_dir) const {
-  if (request_->has_snapshot_dir_override()) {
+  if (!request_->snapshot_dir_override().empty()) {
     return request_->snapshot_dir_override();
   }
-  return JoinPathSegments(top_snapshots_dir, request_->snapshot_id());
+  std::string snapshot_id_str;
+  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(request_->snapshot_id());
+  if (!txn_snapshot_id.IsNil()) {
+    snapshot_id_str = txn_snapshot_id.ToString();
+  } else {
+    snapshot_id_str = request_->snapshot_id();
+  }
+
+  return JoinPathSegments(top_snapshots_dir, snapshot_id_str);
 }
 
 tserver::TabletSnapshotOpRequestPB* SnapshotOperationState::AllocateRequest() {
@@ -120,6 +129,8 @@ Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_sta
     case TabletSnapshotOpRequestPB::RESTORE: FALLTHROUGH_INTENDED;
     case TabletSnapshotOpRequestPB::DELETE:
       return state()->tablet()->snapshots().Replicated(state());
+    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
+    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
     case TabletSnapshotOpRequestPB::UNKNOWN:
       break;
   }

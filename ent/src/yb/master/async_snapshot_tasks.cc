@@ -85,43 +85,49 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
             << tablet_->ToString();
   }
 
-  if (state() == MonitoredTaskState::kComplete) {
-    bool handled = false;
-    switch (operation_) {
-      case tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET: {
-        handled = true;
-        // TODO: this class should not know CatalogManager API,
-        //       remove circular dependency between classes.
-        master_->catalog_manager()->HandleCreateTabletSnapshotResponse(
-            tablet_.get(), resp_.has_error());
-        break;
-      }
-      case tserver::TabletSnapshotOpRequestPB::RESTORE: {
-        handled = true;
-        // TODO: this class should not know CatalogManager API,
-        //       remove circular dependency between classes.
-        master_->catalog_manager()->HandleRestoreTabletSnapshotResponse(
-            tablet_.get(), resp_.has_error());
-        break;
-      }
-      case tserver::TabletSnapshotOpRequestPB::DELETE: {
-        handled = true;
-        // TODO: this class should not know CatalogManager API,
-        //       remove circular dependency between classes.
-        master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
-            snapshot_id_, tablet_.get(), resp_.has_error());
-        break;
-      }
-      case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
-      case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-    }
-
-    if (!handled) {
-      FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, operation_);
-    }
-  } else {
+  if (state() != MonitoredTaskState::kComplete) {
     VLOG(1) << "TabletSnapshotOp task is not completed";
+    return;
   }
+
+  if (callback_) {
+    if (resp_.has_error()) {
+      callback_(StatusFromPB(resp_.error().status()));
+    } else {
+      callback_(const_cast<const tserver::TabletSnapshotOpResponsePB&>(resp_));
+    }
+    return;
+  }
+
+  switch (operation_) {
+    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET: {
+      // TODO: this class should not know CatalogManager API,
+      //       remove circular dependency between classes.
+      master_->catalog_manager()->HandleCreateTabletSnapshotResponse(
+          tablet_.get(), resp_.has_error());
+      return;
+    }
+    case tserver::TabletSnapshotOpRequestPB::RESTORE: {
+      // TODO: this class should not know CatalogManager API,
+      //       remove circular dependency between classes.
+      master_->catalog_manager()->HandleRestoreTabletSnapshotResponse(
+          tablet_.get(), resp_.has_error());
+      return;
+    }
+    case tserver::TabletSnapshotOpRequestPB::DELETE: {
+      // TODO: this class should not know CatalogManager API,
+      //       remove circular dependency between classes.
+      master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
+          snapshot_id_, tablet_.get(), resp_.has_error());
+      return;
+    }
+    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
+    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
+    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
+    case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
+  }
+
+  FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, operation_);
 }
 
 bool AsyncTabletSnapshotOp::SendRequest(int attempt) {

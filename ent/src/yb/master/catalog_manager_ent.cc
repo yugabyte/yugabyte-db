@@ -81,7 +81,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
   explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
   Status Visit(const SnapshotId& ss_id, const SysSnapshotEntryPB& metadata) override {
-    CHECK(!ContainsKey(catalog_manager_->snapshot_ids_map_, ss_id))
+    CHECK(!ContainsKey(catalog_manager_->non_txn_snapshot_ids_map_, ss_id))
       << "Snapshot already exists: " << ss_id;
 
     // Setup the snapshot info.
@@ -90,7 +90,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
     l->mutable_data()->pb.CopyFrom(metadata);
 
     // Add the snapshot to the IDs map (if the snapshot is not deleted).
-    catalog_manager_->snapshot_ids_map_[ss_id] = ss;
+    catalog_manager_->non_txn_snapshot_ids_map_[ss_id] = ss;
 
     LOG(INFO) << "Loaded metadata for snapshot (id=" << ss_id << "): "
               << ss->ToString() << ": " << metadata.ShortDebugString();
@@ -219,7 +219,7 @@ Status CatalogManager::RunLoaders(int64_t term) {
   RETURN_NOT_OK(super::RunLoaders(term));
 
   // Clear the snapshots.
-  snapshot_ids_map_.clear();
+  non_txn_snapshot_ids_map_.clear();
 
   // Clear CDC stream map.
   cdc_stream_map_.clear();
@@ -322,9 +322,8 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
     TRACE("Acquired catalog manager lock");
 
     // Verify that the snapshot does not exist.
-    DCHECK(nullptr == FindPtrOrNull(snapshot_ids_map_, snapshot_id));
-    snapshot_ids_map_[snapshot_id] = snapshot;
-
+    auto inserted = non_txn_snapshot_ids_map_.emplace(snapshot_id, snapshot).second;
+    DSCHECK(inserted, IllegalState, Format("Snapshot already exists: $0", snapshot_id));
     current_snapshot_id_ = snapshot_id;
   }
 
@@ -336,7 +335,8 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
     LOG(INFO) << "Sending CreateTabletSnapshot to tablet: " << tablet->ToString();
 
     // Send Create Tablet Snapshot request to each tablet leader.
-    SendCreateTabletSnapshotRequest(tablet, snapshot_id, HybridTime::kInvalid);
+    SendCreateTabletSnapshotRequest(
+        tablet, snapshot_id, HybridTime::kInvalid, TabletSnapshotOperationCallback());
   }
 
   resp->set_snapshot_id(snapshot_id);
@@ -352,9 +352,10 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
 
   request->set_snapshot_hybrid_time(master_->clock()->MaxGlobalNow().ToUint64());
   request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
-  auto snapshot_id = Uuid::Generate();
-  request->set_snapshot_id(snapshot_id.data, snapshot_id.size());
+  auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
 
+  SysRowEntries entries;
   for (const auto& table_id : req.tables()) {
     // TODO(txn_snapshot) use single lock to resolve all tables to tablets
     auto table_description = DescribeTable(table_id);
@@ -362,10 +363,15 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
       return SetupError(resp->mutable_error(), table_description.status());
     }
 
+    SnapshotInfo::AddEntries(*table_description, entries.mutable_entries(),
+                             /* tablet_infos= */ nullptr);
+
     for (const auto& tablet : table_description->tablet_infos) {
       request->add_tablet_id(tablet->id());
     }
   }
+
+  request->mutable_extra_data()->PackFrom(entries);
 
   operation_state->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(latch, resp));
@@ -375,6 +381,8 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   if (!latch->WaitUntil(rpc->GetClientDeadline())) {
     return STATUS(TimedOut, "Replication timed out");
   }
+  resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+
   return Status::OK();
 }
 
@@ -390,7 +398,7 @@ Status CatalogManager::IsSnapshotOpDone(const IsSnapshotOpDoneRequestPB* req,
     std::lock_guard<LockType> manager_l(lock_);
     TRACE("Acquired catalog manager lock");
 
-    snapshot = FindPtrOrNull(snapshot_ids_map_, req->snapshot_id());
+    snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, req->snapshot_id());
     if (snapshot == nullptr) {
       const Status s = STATUS(NotFound, "The snapshot does not exist", req->snapshot_id());
       return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
@@ -427,38 +435,68 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
                                      ListSnapshotsResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
 
-  std::shared_lock<LockType> l(lock_);
-  TRACE("Acquired catalog manager lock");
+  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
+  {
+    std::shared_lock<LockType> l(lock_);
+    TRACE("Acquired catalog manager lock");
 
-  if (!current_snapshot_id_.empty()) {
-    resp->set_current_snapshot_id(current_snapshot_id_);
-  }
-
-  auto setup_snapshot_pb_lambda = [resp](scoped_refptr<SnapshotInfo> snapshot_info) {
-    auto snapshot_lock = snapshot_info->LockForRead();
-
-    SnapshotInfoPB* const snapshot = resp->add_snapshots();
-    snapshot->set_id(snapshot_info->id());
-    *snapshot->mutable_entry() = snapshot_info->metadata().state().pb;
-  };
-
-  if (req->has_snapshot_id()) {
-    TRACE("Looking up snapshot");
-    scoped_refptr<SnapshotInfo> snapshot_info =
-        FindPtrOrNull(snapshot_ids_map_, req->snapshot_id());
-    if (snapshot_info == nullptr) {
-      const Status s = STATUS(InvalidArgument, "Could not find snapshot", req->snapshot_id());
-      return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+    if (!current_snapshot_id_.empty()) {
+      resp->set_current_snapshot_id(current_snapshot_id_);
     }
 
-    setup_snapshot_pb_lambda(snapshot_info);
-  } else {
-    for (const SnapshotInfoMap::value_type& entry : snapshot_ids_map_) {
-      setup_snapshot_pb_lambda(entry.second);
+    auto setup_snapshot_pb_lambda = [resp](scoped_refptr<SnapshotInfo> snapshot_info) {
+      auto snapshot_lock = snapshot_info->LockForRead();
+
+      SnapshotInfoPB* const snapshot = resp->add_snapshots();
+      snapshot->set_id(snapshot_info->id());
+      *snapshot->mutable_entry() = snapshot_info->metadata().state().pb;
+    };
+
+    if (req->has_snapshot_id()) {
+      if (txn_snapshot_id.IsNil()) {
+        TRACE("Looking up snapshot");
+        scoped_refptr<SnapshotInfo> snapshot_info =
+            FindPtrOrNull(non_txn_snapshot_ids_map_, req->snapshot_id());
+        if (snapshot_info == nullptr) {
+          const Status s = STATUS(InvalidArgument, "Could not find snapshot", req->snapshot_id());
+          return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+        }
+
+        setup_snapshot_pb_lambda(snapshot_info);
+      }
+    } else {
+      for (const SnapshotInfoMap::value_type& entry : non_txn_snapshot_ids_map_) {
+        setup_snapshot_pb_lambda(entry.second);
+      }
     }
   }
 
+  auto status = snapshot_coordinator_.ListSnapshots(txn_snapshot_id, resp);
+  if (!status.ok()) {
+    return SetupError(resp->mutable_error(), status);
+  }
   return Status::OK();
+}
+
+Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
+                                                ListSnapshotRestorationsResponsePB* resp) {
+  RETURN_NOT_OK(CheckOnline());
+
+  TxnSnapshotRestorationId restoration_id = TxnSnapshotRestorationId::Nil();
+  if (!req->restoration_id().empty()) {
+    restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(req->restoration_id()));
+  }
+
+  return snapshot_coordinator_.ListRestorations(restoration_id, resp);
+}
+
+Result<TxnSnapshotRestorationId> CatalogManager::DoRestoreSnapshot(const std::string& snapshot_id) {
+  if (snapshot_id.length() != TxnSnapshotId::StaticSize()) {
+    RETURN_NOT_OK(RestoreNonTransactionAwareSnapshot(snapshot_id));
+    return TxnSnapshotRestorationId::Nil();
+  }
+
+  return snapshot_coordinator_.Restore(VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_id)));
 }
 
 Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
@@ -466,33 +504,49 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
   LOG(INFO) << "Servicing RestoreSnapshot request: " << req->ShortDebugString();
   RETURN_NOT_OK(CheckOnline());
 
+  auto result = DoRestoreSnapshot(req->snapshot_id());
+
+  if (!result.ok()) {
+    return SetupError(resp->mutable_error(), result.status());
+  }
+
+  if (!result->IsNil()) {
+    resp->set_restoration_id(result->data(), result->size());
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::RestoreNonTransactionAwareSnapshot(const std::string& snapshot_id) {
   std::lock_guard<LockType> l(lock_);
   TRACE("Acquired catalog manager lock");
 
   if (!current_snapshot_id_.empty()) {
-    const Status s = STATUS(IllegalState, Substitute(
-        "Current snapshot id: $0. Parallel snapshot operations are not supported: $1",
-        current_snapshot_id_, req->ShortDebugString()));
-    return SetupError(resp->mutable_error(), MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION, s);
+    return STATUS(
+        IllegalState,
+        Format(
+            "Current snapshot id: $0. Parallel snapshot operations are not supported: $1",
+            current_snapshot_id_, snapshot_id),
+        MasterError(MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION));
   }
 
   TRACE("Looking up snapshot");
-  scoped_refptr<SnapshotInfo> snapshot = FindPtrOrNull(snapshot_ids_map_, req->snapshot_id());
+  scoped_refptr<SnapshotInfo> snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, snapshot_id);
   if (snapshot == nullptr) {
-    const Status s = STATUS(InvalidArgument, "Could not find snapshot", req->snapshot_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+    return STATUS(InvalidArgument, "Could not find snapshot", snapshot_id,
+                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
   auto snapshot_lock = snapshot->LockForWrite();
 
   if (snapshot_lock->data().started_deleting()) {
-    Status s = STATUS(NotFound, "The snapshot was deleted", req->snapshot_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+    return STATUS(NotFound, "The snapshot was deleted", snapshot_id,
+                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
   if (!snapshot_lock->data().is_complete()) {
-    Status s = STATUS(IllegalState, "The snapshot state is not complete", req->snapshot_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_IS_NOT_READY, s);
+    return STATUS(IllegalState, "The snapshot state is not complete", snapshot_id,
+                  MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
   }
 
   TRACE("Updating snapshot metadata on disk");
@@ -506,22 +560,17 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
   Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
-                                     s.ToString()));
+    s = s.CloneAndPrepend("An error occurred while updating sys tables");
     LOG(WARNING) << s.ToString();
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    return CheckIfNoLongerLeader(s);
   }
 
   // CataloManager lock 'lock_' is still locked here.
-  current_snapshot_id_ = req->snapshot_id();
+  current_snapshot_id_ = snapshot_id;
 
   // Restore all entries.
   for (const SysRowEntry& entry : snapshot_pb.entries()) {
-    s = RestoreEntry(entry, req->snapshot_id());
-
-    if (!s.ok()) {
-      return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
-    }
+    RETURN_NOT_OK(RestoreEntry(entry, snapshot_id));
   }
 
   // Commit in memory snapshot data descriptor.
@@ -576,7 +625,7 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 
         LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
         // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        SendRestoreTabletSnapshotRequest(tablet, snapshot_id);
+        SendRestoreTabletSnapshotRequest(tablet, snapshot_id, TabletSnapshotOperationCallback());
       }
       break;
     }
@@ -597,7 +646,8 @@ Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
   TRACE("Acquired catalog manager lock");
 
   TRACE("Looking up snapshot");
-  scoped_refptr<SnapshotInfo> snapshot = FindPtrOrNull(snapshot_ids_map_, req->snapshot_id());
+  scoped_refptr<SnapshotInfo> snapshot = FindPtrOrNull(
+      non_txn_snapshot_ids_map_, req->snapshot_id());
   if (snapshot == nullptr) {
     const Status s = STATUS(InvalidArgument, "Could not find snapshot", req->snapshot_id());
     return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
@@ -960,20 +1010,24 @@ TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
 
 void CatalogManager::SendCreateTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-    HybridTime snapshot_hybrid_time) {
+    HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, worker_pool_.get(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
   call->SetSnapshotHybridTime(snapshot_hybrid_time);
+  call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(call->Run(), "Failed to send create snapshot request");
 }
 
-void CatalogManager::SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                                      const string& snapshot_id) {
+void CatalogManager::SendRestoreTabletSnapshotRequest(
+    const scoped_refptr<TabletInfo>& tablet,
+    const string& snapshot_id,
+    TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, worker_pool_.get(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::RESTORE);
+  call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(call->Run(), "Failed to send restore snapshot request");
 }
@@ -1004,7 +1058,7 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
       return;
     }
 
-    snapshot = FindPtrOrNull(snapshot_ids_map_, current_snapshot_id_);
+    snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, current_snapshot_id_);
 
     if (!snapshot) {
       LOG(WARNING) << "Snapshot not found: " << current_snapshot_id_;
@@ -1083,7 +1137,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
       return;
     }
 
-    snapshot = FindPtrOrNull(snapshot_ids_map_, current_snapshot_id_);
+    snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, current_snapshot_id_);
 
     if (!snapshot) {
       LOG(WARNING) << "Restoring snapshot not found: " << current_snapshot_id_;
@@ -1157,7 +1211,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     std::lock_guard<LockType> manager_l(lock_);
     TRACE("Acquired catalog manager lock");
 
-    snapshot = FindPtrOrNull(snapshot_ids_map_, snapshot_id);
+    snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, snapshot_id);
 
     if (!snapshot) {
       LOG(WARNING) << "Snapshot not found: " << snapshot_id;
@@ -1205,7 +1259,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
 
     // Remove it from the maps.
     TRACE("Removing from maps");
-    if (snapshot_ids_map_.erase(snapshot_id) < 1) {
+    if (non_txn_snapshot_ids_map_.erase(snapshot_id) < 1) {
       LOG(WARNING) << "Could not remove snapshot " << snapshot_id << " from map";
     }
   } else if (error) {
@@ -2807,78 +2861,5 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
 }
 
 } // namespace enterprise
-
-////////////////////////////////////////////////////////////
-// SnapshotInfo
-////////////////////////////////////////////////////////////
-
-SnapshotInfo::SnapshotInfo(SnapshotId id) : snapshot_id_(std::move(id)) {}
-
-SysSnapshotEntryPB::State SnapshotInfo::state() const {
-  auto l = LockForRead();
-  return l->data().state();
-}
-
-const std::string& SnapshotInfo::state_name() const {
-  auto l = LockForRead();
-  return l->data().state_name();
-}
-
-std::string SnapshotInfo::ToString() const {
-  return Substitute("[id=$0]", snapshot_id_);
-}
-
-bool SnapshotInfo::IsCreateInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_creating();
-}
-
-bool SnapshotInfo::IsRestoreInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_restoring();
-}
-
-bool SnapshotInfo::IsDeleteInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_deleting();
-}
-
-Status SnapshotInfo::AddEntries(const TableDescription& table_description) {
-  // Note: SysSnapshotEntryPB includes PBs for stored (1) namespaces (2) tables (3) tablets.
-  SysSnapshotEntryPB& snapshot_pb = mutable_metadata()->mutable_dirty()->pb;
-
-  // Add namespace entry.
-  SysRowEntry* entry = snapshot_pb.add_entries();
-  {
-    TRACE("Locking namespace");
-    auto l = table_description.namespace_info->LockForRead();
-    FillInfoEntry(*table_description.namespace_info, entry);
-  }
-
-  // Add table entry.
-  entry = snapshot_pb.add_entries();
-  {
-    TRACE("Locking table");
-    auto l = table_description.table_info->LockForRead();
-    FillInfoEntry(*table_description.table_info, entry);
-  }
-
-  // Add tablet entries.
-  for (const scoped_refptr<TabletInfo>& tablet : table_description.tablet_infos) {
-    SysSnapshotEntryPB_TabletSnapshotPB* const tablet_info = snapshot_pb.add_tablet_snapshots();
-    entry = snapshot_pb.add_entries();
-
-    TRACE("Locking tablet");
-    auto l = tablet->LockForRead();
-
-    tablet_info->set_id(tablet->id());
-    tablet_info->set_state(SysSnapshotEntryPB::CREATING);
-
-    FillInfoEntry(*tablet, entry);
-  }
-
-  return Status::OK();
-}
-
 }  // namespace master
 }  // namespace yb

@@ -40,6 +40,8 @@ class ChangeEncryptionInfoRequestPB;
 class ChangeEncryptionInfoResponsePB;
 class IsEncryptionEnabledRequestPB;
 class IsEncryptionEnabledResponsePB;
+class ListSnapshotsResponsePB;
+class ListSnapshotRestorationsResponsePB;
 class TabletInfo;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
