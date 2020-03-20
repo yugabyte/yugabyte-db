@@ -30,6 +30,14 @@ showAsideToc: true
 </ul>
 
 
+## Use TTL for expiring older records
+YCQL supports automatic expiry of data using the [`TTL feature`](../api/ycql/ddl_create_table.md#use-table-property-to-define-the-default-expiration-time-for-rows). 
+You can set a retention policy for data at table/row/column level and the older data is automatically purged from the DB.
+
+{{< note title="Note" >}}
+TTL doesn't work with transactional tables.
+{{< /note >}}
+
 ## Use YugabyteDB drivers
 Use YugabyteDB specific [client drivers](../../quick-start/build-apps/) because they are cluster and partition aware and support `jsonb` columns.
 
