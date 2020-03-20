@@ -13,14 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `jsonb`) from a JSON _object_.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        jsonb
-return value       SETOF (text, jsonb)
+input value:       jsonb
+return value:      SETOF (text, jsonb)
 ```
 
-The functions in this pair require that the supplied JSON value is an _object_. They return a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `jsonb`). Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
+Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
 
 ```postgresql
 create type t as (k text, v jsonb);

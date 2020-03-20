@@ -284,6 +284,16 @@ class YBClient {
                                   YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
 
+  // Flush or compact the specified table.
+  // TODO(jason): it would be nice to have this take a list of table_ids.
+  CHECKED_STATUS FlushTable(const std::string& table_id,
+                            int timeout_secs,
+                            bool is_compaction);
+  // TODO(jason): it would be nice to have this take a list of table_names.
+  CHECKED_STATUS FlushTable(const YBTableName& table_name,
+                            int timeout_secs,
+                            bool is_compaction);
+
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const string id);
 

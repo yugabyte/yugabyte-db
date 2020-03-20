@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include <memory>
+#include <boost/optional.hpp>
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_session.h"
@@ -31,7 +32,6 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_error.h"
-#include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_error.h"
@@ -107,41 +107,46 @@ string GetStatusStringSet(const client::CollectedErrors& errors) {
   return RangeToString(status_strings.begin(), status_strings.end());
 }
 
+bool IsHomogeneousErrors(const client::CollectedErrors& errors) {
+  if (errors.size() < 2) {
+    return true;
+  }
+  auto i = errors.begin();
+  const auto& status = (**i).status();
+  const auto codes = status.ErrorCodesSlice();
+  for (++i; i != errors.end(); ++i) {
+    const auto& s = (**i).status();
+    if (s.code() != status.code() || codes != s.ErrorCodesSlice()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+boost::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
+  const uint8_t* err_data = status.ErrorData(PgsqlErrorTag::kCategory);
+  if (err_data) {
+    return PgsqlErrorTag::Decode(err_data);
+  }
+  return boost::none;
+}
+
 // Get a common Postgres error code from the status and all errors, and append it to a previous
 // result.
 // If any of those have different conflicting error codes, previous result is returned as-is.
-Status AppendPsqlErrorCode(const Status& prev_result,
-                           const Status& status,
+Status AppendPsqlErrorCode(const Status& status,
                            const client::CollectedErrors& errors) {
-  auto DecodeError = [](const Status& s) {
-    boost::optional<YBPgErrorCode> err_code_option;
-    const uint8_t* err_data = s.ErrorData(PgsqlErrorTag::kCategory);
-    if (err_data) {
-      err_code_option = PgsqlErrorTag::Decode(err_data);
-    }
-    return err_code_option;
-  };
-
-  auto err_code_option = DecodeError(status);
-
-  for (const auto& error : errors) {
-    auto err_code_option_2 = DecodeError(error->status());
-    if (err_code_option_2) {
-      if (!err_code_option) {
-        // Replacing no code with a given error code.
-        err_code_option = err_code_option_2;
-      } else if (err_code_option != err_code_option_2) {
-        // We have multiple conflicting error codes, don't set any.
-        return prev_result;
-      }
+  boost::optional<YBPgErrorCode> common_psql_error =  boost::make_optional(false, YBPgErrorCode());
+  for(const auto& error : errors) {
+    const auto psql_error = PsqlErrorCode(error->status());
+    if (!common_psql_error) {
+      common_psql_error = psql_error;
+    } else if (psql_error && common_psql_error != psql_error) {
+      common_psql_error = boost::none;
+      break;
     }
   }
-
-  if (err_code_option) {
-    return prev_result.CloneAndAddErrorCode(PgsqlError(*err_code_option));
-  } else {
-    return prev_result;
-  }
+  return common_psql_error ? status.CloneAndAddErrorCode(PgsqlError(*common_psql_error)) : status;
 }
 
 // Given a set of errors from operations, this function attempts to combine them into one status
@@ -154,8 +159,17 @@ Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
       // TODO: move away from string comparison here and use a more specific status than IOError.
       // See https://github.com/YugaByte/yugabyte-db/issues/702
       status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
-      errors.size() == 1) {
-    return errors.front()->status();
+      IsHomogeneousErrors(errors)) {
+    const auto& result = errors.front()->status();
+    if (errors.size() == 1) {
+      return result;
+    }
+    return Status(result.code(),
+                  __FILE__,
+                  __LINE__,
+                  "Multiple homogeneous errors: " + GetStatusStringSet(errors),
+                  result.ErrorCodesSlice(),
+                  DupFileName::kFalse);
   }
 
   Status result =
@@ -163,9 +177,7 @@ Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
     ? STATUS(InternalError, GetStatusStringSet(errors))
     : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
 
-  result = AppendPsqlErrorCode(result, status, errors);
-
-  return result;
+  return AppendPsqlErrorCode(result, errors);
 }
 
 docdb::PrimitiveValue NullValue(ColumnSchema::SortingType sorting) {

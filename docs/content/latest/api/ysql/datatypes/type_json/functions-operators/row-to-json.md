@@ -12,15 +12,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This has one variant that returns a `json` value. Here is the signature:
+**Purpose:** create a JSON _object_ from a SQL _record_.
+
+
+**Signature:**
 
 ```
-input value        record
-pretty             boolean
-return value       json
+input value:       record
+pretty:            boolean (optional)
+return value:      json
 ```
 
-The first (mandatory) formal parameter is any SQL `record` whose fields might be compound values. The second formal parameter is optional. When it is _true_, line feeds are added between fields. Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
+**Notes:** this has only the `json` variant. The first (mandatory) formal parameter is any SQL `record` whose fields might be compound values. The second formal parameter is optional. When it is _true_, line feeds are added between fields. Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
 
 ```postgresql
 create type t as (a int, b text);

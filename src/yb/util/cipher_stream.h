@@ -59,6 +59,8 @@ class BlockAccessCipherStream {
       EncryptionOverflowWorkaround counter_overflow_workaround =
           EncryptionOverflowWorkaround::kFalse);
 
+  bool UseOpensslCompatibleCounterOverflow();
+
  private:
   CHECKED_STATUS EncryptByBlock(
       uint64_t block_index,
@@ -66,6 +68,9 @@ class BlockAccessCipherStream {
       void* output,
       EncryptionOverflowWorkaround counter_overflow_workaround =
           EncryptionOverflowWorkaround::kFalse);
+
+  void IncrementCounter(const uint64_t start_idx, uint8_t* iv,
+                        EncryptionOverflowWorkaround counter_overflow_workaround);
 
   EncryptionParamsPtr encryption_params_;
   std::unique_ptr<EVP_CIPHER_CTX, std::function<void(EVP_CIPHER_CTX*)>> encryption_context_;

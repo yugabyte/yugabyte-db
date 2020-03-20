@@ -22,10 +22,11 @@
 
 using namespace std::literals;
 
-DECLARE_int32(TEST_write_rejection_percentage);
-DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_transaction_sealing);
+DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+DECLARE_int32(TEST_write_rejection_percentage);
+DECLARE_int64(transaction_rpc_timeout_ms);
 
 namespace yb {
 namespace client {
@@ -50,7 +51,7 @@ void SealTxnTest::TestNumBatches(bool restart) {
 
   size_t prev_num_non_empty = 0;
   for (auto op_type : {WriteOpType::INSERT, WriteOpType::UPDATE}) {
-    WriteRows(session, /* transaction= */ 0, op_type, Flush::kFalse);
+    ASSERT_OK(WriteRows(session, /* transaction= */ 0, op_type, Flush::kFalse));
     ASSERT_OK(session->Flush());
 
     size_t num_non_empty = 0;
@@ -97,12 +98,15 @@ TEST_F(SealTxnTest, NumBatchesWithRejection) {
 // Check that we could disable writing information about the number of batches,
 // since it is required for backward compatibility.
 TEST_F(SealTxnTest, NumBatchesDisable) {
+  DisableTransactionTimeout();
+  // Should be enough for the restarted servers to be back online
+  FLAGS_transaction_rpc_timeout_ms = 20000 * kTimeMultiplier;
   FLAGS_enable_transaction_sealing = false;
   FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record = true;
 
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
-  WriteRows(session);
+  ASSERT_OK(WriteRows(session));
   ASSERT_OK(cluster_->RestartSync());
   ASSERT_OK(txn->CommitFuture().get());
 }
@@ -110,7 +114,7 @@ TEST_F(SealTxnTest, NumBatchesDisable) {
 TEST_F(SealTxnTest, Simple) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
-  WriteRows(session, /* transaction = */ 0, WriteOpType::INSERT, Flush::kFalse);
+  ASSERT_OK(WriteRows(session, /* transaction = */ 0, WriteOpType::INSERT, Flush::kFalse));
   auto flush_future = session->FlushFuture();
   auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
   ASSERT_OK(flush_future.get());
@@ -126,9 +130,9 @@ TEST_F(SealTxnTest, Update) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
   LOG(INFO) << "Inserting rows";
-  WriteRows(session, /* transaction = */ 0);
+  ASSERT_OK(WriteRows(session, /* transaction = */ 0));
   LOG(INFO) << "Updating rows";
-  WriteRows(session, /* transaction = */ 0, WriteOpType::UPDATE, Flush::kFalse);
+  ASSERT_OK(WriteRows(session, /* transaction = */ 0, WriteOpType::UPDATE, Flush::kFalse));
   auto flush_future = session->FlushFuture();
   auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
   ASSERT_OK(flush_future.get());

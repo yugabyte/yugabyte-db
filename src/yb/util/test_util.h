@@ -305,6 +305,18 @@ class TestThreadHolder {
     }
   }
 
+  template <class Cond>
+  CHECKED_STATUS WaitCondition(const Cond& cond) {
+    while (!cond()) {
+      if (stop_flag_.load(std::memory_order_acquire)) {
+        return STATUS(Aborted, "Wait aborted");
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    return Status::OK();
+  }
+
   void WaitAndStop(const CoarseDuration& duration) {
     yb::WaitStopped(duration, &stop_flag_);
     Stop();

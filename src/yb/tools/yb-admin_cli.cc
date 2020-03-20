@@ -39,6 +39,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
+#include "yb/util/stol_utils.h"
 
 DEFINE_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
@@ -231,7 +232,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int max = -1;
         if (args.size() > 4) {
-          max = std::stoi(args[4].c_str());
+          max = VERIFY_RESULT(CheckedStoi(args[4]));
         }
         RETURN_NOT_OK_PREPEND(client->ListTablets(table_name, max),
                               Substitute("Unable to list tablets of table $0",
@@ -370,7 +371,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int timeout_secs = 20;
         if (args.size() > 4) {
-          timeout_secs = std::stoi(args[4].c_str());
+          timeout_secs = VERIFY_RESULT(CheckedStoi(args[4]));
         }
 
         RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs,
@@ -379,7 +380,23 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         return Status::OK();
       });
 
-    Register(
+  Register(
+      "flush_table_by_id", " <table_id> [timeout_in_seconds] (default 20)",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3 && args.size() != 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        int timeout_secs = 20;
+        if (args.size() > 3) {
+          timeout_secs = VERIFY_RESULT(CheckedStoi(args[3]));
+        }
+        RETURN_NOT_OK_PREPEND(client->FlushTableById(args[2], timeout_secs,
+                                                     false /* is_compaction */),
+                              Substitute("Unable to flush table $0", args[2]));
+        return Status::OK();
+      });
+
+  Register(
       "compact_table", " <keyspace> <table_name> [timeout_in_seconds] (default 20)",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 4 && args.size() != 5) {
@@ -388,13 +405,30 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int timeout_secs = 20;
         if (args.size() > 4) {
-          timeout_secs = std::stoi(args[4].c_str());
+          timeout_secs = VERIFY_RESULT(CheckedStoi(args[4]));
         }
 
         // We use the same FlushTables RPC to trigger compaction.
         RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs,
                                                  true /* is_compaction */),
                               Substitute("Unable to compact table $0", table_name.ToString()));
+        return Status::OK();
+      });
+
+  Register(
+      "compact_table_by_id", " <table_id> [timeout_in_seconds] (default 20)",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3 && args.size() != 4) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        int timeout_secs = 20;
+        if (args.size() > 3) {
+          timeout_secs = VERIFY_RESULT(CheckedStoi(args[3]));
+        }
+        // We use the same FlushTables RPC to trigger compaction.
+        RETURN_NOT_OK_PREPEND(client->FlushTableById(args[2], timeout_secs,
+                                                     true /* is_compaction */),
+                              Substitute("Unable to compact table $0", args[2]));
         return Status::OK();
       });
 
@@ -430,7 +464,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         }
 
         new_host = args[3];
-        new_port = atoi(args[4].c_str());
+        new_port = VERIFY_RESULT(CheckedStoi(args[4]));
 
         bool use_hostport = false;
         if (args.size() == 6) {

@@ -2267,7 +2267,10 @@ void RaftConsensus::Shutdown() {
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_token_->Shutdown();
-  DisableFailureDetector();
+  // We might not have run Start yet, so make sure we have a FD.
+  if (failure_detector_) {
+    DisableFailureDetector();
+  }
 
   CHECK_OK(ExecuteHook(POST_SHUTDOWN));
 

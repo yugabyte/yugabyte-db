@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <map>
+
 #include "yb/docdb/conflict_resolution.h"
 
 #include "yb/common/hybrid_time.h"
@@ -370,6 +372,121 @@ class ConflictResolver {
   std::vector<TransactionData> transactions_;
 };
 
+Result<boost::optional<DocKeyHash>> FetchDocKeyHash(const Slice& encoded_key) {
+  DocKey key;
+  RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::UP_TO_HASH));
+  return key.has_hash() ? key.hash() : boost::optional<DocKeyHash>();
+}
+
+struct IntentKeyComparator {
+  using is_transparent = void;
+
+  bool operator()(const std::string& lhs, const std::string& rhs) const {
+    return lhs < rhs;
+  }
+
+  bool operator()(const Slice& lhs, const std::string& rhs) const {
+    return lhs.compare(Slice(rhs)) < 0;
+  }
+
+  bool operator()(const std::string& lhs, const Slice& rhs) const {
+    return Slice(lhs).compare(rhs) < 0;
+  }
+};
+
+using IntentTypesContainer = std::map<std::string, IntentTypeSet, IntentKeyComparator>;
+
+class IntentProcessor {
+ public:
+  IntentProcessor(IntentTypesContainer* container, const IntentTypeSet& strong_intent_types)
+      : container_(*container),
+        strong_intent_types_(strong_intent_types),
+        weak_intent_types_(StrongToWeak(strong_intent_types_))
+  {}
+
+  void Process(IntentStrength strength, KeyBytes* intent_key) {
+    const auto is_strong = strength == IntentStrength::kStrong;
+    const auto& intent_type_set = is_strong ? strong_intent_types_ : weak_intent_types_;
+    auto i = container_.find(intent_key->AsSlice());
+    if (i == container_.end()) {
+      container_.insert({intent_key->AsStringRef(), intent_type_set});
+    } else {
+      i->second |= intent_type_set;
+    }
+  }
+
+ private:
+  IntentTypesContainer& container_;
+  const IntentTypeSet strong_intent_types_;
+  const IntentTypeSet weak_intent_types_;
+};
+
+class StrongConflictChecker {
+ public:
+  StrongConflictChecker(const TransactionId& transaction_id,
+                        HybridTime read_time,
+                        ConflictResolver* resolver,
+                        Counter* conflicts_metric,
+                        KeyBytes* buffer)
+      : transaction_id_(transaction_id),
+        read_time_(read_time),
+        resolver_(*resolver),
+        conflicts_metric_(*conflicts_metric),
+        buffer_(*buffer)
+  {}
+
+  CHECKED_STATUS Check(const Slice& intent_key) {
+    const auto hash = VERIFY_RESULT(FetchDocKeyHash(intent_key));
+    if (PREDICT_FALSE(!value_iter_.Initialized() || hash != value_iter_hash_)) {
+      value_iter_ = CreateRocksDBIterator(
+          resolver_.doc_db().regular,
+          resolver_.doc_db().key_bounds,
+          BloomFilterMode::USE_BLOOM_FILTER,
+          intent_key,
+          rocksdb::kDefaultQueryId);
+      value_iter_hash_ = hash;
+    }
+    value_iter_.Seek(intent_key);
+    // Inspect records whose doc keys are children of the intent's doc key.  If the intent's doc
+    // key is empty, it signifies an intent on the whole table.
+    while (value_iter_.Valid() &&
+           (intent_key.starts_with(ValueTypeAsChar::kGroupEnd) ||
+            value_iter_.key().starts_with(intent_key))) {
+      auto existing_key = value_iter_.key();
+      auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
+      VLOG(4) << "Check value overwrite: " << transaction_id_
+              << ", key: " << SubDocKey::DebugSliceToString(intent_key)
+              << ", read time: " << read_time_
+              << ", found key: " << SubDocKey::DebugSliceToString(value_iter_.key());
+      if (doc_ht.hybrid_time() >= read_time_) {
+        conflicts_metric_.Increment();
+        return (STATUS(TryAgain,
+                       Format("Value write after transaction start: $0 >= $1",
+                              doc_ht.hybrid_time(), read_time_), Slice(),
+                       TransactionError(TransactionErrorCode::kConflict)));
+      }
+      buffer_.Reset(existing_key);
+      // Already have ValueType::kHybridTime at the end
+      buffer_.AppendHybridTime(DocHybridTime::kMin);
+      ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  const TransactionId& transaction_id_;
+  const HybridTime read_time_;
+  ConflictResolver& resolver_;
+  Counter& conflicts_metric_;
+  KeyBytes& buffer_;
+
+  // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
+  BoundedRocksDbIterator value_iter_;
+  boost::optional<DocKeyHash> value_iter_hash_;
+
+};
+
 // Utility class for ResolveTransactionConflicts implementation.
 class TransactionConflictResolverContext : public ConflictResolverContext {
  public:
@@ -382,8 +499,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
         write_batch_(write_batch),
         resolution_ht_(resolution_ht),
         read_time_(read_time),
-        transaction_id_(FullyDecodeTransactionId(
-            write_batch.transaction().transaction_id())),
+        transaction_id_(FullyDecodeTransactionId(write_batch.transaction().transaction_id())),
         conflicts_metric_(conflicts_metric)
   {}
 
@@ -399,12 +515,14 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 
     boost::container::small_vector<RefCntPrefix, 8> paths;
 
-    KeyBytes encoded_key_buffer;
-    RowMarkType row_mark = GetRowMarkTypeFromPB(write_batch_);
-    EnumerateIntentsCallback callback = std::bind(
-        &TransactionConflictResolverContext::ProcessIntent, this, resolver,
-        GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite, row_mark), _1,
-        _3);
+    const size_t kKeyBufferInitialSize = 512;
+    KeyBytes buffer;
+    buffer.Reserve(kKeyBufferInitialSize);
+    const auto row_mark = GetRowMarkTypeFromPB(write_batch_);
+    IntentTypesContainer container;
+    IntentProcessor write_processor(
+        &container,
+        GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite, row_mark));
     for (const auto& doc_op : doc_ops_) {
       paths.clear();
       IsolationLevel ignored_isolation_level;
@@ -413,93 +531,51 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 
       for (const auto& path : paths) {
         RETURN_NOT_OK(EnumerateIntents(
-            path.as_slice(), /* intent_value */ Slice(), callback, &encoded_key_buffer,
+            path.as_slice(),
+            /* intent_value */ Slice(),
+            [&write_processor](auto strength, auto, auto intent_key, auto) {
+              write_processor.Process(strength, intent_key);
+              return Status::OK();
+            },
+            &buffer,
             resolver->partial_range_key_intents()));
       }
     }
+    const auto& pairs = write_batch_.read_pairs();
+    if (!pairs.empty()) {
+      IntentProcessor read_processor(
+          &container,
+          GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite, row_mark));
+      RETURN_NOT_OK(EnumerateIntents(
+          pairs,
+          [&read_processor](auto strength, auto, auto intent_key, auto) {
+            read_processor.Process(strength, intent_key);
+            return Status::OK();
+          },
+          resolver->partial_range_key_intents()));
+    }
 
-    RETURN_NOT_OK(DoReadConflicts(
-        write_batch_.read_pairs(), docdb::OperationKind::kRead, resolver));
-
-    return Status::OK();
-  }
-
-  CHECKED_STATUS DoReadConflicts(
-      const google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB>& pairs,
-      docdb::OperationKind kind,
-      ConflictResolver* resolver) {
-    if (pairs.empty()) {
+    if (container.empty()) {
       return Status::OK();
     }
 
-    RowMarkType row_mark = GetRowMarkTypeFromPB(write_batch_);
-    return EnumerateIntents(
-        pairs,
-        std::bind(&TransactionConflictResolverContext::ProcessIntent, this, resolver,
-                  GetStrongIntentTypeSet(metadata_.isolation, kind, row_mark), _1, _3),
-        resolver->partial_range_key_intents());
-  }
+    StrongConflictChecker checker(
+        *transaction_id_, read_time_, resolver, conflicts_metric_, &buffer);
+    // Iterator on intents DB should be created before iterator on regular DB.
+    // This is to prevent the case when we create an iterator on the regular DB where a
+    // provisional record has not yet been applied, and then create an iterator the intents
+    // DB where the provisional record has already been removed.
+    resolver->EnsureIntentIteratorCreated();
 
-  // Processes intent generated by EnumerateIntents.
-  // I.e. fetches conflicting intents and fills list of conflicting transactions.
-  CHECKED_STATUS ProcessIntent(ConflictResolver* resolver,
-                               IntentTypeSet strong_intent_types,
-                               IntentStrength strength,
-                               KeyBytes* intent_key_prefix) {
-    auto intent_type_set = strength == IntentStrength::kWeak
-        ? StrongToWeak(strong_intent_types) : strong_intent_types;
-
-    VLOG(4) << "Resolve conflicts: " << transaction_id_
-            << ", key: " << SubDocKey::DebugSliceToString(intent_key_prefix->data())
-            << ", strength: " << strength << ", read time: " << read_time_;
-
-    // read_time is HybridTime::kMax in case of serializable isolation or when read time not yet
-    // picked for snapshot isolation.
-    // I.e. if it the first operation in the transaction.
-    if (strength == IntentStrength::kStrong && read_time_ != HybridTime::kMax) {
-      Slice key_slice = intent_key_prefix->AsSlice();
-
-      // Iterator on intents DB should be created before iterator on regular DB.
-      // This is to prevent the case when we create an iterator on the regular DB where a
-      // provisional record has not yet been applied, and then create an iterator the intents
-      // DB where the provisional record has already been removed.
-      resolver->EnsureIntentIteratorCreated();
-
-      // TODO(dtxn) reuse iterator
-      auto value_iter = CreateRocksDBIterator(
-          resolver->doc_db().regular,
-          resolver->doc_db().key_bounds,
-          BloomFilterMode::USE_BLOOM_FILTER,
-          key_slice,
-          rocksdb::kDefaultQueryId);
-
-      value_iter.Seek(key_slice);
-      KeyBytes buffer;
-      // Inspect records whose doc keys are children of the intent's doc key.  If the intent's doc
-      // key is empty, it signifies an intent on the whole table.
-      while (value_iter.Valid() && (key_slice.starts_with(ValueTypeAsChar::kGroupEnd) ||
-                                    value_iter.key().starts_with(key_slice))) {
-        auto existing_key = value_iter.key();
-        auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
-        VLOG(4) << "Check value overwrite: " << transaction_id_
-                << ", key: " << SubDocKey::DebugSliceToString(intent_key_prefix->data())
-                << ", read time: " << read_time_
-                << ", found key: " << SubDocKey::DebugSliceToString(value_iter.key());
-        if (doc_ht.hybrid_time() >= read_time_) {
-          conflicts_metric_->Increment();
-          return (STATUS(TryAgain,
-                         Format("Value write after transaction start: $0 >= $1",
-                                doc_ht.hybrid_time(), read_time_), Slice(),
-                         TransactionError(TransactionErrorCode::kConflict)));
-        }
-        buffer.Reset(existing_key);
-        // Already have ValueType::kHybridTime at the end
-        buffer.AppendHybridTime(DocHybridTime::kMin);
-        ROCKSDB_SEEK(&value_iter, buffer.AsSlice());
+    for(const auto& i : container) {
+      if (read_time_ != HybridTime::kMax && HasStrong(i.second)) {
+        RETURN_NOT_OK(checker.Check(i.first));
       }
+      buffer.Reset(i.first);
+      RETURN_NOT_OK(resolver->ReadIntentConflicts(i.second, &buffer));
     }
 
-    return resolver->ReadIntentConflicts(intent_type_set, intent_key_prefix);
+    return Status::OK();
   }
 
   CHECKED_STATUS CheckPriority(ConflictResolver* resolver,

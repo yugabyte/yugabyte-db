@@ -37,14 +37,14 @@ This feature is desirable in a number of scenarios, some of which are described 
 Applications that have a smaller dataset may fall into the following pattern:
 
 - They require large number of tables, indexes and other relations created in a single database.
-- The size of the entire dataset is small. Typically, this entire database is less than 500GB in size.
+- The size of the entire dataset is small. Typically, this entire database is less than 500 GB in size.
 - Need high availability and/or geographic data distribution.
 - Scaling the dataset or the number of IOPS is not an immediate concern.
 
 In this scenario, it is undesirable to have the small dataset spread across multiple nodes because
 this might affect performance of certain queries due to more network hops (for example, joins).
 
-**Example:** a user identity service for a global application. The user dataset size may not be too
+**Example:** User identity service for a global application. The user dataset size may not be too
 large, but is accessed in a relational manner, requires high availability and might need to be
 geo-distributed for low latency access.
 
@@ -57,8 +57,8 @@ Applications that have a large dataset may fall into the pattern where:
 - The rest of the tables will continue to remain small.
 
 In this scenario, only the few large tables would need to be sharded and scaled out.
-All other tables would benefit from colocation, because queries involving all tables except the
-larger ones would not need network hops.
+All other tables would benefit from colocation because queries involving all tables, except the
+larger ones, would not need network hops.
 
 **Example:** An IoT use case, where one table records the data from the IoT devices while
 there are a number of other tables that store data pertaining to user identity, device profiles, privacy, etc.
@@ -88,17 +88,16 @@ read data over the network. This improves the speed of joins.
 Because multiple tables and indexes can share one underlying tablet, a much higher number of tables
 can be supported using colocated tables.
 
-- **Lower scalability - until removal from colocation tablet**. The assumptions behind tables that
-are colocated is that their data need not be automatically sharded and distributed across nodes.
-If it is known apriori that a table will get large, it can be opted out of the colocation tablet at
-creation time. If a table already present in the colocation tablet gets too large, it can
-dynamically be removed from the colocation tablet to enable splitting it into multiple tablets,
-allowing it to scale across nodes.
+- **Lower scalability - until removal from colocation tablet**.
+The assumptions behind tables that are colocated is that their data need not be automatically
+sharded and distributed across nodes. If it is known apriori that a table will get large,
+it can be opted out of the colocation tablet at creation time. If a table already present
+in the colocation tablet gets too large, it can dynamically be removed from the colocation
+tablet to enable splitting it into multiple tablets, allowing it to scale across nodes.
 
 ## Usage
 
-You can refer to the [Explore colocated tables](../../../explore/colocated-tables/) section to learn
-more about using this feature.
+To learn more about using this feature, see [Explore colocated tables](../../../explore/colocated-tables/).
 
 ## What's next?
 

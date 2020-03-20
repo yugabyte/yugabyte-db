@@ -345,6 +345,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
     params.azUuid = node.azUuid;
     // Add in the node placement uuid.
     params.placementUuid = node.placementUuid;
+    // Add testing flag.
+    params.itestS3PackagePath = taskParams().itestS3PackagePath;
     // Add task type
     params.type = type;
     params.setProperty("processType", processType.toString());

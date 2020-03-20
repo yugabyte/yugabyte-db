@@ -55,7 +55,7 @@ class TransactionTestBase : public KeyValueTableTest {
 
   virtual uint64_t log_segment_size_bytes() const;
 
-  void WriteRows(
+  CHECKED_STATUS WriteRows(
       const YBSessionPtr& session, size_t transaction = 0,
       const WriteOpType op_type = WriteOpType::INSERT,
       Flush flush = Flush::kTrue);

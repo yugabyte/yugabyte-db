@@ -12,14 +12,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_.
+
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        anyelement, jsonb
-return value       SETOF anyelement
+input value:       anyelement, jsonb
+return value:      SETOF anyelement
 ```
 
-The functions in this pair and are a natural extension of the functionality of `jsonb_populate_record()`.
+**Notes:** the functions in this pair and are a natural extension of the functionality of `jsonb_populate_record()`.
 
 Each requires that the supplied JSON value is an _array_, each of whose values is an _object_ which is compatible with the specified SQL `record` which is defined as a `type` whose name is passed via the function's first formal parameter using the locution `null:type_identifier`. The JSON value is passed via the second formal parameter. The result is a set (i.e. a table) of `record`s of the specified type.
 

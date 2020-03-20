@@ -13,18 +13,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here is the signature for the `jsonb` variant:
+**Purpose:** create a JSON _object_ from SQL _array_(s) that specifiy keys with their values of SQL data type `text`.
+
+**Signature** for the `jsonb` variant:
 
 ```
-input value        text[]  OR text[][]  OR  text[], text[]
-return value       jsonb
+input value:       [ text[] ]  |  [ text[][] ]  |  [ text[], text[] ]
+return value:      jsonb
 ```
 
-The `jsonb_object()` function achieves a similar effect to `jsonb_build_object()` but with significantly less verbose syntax.
+**Notes**: the `jsonb_object()` function achieves a similar effect to `jsonb_build_object()` but with significantly less verbose syntax.
 
-Precisely because you present a single `text` actual, you can avoid the fuss of dynamic invocation and of dealing with interior single quotes that this brings in its train.
-
-However, it has the limitation that the primitive values in the resulting JSON value can only be _string_. It has three overloads.
+Precisely because you present a single `text` actual, you can avoid the fuss of dynamic invocation and of dealing with interior single quotes that this brings in its train. However, it has the limitation that the primitive values in the resulting JSON value can only be _string_. It has three overloads.
 
 The first overload has a single `text[]` formal whose actual text expresses the variadic intention conventionally: the alternating _comma_ separated items are the respectively the key and the value of a key-value pair.
 
@@ -47,7 +47,7 @@ $body$;
 
 Compare this result with the result from supplying the same primitive SQL values to the `jsonb_build_object()` function. There, the data types of the SQL values are properly honored: The _numeric_ `17` and the _boolean_ `true` are represented by the proper JSON primitive types. But with `jsonb_object()` there is simply no way to express that `17` should be taken as a JSON _number_ value and `true` should be taken as a JSON _boolean_ value.
 
-The potential loss of data type fidelity brought by `jsonb_object()` seems to be a high price to pay for the reduction in verbosity. On the other hand, `jsonb_object()` has the distinct advantage over `jsonb_build_object()` that you don't need to know statically how many key-value pairs the target JSON _object_ is to have.
+The potential loss of data type fidelity brought by `jsonb_object()` is a high price to pay for the reduction in verbosity. On the other hand, `jsonb_object()` has the distinct advantage over `jsonb_build_object()` that you don't need to know statically how many key-value pairs the target JSON _object_ is to have.
 
 If you think that it improves the clarity, you can use the second overload. This has a single `text[][]` formal—in other words an array of arrays.
 

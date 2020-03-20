@@ -17,6 +17,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tools/yb-admin_client.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -61,7 +62,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         int timeout_secs = 60;
         if (args.size() % 2 == 1) {
-          timeout_secs = std::stoi(args[args.size() - 1].c_str());
+          timeout_secs = VERIFY_RESULT(CheckedStoi(args[args.size() - 1]));
         }
 
         RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, timeout_secs),

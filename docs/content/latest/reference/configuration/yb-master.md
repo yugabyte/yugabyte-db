@@ -47,7 +47,7 @@ $ ./bin/yb-master --help
 - [Logging](#logging-options)
 - [Raft](#raft-options)
   - [Write ahead log (WAL)](#write-ahead-log-wal-options)
-- [Cluster](#cluster-options)
+- [Sharding](#sharding-options)
 - [Geo-distribution](#geo-distribution-options)
 - [Security](#security-options)
 - [Change data capture (CDC)](#change-data-capture-cdc-options)
@@ -322,7 +322,7 @@ Default: `64`
 
 ---
 
-### Cluster options
+### Sharding options
 
 ##### --max_clock_skew_usec
 
