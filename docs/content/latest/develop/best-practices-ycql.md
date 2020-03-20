@@ -33,6 +33,10 @@ showAsideToc: true
 Use batching for writing a set of operations. This will send all operations in a single RPC call instead of using multiple RPC calls, one per operation.
 Each batch operation has higher latency compared to single rows operations but has higher throughput overall.
 
+## Use prepared statements
+Use prepared statements wherever possible. This will ensure that YB partition aware drivers are able to route 
+queries to the tablet leader, improve throughput and server doesn't have to parse the query on each operation.
+
 
 ## Use TTL for expiring older records
 YCQL supports automatic expiry of data using the [`TTL feature`](../api/ycql/ddl_create_table.md#use-table-property-to-define-the-default-expiration-time-for-rows). 
