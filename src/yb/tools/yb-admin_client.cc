@@ -43,10 +43,12 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/string_case.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/join.h"
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -156,10 +158,62 @@ ClusterAdminClient::ClusterAdminClient(string addrs,
       client_init_(certs_dir.empty()),
       initted_(false) {}
 
+ClusterAdminClient::ClusterAdminClient(
+    const HostPort& init_master_addr,
+    int64_t timeout_millis,
+    string certs_dir)
+    : init_master_addr_(init_master_addr),
+      timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
+      client_init_(certs_dir.empty()),
+      initted_(false) {}
+
 ClusterAdminClient::~ClusterAdminClient() {
   if (messenger_) {
     messenger_->Shutdown();
   }
+}
+
+Status ClusterAdminClient::DiscoverAllMasters(
+    const HostPort& init_master_addr,
+    std::string* all_master_addrs
+) {
+
+  std::unique_ptr<MasterServiceProxy> master_proxy(new MasterServiceProxy(
+      proxy_cache_.get(),
+      init_master_addr));
+
+  VLOG(0) << "Initializing master leader list from single master at "
+          << init_master_addr.ToString();
+  const auto list_resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
+      master_proxy.get(), ListMastersRequestPB()));
+  if (list_resp.masters().empty()) {
+    return  STATUS(NotFound, "no masters found");
+  }
+
+  std::vector<std::string> addrs;
+  for (const auto& master : list_resp.masters()) {
+    if (!master.has_registration()) {
+      LOG(WARNING) << master.instance_id().permanent_uuid() << " has no registration.";
+      continue;
+    }
+
+    if (master.registration().broadcast_addresses_size() > 0) {
+      addrs.push_back(FormatFirstHostPort(master.registration().broadcast_addresses()));
+    } else if (master.registration().private_rpc_addresses_size() > 0) {
+      addrs.push_back(FormatFirstHostPort(master.registration().private_rpc_addresses()));
+    } else {
+      LOG(WARNING) << master.instance_id().permanent_uuid() << " has no rpc/broadcast address.";
+      continue;
+    }
+  }
+
+  if (addrs.empty()) {
+    return STATUS(NotFound, "no masters found");
+  }
+
+  JoinStrings(addrs, ",", all_master_addrs);
+  VLOG(0) << "Discovered full master list: " << *all_master_addrs;
+  return Status::OK();
 }
 
 Status ClusterAdminClient::Init() {
@@ -168,11 +222,16 @@ Status ClusterAdminClient::Init() {
   // Check if caller will initialize the client and related parts.
   if (client_init_) {
     messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-    yb_client_ = VERIFY_RESULT(YBClientBuilder()
-        .add_master_server_addr(master_addr_list_)
-        .default_admin_operation_timeout(timeout_)
-        .Build(messenger_.get()));
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+
+    if (!init_master_addr_.host().empty()) {
+      RETURN_NOT_OK(DiscoverAllMasters(init_master_addr_, &master_addr_list_));
+    }
+
+    yb_client_ = VERIFY_RESULT(YBClientBuilder()
+    .add_master_server_addr(master_addr_list_)
+    .default_admin_operation_timeout(timeout_)
+    .Build(messenger_.get()));
 
     // Find the leader master's socket info to set up the master proxy.
     leader_addr_ = yb_client_->GetMasterLeaderAddress();
