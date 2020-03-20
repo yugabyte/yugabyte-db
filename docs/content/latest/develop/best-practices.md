@@ -42,7 +42,7 @@ while using YugabyteDB.
 
 ## YSQL compared to YCQL
 The first step is which API to use. In terms of language capabilities, YCQL is a subset of YSQL.
-In a nutshell, YSQL is a clear choice when apps need advanced features like triggers,procedures,relations,subqueries,joins, range sharding etc.
+In a nutshell, YSQL is a clear choice when apps need advanced features like triggers,procedures,relations,subqueries,joins, range sharding, client controlled transactions etc.
 While if app only has few tables (that are typically large) and point reads/writes, and uses TTL, then YCQL is a better option. 
 
 
