@@ -29,6 +29,10 @@ showAsideToc: true
   </li>
 </ul>
 
+## Use batching when writing
+Use batching for writing a set of operations. This will send all operations in a single RPC call instead of using multiple RPC calls, one per operation.
+Each batch operation has higher latency compared to single rows operations but has higher throughput overall.
+
 
 ## Use TTL for expiring older records
 YCQL supports automatic expiry of data using the [`TTL feature`](../api/ycql/ddl_create_table.md#use-table-property-to-define-the-default-expiration-time-for-rows). 
