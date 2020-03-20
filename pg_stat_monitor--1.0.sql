@@ -46,6 +46,16 @@ RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
+CREATE FUNCTION pg_stat_wait_events(
+  OUT queryid text, 
+  OUT pid bigint, 
+  OUT wait_event text, 
+  OUT wait_event_type text 
+  )
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'pg_stat_wait_events'
+LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
+
 CREATE FUNCTION pg_stat_agg(
   OUT queryid text, 
   OUT id bigint, 
@@ -61,7 +71,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	bucket_start_time,
     userid,
     dbid,
-    queryid,
+    m.queryid,
     query,
     calls,
     total_time,
@@ -87,9 +97,21 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	(string_to_array(resp_calls, ',')) resp_calls,
     cpu_user_time,
     cpu_sys_time,
-	(string_to_array(tables_names, ',')) tables_names
-FROM  pg_stat_monitor(true);
+	(string_to_array(tables_names, ',')) tables_names,
+	wait_event,
+	wait_event_type 
+FROM  pg_stat_monitor(true) m, pg_stat_wait_events() w WHERE (w.queryid = m.queryid) OR w.queryid IS NULL;
 
+
+-- Register a view on the function for ease of use.
+CREATE VIEW pg_stat_wait_events AS SELECT
+    m.queryid,
+    query,
+	wait_event,
+	wait_event_type 
+FROM  pg_stat_monitor(true) m, pg_stat_wait_events() w WHERE w.queryid = m.queryid;
+
+GRANT SELECT ON pg_stat_wait_events TO PUBLIC;
 GRANT SELECT ON pg_stat_monitor TO PUBLIC;
 
 CREATE VIEW pg_stat_agg_database AS
@@ -153,6 +175,8 @@ SELECT
 FROM pg_stat_agg() agg 
 INNER JOIN (SELECT DISTINCT bucket, queryid, userid, query, client_ip, host, min_time, max_time, mean_time, resp_calls, tables_names, cpu_user_time,cpu_sys_time FROM pg_stat_monitor) ss 
 ON agg.queryid = ss.queryid AND agg.type = 2 AND id = host;
+
+
 
 GRANT SELECT ON pg_stat_agg_user TO PUBLIC;
 GRANT SELECT ON pg_stat_agg_ip TO PUBLIC;
