@@ -1,6 +1,23 @@
 Cypher Query Language
 =====================
 
+MATCH
+-----
+
+Is used to search for the pattern described in it.
+
+Synopsis
+~~~~~~~~
+
+::
+
+  MATCH { node [ relationship node ] [ ... ] } [, ...]
+
+Description
+~~~~~~~~~~~
+
+  *The current implementation takes only one node as the pattern.*
+
 RETURN
 ------
 
@@ -20,7 +37,7 @@ Synopsis
 Description
 ~~~~~~~~~~~
 
-*TODO*
+  *Aggregation is not supported yet.*
 
 WITH
 ----
@@ -42,7 +59,9 @@ Synopsis
 Description
 ~~~~~~~~~~~
 
-*TODO*
+If ``expression`` is a variable, ``alias`` can be omitted. Otherwise, ``alias`` is required.
+
+  *Aggregation is not supported yet.*
 
 WHERE
 -----
@@ -93,7 +112,7 @@ Synopsis
 Description
 ~~~~~~~~~~~
 
-*TODO*
+``start`` is an expression whose evaluated value is an integer.
 
 LIMIT
 -----
@@ -110,41 +129,24 @@ Synopsis
 Description
 ~~~~~~~~~~~
 
-*TODO*
+``count`` is an expression whose evaluated value is an integer.
 
-SET
----
-
-Sets and updates properties from nodes and expressions given an expression.
-
-Synopsis
-~~~~~~~~
-
-::
-
-  SET expression
-
-Description
-~~~~~~~~~~~
-
-*TODO*
-
-REMOVE
+CREATE
 ------
 
-Removes properties from nodes and relationships.
+Is used to create nodes and relationships.
 
 Synopsis
 ~~~~~~~~
 
 ::
 
-  REMOVE property
+  CREATE { node [ relationship node ] [ ... ] } [, ...]
 
 Description
 ~~~~~~~~~~~
 
-*TODO*
+  *The current implementation takes only one node as the pattern.*
 
 DELETE
 ------
@@ -156,15 +158,201 @@ Synopsis
 
 ::
 
-  [DETACH] DELETE expression
+  [DETACH] DELETE { node | edge }, ...
 
 Description
 ~~~~~~~~~~~
 
-*TODO*
+  *This clause is not supported yet.*
+
+SET
+---
+
+Sets and updates properties from nodes and expressions given an expression.
+
+Synopsis
+~~~~~~~~
+
+::
+
+  SET expression = expression [, ...]
+
+Description
+~~~~~~~~~~~
+
+  *This clause is not supported yet.*
+
+REMOVE
+------
+
+Removes properties from nodes and relationships.
+
+Synopsis
+~~~~~~~~
+
+::
+
+  REMOVE expression, ...
+
+Description
+~~~~~~~~~~~
+
+  *This clause is not supported yet.*
 
 Expressions
 -----------
+
+Constants
+~~~~~~~~~
+
+String
+""""""
+
+Both 'single-quoted' and "double-quoted" string formats are supported.
+
+The folowing escape sequences are defined. Other escape sequences will cause an parse error.
+
++-----------------+-----------------------------------------------------+
+| Escape sequence | Character represented                               |
++=================+=====================================================+
+| ``\b``          | Backspace                                           |
++-----------------+-----------------------------------------------------+
+| ``\f``          | Formfeed Page Break                                 |
++-----------------+-----------------------------------------------------+
+| ``\n``          | Newline (Line Feed)                                 |
++-----------------+-----------------------------------------------------+
+| ``\r``          | Carriage Return                                     |
++-----------------+-----------------------------------------------------+
+| ``\t``          | Horizontal Tab                                      |
++-----------------+-----------------------------------------------------+
+| ``\/``          | Slash (optional)                                    |
++-----------------+-----------------------------------------------------+
+| ``\\``          | Backslash                                           |
++-----------------+-----------------------------------------------------+
+| ``\'``          | Single quotation mark                               |
++-----------------+-----------------------------------------------------+
+| ``\"``          | Double quotation mark                               |
++-----------------+-----------------------------------------------------+
+| ``\uhhhh``      | Unicode code point below 10000 hexadecimal          |
++-----------------+-----------------------------------------------------+
+| ``\Uhhhhhhhh``  | Unicode code point where ``h`` is hexadecimal digit |
++-----------------+-----------------------------------------------------+
+
+Integer
+"""""""
+
+|project| uses 64-bit integer.
+
+Float
+"""""
+
+|project| stores floating-point numbers in IEEE 754 binary64 format.
+
+It support the following formats along with scientific notation.
+
+- ``0.``
+- ``.0``
+- ``0.0``
+
+Also, the following values are supported.
+
+- ``NaN``
+- ``Infinity``
+- ``-Infinity``
+- ``inf``
+- ``-inf``
+
+Boolean
+"""""""
+
+``true`` and ``false``
+
+Null
+""""
+
+``null``
+
+List
+~~~~
+
+``['l', 'i', 's', 't']``
+
+Map
+~~~
+
+``{"key": "value", "m": {}, "a": [], "p": 0}``
+
+Variables
+~~~~~~~~~
+
+All valid identifiers can be variable names except reserved keywords. (See :ref:`get_cypher_keywords`)
+
+An identifier
+
+- starts with an alphabet (``A-Z`` and ``a-z``) or an underscore (``_``).
+- can contain alphabets, underscores, dollar-signs (``$``), and digits (``0-9``).
+
+```Backquote-quoted``` identifiers can have any character.
+
+Parameters
+~~~~~~~~~~
+
+A parameter starts with a dollar-sign (``$``) followed by an identifier. For example, ``$id`` is a valid parameter.
+
+Parameters are passed as a map to ``cypher()`` function call as the third argument. For example, if the map has a key/value pair whose key is ``"id"`` and value is ``0``, the ``$id`` parameter in the query will be replaced with ``0``.
+
+Operators
+~~~~~~~~~
+
+Mathematical Operators
+""""""""""""""""""""""
+
+- ``+``
+- ``-`` (subtraction or unary minus)
+- ``*``
+- ``/``
+- ``%``
+- ``^``
+
+Comparison Operators
+""""""""""""""""""""
+
+- ``=``
+- ``<>``
+- ``<``
+- ``<=``
+- ``>``
+- ``>=``
+- ``IS NULL``
+- ``IS NOT NULL``
+
+String-specific Comparison Operators
+""""""""""""""""""""""""""""""""""""
+
+- ``STARTS WITH``
+- ``ENDS WITH``
+- ``CONTAINS``
+
+Boolean Operators
+"""""""""""""""""
+
+- ``AND``
+- ``OR``
+- ``NOT``
+
+List Operators
+""""""""""""""
+
+- ``[]``
+- ``[..]`` (slicing)
+- ``+`` (concatenation)
+- ``IN``
+
+Map Operators
+"""""""""""""
+
+- ``.``
+- ``[]``
 
 Operator Precedence
 ~~~~~~~~~~~~~~~~~~~
@@ -218,3 +406,23 @@ Operator Precedence
 +------------+-----------------+------------------------------+               |
 | 12         | ``OR``          | Logical OR                   |               |
 +------------+-----------------+------------------------------+---------------+
+
+Functions
+---------
+
+*TODO*
+
+Comments
+--------
+
+|project| supports both "C-style" multi-line and "C++-style" single-line commenting formats as shown below.
+
+.. code-block:: cpp
+
+  /*
+   * "C-style"
+   * multi-line
+   * comment
+   */
+
+  // "C++-style" single-line comment

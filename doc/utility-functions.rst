@@ -28,7 +28,7 @@ N/A
 Examples
 ~~~~~~~~
 
-.. code-block:: postgresql
+.. code-block:: psql
 
   =# SELECT create_graph('g');
   NOTICE:  graph "g" has been created
@@ -45,7 +45,7 @@ Removes a graph from the database.
 Prototype
 ~~~~~~~~~
 
-``drop_graph(graph_name name, cascade bool = false) void``
+``drop_graph(graph_name name, cascade boolean = false) void``
 
 Parameters
 ~~~~~~~~~~
@@ -67,7 +67,7 @@ N/A
 Examples
 ~~~~~~~~
 
-.. code-block:: postgresql
+.. code-block:: psql
 
   =# SELECT drop_graph('g');
   NOTICE:  graph "g" has been dropped
@@ -111,7 +111,7 @@ N/A
 Examples
 ~~~~~~~~
 
-.. code-block:: postgresql
+.. code-block:: psql
 
   =# SELECT alter_graph('Network', 'rename', 'lan_network');
   NOTICE:  graph "Network" renamed to "lan_network"
@@ -119,6 +119,8 @@ Examples
   -------------
   
   (1 row)
+
+.. _get_cypher_keywords:
 
 get_cypher_keywords()
 ---------------------
@@ -143,7 +145,7 @@ The list of keywords in Cypher and their categories.
 Examples
 ~~~~~~~~
 
-.. code-block:: postgresql
+.. code-block:: psql
 
   =# SELECT * FROM get_cypher_keywords();
       word    | catcode | catdesc
@@ -154,22 +156,28 @@ Examples
    ascending  | R       | reserved
    by         | R       | reserved
    contains   | R       | reserved
+   create     | R       | reserved
+   delete     | R       | reserved
    desc       | R       | reserved
    descending | R       | reserved
+   detach     | R       | reserved
    distinct   | R       | reserved
    ends       | R       | reserved
    false      | R       | reserved
    in         | R       | reserved
    is         | R       | reserved
    limit      | R       | reserved
+   match      | R       | reserved
    not        | R       | reserved
    null       | R       | reserved
    or         | R       | reserved
    order      | R       | reserved
+   remove     | R       | reserved
    return     | R       | reserved
+   set        | R       | reserved
    skip       | R       | reserved
    starts     | R       | reserved
    true       | R       | reserved
    where      | R       | reserved
    with       | R       | reserved
-  (24 rows)
+  (30 rows)
