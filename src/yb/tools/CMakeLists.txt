@@ -155,6 +155,9 @@ ADD_YB_TEST(ysck_remote-test)
 ADD_YB_TEST(yb-admin-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-test
   yb-admin)
+ADD_YB_TEST(yb-admin-multi-master-test)
+ADD_YB_TEST_DEPENDENCIES(yb-admin-multi-master-test
+  yb-admin)
 ADD_YB_TEST(yb-ts-cli-test)
 ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-test
   yb-ts-cli)
