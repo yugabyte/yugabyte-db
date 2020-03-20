@@ -83,3 +83,7 @@ In a read replica cluster, read replicas are observer nodes that do not particip
 but get a timeline-consistent copy of the data through asynchronous replication from the primary cluster.
 
 Reach out on slack/forum for help with your data-schemas and how to better integrate best practices in your project.
+
+{{< note title="Note" >}}
+Reading from followers does not yet work for either YSQL or transactional tables in YCQL.
+{{< /note >}}
