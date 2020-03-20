@@ -62,11 +62,11 @@ Using YugabyteDB in (ci,cd,automated tests) scenarios we can set certain gflags 
 This will make DML,DDL and create,destroy a cluster faster because data is not written to disk
 2. Set gflag `--yb_num_shards_per_tserver=1`.
 Reducing the number of shards lowers overhead when creating,dropping YCQL tables and writing,reading small amounts of data
-3. Set gflag `--ysql_num_shards_per_tserver=1`
+3. Set gflag `--ysql_num_shards_per_tserver=1`.
 Reducing the number of shards lowers overhead when creating,dropping YSQL tables and writing,reading small amounts of data
-4. Set gflag `--replication_factor=1`
-Keeping only the tablet leaders will remove replication overhead
-5. Use `TRUNCATE table1,table2,tablen;` instead of `CREATE TABLE` and `DROP TABLE` between test cases
+4. Set gflag `--replication_factor=1`.
+For these testing scenarios, perhaps the default of keeping the data 3-way replicated is not necessary. Reducing that down to 1 cuts space usage and increases perf.
+5. Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE` and `DROP TABLE` between test cases. 
 
 ## Single AZ deployments
 In single AZ deployments, you need to set `--durable_wal_write=true` [gflag](../../reference/configuration/yb-tserver) in 
