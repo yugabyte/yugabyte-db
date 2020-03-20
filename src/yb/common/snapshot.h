@@ -19,8 +19,7 @@
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID(TxnSnapshotId);
-
-typedef boost::hash<TxnSnapshotId> TxnSnapshotIdHash;
+YB_STRONGLY_TYPED_UUID(TxnSnapshotRestorationId);
 
 } // namespace yb
 

@@ -71,6 +71,8 @@ Status TabletSnapshots::Apply(SnapshotOperationState* tx_state) {
     case tserver::TabletSnapshotOpRequestPB::DELETE: {
       return Delete(tx_state);
     }
+    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
+    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
   }
@@ -118,16 +120,10 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
       Format("Unable to create snapshots directory $0", top_snapshots_dir));
 
   Env* const env = metadata().fs_manager()->env();
-  HybridTime snapshot_hybrid_time;
-  if (tx_state->request()->has_snapshot_hybrid_time()) {
-    snapshot_hybrid_time = HybridTime(tx_state->request()->snapshot_hybrid_time());
-  }
+  auto snapshot_hybrid_time = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time());
   auto is_transactional_snapshot = snapshot_hybrid_time.is_valid();
-  auto dirname = is_transactional_snapshot
-      ? VERIFY_RESULT(FullyDecodeTxnSnapshotId(tx_state->request()->snapshot_id())).ToString()
-      : tx_state->request()->snapshot_id();
 
-  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dirname);
+  const string snapshot_dir = tx_state->GetSnapshotDir(top_snapshots_dir);
   // Delete previous snapshot in the same directory if it exists.
   if (env->FileExists(snapshot_dir)) {
     LOG_WITH_PREFIX(INFO) << "Deleting old snapshot dir " << snapshot_dir;

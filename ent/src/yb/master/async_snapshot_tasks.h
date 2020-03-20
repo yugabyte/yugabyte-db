@@ -14,7 +14,10 @@
 #define ENT_SRC_YB_MASTER_ASYNC_SNAPSHOT_TASKS_H
 
 #include "yb/common/hybrid_time.h"
+
 #include "yb/master/async_ts_rpc_tasks.h"
+#include "yb/master/master_snapshot_coordinator.h"
+
 #include "yb/tserver/backup.pb.h"
 
 namespace yb {
@@ -24,11 +27,12 @@ namespace master {
 // Keeps retrying until we get an "ok" response.
 class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
  public:
-  AsyncTabletSnapshotOp(Master* master,
-                        ThreadPool* callback_pool,
-                        const scoped_refptr<TabletInfo>& tablet,
-                        const std::string& snapshot_id,
-                        tserver::TabletSnapshotOpRequestPB::Operation op);
+  AsyncTabletSnapshotOp(
+      Master* master,
+      ThreadPool* callback_pool,
+      const scoped_refptr<TabletInfo>& tablet,
+      const std::string& snapshot_id,
+      tserver::TabletSnapshotOpRequestPB::Operation op);
 
   Type type() const override { return ASYNC_SNAPSHOT_OP; }
 
@@ -38,6 +42,10 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
 
   void SetSnapshotHybridTime(HybridTime value) {
     snapshot_hybrid_time_ = value;
+  }
+
+  void SetCallback(TabletSnapshotOperationCallback callback) {
+    callback_ = std::move(callback);
   }
 
  private:
@@ -52,6 +60,7 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   tserver::TabletSnapshotOpRequestPB::Operation operation_;
   HybridTime snapshot_hybrid_time_;
   tserver::TabletSnapshotOpResponsePB resp_;
+  TabletSnapshotOperationCallback callback_;
 };
 
 } // namespace master

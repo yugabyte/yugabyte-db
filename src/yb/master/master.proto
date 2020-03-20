@@ -258,6 +258,10 @@ message SysRowEntry {
   optional bytes data = 3;
 }
 
+message SysRowEntries {
+  repeated SysRowEntry entries = 1;
+}
+
 // The on-disk entry in the sys.catalog table ("metadata" column) for
 // tablets entries.
 message SysTabletsEntryPB {
