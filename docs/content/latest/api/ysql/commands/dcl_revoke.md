@@ -1,7 +1,8 @@
 ---
-title: REVOKE
+title: REVOKE statement [YSQL]
+headerTitle: REVOKE
 linkTitle: REVOKE
-description: REVOKE
+description: Use the REVOKE statement to remove access privileges from one or more roles.
 summary: REVOKE
 menu:
   latest:

@@ -1,7 +1,8 @@
 ---
-title: Build a Go application
+title: Build a YugabyteDB application using Go
+headerTitle: Build a Go application
 linkTitle: Build a Go application
-description: Build a Go application
+description: Follow this tutorial to build a YugabyteDB application using Go
 menu:
   latest:
     parent: build-apps

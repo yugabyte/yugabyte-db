@@ -1,8 +1,9 @@
 ---
-title: COPY
+title: COPY statement [YSQL]
+headerTitle: COPY
 linkTitle: COPY
 summary: COPY
-description: COPY
+description: Use the COPY, COPY TO, and COPY FROM statements to transfer data between tables and files.
 menu:
   latest:
     identifier: api-ysql-commands-copy

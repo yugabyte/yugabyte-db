@@ -1,8 +1,8 @@
 ---
-title: ysqlsh
+title: ysqlsh - YSQL shell/CLI for YugabyteDB
+headerTitle: ysqlsh - YSQL CLI
 linkTitle: ysqlsh
-headerTitle: ysqlsh shell for YSQL
-description: The YugabyteDB SQL shell provides a CLI for interacting with YugabyteDB using YSQL. It enables you to interactively enter SQL queries and see query results.
+description: Use the YSQL shell (ysqlsh), a command line interface (CLI), to interact with YugabyteDB using YSQL.
 aliases:
   - /develop/tools/ysqlsh/
   - /latest/develop/tools/ysqlsh/

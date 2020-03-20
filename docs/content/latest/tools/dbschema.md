@@ -1,7 +1,8 @@
 ---
-title: DbSchema
+title: Use DbSchema with YugabyteDB
+headerTitle: DbSchema
 linkTitle: DbSchema
-description: DbSchema
+description: Use DbSchema to work with distributed SQL databases in YugabyteDB.
 menu:
   latest:
     identifier: dbschema

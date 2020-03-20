@@ -1,5 +1,6 @@
 ---
-title: Three+ data center (3DC)
+title: Three+ data center (3DC) deployments
+headerTitle: Three+ data center (3DC)
 linkTitle: Three+ data center (3DC)
 description: Three or more (3DC) deployments
 menu:

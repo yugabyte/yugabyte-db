@@ -1,8 +1,9 @@
 ---
-title: CREATE INDEX
+title: CREATE INDEX statement [YSQL]
+headerTitle: CREATE INDEX
 linkTitle: CREATE INDEX
 summary: Create index on a table in a database
-description: CREATE INDEX
+description: Use the CREATE INDEX statement to create an index on the specified columns of the specified table.
 menu:
   latest:
     identifier: api-ysql-commands-create-index
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-This command creates an index on the specified column(s) of the specified table. Indexes are primarily used to improve query performance.
+Use the `CREATE INDEX` statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
 
 ## Syntax
 

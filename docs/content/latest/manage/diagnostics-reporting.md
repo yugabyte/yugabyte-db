@@ -1,5 +1,6 @@
 ---
 title: Diagnostics reporting
+headerTitle: Diagnostics reporting
 linkTitle: Diagnostics reporting
 description: Diagnostics reporting
 aliases:

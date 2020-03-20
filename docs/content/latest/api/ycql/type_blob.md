@@ -1,8 +1,9 @@
 ---
-title: BLOB
+title: BLOB data type [YCQL]
+headerTitle: BLOB data type
+linkTitle: BLOB
 summary: Binary strings of variable length
-headerTitle: BLOB type
-description: BLOB data type is used to represent arbitrary binary data of variable length.
+description: Use the BLOB data type to represent arbitrary binary data of variable length.
 menu:
   latest:
     parent: api-cassandra
@@ -16,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`BLOB` data type is used to represent arbitrary binary data of variable length.
+Use the `BLOB` data type to represent arbitrary binary data of variable length.
 
 ## Syntax
 

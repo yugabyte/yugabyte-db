@@ -1,7 +1,8 @@
 ---
-title: Read replicas
-linkTitle: Read replicas
-description: Read replicas
+title: Create read replica clusters
+headerTitle: Create read replica clusters
+linkTitle: Read replica clusters
+description: Create a read replica cluster in hybrid cloud deployment.
 menu:
   latest:
     identifier: manage-read-replicas

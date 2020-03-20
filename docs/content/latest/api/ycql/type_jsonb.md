@@ -1,7 +1,9 @@
 ---
-title: JSONB
-summary: JSONB types
-description: JSONB data type is used to efficiently model json data. This data type makes it easy to model json data which does not have a set schema and might change often.
+title: JSONB data type [YCQL]
+headerTitle: JSONB
+linkTitle: JSONB
+summary: JSONB type
+description: Use the JSONB data type to efficiently model json data. This data type makes it easy to model JSON data which does not have a set schema and might change often.
 menu:
   latest:
     parent: api-cassandra
@@ -15,16 +17,16 @@ showAsideToc: true
 
 ## Synopsis
 
-`JSONB` data type is used to efficiently model json data. This data type makes it easy to model
-json data which does not have a set schema and might change often. This data type is similar to
-the [JSONB data type in PostgreSQL](https://www.postgresql.org/docs/9.4/static/datatype-json.html). 
-The json document is serialized into a format which is easy for search and retrieval. 
-This is achieved by storing all the json keys in sorted order, which allows for efficient binary 
-search of keys. Similarly arrays are stored such that random access for a particular array index 
+Use the `JSONB` data type to efficiently model JSON data. This data type makes it easy to model
+JSON data which does not have a set schema and might change often. This data type is similar to
+the [JSONB data type in PostgreSQL](https://www.postgresql.org/docs/9.4/static/datatype-json.html).
+The JSON document is serialized into a format which is easy for search and retrieval.
+This is achieved by storing all the JSON keys in sorted order, which allows for efficient binary
+search of keys. Similarly, arrays are stored such that random access for a particular array index
 into the serialized json document is possible.
 
-Currently, updates to some attributes of a JSONB column require a full read-modify-write operation. 
-Note that there are plans to enhance the JSONB data type to support efficient incremental updates in 
+Currently, updates to some attributes of a JSONB column require a full read-modify-write operation.
+Note that there are plans to enhance the JSONB data type to support efficient incremental updates in
 a future version.
 
 ## Syntax

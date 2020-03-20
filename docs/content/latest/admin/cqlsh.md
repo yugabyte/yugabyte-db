@@ -1,8 +1,8 @@
 ---
-title: cqlsh
+title: cqlsh - YCQL shell/CLI for YugabyteDB
+headerTitle: cqlsh
 linkTitle: cqlsh
-headerTitle: cqlsh shell for YCQL
-description: The YugabyteDB CQL shell cqlsh provides a CLI for interacting with YugabyteDB using YCQL
+description: Use the YCQL shell (cqlsh), a command line interface (CLI), to interact with YugabyteDB using YCQL.
 aliases:
   - /develop/tools/cqlsh/
   - /latest/develop/tools/cqlsh/

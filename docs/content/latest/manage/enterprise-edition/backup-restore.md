@@ -1,7 +1,8 @@
 ---
-title: Backup and restore
-linkTitle: Backup and restore
-description: Backup and restore
+title: Back up and restore Yugabyte Platform clusters
+headerTitle: Back up and restore
+linkTitle: Back up and restore
+description: Use the YugabyteDB Admin Console to back up and restore clusters.
 menu:
   latest:
     identifier: manage-ee-backup-restore

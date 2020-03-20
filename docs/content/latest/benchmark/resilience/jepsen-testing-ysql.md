@@ -1,9 +1,9 @@
 ---
-title: Jepsen testing
+title: Jepsen testing of YSQL
+headerTitle: Jepsen testing
 linkTitle: Jepsen testing
-description: Jepsen testing
+description: Learn the results from Jepsen testing of YSQL.
 image: /images/section_icons/explore/high_performance.png
-headcontent: Run Jepsen tests to test failures
 menu:
   latest:
     identifier: jepsen-testing-1-ysql

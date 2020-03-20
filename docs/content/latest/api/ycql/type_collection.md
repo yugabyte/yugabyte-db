@@ -1,8 +1,9 @@
 ---
-title: MAP, SET, LIST
+title: Collection data types (MAP, LIST, and SET) [YSQL]
+headerTitle: Collection data types (MAP, LIST, and SET)
+linkTitle: Collection
 summary: MAP, SET and LIST types
-headerTitle: Collection Types
-description: Collection data types are used to specify columns for data objects that can contain more than one value.
+description: Use collection data types to specify columns for data objects that can contain more than one value.
 menu:
   latest:
     parent: api-cassandra
@@ -16,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Collection data types are used to specify columns for data objects that can contain more than one value.
+Use collection data types to specify columns for data objects that can contain more than one value.
 
 ### LIST
 

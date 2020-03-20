@@ -1,7 +1,8 @@
 ---
 title: Chinook sample database
+headerTitle: Chinook sample database
 linkTitle: Chinook
-description: Chinook sample database
+description: Use the Chinook sample database for a media store to explore and learn YugabyteDB.
 menu:
   latest:
     identifier: chinook

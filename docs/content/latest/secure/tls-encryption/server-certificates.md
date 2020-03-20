@@ -1,7 +1,8 @@
 ---
 title: Create server certificates
+headerTitle: Create server certificates
 linkTitle: Create server certificates
-description: Create server certificates
+description: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption.
 headcontent: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption.
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:

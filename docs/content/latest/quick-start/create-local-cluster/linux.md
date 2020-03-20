@@ -1,7 +1,8 @@
 ---
-title: 2. Create a local cluster
+title: Create a local YugabyteDB cluster on Linux
+headerTitle: 2. Create a local YugabyteDB cluster
 linkTitle: 2. Create a local cluster
-description: Create a local cluster
+description: Create a local YugabyteDB cluster on Linux in less than five minutes.
 aliases:
   - /quick-start/create-local-cluster/
 menu:

@@ -1,5 +1,6 @@
 ---
 title: Run the tests
+headerTitle: Run the tests
 linkTitle: Run the tests
 description: Run the tests
 image: /images/section_icons/index/quick_start.png

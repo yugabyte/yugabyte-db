@@ -1,8 +1,9 @@
 ---
-title: DROP OPERATOR CLASS
+title: DROP OPERATOR CLASS statement [YSQL]
+headerTitle: DROP OPERATOR CLASS
 linkTitle: DROP OPERATOR CLASS
 summary: Remove an operator class
-description: DROP OPERATOR CLASS
+description: Use the DROP OPERATOR CLASS statement to remove an operator class.
 menu:
   latest:
     identifier: api-ysql-commands-drop-operator-class

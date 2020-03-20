@@ -1,7 +1,8 @@
 ---
-title: Universe
+title: Universe 
+headerTitle: Universe
 linkTitle: Universe
-description: Universe
+description: Learn about the YugabyteDB universe (or cluster).
 aliases:
   - /latest/architecture/concepts/universe/
   - /latest/architecture/concepts/single-node/
@@ -14,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A YugabyteDB universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
+A YugabyteDB universe is a group of nodes (VMs, physical machines, or containers) that collectively function as a highly available and resilient database.
 
 {{< note title="Note" >}}
 

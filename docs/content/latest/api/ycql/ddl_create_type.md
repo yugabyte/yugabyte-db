@@ -1,7 +1,9 @@
 ---
-title: CREATE TYPE
+title: CREATE TYPE statement [YCQL]
+headerTitle: CREATE TYPE
+linkTitle: CREATE TYPE
 summary: Create a new data type
-description: CREATE TYPE
+description: Use the CREATE TYPE statement to create a new user-defined data type in a keyspace.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-To `CREATE TYPE` statement creates a new user-defined data type in a keyspace.  It defines the name of the user-defined type and the names and data types for its fields.
+Use the `CREATE TYPE` statement to create a new user-defined data type in a keyspace.  It defines the name of the user-defined type and the names and data types for its fields.
 
 ## Syntax
 

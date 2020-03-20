@@ -1,7 +1,8 @@
 ---
-title: ysql_dump
+title: ysql_dump - YugabyteDB backup tool
+headerTitle: ysql_dump
 linkTitle: ysql_dump
-description: ysql_dump
+description: Use ysql_dump to back up YugabyteDB databases into plain-text, SQL script files.
 headcontent: Extract a YugabyteDB database into a SQL script file.
 menu:
   latest:

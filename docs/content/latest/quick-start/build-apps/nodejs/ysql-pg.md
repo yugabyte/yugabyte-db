@@ -1,7 +1,8 @@
 ---
-title: Build a NodeJS App
-linkTitle: Build a NodeJS App
-description: Build a NodeJS App
+title: Use NodeJS to build a YugabyteDB application
+headerTitle: Build a NodeJS app
+linkTitle: Build a NodeJS app
+description: Use NodeJS and YSQL to build a YugabyteDB application.
 aliases:
   - /develop/client-drivers/nodejs/
   - /latest/develop/client-drivers/nodejs/

@@ -1,5 +1,6 @@
 ---
-title: Amazon DynamoDB
+title: Compare Amazon DynamoDB to YugabyteDB
+headerTitle: Amazon DynamoDB
 linkTitle: Amazon DynamoDB
 description: Amazon DynamoDB
 aliases:

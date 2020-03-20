@@ -1,7 +1,8 @@
 ---
-title: Two data center deployments
+title: Two data center (2DC) deployments with YugabyteDB
+headerTitle: Two data center (2DC) deployments
 linkTitle: Two data center (2DC) deployments
-description: Two data center (2DC) deployments
+description: Learn how YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of change data capture (CDC).
 menu:
   latest:
     parent: architecture
@@ -12,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases and smaller enterprise applications do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB also supports two data center (2DC) deployments, which use asynchronous replication built on top of [change data capture (CDC)](../../architecture/cdc-architecture) in DocDB.
+YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases and smaller enterprise applications do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of [change data capture (CDC)](../../architecture/cdc-architecture) in DocDB.
 
 For details about configuring a 2DC deployment, see [Replicate between two data centers](../../deploy/multi-dc/2dc-deployment).
 
