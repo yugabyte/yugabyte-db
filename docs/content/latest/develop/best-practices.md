@@ -84,7 +84,7 @@ Using YugabyteDB in (ci,cd,automated tests) scenarios we can set certain gflags 
 This will make DML,DDL and create,destroy a cluster faster because data is not written to disk
 2. Set gflag `--yb_num_shards_per_tserver=1`.
 Reducing the number of shards lowers overhead when creating,dropping YCQL tables and writing,reading small amounts of data
-3. Set gflag `--ysql_num_shards_per_tserver here=1`
+3. Set gflag `--ysql_num_shards_per_tserver=1`
 Reducing the number of shards lowers overhead when creating,dropping YSQL tables and writing,reading small amounts of data
 4. Set gflag `--replication_factor=1`
 Keeping only the tablet leaders will remove replication overhead
