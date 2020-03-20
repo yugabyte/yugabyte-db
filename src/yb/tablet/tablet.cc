@@ -186,6 +186,9 @@ DEFINE_int32(backfill_index_timeout_grace_margin_ms, 50,
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
 
+DEFINE_bool(cleanup_intents_sst_files, true,
+            "Cleanup intents files that are no more relevant to any running transaction.");
+
 DEFINE_test_flag(int32, TEST_slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
@@ -692,7 +695,8 @@ void Tablet::DoCleanupIntentFiles() {
   HybridTime best_file_max_ht = HybridTime::kMax;
   std::vector<rocksdb::LiveFileMetaData> files;
   // Stops when there are no more files to delete.
-  for (;;) {
+  std::string previous_name;
+  while (GetAtomicFlag(&FLAGS_cleanup_intents_sst_files)) {
     ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
     if (!scoped_read_operation.ok()) {
       break;
@@ -716,6 +720,12 @@ void Tablet::DoCleanupIntentFiles() {
     if (!min_running_start_ht.is_valid() || min_running_start_ht <= best_file_max_ht) {
       break;
     }
+    if (best_file->name == previous_name) {
+      LOG_WITH_PREFIX(INFO) << "Attempt to delete same file: " << previous_name
+                            << ", stopping cleanup";
+      break;
+    }
+    previous_name = best_file->name;
 
     LOG_WITH_PREFIX(INFO)
         << "Intents SST file will be deleted: " << best_file->ToString()
