@@ -324,6 +324,11 @@ Before using package you have to set table utl_file.utl_file_dir. This contains
 all allowed directories without ending symbol ('/' or '\'). On WinNT platform
 you have to put locality parametr with ending symbol '\' everytime.
 
+These dictionary can be named (second column in table `utl_file.utl_file_dir`).
+The `location` parameter can be the name or the dictionary path. The `location`
+is interpreted and checked as a name of dictionary. When this name is not found,
+then location is interpreted and checked as dictionary.
+
 == Package dbms_pipe
 
 This package is an emulation of Oracle's package dbms_pipe. It provides 

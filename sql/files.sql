@@ -110,9 +110,18 @@ SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
 SELECT read_file(utl_file.tmpdir());
 SELECT utl_file.fremove(utl_file.tmpdir(), 'regress_orafce.txt');
 SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
-DROP FUNCTION gen_file(text);
-DROP FUNCTION read_file(text);
 SELECT checkFlushFile(utl_file.tmpdir());
 SELECT utl_file.fremove(utl_file.tmpdir(), 'regressflush_orafce.txt');
 DROP FUNCTION checkFlushFile(text);
+DELETE FROM utl_file.utl_file_dir;
+
+-- try to use named directory
+INSERT INTO utl_file.utl_file_dir(dir, dirname) VALUES(utl_file.tmpdir(), 'TMPDIR');
+SELECT gen_file('TMPDIR');
+SELECT read_file('TMPDIR');
+SELECT utl_file.fremove('TMPDIR', 'regress_orafce.txt');
+
+DROP FUNCTION gen_file(text);
+DROP FUNCTION read_file(text);
+
 DELETE FROM utl_file.utl_file_dir;

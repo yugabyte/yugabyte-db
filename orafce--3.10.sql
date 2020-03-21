@@ -1785,7 +1785,7 @@ LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.tmpdir() IS 'Get temp directory path.';
 
 /* carry all safe directories */
-CREATE TABLE utl_file.utl_file_dir(dir text);
+CREATE TABLE utl_file.utl_file_dir(dir text, dirname text unique);
 REVOKE ALL ON utl_file.utl_file_dir FROM PUBLIC;
 REVOKE ALL ON FUNCTION utl_file.tmpdir() FROM PUBLIC;
 

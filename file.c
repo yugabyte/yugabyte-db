@@ -915,31 +915,112 @@ check_secure_locality(const char *path)
 	SPI_finish();
 }
 
+static char *
+safe_named_location(text *location)
+{
+	static SPIPlanPtr	plan = NULL;
+	MemoryContext		old_cxt;
+
+	Oid		argtypes[] = {TEXTOID};
+	Datum	values[1];
+	char	nulls[1] = {' '};
+	char   *result;
+
+	old_cxt = CurrentMemoryContext;
+
+	values[0] = PointerGetDatum(location);
+
+	if (SPI_connect() < 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("SPI_connect failed")));
+
+	if (!plan)
+	{
+		/* Don't use LIKE not to escape '_' and '%' */
+		SPIPlanPtr p = SPI_prepare(
+		    "SELECT dir FROM utl_file.utl_file_dir WHERE dirname = $1",
+		    1, argtypes);
+
+		if (p == NULL || (plan = SPI_saveplan(p)) == NULL)
+			ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("SPI_prepare_failed")));
+	}
+
+	if (SPI_OK_SELECT != SPI_execute_plan(plan, values, nulls, false, 1))
+		ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("can't execute sql")));
+
+	if (SPI_processed > 0)
+	{
+		char	   *loc = SPI_getvalue(SPI_tuptable->vals[0],
+									   SPI_tuptable->tupdesc, 1);
+		if (loc)
+			result = MemoryContextStrdup(old_cxt, loc);
+		else
+			result = NULL;
+	}
+	else
+		result = NULL;
+
+	SPI_finish();
+
+	MemoryContextSwitchTo(old_cxt);
+
+	return result;
+}
+
+
 /*
  * get_safe_path - make a fullpath and check security.
  */
 static char *
-get_safe_path(text *location, text *filename)
+get_safe_path(text *location_or_dirname, text *filename)
 {
-	char   *fullname;
-	int		aux_pos;
-	int		aux_len;
+	char	   *fullname;
+	char	   *location;
+	bool		check_locality;
 
-	NON_EMPTY_TEXT(location);
+	NON_EMPTY_TEXT(location_or_dirname);
 	NON_EMPTY_TEXT(filename);
 
-	aux_pos = VARSIZE_ANY_EXHDR(location);
-	aux_len = VARSIZE_ANY_EXHDR(filename);
+	location = safe_named_location(location_or_dirname);
+	if (location)
+	{
+		int		aux_pos = strlen(location);
+		int		aux_len = VARSIZE_ANY_EXHDR(filename);
 
-	fullname = palloc(aux_pos + 1 + aux_len + 1);
-	memcpy(fullname, VARDATA(location), aux_pos);
-	fullname[aux_pos] = '/';
-	memcpy(fullname + aux_pos + 1, VARDATA(filename), aux_len);
-	fullname[aux_pos + aux_len + 1] = '\0';
+		fullname = palloc(aux_pos + 1 + aux_len + 1);
+		strcpy(fullname, location);
+		fullname[aux_pos] = '/';
+		memcpy(fullname + aux_pos + 1, VARDATA(filename), aux_len);
+		fullname[aux_pos + aux_len + 1] = '\0';
+
+		/* location is safe (ensured by dirname) */
+		check_locality = false;
+		pfree(location);
+	}
+	else
+	{
+		int aux_pos = VARSIZE_ANY_EXHDR(location_or_dirname);
+		int aux_len = VARSIZE_ANY_EXHDR(filename);
+
+		fullname = palloc(aux_pos + 1 + aux_len + 1);
+		memcpy(fullname, VARDATA(location_or_dirname), aux_pos);
+		fullname[aux_pos] = '/';
+		memcpy(fullname + aux_pos + 1, VARDATA(filename), aux_len);
+		fullname[aux_pos + aux_len + 1] = '\0';
+
+		check_locality = true;
+	}
 
 	/* check locality in canonizalized form of path */
 	canonicalize_path(fullname);
-	check_secure_locality(fullname);
+
+	if (check_locality)
+		check_secure_locality(fullname);
 
 	return fullname;
 }

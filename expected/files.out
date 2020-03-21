@@ -186,8 +186,6 @@ SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
  f
 (1 row)
 
-DROP FUNCTION gen_file(text);
-DROP FUNCTION read_file(text);
 SELECT checkFlushFile(utl_file.tmpdir());
 NOTICE:  [1] >>ABC<<
 NOTICE:  [2] >><<
@@ -207,4 +205,44 @@ SELECT utl_file.fremove(utl_file.tmpdir(), 'regressflush_orafce.txt');
 (1 row)
 
 DROP FUNCTION checkFlushFile(text);
+DELETE FROM utl_file.utl_file_dir;
+-- try to use named directory
+INSERT INTO utl_file.utl_file_dir(dir, dirname) VALUES(utl_file.tmpdir(), 'TMPDIR');
+SELECT gen_file('TMPDIR');
+ gen_file 
+----------
+ 
+(1 row)
+
+SELECT read_file('TMPDIR');
+NOTICE:  [1] >>ABC<<
+NOTICE:  [2] >>123<<
+NOTICE:  [3] >>-----<<
+NOTICE:  [4] >><<
+NOTICE:  [5] >>-----<<
+NOTICE:  [6] >>-----<<
+NOTICE:  [7] >><<
+NOTICE:  [8] >><<
+NOTICE:  [9] >>-----<<
+NOTICE:  [10] >>AB<<
+NOTICE:  [11] >>[1=1, 2=2, 3=3, 4=4, 5=5]<<
+NOTICE:  >>1234<<
+NOTICE:  >>5678<<
+NOTICE:  >>90<<
+NOTICE:  finish no data found 
+NOTICE:  is_open = t
+NOTICE:  is_open = f
+ read_file 
+-----------
+ 
+(1 row)
+
+SELECT utl_file.fremove('TMPDIR', 'regress_orafce.txt');
+ fremove 
+---------
+ 
+(1 row)
+
+DROP FUNCTION gen_file(text);
+DROP FUNCTION read_file(text);
 DELETE FROM utl_file.utl_file_dir;
