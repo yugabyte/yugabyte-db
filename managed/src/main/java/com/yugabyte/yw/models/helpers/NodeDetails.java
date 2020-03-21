@@ -191,4 +191,13 @@ public class NodeDetails {
     return this.placementUuid != null && this.placementUuid.equals(placementUuid);
   }
 
+  @JsonIgnore
+  public String getRegion() {
+    return this.cloudInfo.region;
+  }
+
+  @JsonIgnore
+  public String getZone() {
+    return this.cloudInfo.az;
+  }
 }
