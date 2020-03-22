@@ -12,9 +12,7 @@
 //
 package org.yb.cql;
 
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
+import java.util.*;
 
 import org.junit.Test;
 
@@ -75,7 +73,7 @@ public class TestPagingSelect extends BaseCQLTest {
     // Verifying that there are only number of rows fetched equal to the max page size.
     assertEquals(num_rows_per_page, rs.getAvailableWithoutFetching());
     assertFalse(rs.isFullyFetched());
-    // Iterator will perform additional fetching to retreive the entire set.
+    // Iterator will perform additional fetching to retrieve the entire set.
     while (iter.hasNext()) {
       Row row = iter.next();
       String result = String.format("Result = %d, %s, %d, %s, %d, %s",
@@ -164,4 +162,131 @@ public class TestPagingSelect extends BaseCQLTest {
     assertQuery(stmt, expectedRows);
 
   }
+
+  @Test
+  public void testReverseScan() throws Exception {
+    session.execute("CREATE TABLE test_reverse_scan_paging (h int, r int, " +
+                            "PRIMARY KEY (h, r))");
+    PreparedStatement pstmt = session.prepare("INSERT INTO test_reverse_scan_paging " +
+                                                      "(h, r) VALUES (1, ?)");
+
+    List<String> expectedRows = new ArrayList<>();
+    String rowTemplate = "Row[1, %d]";
+
+    BatchStatement batch = new BatchStatement();
+    for (Integer r = 1; r < 15; r++) {
+      batch.add(pstmt.bind(r));
+      expectedRows.add(String.format(rowTemplate, r));
+    }
+    session.execute(batch);
+    int numRows = expectedRows.size();
+
+    // Double-check rows.
+    SimpleStatement stmt = new SimpleStatement("SELECT * FROM test_reverse_scan_paging " +
+                                                       "WHERE h = 1");
+    assertQueryRowsOrdered(stmt, expectedRows);
+
+    // Reverse expected rows for reverse scans.
+    Collections.reverse(expectedRows);
+
+    // Test full reverse scan (different fetch sizes).
+    stmt = new SimpleStatement("SELECT * FROM test_reverse_scan_paging WHERE h = 1" +
+                                                       "ORDER BY r DESC");
+    stmt.setFetchSize(1);
+    assertQueryRowsOrdered(stmt, expectedRows);
+    stmt.setFetchSize(3);
+    assertQueryRowsOrdered(stmt, expectedRows);
+
+    // Test reverse scan with exclusive bounds: (3, 10).
+    // Note: sublist [4, 10) means indexes [numRows - 9, numRows - 3) in reversed list.
+    stmt = new SimpleStatement("SELECT * FROM test_reverse_scan_paging WHERE h = 1" +
+                                       "AND r > 3 AND r < 10 ORDER BY r DESC");
+    stmt.setFetchSize(1);
+    assertQueryRowsOrdered(stmt, expectedRows.subList(numRows - 9, numRows - 3));
+    stmt.setFetchSize(3);
+    assertQueryRowsOrdered(stmt, expectedRows.subList(numRows - 9, numRows - 3));
+
+    // Test reverse scan with inclusive bounds: [5, 12].
+    // Note: sublist [5, 13) means indexes [numRows - 12, numRows - 4) in reversed list.
+    stmt = new SimpleStatement("SELECT * FROM test_reverse_scan_paging WHERE h = 1" +
+                                       "AND r >= 5 AND r <= 12 ORDER BY r DESC");
+    stmt.setFetchSize(1);
+    assertQueryRowsOrdered(stmt, expectedRows.subList(numRows - 12, numRows - 4));
+    stmt.setFetchSize(3);
+    assertQueryRowsOrdered(stmt, expectedRows.subList(numRows - 12, numRows - 4));
+
+    // Test limit.
+    // Test reverse scan upper (start) bound and limit: 10,9,8,7,6.
+    // Note: sublist [6, 11) means indexes [numRows - 10, numRows - 5) in reversed list.
+    stmt = new SimpleStatement("SELECT * FROM test_reverse_scan_paging WHERE h = 1" +
+                                       "AND r < 11 ORDER BY r DESC LIMIT 5");
+    stmt.setFetchSize(1);
+    assertQueryRowsOrdered(stmt, expectedRows.subList(numRows - 10, numRows - 5));
+    stmt.setFetchSize(3);
+    assertQueryRowsOrdered(stmt, expectedRows.subList(numRows - 10, numRows - 5));
+  }
+
+  @Test
+  public void testReverseScanMultiRangeCol() throws Exception {
+    session.execute("CREATE TABLE test_reverse_scan_multicol (h int, r1 int, r2 int, r3 int, " +
+                            "PRIMARY KEY (h, r1, r2, r3))");
+    PreparedStatement pstmt = session.prepare("INSERT INTO test_reverse_scan_multicol " +
+                                                      "(h, r1, r2, r3) VALUES (1, ?, ?, ?)");
+
+
+    BatchStatement batch = new BatchStatement();
+    for (Integer r1 = 1; r1 <= 5; r1++) {
+      for (Integer r2 = 1; r2 <= 5; r2++) {
+        for (Integer r3 = 1; r3 <= 5; r3++) {
+          batch.add(pstmt.bind(r1, r2, r3));
+        }
+      }
+    }
+    session.execute(batch);
+
+    // Test reverse scan with prefix bounds: r1(1, 4), r2[2,3].
+    SimpleStatement stmt =
+            new SimpleStatement("SELECT * FROM test_reverse_scan_multicol WHERE h = 1" +
+                                       "AND r1 >= 2 AND r1 <= 4 AND r2 > 1 and r2 < 4" +
+                                       "ORDER BY r1 DESC, r2 DESC, r3 DESC");
+    stmt.setFetchSize(1);
+    Iterator<Row> rows1 = session.execute(stmt).iterator();
+    stmt.setFetchSize(3);
+    Iterator<Row> rows2 = session.execute(stmt).iterator();
+
+    String rowTemplate = "Row[1, %d, %d, %d]";
+    for (Integer r1 = 4; r1 >= 2; r1--) {
+      for (Integer r2 = 3; r2 > 1; r2--) {
+        for (Integer r3 = 5; r3 >= 1; r3--) {
+          String expected = String.format(rowTemplate, r1, r2, r3);
+          assertEquals(rows1.next().toString(), expected);
+          assertEquals(rows2.next().toString(), expected);
+        }
+      }
+    }
+    assertFalse(rows1.hasNext());
+    assertFalse(rows2.hasNext());
+
+    // Test reverse scan with non-prefix bounds: r1(1, 4), r3[2, 3].
+    stmt = new SimpleStatement("SELECT * FROM test_reverse_scan_multicol WHERE h = 1" +
+                                       "AND r1 > 1 AND r1 < 4 AND r3 >= 2 and r3 <= 3" +
+                                       "ORDER BY r1 DESC, r2 DESC, r3 DESC");
+    stmt.setFetchSize(1);
+    rows1 = session.execute(stmt).iterator();
+    stmt.setFetchSize(3);
+    rows2 = session.execute(stmt).iterator();
+
+    for (Integer r1 = 3; r1 > 1; r1--) {
+      for (Integer r2 = 5; r2 >= 1; r2--) {
+        for (Integer r3 = 3; r3 >= 2; r3--) {
+          String expected = String.format(rowTemplate, r1, r2, r3);
+          assertEquals(rows1.next().toString(), expected);
+          assertEquals(rows2.next().toString(), expected);
+        }
+      }
+    }
+    assertFalse(rows1.hasNext());
+    assertFalse(rows2.hasNext());
+  }
+
 }
