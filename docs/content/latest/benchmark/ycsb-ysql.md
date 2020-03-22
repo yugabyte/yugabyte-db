@@ -56,17 +56,7 @@ $ cd YCSB
 
 Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
 
-## Step 3. Configure your database
-
-Create the database and table using the `ysqlsh` tool.
-The `ysqlsh` tool is distributed as part of the database package.
-
-```sh
-$ ./bin/ysqlsh -h <ip> -c 'create database ycsb;'
-$ ./bin/ysqlsh -h <ip> -d ycsb -c 'CREATE TABLE usertable (YCSB_KEY VARCHAR(255) PRIMARY KEY, FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT, FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT, FIELD8 TEXT, FIELD9 TEXT);'
-```
-
-## Step 4. Configure YCSB connection properties
+## Step 3. Configure YCSB connection properties
 
 Set the following connection configurations in `db.properties`:
 
@@ -77,13 +67,36 @@ db.user=yugabyte
 db.passwd=
 ```
 
-{{< note title="Note" >}}
-The db.url field should be populated with the IPs of all the nodes that are part of the cluster.
-{{< /note >}}
-
 The other configuration parameters, are described in detail at [this page](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties)
 
-## Step 5. Running the workload
+{{< note title="Note" >}}
+The db.url field should be populated with the IPs of all the tserver nodes that are part of the cluster.
+{{< /note >}}
+
+## Step 4. Run the workloads
+There is a handy script(run_sql.sh) that loads and runs all the workloads.
+First we need to supply the paths to the ycsb binary and the ysqlsh binary(which is distributed as part of the database package) along with the IP of the tserver node.
+Then you simply run the workloads as:
+
+```sh
+$ ./run_sql.sh
+```
+
+The script creates 2 result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
+
+{{< note title="Note" >}}
+To get the maximum performance out of the system, you would have to tune the threadcount parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, we used a threadcount of 32 for the loading phase and 256 for the execution phase.
+{{< /note >}}
+
+## Manually running the workloads
+
+Create the database and table using the `ysqlsh` tool.
+The `ysqlsh` tool is distributed as part of the database package.
+
+```sh
+$ ./bin/ysqlsh -h <ip> -c 'create database ycsb;'
+$ ./bin/ysqlsh -h <ip> -d ycsb -c 'CREATE TABLE usertable (YCSB_KEY VARCHAR(255) PRIMARY KEY, FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT, FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT, FIELD8 TEXT, FIELD9 TEXT);'
+```
 
 Before starting the `yugabyteSQL` workload, you will need to load the data first.
 
@@ -102,8 +115,3 @@ To run the other workloads (for example, `workloadb`), all you need to do is cha
 ```sh
 $ ./bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloadb
 ```
-
-{{< note title="Note" >}}
-Within the tar-ball there is a handy script (run_sql.sh), that runs all the workloads for you. You would need to just specify the paths to the binary and the proper IPs.
-To get the maximum performance out of the system, you would have to tune the threadcount parameter there. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, we used a threadcount of 32 for the loading phase and 256 for the execution phase.
-{{< /note >}}
