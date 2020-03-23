@@ -45,4 +45,8 @@ blackfriday:
   smartDashes: false
   plainIDAnchors: true
   noIntraEmphasis: true
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
 ---
