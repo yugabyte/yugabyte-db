@@ -167,10 +167,6 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
                 << ": session id = " << session_id;
       session.reset(new RemoteBootstrapSession(
           tablet_peer, session_id, requestor_uuid, &nsessions_));
-      RPC_RETURN_NOT_OK(session->Init(),
-                        RemoteBootstrapErrorPB::UNKNOWN_ERROR,
-                        Substitute("Error initializing remote bootstrap session for tablet $0",
-                                   tablet_id));
       it = sessions_.emplace(session_id, SessionData{session, CoarseTimePoint()}).first;
       auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
       if (new_nsessions != sessions_.size()) {
@@ -182,13 +178,14 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
       LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
-      RPC_RETURN_NOT_OK(session->Init(),
-                        RemoteBootstrapErrorPB::UNKNOWN_ERROR,
-                        Substitute("Error initializing remote bootstrap session for tablet $0",
-                                   tablet_id));
     }
     it->second.ResetExpiration();
   }
+
+  RPC_RETURN_NOT_OK(session->Init(),
+                    RemoteBootstrapErrorPB::UNKNOWN_ERROR,
+                    Substitute("Error initializing remote bootstrap session for tablet $0",
+                               tablet_id));
 
   resp->set_session_id(session_id);
   resp->set_session_idle_timeout_millis(FLAGS_remote_bootstrap_idle_timeout_ms);

@@ -64,7 +64,7 @@
 
 using namespace yb::size_literals;
 
-DEFINE_int32(remote_bootstrap_begin_session_timeout_ms, 3000,
+DEFINE_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
              "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");
 TAG_FLAG(remote_bootstrap_begin_session_timeout_ms, hidden);
 
