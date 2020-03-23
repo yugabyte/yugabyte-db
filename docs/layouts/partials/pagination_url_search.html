@@ -6,11 +6,15 @@
   {{ $context := $.context }}
   {{ $iterator := print "neededLinkCurrentIndex" $level }}
   {{ .Scratch.Set $iterator false }}
+  {{ $currentVersion := index (split .File.Dir "/") 0 }}
+  {{ $currentWeight := index .Params "menu" (string $currentVersion) "weight" }}
 
   {{ range $index,$elem := $.menu }}
+    {{ $version := $elem.Menu }}
+    {{ $weight := (index $elem.Page.Params.menu $version).weight }}
     <!-- previous link search -->
       <!-- set next as needed -->
-      {{ if and (not ($context.Scratch.Get "neededNextLink")) ($context.Scratch.Get $iterator) }}
+      {{ if and (not ($context.Scratch.Get "neededNextLink")) ($context.Scratch.Get $iterator) (gt $weight $currentWeight)}}
         {{ $context.Scratch.Set "neededNextLink" $elem }}
       {{ end }}
       <!-- check if current -->
@@ -27,7 +31,7 @@
         {{ end }}
       {{ else }}
         <!-- if not current set as buffer for prev -->
-        {{ if (not ($context.Scratch.Get $iterator)) }}
+        {{ if and (not ($context.Scratch.Get $iterator)) (lt $weight $currentWeight) }}
           {{ $context.Scratch.Set "neededPrevLinkBuffer" $elem }}
         {{ end }}
       {{ end }}
