@@ -76,6 +76,10 @@ typedef struct label_graph_id_cache_entry
 static HTAB *graph_name_cache_hash = NULL;
 static ScanKeyData graph_name_scan_keys[1];
 
+// ag_label.oid
+static HTAB *label_oid_cache_hash = NULL;
+static ScanKeyData label_oid_scan_keys[1];
+
 // ag_label.name, ag_label.graph
 static HTAB *label_name_graph_cache_hash = NULL;
 static ScanKeyData label_name_graph_scan_keys[2];
@@ -106,13 +110,17 @@ static void fill_graph_cache_data(graph_cache_data *cache_data,
 // ag_label
 static void initialize_label_caches(void);
 static void create_label_caches(void);
+static void create_label_oid_cache(void);
 static void create_label_name_graph_cache(void);
 static void create_label_graph_id_cache(void);
 static void invalidate_label_caches(Datum arg, Oid relid);
+static void invalidate_label_oid_cache(Oid relid);
+static void flush_label_oid_cache(void);
 static void invalidate_label_name_graph_cache(Oid relid);
 static void flush_label_name_graph_cache(void);
 static void invalidate_label_graph_id_cache(Oid relid);
 static void flush_label_graph_id_cache(void);
+static label_cache_data *search_label_oid_cache_miss(Oid oid);
 static label_cache_data *search_label_name_graph_cache_miss(Name name,
                                                             Oid graph);
 static void *label_name_graph_cache_hash_search(Name name, Oid graph,
@@ -320,6 +328,10 @@ static void fill_graph_cache_data(graph_cache_data *cache_data,
 
 static void initialize_label_caches(void)
 {
+    // ag_label.oid
+    ag_cache_scan_key_init(&label_oid_scan_keys[0], ObjectIdAttributeNumber,
+                           F_OIDEQ);
+
     // ag_label.name, ag_label.graph
     ag_cache_scan_key_init(&label_name_graph_scan_keys[0], Anum_ag_label_name,
                            F_NAMEEQ);
@@ -347,8 +359,29 @@ static void create_label_caches(void)
      * All the hash tables are created using their dedicated memory contexts
      * which are under TopMemoryContext.
      */
+    create_label_oid_cache();
     create_label_name_graph_cache();
     create_label_graph_id_cache();
+}
+
+static void create_label_oid_cache(void)
+{
+    HASHCTL hash_ctl;
+
+    /*
+     * Use label_cache_data itself since it has oid field as its first field
+     * that is the key for this hash.
+     */
+    MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+    hash_ctl.keysize = sizeof(Oid);
+    hash_ctl.entrysize = sizeof(label_cache_data);
+
+    /*
+     * Please see the comment of hash_create() for the nelem value 16 here.
+     * HASH_BLOBS flag is set because the size of the key is sizeof(uint32).
+     */
+    label_oid_cache_hash = hash_create("ag_label (oid) cache", 16, &hash_ctl,
+                                       HASH_ELEM | HASH_BLOBS);
 }
 
 static void create_label_name_graph_cache(void)
@@ -391,13 +424,70 @@ static void invalidate_label_caches(Datum arg, Oid relid)
 
     if (OidIsValid(relid))
     {
+        invalidate_label_oid_cache(relid);
         invalidate_label_name_graph_cache(relid);
         invalidate_label_graph_id_cache(relid);
     }
     else
     {
+        flush_label_oid_cache();
         flush_label_name_graph_cache();
         flush_label_graph_id_cache();
+    }
+}
+
+static void invalidate_label_oid_cache(Oid relid)
+{
+    HASH_SEQ_STATUS hash_seq;
+
+    hash_seq_init(&hash_seq, label_oid_cache_hash);
+    for (;;)
+    {
+        label_cache_data *entry;
+        void *removed;
+
+        entry = hash_seq_search(&hash_seq);
+        if (!entry)
+            break;
+
+        if (entry->relation != relid)
+            continue;
+
+        removed = hash_search(label_oid_cache_hash, &entry->oid, HASH_REMOVE,
+                              NULL);
+        hash_seq_term(&hash_seq);
+
+        if (!removed)
+        {
+            ereport(ERROR,
+                    (errmsg_internal("label (oid) cache corrupted")));
+        }
+
+        break;
+    }
+}
+
+static void flush_label_oid_cache(void)
+{
+    HASH_SEQ_STATUS hash_seq;
+
+    hash_seq_init(&hash_seq, label_name_graph_cache_hash);
+    for (;;)
+    {
+        label_cache_data *entry;
+        void *removed;
+
+        entry = hash_seq_search(&hash_seq);
+        if (!entry)
+            break;
+
+        removed = hash_search(label_oid_cache_hash, &entry->oid, HASH_REMOVE,
+                              NULL);
+        if (!removed)
+        {
+            ereport(ERROR,
+                    (errmsg_internal("label (oid) cache corrupted")));
+        }
     }
 }
 
@@ -411,7 +501,7 @@ static void invalidate_label_name_graph_cache(Oid relid)
         label_name_graph_cache_entry *entry;
         void *removed;
 
-        entry = (label_name_graph_cache_entry *)hash_seq_search(&hash_seq);
+        entry = hash_seq_search(&hash_seq);
         if (!entry)
             break;
 
@@ -442,7 +532,7 @@ static void flush_label_name_graph_cache(void)
         label_name_graph_cache_entry *entry;
         void *removed;
 
-        entry = (label_name_graph_cache_entry *)hash_seq_search(&hash_seq);
+        entry = hash_seq_search(&hash_seq);
         if (!entry)
             break;
 
@@ -466,7 +556,7 @@ static void invalidate_label_graph_id_cache(Oid relid)
         label_graph_id_cache_entry *entry;
         void *removed;
 
-        entry = (label_graph_id_cache_entry *)hash_seq_search(&hash_seq);
+        entry = hash_seq_search(&hash_seq);
         if (!entry)
             break;
 
@@ -497,7 +587,7 @@ static void flush_label_graph_id_cache(void)
         label_graph_id_cache_entry *entry;
         void *removed;
 
-        entry = (label_graph_id_cache_entry *)hash_seq_search(&hash_seq);
+        entry = hash_seq_search(&hash_seq);
         if (!entry)
             break;
 
@@ -509,6 +599,65 @@ static void flush_label_graph_id_cache(void)
                     (errmsg_internal("label (graph, id) cache corrupted")));
         }
     }
+}
+
+label_cache_data *search_label_oid_cache(Oid oid)
+{
+    label_cache_data *entry;
+
+    initialize_caches();
+
+    entry = hash_search(label_oid_cache_hash, &oid, HASH_FIND, NULL);
+    if (entry)
+        return entry;
+
+    return search_label_oid_cache_miss(oid);
+}
+
+static label_cache_data *search_label_oid_cache_miss(Oid oid)
+{
+    ScanKeyData scan_keys[1];
+    Relation ag_label;
+    SysScanDesc scan_desc;
+    HeapTuple tuple;
+    bool found;
+    label_cache_data *entry;
+
+    memcpy(scan_keys, label_oid_scan_keys, sizeof(label_oid_scan_keys));
+    scan_keys[0].sk_argument = ObjectIdGetDatum(oid);
+
+    /*
+     * Calling heap_open() might call AcceptInvalidationMessage() and that
+     * might invalidate the label caches. This is OK because this function is
+     * called when the desired entry is not in the cache.
+     */
+    ag_label = heap_open(ag_label_relation_id(), AccessShareLock);
+    scan_desc = systable_beginscan(ag_label, ag_label_oid_index_id(), true,
+                                   NULL, 1, scan_keys);
+
+    // don't need to loop over scan_desc because ag_label_oid_index is UNIQUE
+    tuple = systable_getnext(scan_desc);
+    if (!HeapTupleIsValid(tuple))
+    {
+        systable_endscan(scan_desc);
+        heap_close(ag_label, AccessShareLock);
+
+        return NULL;
+    }
+
+    // get a new entry
+    entry = hash_search(label_oid_cache_hash, &oid, HASH_ENTER, &found);
+    Assert(!found); // no concurrent update on label_oid_cache_hash
+
+    // fill the new entry with the retrieved tuple
+    fill_label_cache_data(entry, tuple, RelationGetDescr(ag_label));
+    // make sure that the oid field is the same with the hash key(oid)
+    Assert(entry->oid == oid);
+
+    systable_endscan(scan_desc);
+    heap_close(ag_label, AccessShareLock);
+
+    return entry;
 }
 
 label_cache_data *search_label_name_graph_cache(const char *name, Oid graph)

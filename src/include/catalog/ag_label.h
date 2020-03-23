@@ -30,6 +30,7 @@
 #define Natts_ag_label 5
 
 #define ag_label_relation_id() ag_relation_id("ag_label", "table")
+#define ag_label_oid_index_id() ag_relation_id("ag_label_oid_index", "index")
 #define ag_label_name_graph_index_id() \
     ag_relation_id("ag_label_name_graph_index", "index")
 #define ag_label_graph_id_index_id() \
