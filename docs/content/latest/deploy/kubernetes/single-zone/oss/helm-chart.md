@@ -57,11 +57,10 @@ You must have a Kubernetes cluster that has Helm configured. If you have not ins
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- Kubernetes 1.10+
+- Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
 - Helm 2.8+ or 3.0+
 - YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 Confirm that `helm` and `kubectl` are configured correctly.
 

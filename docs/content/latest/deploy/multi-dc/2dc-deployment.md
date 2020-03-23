@@ -52,7 +52,7 @@ After creating the required tables, you can now set up asysnchronous replication
 
 1. Look up the producer universe UUID and the table IDs for the two tables and the index table on master UI.
 
-2. Run the following `yb-admin` [`setup_universe_replication`](../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the producer universe.
+2. Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the producer universe.
 
 ```sh
 ./bin/yb-admin -master_addresses <consumer_universe_master_addresses>

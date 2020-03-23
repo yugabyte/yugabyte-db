@@ -2,7 +2,7 @@
 title: Colocated tables
 linkTitle: Colocated tables
 description: Colocated tables
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     identifier: colocated-tables-2-linux

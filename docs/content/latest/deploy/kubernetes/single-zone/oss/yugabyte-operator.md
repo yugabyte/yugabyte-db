@@ -45,7 +45,7 @@ showAsideToc: true
 </ul>
 
 
-Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [Yugabyte k8s operator repository](https://github.com/yugaByte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#configuration-options).
+Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [YugabyteDB k8s operator repository](https://github.com/yugabyte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#configuration-options).
 
 ## Prerequisites
 
@@ -83,19 +83,17 @@ Verify that the cluster is up and running with the following command. You should
 kubectl get po,sts,svc
 ```
 
-Once the cluster is up and running, you may start the PostgreQL-compatible YSQL API and start executing relational queries.
+Once the cluster is up and running, you may start the YSQL API and start executing relational queries.
 
 ```sh
 kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0 --echo-queries
 ```
 
-You may choose to start the Cassandra-compatible YCQL api and start storing data in NoSQL format.
+You can also connect to the YCQL API as shown below.
 
 ```sh
 kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
 ```
-
-You can read more about the YSQL and YCQL APIs in [Yugabyte documentation](https://docs.yugabyte.com/latest/api/)
 
 ## Configuration options
 
@@ -109,7 +107,7 @@ Specify the required data replication factor. This is a **required** field.
 
 ### TLS
 
-Enable TLS encryption for YugabyteDB, if desired. It is disabled by default. You can use the TLS encryption with 3 GFlags, explained later. If you have set `enabled` to true, then you need to generate root certificate and key. Specify the two under `rootCA.cert` & `rootCA.key`. Refer to  [YugabyteDB docs](https://docs.yugabyte.com/latest/secure/tls-encryption/prepare-nodes/#create-the-openssl-ca-configuration) (till [generate root configuration](https://docs.yugabyte.com/latest/secure/tls-encryption/prepare-nodes/#generate-root-configuration) section) for an idea on how to generate the certificate & key files.
+Enable TLS encryption for YugabyteDB, if desired. It is disabled by default. You can use the TLS encryption with 3 GFlags, explained later. If you have set `enabled` to true, then you need to generate root certificate and key. Specify the two under `rootCA.cert` & `rootCA.key`. Refer to  [TLS encryption docs](../../../../../secure/tls-encryption/server-certificates/) (till `Generate root configuration` section) for on how to generate the certificate & key files.
 
 ### YB-Master and YB-TServer
 
@@ -155,7 +153,7 @@ Specify resource `requests` & `limits` under `resources` attribute. The resource
 
 #### gflags
 
-Specify list of configuration options (gflags) for additional control of the YugabyteDB cluster. For available configuration options, see [YB-Master configuration options](../../../../reference/configuration/yb-master) and [YB-TServer configuration options](../../../../reference/configuration/yb-tserver/).
+Specify list of configuration options (gflags) for additional control of the YugabyteDB cluster. For available configuration options, see [YB-Master configuration options](../../../../../reference/configuration/yb-master) and [YB-TServer configuration options](../../../../../reference/configuration/yb-tserver/).
 
 If you have enabled TLS encryption, then you can set:
 - `use_node_to_node_encryption` flag to enable node to node encryption

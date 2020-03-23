@@ -1,5 +1,5 @@
 ---
-title: PHP
+title: Build a PHP application
 linkTitle: PHP
 description: Build a PHP application
 aliases:
@@ -10,6 +10,7 @@ menu:
     identifier: build-apps-php
     parent: build-apps
     weight: 555
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
