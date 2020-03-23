@@ -86,7 +86,7 @@ $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugaby
 	--num_threads_read 4
 ```
 
-The `SqlInserts` workload application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).
+The `SqlInserts` workload application prints some stats while running, which is also shown below. 
 
 ```
 2017-11-20 14:02:48,114 [INFO|...] Read: 9893.73 ops/sec (0.40 ms/op), 233458 total ops  |

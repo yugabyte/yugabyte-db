@@ -196,6 +196,3 @@ To destroy the resource we created for the AKS cluster, run the following.
 $ az group delete --name yb-eastus-resource
 ```
 
-## Advanced Kubernetes Deployment
-
-More advanced scenarios for deploying in Kubernetes are covered in the [Kubernetes Deployments](../../../kubernetes/) section.

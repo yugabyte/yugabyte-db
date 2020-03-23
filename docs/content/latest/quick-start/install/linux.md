@@ -13,7 +13,6 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
-hidePagination: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

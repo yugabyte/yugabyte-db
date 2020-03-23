@@ -181,7 +181,3 @@ To destroy the machines we created for the gcloud cluster, run the following.
 ```sh
 $ gcloud container clusters delete yugabyte
 ```
-
-## Advanced Kubernetes deployment
-
-More advanced scenarios for deploying in Kubernetes are covered in [Deploy on Kubernetes](../../../../deploy/kubernetes/).
