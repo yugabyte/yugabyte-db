@@ -63,17 +63,3 @@ sources in (Compile, doc) := Seq()
 publishArtifact in (Compile, packageDoc) := false
 
 topLevelDirectory := None
-
-def retrieveAwsPrices(implicit dir: File): Int = Process("./retrieve_aws_prices.py", dir)!
-
-lazy val RetrievePricing = taskKey[Unit]("Retrieve and save relevant AWS pricing.")
-
-RetrievePricing := {
-  implicit val utilsDir = baseDirectory.value / "utils"
-  if (retrieveAwsPrices != 0) throw new Exception("Failed retrieving AWS prices.")
-}
-
-/**
- * Make sbt compilation depend on retrieving AWS prices.
- */
-(compile in Compile) := ((compile in Compile) dependsOn RetrievePricing).value
