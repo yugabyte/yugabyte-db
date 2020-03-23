@@ -45,17 +45,14 @@ You must have a GKE cluster that has Helm configured. If you have not installed 
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- GKE running Kubernetes 1.10+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
+- GKE running Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
 - Helm 2.8+ or 3.0+
 - YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0+
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites.
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
-
-**NOTE:** If you install gcloud using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
 
 - Configure defaults for gcloud
 
