@@ -1,5 +1,5 @@
 ---
-title: C#
+title: Build a C# application
 linkTitle: C#
 description: Build a C# application
 aliases:
@@ -10,6 +10,7 @@ menu:
     identifier: build-apps-csharp
     parent: build-apps
     weight: 554
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

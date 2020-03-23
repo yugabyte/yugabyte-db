@@ -44,7 +44,7 @@ showAsideToc: true
   </li>
 </ul>
 
-This is an alternative to deploying YugabyteDB manually using [Yugabyte Operator](yugabyte-operator.md). The Yugabyte operator is available on Red Hat's [OperatorHub.io](https://operatorhub.io/operator/yugabyte-operator) and hence YugabyteDB can be also be deployed using [Operator Lifecycle Manager](https://github.com/operator-framework/operator-lifecycle-manager). As the name suggests, OLM is a tool to help deploy and manage Operators on your cluster.
+This is an alternative to deploying YugabyteDB manually using [Yugabyte Operator](../yugabyte-operator). The Yugabyte operator is available on Red Hat's [OperatorHub.io](https://operatorhub.io/operator/yugabyte-operator) and hence YugabyteDB can be also be deployed using [Operator Lifecycle Manager](https://github.com/operator-framework/operator-lifecycle-manager). As the name suggests, OLM is a tool to help deploy and manage Operators on your cluster.
 
 Read on to find out how you can deploy YugabyteDB with OLM.
 
@@ -106,8 +106,8 @@ kubectl exec -it -n yb-operator yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-
 
 For details on the YSQL API, see:
 
-- [Explore YSQL](../../../../quick-start/explore-ysql/#kubernetes)
-- [YSQL Reference](../../../../api/ysql/)
+- [Explore YSQL](../../../../../quick-start/explore-ysql/)
+- [YSQL Reference](../../../../../api/ysql/)
 
 ## Cleanup
 

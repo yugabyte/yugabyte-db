@@ -31,11 +31,10 @@ You must have a Amazon EKS cluster that has Helm configured. Note that Amazon EK
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- Amazon EKS running Kubernetes 1.14+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `m5.2xlarge` is the minimum AWS EC2 instance type that meets these criteria.
+- Amazon EKS running Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `m5.2xlarge` is the minimum AWS EC2 instance type that meets these criteria.
 - Helm 3.0+
 - YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0+
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites.
 
@@ -95,7 +94,7 @@ $ eksctl create cluster \
 
 As stated in the Prerequisites section, the default configuration in the YugabyteDB Helm Chart requires Kubernetes nodes to have a total of 12 CPU cores and 45 GB RAM allocated to YugabyteDB. This can be three nodes with 4 CPU cores and 15 GB RAM allocated to YugabyteDB. The smallest AWS instance type that meets this requirement is `m5.2xlarge` which has 8 CPU cores and 32GB RAM.
 
-### Create storage classes per zone
+### Create a storage class per zone
 
 Copy the contents below to a file named `storage.yaml`.
 

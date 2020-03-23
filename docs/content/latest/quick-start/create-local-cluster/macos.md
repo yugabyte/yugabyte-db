@@ -15,7 +15,6 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
-hidePagination: true
 ---
 
 

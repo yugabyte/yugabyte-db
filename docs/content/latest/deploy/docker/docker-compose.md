@@ -9,7 +9,7 @@ menu:
   latest:
     parent: deploy
     name: Docker
-    identifier: docker-2-compose
+    identifier: docker-1-compose
     weight: 625
 type: page
 isTocNested: false
@@ -17,16 +17,16 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/latest/deploy/docker/docker-swarm" class="nav-link">
-      <i class="fas fa-layer-group"></i>
-      Docker Swarm
-    </a>
-  </li>
   <li>
     <a href="/latest/deploy/docker/docker-compose" class="nav-link active">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker Compose
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/docker/docker-swarm" class="nav-link">
+      <i class="fas fa-layer-group"></i>
+      Docker Swarm
     </a>
   </li>
 </ul>

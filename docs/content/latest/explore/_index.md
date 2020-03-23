@@ -15,7 +15,7 @@ section: GET STARTED
 menu:
   latest:
     identifier: explore
-    weight: 200
+    weight: 600
 ---
 
 {{< tip title="Tip" >}}
