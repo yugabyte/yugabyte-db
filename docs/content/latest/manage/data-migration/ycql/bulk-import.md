@@ -114,7 +114,7 @@ cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 ```
 
 {{< note title="Note" >}}
-By default `COPY` exports timestamps in `yyyy-MM-dd HH:mm:ss.SSSZ` format. 
+By default, `COPY` exports timestamps in `yyyy-MM-dd HH:mm:ss.SSSZ` format. 
 {{< /note >}}
 
 
