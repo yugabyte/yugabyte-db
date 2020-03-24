@@ -38,8 +38,6 @@
             headers.on("click", function() {
               window.location.hash = this.id
             }).addClass("clickable-header");
-            // double unwrap .TableOfContents because of ul>li wrapper for h1 headers
-            $(this).find('nav > ul > li > ul').eq(0).unwrap().unwrap();
             // remove submenus if TOC is not nested
             if (!settings.isTocNested) {
               $(this).find('nav > ul > li > ul').remove();
