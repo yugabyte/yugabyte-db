@@ -157,7 +157,7 @@ For additional options to cassandra-unloader, see [here](https://github.com/yuga
 
 {{< note title="Always specify timezone" >}}
 `cassandra-loader` & `cassandra-unloader` don't add the timezone on their default timestamp format.
-Make sure that timestamps are exported/imported with the same format and including the timezone.
+Make sure that timestamps are exported and imported in the same format, including the time zone.
 Examples:  `yyyy-MM-dd HH:mm:ss.SSSZ` and `yyyy-MM-dd HH:mm:ss.SSSXXX`.
 {{< /note >}}
 
