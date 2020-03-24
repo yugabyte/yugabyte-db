@@ -151,11 +151,12 @@ Specify storage configurations viz. Storage `count`, `size` & `storageClass` of 
 
 Specify resource `requests` & `limits` under `resources` attribute. The resources to be specified are `cpu` & `memory`. The `resource` property in itself is optional & it won't be applied to created `StatefulSets`, if omitted. You may also choose to specify either `resource.requests` or `resource.limits`, or both.
 
-#### gflags
+#### Configuration options (gflags)
 
 Specify list of configuration options (gflags) for additional control of the YugabyteDB cluster. For available configuration options, see [YB-Master configuration options](../../../../../reference/configuration/yb-master) and [YB-TServer configuration options](../../../../../reference/configuration/yb-tserver/).
 
 If you have enabled TLS encryption, then you can set:
+
 - `use_node_to_node_encryption` flag to enable node to node encryption
 - `allow_insecure_connections` flag to specify if insecure connections are allowed when tls is enabled
 - `use_client_to_server_encryption` flag to enable client to node encryption
