@@ -200,6 +200,7 @@ pre code.copy + textarea, .copy pre textarea {
 }
 
 #toc-static {
+  margin-top: 30px;
   @media only screen and (min-width: 1200px) {
     display: none;
   }
