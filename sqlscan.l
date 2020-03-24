@@ -879,7 +879,19 @@ lexer_errposition(void)
 	/* Convert byte offset to character number */
 	pos = _pg_mbstrlen_with_len(scanbuf, orafce_sql_yylval.val.lloc) + 1;
 	/* And pass it to the ereport mechanism */
+
+#if PG_VERSION_NUM >= 130000
+
+	errposition(pos);
+
+	return pos;
+
+#else
+
 	return errposition(pos);
+
+#endif
+
 }
 
 /*
