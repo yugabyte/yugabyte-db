@@ -257,8 +257,10 @@ int compare_agtype_containers_orderability(agtype_container *a,
             }
 
             if ((va.type == vb.type) ||
-                ((va.type == AGTV_INTEGER || va.type == AGTV_FLOAT) &&
-                 (vb.type == AGTV_INTEGER || vb.type == AGTV_FLOAT)))
+                ((va.type == AGTV_INTEGER || va.type == AGTV_FLOAT ||
+                  va.type == AGTV_NUMERIC) &&
+                 (vb.type == AGTV_INTEGER || vb.type == AGTV_FLOAT ||
+                  vb.type == AGTV_NUMERIC)))
             {
                 switch (va.type)
                 {
@@ -1568,6 +1570,17 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
     if (a->type == AGTV_FLOAT && b->type == AGTV_INTEGER)
         return compare_two_floats_orderability(a->val.float_value,
                                                (float8)b->val.int_value);
+    /* check for integer or float compared to numeric */
+    if (is_numeric_result(a, b))
+    {
+        Datum numd, lhsd, rhsd;
+
+        lhsd = get_numeric_datum_from_agtype_value(a);
+        rhsd = get_numeric_datum_from_agtype_value(b);
+        numd = DirectFunctionCall2(numeric_cmp, lhsd, rhsd);
+
+        return DatumGetInt32(numd);
+    }
 
     ereport(ERROR, (errmsg("agtype input scalar type mismatch")));
     return -1;

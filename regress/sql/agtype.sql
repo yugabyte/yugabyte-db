@@ -52,13 +52,18 @@ INSERT INTO agtype_table VALUES ('float', '-100000000.000001');
 INSERT INTO agtype_table VALUES ('float', '0.00000000000000012345');
 INSERT INTO agtype_table VALUES ('float', '-0.00000000000000012345');
 
+INSERT INTO agtype_table VALUES ('numeric', '100000000000.0000000000001::numeric');
+INSERT INTO agtype_table VALUES ('numeric', '-100000000000.0000000000001::numeric');
+
 INSERT INTO agtype_table VALUES ('integer array',
 	'[-9223372036854775808, -1, 0, 1, 9223372036854775807]');
 INSERT INTO agtype_table VALUES('float array',
 	'[-0.00000000000000012345, -100000000.000001, -1.0, 0.0, 1.0, 100000000.000001, 0.00000000000000012345]');
-INSERT INTO agtype_table VALUES('mixed array', '[true, false, null, "string", 1, 1.0, {"bool":true}]');
+INSERT INTO agtype_table VALUES('mixed array', '[true, false, null, "string", 1, 1.0, {"bool":true}, -1::numeric, [1,3,5]]');
 
 INSERT INTO agtype_table VALUES('object', '{"bool":true, "null":null, "string":"string", "integer":1, "float":1.2, "arrayi":[-1,0,1], "arrayf":[-1.0, 0.0, 1.0], "object":{"bool":true, "null":null, "string":"string", "int":1, "float":8.0}}');
+INSERT INTO agtype_table VALUES ('numeric array',
+        '[-5::numeric, -1::numeric, 0::numeric, 1::numeric, 9223372036854775807::numeric]');
 
 --
 -- Special float values: NaN, +/- Infinity
@@ -88,31 +93,53 @@ SELECT agtype_add('1', '-1');
 SELECT agtype_add('1', '-1.0');
 SELECT agtype_add('1.0', '-1');
 SELECT agtype_add('1.0', '-1.0');
+SELECT agtype_add('1', '-1.0::numeric');
+SELECT agtype_add('1.0', '-1.0::numeric');
+SELECT agtype_add('1::numeric', '-1.0::numeric');
 
 SELECT agtype_sub('-1', '-1');
 SELECT agtype_sub('-1', '-1.0');
 SELECT agtype_sub('-1.0', '-1');
 SELECT agtype_sub('-1.0', '-1.0');
+SELECT agtype_sub('1', '-1.0::numeric');
+SELECT agtype_sub('1.0', '-1.0::numeric');
+SELECT agtype_sub('1::numeric', '-1.0::numeric');
+
 
 SELECT agtype_neg('-1');
 SELECT agtype_neg('-1.0');
 SELECT agtype_neg('0');
 SELECT agtype_neg('0.0');
+SELECT agtype_neg('0::numeric');
+SELECT agtype_neg('-1::numeric');
+SELECT agtype_neg('1::numeric');
 
 SELECT agtype_mul('-2', '3');
 SELECT agtype_mul('2', '-3.0');
 SELECT agtype_mul('-2.0', '3');
 SELECT agtype_mul('2.0', '-3.0');
+SELECT agtype_mul('-2', '3::numeric');
+SELECT agtype_mul('2.0', '-3::numeric');
+SELECT agtype_mul('-2.0::numeric', '3::numeric');
 
 SELECT agtype_div('-4', '3');
 SELECT agtype_div('4', '-3.0');
 SELECT agtype_div('-4.0', '3');
 SELECT agtype_div('4.0', '-3.0');
+SELECT agtype_div('4', '-3.0::numeric');
+SELECT agtype_div('-4.0', '3::numeric');
+SELECT agtype_div('4.0::numeric', '-3::numeric');
+
 
 SELECT agtype_pow('-2', '3');
 SELECT agtype_pow('2', '-1.0');
 SELECT agtype_pow('2.0', '3');
 SELECT agtype_pow('2.0', '-1.0');
+SELECT agtype_pow('2::numeric', '3');
+SELECT agtype_pow('2::numeric', '-1.0');
+SELECT agtype_pow('-2', '3::numeric');
+SELECT agtype_pow('2.0', '-1.0::numeric');
+SELECT agtype_pow('2.0::numeric', '-1.0::numeric');
 
 --
 -- Should fail with divide by zero
@@ -121,12 +148,26 @@ SELECT agtype_div('1', '0');
 SELECT agtype_div('1', '0.0');
 SELECT agtype_div('1.0', '0');
 SELECT agtype_div('1.0', '0.0');
+SELECT agtype_div('1', '0::numeric');
+SELECT agtype_div('1.0', '0::numeric');
+SELECT agtype_div('1::numeric', '0');
+SELECT agtype_div('1::numeric', '0.0');
+SELECT agtype_div('1::numeric', '0::numeric');
 
 --
 -- Should get Infinity
 --
 SELECT agtype_pow('0', '-1');
 SELECT agtype_pow('-0.0', '-1');
+
+--
+-- Should get - ERROR:  zero raised to a negative power is undefined
+--
+SELECT agtype_pow('0', '-1::numeric');
+SELECT agtype_pow('-0.0', '-1::numeric');
+SELECT agtype_pow('0::numeric', '-1');
+SELECT agtype_pow('-0.0::numeric', '-1');
+SELECT agtype_pow('-0.0::numeric', '-1');
 
 --
 -- Test operators +, -, unary -, *, /, %, and ^
@@ -138,6 +179,11 @@ SELECT '3.14'::agtype * '3.14'::agtype;
 SELECT '3.14'::agtype / '3.14'::agtype;
 SELECT '3.14'::agtype % '3.14'::agtype;
 SELECT '3.14'::agtype ^ '2'::agtype;
+SELECT '3'::agtype + '3'::agtype;
+SELECT '3'::agtype + '3.14'::agtype;
+SELECT '3'::agtype + '3.14::numeric'::agtype;
+SELECT '3.14'::agtype + '3.14::numeric'::agtype;
+SELECT '3.14::numeric'::agtype + '3.14::numeric'::agtype;
 
 --
 -- Test orderability of comparison operators =, <>, <, >, <=, >=
@@ -187,6 +233,24 @@ SELECT agtype_in('0.999999') <> agtype_in('1');
 SELECT agtype_in('1.001') > agtype_in('1');
 SELECT agtype_in('0.999999') < agtype_in('1');
 
+-- Mixed Integer and Numeric
+SELECT agtype_in('1') = agtype_in('1::numeric');
+SELECT agtype_in('1') <> agtype_in('2::numeric');
+SELECT agtype_in('1') <> agtype_in('-2::numeric');
+SELECT agtype_in('1') < agtype_in('2::numeric');
+SELECT agtype_in('1') > agtype_in('-2::numeric');
+SELECT agtype_in('1') <= agtype_in('2::numeric');
+SELECT agtype_in('1') >= agtype_in('-2::numeric');
+
+-- Mixed Float and Numeric
+SELECT agtype_in('1.01') = agtype_in('1.01::numeric');
+SELECT agtype_in('1.01') <> agtype_in('1.001::numeric');
+SELECT agtype_in('1.01') <> agtype_in('1.011::numeric');
+SELECT agtype_in('1.01') < agtype_in('1.011::numeric');
+SELECT agtype_in('1.01') > agtype_in('1.001::numeric');
+SELECT agtype_in('1.01') <= agtype_in('1.011::numeric');
+SELECT agtype_in('1.01') >= agtype_in('1.001::numeric');
+
 -- Strings
 SELECT agtype_in('"a"') = agtype_in('"a"');
 SELECT agtype_in('"a"') <> agtype_in('"b"');
@@ -218,6 +282,8 @@ SELECT agtype_in('[1,3,5,7,9,11]') < agtype_in('"string"');
 SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('[1,3,5,7,9,11]');
 SELECT agtype_in('[1, "string"]') < agtype_in('[1, 1]');
 SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('{"bool":true, "integer":null}');
+SELECT agtype_in('1::numeric') < agtype_in('null');
+SELECT agtype_in('true') < agtype_in('1::numeric');
 
 --
 -- Test agtype to boolean cast

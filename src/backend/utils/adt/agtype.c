@@ -74,7 +74,8 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val);
 static void escape_agtype(StringInfo buf, const char *str);
 bool is_decimal_needed(char *numstr);
 static void agtype_in_scalar(void *pstate, char *token,
-                             agtype_token_type tokentype);
+                             agtype_token_type tokentype,
+                             char *annotation);
 static void agtype_categorize_type(Oid typoid, agt_type_category *tcategory,
                                    Oid *outfuncoid);
 static void composite_to_agtype(Datum composite, agtype_in_state *result);
@@ -236,6 +237,7 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
         appendStringInfoString(
             out, DatumGetCString(DirectFunctionCall1(
                      numeric_out, PointerGetDatum(scalar_val->val.numeric))));
+        appendBinaryStringInfo(out, "::numeric", 9);
         break;
     case AGTV_INTEGER:
         appendStringInfoString(
@@ -337,10 +339,29 @@ bool is_decimal_needed(char *numstr)
  * For agtype we always want the de-escaped value - that's what's in token
  */
 static void agtype_in_scalar(void *pstate, char *token,
-                             agtype_token_type tokentype)
+                             agtype_token_type tokentype,
+                             char *annotation)
 {
     agtype_in_state *_state = (agtype_in_state *)pstate;
     agtype_value v;
+    Datum numd;
+
+    /* process typecast annotations if present */
+    if (annotation != NULL)
+    {
+        int len = strlen(annotation);
+
+        if (len == 7 && pg_strcasecmp(annotation, "numeric") == 0)
+            tokentype = AGTYPE_TOKEN_NUMERIC;
+        else if (len == 7 && pg_strcasecmp(annotation, "integer") == 0)
+            tokentype = AGTYPE_TOKEN_INTEGER;
+        else if (len == 5 && pg_strcasecmp(annotation, "float") == 0)
+            tokentype = AGTYPE_TOKEN_FLOAT;
+        else
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("invalid annotation value for scalar")));
+    }
 
     switch (tokentype)
     {
@@ -361,6 +382,16 @@ static void agtype_in_scalar(void *pstate, char *token,
         v.val.float_value = float8in_internal(token, NULL, "double precision",
                                               token);
         break;
+    case AGTYPE_TOKEN_NUMERIC:
+        Assert(token != NULL);
+        v.type = AGTV_NUMERIC;
+        numd = DirectFunctionCall3(numeric_in,
+                                   CStringGetDatum(token),
+                                   ObjectIdGetDatum(InvalidOid),
+                                   Int32GetDatum(-1));
+        v.val.numeric = DatumGetNumeric(numd);
+        break;
+
     case AGTYPE_TOKEN_TRUE:
         v.type = AGTV_BOOL;
         v.val.boolean = true;

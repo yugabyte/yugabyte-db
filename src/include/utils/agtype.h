@@ -417,6 +417,8 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
                                        uint64 *hash, uint64 seed);
 void convert_vertex_object(StringInfo buffer, agtentry *pheader,
                            agtype_value *val);
+Datum get_numeric_datum_from_agtype_value(agtype_value *agtv);
+bool is_numeric_result(agtype_value *lhs, agtype_value *rhs);
 
 /* agtype.c support functions */
 char *agtype_to_cstring(StringInfo out, agtype_container *in,

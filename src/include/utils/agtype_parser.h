@@ -32,12 +32,15 @@ typedef enum
     AGTYPE_TOKEN_STRING,
     AGTYPE_TOKEN_INTEGER,
     AGTYPE_TOKEN_FLOAT,
+    AGTYPE_TOKEN_NUMERIC,
     AGTYPE_TOKEN_OBJECT_START,
     AGTYPE_TOKEN_OBJECT_END,
     AGTYPE_TOKEN_ARRAY_START,
     AGTYPE_TOKEN_ARRAY_END,
     AGTYPE_TOKEN_COMMA,
     AGTYPE_TOKEN_COLON,
+    AGTYPE_TOKEN_ANNOTATION,
+    AGTYPE_TOKEN_IDENTIFIER,
     AGTYPE_TOKEN_TRUE,
     AGTYPE_TOKEN_FALSE,
     AGTYPE_TOKEN_NULL,
@@ -75,7 +78,8 @@ typedef void (*agtype_struct_action)(void *state);
 typedef void (*agtype_ofield_action)(void *state, char *fname, bool isnull);
 typedef void (*agtype_aelem_action)(void *state, bool isnull);
 typedef void (*agtype_scalar_action)(void *state, char *token,
-                                     agtype_token_type tokentype);
+                                     agtype_token_type tokentype,
+                                     char *annotation);
 
 /*
  * Semantic Action structure for use in parsing agtype.

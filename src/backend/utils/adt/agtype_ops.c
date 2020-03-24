@@ -33,6 +33,9 @@ static agtype *agtype_concat(agtype *agt1, agtype *agt2);
 static agtype_value *iterator_concat(agtype_iterator **it1,
                                      agtype_iterator **it2,
                                      agtype_parse_state **state);
+static void concat_to_agtype_string(agtype_value *result, char *lhs, int llen,
+                                    char *rhs, int rlen);
+static char *get_string_from_agtype_value(agtype_value *agtv, int *length);
 
 static void concat_to_agtype_string(agtype_value *result, char *lhs, int llen,
                                     char *rhs, int rlen)
@@ -84,8 +87,13 @@ static char *get_string_from_agtype_value(agtype_value *agtv, int *length)
         *length = agtv->val.string.len;
         return agtv->val.string.val;
 
-    case AGTV_NULL:
     case AGTV_NUMERIC:
+        string = DatumGetCString(DirectFunctionCall1(numeric_out,
+                     PointerGetDatum(agtv->val.numeric)));
+        *length = strlen(string);
+        return string;
+
+    case AGTV_NULL:
     case AGTV_BOOL:
     case AGTV_ARRAY:
     case AGTV_OBJECT:
@@ -95,6 +103,36 @@ static char *get_string_from_agtype_value(agtype_value *agtv, int *length)
         return NULL;
     }
     return NULL;
+}
+
+Datum get_numeric_datum_from_agtype_value(agtype_value *agtv)
+{
+    switch (agtv->type)
+    {
+    case AGTV_INTEGER:
+        return DirectFunctionCall1(int8_numeric,
+                                   Int8GetDatum(agtv->val.int_value));
+    case AGTV_FLOAT:
+        return DirectFunctionCall1(float8_numeric,
+                                   Float8GetDatum(agtv->val.float_value));
+    case AGTV_NUMERIC:
+        return NumericGetDatum(agtv->val.numeric);
+
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+bool is_numeric_result(agtype_value *lhs, agtype_value *rhs)
+{
+    if (((lhs->type == AGTV_NUMERIC || rhs->type == AGTV_NUMERIC) &&
+         (lhs->type == AGTV_INTEGER || lhs->type == AGTV_FLOAT ||
+          rhs->type == AGTV_INTEGER || rhs->type == AGTV_FLOAT )) ||
+        (lhs->type == AGTV_NUMERIC && rhs->type == AGTV_NUMERIC))
+        return true;
+    return false;
 }
 
 PG_FUNCTION_INFO_V1(agtype_add);
@@ -129,26 +167,15 @@ Datum agtype_add(PG_FUNCTION_ARGS)
     agtv_lhs = get_ith_agtype_value_from_container(&lhs->root, 0);
     agtv_rhs = get_ith_agtype_value_from_container(&rhs->root, 0);
 
-    /* Both are strings - concatenate */
-    if (agtv_lhs->type == AGTV_STRING && agtv_rhs->type == AGTV_STRING)
-    {
-        int llen = 0;
-        char *lhs = get_string_from_agtype_value(agtv_lhs, &llen);
-        int rlen = 0;
-        char *rhs = get_string_from_agtype_value(agtv_rhs, &rlen);
-
-        concat_to_agtype_string(&agtv_result, lhs, llen, rhs, rlen);
-
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
-    }
     /*
-	 * The left is a string, the right is an integer or float OR
-	 * the right is a string, the left is an integer or float - concatenate.
-	 */
-    if (((agtv_lhs->type == AGTV_STRING) &&
-         (agtv_rhs->type == AGTV_INTEGER || agtv_rhs->type == AGTV_FLOAT)) ||
-        ((agtv_rhs->type == AGTV_STRING) &&
-         (agtv_lhs->type == AGTV_INTEGER || agtv_lhs->type == AGTV_FLOAT)))
+     * One or both values is a string OR one is a string and the other is
+     * either an integer, float, or numeric. If so, concatinate them.
+     */
+    if ((agtv_lhs->type == AGTV_STRING || agtv_rhs->type == AGTV_STRING) &&
+        (agtv_lhs->type == AGTV_INTEGER || agtv_lhs->type == AGTV_FLOAT ||
+         agtv_lhs->type == AGTV_NUMERIC || agtv_lhs->type == AGTV_STRING ||
+         agtv_rhs->type == AGTV_INTEGER || agtv_rhs->type == AGTV_FLOAT ||
+         agtv_rhs->type == AGTV_NUMERIC || agtv_rhs->type == AGTV_STRING))
     {
         int llen = 0;
         char *lhs = get_string_from_agtype_value(agtv_lhs, &llen);
@@ -156,45 +183,53 @@ Datum agtype_add(PG_FUNCTION_ARGS)
         char *rhs = get_string_from_agtype_value(agtv_rhs, &rlen);
 
         concat_to_agtype_string(&agtv_result, lhs, llen, rhs, rlen);
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
     /* Both are integers - regular addition */
-    if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_INTEGER)
+    else if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_INTEGER;
         agtv_result.val.int_value = agtv_lhs->val.int_value +
                                     agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
     /* Both are floats - regular addition */
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value +
                                       agtv_rhs->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
     /* The left is a float, the right is an integer - regular addition */
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value +
                                       agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
     /* The right is a float, the left is an integer - regular addition */
-    if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.int_value +
                                       agtv_rhs->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    /* Not a covered case, error out */
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("Invalid input parameter types for agtype_add")));
+    /* Is this a numeric result */
+    else if (is_numeric_result(agtv_lhs, agtv_rhs))
+    {
+        Datum numd, lhsd, rhsd;
 
-    PG_RETURN_NULL();
+        lhsd = get_numeric_datum_from_agtype_value(agtv_lhs);
+        rhsd = get_numeric_datum_from_agtype_value(agtv_rhs);
+        numd = DirectFunctionCall2(numeric_add, lhsd, rhsd);
+
+        agtv_result.type = AGTV_NUMERIC;
+        agtv_result.val.numeric = DatumGetNumeric(numd);
+    }
+    else
+        /* Not a covered case, error out */
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("Invalid input parameter types for agtype_add")));
+
+    AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_sub);
@@ -226,34 +261,42 @@ Datum agtype_sub(PG_FUNCTION_ARGS)
         agtv_result.type = AGTV_INTEGER;
         agtv_result.val.int_value = agtv_lhs->val.int_value -
                                     agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value -
                                       agtv_rhs->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value -
                                       agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.int_value -
                                       agtv_rhs->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    /* Is this a numeric result */
+    else if (is_numeric_result(agtv_lhs, agtv_rhs))
+    {
+        Datum numd, lhsd, rhsd;
 
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("Invalid input parameter types for agtype_sub")));
+        lhsd = get_numeric_datum_from_agtype_value(agtv_lhs);
+        rhsd = get_numeric_datum_from_agtype_value(agtv_rhs);
+        numd = DirectFunctionCall2(numeric_sub, lhsd, rhsd);
 
-    PG_RETURN_NULL();
+        agtv_result.type = AGTV_NUMERIC;
+        agtv_result.val.numeric = DatumGetNumeric(numd);
+    }
+    else
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("Invalid input parameter types for agtype_sub")));
+
+    AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_neg);
@@ -281,19 +324,27 @@ Datum agtype_neg(PG_FUNCTION_ARGS)
     {
         agtv_result.type = AGTV_INTEGER;
         agtv_result.val.int_value = -agtv_value->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_value->type == AGTV_FLOAT)
+    else if (agtv_value->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = -agtv_value->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    else if (agtv_value->type == AGTV_NUMERIC)
+    {
+        Datum numd, vald;
 
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("Invalid input parameter type for agtype_neg")));
+        vald = NumericGetDatum(agtv_value->val.numeric);
+        numd = DirectFunctionCall1(numeric_uminus, vald);
 
-    PG_RETURN_NULL();
+        agtv_result.type = AGTV_NUMERIC;
+        agtv_result.val.numeric = DatumGetNumeric(numd);
+    }
+    else
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("Invalid input parameter type for agtype_neg")));
+
+    AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_mul);
@@ -325,34 +376,42 @@ Datum agtype_mul(PG_FUNCTION_ARGS)
         agtv_result.type = AGTV_INTEGER;
         agtv_result.val.int_value = agtv_lhs->val.int_value *
                                     agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value *
                                       agtv_rhs->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value *
                                       agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.int_value *
                                       agtv_rhs->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    /* Is this a numeric result */
+    else if (is_numeric_result(agtv_lhs, agtv_rhs))
+    {
+        Datum numd, lhsd, rhsd;
 
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("Invalid input parameter types for agtype_mul")));
+        lhsd = get_numeric_datum_from_agtype_value(agtv_lhs);
+        rhsd = get_numeric_datum_from_agtype_value(agtv_rhs);
+        numd = DirectFunctionCall2(numeric_mul, lhsd, rhsd);
 
-    PG_RETURN_NULL();
+        agtv_result.type = AGTV_NUMERIC;
+        agtv_result.val.numeric = DatumGetNumeric(numd);
+    }
+    else
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("Invalid input parameter types for agtype_mul")));
+
+    AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_div);
@@ -391,9 +450,8 @@ Datum agtype_div(PG_FUNCTION_ARGS)
         agtv_result.type = AGTV_INTEGER;
         agtv_result.val.int_value = agtv_lhs->val.int_value /
                                     agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
     {
         if (agtv_rhs->val.float_value == 0)
         {
@@ -405,9 +463,8 @@ Datum agtype_div(PG_FUNCTION_ARGS)
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value /
                                       agtv_rhs->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
     {
         if (agtv_rhs->val.int_value == 0)
         {
@@ -419,9 +476,8 @@ Datum agtype_div(PG_FUNCTION_ARGS)
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.float_value /
                                       agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
     {
         if (agtv_rhs->val.float_value == 0)
         {
@@ -433,13 +489,24 @@ Datum agtype_div(PG_FUNCTION_ARGS)
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = agtv_lhs->val.int_value /
                                       agtv_rhs->val.float_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    /* Is this a numeric result */
+    else if (is_numeric_result(agtv_lhs, agtv_rhs))
+    {
+        Datum numd, lhsd, rhsd;
 
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("Invalid input parameter types for agtype_div")));
+        lhsd = get_numeric_datum_from_agtype_value(agtv_lhs);
+        rhsd = get_numeric_datum_from_agtype_value(agtv_rhs);
+        numd = DirectFunctionCall2(numeric_div, lhsd, rhsd);
 
-    PG_RETURN_NULL();
+        agtv_result.type = AGTV_NUMERIC;
+        agtv_result.val.numeric = DatumGetNumeric(numd);
+    }
+    else
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("Invalid input parameter types for agtype_div")));
+
+     AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_mod);
@@ -471,34 +538,42 @@ Datum agtype_mod(PG_FUNCTION_ARGS)
         agtv_result.type = AGTV_INTEGER;
         agtv_result.val.int_value = agtv_lhs->val.int_value %
                                     agtv_rhs->val.int_value;
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = fmod(agtv_lhs->val.float_value,
                                            agtv_rhs->val.float_value);
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = fmod(agtv_lhs->val.float_value,
                                            agtv_rhs->val.int_value);
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = fmod(agtv_lhs->val.int_value,
                                            agtv_rhs->val.float_value);
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    /* Is this a numeric result */
+    else if (is_numeric_result(agtv_lhs, agtv_rhs))
+    {
+        Datum numd, lhsd, rhsd;
 
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("Invalid input parameter types for agtype_mod")));
+        lhsd = get_numeric_datum_from_agtype_value(agtv_lhs);
+        rhsd = get_numeric_datum_from_agtype_value(agtv_rhs);
+        numd = DirectFunctionCall2(numeric_mod, lhsd, rhsd);
 
-    PG_RETURN_NULL();
+        agtv_result.type = AGTV_NUMERIC;
+        agtv_result.val.numeric = DatumGetNumeric(numd);
+    }
+    else
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("Invalid input parameter types for agtype_mod")));
+
+    AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_pow);
@@ -530,34 +605,42 @@ Datum agtype_pow(PG_FUNCTION_ARGS)
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = pow(agtv_lhs->val.int_value,
                                           agtv_rhs->val.int_value);
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = pow(agtv_lhs->val.float_value,
                                           agtv_rhs->val.float_value);
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
+    else if (agtv_lhs->type == AGTV_FLOAT && agtv_rhs->type == AGTV_INTEGER)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = pow(agtv_lhs->val.float_value,
                                           agtv_rhs->val.int_value);
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
-    if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
+    else if (agtv_lhs->type == AGTV_INTEGER && agtv_rhs->type == AGTV_FLOAT)
     {
         agtv_result.type = AGTV_FLOAT;
         agtv_result.val.float_value = pow(agtv_lhs->val.int_value,
                                           agtv_rhs->val.float_value);
-        AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
     }
+    /* Is this a numeric result */
+    else if (is_numeric_result(agtv_lhs, agtv_rhs))
+    {
+        Datum numd, lhsd, rhsd;
 
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("Invalid input parameter types for agtype_pow")));
+        lhsd = get_numeric_datum_from_agtype_value(agtv_lhs);
+        rhsd = get_numeric_datum_from_agtype_value(agtv_rhs);
+        numd = DirectFunctionCall2(numeric_power, lhsd, rhsd);
 
-    PG_RETURN_NULL();
+        agtv_result.type = AGTV_NUMERIC;
+        agtv_result.val.numeric = DatumGetNumeric(numd);
+    }
+    else
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("Invalid input parameter types for agtype_pow")));
+
+    AG_RETURN_AGTYPE_P(agtype_value_to_agtype(&agtv_result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_eq);

@@ -53,6 +53,7 @@ static inline void agtype_lex(agtype_lex_context *lex);
 static inline void agtype_lex_string(agtype_lex_context *lex);
 static inline void agtype_lex_number(agtype_lex_context *lex, char *s,
                                      bool *num_err, int *total_len);
+static void parse_annotation(agtype_lex_context *lex, void *func, char **annotation);
 static inline void parse_scalar(agtype_lex_context *lex,
                                 agtype_sem_action *sem);
 static void parse_object_field(agtype_lex_context *lex,
@@ -238,6 +239,28 @@ void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem)
     lex_expect(AGTYPE_PARSE_END, lex, AGTYPE_TOKEN_END);
 }
 
+static void parse_annotation(agtype_lex_context *lex, void *func, char **annotation)
+{
+    /* check next token for annotations (typecasts, etc.) */
+    if (lex_peek(lex) == AGTYPE_TOKEN_ANNOTATION)
+    {
+        /* eat the annotation token */
+        lex_accept(lex, AGTYPE_TOKEN_ANNOTATION, NULL);
+        if (lex_peek(lex) == AGTYPE_TOKEN_IDENTIFIER)
+        {
+            /* eat the identifier token and get the annotation value */
+            if (func != NULL)
+                lex_accept(lex, AGTYPE_TOKEN_IDENTIFIER, annotation);
+            else
+                lex_accept(lex, AGTYPE_TOKEN_IDENTIFIER, NULL);
+        }
+        else
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("invalid value for annotation")));
+    }
+}
+
 /*
  *  Recursive Descent parse routines. There is one for each structural
  *  element in an agtype document:
@@ -251,6 +274,7 @@ static inline void parse_scalar(agtype_lex_context *lex,
                                 agtype_sem_action *sem)
 {
     char *val = NULL;
+    char *annotation = NULL;
     agtype_scalar_action sfunc = sem->scalar;
     char **valaddr;
     agtype_token_type tok = lex_peek(lex);
@@ -282,8 +306,11 @@ static inline void parse_scalar(agtype_lex_context *lex,
         report_parse_error(AGTYPE_PARSE_VALUE, lex);
     }
 
+    /* parse annotations (typecasts, etc.) */
+    parse_annotation(lex, sfunc, &annotation);
+
     if (sfunc != NULL)
-        (*sfunc)(sem->semstate, val, tok);
+        (*sfunc)(sem->semstate, val, tok, annotation);
 }
 
 static void parse_object_field(agtype_lex_context *lex, agtype_sem_action *sem)
@@ -340,6 +367,7 @@ static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem)
     agtype_struct_action ostart = sem->object_start;
     agtype_struct_action oend = sem->object_end;
     agtype_token_type tok;
+    char *annotation = NULL;
 
     check_stack_depth();
 
@@ -375,6 +403,14 @@ static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem)
     lex_expect(AGTYPE_PARSE_OBJECT_NEXT, lex, AGTYPE_TOKEN_OBJECT_END);
 
     lex->lex_level--;
+
+    /* parse annotations (typecasts, etc.) */
+    parse_annotation(lex, oend, &annotation);
+
+    if (annotation != NULL)
+         ereport(ERROR,
+                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                  errmsg("annotations not supported for objects")));
 
     if (oend != NULL)
         (*oend)(sem->semstate);
@@ -419,6 +455,7 @@ static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem)
      */
     agtype_struct_action astart = sem->array_start;
     agtype_struct_action aend = sem->array_end;
+    char *annotation = NULL;
 
     check_stack_depth();
 
@@ -445,6 +482,14 @@ static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem)
     lex_expect(AGTYPE_PARSE_ARRAY_NEXT, lex, AGTYPE_TOKEN_ARRAY_END);
 
     lex->lex_level--;
+
+    /* parse annotations (typecasts, etc.) */
+    parse_annotation(lex, aend, &annotation);
+
+    if (annotation != NULL)
+         ereport(ERROR,
+                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                  errmsg("annotations not supported for arrays")));
 
     if (aend != NULL)
         (*aend)(sem->semstate);
@@ -510,9 +555,20 @@ static inline void agtype_lex(agtype_lex_context *lex)
             lex->token_type = AGTYPE_TOKEN_COMMA;
             break;
         case ':':
-            lex->prev_token_terminator = lex->token_terminator;
-            lex->token_terminator = s + 1;
-            lex->token_type = AGTYPE_TOKEN_COLON;
+            /* if this is an annotation '::' */
+            if ((len < lex->input_length - 1) && *(s + 1) == ':')
+            {
+                s += 2;
+                lex->prev_token_terminator = lex->token_terminator;
+                lex->token_terminator = s;
+                lex->token_type = AGTYPE_TOKEN_ANNOTATION;
+            }
+            else
+            {
+                lex->prev_token_terminator = lex->token_terminator;
+                lex->token_terminator = s + 1;
+                lex->token_type = AGTYPE_TOKEN_COLON;
+            }
             break;
         case '"':
             /* string */
@@ -609,7 +665,8 @@ static inline void agtype_lex(agtype_lex_context *lex)
             lex->prev_token_terminator = lex->token_terminator;
             lex->token_terminator = p;
 
-            lex->token_type = AGTYPE_TOKEN_INVALID;
+            /* it is an identifier, unless proven otherwise */
+            lex->token_type = AGTYPE_TOKEN_IDENTIFIER;
             len = p - s;
             switch (len)
             {
@@ -640,8 +697,6 @@ static inline void agtype_lex(agtype_lex_context *lex)
                     lex->token_type = AGTYPE_TOKEN_FLOAT;
                 break;
             }
-            if (lex->token_type == AGTYPE_TOKEN_INVALID)
-                report_invalid_token(lex);
         } /* end of default case */
         } /* end of switch */
     }

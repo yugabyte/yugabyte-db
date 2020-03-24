@@ -43,12 +43,16 @@ INSERT INTO agtype_table VALUES ('float', '100000000.000001');
 INSERT INTO agtype_table VALUES ('float', '-100000000.000001');
 INSERT INTO agtype_table VALUES ('float', '0.00000000000000012345');
 INSERT INTO agtype_table VALUES ('float', '-0.00000000000000012345');
+INSERT INTO agtype_table VALUES ('numeric', '100000000000.0000000000001::numeric');
+INSERT INTO agtype_table VALUES ('numeric', '-100000000000.0000000000001::numeric');
 INSERT INTO agtype_table VALUES ('integer array',
 	'[-9223372036854775808, -1, 0, 1, 9223372036854775807]');
 INSERT INTO agtype_table VALUES('float array',
 	'[-0.00000000000000012345, -100000000.000001, -1.0, 0.0, 1.0, 100000000.000001, 0.00000000000000012345]');
-INSERT INTO agtype_table VALUES('mixed array', '[true, false, null, "string", 1, 1.0, {"bool":true}]');
+INSERT INTO agtype_table VALUES('mixed array', '[true, false, null, "string", 1, 1.0, {"bool":true}, -1::numeric, [1,3,5]]');
 INSERT INTO agtype_table VALUES('object', '{"bool":true, "null":null, "string":"string", "integer":1, "float":1.2, "arrayi":[-1,0,1], "arrayf":[-1.0, 0.0, 1.0], "object":{"bool":true, "null":null, "string":"string", "int":1, "float":8.0}}');
+INSERT INTO agtype_table VALUES ('numeric array',
+        '[-5::numeric, -1::numeric, 0::numeric, 1::numeric, 9223372036854775807::numeric]');
 --
 -- Special float values: NaN, +/- Infinity
 --
@@ -75,16 +79,19 @@ SELECT * FROM agtype_table;
  float           | -100000000.000001
  float           | 1.2345e-16
  float           | -1.2345e-16
+ numeric         | 100000000000.0000000000001::numeric
+ numeric         | -100000000000.0000000000001::numeric
  integer array   | [-9223372036854775808, -1, 0, 1, 9223372036854775807]
  float array     | [-1.2345e-16, -100000000.000001, -1.0, 0.0, 1.0, 100000000.000001, 1.2345e-16]
- mixed array     | [true, false, null, "string", 1, 1.0, {"bool": true}]
+ mixed array     | [true, false, null, "string", 1, 1.0, {"bool": true}, -1::numeric, [1, 3, 5]]
  object          | {"bool": true, "null": null, "float": 1.2, "arrayf": [-1.0, 0.0, 1.0], "arrayi": [-1, 0, 1], "object": {"int": 1, "bool": true, "null": null, "float": 8.0, "string": "string"}, "string": "string", "integer": 1}
+ numeric array   | [-5::numeric, -1::numeric, 0::numeric, 1::numeric, 9223372036854775807::numeric]
  float  nan      | NaN
  float  Infinity | Infinity
  float -Infinity | -Infinity
  float  inf      | Infinity
  float -inf      | -Infinity
-(24 rows)
+(27 rows)
 
 --
 -- These should fail
@@ -107,7 +114,7 @@ INSERT INTO agtype_table VALUES ('bad float', 'Infi');
 ERROR:  invalid input syntax for type agtype
 LINE 1: INSERT INTO agtype_table VALUES ('bad float', 'Infi');
                                                       ^
-DETAIL:  Token "Infi" is invalid.
+DETAIL:  Expected agtype value, but found "Infi".
 CONTEXT:  agtype data, line 1: Infi
 INSERT INTO agtype_table VALUES ('bad float', '-Infi');
 ERROR:  invalid input syntax for type agtype
@@ -143,6 +150,24 @@ SELECT agtype_add('1.0', '-1.0');
  0.0
 (1 row)
 
+SELECT agtype_add('1', '-1.0::numeric');
+  agtype_add  
+--------------
+ 0.0::numeric
+(1 row)
+
+SELECT agtype_add('1.0', '-1.0::numeric');
+  agtype_add  
+--------------
+ 0.0::numeric
+(1 row)
+
+SELECT agtype_add('1::numeric', '-1.0::numeric');
+  agtype_add  
+--------------
+ 0.0::numeric
+(1 row)
+
 SELECT agtype_sub('-1', '-1');
  agtype_sub 
 ------------
@@ -165,6 +190,24 @@ SELECT agtype_sub('-1.0', '-1.0');
  agtype_sub 
 ------------
  0.0
+(1 row)
+
+SELECT agtype_sub('1', '-1.0::numeric');
+  agtype_sub  
+--------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_sub('1.0', '-1.0::numeric');
+  agtype_sub  
+--------------
+ 2.0::numeric
+(1 row)
+
+SELECT agtype_sub('1::numeric', '-1.0::numeric');
+  agtype_sub  
+--------------
+ 2.0::numeric
 (1 row)
 
 SELECT agtype_neg('-1');
@@ -191,6 +234,24 @@ SELECT agtype_neg('0.0');
  -0.0
 (1 row)
 
+SELECT agtype_neg('0::numeric');
+ agtype_neg 
+------------
+ 0::numeric
+(1 row)
+
+SELECT agtype_neg('-1::numeric');
+ agtype_neg 
+------------
+ 1::numeric
+(1 row)
+
+SELECT agtype_neg('1::numeric');
+ agtype_neg  
+-------------
+ -1::numeric
+(1 row)
+
 SELECT agtype_mul('-2', '3');
  agtype_mul 
 ------------
@@ -213,6 +274,24 @@ SELECT agtype_mul('2.0', '-3.0');
  agtype_mul 
 ------------
  -6.0
+(1 row)
+
+SELECT agtype_mul('-2', '3::numeric');
+ agtype_mul  
+-------------
+ -6::numeric
+(1 row)
+
+SELECT agtype_mul('2.0', '-3::numeric');
+ agtype_mul  
+-------------
+ -6::numeric
+(1 row)
+
+SELECT agtype_mul('-2.0::numeric', '3::numeric');
+  agtype_mul   
+---------------
+ -6.0::numeric
 (1 row)
 
 SELECT agtype_div('-4', '3');
@@ -239,6 +318,24 @@ SELECT agtype_div('4.0', '-3.0');
  -1.33333333333333
 (1 row)
 
+SELECT agtype_div('4', '-3.0::numeric');
+          agtype_div          
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_div('-4.0', '3::numeric');
+          agtype_div          
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
+SELECT agtype_div('4.0::numeric', '-3::numeric');
+          agtype_div          
+------------------------------
+ -1.3333333333333333::numeric
+(1 row)
+
 SELECT agtype_pow('-2', '3');
  agtype_pow 
 ------------
@@ -263,6 +360,36 @@ SELECT agtype_pow('2.0', '-1.0');
  0.5
 (1 row)
 
+SELECT agtype_pow('2::numeric', '3');
+         agtype_pow          
+-----------------------------
+ 8.0000000000000000::numeric
+(1 row)
+
+SELECT agtype_pow('2::numeric', '-1.0');
+         agtype_pow          
+-----------------------------
+ 0.5000000000000000::numeric
+(1 row)
+
+SELECT agtype_pow('-2', '3::numeric');
+          agtype_pow          
+------------------------------
+ -8.0000000000000000::numeric
+(1 row)
+
+SELECT agtype_pow('2.0', '-1.0::numeric');
+         agtype_pow          
+-----------------------------
+ 0.5000000000000000::numeric
+(1 row)
+
+SELECT agtype_pow('2.0::numeric', '-1.0::numeric');
+         agtype_pow          
+-----------------------------
+ 0.5000000000000000::numeric
+(1 row)
+
 --
 -- Should fail with divide by zero
 --
@@ -273,6 +400,16 @@ ERROR:  division by zero
 SELECT agtype_div('1.0', '0');
 ERROR:  division by zero
 SELECT agtype_div('1.0', '0.0');
+ERROR:  division by zero
+SELECT agtype_div('1', '0::numeric');
+ERROR:  division by zero
+SELECT agtype_div('1.0', '0::numeric');
+ERROR:  division by zero
+SELECT agtype_div('1::numeric', '0');
+ERROR:  division by zero
+SELECT agtype_div('1::numeric', '0.0');
+ERROR:  division by zero
+SELECT agtype_div('1::numeric', '0::numeric');
 ERROR:  division by zero
 --
 -- Should get Infinity
@@ -289,6 +426,19 @@ SELECT agtype_pow('-0.0', '-1');
  -Infinity
 (1 row)
 
+--
+-- Should get - ERROR:  zero raised to a negative power is undefined
+--
+SELECT agtype_pow('0', '-1::numeric');
+ERROR:  zero raised to a negative power is undefined
+SELECT agtype_pow('-0.0', '-1::numeric');
+ERROR:  zero raised to a negative power is undefined
+SELECT agtype_pow('0::numeric', '-1');
+ERROR:  zero raised to a negative power is undefined
+SELECT agtype_pow('-0.0::numeric', '-1');
+ERROR:  zero raised to a negative power is undefined
+SELECT agtype_pow('-0.0::numeric', '-1');
+ERROR:  zero raised to a negative power is undefined
 --
 -- Test operators +, -, unary -, *, /, %, and ^
 --
@@ -332,6 +482,36 @@ SELECT '3.14'::agtype ^ '2'::agtype;
  ?column? 
 ----------
  9.8596
+(1 row)
+
+SELECT '3'::agtype + '3'::agtype;
+ ?column? 
+----------
+ 6
+(1 row)
+
+SELECT '3'::agtype + '3.14'::agtype;
+ ?column? 
+----------
+ 6.14
+(1 row)
+
+SELECT '3'::agtype + '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 6.14::numeric
+(1 row)
+
+SELECT '3.14'::agtype + '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 6.28::numeric
+(1 row)
+
+SELECT '3.14::numeric'::agtype + '3.14::numeric'::agtype;
+   ?column?    
+---------------
+ 6.28::numeric
 (1 row)
 
 --
@@ -553,6 +733,92 @@ SELECT agtype_in('0.999999') < agtype_in('1');
  t
 (1 row)
 
+-- Mixed Integer and Numeric
+SELECT agtype_in('1') = agtype_in('1::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> agtype_in('2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <> agtype_in('-2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') < agtype_in('2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') > agtype_in('-2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') <= agtype_in('2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1') >= agtype_in('-2::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Mixed Float and Numeric
+SELECT agtype_in('1.01') = agtype_in('1.01::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> agtype_in('1.001::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <> agtype_in('1.011::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') < agtype_in('1.011::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') > agtype_in('1.001::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') <= agtype_in('1.011::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1.01') >= agtype_in('1.001::numeric');
+ ?column? 
+----------
+ t
+(1 row)
+
 -- Strings
 SELECT agtype_in('"a"') = agtype_in('"a"');
  ?column? 
@@ -691,6 +957,18 @@ SELECT agtype_in('[1, "string"]') < agtype_in('[1, 1]');
 (1 row)
 
 SELECT agtype_in('{"bool":true, "integer":1}') < agtype_in('{"bool":true, "integer":null}');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('1::numeric') < agtype_in('null');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_in('true') < agtype_in('1::numeric');
  ?column? 
 ----------
  t
