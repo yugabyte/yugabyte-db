@@ -25,7 +25,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Following instructions highlight how to deploy a single multi-region YugabyteDB cluster that spans 3 [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster. 
+Following instructions highlight how to deploy a single multi-region YugabyteDB cluster that spans 3 [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
 
 We will use the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 GKE clusters. 
 
@@ -75,7 +75,7 @@ For Helm 3, you should see something similar to the following output. Note that 
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
 
-## Create GKE clusters
+## 1. Create GKE clusters
 
 ### Create clusters
 
@@ -121,6 +121,8 @@ CURRENT   NAME                                          CLUSTER                 
 ```
 
 ### Create a storage class per zone
+
+We need to ensure that the storage classes used by the pods in a given zone are always pinned to that zone only.
 
 Copy the contents below to a file named `gke-us-west1-b.yaml`.
 
@@ -180,7 +182,7 @@ kubectl apply -f gke-us-east1-b.yaml --context gke_yugabyte_us-east1-b_yugabyted
 Now we will setup a global DNS system across all the 3 GKE clusters so that pods in one cluster can connect to pods in another cluster.
 
 ### Create load balancer configuration for kube-dns
-The yaml shown below adds an internal load balancer (which is not exposed outside its own Google Cloud region) to Kubernetes's built-in `kube-dns` deployment. By default, the `kube-dns` deployment is accessed only by a `ClusterIP` and not a load balancer. Additionally, we allow this load balancer to be [globally accessible](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access) so that each such load balancer is now visible to the 2 other load balancers in the other 2 regions. 
+The yaml shown below adds an internal load balancer (which is not exposed outside its own Google Cloud region) to Kubernetes's built-in `kube-dns` deployment. By default, the `kube-dns` deployment is accessed only by a `ClusterIP` and not a load balancer. Additionally, we allow this load balancer to be [globally accessible](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access) so that each such load balancer is now visible to the 2 other load balancers in the other 2 regions. Note that using external load balancers for this purpose is possible but is not recommended from a security best practices standpoint. This is because the DNS information for all the clusters would now be available for access on the public Internet.
 
 Copy the contents to a file named `yb-dns-lb.yaml`. 
 

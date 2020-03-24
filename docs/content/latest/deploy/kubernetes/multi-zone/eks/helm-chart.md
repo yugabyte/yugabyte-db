@@ -96,6 +96,8 @@ As stated in the Prerequisites section, the default configuration in the Yugabyt
 
 ### Create a storage class per zone
 
+We need to ensure that the storage classes used by the pods in a given zone are always pinned to that zone only.
+
 Copy the contents below to a file named `storage.yaml`.
 
 ```sh
