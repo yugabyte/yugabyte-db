@@ -163,5 +163,5 @@ Examples:  `yyyy-MM-dd HH:mm:ss.SSSZ` and `yyyy-MM-dd HH:mm:ss.SSSXXX`.
 
 
 {{< note title="Use tab character for delim on JSONB columns" >}}
-The default delim `,` doesn't work with `JSONB` columns. Use tab character for delim `-delim $'\t'`.
+The default delimiter (`,`) does not work with `JSONB` columns. Use the tab character for delim `-delim $'\t'`.
 {{< /note >}}
