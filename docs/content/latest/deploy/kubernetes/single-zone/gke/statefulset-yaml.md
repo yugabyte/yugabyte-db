@@ -41,11 +41,11 @@ showAsideToc: true
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
 
-**NOTE:** If you install gcloud using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
+**NOTE:** If you install `gcloud` using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the `kubectl` command line tool by running the following command:
+After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command:
 
 ```sh
 $ gcloud components install kubectl
@@ -154,7 +154,7 @@ system_schema  system_auth  system
 
 ## 5. Destroy cluster (optional)
 
-Destroy the YugabyteDB cluster we created above by running the following.
+Destroy the YugabyteDB cluster you created above by running the following.
 
 ```sh
 $ kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
@@ -176,7 +176,7 @@ $ kubectl delete pvc -l app=yb-tserver
 
 ## 6. Destroy the GKE cluster (optional)
 
-To destroy the machines we created for the gcloud cluster, run the following.
+To destroy the machines you created for the `gcloud` cluster, run the following command.
 
 ```sh
 $ gcloud container clusters delete yugabyte

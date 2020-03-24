@@ -41,24 +41,23 @@ showAsideToc: true
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
 
-**NOTE:** If you install gcloud using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
+**NOTE:** If you install `gcloud` using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the `kubectl` command line tool by running the following command:
+After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command:
 
 ```sh
 $ gcloud components install kubectl
 ```
 
-- Configure defaults for gcloud
+- Configure defaults for `gcloud`
 
-Set the project ID as `yugabyte`. You can change this as per your need.
+Set the project ID as `yugabyte`. You can change this as needed.
 
 ```sh
 $ gcloud config set project yugabyte
 ```
-
 
 ## 1. Create a GKE cluster
 
@@ -108,7 +107,7 @@ Created [https://container.googleapis.com/v1/projects/yugabyte/zones/us-west1-b/
 
 ## 2. Create a node pool
 
-Create a node pool with 3 nodes, each having eight CPUs and two local SSDs.
+Create a node pool with three nodes, each having eight CPUs and two local SSDs.
 
 ```sh
 $ gcloud container node-pools create node-pool-8cpu-2ssd \
@@ -127,7 +126,7 @@ node-pool-8cpu-2ssd  n1-standard-8  100           1.8.7-gke.1
 
 Note the `--local-ssd-count` option above, which tells gcloud to mount the nodes with two local SSDs each.
 
-We can list all the node pools by doing the following.
+You can list all the node pools by running the following command.
 
 ```sh
 $ gcloud container node-pools list --cluster yugabyte --zone=us-west1-b
@@ -212,7 +211,7 @@ Also, note that we instruct the scheduler to place the various pods in the `yb-m
 
 ## 4. View the universe
 
-You can verify that the YugabyteDB pods are running by doing the following:
+You can verify that the YugabyteDB pods are running by running the following command:
 
 ```sh
 $ kubectl get pods
@@ -254,7 +253,7 @@ You can connect to one of the tserver pods and verify that the local disk is mou
 $ kubectl exec -it yb-tserver-0 bash
 ```
 
-We can observe the local disks by running the following command.
+You can observe the local disks by running the following command.
 
 ```sh
 [root@yb-tserver-0 yugabyte]# df -kh
@@ -294,7 +293,7 @@ You can destroy the node-pool you created by running the following command:
 $ gcloud container node-pools delete node-pool-8cpu-2ssd --cluster yugabyte --zone=us-west1-b
 ```
 
-Finally, you can destroy the entire gcloud container cluster by running the following:
+Finally, you can destroy the entire gcloud container cluster by running the following command:
 
 ```sh
 $ gcloud beta container clusters delete yugabyte --zone us-west1-b
