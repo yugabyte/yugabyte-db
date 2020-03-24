@@ -2153,4 +2153,34 @@ public class PlacementInfoUtil {
 
     return metricQueryResult.has("error") ? metricQueryResult : response;
   }
+
+  public static int getZoneRF(PlacementInfo pi, String cloud,
+                              String region, String zone) {
+    for (PlacementCloud pc : pi.cloudList) {
+      if (pc.code.equals(cloud)) {
+        for (PlacementRegion pr : pc.regionList) {
+          if (pr.code.equals(region)) {
+            for (PlacementAZ pa : pr.azList) {
+              if (pa.name.equals(zone)) {
+                return pa.replicationFactor;
+              }
+            }
+          }
+        }
+      }
+    }
+    return -1;
+  }
+
+  public static int getNumActiveTserversInZone(Collection<NodeDetails> nodes, String cloud,
+                                               String region, String zone) {
+    List<NodeDetails> validNodes = nodes.stream()
+                                        .filter(node -> node.isActive() &&
+                                                        node.cloudInfo.cloud.equals(cloud) &&
+                                                        node.cloudInfo.region.equals(region) &&
+                                                        node.cloudInfo.az.equals(zone))
+                                        .collect(Collectors.toList());
+    return validNodes.size();
+  }
+
 }
