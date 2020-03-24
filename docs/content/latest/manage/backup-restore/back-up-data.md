@@ -11,6 +11,8 @@ menu:
     identifier: back-up-data
     parent: backup-restore
     weight: 703
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
