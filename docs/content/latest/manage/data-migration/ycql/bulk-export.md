@@ -156,7 +156,7 @@ $ chmod a+x cassandra-unloader
 For additional options to cassandra-unloader, see [here](https://github.com/yugabyte/cassandra-loader#cassandra-unloader).
 
 {{< note title="Always specify timezone" >}}
-`cassandra-loader` & `cassandra-unloader` don't add the timezone on their default timestamp format.
+The time zone is not added to the default timestamp formats when using the `cassandra-loader` and `cassandra-unloader` utilities.
 Make sure that timestamps are exported and imported in the same format, including the time zone.
 Examples:  `yyyy-MM-dd HH:mm:ss.SSSZ` and `yyyy-MM-dd HH:mm:ss.SSSXXX`.
 {{< /note >}}
