@@ -39,14 +39,12 @@ menu:
   main:
     - name: Introduction
       identifier: intro
-blackfriday:
-  smartypants: true
-  fractions: true
-  smartDashes: false
-  plainIDAnchors: true
-  noIntraEmphasis: true
 markup:
   goldmark:
     renderer:
       unsafe: true
+  tableOfContents:
+    startLevel: 2
+    endLevel: 3
+    ordered: false
 ---
