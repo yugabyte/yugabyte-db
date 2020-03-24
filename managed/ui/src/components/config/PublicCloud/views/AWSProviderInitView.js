@@ -14,10 +14,6 @@ import { regionsData } from './providerRegionsData';
 
 import './providerView.scss';
 
-const renderAZMapping = ({ fields, meta: { touched, error, submitFailed }, networkSetupType }) => {
-  return 0;
-};
-
 const validationIsRequired = value => value && value.trim() !== '' ? undefined : 'Required';
 
 class AZInput extends Component {
@@ -300,7 +296,6 @@ class renderRegions extends Component {
                       </div>
                     </Fragment>
                   }
-                  {false && <FieldArray name={`${region}.azToSubnetIds`} component={renderAZMapping} />}
                 </li>);
             })}
           </ul>
