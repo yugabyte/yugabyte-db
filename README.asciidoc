@@ -2,20 +2,20 @@
 
 Functions and operators that emulate a subset of functions and packages from the Oracle RDBMS.
 
-There is a associated Google group - https://groups.google.com/forum/?hl=en#!forum/orafce-general
+There is an associated Google group - https://groups.google.com/forum/?hl=en#!forum/orafce-general
 
 == Oracle functions and Oracle packages
 
-This module contains some useful function which can help with porting
-Oracle application to PostgreSQL or can be useful generally. 
+This module contains some useful functions that can help with porting
+Oracle application to PostgreSQL or that can be generally useful. 
 
 Built-in Oracle date functions have been tested against Oracle 10 for
-comformance. Date ranges from 1960 to 2070 work correctly. Dates before
+conformance. Date ranges from 1960 to 2070 work correctly. Dates before
 1100-03-01 cannot be verified due to a bug in Oracle.
 
-All functions are fully compatible with Oracle and respect all known
-format strings. Detailed description you can find on internet. Find
-keywords oracle round trunc date iyyy.
+All functions are fully compatibles with Oracle and respect all known
+format strings. Detailed descriptions can be found on the internet.
+Use keywords like : oracle round trunc date iyyy.
 
 == List of format strings for trunc, round functions
 
@@ -91,7 +91,7 @@ year. The 16th of July will be rounded to August.
 
 == oracle.date data type
 
-This module contain implementation of oracle compatible DATE data type "oracle.date" and functions which are using DATE data type like oracle.add_months,oracle.last_day(),oracle.next_day(),oracle.months_between() etc.
+This module contains implementation of oracle compatible DATE data type "oracle.date" and functions which are using DATE data type like oracle.add_months,oracle.last_day(),oracle.next_day(),oracle.months_between() etc.
 
 Example:
 ----
@@ -121,7 +121,7 @@ Example:
 -----
 	oracle.next_day(oracle.date '2005-05-24 10:12:12', 'monday') -> 2005-05-30 10:12:12
 -----
-* oracle.next_day(timestamp with time zone, integer) - Same as above. The second argument should be 1..7 and interpreted as Sunday..Satday.
+* oracle.next_day(timestamp with time zone, integer) - Same as above. The second argument should be 1..7 and interpreted as Sunday..Saturday.
 +
 -----
 	oracle.next_day(oracle.date '2005-05-24 11:21:12', 1) -> 2005-05-29 11:21:12
@@ -225,17 +225,17 @@ Example:
 ----
 
 You need to set search_path TO oracle,"$user", public, pg_catalog
-because the functions like oracle.add_months,oracle.last_day,oracle.next_day,oracle.months_between is installed side-by-side with pg_catalog.add_months,pg_catalog.last_day,pg_catalog.next_day,pg_catalog.months_between.
+because functions like oracle.add_months,oracle.last_day,oracle.next_day,oracle.months_between are installed side-by-side with pg_catalog.add_months,pg_catalog.last_day,pg_catalog.next_day,pg_catalog.months_between.
 
 == Table dual
 
 PostgreSQL does not need Oracle's table 'dual', but since it is intensively
-used by Oracle users, we create it.
+used by Oracle users, it has been added in orafce.
 
 == Package dbms_output
 
 PostgreSQL sends information to the client via RAISE NOTICE. Oracle uses
-dbms_output.put_line(). This works differently to RAISE NOTICE. Oracle has 
+dbms_output.put_line(). This works differently from RAISE NOTICE. Oracle has 
 a session queue, put_line() adds a line to the queue and the function 
 get_line() reads from queue. If flag 'serveroutput' is set, then client
 over all sql statements reads queue. You can use:
@@ -261,9 +261,9 @@ The package queue is implemented in the session's local memory.
 
 == Package utl_file
 
-This package allows PL/pgSQL prgrams read from and write to any files that are
-accessible from server. Every session can open maximaly ten files and max
-line size is 32K. This package contains functions:
+This package allows PL/pgSQL programs to read from and write to any files that are
+accessible from server. Every session can open a maximum of ten files and max
+line size is 32K. This package contains following functions:
 
 * utl_file.fclose(file utl_file.file_type)  - close file
 * utl_file.fclose_all()  - close all files
@@ -282,7 +282,7 @@ line size is 32K. This package contains functions:
 * utl_file.putf(file utl_file.file_type, format buffer [,arg1 text][,arg2 text][..][,arg5 text])  - put formated text into file
 * utl_file.tmpdir() - get path of temp directory
 
-Because PostgreSQL doesn't support call by reference, some function's are gently different:
+Because PostgreSQL doesn't support call by reference, some functions are slightly different:
 fclose and get_line.
 
 ----
@@ -320,18 +320,18 @@ or second (with PostgreSQL specific function get_nextline)
     end;
 ----
 
-Before using package you have to set table utl_file.utl_file_dir. This contains
-all allowed directories without ending symbol ('/' or '\'). On WinNT platform
-you have to put locality parametr with ending symbol '\' everytime.
+Before using the package you have to set the utl_file.utl_file_dir table.
+It contains all allowed directories without ending symbol ('/' or '\').
+On WinNT platform, the paths have to end with symbol '\' everytime.
 
-These dictionary can be named (second column in table `utl_file.utl_file_dir`).
-The `location` parameter can be the name or the dictionary path. The `location`
-is interpreted and checked as a name of dictionary. When this name is not found,
-then location is interpreted and checked as dictionary.
+Directory entries can be named (second column in table `utl_file.utl_file_dir`).
+The `location` parameter can be either the directory name or the dictionary path.
+The location is first interpreted and checked as a directory name.
+If not found (in 2nd column), then the location is interpreted and checked as a path.
 
 == Package dbms_pipe
 
-This package is an emulation of Oracle's package dbms_pipe. It provides 
+This package is an emulation of dbms_pipe Oracle package. It provides 
 inter-session comunication. You can send and read any message with or without 
 waiting; list active pipes; set a pipe as private or public; and, use 
 explicit or implicit pipes. 
@@ -366,7 +366,7 @@ There are some differences compared to Oracle, however:
 * you can send message without waiting
 * you can send empty messages
 * next_item_type knows about TIMESTAMP (type 13)
-* PostgreSQL don't know about the RAW type, use bytea instead
+* PostgreSQL doesn't know about the RAW type, use bytea instead
 
 == Package dbms_alert
 
@@ -387,14 +387,14 @@ select dbms_alert.signal('boo','Nice day');
 					
 == Package PLVdate
 
-This module contains some function for working with bussines days from
+This module contains some functions for working with business days from
 package PLVdate. Detailed documentation can be found in PLVision library.
 This package is multicultural, but default configurations are only for
 european countries (see source code).
 
 You should define your own non-business days (max 50 days) and own 
-holidays (max 30 days). A holiday is any non-business day, which is same every 
-year. For example, Christmas day in Western countries.
+holidays (max 30 days). A holiday is any non-business day, which is the same 
+every year. For example, Christmas day in Western countries.
 
 === Functions
 
@@ -602,7 +602,7 @@ o plvlex.tokens(str text, skip_spaces bool, qualified_names bool) - Returns tabl
 
 == DBMS_ASSERT
 
-This package protect user input against SQL injection.
+This package protects user input against SQL injection.
 
 * dbms_assert.enquote_literal(varchar) varchar - Add leading and trailing quotes, verify that all single quotes are paired with adjacent single quotes.
 * dbms_assert.enquote_name(varchar [, boolean]) varchar - Enclose name in double quotes. Optional second parameter ensure loweralize of name. Attention - On Oracle is second parameter capitalize!
@@ -680,12 +680,12 @@ orafce's VARCHAR2 implements parts of Oracle database specification about VARCHA
 * For these types is possible to use null safe || operator, when you enable
   orafce.varchar2_null_safe_concat TO true . The behave is very similar to Oracle.
 
-  Attention: - when result is empty string, then result is NULL. This behave is
+  Attention: - when result is empty string, then result is NULL. This behaviour is
   disabled by default.
 
   Attention: - there is possible incompatibility between 3.7 and older Orafce
   releases. A operator function is now marked as stable (was immutable before).
-  Is not possible to create functional indexes over stable or volatile expressions.
+  It's not possible to create functional indexes over stable or volatile expressions.
 
 ----
 -- null safe concat (disabled by default)
@@ -697,8 +697,8 @@ SELECT NULL || 'hello'::varchar2 || NULL;
 
 Please note that PostgreSQL does not allow to dynamically specify how we
 interpret varchar strings. It always interprets them as 'character' strings
-as determined by database encoding. So, we can not support both BYTE and
-CHARACTER semantics for a given varchar type in the same database. We choose
+as determined by database encoding. So, we cannot support both BYTE and
+CHARACTER semantics for a given varchar type in the same database. We chose
 to implement the BYTE semantics as that is default in Oracle. For CHARACTER
 semantics, please see NVARCHAR2 which by default always implements the
 CHARACTER semantics.
