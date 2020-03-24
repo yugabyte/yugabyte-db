@@ -35,6 +35,8 @@
     ag_relation_id("ag_label_name_graph_index", "index")
 #define ag_label_graph_id_index_id() \
     ag_relation_id("ag_label_graph_id_index", "index")
+#define ag_label_relation_index_id() \
+    ag_relation_id("ag_label_relation_index", "index")
 
 #define LABEL_ID_SEQ_NAME "_label_id_seq"
 

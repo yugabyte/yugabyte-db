@@ -17,16 +17,20 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "catalog/dependency.h"
+#include "catalog/objectaddress.h"
 #include "commands/defrem.h"
 #include "commands/schemacmds.h"
 #include "commands/tablecmds.h"
 #include "fmgr.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
 #include "parser/parser.h"
+#include "utils/relcache.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
@@ -34,6 +38,7 @@
 
 static Oid create_schema_for_graph(const Name graph_name);
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade);
+static void remove_schema(Node *schema_name, DropBehavior behavior);
 static void rename_graph(const Name graph_name, const Name new_name);
 
 PG_FUNCTION_INFO_V1(create_graph);
@@ -140,8 +145,7 @@ Datum drop_graph(PG_FUNCTION_ARGS)
     delete_graph(graph_name);
     CommandCounterIncrement();
 
-    ereport(NOTICE,
-            (errmsg("graph \"%s\" has been dropped", NameStr(*graph_name))));
+    ereport(NOTICE, (errmsg("graph \"%s\" has been dropped", graph_name_str)));
 
     PG_RETURN_VOID();
 }
@@ -151,6 +155,7 @@ static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
     DropStmt *drop_stmt;
     Value *schema_name;
     List *label_id_seq_name;
+    DropBehavior behavior;
 
     /*
      * ProcessUtilityContext of commands below is PROCESS_UTILITY_SUBCOMMAND
@@ -171,15 +176,54 @@ static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
     // CommandCounterIncrement() is called in RemoveRelations()
 
     // DROP SCHEMA `graph_name_str` [ CASCADE ]
-    drop_stmt = makeNode(DropStmt);
-    drop_stmt->objects = list_make1(schema_name);
-    drop_stmt->removeType = OBJECT_SCHEMA;
-    drop_stmt->behavior = cascade ? DROP_CASCADE : DROP_RESTRICT;
-    drop_stmt->missing_ok = false;
-    drop_stmt->concurrent = false;
+    behavior = cascade ? DROP_CASCADE : DROP_RESTRICT;
+    remove_schema((Node *)schema_name, behavior);
+    // CommandCounterIncrement() is called in performDeletion()
+}
 
-    RemoveObjects(drop_stmt);
-    // CommandCounterIncrement() is called in RemoveObjects()
+// See RemoveObjects() for more details.
+static void remove_schema(Node *schema_name, DropBehavior behavior)
+{
+    ObjectAddress address;
+    Relation relation;
+
+    address = get_object_address(OBJECT_SCHEMA, schema_name, &relation,
+                                 AccessExclusiveLock, false);
+    // since the target object is always a schema, relation is NULL
+    Assert(!relation);
+
+    if (!OidIsValid(address.objectId))
+    {
+        // missing_ok is always false
+
+        /*
+         * before calling this function, this condition is already checked in
+         * drop_graph()
+         */
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                        errmsg("ag_graph catalog is corrupted"),
+                        errhint("Schema \"%s\" does not exist",
+                                strVal(schema_name))));
+    }
+
+    // removeType is always OBJECT_SCHEMA
+
+    /*
+     * Check permissions. Since the target object is always a schema, the
+     * original logic is simplified.
+     */
+    check_object_ownership(GetUserId(), OBJECT_SCHEMA, address, schema_name,
+                           NULL);
+
+    // the target schema is not temporary
+
+    // the target object is always a schema
+
+    /*
+     * set PERFORM_DELETION_INTERNAL flag so that object_access_hook can ignore
+     * this deletion
+     */
+    performDeletion(&address, behavior, PERFORM_DELETION_INTERNAL);
 }
 
 PG_FUNCTION_INFO_V1(alter_graph);

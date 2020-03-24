@@ -28,6 +28,8 @@
 
 #define ag_graph_relation_id() ag_relation_id("ag_graph", "table")
 #define ag_graph_name_index_id() ag_relation_id("ag_graph_name_index", "index")
+#define ag_graph_namespace_index_id() \
+    ag_relation_id("ag_graph_namespace_index", "index")
 
 Oid insert_graph(const Name graph_name, const Oid nsp_id);
 void delete_graph(const Name graph_name);

@@ -37,6 +37,16 @@ SELECT * FROM cypher('g', $$CREATE (:v)$$) AS r(a agtype);
 ---
 (0 rows)
 
+-- DROP SCHEMA ... CASCADE should fail
+DROP SCHEMA g CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to sequence g._label_id_seq
+drop cascades to table g.v
+ERROR:  table "v" is for label "v"
+-- DROP TABLE ... should fail
+DROP TABLE g.v;
+ERROR:  table "v" is for label "v"
+-- should fail (cascade = false)
 SELECT drop_graph('g');
 ERROR:  cannot drop schema g because other objects depend on it
 DETAIL:  table g.v depends on schema g

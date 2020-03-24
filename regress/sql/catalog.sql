@@ -27,7 +27,15 @@ SELECT * FROM ag_graph WHERE name = 'g';
 -- create a label to test drop_graph()
 SELECT * FROM cypher('g', $$CREATE (:v)$$) AS r(a agtype);
 
+-- DROP SCHEMA ... CASCADE should fail
+DROP SCHEMA g CASCADE;
+
+-- DROP TABLE ... should fail
+DROP TABLE g.v;
+
+-- should fail (cascade = false)
 SELECT drop_graph('g');
+
 -- FIXME: ag_label entries in the dropped graph needs to be deleted
 DELETE FROM ag_label WHERE graph = (SELECT oid FROM ag_graph WHERE name = 'g');
 SELECT drop_graph('g', true);
