@@ -33,6 +33,8 @@
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
+#include "rewrite/rewriteHandler.h"
+#include "utils/rel.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
@@ -85,8 +87,10 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
 static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
                                              List *pattern);
-static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
-                                                 cypher_path *cp);
+static List *transform_cypher_create_path(cypher_parsestate *cpstate,
+                                          cypher_path *cp);
+static cypher_target_node *
+transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node);
 
 // transform
 #define transform_prev_cypher_clause(cpstate, prev_clause) \
@@ -560,21 +564,27 @@ static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
                                              List *pattern)
 {
     ListCell *lc;
+    List *transformed_pattern = NIL;
 
     Assert(list_length(pattern) == 1);
 
     foreach (lc, pattern)
     {
-        transform_cypher_create_path(cpstate, lfirst(lc));
+        List *transformed_path;
+
+        transformed_path = transform_cypher_create_path(cpstate, lfirst(lc));
+
+        transformed_pattern = lappend(transformed_pattern, transformed_path);
     }
 
-    return pattern;
+    return transformed_pattern;
 }
 
-static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
-                                                 cypher_path *path)
+static List *transform_cypher_create_path(cypher_parsestate *cpstate,
+                                          cypher_path *path)
 {
     ListCell *lc;
+    List *transformed_path = NIL;
 
     foreach (lc, path->path)
     {
@@ -582,8 +592,10 @@ static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
         {
             cypher_node *node = lfirst(lc);
 
-            if (node->label && !label_exists(node->label, cpstate->graph_oid))
-                create_vertex_label(cpstate->graph_name, node->label);
+            cypher_target_node *rel = transform_create_cypher_node(cpstate,
+                                                                   node);
+
+            transformed_path = lappend(transformed_path, rel);
         }
         else if (is_ag_node(lfirst(lc), cypher_relationship))
         {
@@ -598,7 +610,68 @@ static cypher_path *transform_cypher_create_path(cypher_parsestate *cpstate,
         }
     }
 
-    return path;
+    return transformed_path;
+}
+
+static cypher_target_node *
+transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
+{
+    cypher_target_node *rel = palloc(sizeof(cypher_target_node));
+    List *targetList = NIL;
+    Expr *id, *properties;
+    Relation label_relation;
+    RangeVar *rv;
+    TargetEntry *te;
+
+    if (!node->label)
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("cannot create a vertex without a label"),
+                        parser_errposition(&cpstate->pstate, node->location)));
+
+    // create the label entry if it does not exist
+    if (!label_exists(node->label, cpstate->graph_oid))
+        create_vertex_label(cpstate->graph_name, node->label);
+
+    // lock the relation of the label
+    rv = makeRangeVar(cpstate->graph_name, node->label, -1);
+    label_relation = parserOpenTable(&cpstate->pstate, rv, RowExclusiveLock);
+
+    // Store the relid
+    rel->relid = RelationGetRelid(label_relation);
+
+
+
+    RangeTblEntry *rte = addRangeTableEntryForRelation(cpstate, label_relation, NULL, false, false);
+    rte->requiredPerms = ACL_INSERT;
+
+    // Store the relid
+    rel->relid = RelationGetRelid(label_relation);
+
+    // Build Id expression, always use the default logic
+    id = (Expr *)build_column_default(label_relation, Anum_ag_label_table_id);
+
+    te = makeTargetEntry(id, InvalidAttrNumber, "id", false);
+    targetList = lappend(targetList, te);
+
+    // Build properties expression, if no map is given, use the default logic
+    if (node->props)
+        properties = (Expr *)transform_cypher_expr(cpstate, node->props,
+                                                   EXPR_KIND_INSERT_TARGET);
+    else
+        properties = (Expr *)build_column_default(
+            label_relation, Anum_ag_label_table_properties);
+
+    te = makeTargetEntry(properties, InvalidAttrNumber, "properties", false);
+
+    targetList = lappend(targetList, te);
+    rel->targetList = targetList;
+
+    // Keep the lock
+    heap_close(label_relation, NoLock);
+
+    rel->expr_states = NIL;
+
+    return rel;
 }
 
 /*

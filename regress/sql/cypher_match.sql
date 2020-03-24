@@ -20,13 +20,12 @@ SET search_path TO ag_catalog;
 SELECT create_graph('cypher_match');
 
 SELECT * FROM cypher('cypher_match', $$CREATE (:v)$$) AS (a agtype);
--- FIXME: this must be replaced with actual CREATE clause
-INSERT INTO cypher_match.v VALUES (DEFAULT, '{"i": 0}'::agtype),
-                                  (DEFAULT, '{"i": 1}'::agtype);
+SELECT * FROM cypher('cypher_match', $$CREATE (:v {i: 0})$$) AS (a agtype);
+SELECT * FROM cypher('cypher_match', $$CREATE (:v {i: 1})$$) AS (a agtype);
 
 SELECT * FROM cypher('cypher_match', $$MATCH (n:v) RETURN n$$) AS (n agtype);
 SELECT * FROM cypher('cypher_match', $$MATCH (n:v) RETURN n.i$$) AS (i agtype);
--- should fail for now
+
 SELECT * FROM cypher('cypher_match', $$
 MATCH (n:v) WHERE n.i > 0
 RETURN n.i

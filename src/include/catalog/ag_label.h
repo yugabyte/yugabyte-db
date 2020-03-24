@@ -21,6 +21,9 @@
 
 #include "catalog/ag_catalog.h"
 
+#define Anum_ag_label_table_id 1
+#define Anum_ag_label_table_properties 2
+
 #define Anum_ag_label_name 1
 #define Anum_ag_label_graph 2
 #define Anum_ag_label_id 3

@@ -171,6 +171,15 @@ typedef struct cypher_string_match
     int location;
 } cypher_string_match;
 
+typedef struct cypher_target_node
+{
+    ResultRelInfo *resultRelInfo;
+    TupleTableSlot *elemTupleSlot;
+    Oid relid;
+    List *targetList;
+    List *expr_states;
+} cypher_target_node;
+
 /* clauses */
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);

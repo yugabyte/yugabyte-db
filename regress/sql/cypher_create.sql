@@ -23,14 +23,15 @@ SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a agtype);
 
 -- vertex graphid
 SELECT * FROM cypher('cypher_create', $$CREATE (:v)$$) AS (a agtype);
--- FIXME: these must be replaced with actual CREATE clause implementation
-INSERT INTO cypher_create.v DEFAULT VALUES;
-INSERT INTO cypher_create.v DEFAULT VALUES;
--- FIXME: this must be replaced with actual MATCH clause implementation
+
+SELECT * FROM cypher('cypher_create', $$CREATE (:v {})$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$CREATE (:v {key: 'value'})$$) AS (a agtype);
+
 SELECT * FROM cypher_create.v;
 
 -- for now, edges are not supported
-SELECT * FROM cypher('cypher_create', $$CREATE ()-[]-()$$) AS (a agtype);
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) AS (a agtype);
 
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute

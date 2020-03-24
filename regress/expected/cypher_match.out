@@ -27,24 +27,32 @@ SELECT * FROM cypher('cypher_match', $$CREATE (:v)$$) AS (a agtype);
 ---
 (0 rows)
 
--- FIXME: this must be replaced with actual CREATE clause
-INSERT INTO cypher_match.v VALUES (DEFAULT, '{"i": 0}'::agtype),
-                                  (DEFAULT, '{"i": 1}'::agtype);
+SELECT * FROM cypher('cypher_match', $$CREATE (:v {i: 0})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$CREATE (:v {i: 1})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
 SELECT * FROM cypher('cypher_match', $$MATCH (n:v) RETURN n$$) AS (n agtype);
                                    n                                   
 -----------------------------------------------------------------------
- {"id": 281474976710657, "label": "v", "properties": {"i": 0}}::vertex
- {"id": 281474976710658, "label": "v", "properties": {"i": 1}}::vertex
-(2 rows)
+ {"id": 281474976710657, "label": "v", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "v", "properties": {"i": 0}}::vertex
+ {"id": 281474976710659, "label": "v", "properties": {"i": 1}}::vertex
+(3 rows)
 
 SELECT * FROM cypher('cypher_match', $$MATCH (n:v) RETURN n.i$$) AS (i agtype);
  i 
 ---
+ 
  0
  1
-(2 rows)
+(3 rows)
 
--- should fail for now
 SELECT * FROM cypher('cypher_match', $$
 MATCH (n:v) WHERE n.i > 0
 RETURN n.i

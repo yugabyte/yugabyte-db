@@ -23,31 +23,37 @@ NOTICE:  graph "cypher_create" has been created
 (1 row)
 
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a agtype);
- a 
----
-(0 rows)
-
+ERROR:  cannot create a vertex without a label
+LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a a...
+                                                       ^
 -- vertex graphid
 SELECT * FROM cypher('cypher_create', $$CREATE (:v)$$) AS (a agtype);
  a 
 ---
 (0 rows)
 
--- FIXME: these must be replaced with actual CREATE clause implementation
-INSERT INTO cypher_create.v DEFAULT VALUES;
-INSERT INTO cypher_create.v DEFAULT VALUES;
--- FIXME: this must be replaced with actual MATCH clause implementation
+SELECT * FROM cypher('cypher_create', $$CREATE (:v {})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$CREATE (:v {key: 'value'})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
 SELECT * FROM cypher_create.v;
-       id        | properties 
------------------+------------
+       id        |    properties    
+-----------------+------------------
  281474976710657 | {}
  281474976710658 | {}
-(2 rows)
+ 281474976710659 | {"key": "value"}
+(3 rows)
 
 -- for now, edges are not supported
-SELECT * FROM cypher('cypher_create', $$CREATE ()-[]-()$$) AS (a agtype);
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) AS (a agtype);
 ERROR:  edges are not supported in CREATE clause
-LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()-[]-()$$) A...
+LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$)...
                                                ^
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
