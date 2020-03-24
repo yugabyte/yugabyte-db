@@ -196,7 +196,7 @@ class NetworkManager():
             subnets = [s["name"] for s in scope.get("subnetworks", [])]
             if self.per_region_meta:
                 desired_region_metadata = self.per_region_meta.get(region)
-                if not desired_region_metadata:
+                if not desired_region_metadata or not desired_region_metadata.get("subnetId"):
                     continue
                 desired_subnet = desired_region_metadata.get("subnetId")
                 if desired_subnet not in subnets:
