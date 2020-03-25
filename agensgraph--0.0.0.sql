@@ -89,6 +89,12 @@ RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION drop_label(graph_name name, label_name name,
+                           force boolean = false)
+RETURNS void
+LANGUAGE c
+AS 'MODULE_PATHNAME';
+
 --
 -- graphid type
 --

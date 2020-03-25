@@ -36,12 +36,11 @@ SELECT * FROM cypher('cypher_create', $$CREATE (:v)$$) AS (a agtype);
 -- FIXME: these must be replaced with actual CREATE clause implementation
 INSERT INTO cypher_create.v DEFAULT VALUES;
 INSERT INTO cypher_create.v DEFAULT VALUES;
--- FIXME: this must be replaced with actual MATCH clause implementation
-SELECT * FROM cypher_create.v;
-       id        | properties 
------------------+------------
- 281474976710657 | {}
- 281474976710658 | {}
+SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
+                                n                                
+-----------------------------------------------------------------
+ {"id": 281474976710657, "label": "v", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "v", "properties": {}}::vertex
 (2 rows)
 
 -- for now, edges are not supported

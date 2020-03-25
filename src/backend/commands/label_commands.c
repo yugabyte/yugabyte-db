@@ -17,19 +17,28 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "catalog/dependency.h"
+#include "catalog/namespace.h"
+#include "catalog/objectaddress.h"
+#include "catalog/pg_class_d.h"
 #include "commands/defrem.h"
 #include "commands/sequence.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/plannodes.h"
+#include "nodes/primnodes.h"
 #include "nodes/value.h"
 #include "parser/parse_node.h"
 #include "parser/parser.h"
+#include "storage/lockdefs.h"
 #include "tcop/dest.h"
 #include "tcop/utility.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 
 #include "catalog/ag_graph.h"
@@ -39,8 +48,15 @@
 #include "utils/agtype.h"
 #include "utils/graphid.h"
 
+/*
+ * Relation name doesn't have to be label name but the same name is used so
+ * that users can find the backed relation for a label only by its name.
+ */
+#define gen_label_relation_name(label_name) (label_name)
+
 static void create_table_for_vertex_label(char *graph_name, char *label_name,
-                                          char *schema_name, char *seq_name);
+                                          char *schema_name, char *rel_name,
+                                          char *seq_name);
 
 // common
 static void create_sequence_for_label(RangeVar *seq_range_var);
@@ -52,6 +68,13 @@ static Constraint *build_properties_default(void);
 static void alter_sequence_owned_by_for_label(RangeVar *seq_range_var,
                                               char *rel_name);
 static int32 get_new_label_id(Oid graph_oid, Oid nsp_id);
+
+// drop
+static void remove_relation(List *qname);
+static void range_var_callback_for_remove_relation(const RangeVar *rel,
+                                                   Oid rel_oid,
+                                                   Oid odl_rel_oid,
+                                                   void *arg);
 
 Oid create_vertex_label(char *graph_name, char *label_name)
 {
@@ -77,14 +100,14 @@ Oid create_vertex_label(char *graph_name, char *label_name)
 
     // create a sequence for the new label to generate unique IDs for vertices
     schema_name = get_namespace_name(nsp_id);
-    rel_name = get_label_relation_name(label_name);
+    rel_name = gen_label_relation_name(label_name);
     seq_name = ChooseRelationName(rel_name, "id", "seq", nsp_id, false);
     seq_range_var = makeRangeVar(schema_name, seq_name, -1);
     create_sequence_for_label(seq_range_var);
 
     // create a table for the new label
     create_table_for_vertex_label(graph_name, label_name, schema_name,
-                                  seq_name);
+                                  rel_name, seq_name);
 
     // associate the sequence with the "id" column
     alter_sequence_owned_by_for_label(seq_range_var, rel_name);
@@ -106,10 +129,10 @@ Oid create_vertex_label(char *graph_name, char *label_name)
 //   "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
 // )
 static void create_table_for_vertex_label(char *graph_name, char *label_name,
-                                          char *schema_name, char *seq_name)
+                                          char *schema_name, char *rel_name,
+                                          char *seq_name)
 {
     CreateStmt *create_stmt;
-    char *rel_name;
     ColumnDef *id;
     ColumnDef *props;
     PlannedStmt *wrapper;
@@ -117,7 +140,6 @@ static void create_table_for_vertex_label(char *graph_name, char *label_name,
     create_stmt = makeNode(CreateStmt);
 
     // relpersistence is set to RELPERSISTENCE_PERMANENT by makeRangeVar()
-    rel_name = get_label_relation_name(label_name);
     create_stmt->relation = makeRangeVar(schema_name, rel_name, -1);
 
     // "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...)
@@ -351,4 +373,158 @@ static int32 get_new_label_id(Oid graph_oid, Oid nsp_id)
                     errhint("The maximum number of labels in a graph is %d",
                             LABEL_ID_MAX)));
     return 0;
+}
+
+PG_FUNCTION_INFO_V1(drop_label);
+
+Datum drop_label(PG_FUNCTION_ARGS)
+{
+    Name graph_name;
+    Name label_name;
+    bool force;
+    char *graph_name_str;
+    graph_cache_data *cache_data;
+    Oid graph_oid;
+    Oid nsp_id;
+    char *label_name_str;
+    Oid label_relation;
+    char *schema_name;
+    char *rel_name;
+    List *qname;
+
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("graph name must not be NULL")));
+    }
+    if (PG_ARGISNULL(1))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("label name must not be NULL")));
+    }
+    graph_name = PG_GETARG_NAME(0);
+    label_name = PG_GETARG_NAME(1);
+    force = PG_GETARG_BOOL(2);
+
+    graph_name_str = NameStr(*graph_name);
+    cache_data = search_graph_name_cache(graph_name_str);
+    if (!cache_data)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                 errmsg("graph \"%s\" does not exist", graph_name_str)));
+    }
+    graph_oid = cache_data->oid;
+    nsp_id = cache_data->namespace;
+
+    label_name_str = NameStr(*label_name);
+    label_relation = get_label_relation(label_name_str, graph_oid);
+    if (!OidIsValid(label_relation))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("label \"%s\" does not exist", label_name_str)));
+    }
+
+    if (force)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("force option is not supported yet")));
+    }
+
+    schema_name = get_namespace_name(nsp_id);
+    rel_name = get_rel_name(label_relation);
+    qname = list_make2(makeString(schema_name), makeString(rel_name));
+
+    remove_relation(qname);
+    // CommandCounterIncrement() is called in performDeletion()
+
+    // delete_label() will be called in object_access()
+
+    ereport(NOTICE, (errmsg("label \"%s\".\"%s\" has been dropped",
+                            graph_name_str, label_name_str)));
+
+    PG_RETURN_VOID();
+}
+
+// See RemoveRelations() for more details.
+static void remove_relation(List *qname)
+{
+    RangeVar *rel;
+    Oid rel_oid;
+    ObjectAddress address;
+
+    AssertArg(list_length(qname) == 2);
+
+    // concurrent is false so lockmode is AccessExclusiveLock
+
+    // relkind is RELKIND_RELATION
+
+    AcceptInvalidationMessages();
+
+    rel = makeRangeVarFromNameList(qname);
+    rel_oid = RangeVarGetRelidExtended(rel, AccessExclusiveLock,
+                                       RVR_MISSING_OK,
+                                       range_var_callback_for_remove_relation,
+                                       NULL);
+
+    if (!OidIsValid(rel_oid))
+    {
+        /*
+         * before calling this function, this condition is already checked in
+         * drop_graph()
+         */
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                        errmsg("ag_label catalog is corrupted"),
+                        errhint("Table \"%s\".\"%s\" does not exist",
+                                rel->schemaname, rel->relname)));
+    }
+
+    // concurent is false
+
+    ObjectAddressSet(address, RelationRelationId, rel_oid);
+
+    /*
+     * set PERFORM_DELETION_INTERNAL flag so that object_access_hook can ignore
+     * this deletion
+     */
+    performDeletion(&address, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
+}
+
+// See RangeVarCallbackForDropRelation() for more details.
+static void range_var_callback_for_remove_relation(const RangeVar *rel,
+                                                   Oid rel_oid,
+                                                   Oid odl_rel_oid,
+                                                   void *arg)
+{
+    /*
+     * arg is NULL because relkind is always RELKIND_RELATION, heapOid is
+     * always InvalidOid, partParentOid is always InvalidOid, and concurrent is
+     * always false. See RemoveRelations() for more details.
+     */
+
+    // heapOid is always InvalidOid
+
+    // partParentOid is always InvalidOid
+
+    if (!OidIsValid(rel_oid))
+        return;
+
+    // classform->relkind is always RELKIND_RELATION
+
+    // relkind == expected_relkind
+
+    if (!pg_class_ownercheck(rel_oid, GetUserId()) &&
+        !pg_namespace_ownercheck(get_rel_namespace(rel_oid), GetUserId()))
+    {
+        aclcheck_error(ACLCHECK_NOT_OWNER,
+                       get_relkind_objtype(get_rel_relkind(rel_oid)),
+                       rel->relname);
+    }
+
+    // the target relation is not system class
+
+    // relkind is always RELKIND_RELATION
+
+    // is_partition is false
 }

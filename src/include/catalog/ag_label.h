@@ -45,15 +45,12 @@
 
 Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
                  char label_kind, Oid label_relation);
+void delete_label(Oid relation);
 
 Oid get_label_oid(const char *label_name, Oid label_graph);
 int32 get_label_id(const char *label_name, Oid label_graph);
-
-/*
- * Relation name doesn't have to be label name but the same name is used so
- * that users can find the backed relation for a label only by its name.
- */
-#define get_label_relation_name(label_name) (label_name)
+Oid get_label_relation(const char *label_name, Oid label_graph);
+char *get_label_relation_name(const char *label_name, Oid label_graph);
 
 bool label_id_exists(Oid label_graph, int32 label_id);
 

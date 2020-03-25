@@ -23,6 +23,7 @@
 #include "utils/lsyscache.h"
 
 #include "catalog/ag_catalog.h"
+#include "catalog/ag_label.h"
 #include "catalog/ag_namespace.h"
 #include "utils/ag_cache.h"
 
@@ -93,11 +94,22 @@ static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
     {
         label_cache_data *cache_data;
 
-        if (drop_arg->dropflags & PERFORM_DELETION_INTERNAL)
+        cache_data = search_label_relation_cache(object_id);
+
+        // We are interested in only tables that are labels.
+        if (!cache_data)
             return;
 
-        cache_data = search_label_relation_cache(object_id);
-        if (cache_data)
+        if (drop_arg->dropflags & PERFORM_DELETION_INTERNAL)
+        {
+            /*
+             * Remove the corresponding ag_label entry here first. We don't
+             * know whether this operation is drop_label() or a part of
+             * drop_graph().
+             */
+            delete_label(object_id);
+        }
+        else
         {
             char *relname = get_rel_name(object_id);
 
@@ -105,8 +117,6 @@ static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
                             errmsg("table \"%s\" is for label \"%s\"",
                                    relname, NameStr(cache_data->name))));
         }
-
-        return;
     }
 }
 

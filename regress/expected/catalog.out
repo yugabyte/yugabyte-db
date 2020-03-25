@@ -16,7 +16,7 @@
 LOAD 'agensgraph';
 SET search_path TO ag_catalog;
 --
--- create_graph() and drop_graph() tests
+-- create_graph(), drop_label(), and drop_graph() tests
 --
 SELECT create_graph('g');
 NOTICE:  graph "g" has been created
@@ -29,6 +29,20 @@ SELECT * FROM ag_graph WHERE name = 'g';
  name | namespace 
 ------+-----------
  g    | g
+(1 row)
+
+-- create a label to test drop_label()
+SELECT * FROM cypher('g', $$CREATE (:l)$$) AS r(a agtype);
+ a 
+---
+(0 rows)
+
+-- test drop_label()
+SELECT drop_label('g', 'l');
+NOTICE:  label "g"."l" has been dropped
+ drop_label 
+------------
+ 
 (1 row)
 
 -- create a label to test drop_graph()
@@ -51,8 +65,6 @@ SELECT drop_graph('g');
 ERROR:  cannot drop schema g because other objects depend on it
 DETAIL:  table g.v depends on schema g
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
--- FIXME: ag_label entries in the dropped graph needs to be deleted
-DELETE FROM ag_label WHERE graph = (SELECT oid FROM ag_graph WHERE name = 'g');
 SELECT drop_graph('g', true);
 NOTICE:  drop cascades to table g.v
 NOTICE:  graph "g" has been dropped
@@ -150,7 +162,7 @@ SELECT count(*) FROM ag_graph where name = 'graphx';
 
 -- Verify case sensitivity (graphx does not exist, but GraphX does) - should fail.
 SELECT alter_graph('graphx', 'RENAME', 'GRAPHX');
-ERROR:  schema "graphx" does not exist
+ERROR:  graph "graphx" does not exist
 -- Checks for collisions (GraphB already exists) - should fail.
 SELECT alter_graph('GraphX', 'RENAME', 'GraphB');
 ERROR:  schema "GraphB" already exists
@@ -171,7 +183,7 @@ NOTICE:  graph "GraphB" has been dropped
 
 -- Verify that renaming a graph that does not exist fails.
 SELECT alter_graph('GraphB', 'RENAME', 'GraphA');
-ERROR:  schema "GraphB" does not exist
+ERROR:  graph "GraphB" does not exist
 -- Verify NULL input checks.
 SELECT alter_graph(NULL, 'RENAME', 'GraphA');
 ERROR:  graph_name must not be NULL
@@ -261,8 +273,6 @@ SELECT name, id, kind, relation FROM ag_label;
  v2     |     2 | v    | g.v2
 (4 rows)
 
--- FIXME: ag_label entries in the dropped graph needs to be deleted
-DELETE FROM ag_label WHERE graph = (SELECT oid FROM ag_graph WHERE name = 'g');
 SELECT drop_graph('g', true);
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table g.v1

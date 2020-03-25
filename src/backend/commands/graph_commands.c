@@ -36,6 +36,12 @@
 #include "catalog/ag_label.h"
 #include "utils/graphid.h"
 
+/*
+ * Schema name doesn't have to be graph name but the same name is used so
+ * that users can find the backed schema for a graph only by its name.
+ */
+#define gen_graph_namespace_name(graph_name) (graph_name)
+
 static Oid create_schema_for_graph(const Name graph_name);
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade);
 static void remove_schema(Node *schema_name, DropBehavior behavior);
@@ -95,7 +101,7 @@ static Oid create_schema_for_graph(const Name graph_name)
      * so the event trigger will not be fired.
      */
     schema_stmt = makeNode(CreateSchemaStmt);
-    schema_stmt->schemaname = get_graph_namespace_name(graph_name_str);
+    schema_stmt->schemaname = gen_graph_namespace_name(graph_name_str);
     schema_stmt->authrole = NULL;
     seq_stmt = makeNode(CreateSeqStmt);
     seq_stmt->sequence = makeRangeVar(graph_name_str, LABEL_ID_SEQ_NAME, -1);
@@ -283,15 +289,19 @@ static void rename_graph(const Name graph_name, const Name new_name)
 {
     char *oldname = NameStr(*graph_name);
     char *newname = NameStr(*new_name);
+    char *schema_name;
 
     /*
      * ProcessUtilityContext of this command is PROCESS_UTILITY_SUBCOMMAND
      * so the event trigger will not be fired.
      *
      * CommandCounterIncrement() does not have to be called after this.
+     *
+     * NOTE: If graph_name and schema_name are decoupled, this operation does
+     *       not required.
      */
-    RenameSchema(get_graph_namespace_name(oldname),
-                 get_graph_namespace_name(newname));
+    schema_name = get_graph_namespace_name(oldname);
+    RenameSchema(schema_name, newname);
 
     update_graph_name(graph_name, new_name);
     CommandCounterIncrement();
