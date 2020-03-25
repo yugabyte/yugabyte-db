@@ -2014,7 +2014,7 @@ activate_virtualenv() {
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     (
       set -x
-      pip2 install virtualenv --user
+      pip2 install "virtualenv<20" --user
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
       python2.7 -m virtualenv "$YB_VIRTUALENV_BASENAME"
