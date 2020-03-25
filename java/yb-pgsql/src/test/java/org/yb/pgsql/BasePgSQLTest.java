@@ -482,8 +482,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return toPgConnection(connection).getBackendPID();
   }
 
-  protected int getStatementStat(String statName) throws Exception {
-    int value = 0;
+  protected static class AgregatedValue {
+    long count;
+    double value;
+  }
+
+  protected AgregatedValue getStatementStat(String statName) throws Exception {
+    AgregatedValue value = new AgregatedValue();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       URL url = new URL(String.format("http://%s:%d/statements",
                                       ts.getLocalhostIP(),
@@ -494,7 +499,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       JsonObject obj = tree.getAsJsonObject();
       YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
       if (ysqlStat != null) {
-        value += ysqlStat.calls;
+        value.count += ysqlStat.calls;
+        value.value += ysqlStat.total_time;
       }
       scanner.close();
     }
@@ -503,9 +509,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected void verifyStatementStat(Statement statement, String stmt, String statName,
                                      int stmtMetricDelta, boolean validStmt) throws Exception {
-    int oldValue = 0;
+    long oldValue = 0;
     if (statName != null) {
-      oldValue = getStatementStat(statName);
+      oldValue = getStatementStat(statName).count;
     }
 
     if (validStmt) {
@@ -514,16 +520,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       runInvalidQuery(statement, stmt);
     }
 
-    int newValue = 0;
+    long newValue = 0;
     if (statName != null) {
-      newValue = getStatementStat(statName);
+      newValue = getStatementStat(statName).count;
     }
 
     assertEquals(oldValue + stmtMetricDelta, newValue);
   }
 
-  protected int getMetricCounter(String metricName) throws Exception {
-    int value = 0;
+  protected AgregatedValue getMetric(String metricName) throws Exception {
+    AgregatedValue value = new AgregatedValue();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       URL url = new URL(String.format("http://%s:%d/metrics",
                                       ts.getLocalhostIP(),
@@ -534,21 +540,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
       assertEquals(obj.get("type").getAsString(), "server");
       assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
-      value += new Metrics(obj).getYSQLMetric(metricName).count;
+      Metrics.YSQLMetric metric = new Metrics(obj).getYSQLMetric(metricName);
+      value.count += metric.count;
+      value.value += metric.sum;
       scanner.close();
     }
     return value;
+  }
+
+  protected long getMetricCounter(String metricName) throws Exception {
+    return getMetric(metricName).count;
   }
 
   /** Time execution of a query. */
   protected long verifyStatementMetric(Statement statement, String stmt, String metricName,
                                        int stmtMetricDelta, int txnMetricDelta,
                                        boolean validStmt) throws Exception {
-    int oldValue = 0;
-    if (metricName != null) {
-      oldValue = getMetricCounter(metricName);
-    }
-    int oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long oldValue = metricName == null ? 0 : getMetricCounter(metricName);
+    long oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
 
     final long startTimeMillis = System.currentTimeMillis();
     if (validStmt) {
@@ -560,11 +569,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     // Check the elapsed time.
     long result = System.currentTimeMillis() - startTimeMillis;
 
-    int newValue = 0;
-    if (metricName != null) {
-      newValue = getMetricCounter(metricName);
-    }
-    int newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long newValue = metricName == null ? 0 : getMetricCounter(metricName);
+    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
 
     assertEquals(oldValue + stmtMetricDelta, newValue);
     assertEquals(oldTxnValue + txnMetricDelta, newTxnValue);

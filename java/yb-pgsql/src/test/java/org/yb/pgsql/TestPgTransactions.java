@@ -696,7 +696,7 @@ public class TestPgTransactions extends BasePgSQLTest {
                              "UPDATE test SET v = 3 WHERE k = 1", 1);
 
     // Verify JDBC single-row prepared statements use non-txn path.
-    int oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
 
     PreparedStatement insertStatement =
       connection.prepareStatement("INSERT INTO test VALUES (?, ?)");
@@ -715,7 +715,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     updateStatement.setInt(2, 1);
     updateStatement.executeUpdate();
 
-    int newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
     assertEquals(oldTxnValue, newTxnValue);
   }
 }

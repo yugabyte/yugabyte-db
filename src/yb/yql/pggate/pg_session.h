@@ -181,7 +181,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Start operation buffering. It is possible that previous sql statment raised an error
   // and collected operations has not been flushed. All ot them will be silently ignored.
-  CHECKED_STATUS StartOperationsBuffering();
+  void StartOperationsBuffering();
+  // Clean all previously buffered operations (from previous failed query).
+  void ResetOperationsBuffering();
   // Flush all pending operations.
   CHECKED_STATUS FlushBufferedOperations();
 

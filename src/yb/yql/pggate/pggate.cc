@@ -663,8 +663,12 @@ Status PgApiImpl::DmlBuildYBTupleId(PgStatement *handle, const PgAttrValueDescri
   return Status::OK();
 }
 
-Status PgApiImpl::StartOperationsBuffering() {
-  return pg_session_->StartOperationsBuffering();
+void PgApiImpl::StartOperationsBuffering() {
+  pg_session_->StartOperationsBuffering();
+}
+
+void PgApiImpl::ResetOperationsBuffering() {
+  pg_session_->ResetOperationsBuffering();
 }
 
 Status PgApiImpl::FlushBufferedOperations() {
