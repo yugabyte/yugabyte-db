@@ -25,7 +25,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Following instructions highlight how to deploy a single multi-region YugabyteDB cluster that spans 3 [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
+Following instructions highlight how to deploy a single multi-region YugabyteDB cluster that spans three [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
 
 We will use the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 GKE clusters. 
 

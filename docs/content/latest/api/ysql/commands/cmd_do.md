@@ -69,7 +69,3 @@ BEGIN
     END LOOP;
 END$$;
 ```
-
-## See also
-
-[Other YSQL Statements](..)

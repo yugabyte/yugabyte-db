@@ -1,5 +1,6 @@
 ---
 title: SHOW statement [YSQL]
+headerTitle: SHOW
 linkTitle: SHOW
 summary: Display the value of a run-time parameter.
 description: Use the `SHOW` statement to display the value of a run-time parameter.
