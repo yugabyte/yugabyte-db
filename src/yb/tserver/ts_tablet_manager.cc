@@ -536,11 +536,6 @@ Status TSTabletManager::Init() {
                           "Failed to open tablet metadata for tablet: " + tablet_id);
     if (PREDICT_FALSE(meta->tablet_data_state() != TABLET_DATA_READY)) {
       RETURN_NOT_OK(HandleNonReadyTabletOnStartup(meta));
-      if (meta->tablet_data_state() == TABLET_DATA_TOMBSTONED) {
-        RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->raft_group_id(),
-                              meta->table_type(), meta->data_root_dir(),
-                              meta->wal_root_dir());
-      }
       continue;
     }
     RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->raft_group_id(),
@@ -1013,12 +1008,15 @@ Status TSTabletManager::DeleteTablet(
     std::lock_guard<RWMutex> lock(lock_);
     RETURN_NOT_OK(CheckRunningUnlocked(error_code));
     CHECK_EQ(1, tablet_map_.erase(tablet_id)) << tablet_id;
-    UnregisterDataWalDir(meta->table_id(),
-                         tablet_id,
-                         meta->table_type(),
-                         meta->data_root_dir(),
-                         meta->wal_root_dir());
   }
+
+  // We unregister TOMBSTONED tablets in addition to DELETED tablets because they do not have
+  // any more data on disk, so we shouldn't count these tablets when load balancing the disks.
+  UnregisterDataWalDir(meta->table_id(),
+                       tablet_id,
+                       meta->table_type(),
+                       meta->data_root_dir(),
+                       meta->wal_root_dir());
 
   return Status::OK();
 }
@@ -1621,7 +1619,8 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   if (table_id == master::kSysCatalogTableId) {
     return;
   }
-  LOG(INFO) << "Get and update data/wal directory assignment map for table: " << table_id;
+  LOG(INFO) << "Get and update data/wal directory assignment map for table: "
+            << table_id << " and tablet " << tablet_id;
   MutexLock l(dir_assignment_lock_);
   // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
@@ -1684,7 +1683,8 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
   if (table_id == master::kSysCatalogTableId) {
     return;
   }
-  LOG(INFO) << "Update data/wal directory assignment map for table: " << table_id;
+  LOG(INFO) << "Update data/wal directory assignment map for table: "
+            << table_id << " and tablet " << tablet_id;
   MutexLock l(dir_assignment_lock_);
   // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
@@ -1739,11 +1739,23 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
   if (table_id == master::kSysCatalogTableId) {
     return;
   }
-  LOG(INFO) << "Unregister data/wal directory assignment map for table: " << table_id;
+  LOG(INFO) << "Unregister data/wal directory assignment map for table: "
+            << table_id << " and tablet " << tablet_id;
   MutexLock l(dir_assignment_lock_);
   auto table_data_assignment_iter = table_data_assignment_map_.find(table_id);
-  DCHECK(table_data_assignment_iter != table_data_assignment_map_.end())
-      << "Need to initialize table first";
+  if (table_data_assignment_iter == table_data_assignment_map_.end()) {
+    // It is possible that we can't find an assignment for the table if the operations followed in
+    // this order:
+    // 1. The only tablet for a table gets tombstoned, and UnregisterDataWalDir removes it from
+    //    the maps.
+    // 2. TSTabletManager gets restarted (so the maps are cleared).
+    // 3. During TsTabletManager initialization, the tombstoned TABLET won't get registered,
+    //    so if a DeleteTablet request with type DELETED gets sent, UnregisterDataWalDir won't
+    //    find the table.
+
+    // Check that both maps should be consistent.
+    DCHECK(table_wal_assignment_map_.find(table_id) == table_wal_assignment_map_.end());
+  }
   if (table_data_assignment_iter != table_data_assignment_map_.end()) {
     auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(data_root_dir);
     DCHECK(data_assignment_value_iter != table_data_assignment_map_[table_id].end())
@@ -1756,8 +1768,6 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
     }
   }
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
-  DCHECK(table_wal_assignment_iter != table_wal_assignment_map_.end())
-      << "Need to initialize table first";
   if (table_wal_assignment_iter != table_wal_assignment_map_.end()) {
     auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(wal_root_dir);
     DCHECK(wal_assignment_value_iter != table_wal_assignment_map_[table_id].end())

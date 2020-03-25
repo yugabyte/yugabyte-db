@@ -300,6 +300,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
+  FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
 
   // Flag specified when registering a TabletPeer.
   enum RegisterTabletPeerMode {
