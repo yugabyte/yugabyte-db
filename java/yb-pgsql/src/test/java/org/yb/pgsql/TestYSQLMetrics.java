@@ -22,14 +22,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import java.sql.ResultSet;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.net.MalformedURLException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertGreaterThanOrEqualTo;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestYSQLMetrics extends BasePgSQLTest {
@@ -146,5 +143,108 @@ public class TestYSQLMetrics extends BasePgSQLTest {
     stmt      = "INSERT INTO invalid_table VALUES (1)";
     stat_stmt = "INSERT INTO invalid_table VALUES ($1)";
     verifyStatementStat(statement, stmt, stat_stmt, 0, false);
+  }
+
+  @Test
+  public void testStatementTime() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test(k INT, v VARCHAR)");
+      String prepared_stmt =
+          "PREPARE foo(INT, VARCHAR, INT, VARCHAR, INT, VARCHAR, INT, VARCHAR, INT, VARCHAR) " +
+          "AS INSERT INTO test VALUES($1, $2), ($3, $4), ($5, $6), ($7, $8), ($9, $10)";
+      statement.execute(prepared_stmt);
+      statement.execute(
+          "CREATE PROCEDURE proc(n INT) LANGUAGE PLPGSQL AS $$ DECLARE c INT := 0; BEGIN " +
+          "WHILE c < n LOOP c := c + 1; INSERT INTO test VALUES(c, 'value'); END LOOP; END; $$");
+      testStatement(statement,
+          "INSERT INTO test VALUES(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5')",
+          INSERT_STMT_METRIC,
+          "INSERT INTO test VALUES($1, $2), ($3, $4), ($5, $6), ($7, $8), ($9, $10)");
+      testStatement(statement,
+                    "EXECUTE foo(1, '1', 2, '2', 3, '3', 4, '4', 5, '5')",
+                    INSERT_STMT_METRIC,
+                    prepared_stmt);
+      testStatement(statement, "CALL proc(40)", OTHER_STMT_METRIC);
+      testStatement(statement, "DO $$ BEGIN CALL proc(40); END $$", OTHER_STMT_METRIC);
+    }
+  }
+
+  @Test
+  public void testExplainTime() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test(k INT, v VARCHAR)");
+      statement.execute(
+          "CREATE OR REPLACE FUNCTION func(n INT) RETURNS INT AS $$ DECLARE c INT := 0; BEGIN " +
+          "WHILE c < n LOOP c := c + 1; insert into test values(c, 'value'); END LOOP; " +
+          "RETURN 0; END; $$ LANGUAGE PLPGSQL");
+      final String query = "EXPLAIN(COSTS OFF, ANALYZE) SELECT func(500)";
+      ResultSet result = statement.executeQuery(query);
+      AgregatedValue stat = getStatementStat(query);
+      assertEquals(1, stat.count);
+      while(result.next()) {
+        if(result.isLast()) {
+          double query_time = Double.parseDouble(result.getString(1).replaceAll("[^\\d.]", ""));
+          // As stat.total_time indicates total time of EXPLAIN query,
+          // actual query total time is a little bit less.
+          // It is expected that query time is not less than 90% of stat.total_time.
+          assertQueryTime(query, query_time, 0.9 * stat.value);
+        }
+      }
+    }
+  }
+
+  private void testStatement(Statement statement,
+                             String query,
+                             String metric_name) throws Exception {
+    testStatement(statement, query, metric_name, query);
+  }
+
+  // Function executes query and compare time elapsed locally with query statistics.
+  // Local time always will be greater due to client-server communication.
+  // To reduce client-server communication delays query is executed multiple times as a batch.
+  private void testStatement(Statement statement,
+                             String query,
+                             String metric_name,
+                             String stat_name) throws Exception {
+    final int count = 200;
+    for(int i = 0; i < count; ++i) {
+      statement.addBatch(query);
+    }
+    AgregatedValue metric_before = getMetric(metric_name);
+    final long startTimeMillis = System.currentTimeMillis();
+    statement.executeBatch();
+    final double elapsed_local_time = System.currentTimeMillis() - startTimeMillis;
+    AgregatedValue metric_after = getMetric(metric_name);
+    AgregatedValue stat = getStatementStat(stat_name);
+    assertEquals(String.format("Calls count for query %s", query), count, stat.count);
+    assertEquals(String.format("'%s' count for query %s", metric_name, query),
+                 count,
+          metric_after.count - metric_before.count);
+    // Due to client-server communications delay local time
+    // is always greater than actual query time.
+    // But we expect communications delay is less than 20%.
+    final double time_lower_bound = 0.8 * elapsed_local_time;
+    assertQueryTime(query, stat.value, time_lower_bound);
+    final long metric_value = Math.round(metric_after.value - metric_before.value);
+    // Make metric lower bound a little smaller than stat.value due to rounding
+    final long metric_lower_bound = Math.round(0.95 * stat.value * 1000);
+    assertGreaterThanOrEqualTo(
+        String.format("Expected '%s' %d to be >= %d for query '%s'",
+                      metric_name,
+                      metric_value,
+                      metric_lower_bound,
+                      query),
+        metric_value,
+        metric_lower_bound);
+  }
+
+  private void assertQueryTime(String query, double query_time, double time_lower_bound) {
+    assertGreaterThanOrEqualTo(
+        String.format("Expected total time %f to be >= %f for query '%s'",
+                      query_time,
+                      time_lower_bound,
+                      query),
+        query_time,
+        time_lower_bound);
   }
 }

@@ -290,4 +290,8 @@ extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
  */
 bool YBIsInitDbAlreadyDone();
 
+extern void YBBeginOperationsBuffering();
+extern void YBEndOperationsBuffering();
+extern void YBResetOperationsBuffering();
+
 #endif /* PG_YB_UTILS_H */

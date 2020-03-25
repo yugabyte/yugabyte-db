@@ -294,7 +294,8 @@ YBCStatus YBCPgDmlBuildYBTupleId(YBCPgStatement handle, const YBCPgAttrValueDesc
 
 
 // Buffer write operations.
-YBCStatus YBCPgStartOperationsBuffering();
+void YBCPgStartOperationsBuffering();
+void YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 
 // INSERT ------------------------------------------------------------------------------------------

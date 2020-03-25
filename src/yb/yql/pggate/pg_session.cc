@@ -733,16 +733,18 @@ void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
   table_cache_.erase(yb_table_id);
 }
 
-Status PgSession::StartOperationsBuffering() {
-  // Log in case previously buffered operation was not flushed.
-  // This could happen in case previous statement was failed and transaction was not committed.
-  LOG_IF(INFO, !buffered_keys_.empty())
-      << "Dropping " << buffered_keys_.size() << " pending operations silently";
+void PgSession::StartOperationsBuffering() {
+  DCHECK(buffered_keys_.empty());
   buffering_enabled_ = true;
+}
+
+void PgSession::ResetOperationsBuffering() {
+  VLOG_IF(1, !buffered_keys_.empty())
+          << "Dropping " << buffered_keys_.size() << " pending operations";
+  buffering_enabled_ = false;
   buffered_keys_.clear();
   buffered_ops_.clear();
   buffered_txn_ops_.clear();
-  return Status::OK();
 }
 
 Status PgSession::FlushBufferedOperations() {

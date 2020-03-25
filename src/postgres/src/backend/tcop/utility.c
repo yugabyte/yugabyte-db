@@ -73,8 +73,21 @@
 
 #include "pg_yb_utils.h"
 
+static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
+                                        const char *queryString,
+                                        ProcessUtilityContext context,
+                                        ParamListInfo params,
+                                        QueryEnvironment *queryEnv,
+                                        DestReceiver *dest,
+                                        char *completionTag);
+
 /* Hook for plugins to get control in ProcessUtility() */
-ProcessUtility_hook_type ProcessUtility_hook = NULL;
+
+/*
+ * Setting YBProcessUtilityDefaultHook directly guaranties it will be the first one.
+ * It will be called after all plugins hooks.
+ */
+ProcessUtility_hook_type ProcessUtility_hook = &YBProcessUtilityDefaultHook;
 
 /* local function declarations */
 static void ProcessUtilitySlow(ParseState *pstate,
@@ -3458,4 +3471,24 @@ GetCommandLogLevel(Node *parsetree)
 	}
 
 	return lev;
+}
+
+void
+YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
+                            const char *queryString,
+                            ProcessUtilityContext context,
+                            ParamListInfo params,
+                            QueryEnvironment *queryEnv,
+                            DestReceiver *dest,
+                            char *completionTag)
+{
+	if (IsYugaByteEnabled() && !(IsA(pstmt->utilityStmt, ExecuteStmt) ||
+			IsA(pstmt->utilityStmt, PrepareStmt) || IsA(pstmt->utilityStmt, DeallocateStmt) ||
+			IsA(pstmt->utilityStmt, ExplainStmt))) {
+		YBBeginOperationsBuffering();
+		standard_ProcessUtility(pstmt, queryString, context, params, queryEnv, dest, completionTag);
+		YBEndOperationsBuffering();
+  } else {
+		standard_ProcessUtility(pstmt, queryString, context, params, queryEnv, dest, completionTag);
+	}
 }
