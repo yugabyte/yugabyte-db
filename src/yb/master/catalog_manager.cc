@@ -261,6 +261,9 @@ DEFINE_test_flag(int32, simulate_slow_system_tablet_bootstrap_secs, 0,
 DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
     "Return an error from ListTables if a namespace id is not found in the map");
 
+DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
+    "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
+
 namespace yb {
 namespace master {
 
@@ -642,7 +645,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   AbortAndWaitForAllTasks(tables);
 
   // Clear internal maps and run data loaders.
-  RETURN_NOT_OK(RunLoaders());
+  RETURN_NOT_OK(RunLoaders(term));
 
   // Prepare various default system configurations.
   RETURN_NOT_OK(PrepareDefaultSysConfig(term));
@@ -681,7 +684,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 
           LOG(INFO) << "Restoring snapshot completed, considering initdb finished";
           RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
-          RETURN_NOT_OK(RunLoaders());
+          RETURN_NOT_OK(RunLoaders(term));
         }
       } else {
         LOG(WARNING) << "Initial sys catalog snapshot directory does not exist: "
@@ -712,16 +715,16 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 }
 
 template <class Loader>
-Status CatalogManager::Load(const std::string& title) {
+Status CatalogManager::Load(const std::string& title, const int64_t term) {
   LOG(INFO) << __func__ << ": Loading " << title << " into memory.";
-  auto loader = std::make_unique<Loader>(this);
+  std::unique_ptr<Loader> loader = std::make_unique<Loader>(this, term);
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(loader.get()),
       "Failed while visiting " + title + " in sys catalog");
   return Status::OK();
 }
 
-Status CatalogManager::RunLoaders() {
+Status CatalogManager::RunLoaders(int64_t term) {
   // Clear the table and tablet state.
   table_names_map_.clear();
   auto table_ids_map_checkout = table_ids_map_.CheckOut();
@@ -759,14 +762,14 @@ Status CatalogManager::RunLoaders() {
     ts_desc->set_has_tablet_report(false);
   }
 
-  RETURN_NOT_OK(Load<TableLoader>("tables"));
-  RETURN_NOT_OK(Load<TabletLoader>("tablets"));
-  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces"));
-  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types"));
-  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration"));
-  RETURN_NOT_OK(Load<RoleLoader>("roles"));
-  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config"));
-  RETURN_NOT_OK(Load<SysConfigLoader>("sys config"));
+  RETURN_NOT_OK(Load<TableLoader>("tables", term));
+  RETURN_NOT_OK(Load<TabletLoader>("tablets", term));
+  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", term));
+  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", term));
+  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", term));
+  RETURN_NOT_OK(Load<RoleLoader>("roles", term));
+  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", term));
+  RETURN_NOT_OK(Load<SysConfigLoader>("sys config", term));
 
   return Status::OK();
 }
@@ -2813,6 +2816,11 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
 
   // Update sys-catalog with the removed table state.
   Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term_);
+
+  if (PREDICT_FALSE(FLAGS_simulate_crash_after_table_marked_deleting)) {
+    return Status::OK();
+  }
+
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
     s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",

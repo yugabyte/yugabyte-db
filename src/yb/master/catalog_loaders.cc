@@ -77,7 +77,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) {
   // Lookup the table.
   scoped_refptr<TableInfo> first_table(FindPtrOrNull(
-                                    *catalog_manager_->table_ids_map_, metadata.table_id()));
+      *catalog_manager_->table_ids_map_, metadata.table_id()));
 
   // Setup the tablet info.
   TabletInfo* tablet = new TabletInfo(first_table, tablet_id);
@@ -111,6 +111,13 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     table_ids.push_back(metadata.table_id());
   }
 
+  bool tablet_deleted = l->mutable_data()->is_deleted();
+
+  // true if we need to delete this tablet because the tables this tablets belongs to have been
+  // marked as DELETING. It will be set to false as soon as we find a table that is not in the
+  // DELETING or DELETED state.
+  bool should_delete_tablet = true;
+
   for (auto table_id : table_ids) {
     scoped_refptr<TableInfo> table(FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id));
 
@@ -132,18 +139,33 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     }
 
     // Add the tablet to the Table.
-    if (!l->mutable_data()->is_deleted()) {
+    if (!tablet_deleted) {
       table->AddTablet(tablet);
     }
+
+    auto tl = table->LockForRead();
+    if (tablet_deleted || !tl->data().started_deleting()) {
+      // The tablet is already deleted or the table hasn't been deleted. So we don't delete
+      // this tablet.
+      should_delete_tablet = false;
+    }
+  }
+
+
+  if (should_delete_tablet) {
+    LOG(WARNING) << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
+    string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
+    l->mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+    RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->UpdateItem(tablet, term_),
+                          strings::Substitute("Error deleting tablet $0", tablet->id()));
   }
 
   l->Commit();
 
-  // TODO(KUDU-1070): if we see a running tablet under a deleted table,
-  // we should "roll forward" the deletion of the tablet here.
-
-  LOG(INFO) << "Loaded metadata for tablet " << tablet_id
+  LOG(INFO) << "Loaded metadata for " << (tablet_deleted ? "deleted " : "")
+            << "tablet " << tablet_id
             << " (first table " << first_table->ToString() << ")";
+
   VLOG(1) << "Metadata for tablet " << tablet_id << ": " << metadata.ShortDebugString();
 
   return Status::OK();

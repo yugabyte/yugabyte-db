@@ -182,8 +182,8 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
 // CatalogManager
 ////////////////////////////////////////////////////////////
 
-Status CatalogManager::RunLoaders() {
-  RETURN_NOT_OK(super::RunLoaders());
+Status CatalogManager::RunLoaders(int64_t term) {
+  RETURN_NOT_OK(super::RunLoaders(term));
 
   // Clear the snapshots.
   snapshot_ids_map_.clear();

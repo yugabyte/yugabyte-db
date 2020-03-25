@@ -547,7 +547,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
   CHECKED_STATUS VisitSysCatalog(int64_t term);
-  virtual CHECKED_STATUS RunLoaders();
+  virtual CHECKED_STATUS RunLoaders(int64_t term);
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
@@ -616,6 +616,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   FRIEND_TEST(SysCatalogTest, TestSysCatalogTablesOperations);
   FRIEND_TEST(SysCatalogTest, TestSysCatalogTabletsOperations);
   FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
+
+  FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -973,7 +975,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TableInfo> NewTableInfo(TableId id);
 
   template <class Loader>
-  CHECKED_STATUS Load(const std::string& title);
+  CHECKED_STATUS Load(const std::string& title, const int64_t term);
 
   // ----------------------------------------------------------------------------------------------
   // Private member fields
