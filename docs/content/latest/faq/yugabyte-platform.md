@@ -1,8 +1,8 @@
 ---
-title: FAQs about the Yugabyte Platform
+title: FAQs about the Yugabyte Platform and YugaWare
 headerTitle: Yugabyte Platform FAQ
 linkTitle: Yugabyte Platform FAQ
-description: Get answers to common questions about the Yugabyte Platform.
+description: Get answers to common questions about the Yugabyte Platform and YugaWare.
 aliases:
   - /latest/faq/enterprise-edition/
 menu:

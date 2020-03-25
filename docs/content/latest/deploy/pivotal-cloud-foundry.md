@@ -1,7 +1,8 @@
 ---
-title: Pivotal Cloud Foundry
+title: YugabyteDB service instances in Pivotal Cloud Foundry
+headerTitle: Pivotal Cloud Foundry
 linkTitle: Pivotal Cloud Foundry
-description: Pivotal Cloud Foundry
+description: Create a YugabyteDB service instance in Pivotal Cloud Foundry
 aliases:
   - /deploy/pivotal-cloud-foundry/
 menu:
@@ -39,7 +40,7 @@ Once you pick the service plan you would be provided with the service instance c
 
 ## Using Cloud Foundry (cf) CLI
 
-You can view the marketplace and plan description in cf cli by executing the below command.
+You can view the marketplace and plan description in the Cloud Foundry (`cf`) CLI by executing the below command.
 
 ```sh
 $ cf marketplace -s yugabyte-db
