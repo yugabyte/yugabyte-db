@@ -58,21 +58,23 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeNameLink = (cell, row) => {
+      const ip = (
+        <div className={"text-lightgray"}>
+          {row['privateIP']}
+        </div>
+      );
+      let nodeName = cell;
       if (row.cloudInfo.cloud === "aws") {
         const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
-        return (<Fragment>
-          <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>
-          <div className={"text-lightgray"}>{row['privateIP']}</div>
-        </Fragment>);
+        nodeName = (<a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>)
       } else if (row.cloudInfo.cloud === "gcp") {
         const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
-        return (<Fragment>
-          <a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>
-          <div>{row['privateIP']}</div>
-        </Fragment>);
-      } else {
-        return cell;
+        nodeName = (<a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>)
       }
+      return (<Fragment>
+        {nodeName}
+        {ip}
+      </Fragment>);
     };
 
     const getStatusUptime = (cell, row) => {
