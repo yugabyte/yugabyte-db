@@ -596,7 +596,6 @@ void LookupRpc::SendRpc() {
 
 void LookupRpc::ResetMasterLeaderAndRetry() {
   client()->data_->SetMasterServerProxyAsync(
-      client(),
       retrier().deadline(),
       false /* skip_resolution */,
       Bind(&LookupRpc::NewLeaderMasterDeterminedCb,
