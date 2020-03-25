@@ -182,7 +182,6 @@ using std::shared_ptr;
     Status s = data_->SyncLeaderMasterRpc<BOOST_PP_CAT(method, RequestPB), \
                                           BOOST_PP_CAT(method, ResponsePB)>( \
         deadline, \
-        this, \
         req, \
         &resp, \
         nullptr, \
@@ -357,7 +356,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
   RETURN_NOT_OK_PREPEND(
-      c->data_->SetMasterServerProxy(c.get(), deadline, data_->skip_master_leader_resolution_),
+      c->data_->SetMasterServerProxy(deadline, data_->skip_master_leader_resolution_),
       "Could not locate the leader master");
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
@@ -403,6 +402,7 @@ YBClient::~YBClient() {
 }
 
 void YBClient::Shutdown() {
+  data_->StartShutdown();
   if (data_->messenger_holder_) {
     data_->messenger_holder_->Shutdown();
   }
@@ -412,6 +412,7 @@ void YBClient::Shutdown() {
   if (data_->cb_threadpool_) {
     data_->cb_threadpool_->Shutdown();
   }
+  data_->CompleteShutdown();
 }
 
 std::unique_ptr<YBTableCreator> YBClient::NewTableCreator() {
@@ -1227,7 +1228,7 @@ Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>*
 
 Result<HostPort> YBClient::RefreshMasterLeaderAddress() {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->SetMasterServerProxy(this, deadline));
+  RETURN_NOT_OK(data_->SetMasterServerProxy(deadline));
 
   return GetMasterLeaderAddress();
 }
@@ -1354,19 +1355,7 @@ shared_ptr<YBSession> YBClient::NewSession() {
 }
 
 bool YBClient::IsMultiMaster() const {
-  std::lock_guard<simple_spinlock> l(data_->master_server_addrs_lock_);
-  if (data_->master_server_addrs_.size() > 1) {
-    return true;
-  }
-  // For single entry case, check if it is a list of host/ports.
-  vector<Endpoint> addrs;
-  const auto status = ParseAddressList(data_->master_server_addrs_[0],
-                                       yb::master::kMasterDefaultPort,
-                                       &addrs);
-  if (!status.ok()) {
-    return false;
-  }
-  return addrs.size() > 1;
+  return data_->IsMultiMaster();
 }
 
 Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
