@@ -17,3 +17,6 @@ test: yb_pg_drop_operator
 test: yb_prepare
 test: yb_sequence
 test: yb_pg_identity
+
+# Features that are explicitly disabled and therefore should not work
+test: yb_disabled

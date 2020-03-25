@@ -283,6 +283,7 @@ Oid YBCGetDatabaseOid(Relation rel);
  * linking to the referenced issue (if any).
  */
 void YBRaiseNotSupported(const char *msg, int issue_no);
+void YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
