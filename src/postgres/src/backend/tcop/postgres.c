@@ -4819,7 +4819,8 @@ PostgresMain(int argc, char *argv[],
 						    restart_data &&
 						    restart_data->portal_name[0] == '\0' &&
 						    restart_data->num_params == 0 &&
-                                yb_check_retry_allowed(unnamed_stmt_psrc->query_string);
+						    unnamed_stmt_psrc &&
+						    yb_check_retry_allowed(unnamed_stmt_psrc->query_string);
 
 						bool need_retry = false;
 						/*
