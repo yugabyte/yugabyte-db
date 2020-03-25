@@ -39,6 +39,10 @@ $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
 
+{{< note title="Note" >}}
+The binaries are compiled with JAVA 13.
+{{< /note >}}
+
 ## Step 2. Start your database
 
 Start the database using the steps mentioned [here](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/macos/).
