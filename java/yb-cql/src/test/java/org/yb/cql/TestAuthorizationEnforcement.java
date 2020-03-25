@@ -2260,6 +2260,42 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     level0Session.execute("CREATE KEYSPACE somekeyspace2");
   }
 
+  // This test a fix for https://github.com/yugabyte/yugabyte-db/issues/4062.
+  // The issue is that when different permissions are inherited from roles granted to another role,
+  // it's possible that they might replace the permissions granted directly.
+  // For example:
+  // If role 'eng' has permission SELECT on table 'releases', and role 'john' has permission
+  // MODIFY on the same table, and role 'eng' is granted to 'john', it's possible (depending on
+  // the order the permissions are received) that permission SELECT will replace permission
+  // MODIFY on table 'releases'.
+  @Test
+  public void testInheritedPermissionsDoNotOverrideGrantedPermissions() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+
+    testCreateRoleHelperWithSession("employees", password, /* canLogin */ true,
+        /* isSuperuser */false, /*verifyConnectivity */ false, /* session */ s);
+    testCreateRoleHelperWithSession("eng", password, /* canLogin */ true,
+        /* isSuperuser */false, /*verifyConnectivity */ false, /* session */ s);
+
+    s.execute(String.format("GRANT employees TO eng"));
+    s.execute(String.format("GRANT SELECT ON %s.%s TO eng", keyspace, table));
+
+    testCreateRoleHelperWithSession("john", password, true, false, false, s);
+
+    s.execute(String.format("GRANT eng TO john"));
+    s.execute(String.format("GRANT MODIFY ON %s.%s TO john", keyspace, table));
+
+
+    Session johnSession = getSession("john", password);
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify that user 'john' can insert a record in the table.
+    insertRow(johnSession, keyspace, table);
+    johnSession.execute(String.format("SELECT * FROM %s.%s", keyspace, table));
+  }
+
   public void testGrantAllGrantsCorrectPermissions() throws Exception {
     createTableAndVerify(s, keyspace, table);
     testCreateRoleHelperWithSession(anotherUsername, "a", false, false, false, s);
