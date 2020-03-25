@@ -152,6 +152,7 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
 
 PgApiImpl::~PgApiImpl() {
   messenger_holder_.messenger->Shutdown();
+  async_client_init_.client()->Shutdown();
 }
 
 const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {

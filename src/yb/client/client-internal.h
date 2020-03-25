@@ -241,8 +241,7 @@ class YBClient::Data {
   // Invokes 'cb' with the appropriate status when finished.
   //
   // Works with both a distributed and non-distributed configuration.
-  void SetMasterServerProxyAsync(YBClient* client,
-                                 CoarseTimePoint deadline,
+  void SetMasterServerProxyAsync(CoarseTimePoint deadline,
                                  bool skip_resolution,
                                  const StatusCallback& cb);
 
@@ -253,8 +252,7 @@ class YBClient::Data {
   //
   // TODO (KUDU-492): Get rid of this method and re-factor the client
   // to lazily initialize 'master_proxy_'.
-  CHECKED_STATUS SetMasterServerProxy(YBClient* client,
-                                      CoarseTimePoint deadline,
+  CHECKED_STATUS SetMasterServerProxy(CoarseTimePoint deadline,
                                       bool skip_resolution = false);
 
   std::shared_ptr<master::MasterServiceProxy> master_proxy() const;
@@ -296,10 +294,16 @@ class YBClient::Data {
   // the resulting Status.
   template <class ReqClass, class RespClass>
   CHECKED_STATUS SyncLeaderMasterRpc(
-      CoarseTimePoint deadline, YBClient* client, const ReqClass& req, RespClass* resp,
+      CoarseTimePoint deadline, const ReqClass& req, RespClass* resp,
       int* num_attempts, const char* func_name,
       const std::function<Status(
           master::MasterServiceProxy*, const ReqClass&, RespClass*, rpc::RpcController*)>& func);
+
+  bool IsMultiMaster();
+
+  void StartShutdown();
+
+  void CompleteShutdown();
 
   rpc::Messenger* messenger_ = nullptr;
   std::unique_ptr<rpc::Messenger> messenger_holder_;
@@ -349,6 +353,10 @@ class YBClient::Data {
   mutable simple_spinlock leader_master_lock_;
 
   AtomicInt<uint64_t> latest_observed_hybrid_time_;
+
+  std::atomic<bool> closing_{false};
+
+  std::atomic<int> running_sync_requests_{0};
 
   // Cloud info indicating placement information of client.
   CloudInfoPB cloud_info_pb_;

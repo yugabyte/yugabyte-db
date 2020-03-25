@@ -226,7 +226,7 @@ Status YBTable::Open() {
                      << s.ToString();
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
                       "Failed to determine new Master");
           continue;
         }
@@ -240,7 +240,7 @@ Status YBTable::Open() {
                      << s.ToString();
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
                       "Failed to determine new Master");
           continue;
         }
@@ -253,7 +253,7 @@ Status YBTable::Open() {
                      << " is no longer the leader master.";
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
                       "Failed to determine new Master");
           continue;
         }
