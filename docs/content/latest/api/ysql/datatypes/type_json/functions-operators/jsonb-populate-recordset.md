@@ -2,6 +2,7 @@
 title: jsonb_populate_recordset()
 linkTitle: jsonb_populate_recordset()
 summary: jsonb_populate_recordset() and json_populate_recordset()
+headerTitle: jsonb_populate_recordset() and json_populate_recordset()
 description: jsonb_populate_recordset() and json_populate_recordset()
 menu:
   latest:
