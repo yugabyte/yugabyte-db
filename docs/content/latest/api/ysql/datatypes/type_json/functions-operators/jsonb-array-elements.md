@@ -42,7 +42,7 @@ declare
 
   n int := 0;
 begin
-  for j in (select * from jsonb_array_elements(j_array)) loop
+  for j in (select jsonb_array_elements(j_array)) loop
     n := n + 1;
     elements[n] := j;
   end loop;

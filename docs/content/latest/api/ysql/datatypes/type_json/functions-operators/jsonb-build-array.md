@@ -2,16 +2,17 @@
 title: jsonb_build_array()
 linkTitle: jsonb_build_array()
 summary: jsonb_build_array() and json_build_array()
-description: jsonb_build_array() and json_build_array()
-description: These two functions take an arbitrary number of actual arguments of mixed SQL data types.
+headerTitle: jsonb_build_array() and json_build_array()
+description: create a JSON array from a variadic list of array values of arbirary SQL data type.
 menu:
   latest:
-    identifier: jsonb-build-array
+    identifier: jsonb_build_array-each
     parent: functions-operators
-    weight: 90
+    weight: 110
 isTocNested: true
 showAsideToc: true
 ---
+
 
 **Purpose:** create a JSON _array_ from a variadic list of _array_ values of arbirary SQL data type.
 
