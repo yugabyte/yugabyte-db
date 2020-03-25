@@ -1,7 +1,8 @@
 ---
-title: Fault tolerance
+title: Explore fault tolerance in YugabyteDB using Kubernetes (Minikube)
+headerTitle: Fault tolerance
 linkTitle: Fault tolerance
-description: Fault tolerance
+description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster using Kubernetes (Minikube).
 aliases:
   - /latest/explore/fault-tolerance-kubernetes/
 menu:

@@ -41,6 +41,3 @@ When an expression, typically a column, does not have a value, it is represented
 null_expression ::= NULL
 ```
 
-## See also
-
-- [All Expressions](..#expressions)
