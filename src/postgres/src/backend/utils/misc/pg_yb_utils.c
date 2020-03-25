@@ -710,7 +710,12 @@ YBCGetDatabaseOid(Relation rel)
 void
 YBRaiseNotSupported(const char *msg, int issue_no)
 {
-	int signal_level = YBUnsupportedFeatureSignalLevel();
+	YBRaiseNotSupportedSignal(msg, issue_no, YBUnsupportedFeatureSignalLevel());
+}
+
+void
+YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level)
+{
 	if (issue_no > 0)
 	{
 		ereport(signal_level,
