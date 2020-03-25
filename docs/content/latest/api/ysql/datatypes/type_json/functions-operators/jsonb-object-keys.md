@@ -24,7 +24,7 @@ return value:      SETOF text
 
 **Notes:** The functions in this pair require that the supplied JSON value is an _object_. The returned keys are ordered alphabetically.
 
-```
+```postgresql
 do $body$
 declare
   object constant jsonb :=
@@ -39,7 +39,7 @@ declare
   n int := 0;
 begin
   for k in (
-    select * from jsonb_object_keys(object)
+    select jsonb_object_keys(object)
    )
   loop
     n := n + 1;
