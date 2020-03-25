@@ -1,7 +1,8 @@
 ---
-title: Colocated tables
+title: Explore colocated tables in YugabyteDB using macOS
+headerTitle: Colocated tables
 linkTitle: Colocated tables
-description: Colocated tables
+description: Create and use colocated tables in a local YugabyteDB cluster.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/explore/colocated-tables/
@@ -48,6 +49,7 @@ You can create a universe by following [Create local cluster](../../../quick-sta
 ## 2. Create a colocated database
 
 Connect to the cluster using `ysqlsh`.
+
 ```sh
 $ ./bin/ysqlsh -h 127.0.0.1
 ```

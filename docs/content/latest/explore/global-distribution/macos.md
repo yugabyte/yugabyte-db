@@ -1,7 +1,8 @@
 ---
-title: Global distribution
+title: Explore global distribution in YugabyteDB using macOS
+headerTitle: Global distribution
 linkTitle: Global distribution
-description: Global distribution
+description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster.
 aliases:
   - /explore/global-distribution/
   - /latest/explore/global-distribution/
@@ -99,7 +100,7 @@ Add another node in the zone `ap-northeast-1a` of region `ap-northeast-1`.
 $ ./bin/yb-ctl add_node --placement_info "aws.ap-northeast-1.ap-northeast-1a"
 ```
 
-At this point, these two new nodes are added into the cluster but are not taking any read or write IO. This is because  YB Master's initial placement policy of storing data across the zones in `us-west-2` region still applies.
+At this point, these two new nodes are added into the cluster but are not taking any read or write IO. This is because YB Master's initial placement policy of storing data across the zones in `us-west-2` region still applies.
 
 ![Add node in a new region](/images/ce/online-reconfig-add-regions-no-load.png)
 
@@ -114,7 +115,7 @@ $ ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100
 
 You should see that the data as well as the IO gradually moves from the nodes in `us-west-2b` and `us-west-2c` to the newly added nodes. The [tablet servers page](http://localhost:7000/tablet-servers) should soon look something like the screenshot below.
 
-![Multi region workload](/images/ce/online-reconfig-multi-region-load.png)
+![Multi-region workload](/images/ce/online-reconfig-multi-region-load.png)
 
 ## 4. Retire old nodes
 

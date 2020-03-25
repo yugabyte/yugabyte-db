@@ -1,5 +1,5 @@
 ---
-title: RESET statement [YSQL]]
+title: RESET statement [YSQL]
 headerTitle: RESET
 linkTitle: RESET
 summary: Reset a system or session variable to factory settings.

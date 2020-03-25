@@ -1,5 +1,5 @@
 ---
-title: FAQs on YugabyteDB
+title: FAQs about YugabyteDB
 headerTitle: General FAQ
 linkTitle: General FAQ
 description: Get answers to common questions about YugabyteDB.

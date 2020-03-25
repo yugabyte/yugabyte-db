@@ -1,5 +1,6 @@
 ---
-title: Deploy checklist
+title: Deploy checklist for YugabyteDB clusters
+headerTitle: Deployment checklist
 linkTitle: Deployment checklist
 description: Deployment checklist
 aliases:
