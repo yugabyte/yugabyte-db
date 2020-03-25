@@ -220,11 +220,11 @@ activate_virtualenv() {
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
 
-    pip_install virtualenv
+    pip_install "virtualenv<20"
     (
       set -x
       cd "${virtualenv_dir%/*}"
-      python -m virtualenv "$YB_VIRTUALENV_BASENAME"
+      python -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
     )
   elif "$is_linux"; then
     deactivate_virtualenv
