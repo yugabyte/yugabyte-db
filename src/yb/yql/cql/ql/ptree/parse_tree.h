@@ -136,7 +136,7 @@ class ParseTree {
   TreeNode::SharedPtr root_;
 
   // Is this parse tree stale?
-  mutable bool stale_ = false;
+  mutable std::atomic<bool> stale_ = {false};
 
   // Was this generated internally? Used to to bypass authorization enforcement.
   bool internal_ = false;
