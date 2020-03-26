@@ -66,7 +66,7 @@ Assuming that you've successfully added a password for the `yugabyte` user, you 
 
 ### Start local clusters
 
-To enable YSQL authentication in your local YugabyteDB clusters, you can use the [`--tserver_flags` option](../../../reference/configuration/yb-ctl#--tserver-flags) with the `yb-ctl create`, `yb-ctl start`, and `yb-ctl restart` commands to add the [`--ysql_auth_enabled` option](../../../reference/configuration/yb-tserver#ysql-auth-enabled).
+To enable YSQL authentication in your local YugabyteDB clusters, you can add the add the [--ysql_auth_enabled option](../../../reference/configuration/yb-tserver/#ysql-options) via the [--tserver_flags option](../../../admin/yb-ctl/#create-a-cluster-with-custom-flags) with the `yb-ctl create`, `yb-ctl start`, and `yb-ctl restart`.
 
 When you create a local cluster, you can run the `yb-ctl create` command like this to enable YSQL authentication in the newly-created cluster.
 

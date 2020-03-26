@@ -1,8 +1,8 @@
 ---
-title: DATE-TIME data types
-linkTitle: Date-time
-summary: DATE-TIME data types
-description: DATE-TIME data types
+title: DATE and TIME data types
+linkTitle: Date and time
+summary: DATE and TIME data types
+description: DATE and TIME data types
 menu:
   latest:
     identifier: api-ysql-datatypes-datetime

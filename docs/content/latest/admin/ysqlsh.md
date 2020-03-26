@@ -1,6 +1,6 @@
 ---
 title: ysqlsh - YSQL shell/CLI for YugabyteDB
-headerTitle: ysqlsh - YSQL CLI
+headerTitle: ysqlsh
 linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh), a command line interface (CLI), to interact with YugabyteDB using YSQL.
 aliases:
@@ -15,6 +15,8 @@ isTocNested: 5
 showAsideToc: true
 ---
 
+## Overview
+
 The YugabyteDB SQL shell (`ysqlsh`) provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/). It enables you to:
 
 - interactively enter SQL queries and see the query results
@@ -22,6 +24,22 @@ The YugabyteDB SQL shell (`ysqlsh`) provides a CLI for interacting with Yugabyte
 - use meta-commands for scripting and administration
 
 `ysqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
+
+### Example
+
+```sh
+$ ./bin/ysqlsh
+```
+```
+ysqlsh (11.2-YB-2.0.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+## Online help
+
+Run `ysqlsh --help` to display the online help.
 
 ## Syntax
 
@@ -44,19 +62,6 @@ Starting with v2.0.1, the default password for the default user `yugabyte` is `y
 For v2.0.0 users, the default user `yugabyte` has no password. If you do not want any password to be prompted, then you should not enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte` user (in a cluster with YSQL authentication turned off).
 
 {{< /note >}}
-
-### Example
-
-```sh
-$ ./bin/ysqlsh
-```
-
-```
-ysqlsh (11.2-YB-2.0.0.0-b0)
-Type "help" for help.
-
-yugabyte=#
-```
 
 ## Options
 
