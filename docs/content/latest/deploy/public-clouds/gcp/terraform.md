@@ -19,10 +19,11 @@ Common commands:
     fmt                Rewrites config files to canonical format
 ```
 
+## 1. Create a terraform configuration file
 
-## 1. Create a terraform config file
-* First create a terraform file with provider details
-  ```
+* First, create a terraform file with provider details.
+
+```
   provider "google"
   {
     # Provide your Creadentilals
@@ -31,11 +32,13 @@ Common commands:
     # The name of your GCP project
     project = "<Your-GCP-Project-Name>"
   }
-  ```
+```
+
   **NOTE:** :- You can get credentials file by following steps given [here](https://cloud.google.com/docs/authentication/getting-started)
 
-* Now add the yugabyte terraform module to your file
-  ```
+* Now add the Yugabyte Terraform module to your file.
+
+```
   module "yugabyte-db-cluster" {
   source = "github.com/Yugabyte/terraform-gcp-yugabyte.git"
 
@@ -56,8 +59,7 @@ Common commands:
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
   node_count = "3"
   }
-  ```
-
+```
 
 ## 2. Create a cluster
 
@@ -72,7 +74,6 @@ To check what changes are going to happen in environment run the following
 ```sh
 $ terraform plan
 ```
-
 
 Now run the following to create the instances and bring up the cluster.
 
@@ -93,7 +94,9 @@ You can check the state of the nodes at any point by running the following comma
 ```sh
 $ terraform show
 ```
+
 ## 3. Verify resources created
+
 The following resources are created by this module:
 
 - `module.terraform-gcp-yugabyte.google_compute_instance.yugabyte_node` The GCP VM instances.
