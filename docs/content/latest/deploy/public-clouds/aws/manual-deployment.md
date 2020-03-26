@@ -91,9 +91,9 @@ export ADMIN_USER=centos
 # masters.)
 #
 # You don’t need to CHANGE these unless you want to customize.
-export MASTER1=`echo $AZ1_NODES | cut -f1 -d" "`
-export MASTER2=`echo $AZ2_NODES | cut -f1 -d" "`
-export MASTER3=`echo $AZ3_NODES | cut -f1 -d" "`
+export MASTER1=\`echo $AZ1_NODES | cut -f1 -d" "\`
+export MASTER2=\`echo $AZ2_NODES | cut -f1 -d" "\`
+export MASTER3=\`echo $AZ3_NODES | cut -f1 -d" "\`
 
 
 # Other Environment vars that are simply derived from above ones.
