@@ -279,10 +279,23 @@ Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
     return STATUS_FORMAT(Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
                          start_doc_key_, lower_doc_key_, upper_doc_key_);
   }
+
+  // Paging state + forward scan.
   if (is_forward_scan_) {
     return lower_bound ? start_doc_key_ : upper_doc_key_;
   }
-  return lower_bound ? lower_doc_key_ : start_doc_key_;
+
+  // Paging state + reverse scan.
+  if (lower_bound) {
+    return lower_doc_key_;
+  }
+
+  // If using start_doc_key_ as upper bound append +inf as extra component to ensure it includes
+  // the target start_doc_key itself (dockey + suffix < dockey + kHighest).
+  // For lower bound, this is true already, because dockey + suffix is > dockey.
+  KeyBytes result = start_doc_key_;
+  result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+  return result;
 }
 
 std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() const {

@@ -576,13 +576,25 @@ public class BaseCQLTest extends BaseMiniClusterTest {
    * @param stmt The (select) query to be executed
    * @param expectedRows the rows in the expected order
    */
-  protected void assertQueryRowsOrdered(String stmt, String... expectedRows) {
+  protected void assertQueryRowsOrdered(Statement stmt, List<String> expectedRows) {
     ResultSet rs = session.execute(stmt);
     List<String> actualRows = new ArrayList<String>();
     for (Row row : rs) {
       actualRows.add(row.toString());
     }
-    assertEquals(Arrays.stream(expectedRows).collect(Collectors.toList()), actualRows);
+    assertEquals(expectedRows, actualRows);
+  }
+
+  /**
+   * Assert the result of a query when the order of the rows is enforced.
+   * To be used, for instance, for queries where (range) column ordering (ASC/DESC) is being tested.
+   *
+   * @param stmt The (select) query to be executed
+   * @param expectedRows the rows in the expected order
+   */
+  protected void assertQueryRowsOrdered(String stmt, String... expectedRows) {
+    assertQueryRowsOrdered(new SimpleStatement(stmt),
+                           Arrays.stream(expectedRows).collect(Collectors.toList()));
   }
 
   /** Checks that the query yields an error containing the given (case-insensitive) substring */
