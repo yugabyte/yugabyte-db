@@ -223,32 +223,23 @@ export default class AZSelectorTable extends Component {
       } else {
         cluster = getReadOnlyCluster(universeConfigTemplate.clusters);
       }
-    }
 
-    let currentClusterNodes = [];
-    if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyObject(universeConfigTemplate.nodeDetailsSet) && isNonEmptyObject(cluster)) {
-      currentClusterNodes =
-      universeConfigTemplate.nodeDetailsSet.filter(function (nodeItem) {
-        return nodeItem.placementUuid === cluster.uuid && (nodeItem.state === "ToBeAdded" || nodeItem.state === "Live");
-      });
-    }
-
-    if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyArray(currentClusterNodes)) {
-      currentClusterNodes.forEach((nodeItem) => {
-        if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
-          let nodeFound = false;
-          for (let idx = 0; idx < uniConfigArray.length; idx++) {
-            if (uniConfigArray[idx].value === nodeItem.azUuid) {
-              nodeFound = true;
-              uniConfigArray[idx].count++;
-              break;
+      if (isNonEmptyObject(universeConfigTemplate.nodeDetailsSet)) {
+        universeConfigTemplate.nodeDetailsSet.filter((nodeItem) => (
+          nodeItem.placementUuid === cluster.uuid &&
+          (nodeItem.state === "ToBeAdded" || nodeItem.state === "Live") &&
+          nodeItem.isTserver
+        )).forEach((nodeItem) => {
+          if (nodeStates.activeStates.includes(nodeItem.state)) {
+            const targetNode = uniConfigArray.find(n => n.value === nodeItem.azUuid);
+            if (targetNode) {
+              targetNode.count++;
+            } else {
+              uniConfigArray.push({ value: nodeItem.azUuid, count: 1 });
             }
           }
-          if (!nodeFound) {
-            uniConfigArray.push({value: nodeItem.azUuid, count: 1});
-          }
-        }
-      });
+        });
+      }
     }
     let groupsArray = [];
     const uniqueRegions = [];

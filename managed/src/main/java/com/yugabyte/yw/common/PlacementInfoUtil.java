@@ -985,7 +985,7 @@ public class PlacementInfoUtil {
     // Get node count per azUuid in the current universe.
     Map<UUID, Integer> azUuidToNumNodes = new HashMap<UUID, Integer>();
     for (NodeDetails node : nodeDetailsSet) {
-      if (onlyActive && !node.isActive()) {
+      if ((onlyActive && !node.isActive()) || (node.isMaster && !node.isTserver)) {
         continue;
       }
       UUID azUuid = node.azUuid;
@@ -1199,6 +1199,16 @@ public class PlacementInfoUtil {
     nodes.addAll(deltaNodesSet);
   }
 
+  private static int getNumTserverNodes(Collection<NodeDetails> nodeDetailsSet) {
+    int count = 0;
+    for (NodeDetails node: nodeDetailsSet) {
+      if (node.isTserver) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   private static void configureNodesUsingUserIntent(Cluster cluster,
                                                     Collection<NodeDetails> nodeDetailsSet,
                                                     boolean isEditUniverse) {
@@ -1206,10 +1216,13 @@ public class PlacementInfoUtil {
     Set<NodeDetails> nodesInCluster = nodeDetailsSet.stream()
             .filter(n -> n.placementUuid.equals(cluster.uuid))
             .collect(Collectors.toSet());
-    int numDeltaNodes = userIntent.numNodes - nodesInCluster.size();
+
+    int numTservers = getNumTserverNodes(nodesInCluster);
+    int numDeltaNodes = userIntent.numNodes - numTservers;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodesInCluster);
-    LOG.info("Nodes desired={} vs existing={}.", userIntent.numNodes, nodesInCluster.size());
+    LOG.info("Nodes desired={} vs existing={}.", userIntent.numNodes,
+            numTservers);
     if (numDeltaNodes < 0) {
       // Desired action is to remove nodes from a given cluster.
       Iterator<NodeDetails> nodeIter = nodeDetailsSet.iterator();
