@@ -96,8 +96,9 @@ class BackupTxnTest : public TransactionTestBase {
 };
 
 TEST_F(BackupTxnTest, CreateSnapshot) {
-  FLAGS_max_clock_skew_usec =
-      std::chrono::duration_cast<std::chrono::microseconds>(1s).count() * kTimeMultiplier;
+  SetAtomicFlag(
+      std::chrono::duration_cast<std::chrono::microseconds>(1s).count() * kTimeMultiplier,
+      &FLAGS_max_clock_skew_usec);
   ASSERT_NO_FATALS(WriteData());
 
   auto backup_service_proxy = MakeBackupServiceProxy();
