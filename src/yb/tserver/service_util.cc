@@ -31,6 +31,15 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
   std::shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
+  if (!consensus) {
+    auto state = tablet_peer.state();
+    if (state != tablet::RaftGroupStatePB::SHUTDOWN) {
+      // Should not happen.
+      return STATUS(IllegalState, "Tablet peer does not have consensus, but in $0 state",
+                    tablet::RaftGroupStatePB_Name(state));
+    }
+    return STATUS(Aborted, "Tablet peer was closed");
+  }
   auto leader_state = consensus->GetLeaderState();
 
   VLOG(1) << Format(
@@ -63,7 +72,11 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
 bool LeaderTabletPeer::FillTerm(TabletServerErrorPB* error, rpc::RpcContext* context) {
   auto leader_term = LeaderTerm(*peer);
   if (!leader_term.ok()) {
-    peer->tablet()->metrics()->not_leader_rejections->Increment();
+    auto tablet = peer->shared_tablet();
+    if (tablet) {
+      // It could happen that tablet becomes nullptr due to shutdown.
+      tablet->metrics()->not_leader_rejections->Increment();
+    }
     SetupErrorAndRespond(error, leader_term.status(), context);
     return false;
   }

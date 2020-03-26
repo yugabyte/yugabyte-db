@@ -347,12 +347,15 @@ Rpcs::Handle Rpcs::Register(RpcCommandPtr call) {
   return --calls_.end();
 }
 
-void Rpcs::RegisterAndStart(RpcCommandPtr call, Handle* handle) {
+bool Rpcs::RegisterAndStart(RpcCommandPtr call, Handle* handle) {
   CHECK(*handle == calls_.end());
   Register(std::move(call), handle);
-  if (*handle != InvalidHandle()) {
-    (***handle).SendRpc();
+  if (*handle == InvalidHandle()) {
+    return false;
   }
+
+  (***handle).SendRpc();
+  return true;
 }
 
 RpcCommandPtr Rpcs::Unregister(Handle* handle) {

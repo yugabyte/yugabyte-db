@@ -38,6 +38,7 @@ using namespace std::literals;
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int32(inject_load_transaction_delay_ms);
+DECLARE_int32(inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(max_transactions_in_status_request);
 
@@ -835,6 +836,29 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
 
     prev_ht = current_ht;
   }
+}
+
+TEST_F(SnapshotTxnTest, DeleteOnLoad) {
+  constexpr int kTransactions = 400;
+
+  FLAGS_inject_status_resolver_delay_ms = 150 * kTimeMultiplier;
+
+  DisableApplyingIntents();
+
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  auto session = CreateSession();
+  for (int i = 0; i != kTransactions; ++i) {
+    WriteData(WriteOpType::INSERT, i);
+  }
+
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  ASSERT_OK(client_->DeleteTable(table_.table()->name(), /* wait= */ false));
+
+  // Wait delete table request to replicate on alive node.
+  std::this_thread::sleep_for(1s * kTimeMultiplier);
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
 }
 
 } // namespace client
