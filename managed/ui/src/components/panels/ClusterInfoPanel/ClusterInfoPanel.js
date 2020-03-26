@@ -31,7 +31,7 @@ export default class ClusterInfoPanel extends Component {
       universeDetails.nodeDetailsSet.sort((a, b) => nodeComparisonFunction(a, b, clusters))
       : [];
     const primaryNodes = nodeDetails
-      .filter((node) => node.placementUuid === cluster.uuid);
+      .filter((node) => node.placementUuid === cluster.uuid && node.isTserver);
 
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
 
