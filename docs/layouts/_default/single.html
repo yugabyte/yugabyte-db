@@ -39,15 +39,14 @@
 						</div>
 						{{ end }}
 
-						{{if (.Params.showAsideToc) }}						
-						<div id="toc-static">{{ .TableOfContents }}</div>
-						{{ else }}
-						{{ .TableOfContents }}
+						{{if (.Params.showAsideToc) }}
+							<div id="toc-static">{{ .TableOfContents }}</div>
+						{{ else if (and (ge (len .TableOfContents) 50) (ne .Params.toc "false")) }}
+							{{ .TableOfContents }}
 						{{ end }}
 						{{ .Content }}
-					</div>		
-					
-					{{if (and (.Params.showAsideToc) (ne (print .TableOfContents) "")) }}
+					</div>
+					{{if (and (.Params.showAsideToc) (and (ge (len .TableOfContents) 50) (ne .Params.toc "false"))) }}
 					<div class="menu-flex-container">
 						<div class="toc-container" id="toc-aside">{{ .TableOfContents }}</div>
 					</div>
