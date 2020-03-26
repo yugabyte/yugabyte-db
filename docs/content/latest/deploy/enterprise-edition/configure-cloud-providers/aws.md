@@ -1,3 +1,70 @@
+---
+title: Configure Amazon Web Services (AWS) for YugabyteDB using YugaWare
+headerTitle: Configure cloud providers
+linkTitle: 4. Configure cloud providers
+description: Configure Amazon Web Services (AWS) for YugabyteDB clusters using the YugaWare Admin Console
+aliases:
+  - /deploy/enterprise-edition/configure-cloud-providers/
+menu:
+  latest:
+    identifier: configure-cloud-providers-1-aws
+    parent: deploy-enterprise-edition
+    weight: 680
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/deploy/enterprise-edition/configure-cloud-providers/aws" class="nav-link active">
+      <i class="fab fa-aws"></i>
+      AWS
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/deploy/enterprise-edition/configure-cloud-providers/gcp" class="nav-link">
+      <i class="fab fa-google" aria-hidden="true"></i>
+      GCP
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/deploy/enterprise-edition/configure-cloud-providers/azure" class="nav-link">
+      <i class="icon-azure" aria-hidden="true"></i>
+      Azure
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/deploy/enterprise-edition/configure-cloud-providers/kubernetes" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/deploy/enterprise-edition/configure-cloud-providers/onprem" class="nav-link">
+      <i class="fas fa-building"></i>
+      On-premises
+    </a>
+  </li>
+
+</ul>
+
+This page details how to configure Amazon Web Services (AWS) for YugabyteDB using the YugaWare Admin Console. If no cloud providers are configured in YugaWare yet, the main Dashboard page highlights the need to configure at least one cloud provider.
+
+![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
+
+## Prerequisites
+
+### Amazon Web Services (AWS)
+
+If you plan to run YugabyteDB nodes on Amazon Web Services (AWS), all you need to provide on YugaWare UI is your cloud provider credentials. YugaWare will use those credentials to automatically provision and de-provision instances that run Yugabyte. An 'instance' for YugabyteDB includes a compute instance as well as local or remote disk storage attached to the compute instance.
+
+## Configure AWS
+
 Configuring YugaWare to deploy universes in AWS provides several knobs for you to tweak, depending on your preferences:
 
 ![AWS Empty Provider](/images/ee/aws-setup/aws_provider_empty.png)
@@ -33,7 +100,7 @@ For deployment, YugaWare aims to provide you with easy access to the many region
 If you choose to allow YugaWare to configure, own and manage a full cross-region deployment of VPCs, it will generate a YugabyteDB specific VPC in each selected region, then interconnect them, as well as the VPC in which YugaWare was deployed, through [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode will also setup all the other relevant sub-components in all regions, such as Subnets, Security Groups and Routing Table entries. Some notes:
 
 - You can **optionally** provide a custom CIDR block for each regional VPC, else we will choose some sensible defaults internally, aiming to not overlap across regions.
-- You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [marketplace centos AMI](https://wiki.centos.org/Cloud/AWS).
+- You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS).
 
 ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
 
@@ -44,7 +111,7 @@ If you wish to use your own custom VPCs, this is also supported. This will allow
 - You **must** provide a VPC ID to use for each region.
 - You **must** provide a Security Group ID to use for each region. This will be attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
 - You **must** provide the mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure YugaWare can deploy nodes in the correct network isolation that you desire in your environment.
-- You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [marketplace centos AMI](https://wiki.centos.org/Cloud/AWS).
+- You can **optionally** provide a custom AMI ID to use in each region, else, we will use a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS).
 
 ![Custom Region Modal](/images/ee/aws-setup/aws_custom_region.png)
 
@@ -61,14 +128,18 @@ If you allow YugaWare to manage KeyPairs for you and you deploy multiple YugaWar
 
 ## Marketplace acceptance
 
-Finally, in case you did not provide your own custom AMI IDs, before we can proceed to creating a universe, let us check that you can actually spin up EC2 instances with our default AMIs. Our reference AMIs come from a [Marketplace CentOS 7 Product](https://aws.amazon.com/marketplace/pp/B00O7WM7QW/). Visit that link while logged into your AWS account and click the top-right `Continue to Subscribe` button.
+Finally, in case you did not provide your own custom AMI IDs, before we can proceed to creating a universe, let us check that you can actually spin up EC2 instances with our default AMIs. Our reference AMIs come from a [Marketplace CentOS 7 Product](https://aws.amazon.com/marketplace/pp/B00O7WM7QW/). Visit that link while logged into your AWS account and click **Continue to Subscribe**.
 
-If you are not already subscribed and have thus not accepted the `Terms and Conditions`, then you should see something like this:
+If you are not already subscribed and have thus not accepted the _Terms and Conditions_, then you should see something like this:
 
 ![Marketplace accept](/images/ee/aws-setup/marketplace-accept.png)
 
-If so, please click the `Accept Terms` button and wait for the page to switch to a successful state. You should see the following once the operation completes, or if you had already previously subscribed and accepted the terms:
+If so, please click the **Accept Terms** button and wait for the page to switch to a successful state. You should see the following once the operation completes, or if you had already previously subscribed and accepted the terms:
 
 ![Marketplace success](/images/ee/aws-setup/marketplace-success.png)
 
 Now we are ready to create a YugabyteDB universe on AWS.
+
+## Next step
+
+You are now ready to create YugabyteDB universes as outlined in the next section.
