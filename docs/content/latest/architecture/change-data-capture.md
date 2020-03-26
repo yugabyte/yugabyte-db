@@ -9,6 +9,8 @@ menu:
     parent: architecture
     identifier: cdc-architecture
     weight: 1160
+aliases:
+  - /latest/architecture/cdc-architecture/
 type: page
 isTocNested: true
 showAsideToc: true
