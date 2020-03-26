@@ -1,3 +1,38 @@
+---
+title: Deploy YugabyteDB in Google Cloud Platform with Terraform
+headerTitle: Google Cloud Platform
+linkTitle: Google Cloud Platform
+description: Use Terraform to deploy a YugabyteDB cluster in Google Cloud Platform.
+aliases:
+  - /latest/deploy/public-clouds/gcp/
+menu:
+  latest:
+    identifier: deploy-in-gcp-1-terraform
+    parent: public-clouds
+    weight: 640
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link active">
+      <i class="icon-shell"></i>
+      Terraform
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/terraform" class="nav-link">
+      <i class="icon-shell"></i>
+      Google Cloud Deployment Manager
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+      <<i class="fas fa-cubes" aria-hidden="true"></i>
+      Google Kubernetes Engine (GKE)
+    </a>
+  </li>
+</ul>
+
 ## Prerequisites
 
 1. Download and install [terraform](https://www.terraform.io/downloads.html).
