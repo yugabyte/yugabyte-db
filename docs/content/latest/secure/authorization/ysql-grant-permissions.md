@@ -40,7 +40,7 @@ Here is what we want to achieve from a role-based access control (RBAC) perspect
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../authentication/ysql-authentication/) in YugabyteDB clusters for YSQL. For this tutorial, we are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
+Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../../authentication/ysql-authentication/) in YugabyteDB clusters for YSQL. For this tutorial, we are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
 
 ```sh
 $ ysqlsh

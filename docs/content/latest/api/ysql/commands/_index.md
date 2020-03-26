@@ -1,6 +1,6 @@
 ---
-title: YSQL statements
-headerTitle: YSQL statements
+title: Statements
+headerTitle: Statements
 description: List of the PostgreSQL-compatible SQL statements supported by Yugabyte Structured Query Language (YSQL), the SQL dialect for YugabyteDB.
 summary: Statements
 image: /images/section_icons/api/ysql.png
