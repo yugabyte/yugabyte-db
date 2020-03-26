@@ -3,6 +3,8 @@ title: Deploy YugabyteDB to Amazon Web Services with CloudFormation
 headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster to Amazon Web Services with CloudFormation
+aliases:
+  - /deploy/public-clouds/aws/
 menu:
   latest:
     identifier: deploy-in-aws-1-cloudformation
