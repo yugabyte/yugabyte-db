@@ -338,10 +338,6 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/comma
 
 {{< /note >}}
 
-
-
-
-
 ---
 
 ### Geo-distribution options
@@ -390,9 +386,9 @@ Enables YSQL authentication.
 
 {{< note title="Note" >}}
 
-**Yugabyte 2.0:** Assign a password for the default `yugabyte` user to be able to sign in after enabling YSQL authentication.
+**Release 2.0:** Assign a password for the default `yugabyte` user to be able to sign in after enabling YSQL authentication.
 
-**Yugabyte 2.0.1:** When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte".
+**Release 2.0.1:** When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte".
 
 {{< /note >}}
 
@@ -406,11 +402,6 @@ To specify fine-grained access control over who can access the server, use [`--y
 
 Default: `0.0.0.0:5433`
 
-{{< note title="Note" >}}
-
-When using local YugabyteDB clusters built using the
-
-{{< /note >}}
 
 ##### --pgsql_proxy_webserver_port
 
@@ -452,13 +443,13 @@ Default: `300`
 
 Specifies the default transaction isolation level.
 
-Valid values: `READ UNCOMMITTED`, `READ COMMITTED`, `REPEATABLE READ`, and `SERIALIZABLE`.
+Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-Default: `READ COMMITTED` (implemented in YugabyteDB as `REPEATABLE READ`)
+Default: `REPEATABLE READ`
 
 {{< note title="Note" >}}
 
-YugabyteDB supports two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The transaction isolation levels of `READ UNCOMMITTED` and `READ COMMITTED` are implemented in YugabyteDB as `REPEATABLE READ`.
+YugabyteDB supports only two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The transaction isolation levels of `READ UNCOMMITTED` and `READ COMMITTED` are implemented in YugabyteDB as `REPEATABLE READ`.
 
 {{< /note >}}
 
