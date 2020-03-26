@@ -254,17 +254,23 @@ void HandleConsensusStatusPage(
 void HandleTransactionsPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, std::stringstream* output) {
+  auto tablet = peer->shared_tablet();
+  if (!tablet) {
+    *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
+    return;
+  }
+
   *output << "<h1>Transactions for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>"
           << std::endl;
 
-  auto transaction_participant = peer->tablet()->transaction_participant();
+  auto transaction_participant = tablet->transaction_participant();
   if (transaction_participant) {
     *output << "<pre>" << EscapeForHtmlToString(transaction_participant->DumpTransactions())
             << "</pre>" << std::endl;
     return;
   }
 
-  auto transaction_coordinator = peer->tablet()->transaction_coordinator();
+  auto transaction_coordinator = tablet->transaction_coordinator();
   if (transaction_coordinator) {
     *output << "<pre>" << EscapeForHtmlToString(transaction_coordinator->DumpTransactions())
             << "</pre>" << std::endl;
