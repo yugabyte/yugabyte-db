@@ -13,7 +13,7 @@ menu:
     parent: docdb
     weight: 1142
 isTocNested: false
-showAsideToc: false
+showAsideToc: true
 ---
 
 User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as

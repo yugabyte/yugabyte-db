@@ -22,7 +22,7 @@ input value:       jsonb
 return value:      record
 ```
 
-**Notes:** the `jsonb_to_record()` function is a syntax variant of the same functionality that [`jsonb_populate_record`](./jsonb-populate-record/) provides. It doesn't need a schema-level type but, rather, uses the special SQL locution `select... as on_the_fly(<record definition>)`.
+**Notes:** the `jsonb_to_record()` function is a syntax variant of the same functionality that [`jsonb_populate_record`](../jsonb-populate-record/) provides. It doesn't need a schema-level type but, rather, uses the special SQL locution `select... as on_the_fly(<record definition>)`.
 
 Use this _ysqlsh_ script to create the  type `t` that just `jsonb_populate_record()` requires, to convert the input `jsonb` into a SQL `record` using each of  `jsonb_populate_record()` and `jsonb_to_record`, and then to execute the `assert`. Notice that `on_the_fly` is a nonce name, made up for this example. Anything will suffice.
 
