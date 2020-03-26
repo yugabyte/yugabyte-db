@@ -3,8 +3,6 @@ title: Deploy YugabyteDB to Amazon Web Services with manual deployment
 headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster to Amazon Web Services with manual deployment
-aliases:
-  - /deploy/public-clouds/aws/
 menu:
   latest:
     identifier: deploy-in-aws-3-manual-deployment
@@ -14,7 +12,7 @@ menu:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link active">
+    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link">
       <i class="icon-shell"></i>
       CloudFormation
     </a>
@@ -26,7 +24,7 @@ menu:
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link active">
       <i class="icon-shell"></i>
       Manual deployment
     </a>
