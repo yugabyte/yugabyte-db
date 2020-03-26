@@ -2739,10 +2739,6 @@ die(SIGNAL_ARGS)
 		ProcessInterrupts();
 
 	errno = save_errno;
-
-	if (IsYugaByteEnabled()) {
-		YBOnPostgresBackendShutdown();
-	}
 }
 
 /*
