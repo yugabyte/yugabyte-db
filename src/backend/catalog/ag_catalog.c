@@ -54,6 +54,9 @@ static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
 {
     ObjectAccessDrop *drop_arg;
 
+    if (prev_object_access_hook)
+        prev_object_access_hook(access, class_id, object_id, sub_id, arg);
+
     // We are interested in DROP SCHEMA and DROP TABLE commands.
     if (access != OAT_DROP)
         return;
