@@ -23,7 +23,7 @@ There are a number of resources to get started, here is a recommended reading li
 
 ## Sign the CLA
 
-When your first contribution is submitted as a pull request, you must be given a link to sign the [Yugabyte Individual Contributor License Agreement (CLA)](https://cla-assistant.io/yugabyte/yugabyte-db).
+When your first contribution is submitted as a pull request, you will be given a link to sign the [Yugabyte Individual Contributor License Agreement (CLA)](https://cla-assistant.io/yugabyte/yugabyte-db).
 
 ## Pick an area
 
