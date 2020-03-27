@@ -1,8 +1,43 @@
+---
+title: Use C# to build a YugabyteDB YSQL application 
+headerTitle: Build a C# application
+linkTitle: C#
+description: Use C# to build a YugabyteDB application that uses YSQL
+aliases:
+  - /develop/client-drivers/csharp/
+  - /latest/develop/client-drivers/csharp/
+  - /latest/develop/build-apps/csharp/
+menu:
+  latest:
+    identifier: build-apps-csharp-1-ysql
+    parent: build-apps
+    weight: 554
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/quick-start/build-apps/csharp/ysql" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/quick-start/build-apps/csharp/ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
 ## Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell. If not, please follow these steps in the [ysql guide](../../../api/ysql/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# application

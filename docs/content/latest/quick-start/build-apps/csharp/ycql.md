@@ -1,8 +1,39 @@
+---
+title: Use C# to build a YugabyteDB YCQL application 
+headerTitle: Build a C# application
+linkTitle: C#
+description: Use C# to build a YugabyteDB application that uses YCQL
+menu:
+  latest:
+    identifier: build-apps-csharp-2-ycql
+    parent: build-apps
+    weight: 554
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/quick-start/build-apps/csharp/ysql" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/quick-start/build-apps/csharp/ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
 ## Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, please follow these steps in the [Quick start YCQL](../../../../quick-start/test-cassandra/).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# app

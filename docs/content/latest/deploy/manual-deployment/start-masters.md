@@ -1,7 +1,8 @@
 ---
-title: Start YB-Masters
+title: Start YB-Master nodes of YugabyteDB cluster
+headerTitle: Start YB-Masters
 linkTitle: 3. Start YB-Masters
-description: Start YB-Masters
+description: Start YB-Master nodes of your YugabyteDB cluster
 aliases:
   - /deploy/manual-deployment/start-masters
 menu:
@@ -17,7 +18,7 @@ showAsideToc: true
 
 - The number of nodes in a cluster running YB-Masters **must** equal the replication factor.
 - The number of comma-separated addresses present in `master_addresses` should also equal the replication factor.
-- For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC Deployments](../../../deploy/multi-dc/) section.
+- For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC deployments](../../../deploy/multi-dc/) section.
 
 {{< /note >}}
 
