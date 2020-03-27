@@ -8,6 +8,8 @@ menu:
     identifier: deploy-in-aws-2-terraform
     parent: public-clouds
     weight: 630
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
