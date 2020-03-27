@@ -23,7 +23,7 @@ There are a number of resources to get started, here is a recommended reading li
 
 ## Sign the CLA
 
-Before your first contribution is accepted, you must complete the online form [Yugabyte CLA (contributor license agreement)](https://docs.google.com/forms/d/11hn-vBGhOZRunclC3NKmSX1cvQVrU--r0ldDLqasRIo/edit).
+When your first contribution is submitted as a pull request, you must be given a link to sign the [Yugabyte Individual Contributor License Agreement (CLA)].
 
 ## Pick an area
 
