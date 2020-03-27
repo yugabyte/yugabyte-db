@@ -40,6 +40,7 @@
 #include <boost/optional.hpp>
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -74,7 +75,6 @@ using base::subtle::Barrier_AtomicIncrement;
 using strings::Substitute;
 
 using yb::consensus::MinimumOpId;
-using yb::consensus::RaftConfigPB;
 
 namespace yb {
 namespace tablet {
@@ -172,11 +172,16 @@ Status KvStoreInfo::LoadTablesFromPB(
     auto table_info = std::make_unique<TableInfo>();
     RETURN_NOT_OK(table_info->LoadFromPB(table_pb));
     if (table_info->table_id != primary_table_id) {
-      Uuid cotable_id;
-      CHECK_OK(cotable_id.FromHexString(table_info->table_id));
-      // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
-      // to set cotable ID.
-      table_info->schema.set_cotable_id(cotable_id);
+      if (table_pb.schema().table_properties().is_ysql_catalog_table()) {
+        Uuid cotable_id;
+        CHECK_OK(cotable_id.FromHexString(table_info->table_id));
+        // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
+        // to set cotable ID.
+        table_info->schema.set_cotable_id(cotable_id);
+      } else {
+        auto pgtable_id = VERIFY_RESULT(GetPgsqlTableOid(table_info->table_id));
+        table_info->schema.set_pgtable_id(pgtable_id);
+      }
     }
     tables[table_info->table_id] = std::move(table_info);
   }
@@ -233,7 +238,8 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
                                  const TabletDataState& initial_tablet_data_state,
                                  RaftGroupMetadataPtr* metadata,
                                  const string& data_root_dir,
-                                 const string& wal_root_dir) {
+                                 const string& wal_root_dir,
+                                 const bool colocated) {
 
   // Verify that no existing Raft group exists with the same ID.
   if (fs_manager->env()->FileExists(fs_manager->GetRaftGroupMetadataPath(raft_group_id))) {
@@ -256,14 +262,11 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
     wal_top_dir = wal_root_dirs[rand.Uniform(wal_root_dirs.size())];
   }
 
-  auto table_dir = Substitute("table-$0", table_id);
-  auto tablet_dir = Substitute("tablet-$0", raft_group_id);
-
-  auto wal_table_top_dir = JoinPathSegments(wal_top_dir, table_dir);
-  auto wal_dir = JoinPathSegments(wal_table_top_dir, tablet_dir);
-
-  auto rocksdb_dir = JoinPathSegments(
-      data_top_dir, FsManager::kRocksDBDirName, table_dir, tablet_dir);
+  const string table_dir_name = Substitute("table-$0", table_id);
+  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
+  const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
+  const string rocksdb_dir = JoinPathSegments(
+      data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager,
                                                        table_id,
@@ -278,7 +281,8 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
                                                        partition,
                                                        index_info,
                                                        schema_version,
-                                                       initial_tablet_data_state));
+                                                       initial_tablet_data_state,
+                                                       colocated));
   RETURN_NOT_OK(ret->Flush());
   metadata->swap(ret);
   return Status::OK();
@@ -445,7 +449,8 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
                                Partition partition,
                                const boost::optional<IndexInfo>& index_info,
                                const uint32_t schema_version,
-                               const TabletDataState& tablet_data_state)
+                               const TabletDataState& tablet_data_state,
+                               const bool colocated)
     : state_(kNotWrittenYet),
       raft_group_id_(std::move(raft_group_id)),
       partition_(std::move(partition)),
@@ -453,7 +458,9 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
       kv_store_(KvStoreId(raft_group_id), rocksdb_dir),
       fs_manager_(fs_manager),
       wal_dir_(wal_dir),
-      tablet_data_state_(tablet_data_state) {
+      tablet_data_state_(tablet_data_state),
+      colocated_(colocated),
+      cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()) {
   CHECK(schema.has_column_ids());
   CHECK_GT(schema.num_key_columns(), 0);
   kv_store_.tables.emplace(
@@ -516,6 +523,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
     Partition::FromPB(superblock.partition(), &partition_);
     primary_table_id_ = superblock.primary_table_id();
+    colocated_ = superblock.colocated();
 
     RETURN_NOT_OK(kv_store_.LoadFromPB(superblock.kv_store(), primary_table_id_));
 
@@ -527,6 +535,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     } else {
       tombstone_last_logged_opid_ = OpId();
     }
+    cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
   }
 
   return Status::OK();
@@ -608,6 +617,8 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   }
 
   pb.set_primary_table_id(primary_table_id_);
+  pb.set_colocated(colocated_);
+  pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
 
   superblock->Swap(&pb);
 }
@@ -623,6 +634,9 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                                           index_map,
                                                           deleted_cols,
                                                           version));
+  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating to Schema version " << version
+                      << " from \n" << yb::ToString(kv_store_.tables[primary_table_id_])
+                      << " to \n" << yb::ToString(new_table_info);
   kv_store_.tables[primary_table_id_].swap(new_table_info);
   if (new_table_info) {
     kv_store_.old_tables.push_back(std::move(new_table_info));
@@ -661,14 +675,33 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
                                                           schema_version,
                                                           partition_schema));
   if (table_id != primary_table_id_) {
-    Uuid cotable_id;
-    CHECK_OK(cotable_id.FromHexString(table_id));
-    new_table_info->schema.set_cotable_id(cotable_id);
+    if (schema.table_properties().is_ysql_catalog_table()) {
+      Uuid cotable_id;
+      CHECK_OK(cotable_id.FromHexString(table_id));
+      new_table_info->schema.set_cotable_id(cotable_id);
+    } else {
+      auto result = CHECK_RESULT(GetPgsqlTableOid(table_id));
+      new_table_info->schema.set_pgtable_id(result);
+    }
   }
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
+  auto existing_table_iter = tables.find(table_id);
+  if (existing_table_iter != tables.end()) {
+    const auto& existing_table = *existing_table_iter->second.get();
+    if (!existing_table.schema.table_properties().is_ysql_catalog_table() &&
+        schema.table_properties().is_ysql_catalog_table()) {
+      // This must be the one-time migration with transactional DDL being turned on for the first
+      // time on this cluster.
+    } else {
+      LOG(DFATAL) << "Table " << table_id << " already exists. New table info: "
+          << new_table_info->ToString() << ", old table info: " << existing_table.ToString();
+    }
+  }
+  VLOG_WITH_PREFIX(1) << " Updating to Schema version " << schema_version
+                      << " from \n" << yb::ToString(tables[table_id])
+                      << " to \n" << yb::ToString(new_table_info);
   tables[table_id].swap(new_table_info);
-  DCHECK(!new_table_info) << "table " << table_id << " already exists";
 }
 
 void RaftGroupMetadata::RemoveTable(const std::string& table_id) {
@@ -702,6 +735,41 @@ string RaftGroupMetadata::wal_root_dir() const {
   }
 }
 
+void RaftGroupMetadata::set_wal_retention_secs(uint32 wal_retention_secs) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  auto it = kv_store_.tables.find(primary_table_id_);
+  if (it == kv_store_.tables.end()) {
+    LOG_WITH_PREFIX(DFATAL) << "Unable to set WAL retention time for primary table "
+                            << primary_table_id_;
+    return;
+  }
+  it->second->wal_retention_secs = wal_retention_secs;
+  LOG_WITH_PREFIX(INFO) << "Set RaftGroupMetadata wal retention time to "
+                        << wal_retention_secs << " seconds";
+}
+
+uint32_t RaftGroupMetadata::wal_retention_secs() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  auto it = kv_store_.tables.find(primary_table_id_);
+  if (it == kv_store_.tables.end()) {
+    return 0;
+  }
+  return it->second->wal_retention_secs;
+}
+
+Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_index) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    cdc_min_replicated_index_ = cdc_min_replicated_index;
+  }
+  return Flush();
+}
+
+int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return cdc_min_replicated_index_;
+}
+
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
   std::lock_guard<MutexType> lock(data_mutex_);
   tablet_data_state_ = state;
@@ -725,11 +793,12 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock));
   metadata->raft_group_id_ = raft_group_id;
-  const auto tablet_dir = Substitute("tablet-$0", raft_group_id);
-  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir);
+  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
+  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir_name);
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
-  metadata->kv_store_.rocksdb_dir = JoinPathSegments(DirName(kv_store_.rocksdb_dir), tablet_dir);
+  metadata->kv_store_.rocksdb_dir = JoinPathSegments(
+      DirName(kv_store_.rocksdb_dir), tablet_dir_name);
   metadata->partition_ = partition;
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
@@ -738,8 +807,8 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
 
 namespace {
 // MigrateSuperblockForDXXXX functions are only needed for backward compatibility with
-// YugaByte DB versions which don't have changes from DXXXX revision.
-// Each MigrateSuperblockForDXXXX could be removed after all YugaByte DB installations are
+// YugabyteDB versions which don't have changes from DXXXX revision.
+// Each MigrateSuperblockForDXXXX could be removed after all YugabyteDB installations are
 // upgraded to have revision DXXXX.
 
 CHECKED_STATUS MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {

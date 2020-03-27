@@ -122,6 +122,7 @@ class RemoteBootstrapTest : public YBTabletTest {
                        0,  // schema_version
                        nullptr, // metric_entity
                        append_pool_.get(),
+                       std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log));
 
     scoped_refptr<MetricEntity> metric_entity =
@@ -143,7 +144,7 @@ class RemoteBootstrapTest : public YBTabletTest {
             Bind(
                 &RemoteBootstrapTest::TabletPeerStateChangedCallback,
                 Unretained(this),
-                tablet()->tablet_id())));
+                tablet()->tablet_id()), &metric_registry_));
 
     // TODO similar to code in tablet_peer-test, consider refactor.
     RaftConfigPB config;
@@ -203,8 +204,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       CountDownLatch latch(1);
 
       auto state = std::make_unique<WriteOperationState>(tablet_peer_->tablet(), &req, &resp);
-      typedef tablet::LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
-      state->set_completion_callback(std::make_unique<LatchWriteCallback>(&latch, &resp));
+      state->set_completion_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
       tablet_peer_->WriteAsync(
           std::move(state), kLeaderTerm, CoarseTimePoint::max() /* deadline */);
       latch.Wait();
@@ -216,8 +216,8 @@ class RemoteBootstrapTest : public YBTabletTest {
   }
 
   virtual void InitSession() {
-    session_.reset(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
-        tablet_peer_, "TestSession", "FakeUUID", fs_manager(), nullptr /* nsessions */));
+    session_.reset(new RemoteBootstrapSession(
+        tablet_peer_, "TestSession", "FakeUUID", nullptr /* nsessions */));
     ASSERT_OK(session_->Init());
   }
 
@@ -227,7 +227,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   unique_ptr<ThreadPool> tablet_prepare_pool_;
   unique_ptr<ThreadPool> append_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
-  scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession> session_;
+  scoped_refptr<RemoteBootstrapSession> session_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };

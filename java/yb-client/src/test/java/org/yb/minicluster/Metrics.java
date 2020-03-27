@@ -44,6 +44,9 @@ public class Metrics {
     protected Metric(JsonObject metric) {
       name = metric.get("name").getAsString();
     }
+    protected Metric(JsonObject metric, String s) {
+      name = metric.get(s).getAsString();
+    }
   }
 
   /**
@@ -131,6 +134,41 @@ public class Metrics {
 
    }
 
+  /**
+   * A YSQL Stat.
+   */
+   public static class YSQLStat extends Metric {
+     public final String query;
+
+     public final long calls;
+     public final double total_time;
+     public final double min_time;
+     public final double max_time;
+     public final double mean_time;
+     public final double stddev_time;
+     public final long rows;
+
+     /**
+      * Constructs a {@code YSQLStat} stat.
+      *
+      * @param stat  the JSON object that contains the stat
+      */
+
+     YSQLStat(JsonObject metric) {
+      super(metric, "query");
+
+      query = metric.get("query").getAsString();
+
+      calls = metric.get("calls").getAsLong();
+      total_time = metric.get("total_time").getAsDouble();
+      min_time = metric.get("min_time").getAsDouble();
+      max_time = metric.get("max_time").getAsDouble();
+      mean_time = metric.get("mean_time").getAsDouble();
+      stddev_time = metric.get("stddev_time").getAsDouble();
+      rows = metric.get("rows").getAsLong();
+     }
+   }
+
   // The metrics map.
   Map<String, Metric> map;
 
@@ -141,6 +179,15 @@ public class Metrics {
    */
   public Metrics(JsonObject obj) {
     readMetrics(obj);
+  }
+
+  /**
+   * Constructs a {@code Metrics} to retrieve the stats.
+   *
+   * @param obj   the metric in JSON
+   */
+  public Metrics(JsonObject obj, boolean is_stat) {
+    readStats(obj);
   }
 
   /**
@@ -186,6 +233,18 @@ public class Metrics {
     }
   }
 
+  // Read stats.
+  private void readStats(JsonObject obj) {
+    map = new HashMap<>();
+    for (JsonElement subelem : obj.getAsJsonArray("statements")) {
+      JsonObject metric = subelem.getAsJsonObject();
+      if (metric.has("query")) {
+        YSQLStat ysqlstat = new YSQLStat(metric);
+        map.put(ysqlstat.query, ysqlstat);
+      }
+    }
+  }
+
   /**
    * Retrieves a {@code Counter} metric.
    *
@@ -211,5 +270,14 @@ public class Metrics {
    */
   public YSQLMetric getYSQLMetric(String name) {
     return (YSQLMetric)map.get(name);
+  }
+
+  /**
+   * Retrieves a {@code YSQL} stat.
+   *
+   * @param name  the stat name
+   */
+  public YSQLStat getYSQLStat(String name) {
+    return (YSQLStat)map.get(name);
   }
 }

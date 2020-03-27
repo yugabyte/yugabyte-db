@@ -19,7 +19,9 @@
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/permissions.h"
 #include "yb/client/session.h"
-#include "yb/client/transaction.h"
+#include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/transaction_pool.h"
 
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
@@ -32,6 +34,7 @@ namespace ql {
 
 using std::string;
 using std::shared_ptr;
+using std::unique_ptr;
 using std::weak_ptr;
 
 using client::TransactionManager;
@@ -59,11 +62,11 @@ QLEnv::QLEnv(client::YBClient* client,
 QLEnv::~QLEnv() {}
 
 //------------------------------------------------------------------------------------------------
-YBTableCreator* QLEnv::NewTableCreator() {
+unique_ptr<YBTableCreator> QLEnv::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-YBTableAlterer* QLEnv::NewTableAlterer(const YBTableName& table_name) {
+unique_ptr<YBTableAlterer> QLEnv::NewTableAlterer(const YBTableName& table_name) {
   return client_->NewTableAlterer(table_name);
 }
 
@@ -129,6 +132,19 @@ shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_use
   }
 
   return yb_table;
+}
+
+CHECKED_STATUS QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& table_name,
+                                                    uint32_t* ver) {
+  shared_ptr<YBTable> yb_table;
+  RETURN_NOT_OK(client_->OpenTable(table_name, &yb_table));
+
+  if (yb_table) {
+    *ver = yb_table->schema().version();
+    return Status::OK();
+  } else {
+    return STATUS_SUBSTITUTE(NotFound, "Cannot get table $0", table_name.ToString());
+  }
 }
 
 shared_ptr<QLType> QLEnv::GetUDType(const std::string& keyspace_name,

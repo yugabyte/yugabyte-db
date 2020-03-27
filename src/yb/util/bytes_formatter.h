@@ -17,17 +17,18 @@
 #include <limits>
 #include <string>
 
-#include "yb/util/bytes_formatter.h"
 #include "yb/util/slice.h"
+#include "yb/util/enums.h"
 
 namespace yb {
-namespace util {
 
 enum class QuotesType {
   kSingleQuotes,
   kDoubleQuotes,
   kDefaultQuoteType = kDoubleQuotes
 };
+
+YB_DEFINE_ENUM(BinaryOutputFormat, (kEscaped)(kHex)(kEscapedAndHex));
 
 // Formats the given sequence of characters as a human-readable string with quotes of the given type
 // added around it. Quotes embedded inside the character sequence are escaped using a backslash.
@@ -53,7 +54,12 @@ std::string FormatSliceAsStr(const yb::Slice& slice,
                              QuotesType quote_type = QuotesType::kDefaultQuoteType,
                              size_t max_length = std::numeric_limits<size_t>::max());
 
-}  // namespace util
+std::string FormatSliceAsStr(
+    const yb::Slice& slice,
+    BinaryOutputFormat output_format,
+    QuotesType quote_type = QuotesType::kDefaultQuoteType,
+    size_t max_length = std::numeric_limits<size_t>::max());
+
 }  // namespace yb
 
 #endif  // YB_UTIL_BYTES_FORMATTER_H

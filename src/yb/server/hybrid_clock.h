@@ -50,6 +50,38 @@
 namespace yb {
 namespace server {
 
+struct HybridClockComponents {
+  // The last clock read/update, in microseconds.
+  MicrosTime last_usec = 0;
+
+  // The next logical value to be assigned to a hybrid time.
+  LogicalTimeComponent logical = 0;
+
+  HybridClockComponents() noexcept {}
+
+  HybridClockComponents(MicrosTime last_usec_, LogicalTimeComponent logical_)
+      : last_usec(last_usec_),
+        logical(logical_) {
+  }
+
+  HybridClockComponents(HybridClockComponents&& other) = default;
+  HybridClockComponents(const HybridClockComponents& other) = default;
+
+  bool operator< (const HybridClockComponents& o) const {
+    return last_usec < o.last_usec || (last_usec == o.last_usec && logical < o.logical);
+  }
+
+  bool operator<= (const HybridClockComponents& o) const {
+    return last_usec < o.last_usec || (last_usec == o.last_usec && logical <= o.logical);
+  }
+
+  void HandleLogicalComponentOverflow();
+
+  std::string ToString() const;
+};
+
+std::ostream& operator<<(std::ostream& out, const HybridClockComponents& components);
+
 // The HybridTime clock.
 //
 // HybridTime should not be used on a distributed cluster running on OS X hosts,
@@ -110,34 +142,6 @@ class HybridClock : public Clock {
   const PhysicalClockPtr& TEST_clock() { return clock_; }
 
  private:
-  struct HybridClockComponents {
-    // The last clock read/update, in microseconds.
-    MicrosTime last_usec = 0;
-
-    // The next logical value to be assigned to a hybrid time.
-    LogicalTimeComponent logical = 0;
-
-    HybridClockComponents() noexcept {}
-
-    HybridClockComponents(MicrosTime last_usec_, LogicalTimeComponent logical_)
-        : last_usec(last_usec_),
-          logical(logical_) {
-    }
-
-    HybridClockComponents(HybridClockComponents&& other) = default;
-    HybridClockComponents(const HybridClockComponents& other) = default;
-
-    bool operator< (const HybridClockComponents& o) const {
-      return last_usec < o.last_usec || (last_usec == o.last_usec && logical < o.logical);
-    }
-
-    bool operator<= (const HybridClockComponents& o) const {
-      return last_usec < o.last_usec || (last_usec == o.last_usec && logical <= o.logical);
-    }
-
-    void HandleLogicalComponentOverflow();
-  };
-
   enum State {
     kNotInitialized,
     kInitialized

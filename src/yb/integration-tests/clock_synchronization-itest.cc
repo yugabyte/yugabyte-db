@@ -69,7 +69,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(client_->CreateNamespace(kNamespace));
 
     // Create the table.
-    table_name_.reset(new client::YBTableName(kNamespace, kTableName));
+    table_name_.reset(new client::YBTableName(YQL_DATABASE_CQL, kNamespace, kTableName));
     std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(*table_name_.get())
                   .table_type(client::YBTableType::YQL_TABLE_TYPE)

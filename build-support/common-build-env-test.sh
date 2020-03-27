@@ -173,35 +173,5 @@ test_set_cmake_build_type_and_compiler_type release    linux-gnu clang      rele
 test_set_cmake_build_type_and_compiler_type release    linux-gnu gcc        release    gcc    0
 
 # -------------------------------------------------------------------------------------------------
-# Test detecting edition based on Jenkins job name
-# -------------------------------------------------------------------------------------------------
-
-test_detect_edition() {
-  expect_num_args 2 "$@"
-  local expected_edition=$1
-  local jenkins_job_name=$2
-  (
-    unset YB_EDITION
-    yb_edition_detected=false
-    pretend_we_are_on_jenkins
-    JOB_NAME="$jenkins_job_name"
-    detect_edition
-    assert_equals "$expected_edition" "$YB_EDITION"
-  )
-}
-
-test_detect_edition community foo-bar-community-baz
-test_detect_edition community foo-bar-community
-test_detect_edition enterprise foo-bar-enterprise-baz
-test_detect_edition enterprise foo-bar-enterprise
-
-# No edition specified in the Jenkins job name.
-if [[ -d $YB_ENTERPRISE_ROOT ]]; then
-  test_detect_edition enterprise some-jenkins-job-name
-else
-  test_detect_edition community some-jenkins-job-name
-fi
-
-# -------------------------------------------------------------------------------------------------
 
 echo "${0##/*} succeeded"

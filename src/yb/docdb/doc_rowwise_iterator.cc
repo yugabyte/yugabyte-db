@@ -16,6 +16,8 @@
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/common/ql_scanspec.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_ttl_util.h"
@@ -31,8 +33,6 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 using std::string;
-
-using yb::FormatRocksDBSliceAsStr;
 
 namespace yb {
 namespace docdb {
@@ -74,6 +74,29 @@ class ScanChoices {
 class DiscreteScanChoices : public ScanChoices {
  public:
   DiscreteScanChoices(const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
+                      const KeyBytes& upper_doc_key)
+      : ScanChoices(doc_spec.is_forward_scan()) {
+    range_cols_scan_options_ = doc_spec.range_options();
+    current_scan_target_idxs_.resize(range_cols_scan_options_->size());
+    for (int i = 0; i < range_cols_scan_options_->size(); i++) {
+      current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
+    }
+
+    // Initialize target doc key.
+    if (is_forward_scan_) {
+      current_scan_target_ = lower_doc_key;
+      if (CHECK_RESULT(ClearRangeComponents(&current_scan_target_))) {
+        CHECK_OK(SkipTargetsUpTo(lower_doc_key));
+      }
+    } else {
+      current_scan_target_ = upper_doc_key;
+      if (CHECK_RESULT(ClearRangeComponents(&current_scan_target_))) {
+        CHECK_OK(SkipTargetsUpTo(upper_doc_key));
+      }
+    }
+  }
+
+  DiscreteScanChoices(const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
                       const KeyBytes& upper_doc_key)
       : ScanChoices(doc_spec.is_forward_scan()) {
     range_cols_scan_options_ = doc_spec.range_options();
@@ -194,7 +217,7 @@ Status DiscreteScanChoices::DoneWithCurrentTarget() {
 Status DiscreteScanChoices::SkipTargetsUpTo(const Slice& new_target) {
   VLOG(2) << __PRETTY_FUNCTION__ << " Updating current target to be >= " << new_target;
   DCHECK(!FinishedWithScanChoices());
-  InitScanTargetRangeGroupIfNeeded();
+  RETURN_NOT_OK(InitScanTargetRangeGroupIfNeeded());
   DocKeyDecoder decoder(new_target);
   RETURN_NOT_OK(decoder.DecodeToRangeGroup());
   current_scan_target_.Reset(Slice(new_target.data(), decoder.left_input().data()));
@@ -282,6 +305,31 @@ class RangeBasedScanChoices : public ScanChoices {
       const auto col_sort_type = schema.column(idx).sorting_type();
       const common::QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
       const bool desc_col = col_sort_type == ColumnSchema::kDescending;
+      // for ASC col: lower -> min_value; upper -> max_value
+      // for DESC   :       -> max_value;       -> min_value
+      const auto& lower = (desc_col ? range.max_value : range.min_value);
+      lower_.emplace_back(
+          IsNull(lower) ? PrimitiveValue(ValueType::kLowest)
+                        : PrimitiveValue::FromQLValuePB(lower, col_sort_type));
+      const auto& upper = (desc_col ? range.min_value : range.max_value);
+      upper_.emplace_back(
+          IsNull(upper) ? PrimitiveValue(ValueType::kHighest)
+                        : PrimitiveValue::FromQLValuePB(upper, schema.column(idx).sorting_type()));
+    }
+  }
+
+  RangeBasedScanChoices(const Schema& schema, const DocPgsqlScanSpec& doc_spec)
+      : ScanChoices(doc_spec.is_forward_scan()) {
+    DCHECK(doc_spec.range_bounds());
+    lower_.reserve(schema.num_range_key_columns());
+    upper_.reserve(schema.num_range_key_columns());
+    int idx = 0;
+    for (idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
+      const ColumnId col_idx = schema.column_id(idx);
+      const auto col_sort_type = schema.column(idx).sorting_type();
+      const common::QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
+      const bool desc_col = (col_sort_type == ColumnSchema::kDescending ||
+          col_sort_type == ColumnSchema::kDescendingNullsLast);
       // for ASC col: lower -> min_value; upper -> max_value
       // for DESC   :       -> max_value;       -> min_value
       const auto& lower = (desc_col ? range.max_value : range.min_value);
@@ -421,7 +469,7 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    yb::util::PendingOperationCounter* pending_op_counter)
+    PendingOperationCounter* pending_op_counter)
     : projection_(projection),
       schema_(schema),
       txn_op_context_(txn_op_context),
@@ -444,13 +492,16 @@ DocRowwiseIterator::~DocRowwiseIterator() {
 }
 
 Status DocRowwiseIterator::Init() {
-  auto query_id = rocksdb::kDefaultQueryId;
-
   db_iter_ = CreateIntentAwareIterator(
-      doc_db_, BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      boost::none /* user_key_for_filter */, query_id, txn_op_context_, deadline_, read_time_);
+      doc_db_,
+      BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      boost::none /* user_key_for_filter */,
+      rocksdb::kDefaultQueryId,
+      txn_op_context_,
+      deadline_,
+      read_time_);
 
-  DocKeyEncoder(&iter_key_).CotableId(schema_.cotable_id());
+  DocKeyEncoder(&iter_key_).Schema(schema_);
   row_key_ = iter_key_;
   row_hash_key_ = row_key_;
   VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << row_key_;
@@ -480,6 +531,17 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
 Result<bool> DocRowwiseIterator::InitScanChoices(
     const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
+  if (doc_spec.range_options()) {
+    scan_choices_.reset(new DiscreteScanChoices(doc_spec, lower_doc_key, upper_doc_key));
+    // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
+    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow());
+    return true;
+  }
+
+  if (doc_spec.range_bounds()) {
+    scan_choices_.reset(new RangeBasedScanChoices(schema_, doc_spec));
+  }
+
   return false;
 }
 
@@ -584,26 +646,26 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       return false;
     }
 
-    const auto fetched_key = db_iter_->FetchKey();
-    if (!fetched_key.ok()) {
-      has_next_status_ = fetched_key.status();
+    const auto key_data = db_iter_->FetchKey();
+    if (!key_data.ok()) {
+      has_next_status_ = key_data.status();
       return has_next_status_;
     }
 
-    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(*fetched_key);
+    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data->key);
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
     // outside the previous doc_key). Ensure the iterator is pushed forward/backward indeed. We
     // check it here instead of after GetSubDocument() below because we want to avoid the extra
     // expensive FetchKey() call just to fetch and validate the key.
     if (!iter_key_.data().empty() &&
-        (is_forward_scan_ ? iter_key_.CompareTo(*fetched_key) >= 0
-                          : iter_key_.CompareTo(*fetched_key) <= 0)) {
+        (is_forward_scan_ ? iter_key_.CompareTo(key_data->key) >= 0
+                          : iter_key_.CompareTo(key_data->key) <= 0)) {
       has_next_status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
-                                           FormatRocksDBSliceAsStr(*fetched_key));
+                                           FormatSliceAsStr(key_data->key));
       return has_next_status_;
     }
-    iter_key_.Reset(*fetched_key);
+    iter_key_.Reset(key_data->key);
     VLOG(4) << " Current iter_key_ is " << iter_key_;
 
     const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
@@ -643,7 +705,13 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       // SubDocument.
     }
 
-    GetSubDocumentData data = { sub_doc_key, &row_, &doc_found, TableTTL(schema_) };
+    GetSubDocumentData data = {
+      sub_doc_key,
+      &row_,
+      &doc_found,
+      TableTTL(schema_),
+      &table_tombstone_time_,
+    };
     data.deadline_info = deadline_info_.get_ptr();
     has_next_status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
     RETURN_NOT_OK(has_next_status_);
@@ -733,6 +801,7 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
 
   DocKeyDecoder decoder(row_key_);
   RETURN_NOT_OK(decoder.DecodeCotableId());
+  RETURN_NOT_OK(decoder.DecodePgtableId());
   bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
 
   // Populate the key column values from the doc key. The key column values in doc key were
@@ -792,26 +861,36 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
 }
 
 Result<Slice> DocRowwiseIterator::GetTupleId() const {
-  // Return tuple id without cotable id if any.
+  // Return tuple id without cotable id / pgtable id if any.
   Slice tuple_id = row_key_;
   if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
     tuple_id.remove_prefix(1 + kUuidSize);
+  } else if (tuple_id.starts_with(ValueTypeAsChar::kPgTableOid)) {
+    tuple_id.remove_prefix(1 + sizeof(PgTableOid));
   }
   return tuple_id;
 }
 
 Result<bool> DocRowwiseIterator::SeekTuple(const Slice& tuple_id) {
-  // If cotable id is present in the table schema, we need to prepend it in the tuple key to seek.
-  if (!schema_.cotable_id().IsNil()) {
+  // If cotable id / pgtable id is present in the table schema, then
+  // we need to prepend it in the tuple key to seek.
+  if (schema_.has_cotable_id() || schema_.has_pgtable_id()) {
+    uint32_t size = schema_.has_pgtable_id() ? sizeof(PgTableOid) : kUuidSize;
     if (!tuple_key_) {
-      std::string bytes;
-      schema_.cotable_id().EncodeToComparable(&bytes);
       tuple_key_.emplace();
-      tuple_key_->Reserve(1 + kUuidSize + tuple_id.size());
-      tuple_key_->AppendValueType(ValueType::kTableId);
-      tuple_key_->AppendRawBytes(bytes);
+      tuple_key_->Reserve(1 + size + tuple_id.size());
+
+      if (schema_.has_cotable_id()) {
+        std::string bytes;
+        schema_.cotable_id().EncodeToComparable(&bytes);
+        tuple_key_->AppendValueType(ValueType::kTableId);
+        tuple_key_->AppendRawBytes(bytes);
+      } else {
+        tuple_key_->AppendValueType(ValueType::kPgTableOid);
+        tuple_key_->AppendUInt32(schema_.pgtable_id());
+      }
     } else {
-      tuple_key_->Truncate(1 + kUuidSize);
+      tuple_key_->Truncate(1 + size);
     }
     tuple_key_->AppendRawBytes(tuple_id);
     db_iter_->Seek(*tuple_key_);

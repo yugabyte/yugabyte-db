@@ -23,6 +23,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
@@ -117,7 +118,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(client_->CreateNamespace(kNamespace));
 
     // Create the table.
-    table_name_.reset(new YBTableName(kNamespace, kTableName));
+    table_name_.reset(new YBTableName(YQL_DATABASE_CQL, kNamespace, kTableName));
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(*table_name_.get())
           .table_type(client::YBTableType::YQL_TABLE_TYPE)
@@ -363,9 +364,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_TRUE(ql_resp.has_rows_data_sidecar());
 
     // Retrieve row.
-    Slice rows_data;
     ASSERT_TRUE(controller.finished());
-    ASSERT_OK(controller.GetSidecar(ql_resp.rows_data_sidecar(), &rows_data));
+    Slice rows_data = ASSERT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
     std::shared_ptr<std::vector<ColumnSchema>>
       columns = std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
     yb::ql::RowsResult rowsResult(*table_name_, columns, rows_data.ToBuffer());

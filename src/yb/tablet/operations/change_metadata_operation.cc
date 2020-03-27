@@ -127,38 +127,100 @@ void ChangeMetadataOperation::DoStart() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status ChangeMetadataOperation::Apply(int64_t leader_term) {
+Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY CHANGE-METADATA: Starting");
 
   Tablet* tablet = state()->tablet();
+  log::Log* log = state()->mutable_log();
   size_t num_operations = 0;
 
+  // Only perform one operation.
+  enum MetadataChange {
+    NONE,
+    SCHEMA,
+    WAL_RETENTION_SECS,
+    ADD_TABLE,
+    REMOVE_TABLE,
+    BACKFILL_DONE,
+  };
+
+  MetadataChange metadata_change = MetadataChange::NONE;
+  bool request_has_newer_schema = false;
   if (state()->request()->has_schema()) {
-    ++num_operations;
-    RETURN_NOT_OK(tablet->AlterSchema(state()));
-    state()->log()->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
-        state()->schema_version());
+    metadata_change = MetadataChange::SCHEMA;
+    request_has_newer_schema = tablet->metadata()->schema_version() < state()->schema_version();
+    if (request_has_newer_schema) {
+      ++num_operations;
+    }
+  }
+
+  if (state()->request()->has_wal_retention_secs()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::WAL_RETENTION_SECS;
+    }
   }
 
   if (state()->request()->has_add_table()) {
-    ++num_operations;
-    RETURN_NOT_OK(tablet->AddTable(state()->request()->add_table()));
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::ADD_TABLE;
+    }
   }
 
-  if (num_operations != 1) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Wrong number of operations in Change Metadata Operation: $0",
-        num_operations);
+  if (state()->request()->has_remove_table_id()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::REMOVE_TABLE;
+    }
   }
 
-  return Status::OK();
-}
+  if (state()->request()->has_is_backfilling()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::BACKFILL_DONE;
+    }
+  }
 
-void ChangeMetadataOperation::Finish(OperationResult result) {
-  if (PREDICT_FALSE(result == Operation::ABORTED)) {
-    TRACE("AlterSchemaCommitCallback: transaction aborted");
-    state()->Finish();
-    return;
+  switch (metadata_change) {
+    case MetadataChange::NONE:
+      return STATUS_FORMAT(
+          InvalidArgument, "Wrong number of operations in Change Metadata Operation: $0",
+          num_operations);
+    case MetadataChange::SCHEMA:
+      if (!request_has_newer_schema) {
+        LOG_WITH_PREFIX(INFO)
+            << "Already running schema version " << tablet->metadata()->schema_version()
+            << " got alter request for version " << state()->schema_version();
+        break;
+      }
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      RETURN_NOT_OK(tablet->AlterSchema(state()));
+      log->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
+                                      state()->schema_version());
+      break;
+    case MetadataChange::WAL_RETENTION_SECS:
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      RETURN_NOT_OK(tablet->AlterWalRetentionSecs(state()));
+      log->set_wal_retention_secs(state()->request()->wal_retention_secs());
+      break;
+    case MetadataChange::ADD_TABLE:
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      RETURN_NOT_OK(tablet->AddTable(state()->request()->add_table()));
+      break;
+    case MetadataChange::REMOVE_TABLE:
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      RETURN_NOT_OK(tablet->RemoveTable(state()->request()->remove_table_id()));
+      break;
+    case MetadataChange::BACKFILL_DONE:
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      RETURN_NOT_OK(tablet->MarkBackfillDone(state()->request()->is_backfilling()));
+      break;
   }
 
   // The schema lock was acquired by Tablet::CreatePreparedChangeMetadata.
@@ -168,11 +230,18 @@ void ChangeMetadataOperation::Finish(OperationResult result) {
   // Tablet::AlterSchema().
   state()->ReleaseSchemaLock();
 
-  DCHECK_EQ(result, Operation::COMMITTED);
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("AlterSchemaCommitCallback: making alter schema visible");
   state()->Finish();
+
+  return Status::OK();
+}
+
+Status ChangeMetadataOperation::DoAborted(const Status& status) {
+  TRACE("AlterSchemaCommitCallback: transaction aborted");
+  state()->Finish();
+  return status;
 }
 
 string ChangeMetadataOperation::ToString() const {

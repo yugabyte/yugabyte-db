@@ -22,9 +22,13 @@
 
 #include <boost/lexical_cast.hpp>
 #include <boost/mpl/and.hpp>
-#include <boost/tti/has_type.hpp>
+
+#include <boost/preprocessor/facilities/apply.hpp>
+#include <boost/preprocessor/variadic/to_seq.hpp>
 
 #include "yb/gutil/strings/numbers.h"
+
+#include "yb/util/type_traits.h"
 
 // We should use separate namespace for some checkers.
 // Because there could be cases when operator<< is available in yb namespace, but
@@ -50,21 +54,6 @@ struct SupportsOutputToStream {
       sizeof(Test(nullptr, static_cast<const CleanedT*>(nullptr))) == sizeof(Yes);
 };
 
-#define HAS_FREE_FUNCTION(function) \
-  template <class T> \
-  struct BOOST_PP_CAT(HasFreeFunction_, function) { \
-    typedef int Yes; \
-    typedef struct { Yes array[2]; } No; \
-    typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT; \
-    \
-    template <class U> \
-    static auto Test(const U* u) -> decltype(function(*u), Yes(0)) {} \
-    static No Test(...) {} \
-    \
-    static constexpr bool value = \
-        sizeof(Test(static_cast<const CleanedT*>(nullptr))) == sizeof(Yes); \
-  };
-
 HAS_FREE_FUNCTION(to_string);
 
 } // namespace yb_tostring
@@ -72,18 +61,6 @@ HAS_FREE_FUNCTION(to_string);
 // This utility actively use SFINAE (http://en.cppreference.com/w/cpp/language/sfinae)
 // technique to route ToString to correct implementation.
 namespace yb {
-
-#define HAS_MEMBER_FUNCTION(function) \
-    template<class T> \
-    struct BOOST_PP_CAT(HasMemberFunction_, function) { \
-      typedef int Yes; \
-      typedef struct { Yes array[2]; } No; \
-      typedef typename std::remove_reference<T>::type StrippedT; \
-      template<class U> static Yes Test(typename std::remove_reference< \
-          decltype(static_cast<U*>(nullptr)->function())>::type*); \
-      template<class U> static No Test(...); \
-      static const bool value = sizeof(Yes) == sizeof(Test<StrippedT>(nullptr)); \
-    };
 
 // If class has ToString member function - use it.
 HAS_MEMBER_FUNCTION(ToString);
@@ -174,36 +151,6 @@ class PointerToString<void*> {
   }
 };
 
-// This class is used to determine whether T is similar to pointer.
-// We suppose that if class provides * and -> operators so it is pointer.
-template<class T>
-class IsPointerLikeHelper {
- private:
-  typedef int Yes;
-  typedef struct { Yes array[2]; } No;
-
-  template <typename C> static Yes HasDeref(decltype(&C::operator*));
-  template <typename C> static No HasDeref(...);
-
-  template <typename C> static Yes HasArrow(decltype(&C::operator->));
-  template <typename C> static No HasArrow(...);
- public:
-  typedef boost::mpl::bool_<sizeof(HasDeref<T>(nullptr)) == sizeof(Yes) &&
-                            sizeof(HasArrow<T>(nullptr)) == sizeof(Yes)> type;
-};
-
-template<class T>
-class IsPointerLikeImpl : public IsPointerLikeHelper<T>::type {};
-
-template<class T>
-class IsPointerLikeImpl<T*> : public boost::mpl::true_ {};
-
-// For correct routing we should strip reference and const, volatile specifiers.
-template<class T>
-class IsPointerLike : public IsPointerLikeImpl<
-    typename std::remove_cv<typename std::remove_reference<T>::type>::type> {
-};
-
 template <class Pointer>
 typename std::enable_if<IsPointerLike<Pointer>::value, std::string>::type
     ToString(Pointer&& value) {
@@ -219,14 +166,6 @@ std::string ToString(const std::pair<First, Second>& pair);
 
 template <class Collection>
 std::string CollectionToString(const Collection& collection);
-
-// We suppose that if class has nested const_iterator then it is collection.
-BOOST_TTI_HAS_TYPE(const_iterator);
-
-template <class T>
-class IsCollection : public has_type_const_iterator<
-    typename std::remove_cv<typename std::remove_reference<T>::type>::type> {
-};
 
 template <class T>
 typename std::enable_if<yb_tostring::HasFreeFunction_to_string<T>::value,
@@ -332,6 +271,26 @@ std::string CollectionToString(const Collection& collection) {
   return result;
 }
 
+template <class T>
+std::string AsString(const T& t) {
+  return ToString(t);
+}
+
 } // namespace yb
+
+#if BOOST_PP_VARIADICS
+
+#define YB_FIELD_TO_STRING(r, data, elem) \
+    " " BOOST_PP_STRINGIZE(elem) ": " + AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))) +
+#define YB_FIELDS_TO_STRING(data, ...) \
+    BOOST_PP_SEQ_FOR_EACH(YB_FIELD_TO_STRING, data(), BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__))
+#define YB_STRUCT_TO_STRING(...) \
+    "{" YB_FIELDS_TO_STRING(BOOST_PP_NIL, __VA_ARGS__) " }"
+#define YB_CLASS_TO_STRING(...) \
+    "{" YB_FIELDS_TO_STRING((BOOST_PP_IDENTITY(_)), __VA_ARGS__) " }"
+
+#else
+#error Compiler not supported
+#endif
 
 #endif // YB_UTIL_TOSTRING_H

@@ -193,14 +193,19 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
     return false;
   }
 
-  RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, STATUS(TimedOut, message));
   Clear();
+  RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, STATUS(TimedOut, message));
 
   return true;
 }
 
 void InboundCall::Clear() {
+  serialized_request_.clear();
   request_data_.Reset();
+}
+
+size_t InboundCall::DynamicMemoryUsage() const {
+  return DynamicMemoryUsageOf(request_data_, trace_);
 }
 
 void InboundCall::InboundCallTask::Run() {
@@ -213,16 +218,6 @@ void InboundCall::InboundCallTask::Done(const Status& status) {
   if (!status.ok()) {
     handler_->Failure(call, status);
   }
-}
-
-void InboundCall::RetainSelf() {
-  LOG_IF_WITH_PREFIX(DFATAL, retained_self_) << "Aleady retained";
-  retained_self_ = shared_from(this);
-}
-
-void InboundCall::UnretainSelf() {
-  LOG_IF_WITH_PREFIX(DFATAL, !retained_self_) << "Not retained";
-  retained_self_.reset();
 }
 
 }  // namespace rpc

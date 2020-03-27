@@ -17,12 +17,14 @@ namespace yb {
 namespace consensus {
 
 ReplicateMsgsHolder::ReplicateMsgsHolder(
-    google::protobuf::RepeatedPtrField<ReplicateMsg>* ops, ReplicateMsgs messages)
-    : ops_(ops), messages_(std::move(messages)) {
+    google::protobuf::RepeatedPtrField<ReplicateMsg>* ops, ReplicateMsgs messages,
+    ScopedTrackedConsumption consumption)
+    : ops_(ops), messages_(std::move(messages)), consumption_(std::move(consumption)) {
 }
 
 ReplicateMsgsHolder::ReplicateMsgsHolder(ReplicateMsgsHolder&& rhs)
-    : ops_(rhs.ops_), messages_(std::move(rhs.messages_)) {
+    : ops_(rhs.ops_), messages_(std::move(rhs.messages_)),
+      consumption_(std::move(rhs.consumption_)) {
   rhs.ops_ = nullptr;
 }
 
@@ -30,6 +32,7 @@ void ReplicateMsgsHolder::operator=(ReplicateMsgsHolder&& rhs) {
   Reset();
   ops_ = rhs.ops_;
   messages_ = std::move(rhs.messages_);
+  consumption_ = std::move(rhs.consumption_);
   rhs.ops_ = nullptr;
 }
 
@@ -44,6 +47,7 @@ void ReplicateMsgsHolder::Reset() {
   }
 
   messages_.clear();
+  consumption_ = ScopedTrackedConsumption();
 }
 
 }  // namespace consensus

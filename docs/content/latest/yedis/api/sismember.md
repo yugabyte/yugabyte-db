@@ -12,7 +12,9 @@ aliases:
 isTocNested: true
 showAsideToc: true
 ---
+
 ## Synopsis
+
 <b>`SISMEMBER key member_value`</b><br>
 This command is a predicate for whether or not a value is a member of a set that is associated with the given  `key`.
 <li>If the `key` is associated with a value that is not a set, an error is raised.</li>
@@ -20,6 +22,7 @@ This command is a predicate for whether or not a value is a member of a set that
 <li>If the `member` belongs to the given set, an integer of 1 is returned.</li>
 
 ## Return Value
+
 Returns 1 if the specified member exists. Returns 0 otherwise.
 
 ## Examples
@@ -48,5 +51,6 @@ $ SISMEMBER yuga_world "Moon"
 0
 ```
 
-## See Also
+## See also
+
 [`sadd`](../sadd/), [`scard`](../scard/), [`smembers`](../smembers/), [`srem`](../srem/)

@@ -49,6 +49,7 @@
 
 using strings::Substitute;
 
+DECLARE_bool(simulate_fs_create_failure);
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
@@ -70,9 +71,10 @@ MiniMaster::~MiniMaster() {
   }
 }
 
-Status MiniMaster::Start() {
+Status MiniMaster::Start(bool simulate_fs_create_failure) {
   CHECK(!running_);
   FLAGS_rpc_server_allow_ephemeral_ports = true;
+  FLAGS_simulate_fs_create_failure = simulate_fs_create_failure;
   RETURN_NOT_OK(StartOnPorts(rpc_port_, web_port_));
   return master_->WaitForCatalogManagerInit();
 }
@@ -129,7 +131,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
     opts->SetPlacement(Format("cloud$0", (index_ + 1) / 2), Format("rack$0", index_), "zone");
   }
 
-  gscoped_ptr<Master> server(new YB_EDITION_NS_PREFIX Master(*opts));
+  gscoped_ptr<Master> server(new enterprise::Master(*opts));
   RETURN_NOT_OK(server->Init());
 
   server::TEST_SetupConnectivity(server->messenger(), index_);
@@ -176,9 +178,10 @@ Status MiniMaster::Restart() {
 
   auto prev_rpc = bound_rpc_addr();
   Endpoint prev_http = bound_http_addr();
+  auto master_addresses = master_->opts().GetMasterAddresses();
   Shutdown();
 
-  MasterOptions opts(std::make_shared<server::MasterAddresses>());
+  MasterOptions opts(master_addresses);
   RETURN_NOT_OK(StartOnPorts(prev_rpc.port(), prev_http.port(), &opts));
   CHECK(running_);
   return WaitForCatalogManagerInit();

@@ -14,13 +14,14 @@ showAsideToc: true
 ---
 
 [Presto](https://prestosql.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.
-This page shows how Presto can be setup to query YugaByte DB's YCQL tables.
+This page shows how Presto can be setup to query YugabyteDB's YCQL tables.
 
-## 1. Start Local Cluster
+## 1. Start local cluster
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test YugaByte DB's Cassandra compatible API as [documented](../../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra compatible service running on `localhost:9042`. We assume you have created the keyspace and table, and inserted sample data as described there.
+Follow [Quick start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra compatible API as [documented](../../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra compatible service running on `localhost:9042`. We assume you have created the keyspace and table, and inserted sample data as described there.
 
-## 2. Download and Configure Presto
+## 2. Download and configure Presto
+
 Detailed steps are documented [here](https://prestosql.io/docs/current/installation/deployment.html).
 The following are the minimal setup steps for getting started.
 
@@ -36,7 +37,7 @@ $ tar xvf presto-server-309.tar.gz
 $ cd presto-server-309
 ```
 
-### Create the “etc”, “etc/catalog”, and “data” directory inside the installation directory.
+### Create the “etc”, “etc/catalog”, and “data” directory inside the installation directory
 
 ```sh
 $ mkdir etc
@@ -105,7 +106,7 @@ $ cat > etc/log.properties
 io.prestosql=INFO
 ```
 
-### Configure Cassandra connector to Yugabyte DB
+### Configure Cassandra connector to YugabyteDB
 
 Create the cassandra catalog properties file in etc/catalog directory.
 Detailed instructions are [here](https://prestosql.io/docs/current/connector/cassandra.html).
@@ -135,7 +136,6 @@ Rename jar to ‘presto’. It is meant to be a self-running binary.
 $ mv presto-cli-309-executable.jar presto && chmod +x presto
 ```
 
-
 ## 4. Launch Presto server
 
 ```sh
@@ -156,7 +156,7 @@ $ ./bin/launcher start
 
 ## 5. Test Presto queries
 
-Use the presto CLI to run ad-hoc queries. 
+Use the presto CLI to run ad-hoc queries.
 
 ```sh
 $ ./bin/presto --server localhost:8080 --catalog cassandra --schema default

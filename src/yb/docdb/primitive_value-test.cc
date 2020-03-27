@@ -141,6 +141,10 @@ TEST(PrimitiveValueTest, TestToString) {
   ASSERT_EQ("-2147483648",
             PrimitiveValue::Int32(numeric_limits<int32_t>::min()).ToString());
 
+  ASSERT_EQ("0", PrimitiveValue::UInt64(numeric_limits<uint64_t>::min()).ToString());
+  ASSERT_EQ("18446744073709551615",
+            PrimitiveValue::UInt64(numeric_limits<uint64_t>::max()).ToString());
+
   ASSERT_EQ("3.1415", PrimitiveValue::Double(3.1415).ToString());
   ASSERT_EQ("100.0", PrimitiveValue::Double(100.0).ToString());
   ASSERT_EQ("1.000000E-100", PrimitiveValue::Double(1e-100).ToString());
@@ -341,6 +345,18 @@ TEST(PrimitiveValueTest, TestRandomComparableInt32) {
   }
 }
 
+TEST(PrimitiveValueTest, TestRandomComparableUInt64) {
+  Random r(0);
+  for (int i = 0; i < 1000; i++) {
+    uint64_t val1 = r.Next64();
+    uint64_t val2 = r.Next64();
+    CompareSlices(PrimitiveValue::UInt64(val1).ToKeyBytes(),
+                  PrimitiveValue::UInt64(val2).ToKeyBytes(),
+                  val1, val2,
+                  std::to_string(val1), std::to_string(val2));
+  }
+}
+
 TEST(PrimitiveValueTest, TestRandomComparableUUIDs) {
   Random r(0);
   for (int i = 0; i < 1000; i++) {
@@ -358,6 +374,7 @@ TEST(PrimitiveValueTest, TestCopy) {
   TestCopy(PrimitiveValue("a"), 1000, 1000);
   TestCopy(PrimitiveValue::Double(3.0), 1000, 1000);
   TestCopy(PrimitiveValue::Int32(1000), 1000, 1000);
+  TestCopy(PrimitiveValue::UInt64(1000), 1000, 1000);
   TestCopy(PrimitiveValue(Timestamp(1000)), 1000, 1000);
   InetAddress addr;
   ASSERT_OK(addr.FromString("1.2.3.4"));
@@ -370,6 +387,7 @@ TEST(PrimitiveValueTest, TestMove) {
   TestMove(PrimitiveValue("a"), 1000, 1000);
   TestMove(PrimitiveValue::Double(3.0), 1000, 1000);
   TestMove(PrimitiveValue::Int32(1000), 1000, 1000);
+  TestMove(PrimitiveValue::UInt64(1000), 1000, 1000);
   TestMove(PrimitiveValue(Timestamp(1000)), 1000, 1000);
   InetAddress addr;
   ASSERT_OK(addr.FromString("1.2.3.4"));

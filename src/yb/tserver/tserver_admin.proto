@@ -58,6 +58,12 @@ message ChangeMetadataRequestPB {
   optional fixed64 propagated_hybrid_time = 6;
 
   optional tablet.TableInfoPB add_table = 8;
+
+  optional uint32 wal_retention_secs = 9;
+
+  optional bytes remove_table_id = 10;
+
+  optional bool is_backfilling = 11;
 }
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
@@ -70,6 +76,56 @@ message ChangeMetadataResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional fixed64 propagated_hybrid_time = 2;
+}
+
+message GetSafeTimeRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  required bytes tablet_id = 2;
+
+  optional uint32 schema_version = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
+
+  optional fixed64 min_hybrid_time_for_backfill = 5;
+}
+
+message GetSafeTimeResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional fixed64 safe_time = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message BackfillIndexRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  required bytes tablet_id = 2;
+
+  repeated IndexInfoPB indexes = 3;
+
+  optional uint32 schema_version = 4;
+
+  optional fixed64 read_at_hybrid_time = 5;
+
+  optional bytes start_key = 6;
+  optional bytes end_key = 7;
+
+  optional fixed64 propagated_hybrid_time = 8;
+}
+
+message BackfillIndexResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  // If non-empty, this is used to keep track of how far along
+  // the backfill has completed, so that it can be resumed.
+  // Encoded as the DocKey for the next row to be backfilled.
+  optional bytes backfilled_until = 3;
 }
 
 message CopartitionTableRequestPB {
@@ -109,6 +165,9 @@ message CreateTabletRequestPB {
 
   // For index table: information about this index.
   optional IndexInfoPB index_info = 12;
+
+  // True if the tablet is colocated.
+  optional bool colocated = 13 [ default = false ];
 }
 
 message CreateTabletResponsePB {
@@ -187,6 +246,34 @@ message FlushTabletsResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 }
 
+message CountIntentsRequestPB {
+}
+
+message CountIntentsResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional int64 num_intents = 2;
+}
+
+message AddTableToTabletRequestPB {
+  required bytes tablet_id = 1;
+  required tablet.TableInfoPB add_table = 2;
+}
+
+message AddTableToTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message RemoveTableFromTabletRequestPB {
+  required bytes tablet_id = 1;
+  required bytes remove_table_id = 2;
+}
+
+message RemoveTableFromTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -198,8 +285,25 @@ service TabletServerAdminService {
   // Alter a tablet's schema.
   rpc AlterSchema(ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
 
+  // GetSafeTime API to get the current safe time.
+  rpc GetSafeTime(GetSafeTimeRequestPB) returns (GetSafeTimeResponsePB);
+
+  // Backfill the index for the specified index tables. Addressed to the indexed
+  // table.
+  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
+
+  // Marks an index table as having completed backfilling.
+  rpc BackfillDone(ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+
   // Create a co-partitioned table in an existing tablet
   rpc CopartitionTable(CopartitionTableRequestPB) returns (CopartitionTableResponsePB);
 
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
+
+  rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
+
+  rpc AddTableToTablet(AddTableToTabletRequestPB) returns (AddTableToTabletResponsePB);
+
+  rpc RemoveTableFromTablet(RemoveTableFromTabletRequestPB)
+      returns (RemoveTableFromTabletResponsePB);
 }

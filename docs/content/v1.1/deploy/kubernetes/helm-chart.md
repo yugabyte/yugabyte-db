@@ -19,12 +19,12 @@ showAsideToc: true
 
 You must have a Kubernetes cluster that has Helm configured. If you have not installed Helm client and server (aka Tiller) yet, follow the instructions [here](https://docs.helm.sh/using_helm/#installing-helm).
 
-The YugaByte DB Helm chart documented here has been tested with the following software versions:
+The YugabyteDB Helm chart documented here has been tested with the following software versions:
 
 - Kubernetes 1.10+
 - Helm 2.8.0+
-- YugaByte DB Docker Images 1.1.0+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugaByte DB. This can be 3 nodes with 4 CPU core and 15 GB RAM allocated to YugaByte DB.
+- YugabyteDB Docker Images 1.1.0+
+- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be 3 nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
 - For optimal performance, ensure to set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
 
 Confirm that your `helm` is configured correctly.
@@ -40,12 +40,12 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 
 ## Create Cluster
 
-### Clone YugaByte DB Project
+### Clone YugabyteDB Project
 
-For creating the cluster, you have to first clone the yugabyte-db project and then create a YugaByte service account in your Kubernetes cluster.
+For creating the cluster, you have to first clone the yugabyte-db project and then create a Yugabyte service account in your Kubernetes cluster.
 
 ```sh
-$ git clone https://github.com/YugaByte/yugabyte-db.git
+$ git clone https://github.com/yugabyte/yugabyte-db.git
 ```
 
 ```sh
@@ -76,9 +76,9 @@ Tiller (the Helm server-side component) has been upgraded to the current version
 Happy Helming!
 ```
 
-### Install YugaByte DB
+### Install YugabyteDB
 
-Install YugaByte DB in the Kubernetes cluster using the command below.
+Install YugabyteDB in the Kubernetes cluster using the command below.
 
 ```sh
 $ helm install yugabyte --namespace yb-demo --name yb-demo --wait
@@ -90,8 +90,8 @@ If you are running in a resource-constrained environment or a local environment 
 $ helm install yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo
 ```
 
-### Installing YugaByte DB with YSQL (beta)
-If you wish to enable YSQL (beta) support, install YugaByte DB with additional parameter as shown below.
+### Installing YugabyteDB with YSQL (beta)
+If you wish to enable YSQL (beta) support, install YugabyteDB with additional parameter as shown below.
 
 ```sh
 $ helm install yugabyte --wait --namespace yb-demo --name yb-demo --set "enablePostgres=true"
@@ -236,7 +236,7 @@ $ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 
 ### LoadBalancer for Services
 
-By default, the YugaByte DB helm chart exposes only the master ui endpoint via LoadBalancer. If you wish to expose also the ycql and yedis services via LoadBalancer for your app to use, you could do that in couple of different ways.
+By default, the YugabyteDB helm chart exposes only the master ui endpoint via LoadBalancer. If you wish to expose also the ycql and yedis services via LoadBalancer for your app to use, you could do that in couple of different ways.
 
 
 If you want individual LoadBalancer endpoint for each of the services (YCQL, YEDIS), run the following command.
@@ -253,7 +253,7 @@ $ helm install yugabyte -f expose-all-shared.yaml --namespace yb-demo --name yb-
 
 ## Upgrade Cluster
 
-You can perform rolling upgrades on the YugaByte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugaByte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
+You can perform rolling upgrades on the YugabyteDB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugabyteDB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
 
 ```sh
 $ helm upgrade yb-demo yugabyte --set Image.tag=1.1.0.3-b6 --wait

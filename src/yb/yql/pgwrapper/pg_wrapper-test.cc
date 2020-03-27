@@ -20,6 +20,7 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/enums.h"
+#include "yb/util/env_util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master.pb.h"
@@ -54,12 +55,27 @@ using namespace std::literals;
 
 namespace yb {
 namespace pgwrapper {
+namespace {
 
-YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kCompaction));
+string TrimSqlOutput(string output) {
+  return TrimStr(TrimTrailingWhitespaceFromEveryLine(LeftShiftTextBlock(output)));
+}
 
-class PgWrapperTest : public PgWrapperTestBase {
+string CertsDir() {
+  const auto sub_dir = JoinPathSegments("ent", "test_certs");
+  return JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+}
+
+template<bool Auth, bool Encrypted>
+struct ConnectionStrategy {
+  static const bool UseAuth = Auth;
+  static const bool EncryptConnection = Encrypted;
+};
+
+template<class Strategy>
+class PgWrapperTestHelper: public PgWrapperTestBase {
  protected:
-  void RunPsqlCommand(const std::string& statement, const std::string& expected_output) {
+  void RunPsqlCommand(const std::string &statement, const std::string &expected_output) {
     std::string tmp_dir;
     ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
@@ -74,21 +90,59 @@ class PgWrapperTest : public PgWrapperTestBase {
     ASSERT_OK(tmp_file->Append(statement));
     ASSERT_OK(tmp_file->Close());
 
-    vector<string> argv {
+    vector<string> argv{
         GetPostgresInstallRoot() + "/bin/ysqlsh",
         "-h", pg_ts->bind_host(),
         "-p", std::to_string(pg_ts->pgsql_rpc_port()),
-        "-U", "postgres",
+        "-U", "yugabyte",
         "-f", tmp_file_name
     };
+
+    if (Strategy::EncryptConnection) {
+      argv.push_back(Format(
+          "sslmode=require sslcert=$0/ysql.crt sslrootcert=$0/ca.crt sslkey=$0/ysql.key",
+          CertsDir()));
+    }
+
+    Subprocess proc(argv.front(), argv);
+    if (Strategy::UseAuth) {
+      proc.SetEnv("PGPASSWORD", "yugabyte");
+    }
+
     string psql_stdout;
     LOG(INFO) << "Executing statement: " << statement;
-    ASSERT_OK(Subprocess::Call(argv, &psql_stdout));
+    ASSERT_OK(proc.Call(&psql_stdout));
     LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
               << psql_stdout;
     ASSERT_EQ(TrimSqlOutput(expected_output), TrimSqlOutput(psql_stdout));
   }
 
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgWrapperTestBase::UpdateMiniClusterOptions(options);
+    if (Strategy::EncryptConnection) {
+      const vector<string> common_flags{"--use_node_to_node_encryption=true",
+                                        "--certs_dir=" + CertsDir()};
+      for (auto flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+        flags->insert(flags->begin(), common_flags.begin(), common_flags.end());
+      }
+      options->extra_tserver_flags.push_back("--use_client_to_server_encryption=true");
+      options->extra_tserver_flags.push_back("--allow_insecure_connections=false");
+      options->use_even_ips = true;
+    }
+
+    if (Strategy::UseAuth) {
+      options->extra_tserver_flags.push_back("--ysql_enable_auth");
+    }
+  }
+};
+
+} // namespace
+
+
+YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kCompaction));
+
+class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false>> {
+ protected:
   void CreateTable(string statement) {
     RunPsqlCommand(statement, "CREATE TABLE");
   }
@@ -146,7 +200,7 @@ class PgWrapperTest : public PgWrapperTestBase {
                   InternalError, "$0 request failed: $1", flush_or_compaction,
                   wait_resp.ShortDebugString());
             }
-            return Status::OK();
+            return true;
           }
           return false;
         },
@@ -155,12 +209,47 @@ class PgWrapperTest : public PgWrapperTestBase {
     ));
     LOG(INFO) << "Table " << table_id << " " << flush_or_compaction << " finished";
   }
-
- protected:
-  static string TrimSqlOutput(string output) {
-    return TrimStr(TrimTrailingWhitespaceFromEveryLine(LeftShiftTextBlock(output)));
-  }
 };
+
+using PgWrapperTestAuth = PgWrapperTestHelper<ConnectionStrategy<true, false>>;
+using PgWrapperTestSecure = PgWrapperTestHelper<ConnectionStrategy<false, true>>;
+using PgWrapperTestAuthSecure = PgWrapperTestHelper<ConnectionStrategy<true, true>>;
+
+TEST_F(PgWrapperTestAuth, YB_DISABLE_TEST_IN_TSAN(TestConnectionAuth)) {
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      R"#(
+         clientdn
+        ----------
+        (0 rows)
+      )#"
+  ));
+}
+
+TEST_F(PgWrapperTestSecure, YB_DISABLE_TEST_IN_TSAN(TestConnectionTSL)) {
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      R"#(
+                clientdn
+        -------------------------
+         /O=YugaByte/CN=yugabyte
+        (1 row)
+      )#"
+  ));
+}
+
+
+TEST_F(PgWrapperTestAuthSecure, YB_DISABLE_TEST_IN_TSAN(TestConnectionAuthTLS)) {
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
+      R"#(
+                clientdn
+        -------------------------
+         /O=YugaByte/CN=yugabyte
+        (1 row)
+      )#"
+  ));
+}
 
 TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestStartStop)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
@@ -277,7 +366,7 @@ class PgWrapperOneNodeClusterTest : public YBMiniClusterTestBase<ExternalMiniClu
     YBMiniClusterTestBase::SetUp();
 
     ExternalMiniClusterOptions opts;
-    opts.start_pgsql_proxy = true;
+    opts.enable_ysql = true;
     opts.num_tablet_servers = 1;
 
     cluster_.reset(new ExternalMiniCluster(opts));
@@ -322,7 +411,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   opts.mode = Env::CREATE_IF_NON_EXISTING_TRUNCATE;
 
   ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
-  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
@@ -338,7 +427,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   ASSERT_OK(file->Write(0, "abcde\n" + pid_file));
   ASSERT_OK(file->Close());
 
-  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
@@ -354,7 +443,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   ASSERT_OK(file->Write(0, "1002\n" + pid_file));
   ASSERT_OK(file->Close());
 
-  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
 }
 

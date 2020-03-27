@@ -185,21 +185,21 @@ Status PstackWatcher::RunPstack(const std::string& progname, pid_t pid) {
 Status PstackWatcher::RunStackDump(const string& prog, const vector<string>& argv) {
   printf("************************ BEGIN STACKS **************************\n");
   if (fflush(stdout) == EOF) {
-    return STATUS(IOError, "Unable to flush stdout", ErrnoToString(errno), errno);
+    return STATUS(IOError, "Unable to flush stdout", Errno(errno));
   }
   Subprocess pstack_proc(prog, argv);
   RETURN_NOT_OK_PREPEND(pstack_proc.Start(), "RunStackDump proc.Start() failed");
   if (::close(pstack_proc.ReleaseChildStdinFd()) == -1) {
-    return STATUS(IOError, "Unable to close child stdin", ErrnoToString(errno), errno);
+    return STATUS(IOError, "Unable to close child stdin", Errno(errno));
   }
   int ret;
   RETURN_NOT_OK_PREPEND(pstack_proc.Wait(&ret), "RunStackDump proc.Wait() failed");
   if (ret == -1) {
-    return STATUS(RuntimeError, "RunStackDump proc.Wait() error", ErrnoToString(errno), errno);
+    return STATUS(RuntimeError, "RunStackDump proc.Wait() error", Errno(errno));
   }
   printf("************************* END STACKS ***************************\n");
   if (fflush(stdout) == EOF) {
-    return STATUS(IOError, "Unable to flush stdout", ErrnoToString(errno), errno);
+    return STATUS(IOError, "Unable to flush stdout", Errno(errno));
   }
 
   return Status::OK();

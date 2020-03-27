@@ -17,7 +17,15 @@
 # and error checking on the output. Invokes GCC or Clang internally.  This script is invoked through
 # symlinks called "cc" or "c++".
 
+# To run shellcheck: shellcheck -x build-support/compiler-wrappers/compiler-wrapper.sh
+
+# shellcheck source=build-support/common-build-env.sh
 . "${0%/*}/../common-build-env.sh"
+
+if [[ ${YB_COMMON_BUILD_ENV_SOURCED:-} != "1" ]]; then
+  echo >&2 "Failed to source common-build-env.sh"
+  exit 1
+fi
 
 set -euo pipefail
 
@@ -28,7 +36,26 @@ set -euo pipefail
 # build issues.
 readonly GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
 readonly SCRIPT_NAME="compiler-wrapper.sh"
+readonly COMPILATION_FAILURE_STDERR_PATTERNS="\
+: Stale file handle\
+|file not recognized: file truncated\
+|/usr/bin/env: bash: Input/output error\
+|: No such file or directory\
+|[.]Po[:][0-9]+:.*missing separator[.] *Stop[.]\
+"
+
+readonly DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC=0.5
+
 declare -i -r MAX_INPUT_FILES_TO_SHOW=20
+
+# User is allowed to set YB_REMOTE_COMPILATION_MAX_ATTEMPTS.
+YB_REMOTE_COMPILATION_MAX_ATTEMPTS=${YB_REMOTE_COMPILATION_MAX_ATTEMPTS:-10}
+if [[ ! $YB_REMOTE_COMPILATION_MAX_ATTEMPTS =~ ^[0-9]+$ ||
+      $YB_REMOTE_COMPILATION_MAX_ATTEMPTS -le 0 ]]; then
+  fatal "Invalid value of YB_REMOTE_COMPILATION_MAX_ATTEMPTS (must be an integer greater than 0):" \
+        "$YB_REMOTE_COMPILATION_MAX_ATTEMPTS"
+fi
+declare -i -r YB_REMOTE_COMPILATION_MAX_ATTEMPTS=$YB_REMOTE_COMPILATION_MAX_ATTEMPTS
 
 compilation_step_name="COMPILATION"
 delete_stderr_file=true
@@ -55,7 +82,7 @@ readonly NO_UBSAN_RE='(numeric|int|int8|float)'
 # Common functions
 
 fatal_error() {
-  echo -e "$RED_COLOR[FATAL] $SCRIPT_NAME: $*$NO_COLOR"
+  echo -e "${RED_COLOR}[FATAL] $SCRIPT_NAME: $*$NO_COLOR"
   exit 1
 }
 
@@ -116,7 +143,8 @@ generate_build_debug_script() {
   shift
   if [[ -n ${YB_GENERATE_BUILD_DEBUG_SCRIPTS:-} ]]; then
     mkdir -p "$GENERATED_BUILD_DEBUG_SCRIPT_DIR"
-    local script_name="$GENERATED_BUILD_DEBUG_SCRIPT_DIR/${script_name_prefix}__$(
+    local script_name
+    script_name="$GENERATED_BUILD_DEBUG_SCRIPT_DIR/${script_name_prefix}__$(
       get_timestamp_for_filenames
     )__$$_$RANDOM$RANDOM.sh"
     (
@@ -203,31 +231,29 @@ is_configure_mode_invocation() {
 cc_or_cxx=${0##*/}
 
 stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
-# stdout_path=""
 
 compiler_args=( "$@" )
-
-BUILD_ROOT=""
-if [[ ! "$*" == */testCCompiler.c.o\ -c\ testCCompiler.c* && \
-      ! "$*" == */testCXXCompiler\.cxx\.o\ -o* ]]; then
-  handle_build_root_from_current_dir
-  BUILD_ROOT=$predefined_build_root
-  # Not calling set_build_root here, because we don't need additional setup that it does.
-fi
-
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is
 # treated as such.
 compiler_args_str="${compiler_args[*]}"
 set -u
 
+if [[ -z ${BUILD_ROOT:-} ]]; then
+  handle_build_root_from_current_dir
+  BUILD_ROOT=$predefined_build_root
+  # Not calling set_build_root here, because we don't need additional setup that it does.
+else
+  predefined_build_root=$BUILD_ROOT
+  handle_predefined_build_root_quietly=true
+  # shellcheck disable=SC2119
+  handle_predefined_build_root
+fi
+
 output_file=""
 input_files=()
 library_files=()
 compiling_pch=false
-
-# Determine if we're building the precompiled header (not whether we're using one).
-is_precompiled_header=false
 
 instrument_functions=false
 instrument_functions_rel_path_re=""
@@ -250,7 +276,7 @@ while [[ $# -gt 0 ]]; do
           fatal "The -o option specified twice: '$output_file' and '${2:-}'"
         fi
         output_file=${2:-}
-        let num_output_files_found+=1
+        (( num_output_files_found+=1 ))
         shift
       fi
       is_output_arg=true
@@ -291,7 +317,7 @@ while [[ $# -gt 0 ]]; do
     -DYB_COMPILER_TYPE=*)
       compiler_type_from_cmd_line=${1#-DYB_COMPILER_TYPE=}
       if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
-        if [[ $YB_COMPILER_TYPE != $compiler_type_from_cmd_line ]]; then
+        if [[ $YB_COMPILER_TYPE != "$compiler_type_from_cmd_line" ]]; then
           fatal "Compiler command line has '$1', but YB_COMPILER_TYPE is '${YB_COMPILER_TYPE}'"
         fi
       else
@@ -316,10 +342,9 @@ fi
 # -------------------------------------------------------------------------------------------------
 # Remote build
 
-nonexistent_file_args=()
 local_build_only=false
 for arg in "$@"; do
-  if [[ $arg =~ *CMakeTmp* || $arg == "-" ]]; then
+  if [[ $arg == *CMakeTmp* || $arg == "-" ]]; then
     local_build_only=true
   fi
 done
@@ -338,47 +363,65 @@ if [[ $local_build_only == "false" &&
   cached_build_workers_file=/tmp/cached_build_workers_$USER
   declare -i num_missing_build_workers_file_retries=0
 
-  current_dir=$PWD
   declare -i attempt=0
   declare -i no_worker_count=0
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
-  while [[ $attempt -lt 100 ]]; do
-    let attempt+=1
-    effective_build_workers_file=$YB_BUILD_WORKERS_FILE
-    if [[ ! -f $YB_BUILD_WORKERS_FILE ]]; then
-      if [[ $num_missing_build_workers_file_retries -ge 5 && -f $cached_build_workers_file ]]; then
-        log "The build worker list file ('$YB_BUILD_WORKERS_FILE') has been missing for" \
-            "$num_missing_build_workers_file_retries attempts. Will use cached build worker list" \
-            "file."
-        effective_build_workers_file=$cached_build_workers_file
-      else
-        log "The build worker list file ('$YB_BUILD_WORKERS_FILE') does not exist. Will retry".
-        log "Current mounts on $( hostname ):"
-        mount
-        sleep 0.5
-        let num_missing_build_workers_file_retries+=1
+  while true; do
+    (( attempt+=1 ))
+    if [[ $attempt -gt $YB_REMOTE_COMPILATION_MAX_ATTEMPTS ]]; then
+      fatal "Failed after $YB_REMOTE_COMPILATION_MAX_ATTEMPTS attempts: $*"
+    fi
+    if [[ -n ${YB_BUILD_WORKERS_LIST_URL:-} ]]; then
+      # Note: ignoring bad exit codes and HTTP status codes here. We only look at the output and
+      # if it is of the right format ("build-worker-..."), we consider it valid.
+      build_worker_name=$( curl -s "$YB_BUILD_WORKERS_LIST_URL" | shuf -n 1 )
+      if [[ $build_worker_name != build-worker* ]]; then
+        log "Got an invalid build worker name from $YB_BUILD_WORKERS_LIST_URL:" \
+            "'$build_worker_name', expected to get a name starting with 'build-worker', waiting" \
+            "for $DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC sec"
+        sleep "$DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC"
         continue
       fi
-    fi
-    set +e
-    build_worker_name=$( shuf -n 1 "$effective_build_workers_file" )
-    if [[ $? -ne 0 ]]; then
-      set -e
-      log "shuf failed, trying again in a moment"
-      sleep 0.5
-      continue
-    fi
-    set -e
-    if [[ -f $YB_BUILD_WORKERS_FILE ]]; then
-      if ! cp "$YB_BUILD_WORKERS_FILE" "$cached_build_workers_file"; then
-        log "Failed copying $YB_BUILD_WORKERS_FILE even though it just existed!"
+    else
+      effective_build_workers_file=$YB_BUILD_WORKERS_FILE
+      if [[ ! -f $YB_BUILD_WORKERS_FILE ]]; then
+        if [[ $num_missing_build_workers_file_retries -ge 5 && -f $cached_build_workers_file ]]
+        then
+          log "The build worker list file ('$YB_BUILD_WORKERS_FILE') has been missing for" \
+              "$num_missing_build_workers_file_retries attempts. Will use cached build worker" \
+              "list file."
+          effective_build_workers_file=$cached_build_workers_file
+        else
+          log "The build worker list file ('$YB_BUILD_WORKERS_FILE') does not exist. Will retry".
+          set +e
+          # Listing the directory containing the file might clear NFS's cached knowledge of the file
+          # non-existence.
+          ( cd "${YB_BUILD_WORKERS_FILE%/*}" && ls &>/dev/null )
+          set -e
+          sleep 0.5
+          (( num_missing_build_workers_file_retries+=1 ))
+          continue
+        fi
       fi
-      num_missing_build_workers_file_retries=0
+      set +e
+      if ! build_worker_name=$( shuf -n 1 "$effective_build_workers_file" ); then
+        set -e
+        log "shuf failed, trying again in a moment"
+        sleep 0.5
+        continue
+      fi
+      set -e
+      if [[ -f $YB_BUILD_WORKERS_FILE ]]; then
+        if ! cp "$YB_BUILD_WORKERS_FILE" "$cached_build_workers_file"; then
+          log "Failed copying $YB_BUILD_WORKERS_FILE even though it just existed!"
+        fi
+        num_missing_build_workers_file_retries=0
+      fi
     fi
     if [[ -z $build_worker_name ]]; then
-      let no_worker_count+=1
+      (( no_worker_count+=1 ))
       if [[ $no_worker_count -ge 100 ]]; then
-        fatal "Found no live workers in "$YB_BUILD_WORKERS_FILE" in $no_worker_count attempts"
+        fatal "Found no live workers in $YB_BUILD_WORKERS_FILE in $no_worker_count attempts"
       fi
       log "Waiting for one second while no live workers are present in $YB_BUILD_WORKERS_FILE"
       sleep 1
@@ -396,29 +439,32 @@ if [[ $local_build_only == "false" &&
     # Exit code 255: ssh: connect to host ... port ...: Connection refused
     # $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY: we return this when we fail to find files or
     #   directories that are supposed to exist. We retry to work around NFS issues.
+    #
+    # "file not recognized: file truncated" could happen when re-running an interrupted build
+    # while the old compiler process is still running.
     if [[ $exit_code -eq 126 ||
           $exit_code -eq 127 ||
           $exit_code -eq 141 ||
           $exit_code -eq 254 ||
           $exit_code -eq 255 ||
           $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
-        egrep "\
-ccache: error: Failed to open .*: No such file or directory|\
-Fatal error: can't create .*: Stale file handle|\
-/usr/bin/env: bash: Input/output error\
-" "$stderr_path" &&
-        ! grep ": syntax error " "$stderr_path"
+        ( grep -E "$COMPILATION_FAILURE_STDERR_PATTERNS" "$stderr_path" &&
+          ! grep ": syntax error " "$stderr_path" )
     then
       remote_build_flush_stderr_file
       # TODO: distinguish between problems that can be retried on the same host, and problems
       # indicating that the host is down.
       # TODO: maintain a blacklist of hosts that are down and don't retry on the same host from
       # that blacklist list too soon.
-      log "Host $build_host is experiencing problems, retrying on a different host" \
-          "(this was attempt $attempt) after a 0.$sleep_deciseconds second delay"
+      if [[ -f $stderr_path && $exit_code -eq 0 ]]; then
+        echo "Exit code is 0, showing error output:" >&2
+        cat "$stderr_path" >&2
+      fi
+      log "Host $build_host is experiencing problems (exit code $exit_code), retrying on another" \
+          "host (this was attempt $attempt) after a 0.$sleep_deciseconds second delay"
       sleep 0.$sleep_deciseconds
       if [[ $sleep_deciseconds -lt 9 ]]; then
-        let sleep_deciseconds+=1
+        (( sleep_deciseconds+=1 ))
       fi
       continue
     fi
@@ -484,7 +530,7 @@ local_build_exit_handler() {
             echo "/-------------------------------------------------------------------------------"
             echo "| $compilation_step_name FAILED"
             echo "|-------------------------------------------------------------------------------"
-            IFS='\n'
+            IFS=$'\n'
             (
               tail -n +2 "$stderr_path"
               echo
@@ -498,11 +544,11 @@ local_build_exit_handler() {
                   if [[ -f "/usr/bin/realpath" && -e "$input_file" ]]; then
                     input_file=$( realpath "$input_file" )
                   fi
-                  let num_files_shown+=1
+                  (( num_files_shown+=1 ))
                   if [[ $num_files_shown -lt $MAX_INPUT_FILES_TO_SHOW ]]; then
                     echo "  $input_file"
                   else
-                    let num_files_skipped+=1
+                    (( num_files_skipped+=1 ))
                   fi
                 done
                 if [[ $num_files_skipped -gt 0 ]]; then
@@ -555,7 +601,7 @@ if [[ ${build_type:-} == "asan" &&
       $PWD == */postgres_build/src/backend/utils/adt &&
       # Turn off UBSAN instrumentation in a number of PostgreSQL source files determined by the
       # $NO_UBSAN_RE regular expression. See the definition of NO_UBSAN_RE for details.
-      $compiler_args_str =~ .*\ -c\ -o\ $NO_UBSAN_RE[.]o\ $NO_UBSAN_RE[.]c\ .* ]]; then
+      $compiler_args_str =~ .*\ -c\ -o\ ${NO_UBSAN_RE}[.]o\ ${NO_UBSAN_RE}[.]c\ .* ]]; then
   rewritten_args=()
   for arg in "${compiler_args[@]}"; do
     case $arg in
@@ -567,7 +613,7 @@ if [[ ${build_type:-} == "asan" &&
       ;;
     esac
   done
-  compiler_args=( "${rewritten_args[@]}" -fno-sanitize=undefined )
+  compiler_args=( "${rewritten_args[@]}" "-fno-sanitize=undefined" )
 fi
 
 if "$is_linking" && ! is_configure_mode_invocation && [[
@@ -581,6 +627,7 @@ if "$is_linking" && ! is_configure_mode_invocation && [[
 fi
 
 set_default_compiler_type
+find_or_download_thirdparty
 find_compiler_by_type "$YB_COMPILER_TYPE"
 
 case "$cc_or_cxx" in
@@ -592,29 +639,33 @@ case "$cc_or_cxx" in
     exit 1
 esac
 
-using_ccache=false
 # We use ccache if it is available and YB_NO_CCACHE is not set.
-if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; then
-  using_ccache=true
+if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; then
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="file_macro,pch_defines,time_macros"
   export CCACHE_BASEDIR=$YB_SRC_ROOT
-  if is_jenkins; then
-    # Enable reusing cache entries from builds in different directories, potentially with incorrect
-    # file paths in debug information. This is OK for Jenkins because we probably won't be running
-    # these builds in the debugger.
-    export CCACHE_NOHASHDIR=1
-  fi
+
   # Ensure CCACHE puts temporary files on the local disk.
   export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USER}
-  jenkins_ccache_dir=/n/jenkins/ccache
-  if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
-    if [[ ${YB_DEBUG_CCACHE:-0} == "1" ]] && ! is_jenkins; then
-      log "is_jenkins (based on JOB_NAME) is false for some reason, even though" \
-          "the user is 'jenkins'. Setting CCACHE_DIR to '$jenkins_ccache_dir' anyway." \
-          "This is host $HOSTNAME, and current directory is $PWD."
+  if [[ -n ${YB_CCACHE_DIR:-} ]]; then
+    export CCACHE_DIR=$YB_CCACHE_DIR
+  else
+    jenkins_ccache_dir=/n/jenkins/ccache
+    if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
+      # Enable reusing cache entries from builds in different directories, potentially with
+      # incorrect file paths in debug information. This is OK for Jenkins because we probably won't
+      # be running these builds in the debugger.
+      export CCACHE_NOHASHDIR=1
+
+      if [[ ${YB_DEBUG_CCACHE:-0} == "1" ]] && ! is_jenkins; then
+        log "is_jenkins (based on JOB_NAME) is false for some reason, even though" \
+            "the user is 'jenkins'. Setting CCACHE_DIR to '$jenkins_ccache_dir' anyway." \
+            "This is host $HOSTNAME, and current directory is $PWD."
+      fi
+      export CCACHE_DIR=$jenkins_ccache_dir
     fi
-    export CCACHE_DIR=$jenkins_ccache_dir
+  fi
+  if [[ ${CCACHE_DIR:-} =~ $YB_NFS_PATH_RE ]]; then
     # Do not update the stats file, because that involves locking and might be problematic/slow
     # on NFS.
     export CCACHE_NOSTATS=1
@@ -623,7 +674,7 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
 else
   cmd=( "$compiler_executable" )
   if [[ -n ${YB_EXPLAIN_WHY_NOT_USING_CCACHE:-} ]]; then
-    if ! which ccache >/dev/null; then
+    if ! command -v ccache >/dev/null; then
       log "Could not find ccache in PATH ( $PATH )"
     fi
     if [[ -n ${YB_NO_CCACHE:-} ]]; then
@@ -643,7 +694,7 @@ if "$instrument_functions"; then
   cmd+=( -finstrument-functions )
   if [[ -n ${YB_INSTRUMENT_FUNCTIONS_EXCLUDE_FUNCTION_LIST:-} ]]; then
     cmd+=(
-      -finstrument-functions-exclude-function-list=$YB_INSTRUMENT_FUNCTIONS_EXCLUDE_FUNCTION_LIST
+      "-finstrument-functions-exclude-function-list=$YB_INSTRUMENT_FUNCTIONS_EXCLUDE_FUNCTION_LIST"
     )
   fi
 
@@ -657,7 +708,7 @@ fi
 if "$has_yb_c_files" && [[ $PWD == $BUILD_ROOT/postgres_build/* ]]; then
   # Custom build flags for YB files inside of the PostgreSQL source tree. This re-enables some flags
   # that we had to disable by default in build_postgres.py.
-  cmd+=( -Werror=unused-function )
+  cmd+=( "-Werror=unused-function" )
 fi
 add_brew_bin_to_path
 
@@ -779,7 +830,7 @@ if grep -q ".h.gch: created by a different GCC executable" "$stderr_path" ||
    grep -q ".h.gch: not used because " "$stderr_path" ||
    grep -q "fatal error: malformed or corrupted AST file:" "$stderr_path" ||
    grep -q "new operators was enabled in PCH file but is currently disabled" "$stderr_path" ||
-   egrep -q \
+   grep -Eq \
        "definition of macro '.*' differs between the precompiled header .* and the command line" \
        "$stderr_path" ||
    grep -q " has been modified since the precompiled header " "$stderr_path" ||
@@ -801,7 +852,7 @@ then
   if [[ -n ${SOURCE_FILE} ]]; then
     SOURCE_FILE=${SOURCE_FILE:1:-1}
     # Dump stats for debugging
-    stat -x ${SOURCE_FILE}
+    stat -x "${SOURCE_FILE}"
   fi
 
   echo -e "${RED_COLOR}Removing '$PCH_PATH' so that further builds have a chance to" \
@@ -810,14 +861,14 @@ then
 fi
 
 if [[ $compiler_exit_code -ne 0 ]]; then
-  if egrep -q 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
+  if grep -Eq 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
        "$stderr_path" || \
-     egrep -q 'error: ld returned' "$stderr_path"; then
+     grep -Eq 'error: ld returned' "$stderr_path"; then
     determine_compiler_cmdline
     generate_build_debug_script rerun_failed_link_step "$determine_compiler_cmdline_rv -v"
   fi
 
-  if egrep ': undefined reference to ' "$stderr_path" >/dev/null; then
+  if grep -E ': undefined reference to ' "$stderr_path" >/dev/null; then
     for library_path in "${input_files[@]}"; do
       nm -gC "$library_path" | grep ParseGet
     done

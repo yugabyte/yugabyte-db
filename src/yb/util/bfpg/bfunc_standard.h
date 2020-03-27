@@ -29,10 +29,10 @@
 #include <string>
 
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_value.h"
 
 #include "yb/util/status.h"
 #include "yb/util/logging.h"
+#include "yb/util/uuid.h"
 #include "yb/util/yb_partition.h"
 
 namespace yb {

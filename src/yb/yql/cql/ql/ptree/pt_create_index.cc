@@ -38,7 +38,7 @@ PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
       covering_(covering),
       is_local_(false),
       column_descs_(memctx),
-      column_definitions_(memctx) {
+      auto_includes_(memctx) {
 }
 
 PTCreateIndex::~PTCreateIndex() {
@@ -46,26 +46,8 @@ PTCreateIndex::~PTCreateIndex() {
 
 namespace {
 
-CHECKED_STATUS SetupCoveringColumn(TreeNode *node, SemContext *sem_context) {
-  switch (node->opcode()) {
-  case TreeNodeOpcode::kPTName: {
-      PTName* const name_node = static_cast<PTName*>(node);
-      RETURN_NOT_OK(name_node->Analyze(sem_context));
-      RETURN_NOT_OK(name_node->SetupCoveringIndexColumn(sem_context));
-    }
-    break;
-
-  case TreeNodeOpcode::kPTJsonOp: {
-      PTJsonColumnWithOperators* const json_node = static_cast<PTJsonColumnWithOperators*>(node);
-      RETURN_NOT_OK(json_node->Analyze(sem_context));
-      RETURN_NOT_OK(json_node->SetupCoveringIndexColumn(sem_context));
-    }
-    break;
-
-  default:
-    return sem_context->Error(node, "Unexpected covering column type", ErrorCode::FAILURE);
-  }
-
+CHECKED_STATUS SetupCoveringColumn(PTIndexColumn *node, SemContext *sem_context) {
+  RETURN_NOT_OK(node->SetupCoveringIndexColumn(sem_context));
   return Status::OK();
 }
 
@@ -76,12 +58,11 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   bool is_system_ignored;
   RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
 
-  // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
   RETURN_NOT_OK(sem_context->LookupTable(relation_->ToTableName(), relation_->loc(),
                                          true /* write_table */,
                                          PermissionType::ALTER_PERMISSION,
                                          &table_, &is_system_ignored,
-                                         &column_descs_, &column_definitions_));
+                                         &column_descs_));
 
   // Save context state, and set "this" as current create-table statement in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
@@ -116,25 +97,38 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
     name_ = MCMakeShared<MCString>(sem_context->PTreeMem(), final_name.c_str());
   }
 
+  // Add covering columns.
+  if (covering_ != nullptr) {
+    RETURN_NOT_OK((covering_->Apply<SemContext, PTIndexColumn>(sem_context, &SetupCoveringColumn)));
+  }
+
   // Add remaining primary key columns from the indexed table. For non-unique index, add the columns
   // to the primary key of the index table to make the non-unique values unique. For unique index,
   // they should be added as non-primary-key columns.
   const YBSchema& schema = table_->schema();
   for (int idx = 0; idx < schema.num_key_columns(); idx++) {
-    const MCString col_name(schema.Column(idx).name().c_str(), sem_context->PTempMem());
-    PTColumnDefinition* col = sem_context->GetColumnDefinition(col_name);
-    if (!col->is_primary_key()) {
-      if (!is_unique_) {
-        RETURN_NOT_OK(AppendPrimaryColumn(sem_context, col));
-      } else {
-        RETURN_NOT_OK(AppendColumn(sem_context, col));
-      }
+    // Not adding key-column schema.columns(idx) to the INDEX metadata if it is already referred to
+    // by one of the index-columns.
+    const MCString key_name(schema.Column(idx).name().c_str(), sem_context->PTempMem());
+    PTColumnDefinition *coldef = sem_context->GetColumnDefinition(key_name);
+    if (coldef && coldef->colexpr()->opcode() == TreeNodeOpcode::kPTRef) {
+      // Column is already defined as a part of INDEX.
+      continue;
     }
-  }
 
-  // Add covering columns.
-  if (covering_ != nullptr) {
-    RETURN_NOT_OK((covering_->Apply<SemContext, TreeNode>(sem_context, &SetupCoveringColumn)));
+    // Create a new treenode PTIndexColumn for column definition.
+    MCSharedPtr<MCString> col_name =
+      MCMakeShared<MCString>(sem_context->PSemMem(), key_name.c_str());
+    PTQualifiedName::SharedPtr ref_name =
+      PTQualifiedName::MakeShared(sem_context->PSemMem(), loc_ptr(), col_name);
+    PTRef::SharedPtr col_ref = PTRef::MakeShared(sem_context->PSemMem(), loc_ptr(), ref_name);
+    PTIndexColumn::SharedPtr col =
+      PTIndexColumn::MakeShared(sem_context->PSemMem(), loc_ptr(), col_name, col_ref);
+    RETURN_NOT_OK(col->Analyze(sem_context));
+
+    // Add this key column to INDEX as it is not yet in the INDEX description.
+    auto_includes_.push_back(col);
+    RETURN_NOT_OK(AppendIndexColumn(sem_context, col.get()));
   }
 
   // Check whether the index is local, i.e. whether the hash keys match (including being in the
@@ -200,24 +194,21 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
+Status PTCreateIndex::AppendIndexColumn(SemContext *sem_context, PTColumnDefinition *column) {
+  if (!is_unique_ && sem_context->GetColumnDesc(*column->name())->is_primary()) {
+    return AppendPrimaryColumn(sem_context, column);
+  }
+
+  return AppendColumn(sem_context, column);
+}
+
 void PTCreateIndex::PrintSemanticAnalysisResult(SemContext *sem_context) {
   PTCreateTable::PrintSemanticAnalysisResult(sem_context);
 }
 
-Status PTCreateIndex::CheckPrimaryType(SemContext *sem_context,
-                                       const PTBaseType::SharedPtr& datatype) const {
-  DCHECK_NOTNULL(datatype.get());
-  DCHECK_NOTNULL(datatype->ql_type().get());
-
-  if (datatype->ql_type()->main() == DataType::JSONB) {
-    return CheckType(sem_context, datatype);
-  }
-
-  return PTCreateTable::CheckPrimaryType(sem_context, datatype);
-}
-
 Status PTCreateIndex::ToTableProperties(TableProperties *table_properties) const {
   table_properties->SetTransactional(true);
+  table_properties->SetUseMangledColumnName(true);
   return PTCreateTable::ToTableProperties(table_properties);
 }
 

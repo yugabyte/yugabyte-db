@@ -1,0 +1,26 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+-> /api v1.Routes
+-> /api/v1 v1.Routes
+
+###################################################################################################
+#
+# MetaMaster endpoints.
+#
+###################################################################################################
+
+# Returns the list of masters for a given instance.
+GET     /metamaster/universe/:universeUUID            com.yugabyte.yw.controllers.MetaMasterController.get(universeUUID: java.util.UUID)
+
+
+###################################################################################################
+#
+# Static resources.
+#
+###################################################################################################
+
+# Map static resources from the /public folder to the /assets URL path
+GET     /                           controllers.UIController.index()
+GET     /*file                      controllers.UIController.assetOrDefault(file)

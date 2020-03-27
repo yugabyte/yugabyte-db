@@ -15,6 +15,8 @@
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/rpc/connection.h"
@@ -25,33 +27,33 @@
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,
     "Time spent to get a processor for processing a CQL query request.",
     yb::MetricUnit::kMicroseconds,
     "Time spent to get a processor for processing a CQL query request.", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_CQLServerService_ProcessRequest,
     "Time spent processing a CQL query request. From parsing till executing",
     yb::MetricUnit::kMicroseconds,
     "Time spent processing a CQL query request. From parsing till executing", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_CQLServerService_ParseRequest,
     "Time spent parsing CQL query request", yb::MetricUnit::kMicroseconds,
     "Time spent parsing CQL query request", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_CQLServerService_QueueResponse,
     "Time spent to queue the response for a CQL query request back on the network",
     yb::MetricUnit::kMicroseconds,
     "Time spent after computing the CQL response to queue it onto the connection.", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_CQLServerService_ExecuteRequest,
     "Time spent executing the CQL query request in the handler", yb::MetricUnit::kMicroseconds,
     "Time spent executing the CQL query request in the handler", 60000000LU, 2);
 METRIC_DEFINE_counter(
     server, yb_cqlserver_CQLServerService_ParsingErrors, "Errors encountered when parsing ",
     yb::MetricUnit::kRequests, "Errors encountered when parsing ");
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_CQLServerService_Any,
     "yb.cqlserver.CQLServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
     "Microseconds spent handling "
@@ -90,7 +92,6 @@ using std::unique_ptr;
 
 using client::YBClient;
 using client::YBSession;
-using client::YBMetaDataCache;
 using ql::ExecutedResult;
 using ql::PreparedResult;
 using ql::RowsResult;
@@ -134,7 +135,7 @@ CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListP
     : QLProcessor(service_impl->client(), service_impl->metadata_cache(),
                   service_impl->cql_metrics().get(),
                   service_impl->clock(),
-                  std::bind(&CQLServiceImpl::GetTransactionPool, service_impl)),
+                  service_impl->transaction_pool_provider()),
       service_impl_(service_impl),
       cql_metrics_(service_impl->cql_metrics()),
       pos_(pos),
@@ -159,7 +160,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   if (!CQLRequest::ParseRequest(call_->serialized_request(), compression_scheme,
                                 &request, &response)) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
-    SendResponse(*response);
+    PrepareAndSendResponse(response);
     return;
   }
 
@@ -173,7 +174,14 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   call_->SetRequest(request_, service_impl_);
   retry_count_ = 0;
   response.reset(ProcessRequest(*request_));
-  if (response != nullptr) {
+  PrepareAndSendResponse(response);
+}
+
+void CQLProcessor::PrepareAndSendResponse(const unique_ptr<CQLResponse>& response) {
+  if (response) {
+    const CQLConnectionContext& context =
+        static_cast<const CQLConnectionContext&>(call_->connection()->context());
+    response->set_registered_events(context.registered_events());
     SendResponse(*response);
   }
 }
@@ -369,6 +377,9 @@ CQLResponse* CQLProcessor::ProcessRequest(const AuthResponseRequest& req) {
 }
 
 CQLResponse* CQLProcessor::ProcessRequest(const RegisterRequest& req) {
+  CQLConnectionContext& context =
+      static_cast<CQLConnectionContext&>(call_->connection()->context());
+  context.add_registered_events(req.events());
   return new ReadyResponse(req);
 }
 
@@ -383,9 +394,7 @@ shared_ptr<const CQLStatement> CQLProcessor::GetPreparedStatement(const CQLMessa
 
 void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::SharedPtr& result) {
   unique_ptr<CQLResponse> response(s.ok() ? ProcessResult(result) : ProcessError(s));
-  if (response) {
-    SendResponse(*response);
-  }
+  PrepareAndSendResponse(response);
 }
 
 CQLResponse* CQLProcessor::ProcessError(const Status& s,

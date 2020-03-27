@@ -62,6 +62,7 @@ class QLScanRange {
   };
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
+  QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
 
   // Return the inclusive lower and upper range values to scan.
   std::vector<QLValuePB> range_values(bool lower_bound) const;
@@ -103,6 +104,7 @@ class QLScanSpec : public YQLScanSpec {
 
   // Scan for the given hash key and a condition.
   QLScanSpec(const QLConditionPB* condition,
+             const QLConditionPB* if_condition,
              const bool is_forward_scan,
              QLExprExecutor::SharedPtr executor = nullptr);
 
@@ -116,8 +118,12 @@ class QLScanSpec : public YQLScanSpec {
     return is_forward_scan_;
   }
 
+  // Get Schema if available.
+  virtual const Schema* schema() const { return nullptr; }
+
  protected:
   const QLConditionPB* condition_;
+  const QLConditionPB* if_condition_;
   const bool is_forward_scan_;
   QLExprExecutor::SharedPtr executor_;
 };

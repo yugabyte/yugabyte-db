@@ -62,27 +62,23 @@ class TabletServerPathHandlers {
   CHECKED_STATUS Register(Webserver* server);
 
  private:
+  void HandleTablesPage(const Webserver::WebRequest& req,
+                        std::stringstream* output);
   void HandleTabletsPage(const Webserver::WebRequest& req,
                          std::stringstream* output);
-  void HandleTabletPage(const Webserver::WebRequest& req,
-                        std::stringstream* output);
-  void HandleTransactionsPage(const Webserver::WebRequest& req,
-                              std::stringstream* output);
-  void HandleTabletSVGPage(const Webserver::WebRequest& req,
-                           std::stringstream* output);
-  void HandleLogAnchorsPage(const Webserver::WebRequest& req,
+  void HandleOperationsPage(const Webserver::WebRequest& req,
                             std::stringstream* output);
-  void HandleConsensusStatusPage(const Webserver::WebRequest& req,
-                                 std::stringstream* output);
   void HandleDashboardsPage(const Webserver::WebRequest& req,
                             std::stringstream* output);
   void HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
                                     std::stringstream* output);
+  void HandleHealthCheck(const Webserver::WebRequest& req,
+                         std::stringstream* output);
   std::string ConsensusStatePBToHtml(const consensus::ConsensusStatePB& cstate) const;
   std::string GetDashboardLine(const std::string& link,
                                const std::string& text, const std::string& desc);
 
-  TabletServer* tserver_;
+  TabletServer* const tserver_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServerPathHandlers);
 };

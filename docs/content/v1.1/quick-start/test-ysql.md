@@ -1,7 +1,7 @@
 ---
 title: 5. Test YSQL API
 linkTitle: 5. Test YSQL API
-description: Test YugaByte SQL (YSQL) API
+description: Test Yugabyte SQL (YSQL) API
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v1.1:
@@ -10,9 +10,9 @@ menu:
 type: page
 ---
 
-Follow the instructions below to test YugaByte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
+Follow the instructions below to test YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
-[**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugaByte DB ships with a version of psql in its bin directory.
+[**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugabyteDB ships with a version of psql in its bin directory.
 
 
 ## 1. Create a new cluster

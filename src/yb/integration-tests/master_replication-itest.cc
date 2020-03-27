@@ -62,8 +62,8 @@ using client::YBTableName;
 using std::shared_ptr;
 
 const std::string kKeyspaceName("my_keyspace");
-const YBTableName kTableName1(kKeyspaceName, "testMasterReplication-1");
-const YBTableName kTableName2(kKeyspaceName, "testMasterReplication-2");
+const YBTableName kTableName1(YQL_DATABASE_CQL, kKeyspaceName, "testMasterReplication-1");
+const YBTableName kTableName2(YQL_DATABASE_CQL, kKeyspaceName, "testMasterReplication-2");
 
 const int kNumTabletServerReplicas = 3;
 
@@ -125,7 +125,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
     b.AddColumn("int_val")->Type(INT32)->NotNull();
     b.AddColumn("string_val")->Type(STRING)->NotNull();
     CHECK_OK(b.Build(&schema));
-    gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema)
         .hash_schema(YBHashSchema::kMultiColumnHash)

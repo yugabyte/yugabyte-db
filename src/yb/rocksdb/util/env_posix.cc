@@ -57,14 +57,15 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/io_posix.h"
 #include "yb/rocksdb/util/thread_posix.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/posix_logger.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_local.h"
 #include "yb/rocksdb/util/thread_status_updater.h"
+
+#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/string_util.h"
 
 #if !defined(TMPFS_MAGIC)
 #define TMPFS_MAGIC 0x01021994
@@ -260,8 +261,8 @@ class PosixEnv : public Env {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
       if (errno != EEXIST) {
-        LOG(DFATAL) << "Not exists: " << name;
         result = STATUS_IO_ERROR(name, errno);
+        LOG(DFATAL) << "Mkdir failed: " << result;
       } else if (!DirExists(name)) { // Check that name is actually a
                                      // directory.
         // Message is taken from mkdir
@@ -369,7 +370,9 @@ class PosixEnv : public Env {
       *result = buf;
     }
     // Directory may already exist
-    CreateDir(*result);
+    if (!DirExists(*result)) {
+      RETURN_NOT_OK(CreateDir(*result));
+    }
     return Status::OK();
   }
 
@@ -633,7 +636,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
       }
       close(fd);
     } else {
-      *result = std::make_unique<PosixRandomAccessFile>(fname, fd, options);
+      *result = std::make_unique<yb::PosixRandomAccessFile>(fname, fd, options);
     }
     return s;
   }

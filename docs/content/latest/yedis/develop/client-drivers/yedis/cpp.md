@@ -1,44 +1,63 @@
+---
+title: Build a YugabyteDB application using C++ and YEDIS
+headerTitle: Build an application using C++
+linkTitle: C++
+description: Use C++ to build a YugabyteDB application that interacts with YEDIS
+aliases:
+ - /latest/yedis/develop/client-drivers/cpp
+menu:
+  latest:
+    identifier: client-drivers-yedis-cpp
+    parent: develop-yedis
+isTocNested: true
+showAsideToc: true
+---
 
-## Pre-requisites
+## Prerequisites
 
 The tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the Redis shell. If
-  not please follow these steps in the [quick start guide](../../../quick-start/test-redis/).
-- have C++11.
+- installed YugabyteDB, created a universe and are able to interact with it using the Redis shell. If
+  not please follow these steps in the [Quick Start guide](../../../quick-start/).
+- have C++ 11 or later.
 
-## Installing the Redis C++ Driver
+## Install the Redis C++ driver
 
 We use the [`cpp_redis`](https://redis.io/clients#c--) driver. To install the library do the following:
 
 - Clone the `cpp_redis` repository
+  
 ```sh
 $ git clone https://github.com/Cylix/cpp_redis.git
 ```
 
 - Get the networking module ([tacopie](https://github.com/Cylix/tacopie))
+
 ```sh
 $ cd cpp_redis
 $ git submodule init && git submodule update
 ```
 
 - Create a build directory and move into it
+
 ```sh
 $ mkdir build && cd build
 ```
 
 - Generate the Makefile using CMake
+
 ```sh
 $ cmake .. -DCMAKE_BUILD_TYPE=Release
 ```
 
 - Build and install the library
+
 ```sh
 $ make
 $ make install
 ```
 
-## Writing a hello world redis app
+## Write the HelloWorld C++ application
 
 Create a file `ybredis_hello_world.cpp` and copy the contents below:
 
@@ -79,7 +98,7 @@ int main() {
     }
     cout << "Query result:" <<endl;
     for (int i = 0; i < retVal.size(); i=i+2) {
-      cout << retVal[i] << "=" <<retVal[i+1] << endl; 
+      cout << retVal[i] << "=" <<retVal[i+1] << endl;
     }
   });
 
@@ -90,25 +109,25 @@ int main() {
 }
 ```
 
-## Running the app
+## Run the application
 
-To compile the file, run the following command
+To compile the file, run the following command.
 
 ```sh
 $ g++ -ltacopie -lcpp_redis -std=c++11 -o ybredis_hello_world ybredis_hello_world.cpp
 ```
 
-To run the app do
+To run the application, run the following command.
 
 ```sh
 $ ./ybredis_hello_world
 ```
 
-You should see the following output
+You should see the following output.
 
 ```
 HMSET returned OK: id=1, name=John, age=35, language=Redis
-Query result: 
+Query result:
 age=35
 language=Redis
 name=John

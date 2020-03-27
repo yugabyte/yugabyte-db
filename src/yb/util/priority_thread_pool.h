@@ -18,6 +18,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -43,22 +44,14 @@ class PriorityThreadPoolTask {
   // PriorityThreadPool::Remove.
   virtual bool BelongsTo(void* key) = 0;
 
-  // Priority of this task.
-  virtual int Priority() const = 0;
+  virtual std::string ToString() const = 0;
 
   size_t SerialNo() const {
     return serial_no_;
   }
 
-  const std::string& ToString() const;
-
  private:
-  virtual void AddToStringFields(std::string* out) const = 0;
-
   const size_t serial_no_;
-  mutable std::atomic<bool> string_representation_ready_{false};
-  mutable simple_spinlock mutex_;
-  mutable std::string string_representation_;
 };
 
 // Tasks submitted to this pool have assigned priority and are picked from queue using it.
@@ -68,12 +61,23 @@ class PriorityThreadPool {
   ~PriorityThreadPool();
 
   // Submit task to the pool.
-  // Returns null if task was successfully submitted, otherwise task is returned.
-  MUST_USE_RESULT std::unique_ptr<PriorityThreadPoolTask> Submit(
-      std::unique_ptr<PriorityThreadPoolTask> task);
+  // On success task ownership is transferred to the pool, i.e. `task` would point to nullptr.
+  CHECKED_STATUS Submit(int priority, std::unique_ptr<PriorityThreadPoolTask>* task);
+
+  template <class Task>
+  CHECKED_STATUS Submit(int priority, std::unique_ptr<Task>* task) {
+    std::unique_ptr<PriorityThreadPoolTask> temp_task = std::move(*task);
+    auto result = Submit(priority, &temp_task);
+    task->reset(down_cast<Task*>(temp_task.release()));
+    return result;
+  }
 
   // Remove all tasks with provided key from the pool.
   void Remove(void* key);
+
+  // Change priority of task with specified serial no.
+  // Returns true if change was performed.
+  bool ChangeTaskPriority(size_t serial_no, int priority);
 
   void Shutdown() {
     StartShutdown();

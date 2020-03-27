@@ -58,6 +58,17 @@ std::string Operation::LogPrefix() const {
   return Format("T $0 $1: ", state()->tablet()->tablet_id(), this);
 }
 
+Status Operation::Replicated(int64_t leader_term) {
+  Status complete_status = Status::OK();
+  RETURN_NOT_OK(DoReplicated(leader_term, &complete_status));
+  state()->CompleteWithStatus(complete_status);
+  return Status::OK();
+}
+
+void Operation::Aborted(const Status& status) {
+  state()->CompleteWithStatus(DoAborted(status));
+}
+
 void OperationState::CompleteWithStatus(const Status& status) const {
   if (completion_clbk_) {
     completion_clbk_->CompleteWithStatus(status);
@@ -72,13 +83,6 @@ void OperationState::SetError(const Status& status, tserver::TabletServerErrorPB
 
 OperationState::OperationState(Tablet* tablet)
     : tablet_(tablet) {
-}
-
-Arena* OperationState::arena() {
-  if (!arena_) {
-    arena_.emplace(32_KB, 4_MB);
-  }
-  return arena_.get_ptr();
 }
 
 void OperationState::set_consensus_round(

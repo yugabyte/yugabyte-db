@@ -172,9 +172,7 @@ recheck:
 	if (function)
 	{
 		/* We have a compiled function, but is it still valid? */
-		// TODO(dmitry) once ALTER FUNCTION will be supported in YB mode detect that function could be
-		// changed and recompile.
-		if (IsYugaByteEnabled() ? true :
+		if (IsYugaByteEnabled() ? function->yb_catalog_version == yb_catalog_cache_version :
 				(function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
 				ItemPointerEquals(&function->fn_tid, &procTup->t_self)))
 			function_valid = true;
@@ -248,7 +246,7 @@ recheck:
  * The passed-in "function" pointer is either NULL or an already-allocated
  * function struct to overwrite.
  *
- * While compiling a function, the CurrentMemoryContext is the
+ * While compiling a function, the GetCurrentMemoryContext() is the
  * per-function memory context of the function we are compiling. That
  * means a palloc() will allocate storage with the same lifetime as
  * the function itself.
@@ -371,6 +369,8 @@ do_compile(FunctionCallInfo fcinfo,
 		function->fn_is_trigger = PLPGSQL_NOT_TRIGGER;
 
 	function->fn_prokind = procStruct->prokind;
+
+	function->yb_catalog_version = yb_catalog_cache_version;
 
 	/*
 	 * Initialize the compiler, particularly the namespace stack.  The
@@ -864,7 +864,7 @@ plpgsql_compile_inline(char *proc_source)
 	 * All the rest of the compile-time storage (e.g. parse tree) is kept in
 	 * its own memory context, so it can be reclaimed easily.
 	 */
-	func_cxt = AllocSetContextCreate(CurrentMemoryContext,
+	func_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 									 "PL/pgSQL inline code context",
 									 ALLOCSET_DEFAULT_SIZES);
 	plpgsql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);

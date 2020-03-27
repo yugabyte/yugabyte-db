@@ -36,6 +36,8 @@ class RedisTableTestBase : public YBTableTestBase {
 
   void RedisTtlSetCommands();
   void RedisTtlGetCommands();
+
+  bool enable_ysql() override { return false; }
 };
 
 }  // namespace integration_tests

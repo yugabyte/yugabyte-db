@@ -25,7 +25,7 @@
 
 using namespace std::literals;
 using strings::Substitute;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 
 namespace yb {
 namespace util {

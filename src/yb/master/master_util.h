@@ -51,6 +51,18 @@ void CopyRegistration(consensus::RaftPeerPB source, TSInfoPB* dest);
 void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest);
 void CopyRegistration(ServerRegistrationPB source, TSInfoPB* dest);
 
+bool IsSystemNamespace(const std::string& namespace_name);
+
+YQLDatabase GetDefaultDatabaseType(const std::string& keyspace_name);
+
+template<class PB>
+YQLDatabase GetDatabaseType(const PB& ns) {
+  return ns.has_database_type() ? ns.database_type() : GetDefaultDatabaseType(ns.name());
+}
+
+YQLDatabase GetDatabaseTypeForTable(const TableType table_type);
+TableType GetTableTypeForDatabase(const YQLDatabase database_type);
+
 } // namespace master
 } // namespace yb
 

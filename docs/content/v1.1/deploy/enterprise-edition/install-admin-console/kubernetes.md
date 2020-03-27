@@ -26,7 +26,7 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 For deploying a YugaWare helm chart we need have a service account which has cluster admin access, if the user in context already has that access you can skip this step.
 
 ```sh
-$ kubectl apply -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/helm/yugabyte-rbac.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/helm/yugabyte-rbac.yaml
 ```
 
 ```

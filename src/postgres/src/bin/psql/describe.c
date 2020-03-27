@@ -2083,9 +2083,9 @@ describeOneTableDetails(const char *schemaname,
 									  partconstraintdef);
 				printTableAddFooter(&cont, tmpbuf.data);
 			}
-
-			PQclear(result);
 		}
+
+		PQclear(result);
 	}
 
 	if (tableinfo.relkind == RELKIND_PARTITIONED_TABLE)

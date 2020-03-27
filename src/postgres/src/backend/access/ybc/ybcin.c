@@ -32,6 +32,7 @@
 #include "access/ybcin.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
+#include "commands/ybccmds.h"
 #include "utils/rel.h"
 #include "executor/ybcModifyTable.h"
 
@@ -114,28 +115,11 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	YBCBuildState	buildstate;
 	double			heap_tuples = 0;
 
-	PG_TRY();
-	{
-		/* Buffer the inserts into the index for initdb */
-		if (IsBootstrapProcessingMode())
-			YBCStartBufferingWriteOperations();
-
-		/* Do the heap scan */
-		buildstate.isprimary = index->rd_index->indisprimary;
-		buildstate.index_tuples = 0;
-		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
-										 &buildstate, NULL);
-	}
-	PG_CATCH();
-	{
-		if (IsBootstrapProcessingMode())
-			YBCFlushBufferedWriteOperations();
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	if (IsBootstrapProcessingMode())
-		YBCFlushBufferedWriteOperations();
+	/* Do the heap scan */
+	buildstate.isprimary = index->rd_index->indisprimary;
+	buildstate.index_tuples = 0;
+	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
+									 &buildstate, NULL);
 
 	/*
 	 * Return statistics
@@ -247,28 +231,45 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 void 
 ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys, int norderbys)
 {
-	if (scan->indexRelation->rd_index->indisprimary)
-		ybc_pkey_beginscan(scan->heapRelation, scan->indexRelation, scan, nscankeys, scankey);
-	else
-		ybc_index_beginscan(scan->indexRelation, scan, nscankeys, scankey);
+	if (scan->opaque)
+	{
+		/* For rescan, end the previous scan. */
+		ybcinendscan(scan);
+		scan->opaque = NULL;
+	}
+
+	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation, scan->xs_want_itup,
+																	 nscankeys, scankey);
+	ybScan->index = scan->indexRelation;
+	scan->opaque = ybScan;
 }
 
+/*
+ * Processing the following SELECT.
+ *   SELECT data FROM heapRelation WHERE rowid IN
+ *     ( SELECT rowid FROM indexRelation WHERE key = given_value )
+ *
+ * TODO(neil) Postgres layer should make just one request for IndexScan.
+ *   - Query ROWID from IndexTable using key.
+ *   - Query data from Table (relation) using ROWID.
+ */
 bool
 ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
 	Assert(dir == ForwardScanDirection || dir == BackwardScanDirection);
 	const bool is_forward_scan = (dir == ForwardScanDirection);
 
-	scan->xs_ctup.t_ybctid = 0;
+	YbScanDesc ybscan = (YbScanDesc) scan->opaque;
+	ybscan->exec_params = scan->yb_exec_params;
+	Assert(PointerIsValid(ybscan));
 
-	/* 
-	 * If IndexTuple is requested or it is a secondary index, return the result as IndexTuple.
-	 * Otherwise, return the result as a HeapTuple of the base table.
+	/*
+	 * IndexScan(SysTable, Index) --> HeapTuple.
 	 */
-	if (scan->xs_want_itup || !scan->indexRelation->rd_index->indisprimary)
+	scan->xs_ctup.t_ybctid = 0;
+	if (ybscan->prepare_params.index_only_scan)
 	{
-		IndexTuple tuple = ybc_index_getnext(scan, is_forward_scan);
-
+		IndexTuple tuple = ybc_getnext_indextuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{
 			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
@@ -278,8 +279,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
-		HeapTuple tuple = ybc_pkey_getnext(scan, is_forward_scan);
-
+		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{
 			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
@@ -294,8 +294,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 void 
 ybcinendscan(IndexScanDesc scan)
 {
-	if (scan->indexRelation->rd_index->indisprimary)
-		ybc_pkey_endscan(scan);
-	else
-		ybc_index_endscan(scan);
+	YbScanDesc ybscan = (YbScanDesc)scan->opaque;
+	Assert(PointerIsValid(ybscan));
+	ybcEndScan(ybscan);
 }

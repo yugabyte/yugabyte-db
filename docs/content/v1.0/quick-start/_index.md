@@ -3,7 +3,7 @@ title: Community Edition Quick Start
 linkTitle: Quick Start
 description: Community Edition Quick Start
 image: /images/section_icons/index/quick_start.png
-headcontent: The easiest way to test YugaByte DB's basic features and APIs is to create a local multi-node cluster. We recommend deploying YugaByte DB to individual machines for performance benchmarking and pre-production evaluations.  
+headcontent: The easiest way to test YugabyteDB's basic features and APIs is to create a local multi-node cluster. We recommend deploying YugabyteDB to individual machines for performance benchmarking and pre-production evaluations.  
 type: page
 menu:
   v1.0:
@@ -11,9 +11,9 @@ menu:
     weight: 100
 ---
 
-{{< hero class="enterprise-edition" title="YugaByte DB Enterprise Edition" >}}
+{{< hero class="enterprise-edition" title="YugabyteDB Enterprise Edition" >}}
 <p class="subtitle">
-YugaByte DB Community Edition plus:
+YugabyteDB Community Edition plus:
 </p>
 <div class="row features">
 <div class="col-12 col-md-12 col-lg-12 col-xl-4">
@@ -41,7 +41,7 @@ YugaByte DB Community Edition plus:
     <a class="section-link icon-offset" href="install/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">1. Install YugaByte DB</div>
+        <div class="title">1. Install YugabyteDB</div>
       </div>
       <div class="body">
         Install the binary on macOS/Linux or use Docker/Kubernetes to run on any OS of choice.

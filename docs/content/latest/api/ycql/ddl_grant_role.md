@@ -1,7 +1,9 @@
 ---
-title: GRANT ROLE
+title: GRANT ROLE statement [YCQL]
+headerTitle: GRANT ROLE
+linkTitle: GRANT ROLE
 summary: Grant a role to another role
-description: GRANT ROLE
+description: Use the GRANT ROLE statement to grant a role's permissions and SUPERUSER status to another role.
 menu:
   latest:
     parent: api-cassandra
@@ -14,11 +16,12 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `GRANT ROLE` statement is used to grant a role's permissions and SUPERUSER status to another role. More than one role can be granted to another role, and the receiving role will possess the union of all the permissions from the roles granted to it (either directly of indirectly through inheritance) plus the SUPERUSER status if any of the roles granted to it has it. For example, if A is granted to B, and B is granted to C, C will be granted all the permissions from A and B, and if either A or B is a SUPERUSER, then C will also be a SUPERUSER.
+
+Use the `GRANT ROLE` statement to grant a role's permissions and SUPERUSER status to another role. More than one role can be granted to another role, and the receiving role will possess the union of all the permissions from the roles granted to it (either directly of indirectly through inheritance) plus the SUPERUSER status if any of the roles granted to it has it. For example, if A is granted to B, and B is granted to C, C will be granted all the permissions from A and B, and if either A or B is a SUPERUSER, then C will also be a SUPERUSER.
 
 Granted roles form an acyclic graph, in other words, a role cannot be granted to any of the roles granted to it either directly or indirectly. For example, if A is granted to B, and B granted to C, C cannot be granted to neither A, B, nor C.
 
-This statment is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
 
 ## Syntax
 
@@ -38,6 +41,7 @@ Where
 - `role_name` is a text identifier.
 
 ## Semantics
+
 - Both roles must exist or an error will be raised.
 - Permission `AUTHORIZE` on `ALL ROLES` or on the roles being used in the statement is necessary. Otherwise, an unauthorized error will be returned.
 - If a role is granted to any role granted to it (either directly or indirectly), an error will be raised.
@@ -48,12 +52,11 @@ Where
 cqlsh:example> GRANT ROLE eng to robert;
 ```
 
-## See Also
+## See also
 
-[`ALTER ROLE`](../ddl_alter_role)
-[`DROP ROLE`](../ddl_drop_role)
-[`CREATE ROLE`](../ddl_create_role)
-[`REVOKE ROLE`](../ddl_revoke_role)
-[`GRANT PERMISSION`](../ddl_grant_permission)
-[`REVOKE PERMISSION`](../ddl_revoke_permission)
-[Other CQL Statements](..)
+- [`ALTER ROLE`](../ddl_alter_role)
+- [`DROP ROLE`](../ddl_drop_role)
+- [`CREATE ROLE`](../ddl_create_role)
+- [`REVOKE ROLE`](../ddl_revoke_role)
+- [`GRANT PERMISSION`](../ddl_grant_permission)
+- [`REVOKE PERMISSION`](../ddl_revoke_permission)

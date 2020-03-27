@@ -34,7 +34,12 @@
 #define YB_UTIL_BITMAP_H
 
 #include <string>
+
+#include <boost/container/small_vector.hpp>
+
 #include "yb/gutil/bits.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -221,6 +226,48 @@ class TrueBitIterator {
   size_t bit_idx_;
 };
 
+// Bitmap that is optimized for the following scenario:
+//   1) Bits could only be set, i.e. clear is not allowed.
+//   2) Usually bits are getting set in increasing order.
+//   3) Bitmap is frequently encoded and skipped, but rarely decoded.
+//
+// Since we optimize for frequent encoding, we prefer size optimization over performance.
+class OneWayBitmap {
+ public:
+  void Set(size_t bit);
+  bool Test(size_t bit) const;
+
+  // Returns number of bits set.
+  size_t CountSet() const {
+    return ones_counter_;
+  }
+
+  // Encodes current representation into provided buffer.
+  void EncodeTo(boost::container::small_vector_base<uint8_t>* out) const;
+
+  // Encodes current representation into hex string, useful for encoding debugging.
+  std::string EncodeToHexString() const;
+
+  std::string ToString() const;
+
+  // Decodes bitmap from start of the slice, removing decoded prefix from it.
+  static Result<OneWayBitmap> Decode(Slice* slice);
+
+  // Removes encoded bitmap from slice prefix, w/o decoding slice.
+  static CHECKED_STATUS Skip(Slice* slice);
+
+ private:
+  typedef uint8_t ElementType;
+  static constexpr size_t kBitsPerElement = sizeof(ElementType) * 8;
+  static constexpr ElementType kAllOnes = ~static_cast<ElementType>(0);
+  size_t ones_counter_ = 0;
+
+  // Bitmap is stored as number of bits in fully filled bytes at start of the set,
+  // followed by remaining bitmap state.
+  size_t fully_filled_bits_ = 0;
+  boost::container::small_vector<ElementType, sizeof(size_t)> data_;
+};
+
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_BITMAP_H

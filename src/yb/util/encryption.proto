@@ -21,6 +21,13 @@ message EncryptionParamsPB {
   bytes data_key = 1;
   bytes nonce = 2;
   int32 counter = 3;
+  // When computing counter increment, do we want to overflow the counter into the rest of the
+  // initialization vector as part of the new format.
+  bool openssl_compatible_counter_overflow  = 4;
+}
+
+message UniverseKeysPB {
+  map<string, bytes> map = 1;
 }
 
 message UniverseKeyRegistryPB {

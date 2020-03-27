@@ -16,7 +16,6 @@
 using namespace std::placeholders;
 
 namespace yb {
-namespace util {
 
 namespace {
 
@@ -30,7 +29,7 @@ CHECKED_STATUS CreateInvalid(Slice input, int err = 0) {
 }
 
 CHECKED_STATUS CheckNotSpace(Slice slice) {
-  if (slice.empty() || isspace(*to_char_ptr(slice.data()))) {
+  if (slice.empty() || isspace(*util::to_char_ptr(slice.data()))) {
     // disable skip of spaces.
     return CreateInvalid(slice);
   }
@@ -66,5 +65,4 @@ Result<long double> CheckedStold(Slice slice) {
   return CheckedSton<long double>(slice, std::strtold);
 }
 
-} // namespace util
 } // namespace yb

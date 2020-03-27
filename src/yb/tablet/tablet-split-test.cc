@@ -16,6 +16,7 @@
 #include <boost/algorithm/string/join.hpp>
 
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/docdb/docdb.h"
 
@@ -110,7 +111,7 @@ TEST_F(TabletSplitTest,  v) {
   }
   auto source_rows2 = source_rows;
 
-  std::vector<std::shared_ptr<TabletClass>> split_tablets;
+  std::vector<TabletPtr> split_tablets;
 
   Partition partition = tablet()->metadata()->partition();
   docdb::KeyBounds key_bounds;
@@ -124,7 +125,7 @@ TEST_F(TabletSplitTest,  v) {
       LOG(INFO) << "Split hash code: " << split_hash_code;
       const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
       docdb::KeyBytes encoded_doc_key;
-      docdb::DocKeyEncoderAfterCotableIdStep(&encoded_doc_key).Hash(
+      docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
           split_hash_code, std::vector<docdb::PrimitiveValue>());
       partition.TEST_set_partition_key_end(partition_key);
       key_bounds.upper = encoded_doc_key;
@@ -172,8 +173,8 @@ TEST_F(TabletSplitTest,  v) {
     // Each split tablet data size should be less than original data size divided by number
     // of split points.
     ASSERT_LT(
-        split_tablet->doc_db().regular->GetDataSSTFileSize(),
-        tablet()->doc_db().regular->GetDataSSTFileSize() / kNumSplits);
+        split_tablet->doc_db().regular->GetCurrentVersionDataSstFilesSize(),
+        tablet()->doc_db().regular->GetCurrentVersionDataSstFilesSize() / kNumSplits);
   }
 
   // Split tablets should have all data from the source tablet.

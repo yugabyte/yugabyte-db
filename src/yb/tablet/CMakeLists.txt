@@ -30,18 +30,23 @@
 # under the License.
 #
 
-YB_INCLUDE_EXTENSIONS()
-
 set(TABLET_SRCS
   abstract_tablet.cc
+  cleanup_aborts_task.cc
+  cleanup_intents_task.cc
+  remove_intents_task.cc
+  running_transaction.cc
+  tablet_snapshots.cc
   tablet.cc
   tablet_bootstrap.cc
   tablet_bootstrap_if.cc
+  tablet_component.cc
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
   tablet_peer.cc
   transaction_coordinator.cc
   transaction_participant.cc
+  transaction_status_resolver.cc
   operation_order_verifier.cc
   operations/operation.cc
   operations/change_metadata_operation.cc
@@ -51,7 +56,6 @@ set(TABLET_SRCS
   operations/update_txn_operation.cc
   operations/write_operation.cc
   operations/snapshot_operation.cc
-  lock_manager.cc
   maintenance_manager.cc
   mvcc.cc
   tablet_metadata.cc
@@ -108,7 +112,6 @@ ADD_YB_TEST(tablet-schema-test)
 ADD_YB_TEST(tablet_bootstrap-test)
 ADD_YB_TEST(maintenance_manager-test)
 ADD_YB_TEST(mvcc-test)
-ADD_YB_TEST(lock_manager-test)
 ADD_YB_TEST(composite-pushdown-test)
 ADD_YB_TEST(tablet_peer-test)
 ADD_YB_TEST(tablet_random_access-test)

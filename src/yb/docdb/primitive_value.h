@@ -58,7 +58,7 @@ class PrimitiveValue {
   // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
   static constexpr int64_t kCompleteJsonb = 1;
 
-  PrimitiveValue() : type_(ValueType::kNull) {
+  PrimitiveValue() : type_(ValueType::kNullLow) {
   }
 
   explicit PrimitiveValue(ValueType value_type);
@@ -87,7 +87,7 @@ class PrimitiveValue {
       type_ = other.type_;
       frozen_val_ = new FrozenContainer(*(other.frozen_val_));
     } else {
-      memmove(this, &other, sizeof(PrimitiveValue));
+      memmove(static_cast<void*>(this), &other, sizeof(PrimitiveValue));
     }
     ttl_seconds_ = other.ttl_seconds_;
     write_time_ = other.write_time_;
@@ -243,8 +243,10 @@ class PrimitiveValue {
   static PrimitiveValue SystemColumnId(SystemColumnIds system_column_id);
   static PrimitiveValue Int32(int32_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue UInt32(uint32_t v, SortOrder sort_order = SortOrder::kAscending);
+  static PrimitiveValue UInt64(uint64_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue TableId(Uuid table_id);
+  static PrimitiveValue PgTableOid(const PgTableOid pgtable_id);
   static PrimitiveValue Jsonb(const std::string& json);
 
   KeyBytes ToKeyBytes() const;
@@ -309,6 +311,11 @@ class PrimitiveValue {
   int64_t GetInt64() const {
     DCHECK(ValueType::kInt64 == type_ || ValueType::kInt64Descending == type_);
     return int64_val_;
+  }
+
+  uint64_t GetUInt64() const {
+    DCHECK(ValueType::kUInt64 == type_ || ValueType::kUInt64Descending == type_);
+    return uint64_val_;
   }
 
   uint16_t GetUInt16() const {
@@ -436,6 +443,7 @@ class PrimitiveValue {
     int32_t int32_val_;
     uint32_t uint32_val_;
     int64_t int64_val_;
+    uint64_t uint64_val_;
     uint16_t uint16_val_;
     DocHybridTime hybrid_time_val_;
     std::string str_val_;
@@ -492,14 +500,14 @@ class PrimitiveValue {
     } else {
       // Non-string primitive values only have plain old data. We are assuming there is no overlap
       // between the two objects, so we're using memcpy instead of memmove.
-      memcpy(this, other, sizeof(PrimitiveValue));
+      memcpy(static_cast<void*>(this), other, sizeof(PrimitiveValue));
 #ifndef NDEBUG
       // We could just leave the old object as is for it to be in a "valid but unspecified" state.
       // However, in debug mode we clear the old object's state to make sure we don't attempt to use
       // it.
-      memset(other, 0xab, sizeof(PrimitiveValue));
+      memset(static_cast<void*>(other), 0xab, sizeof(PrimitiveValue));
       // Restore the type. There should be no deallocation for non-string types anyway.
-      other->type_ = ValueType::kNull;
+      other->type_ = ValueType::kNullLow;
 #endif
     }
   }

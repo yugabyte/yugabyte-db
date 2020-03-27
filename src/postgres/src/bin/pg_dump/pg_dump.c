@@ -53,6 +53,7 @@
 #include "catalog/pg_proc_d.h"
 #include "catalog/pg_trigger_d.h"
 #include "catalog/pg_type_d.h"
+#include "catalog/pg_index.h"
 #include "libpq/libpq-fs.h"
 
 #include "dumputils.h"
@@ -63,7 +64,7 @@
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
 
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 typedef struct
 {
@@ -381,7 +382,7 @@ main(int argc, char **argv)
 		{NULL, 0, NULL, 0}
 	};
 
-	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_dump"));
+	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("ysql_dump"));
 
 	/*
 	 * Initialize what we need for parallel execution, especially for thread
@@ -406,7 +407,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_dump (PostgreSQL) " PG_VERSION);
+			puts("ysql_dump (YSQL) " PG_VERSION);
 			exit_nicely(0);
 		}
 	}
@@ -1009,7 +1010,7 @@ help(const char *progname)
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("Report bugs on https://github.com/YugaByte/yugabyte-db/issues/new\n"));
 }
 
 static void
@@ -6744,6 +6745,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 				i_indkey,
 				i_indisclustered,
 				i_indisreplident,
+				i_indoption,
 				i_contype,
 				i_conname,
 				i_condeferrable,
@@ -6802,7 +6804,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 							  "i.indnkeyatts AS indnkeyatts, "
 							  "i.indnatts AS indnatts, "
 							  "i.indkey, i.indisclustered, "
-							  "i.indisreplident, t.relpages, "
+							  "i.indisreplident, i.indoption, t.relpages, "
 							  "c.contype, c.conname, "
 							  "c.condeferrable, c.condeferred, "
 							  "c.tableoid AS contableoid, "
@@ -6847,7 +6849,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 							  "i.indnatts AS indnkeyatts, "
 							  "i.indnatts AS indnatts, "
 							  "i.indkey, i.indisclustered, "
-							  "i.indisreplident, t.relpages, "
+							  "i.indisreplident, i.indoption, t.relpages, "
 							  "c.contype, c.conname, "
 							  "c.condeferrable, c.condeferred, "
 							  "c.tableoid AS contableoid, "
@@ -6882,7 +6884,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 							  "i.indnatts AS indnkeyatts, "
 							  "i.indnatts AS indnatts, "
 							  "i.indkey, i.indisclustered, "
-							  "false AS indisreplident, t.relpages, "
+							  "false AS indisreplident, i.indoption, t.relpages, "
 							  "c.contype, c.conname, "
 							  "c.condeferrable, c.condeferred, "
 							  "c.tableoid AS contableoid, "
@@ -6913,7 +6915,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 							  "i.indnatts AS indnkeyatts, "
 							  "i.indnatts AS indnatts, "
 							  "i.indkey, i.indisclustered, "
-							  "false AS indisreplident, t.relpages, "
+							  "false AS indisreplident, i.indoption, t.relpages, "
 							  "c.contype, c.conname, "
 							  "c.condeferrable, c.condeferred, "
 							  "c.tableoid AS contableoid, "
@@ -6947,7 +6949,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 							  "t.relnatts AS indnkeyatts, "
 							  "t.relnatts AS indnatts, "
 							  "i.indkey, i.indisclustered, "
-							  "false AS indisreplident, t.relpages, "
+							  "false AS indisreplident, i.indoption, t.relpages, "
 							  "c.contype, c.conname, "
 							  "c.condeferrable, c.condeferred, "
 							  "c.tableoid AS contableoid, "
@@ -6985,6 +6987,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 		i_indkey = PQfnumber(res, "indkey");
 		i_indisclustered = PQfnumber(res, "indisclustered");
 		i_indisreplident = PQfnumber(res, "indisreplident");
+		i_indoption = PQfnumber(res, "indoption");
 		i_relpages = PQfnumber(res, "relpages");
 		i_contype = PQfnumber(res, "contype");
 		i_conname = PQfnumber(res, "conname");
@@ -7025,6 +7028,9 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			indxinfo[j].indkeys = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
 			parseOidArray(PQgetvalue(res, j, i_indkey),
 						  indxinfo[j].indkeys, indxinfo[j].indnattrs);
+			indxinfo[j].indoptions = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
+			parseOidArray(PQgetvalue(res, j, i_indoption),
+						  indxinfo[j].indoptions, indxinfo[j].indnattrs);
 			indxinfo[j].indisclustered = (PQgetvalue(res, j, i_indisclustered)[0] == 't');
 			indxinfo[j].indisreplident = (PQgetvalue(res, j, i_indisreplident)[0] == 't');
 			indxinfo[j].parentidx = atooid(PQgetvalue(res, j, i_parentidx));
@@ -7059,6 +7065,11 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 				constrinfo[j].separate = true;
 
 				indxinfo[j].indexconstraint = constrinfo[j].dobj.dumpId;
+
+				if (contype == 'p')
+				{
+					tbinfo->primaryKeyIndex = &(indxinfo[j]);
+				}
 			}
 			else
 			{
@@ -8364,6 +8375,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		tbinfo->notnull = (bool *) pg_malloc(ntups * sizeof(bool));
 		tbinfo->inhNotNull = (bool *) pg_malloc(ntups * sizeof(bool));
 		tbinfo->attrdefs = (AttrDefInfo **) pg_malloc(ntups * sizeof(AttrDefInfo *));
+		tbinfo->primaryKeyIndex = NULL;
 		hasdefaults = false;
 
 		for (j = 0; j < ntups; j++)
@@ -15677,6 +15689,55 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				actual_atts++;
 			}
 
+			/*
+			 * Add a PRIMARY KEY constraint if it exists.
+			 */
+			if (tbinfo->primaryKeyIndex)
+			{
+				IndxInfo *index = tbinfo->primaryKeyIndex;
+
+				if (actual_atts == 0)
+					appendPQExpBufferStr(q, " (\n    ");
+				else
+					appendPQExpBufferStr(q, ",\n    ");
+
+				appendPQExpBuffer(q, "PRIMARY KEY(");
+
+				bool doing_hash = false;
+				for (int n = 0; n < index->indnattrs; n++)
+				{
+					char *col_name = tbinfo->attnames[index->indkeys[n] - 1];
+					int indoption = index->indoptions[n];
+
+					if (doing_hash && !(indoption & INDOPTION_HASH))
+					{
+						appendPQExpBuffer(q, ") HASH");
+						doing_hash = false;
+					}
+
+					if (n > 0)
+						appendPQExpBuffer(q, ", ");
+
+					if (!doing_hash && (indoption & INDOPTION_HASH))
+					{
+						appendPQExpBuffer(q, "(");
+						doing_hash = true;
+					}
+
+					appendPQExpBuffer(q, "%s", col_name);
+					if (indoption & INDOPTION_DESC)
+						appendPQExpBuffer(q, " DESC");
+					else if (!doing_hash)
+						appendPQExpBuffer(q, " ASC");
+				}
+				if (doing_hash)
+					appendPQExpBuffer(q, ") HASH");
+
+				appendPQExpBuffer(q, ")");
+
+				actual_atts++;
+			}
+
 			if (actual_atts)
 				appendPQExpBufferStr(q, "\n)");
 			else if (!((tbinfo->reloftype || tbinfo->ispartition) &&
@@ -16480,14 +16541,13 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 	char	   *tag = NULL;
 
 	/* Skip if not to be dumped */
-	if (!coninfo->dobj.dump || dopt->dataOnly)
+	if (!coninfo->dobj.dump || dopt->dataOnly || coninfo->contype == 'p')
 		return;
 
 	q = createPQExpBuffer();
 	delq = createPQExpBuffer();
 
-	if (coninfo->contype == 'p' ||
-		coninfo->contype == 'u' ||
+	if (coninfo->contype == 'u' ||
 		coninfo->contype == 'x')
 	{
 		/* Index-related constraint */

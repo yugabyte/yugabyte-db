@@ -1,0 +1,14 @@
+--
+-- Yugabyte created functions
+--
+CREATE FUNCTION bigname_in(cstring)
+   RETURNS bigname
+   AS '@libdir@/regress@DLSUFFIX@'
+   LANGUAGE C STRICT IMMUTABLE;
+NOTICE:  type "bigname" is not yet defined
+DETAIL:  Creating a shell type definition.
+CREATE FUNCTION bigname_out(bigname)
+   RETURNS cstring
+   AS '@libdir@/regress@DLSUFFIX@'
+   LANGUAGE C STRICT IMMUTABLE;
+NOTICE:  argument type bigname is only a shell

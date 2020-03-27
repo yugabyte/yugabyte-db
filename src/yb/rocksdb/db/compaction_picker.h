@@ -275,8 +275,8 @@ class UniversalCompactionPicker : public CompactionPicker {
   std::unique_ptr<Compaction> PickCompactionUniversalReadAmp(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, double score, unsigned int ratio,
-      unsigned int num_files, const std::vector<SortedRun>& sorted_runs,
-      LogBuffer* log_buffer);
+      unsigned int num_files, size_t always_include_threshold,
+      const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);
 
   // Pick Universal compaction to limit space amplification.
   std::unique_ptr<Compaction> PickCompactionUniversalSizeAmp(

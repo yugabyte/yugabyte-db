@@ -31,6 +31,7 @@
 //
 
 #include "yb/master/catalog_loaders.h"
+#include "yb/master/master_util.h"
 
 namespace yb {
 namespace master {
@@ -40,7 +41,7 @@ namespace master {
 ////////////////////////////////////////////////////////////
 
 Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metadata) {
-  CHECK(!ContainsKey(catalog_manager_->table_ids_map_, table_id))
+  CHECK(!ContainsKey(*catalog_manager_->table_ids_map_, table_id))
         << "Table already exists: " << table_id;
 
   // Setup the table info.
@@ -55,7 +56,8 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
   // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
   // add Postgres tables to the name map as the table name is not unique in a namespace.
-  catalog_manager_->table_ids_map_[table->id()] = table;
+  auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
+  (*table_ids_map_checkout)[table->id()] = table;
   if (l->data().table_type() != PGSQL_TABLE_TYPE && !l->data().started_deleting()) {
     catalog_manager_->table_names_map_[{l->data().namespace_id(), l->data().name()}] = table;
   }
@@ -76,7 +78,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) {
   // Lookup the table.
   scoped_refptr<TableInfo> first_table(FindPtrOrNull(
-                                    catalog_manager_->table_ids_map_, metadata.table_id()));
+      *catalog_manager_->table_ids_map_, metadata.table_id()));
 
   // Setup the tablet info.
   TabletInfo* tablet = new TabletInfo(first_table, tablet_id);
@@ -84,7 +86,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   l->mutable_data()->pb.CopyFrom(metadata);
 
   // Add the tablet to the tablet manager.
-  auto inserted = catalog_manager_->tablet_map_.emplace(tablet->tablet_id(), tablet).second;
+  auto tablet_map_checkout = catalog_manager_->tablet_map_.CheckOut();
+  auto inserted = tablet_map_checkout->emplace(tablet->tablet_id(), tablet).second;
   if (!inserted) {
     return STATUS_FORMAT(
         IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
@@ -109,8 +112,15 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     table_ids.push_back(metadata.table_id());
   }
 
+  bool tablet_deleted = l->mutable_data()->is_deleted();
+
+  // true if we need to delete this tablet because the tables this tablets belongs to have been
+  // marked as DELETING. It will be set to false as soon as we find a table that is not in the
+  // DELETING or DELETED state.
+  bool should_delete_tablet = true;
+
   for (auto table_id : table_ids) {
-    scoped_refptr<TableInfo> table(FindPtrOrNull(catalog_manager_->table_ids_map_, table_id));
+    scoped_refptr<TableInfo> table(FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id));
 
     if (table == nullptr) {
       // If the table is missing and the tablet is in "preparing" state
@@ -125,23 +135,44 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       // if the tablet is not in a "preparing" state, something is wrong...
       LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id
                   << ", metadata: " << metadata.DebugString()
-                  << ", tables: " << yb::ToString(catalog_manager_->table_ids_map_);
+                  << ", tables: " << yb::ToString(*catalog_manager_->table_ids_map_);
       return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
     }
 
     // Add the tablet to the Table.
-    if (!l->mutable_data()->is_deleted()) {
+    if (!tablet_deleted) {
       table->AddTablet(tablet);
     }
+
+    auto tl = table->LockForRead();
+    if (tablet_deleted || !tl->data().started_deleting()) {
+      // The tablet is already deleted or the table hasn't been deleted. So we don't delete
+      // this tablet.
+      should_delete_tablet = false;
+    }
+  }
+
+
+  if (should_delete_tablet) {
+    LOG(WARNING) << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
+    string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
+    l->mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+    RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->UpdateItem(tablet, term_),
+                          strings::Substitute("Error deleting tablet $0", tablet->id()));
   }
 
   l->Commit();
 
-  // TODO(KUDU-1070): if we see a running tablet under a deleted table,
-  // we should "roll forward" the deletion of the tablet here.
+  // Add the tablet to colocated_tablet_ids_map_ if the tablet is colocated.
+  if (catalog_manager_->IsColocatedParentTable(*first_table)) {
+    catalog_manager_->colocated_tablet_ids_map_[first_table->namespace_id()] =
+        catalog_manager_->tablet_map_->find(tablet_id)->second;
+  }
 
-  LOG(INFO) << "Loaded metadata for tablet " << tablet_id
+  LOG(INFO) << "Loaded metadata for " << (tablet_deleted ? "deleted " : "")
+            << "tablet " << tablet_id
             << " (first table " << first_table->ToString() << ")";
+
   VLOG(1) << "Metadata for tablet " << tablet_id << ": " << metadata.ShortDebugString();
 
   return Status::OK();
@@ -158,21 +189,21 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
   // Setup the namespace info.
   NamespaceInfo *const ns = new NamespaceInfo(ns_id);
   auto l = ns->LockForWrite();
+  const auto& pb_data = l->data().pb;
+
   l->mutable_data()->pb.CopyFrom(metadata);
 
-  if (!l->data().pb.has_database_type() ||
-      l->data().pb.database_type() == YQL_DATABASE_UNKNOWN) {
-    LOG(INFO) << "Updating database type of namespace " << l->data().pb.name();
-    l->mutable_data()->pb.set_database_type(l->data().pb.name() == common::kRedisKeyspaceName
-                                            ? YQLDatabase::YQL_DATABASE_REDIS
-                                            : YQLDatabase::YQL_DATABASE_CQL);
+  if (!pb_data.has_database_type() || pb_data.database_type() == YQL_DATABASE_UNKNOWN) {
+    LOG(INFO) << "Updating database type of namespace " << pb_data.name();
+    l->mutable_data()->pb.set_database_type(GetDefaultDatabaseType(pb_data.name()));
   }
 
   // Add the namespace to the IDs map and to the name map (if the namespace is not deleted).
-  // Do not add Postgres namespace to the name map as it will be identified by id only.
   catalog_manager_->namespace_ids_map_[ns_id] = ns;
-  if (!l->data().pb.name().empty() && l->data().pb.database_type() != YQL_DATABASE_PGSQL) {
-    catalog_manager_->namespace_names_map_[l->data().pb.name()] = ns;
+  if (!pb_data.name().empty()) {
+    catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+  } else {
+    LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
   }
 
   l->Commit();
@@ -228,6 +259,11 @@ Status ClusterConfigLoader::Visit(
   if (metadata.has_server_blacklist()) {
     // Rebuild the blacklist state for load movement completion tracking.
     RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist()));
+  }
+
+  if (metadata.has_leader_blacklist()) {
+    // Rebuild the blacklist state for load movement completion tracking.
+    RETURN_NOT_OK(catalog_manager_->SetLeaderBlacklist(metadata.leader_blacklist()));
   }
 
   // Update in memory state.

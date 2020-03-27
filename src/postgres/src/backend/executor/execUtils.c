@@ -74,7 +74,7 @@ static void ShutdownExprContext(ExprContext *econtext, bool isCommit);
  * Principally, this creates the per-query memory context that will be
  * used to hold all working data that lives till the end of the query.
  * Note that the per-query context will become a child of the caller's
- * CurrentMemoryContext.
+ * GetCurrentMemoryContext().
  * ----------------
  */
 EState *
@@ -87,7 +87,7 @@ CreateExecutorState(void)
 	/*
 	 * Create the per-query context for this Executor run.
 	 */
-	qcontext = AllocSetContextCreate(CurrentMemoryContext,
+	qcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 									 "ExecutorState",
 									 ALLOCSET_DEFAULT_SIZES);
 
@@ -167,15 +167,16 @@ CreateExecutorState(void)
 	 */
 	MemoryContextSwitchTo(oldcontext);
 
-	/* YugaByte-specific fields
+	/*
+	 * YugaByte-specific fields
 	 * TODO(neil) Rename "es_yb" to "yb_es".  Not sure why they are named this way in the past.
 	 */
-	estate->es_yb_read_ht = 0;
 	estate->es_yb_is_single_row_modify_txn = false;
 	estate->yb_conflict_slot = NULL;
 	estate->yb_exec_params.limit_count = -1;
 	estate->yb_exec_params.limit_offset = 0;
 	estate->yb_exec_params.limit_use_default = true;
+	estate->yb_exec_params.rowmark = -1;
 
 	return estate;
 }
@@ -327,13 +328,13 @@ CreateStandaloneExprContext(void)
 	econtext->ecxt_innertuple = NULL;
 	econtext->ecxt_outertuple = NULL;
 
-	econtext->ecxt_per_query_memory = CurrentMemoryContext;
+	econtext->ecxt_per_query_memory = GetCurrentMemoryContext();
 
 	/*
 	 * Create working memory for expression evaluation in this context.
 	 */
 	econtext->ecxt_per_tuple_memory =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(GetCurrentMemoryContext(),
 							  "ExprContext",
 							  ALLOCSET_DEFAULT_SIZES);
 
@@ -428,7 +429,7 @@ MakePerTupleExprContext(EState *estate)
 /* ----------------------------------------------------------------
  *				 miscellaneous node-init support functions
  *
- * Note: all of these are expected to be called with CurrentMemoryContext
+ * Note: all of these are expected to be called with GetCurrentMemoryContext()
  * equal to the per-query memory context.
  * ----------------------------------------------------------------
  */

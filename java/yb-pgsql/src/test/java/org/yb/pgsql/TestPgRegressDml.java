@@ -27,7 +27,7 @@ public class TestPgRegressDml extends BasePgSQLTest {
   }
 
   @Test
-  public void testPgRegressFeature() throws Exception {
+  public void testPgRegressDml() throws Exception {
     runPgRegressTest("yb_pg_dml_serial_schedule");
   }
 }

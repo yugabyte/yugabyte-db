@@ -27,9 +27,9 @@ Yes, you can have collection data types as primary keys as long as they are mark
 
 ## What is the difference between a `COUNTER` type and `INTEGER` types?
 
-Unlike Apache Cassandra, YugaByte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in YugaByte - these are efficiently performed with just one round trip.
+Unlike Apache Cassandra, Yugabyte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in Yugabyte - these are efficiently performed with just one round trip.
 
-## How is 'USING TIMESTAMP' different in YugaByte?
+## How is 'USING TIMESTAMP' different in Yugabyte?
 
 In Apache Cassandra, the highest timestamp provided always wins. Example:
 
@@ -55,7 +55,7 @@ timestamp.
   1 |  2 |  3
 ```
 
-On the other hand in YugaByte, for efficiency purposes INSERTs and UPDATEs without the `USING
+On the other hand in Yugabyte, for efficiency purposes INSERTs and UPDATEs without the `USING
 TIMESTAMP` clause always overwrite the older values. On the other hand if we have the `USING
 TIMESTAMP` clause, then appropriate timestamp ordering is performed. Example:
 

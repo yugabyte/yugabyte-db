@@ -240,6 +240,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <set>
 #include <string>
 #include <sstream>
 #include <unordered_map>
@@ -248,6 +249,7 @@
 #include <gtest/gtest_prod.h>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
@@ -263,6 +265,7 @@
 #include "yb/util/status.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/shared_lock.h"
 
 // Define a new entity type.
 //
@@ -280,6 +283,9 @@
                                       label, \
                                       unit, \
                                       desc))
+
+#define METRIC_DEFINE_simple_counter(entity, name, label, unit) \
+    METRIC_DEFINE_counter(entity, name, label, unit, label)
 
 #define METRIC_DEFINE_gauge(type, entity, name, label, unit, desc, ...) \
   ::yb::GaugePrototype<type> BOOST_PP_CAT(METRIC_, name)(         \
@@ -302,18 +308,26 @@
     METRIC_DEFINE_gauge(int64, entity, name, label, unit, desc, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_uint64(entity, name, label, unit, desc, ...) \
     METRIC_DEFINE_gauge(uint64_t, entity, name, label, unit, desc, ## __VA_ARGS__)
+#define METRIC_DEFINE_simple_gauge_uint64(entity, name, label, unit, ...) \
+    METRIC_DEFINE_gauge(uint64_t, entity, name, label, unit, label, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_double(entity, name, label, unit, desc, ...) \
     METRIC_DEFINE_gauge(double, entity, name, label, unit, desc, ## __VA_ARGS__)
 
-#define METRIC_DEFINE_histogram(entity, name, label, unit, desc, max_val, num_sig_digits) \
-  ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                                   \
-      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
-                                      BOOST_PP_STRINGIZE(name), \
-                                      label, \
-                                      unit, \
-                                      desc), \
-      max_val, \
-      num_sig_digits)
+#define METRIC_DEFINE_histogram_with_percentiles(                              \
+    entity, name, label, unit, desc, max_val, num_sig_digits)                  \
+  ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                        \
+      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity),              \
+                                      BOOST_PP_STRINGIZE(name), label, unit,   \
+                                      desc),                                   \
+      max_val, num_sig_digits, yb::ExportPercentiles::kTrue)
+
+#define METRIC_DEFINE_histogram(entity, name, label, unit, desc, max_val,      \
+                                num_sig_digits)                                \
+  ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                        \
+      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity),              \
+                                      BOOST_PP_STRINGIZE(name), label, unit,   \
+                                      desc),                                   \
+      max_val, num_sig_digits, yb::ExportPercentiles::kFalse)
 
 // The following macros act as forward declarations for entity types and metric prototypes.
 #define METRIC_DECLARE_entity(name) \
@@ -767,9 +781,32 @@ class MetricRegistry {
     return entities_.size();
   }
 
+  void tablets_shutdown_insert(std::string id) {
+    std::lock_guard<boost::shared_mutex> l(tablets_shutdown_lock_);
+    tablets_shutdown_.insert(id);
+  }
+
+  void tablets_shutdown_erase(std::string id) {
+    std::lock_guard<boost::shared_mutex> l(tablets_shutdown_lock_);
+    (void)tablets_shutdown_.erase(id);
+  }
+
+  bool tablets_shutdown_find(std::string id) const {
+    SharedLock<boost::shared_mutex> l(tablets_shutdown_lock_);
+    return tablets_shutdown_.find(id) != tablets_shutdown_.end();
+  }
+
  private:
   typedef std::unordered_map<std::string, scoped_refptr<MetricEntity> > EntityMap;
   EntityMap entities_;
+
+  mutable boost::shared_mutex tablets_shutdown_lock_;
+
+  // Set of tablets that have been shutdown. Protected by tablets_shutdown_lock_.
+  std::set<std::string> tablets_shutdown_;
+
+  // Returns whether a tablet has been shutdown.
+  bool TabletHasBeenShutdown(const scoped_refptr<MetricEntity> entity) const;
 
   mutable simple_spinlock lock_;
   DISALLOW_COPY_AND_ASSIGN(MetricRegistry);
@@ -1177,19 +1214,24 @@ inline void IncrementCounter(const scoped_refptr<Counter>& counter) {
   }
 }
 
+YB_STRONGLY_TYPED_BOOL(ExportPercentiles);
+
 class HistogramPrototype : public MetricPrototype {
  public:
   HistogramPrototype(const MetricPrototype::CtorArgs& args,
-                     uint64_t max_trackable_value, int num_sig_digits);
+                     uint64_t max_trackable_value, int num_sig_digits,
+                     ExportPercentiles export_percentiles = ExportPercentiles::kFalse);
   scoped_refptr<Histogram> Instantiate(const scoped_refptr<MetricEntity>& entity);
 
   uint64_t max_trackable_value() const { return max_trackable_value_; }
   int num_sig_digits() const { return num_sig_digits_; }
+  ExportPercentiles export_percentiles() const { return export_percentiles_; }
   virtual MetricType::Type type() const override { return MetricType::kHistogram; }
 
  private:
   const uint64_t max_trackable_value_;
   const int num_sig_digits_;
+  const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(HistogramPrototype);
 };
 
@@ -1214,7 +1256,8 @@ class Histogram : public Metric {
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const override;
 
   // Returns a snapshot of this histogram including the bucketed values and counts.
-  CHECKED_STATUS GetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
+  // Resets the bucketed counts, but not the total count/sum.
+  CHECKED_STATUS GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
                                 const MetricJsonOptions& opts) const;
 
 
@@ -1229,10 +1272,12 @@ class Histogram : public Metric {
 
  private:
   FRIEND_TEST(MetricsTest, SimpleHistogramTest);
+  FRIEND_TEST(MetricsTest, ResetHistogramTest);
   friend class MetricEntity;
   explicit Histogram(const HistogramPrototype* proto);
 
   const gscoped_ptr<HdrHistogram> histogram_;
+  const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };
 
@@ -1371,6 +1416,9 @@ class OwningGaugePrototype : public OwningMetricCtorArgs, public GaugePrototype<
             OwningMetricCtorArgs::label.c_str(), unit, OwningMetricCtorArgs::description.c_str(),
             flags)) {}
 };
+
+// Replace specific chars with underscore to pass PrometheusNameRegex().
+void EscapeMetricNameForPrometheus(std::string *id);
 
 } // namespace yb
 

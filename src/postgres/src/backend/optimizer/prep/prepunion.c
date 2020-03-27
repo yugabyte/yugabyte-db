@@ -2003,6 +2003,11 @@ translate_col_privs(const Bitmapset *parent_privs,
 	int			attno;
 	ListCell   *lc;
 
+	/*
+	 * TODO check that these offsets (i.e. FirstLowInvalidHeapAttributeNumber) work
+	 * properly for YugaByte tables after #1129 (specifically INHERITS).
+	 */
+
 	/* System attributes have the same numbers in all tables */
 	for (attno = FirstLowInvalidHeapAttributeNumber + 1; attno < 0; attno++)
 	{

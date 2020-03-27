@@ -16,7 +16,7 @@
 
 #include <setjmp.h>
 
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 /* Error level codes */
 #define DEBUG5		10			/* Debugging messages, in categories of
@@ -105,6 +105,10 @@
 #ifdef HAVE__BUILTIN_CONSTANT_P
 #define ereport_domain(elevel, domain, rest)	\
 	do { \
+		if (IsMultiThreadedMode()) { \
+		   yb_pgbackend_ereport_dummy rest; \
+		   yb_pgbackend_ereport(elevel, NULL); \
+		} \
 		if (errstart(elevel, __FILE__, __LINE__, PG_FUNCNAME_MACRO, domain)) \
 			errfinish rest; \
 		if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
@@ -113,7 +117,10 @@
 #else							/* !HAVE__BUILTIN_CONSTANT_P */
 #define ereport_domain(elevel, domain, rest)	\
 	do { \
-		const int elevel_ = (elevel); \
+		if (IsMultiThreadedMode()) { \
+		   yb_pgbackend_ereport_dummy rest; \
+		   yb_pgbackend_ereport(elevel, NULL); \
+		} \		const int elevel_ = (elevel); \
 		if (errstart(elevel_, __FILE__, __LINE__, PG_FUNCNAME_MACRO, domain)) \
 			errfinish rest; \
 		if (elevel_ >= ERROR) \
@@ -131,6 +138,7 @@ extern bool errstart(int elevel, const char *filename, int lineno,
 extern void errfinish(int dummy,...);
 
 extern int	errcode(int sqlerrcode);
+extern int	yb_txn_errcode(uint16_t txn_errcode);
 
 extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
@@ -184,6 +192,9 @@ extern int	geterrcode(void);
 extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
 
+void yb_pgbackend_ereport(int elevel, const char *fmt,...);
+
+void yb_pgbackend_ereport_dummy(int dummy,...);
 
 /*----------
  * Old-style error reporting API: to be used in this way:
@@ -200,6 +211,7 @@ extern int	getinternalerrposition(void);
 #ifdef HAVE__BUILTIN_CONSTANT_P
 #define elog(elevel, ...)  \
 	do { \
+		if (IsMultiThreadedMode()) yb_pgbackend_ereport(elevel, __VA_ARGS__); \
 		elog_start(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
 		elog_finish(elevel, __VA_ARGS__); \
 		if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
@@ -208,6 +220,7 @@ extern int	getinternalerrposition(void);
 #else							/* !HAVE__BUILTIN_CONSTANT_P */
 #define elog(elevel, ...)  \
 	do { \
+		if (IsMultiThreadedMode()) yb_pgbackend_ereport(elevel, __VA_ARGS__); \
 		elog_start(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
 		{ \
 			const int elevel_ = (elevel); \
@@ -358,6 +371,9 @@ typedef struct ErrorData
 	char	   *internalquery;	/* text of internally-generated query */
 	int			saved_errno;	/* errno at entry */
 
+	uint16_t	yb_txn_errcode;	/* YB transaction error cast to uint16, as returned by static_cast
+								 * of TransactionErrorTag::Decode
+								 * of Status::ErrorData(TransactionErrorTag::kCategory) */
 	/* context containing associated non-constant strings */
 	struct MemoryContextData *assoc_context;
 } ErrorData;

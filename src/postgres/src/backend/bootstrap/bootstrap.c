@@ -525,7 +525,8 @@ BootstrapModeMain(void)
 		YBCCreateDatabase(TemplateDbOid,
 		                  "template1",
 		                  InvalidOid,
-		                  FirstBootstrapObjectId);
+		                  FirstBootstrapObjectId,
+		                  false /* colocated */);
 	}
 
 	/*

@@ -59,14 +59,14 @@ PTBcall::PTBcall(MemoryContext *memctx,
 PTBcall::~PTBcall() {
 }
 
-string PTBcall::QLName() const {
+string PTBcall::QLName(QLNameOption option) const {
   string arg_names;
   string keyspace;
 
   // cql_cast() is displayed as "cast(<col> as <type>)".
   if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
     CHECK_GE(args_->size(), 2);
-    const string column_name = args_->element(0)->QLName();
+    const string column_name = args_->element(0)->QLName(option);
     const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type());
     return strings::Substitute("cast($0 as $1)", column_name, type);
   }
@@ -75,7 +75,7 @@ string PTBcall::QLName() const {
     if (!arg_names.empty()) {
       arg_names += ", ";
     }
-    arg_names += arg->QLName();
+    arg_names += arg->QLName(option);
   }
   if (IsAggregateCall()) {
     // count(*) is displayed as "count".
@@ -92,6 +92,11 @@ bool PTBcall::IsAggregateCall() const {
 }
 
 CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
+  // Before traversing the expression, check if this whole expression is actually a column.
+  if (CheckIndexColumn(sem_context)) {
+    return Status::OK();
+  }
+
   RETURN_NOT_OK(CheckOperator(sem_context));
 
   // Analyze arguments of the function call.
@@ -106,13 +111,15 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   int pindex = 0;
   const MCList<PTExpr::SharedPtr>& exprs = args_->node_list();
   vector<PTExpr::SharedPtr> params(exprs.size());
-  for (const auto& expr : exprs) {
+  for (const PTExpr::SharedPtr& expr : exprs) {
     RETURN_NOT_OK(expr->Analyze(sem_context));
     RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 
     params[pindex] = expr;
     pindex++;
   }
+
+  RETURN_NOT_OK(CheckOperatorAfterArgAnalyze(sem_context));
 
   // Reset the semantics state after analyzing the arguments.
   sem_state.ResetContextState();
@@ -143,6 +150,15 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     // Use the builtin-function opcode since this is a regular builtin call.
     bfopcode_ = static_cast<int32_t>(bfopcode);
 
+    if (*name_ == "cql_cast" || *name_ == "tojson") {
+      // Argument must be of primitive type for these operators.
+      for (const PTExpr::SharedPtr &expr : exprs) {
+        if (expr->expr_op() == ExprOperator::kCollection) {
+          return sem_context->Error(expr, "Input argument must be of primitive type",
+                                    ErrorCode::INVALID_ARGUMENTS);
+        }
+      }
+    }
   } else {
     // Use the server opcode since this is a server operator. Ignore the BFOpcode.
     is_server_operator_ = true;
@@ -319,24 +335,20 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     ql_type_ = pt_result->ql_type();
   }
 
-  // Check that ToJson() built-in function supports the parameter types.
-  if (bfopcode == bfql::BFOpcode::OPCODE_ToJson_144) {
-    for (const PTExpr::SharedPtr& param : params) {
-      // ToJson() does not support FROZEN & UDT now.
-      // https://github.com/YugaByte/yugabyte-db/issues/1675
-      for (DataType not_sup_type_id : {FROZEN, USER_DEFINED_TYPE}) {
-        if (param->ql_type()->Contains(not_sup_type_id)) {
-          string err_msg = Substitute("$0 type is not supported by $1 builtin function",
-                                      QLType::ToCQLString(not_sup_type_id),
-                                      bfdecl->cpp_name());
-          return sem_context->Error(this, err_msg.c_str(), ErrorCode::FEATURE_NOT_SUPPORTED);
-        }
-      }
+  internal_type_ = yb::client::YBColumnSchema::ToInternalDataType(ql_type_);
+  return CheckExpectedTypeCompatibility(sem_context);
+}
+
+bool PTBcall::HaveColumnRef() const {
+  const MCList<PTExpr::SharedPtr>& exprs = args_->node_list();
+  vector<PTExpr::SharedPtr> params(exprs.size());
+  for (const PTExpr::SharedPtr& expr : exprs) {
+    if (expr->HaveColumnRef()) {
+      return true;
     }
   }
 
-  internal_type_ = yb::client::YBColumnSchema::ToInternalDataType(ql_type_);
-  return CheckExpectedTypeCompatibility(sem_context);
+  return false;
 }
 
 CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {
@@ -376,6 +388,27 @@ CHECKED_STATUS PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const
   if (ref->desc() != sem_context->lhs_col()) {
     return sem_context->Error(arg1, "Right and left arguments must reference the same counter",
                               ErrorCode::INVALID_COUNTING_EXPR);
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
+  if (*name_ == "tojson") {
+    // The arguments must be analyzed and correct types must be set.
+    const QLType::SharedPtr type = args_->element(0)->ql_type();
+    DCHECK(!type->IsUnknown());
+
+    if (type->main() == TUPLE) {
+      // https://github.com/YugaByte/yugabyte-db/issues/936
+      return sem_context->Error(args_->element(0),
+          "Tuple type not implemented yet", ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+    }
+
+    if (type->Contains(FROZEN) || type->Contains(USER_DEFINED_TYPE)) {
+      // Only the server side implementation allows complex types unwrapping based on the schema.
+      name_->insert(0, "server_");
+    }
   }
 
   return Status::OK();

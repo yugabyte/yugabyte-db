@@ -17,7 +17,7 @@ $ ./yb-docker-ctl create --enable_postgres
 Download the sample app jar.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sql-workshop/blob/master/running-sample-apps/yb-sample-apps.jar
+$ wget https://github.com/yugabyte/yb-sql-workshop/blob/master/running-sample-apps/yb-sample-apps.jar
 ```
 
 Run the `SqlInserts` sample key-value app against the local universe by typing the following command.
@@ -50,7 +50,7 @@ Remove a node from the universe.
 $ ./yb-docker-ctl remove_node 3
 ```
 
-Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugaByte DB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
+Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugabyteDB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 3rd node dead](/images/ce/pgsql-fault-tolerance-1-node-dead.png)
 

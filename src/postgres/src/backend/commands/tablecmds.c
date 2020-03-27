@@ -3012,11 +3012,6 @@ renameatt(RenameStmt *stmt)
 		return InvalidObjectAddress;
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		YBCRename(stmt, relid);
-	}
-
 	attnum =
 		renameatt_internal(relid,
 						   stmt->subname,	/* old att name */
@@ -3025,6 +3020,11 @@ renameatt(RenameStmt *stmt)
 						   false,	/* recursing? */
 						   0,	/* expected inhcount */
 						   stmt->behavior);
+
+	if (IsYugaByteEnabled())
+	{
+		YBCRename(stmt, relid);
+	}
 
 	ObjectAddressSubSet(address, RelationRelationId, relid, attnum);
 
@@ -3218,13 +3218,13 @@ RenameRelation(RenameStmt *stmt)
 		return InvalidObjectAddress;
 	}
 
+	RenameRelationInternal(relid, stmt->newname, false);
+
 	/* Do the work */
 	if (IsYugaByteEnabled())
 	{
       YBCRename(stmt, relid);
 	}
-
-	RenameRelationInternal(relid, stmt->newname, false);
 
 	ObjectAddressSet(address, RelationRelationId, relid);
 
@@ -3754,14 +3754,28 @@ ATController(AlterTableStmt *parsetree,
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
 
+	/*
+	 * Prepare the YB alter statement handle -- need to call this before the
+	 * system catalogs are changed below (since it looks up table metadata).
+	 */
+	YBCPgStatement handle = NULL;
 	if (IsYBRelation(rel))
 	{
-		YBCAlterTable(parsetree, rel, relid);
+		handle = YBCPrepareAlterTable(parsetree, rel, relid);
 	}
 
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, lockmode);
 
+	/*
+	 * Execute the YB alter table (if needed).
+	 * Must call this after syscatalog updates succeed (e.g. dependencies are
+	 * checked) since we do not support rollback of YB alter operations yet.
+	 */
+	if (handle)
+	{
+		YBCExecAlterTable(handle, relid);
+	}
 	/* Phase 3: scan/rewrite tables as needed */
 	ATRewriteTables(parsetree, &wqueue, lockmode);
 }
@@ -15046,7 +15060,7 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 	MemoryContext cxt;
 	MemoryContext oldcxt;
 
-	cxt = AllocSetContextCreate(CurrentMemoryContext,
+	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								"AttachPartitionEnsureIndexes",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
@@ -15195,7 +15209,7 @@ CloneRowTriggersToPartition(Relation parent, Relation partition)
 	scan = systable_beginscan(pg_trigger, TriggerRelidNameIndexId,
 							  true, NULL, 1, &key);
 
-	perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
+	perTupCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 									  "clone trig", ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(perTupCxt);
 

@@ -194,7 +194,7 @@ public class MiniYBDaemon {
         (daemonIndex == NO_DAEMON_INDEX ? "" : String.valueOf(daemonIndex)) +
         LOG_PREFIX_SEPARATOR + PID_PREFIX + pidAsString + LOG_PREFIX_SEPARATOR +
         (rpcPort == NO_RPC_PORT ? "" : ":" + rpcPort) +
-        (ConfForTesting.isJenkins() || webUiUrl == null || webUiUrl.isEmpty()
+        (ConfForTesting.isCI() || webUiUrl == null || webUiUrl.isEmpty()
             ? "" // No need for a clickable web UI link on Jenkins, or if it is not defined.
             : LOG_PREFIX_SEPARATOR + webUiUrl) +
         " ";

@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`ZRANGE key start stop [WITHSCORES]`</b><br>
 This command returns `members` ordered from lowest to highest score in the specified range at sorted set `key`.
 `start` and `stop` represent the low and high index bounds respectively and are zero-indexed. They can also be negative 
@@ -21,9 +22,11 @@ numbers indicating offsets from the end of the sorted set, with -1 being the las
 If `key` does not exist, an empty list is returned. If `key` is associated with non sorted-set data, an error is returned.
 
 ## Return Value
+
 Returns a list of members found in the range specified by `start`, `stop`, unless the WITHSCORES option is specified (see below).
 
 ## ZRANGE Options
+
 <li> WITHSCORES: Makes the command return both the `member` and its `score`.</li>
 
 ## Examples
@@ -49,6 +52,7 @@ $ ZRANGE z_key 0 2
 ```
 
 With negative indices.
+
 ```sh
 $ ZRANGE z_key -2 -1
 ```
@@ -59,6 +63,7 @@ $ ZRANGE z_key -2 -1
 ```
 
 Both positive and negative indices.
+
 ```sh
 $ ZRANGE z_key 1 -1 WITHSCORES
 ```
@@ -71,6 +76,7 @@ $ ZRANGE z_key 1 -1 WITHSCORES
 ```
 
 Empty list returned if key doesn't exist.
+
 ```sh
 $ ZRANGE z_key_no_exist 0 2  WITHSCORES
 ```
@@ -79,7 +85,7 @@ $ ZRANGE z_key_no_exist 0 2  WITHSCORES
 (empty list or set)
 ```
 
-## See Also
+## See also
 
 [`zadd`](../zadd/), [`zcard`](../zcard/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem),
 [`zrevrange`](../zrevrange)

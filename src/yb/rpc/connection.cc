@@ -49,8 +49,9 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_metrics.h"
 
-#include "yb/util/trace.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -58,9 +59,10 @@ using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
-DEFINE_uint64(rpc_connection_timeout_ms, 15000, "Timeout for RPC connection operations");
+DEFINE_uint64(rpc_connection_timeout_ms, yb::NonTsanVsTsan(15000, 30000),
+    "Timeout for RPC connection operations");
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_outbound_transfer, "Time taken to transfer the response ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the response to the wire",
     60000000LU, 2);
@@ -145,7 +147,10 @@ void Connection::Shutdown(const Status& status) {
   context_->Shutdown(status);
 
   stream_->Shutdown(status);
-  timer_.stop();
+  timer_.Shutdown();
+
+  // TODO(bogdan): re-enable once we decide how to control verbose logs better...
+  // LOG_WITH_PREFIX(INFO) << "Connection::Shutdown completed, status: " << status;
 }
 
 void Connection::OutboundQueued() {
@@ -164,6 +169,8 @@ void Connection::OutboundQueued() {
 
 void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   DCHECK(reactor_->IsCurrentThread());
+  DVLOG_WITH_PREFIX(5) << "Connection::HandleTimeout revents: " << revents
+                       << " connected: " << stream_->IsConnected();
 
   if (EV_ERROR & revents) {
     LOG_WITH_PREFIX(WARNING) << "Got an error in handle timeout";
@@ -176,6 +183,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   if (!stream_->IsConnected()) {
     const MonoDelta timeout = FLAGS_rpc_connection_timeout_ms * 1ms;
     deadline = last_activity_time_ + timeout;
+    DVLOG_WITH_PREFIX(5) << Format("now: $0, deadline: $1, timeout: $2", now, deadline, timeout);
     if (now > deadline) {
       auto passed = reactor_->cur_time() - last_activity_time_;
       reactor_->DestroyConnection(
@@ -207,7 +215,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   }
 
   if (deadline != CoarseTimePoint::max()) {
-    StartTimer(deadline - now, &timer_);
+    timer_.Start(deadline - now);
   }
 }
 
@@ -225,7 +233,7 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
     expiration_queue_.push({expires_at, call, handle});
     if (reschedule && (stream_->IsConnected() ||
                        expires_at < last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms)) {
-      StartTimer(timeout.ToSteadyDuration(), &timer_);
+      timer_.Start(timeout.ToSteadyDuration());
     }
   }
 
@@ -234,8 +242,12 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
 
 size_t Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
   DCHECK(reactor_->IsCurrentThread());
+  DVLOG_WITH_PREFIX(4) << "Connection::DoQueueOutboundData: " << AsString(outbound_data);
 
   if (!shutdown_status_.ok()) {
+    YB_LOG_EVERY_N_SECS(INFO, 5) << "Connection::DoQueueOutboundData data: "
+                                 << AsString(outbound_data) << " shutdown_status_: "
+                                 << shutdown_status_;
     outbound_data->Transferred(shutdown_status_, this);
     return std::numeric_limits<size_t>::max();
   }
@@ -273,6 +285,7 @@ void Connection::ParseReceived() {
 Result<ProcessDataResult> Connection::ProcessReceived(
     const IoVecs& data, ReadBufferFull read_buffer_full) {
   auto result = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
+  VLOG_WITH_PREFIX(4) << "context_->ProcessCalls result: " << AsString(result);
   if (PREDICT_FALSE(!result.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << result.status();
     return result;
@@ -295,9 +308,8 @@ Status Connection::HandleCallResponse(CallData* call_data) {
   ++responded_call_count_;
   auto awaiting = awaiting_response_.find(resp.call_id());
   if (awaiting == awaiting_response_.end()) {
-    LOG_WITH_PREFIX(ERROR) << "Got a response for call id " << resp.call_id() << " which "
-                           << "was not pending! Ignoring.";
-    DCHECK(awaiting != awaiting_response_.end());
+    LOG_WITH_PREFIX(DFATAL) << "Got a response for call id " << resp.call_id() << " which "
+                            << "was not pending! Ignoring.";
     return Status::OK();
   }
   auto call = awaiting->second;
@@ -305,7 +317,8 @@ Status Connection::HandleCallResponse(CallData* call_data) {
 
   if (PREDICT_FALSE(!call)) {
     // The call already failed due to a timeout.
-    VLOG(1) << "Got response to call id " << resp.call_id() << " after client already timed out";
+    VLOG_WITH_PREFIX(1) << "Got response to call id " << resp.call_id()
+                        << " after client already timed out";
     return Status::OK();
   }
 
@@ -317,7 +330,7 @@ Status Connection::HandleCallResponse(CallData* call_data) {
 void Connection::CallSent(OutboundCallPtr call) {
   DCHECK(reactor_->IsCurrentThread());
 
-  awaiting_response_.emplace(call->call_id(), call);
+  awaiting_response_.emplace(call->call_id(), !call->IsFinished() ? call : nullptr);
 }
 
 std::string Connection::ToString() const {
@@ -433,11 +446,11 @@ Status Connection::Start(ev::loop_ref* loop) {
 
   RETURN_NOT_OK(stream_->Start(direction_ == Direction::CLIENT, loop, this));
 
-  timer_.set(*loop);
-  timer_.set<Connection, &Connection::HandleTimeout>(this); // NOLINT
+  timer_.Init(*loop);
+  timer_.SetCallback<Connection, &Connection::HandleTimeout>(this); // NOLINT
 
   if (!stream_->IsConnected()) {
-    StartTimer(FLAGS_rpc_connection_timeout_ms * 1ms, &timer_);
+    timer_.Start(FLAGS_rpc_connection_timeout_ms * 1ms);
   }
 
   auto self = shared_from_this();
@@ -472,6 +485,7 @@ void Connection::Close() {
 
 void Connection::UpdateLastActivity() {
   last_activity_time_ = reactor_->cur_time();
+  VLOG_WITH_PREFIX(4) << "Updated last_activity_time_=" << AsString(last_activity_time_);
 }
 
 void Connection::UpdateLastRead() {
@@ -492,10 +506,6 @@ void Connection::Destroy(const Status& status) {
 
 std::string Connection::LogPrefix() const {
   return ToString() + ": ";
-}
-
-void StartTimer(CoarseMonoClock::Duration left, ev::timer* timer) {
-  timer->start(MonoDelta(left).ToSeconds(), 0 /* repeat */);
 }
 
 }  // namespace rpc

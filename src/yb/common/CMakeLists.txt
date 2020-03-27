@@ -93,12 +93,14 @@ ADD_YB_LIBRARY(pgsql_protocol_proto
                NONLINK_DEPS ${PGSQL_PROTOCOL_PROTO_TGTS})
 
 set(COMMON_SRCS
+  clock.cc
   id_mapping.cc
   entity_ids.cc
   key_encoder.cc
   partial_row.cc
   partition.cc
   row_key-util.cc
+  row_mark.cc
   schema.cc
   index.cc
   jsonb.cc
@@ -107,19 +109,26 @@ set(COMMON_SRCS
   doc_hybrid_time.cc
   consistent_read_point.cc
   transaction.cc
+  transaction_error.cc
   types.cc
   wire_protocol.cc
+  ql_bfunc.cc
+  ql_datatype.cc
+  ql_name.cc
   ql_type.cc
   ql_value.cc
-  ql_bfunc.cc
   ql_protocol_util.cc
   ql_scanspec.cc
   ql_rowblock.cc
   ql_resultset.cc
   ql_expr.cc
   common_flags.cc
+  pgsql_error.cc
   pgsql_resultset.cc
-  roles_permissions.cc)
+  roles_permissions.cc
+  ybc_util.cc
+  ybc-internal.cc
+  )
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
 # in which it incorrectly optimizes row_key-util.cc and causes incorrect results.

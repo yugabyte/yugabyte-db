@@ -140,12 +140,13 @@ ADD_YB_LIBRARY(tserver_service_proto
 
 set(TSERVER_UTIL_SRCS
   tserver_flags.cc
-  tserver_shared_mem.cc)
+  tserver_error.cc)
 set(TSERVER_UTIL_LIBS
   yb_util)
 ADD_YB_LIBRARY(tserver_util
   SRCS ${TSERVER_UTIL_SRCS}
   DEPS ${TSERVER_UTIL_LIBS})
+add_dependencies(tserver_util gen_proto)
 
 #########################################
 # tserver
@@ -153,17 +154,21 @@ ADD_YB_LIBRARY(tserver_util
 
 set(TSERVER_SRCS
   heartbeater.cc
+  heartbeater_factory.cc
   metrics_snapshotter.cc
   mini_tablet_server.cc
   remote_bootstrap_client.cc
+  remote_bootstrap_file_downloader.cc
   remote_bootstrap_service.cc
   remote_bootstrap_session.cc
+  remote_bootstrap_snapshots.cc
   service_util.cc
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
+  tserver_metrics_heartbeat_data_provider.cc
   ${TSERVER_SRCS_EXTENSIONS})
 
 add_library(tserver ${TSERVER_SRCS})
@@ -205,7 +210,10 @@ target_link_libraries(yb-tserver
 # tserver_test_util
 #########################################
 
-add_library(tserver_test_util tablet_server-test-base.cc tablet_server_test_util.cc)
+add_library(tserver_test_util
+  tablet_server-test-base.cc
+  tablet_server_test_util.cc
+  universe_key_test_util.cc)
 target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util)
 
 #########################################
@@ -213,6 +221,7 @@ target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util)
 #########################################
 
 set(YB_TEST_LINK_LIBS
+  rpc_test_util
   tserver
   tserver_test_util
   yb_client # yb::client::YBTableName
@@ -224,7 +233,14 @@ ADD_YB_TEST(remote_bootstrap_service-test)
 ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-test)
-ADD_YB_TEST(tserver_shared_mem-test)
+ADD_YB_TEST(header_manager_impl-test)
+
+ADD_YB_TEST(encrypted_sstable-test)
+target_link_libraries(encrypted_sstable-test encryption_test_util tserver_test_util tserver)
+
+# -------------------------------------------------------------------------------------------------
+# Tests in the "ent" directory
+# -------------------------------------------------------------------------------------------------
 
 if(YB_ENT_CURRENT_SOURCE_DIR)
   # Set the test source file folder.
@@ -234,6 +250,3 @@ if(YB_ENT_CURRENT_SOURCE_DIR)
     ADD_YB_TEST(${test})
   endforeach()
 endif()
-
-# Tablet server starts PostgreSQL as a child process
-adD_dependencies(tserver postgres)

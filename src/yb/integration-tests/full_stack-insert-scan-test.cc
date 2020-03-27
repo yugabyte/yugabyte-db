@@ -253,7 +253,8 @@ void ReportAllDone(int id, int numids) {
 
 } // anonymous namespace
 
-const YBTableName FullStackInsertScanTest::kTableName("my_keyspace", "full-stack-mrs-test-tbl");
+const YBTableName FullStackInsertScanTest::kTableName(
+    YQL_DATABASE_CQL, "my_keyspace", "full-stack-mrs-test-tbl");
 
 TEST_F(FullStackInsertScanTest, MRSOnlyStressTest) {
   FLAGS_enable_maintenance_manager = false;
@@ -344,7 +345,8 @@ void FullStackInsertScanTest::CreateTable() {
   ASSERT_GE(kNumInsertsPerClient, 0);
   ASSERT_NO_FATALS(InitCluster());
 
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
 
   YBSchemaBuilder b;
   b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();

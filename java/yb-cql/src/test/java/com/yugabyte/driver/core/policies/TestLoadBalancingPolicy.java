@@ -218,25 +218,34 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
           "v int, primary key ((h1, h2, h3, h4)));");
 
       Map<Integer, String> map = new HashMap<>();
+      // TODO @Oleg uncomment the code below when #2860 is fixed.
+      /*
       int map_size = rand.nextInt(10);
       for (int i = 0; i < map_size; i++) {
         map.put(rand.nextInt(), RandomStringUtils.random(rand.nextInt(64)));
       }
+      */
 
       Set<Double> set = new HashSet<>();
+      // TODO @Oleg uncomment the code below when #2860 is fixed.
+      /*
       int set_size = rand.nextInt(10);
       for (int i = 0; i < set_size; i++) {
         set.add(rand.nextDouble());
       }
+      */
 
       List<Set<String>> list = new LinkedList<>();
       int list_size = rand.nextInt(5);
       for (int i = 0; i < list_size; i++) {
         Set<String> list_set = new HashSet<>();
+        // TODO @Oleg uncomment the code below when #2860 is fixed.
+        /*
         int list_set_size = rand.nextInt(5);
         for (int j = 0; j < list_set_size; j++) {
           list_set.add(RandomStringUtils.random(rand.nextInt(32)));
         }
+         */
 
         list.add(list_set);
       }
@@ -376,10 +385,12 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
     final int NUM_KEYS = 100;
 
     // Create test table.
-    session.execute("create table test_lb_idx (h1 int, h2 text, c int, primary key ((h1, h2))) " +
+    session.execute("create table test_lb_idx " +
+                    "(h1 int, h2 text, c int, j jsonb, primary key ((h1, h2))) " +
                     "with transactions = { 'enabled' : true };");
     session.execute("create index test_lb_idx_1 on test_lb_idx (h1) include (c);");
     session.execute("create index test_lb_idx_2 on test_lb_idx (c);");
+    session.execute("create index test_lb_idx_3 on test_lb_idx (j->>'a');");
 
     waitForMetadataRefresh();
 
@@ -388,9 +399,10 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
 
     PreparedStatement stmt;
 
-    stmt = session.prepare("insert into test_lb_idx (h1, h2, c) values (?, ?, ?);");
+    stmt = session.prepare("insert into test_lb_idx (h1, h2, c, j) values (?, ?, ?, ?);");
     for (int i = 1; i <= NUM_KEYS; i++) {
-      session.execute(stmt.bind(Integer.valueOf(i), "v" + i, Integer.valueOf(i)));
+      String jvalue = String.format("{ \"a\" : \"json_%d\" }", i);
+      session.execute(stmt.bind(Integer.valueOf(i), "v" + i, Integer.valueOf(i), jvalue));
     }
 
     stmt = session.prepare("select c from test_lb_idx where h1 = ?;");
@@ -408,6 +420,15 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
       assertEquals("v" + i, row.getString("h2"));
     }
 
+    stmt = session.prepare("select h1, h2 from test_lb_idx where j->>'a' = ?;");
+    for (int i = 1; i <= NUM_KEYS; i++) {
+      String jvalue = String.format("json_%d", i);
+      Row row = session.execute(stmt.bind(jvalue)).one();
+      assertNotNull(row);
+      assertEquals(i, row.getInt("h1"));
+      assertEquals("v" + i, row.getString("h2"));
+    }
+
     // Check the metrics again.
     IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
 
@@ -417,9 +438,15 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
     // because as soon as the test table has been created and the partition metadata has been
     // loaded, the cluster's load-balancer may still be rebalancing the leaders.
     assertTrue("Local Read Count: " + totalMetrics.localReadCount,
-               totalMetrics.localReadCount >= NUM_KEYS * 2 * 0.7);
+               totalMetrics.localReadCount >= NUM_KEYS * 3 * 0.7);
     assertTrue("Local Write Count: " + totalMetrics.localWriteCount,
                totalMetrics.localWriteCount >= NUM_KEYS * 0.7);
+
+    // Should use percentage to check? Remove the following check if it fails.
+    // Use 60% as limit (Assuming 100% local write for UserTable and 50% for each IndexTable).
+    double fraction = (1.0 * totalMetrics.localWriteCount) /
+                      (totalMetrics.localWriteCount + totalMetrics.remoteWriteCount);
+    assertTrue("Local/total write: " + fraction, fraction > 0.60);
   }
 
   // Test load-balancing policy with BatchStatement

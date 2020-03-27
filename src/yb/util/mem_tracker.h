@@ -75,6 +75,12 @@ YB_STRONGLY_TYPED_BOOL(CreateMetrics);
 YB_STRONGLY_TYPED_BOOL(OnlyChildren);
 
 typedef std::function<int64_t()> ConsumptionFunctor;
+typedef std::function<void()> PollChildrenConsumptionFunctors;
+
+struct SoftLimitExceededResult {
+  bool exceeded;
+  double current_capacity_pct;
+};
 
 // A MemTracker tracks memory consumption; it contains an optional limit and is
 // arranged into a tree structure such that the consumption tracked by a
@@ -292,17 +298,15 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // Like LimitExceeded() but may also return true if the soft memory limit is exceeded.
   // The greater the excess, the higher the chance that it returns true.
-  //
-  // If the soft limit is exceeded and 'current_capacity_pct' is not NULL, the percentage
-  // of the hard limit consumed is written to it.
-  bool SoftLimitExceeded(double* current_capacity_pct);
+  // If score is not 0, then it is used to determine positive result.
+  SoftLimitExceededResult SoftLimitExceeded(double score);
 
   // Combines the semantics of AnyLimitExceeded() and SoftLimitExceeded().
   //
   // Note: if there's more than one soft limit defined, the probability of it being
   // exceeded in at least one tracker is much higher (as each soft limit check is an
   // independent event).
-  bool AnySoftLimitExceeded(double* current_capacity_pct);
+  SoftLimitExceededResult AnySoftLimitExceeded(double score);
 
   // Returns the maximum consumption that can be made without exceeding the limit on
   // this tracker or any of its parents. Returns int64_t::max() if there are no
@@ -342,7 +346,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   }
 
   // Logs the usage of this tracker and all of its children (recursively).
-  std::string LogUsage(const std::string& prefix = "") const;
+  std::string LogUsage(
+      const std::string& prefix = "", size_t usage_threshold = 0, int indent = 0) const;
 
   void EnableLogging(bool enable, bool log_stack) {
     enable_logging_ = enable;
@@ -359,6 +364,11 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   bool add_to_parent() const {
     return add_to_parent_;
+  }
+
+  void SetPollChildrenConsumptionFunctors(
+      PollChildrenConsumptionFunctors poll_children_consumption_functors) {
+    poll_children_consumption_functors_ = std::move(poll_children_consumption_functors);
   }
 
  private:
@@ -410,6 +420,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   const int64_t soft_limit_;
   const std::string id_;
   const ConsumptionFunctor consumption_functor_;
+  PollChildrenConsumptionFunctors poll_children_consumption_functors_;
   const std::string descr_;
   std::shared_ptr<MemTracker> parent_;
   CoarseMonoClock::time_point last_consumption_update_ = CoarseMonoClock::time_point::min();
@@ -561,6 +572,8 @@ class ScopedTrackedConsumption {
 
   int64_t consumption() const { return consumption_; }
 
+  const MemTrackerPtr& mem_tracker() { return tracker_; }
+
  private:
   MemTrackerPtr tracker_;
   int64_t consumption_;
@@ -589,7 +602,10 @@ struct MemTrackerData {
 const MemTrackerData& CollectMemTrackerData(const MemTrackerPtr& tracker, int depth,
                                             std::vector<MemTrackerData>* output);
 
-std::string DumpMemTrackers();
+std::string DumpMemoryUsage();
+
+bool CheckMemoryPressureWithLogging(
+    const MemTrackerPtr& mem_tracker, double score, const char* error_prefix);
 
 } // namespace yb
 

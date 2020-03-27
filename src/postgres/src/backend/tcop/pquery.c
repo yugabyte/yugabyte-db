@@ -28,6 +28,7 @@
 #include "utils/snapmgr.h"
 
 #include "pg_yb_utils.h"
+#include "executor/ybcModifyTable.h"
 #include "optimizer/ybcplan.h"
 
 /*
@@ -160,7 +161,9 @@ ProcessQuery(PlannedStmt *plan,
 	ExecutorStart(queryDesc, 0);
 
 	/* Set whether this is a single-row, single-stmt modify, used in YB mode. */
-	queryDesc->estate->es_yb_is_single_row_modify_txn = isSingleRowModifyTxn;
+	queryDesc->estate->es_yb_is_single_row_modify_txn =
+		isSingleRowModifyTxn && queryDesc->estate->es_num_result_relations == 1 &&
+		YBCIsSingleRowTxnCapableRel(&queryDesc->estate->es_result_relations[0]);
 
 	/*
 	 * Run the plan to completion.
@@ -741,7 +744,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	 * restart.  So we need to be prepared to restore it as pointing to the
 	 * exit-time TopTransactionResourceOwner.  (Ain't that ugly?  This idea of
 	 * internally starting whole new transactions is not good.)
-	 * CurrentMemoryContext has a similar problem, but the other pointers we
+	 * GetCurrentMemoryContext() has a similar problem, but the other pointers we
 	 * save here will be NULL or pointing to longer-lived objects.
 	 */
 	saveTopTransactionResourceOwner = TopTransactionResourceOwner;
@@ -749,7 +752,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	saveActivePortal = ActivePortal;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
-	saveMemoryContext = CurrentMemoryContext;
+	saveMemoryContext = GetCurrentMemoryContext();
 	PG_TRY();
 	{
 		ActivePortal = portal;
@@ -1235,11 +1238,10 @@ PortalRunMulti(Portal portal,
 
 	if (IsYugaByteEnabled())
 	{
-		if (!IsTransactionBlock() && isTopLevel &&
-				list_length(portal->stmts) == 1)
+		if (!IsTransactionBlock() && list_length(portal->stmts) == 1)
 		{
 			PlannedStmt *pstmt = linitial_node(PlannedStmt, portal->stmts);
-			is_single_row_modify_txn = ybcIsSingleRowModify(pstmt);
+			is_single_row_modify_txn = YBCIsSingleRowModify(pstmt);
 		}
 	}
 
@@ -1365,7 +1367,7 @@ PortalRunMulti(Portal portal,
 		/*
 		 * Clear subsidiary contexts to recover temporary memory.
 		 */
-		Assert(portal->portalContext == CurrentMemoryContext);
+		Assert(portal->portalContext == GetCurrentMemoryContext());
 
 		MemoryContextDeleteChildren(portal->portalContext);
 	}

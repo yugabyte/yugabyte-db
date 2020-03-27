@@ -76,6 +76,7 @@ class CompactionPickerTest : public testing::Test {
   }
 
   ~CompactionPickerTest() {
+    log_buffer_.FlushBufferToLog();
   }
 
   void NewVersionStorage(int num_levels, CompactionStyle style) {

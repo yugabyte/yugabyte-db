@@ -11,13 +11,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Sometimes there might be a need to move a YugaByte DB universe deployed on a set of nodes to a completely different set of nodes in an online manner. Some scenarios that require such a cluster change are:
+Sometimes there might be a need to move a YugabyteDB universe deployed on a set of nodes to a completely different set of nodes in an online manner. Some scenarios that require such a cluster change are:
 
 - changing the instance or machine type.
 - updating the instance images on a regular basis (e.g., AMI rehydration in AWS).
 - moving to a different set of zones, regions or datacenters.
 
-This page provides the steps needed to perform such a data move in an online manner from the initial setup to the final setup as described below. This tutorial assumes that you are familiar with the [YugaByte DB process architecture](../../../../architecture/concepts/universe/).
+This page provides the steps needed to perform such a data move in an online manner from the initial setup to the final setup as described below. This tutorial assumes that you are familiar with the [YugabyteDB process architecture](../../../../architecture/concepts/universe/).
 
 ## Example scenario
 
@@ -57,7 +57,7 @@ Spin up a new set of VMs/machines (with the new AMI, for example) with IPs `node
 Use these two steps to configure the six new machines:
 
   - Follow the [System Configuration](../../deploy/manual-deployment/system-config/) instructions for system setup.
-  - Install [YugaByte Software](../../deploy/manual-deployment/install-software/) on each new machine.
+  - Install [Yugabyte Software](../../deploy/manual-deployment/install-software/) on each new machine.
 
 
 ## 2. Start master processes

@@ -1,52 +1,78 @@
 ---
-title: REVOKE
-description: REVOKE Command
+title: REVOKE statement [YSQL]
+headerTitle: REVOKE
+linkTitle: REVOKE
+description: Use the REVOKE statement to remove access privileges from one or more roles.
 summary: REVOKE
 menu:
   latest:
     identifier: api-ysql-commands-revoke
-    parent: api-ysql-commands-revoke
+    parent: api-ysql-commands
 aliases:
   - /latest/api/ysql/commands/dcl_revoke
 isTocNested: true
 showAsideToc: true
 ---
 
-## Synopsis 
+## Synopsis
 
-Remove access privileges.
+Use the `REVOKE` statement to remove access privileges from one or more roles.
 
 ## Syntax
 
-### Diagrams
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="638" height="97" viewbox="0 0 638 97"><path class="connector" d="M0 50h5m68 0h10m79 0h10m38 0h10m117 0h10m54 0h30m-5 0q-5 0-5-5v-19q0-5 5-5h20m24 0h21q5 0 5 5v19q0 5-5 5m-5 0h50m77 0h20m-107 24q0 5 5 5h5m77 0h5q5 0 5-5m-102-24q5 0 5 5v32q0 5 5 5h87q5 0 5-5v-32q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="34" width="68" height="24" rx="7"/><text class="text" x="15" y="50">REVOKE</text><a xlink:href="../../grammar_diagrams#privileges"><rect class="rule" x="83" y="34" width="79" height="24"/><text class="text" x="93" y="50">privileges</text></a><rect class="literal" x="172" y="34" width="38" height="24" rx="7"/><text class="text" x="182" y="50">ON</text><a xlink:href="../../grammar_diagrams#privilege-target"><rect class="rule" x="220" y="34" width="117" height="24"/><text class="text" x="230" y="50">privilege_target</text></a><rect class="literal" x="347" y="34" width="54" height="24" rx="7"/><text class="text" x="357" y="50">FROM</text><rect class="literal" x="446" y="5" width="24" height="24" rx="7"/><text class="text" x="456" y="21">,</text><a xlink:href="../../grammar_diagrams#name"><rect class="rule" x="431" y="34" width="55" height="24"/><text class="text" x="441" y="50">name</text></a><rect class="literal" x="536" y="34" width="77" height="24" rx="7"/><text class="text" x="546" y="50">CASCADE</text><rect class="literal" x="536" y="63" width="77" height="24" rx="7"/><text class="text" x="546" y="79">RESTRICT</text></svg>
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-### Grammar
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/revoke_table,revoke_table_col,revoke_seq,revoke_db,revoke_domain,revoke_schema,revoke_type,revoke_role.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/revoke_table,revoke_table_col,revoke_seq,revoke_db,revoke_domain,revoke_schema,revoke_type,revoke_role.diagram.md" /%}}
+  </div>
+</div>
 
-```
-revoke ::= REVOKE privileges ON privilege_target FROM name [, ...] [ CASCADE | RESTRICT ] ;
-```
+## Semantics
+
+Any role has the sum of all privileges assigned to it. So, if `REVOKE` is used to revoke `SELECT` from `PUBLIC`, then it does not mean that all roles have lost `SELECT` privilege.
+If a role had `SELECT` granted directly to it or inherited it via a group, then it can continue to hold the `SELECT` privilege.
+
+If `GRANT OPTION FOR` is specified, only the grant option for the privilege is revoked, not the privilege itself. Otherwise, both the privilege and the grant option are revoked.
+
+Similarly, while revoking a role, if `ADMIN OPTION FOR` is specified, then only the admin option for the privilege is revoked.
+
+If a user holds a privilege with grant option and has granted it to other users, then revoking the privilege from the first user will also revoke it from dependent users
+if `CASCADE` is specified. Otherwise, the `REVOKE` will fail.
+
+When revoking privileges on a table, the corresponding column privileges (if any) are automatically revoked on each column of the table, as well. On the other hand, if a role has been granted privileges on a table, then revoking the same privileges from individual columns will have no effect.
 
 ## Examples
 
-- Create a sample role.
+- Revoke SELECT privilege for PUBLIC on table 'stores'
 
-```sql
-postgres=# CREATE USER John;
+```postgresql
+yugabyte=# REVOKE SELECT ON stores FROM PUBLIC;
 ```
 
-- Grant John all permissions on the `postgres` database.
+- Remove user John from SysAdmins group.
 
-```sql
-postgres=# GRANT ALL ON DATABASE postgres TO John;
+```postgresql
+yugabyte=# REVOKE SysAdmins FROM John;
 ```
 
-- Remove John's permissions from the `postgres` database.
+## See also
 
-```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
-```
-
-## See Also
-
-[Other YSQL Statements](..)
+- [`CREATE ROLE`](../dcl_create_role)
+- [`GRANT`](../dcl_grant)

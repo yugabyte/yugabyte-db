@@ -30,8 +30,6 @@
 # under the License.
 #
 
-YB_INCLUDE_EXTENSIONS()
-
 #######################################
 # protoc-gen-insertions
 #######################################
@@ -147,6 +145,7 @@ set(UTIL_SRCS
   bytes_formatter.cc
   cache_metrics.cc
   capabilities.cc
+  ctr_cipher_stream.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -162,8 +161,13 @@ set(UTIL_SRCS
   debug/trace_event_impl_constants.cc
   debug/trace_event_synthetic_delay.cc
   decimal.cc
+  delayer.cc
+  encrypted_file.cc
+  encrypted_file_factory.cc
+  encryption_util.cc
   env.cc env_posix.cc env_util.cc
   errno.cc
+  ev_util.cc
   failure_detector.cc
   fast_varint.cc
   faststring.cc
@@ -174,6 +178,7 @@ set(UTIL_SRCS
   flag_tags.cc
   flags.cc
   hdr_histogram.cc
+  header_manager_impl.cc
   hexdump.cc
   init.cc
   jsonreader.cc
@@ -181,7 +186,6 @@ set(UTIL_SRCS
   kernel_stack_watchdog.cc
   locks.cc
   logging.cc
-  main_util.cc
   malloc.cc
   math_util.cc
   mem_tracker.cc
@@ -200,6 +204,7 @@ set(UTIL_SRCS
   net/rate_limiter.cc
   net/socket.cc
   net/tunnel.cc
+  ntp_clock.cc
   oid_generator.cc
   once.cc
   opid.cc
@@ -222,6 +227,8 @@ set(UTIL_SRCS
   slice.cc
   spinlock_profiling.cc
   split.cc
+  stats/perf_level_imp.cc
+  stats/iostats_context_imp.cc
   status.cc
   status_callback.cc
   stol_utils.cc
@@ -229,6 +236,7 @@ set(UTIL_SRCS
   string_trim.cc
   string_util.cc
   striped64.cc
+  strongly_typed_uuid.cc
   subprocess.cc
   sync_point.cc
   test_graph.cc
@@ -239,14 +247,13 @@ set(UTIL_SRCS
   timestamp.cc
   trace.cc
   trilean.cc
+  universe_key_manager.cc
   url-coding.cc
   user.cc
   uuid.cc
   varint.cc
   version_info.cc
   async_util.cc
-  ybc_util.cc
-  ybc-internal.cc
   ${UTIL_SRCS_EXTENSIONS}
   )
 
@@ -262,12 +269,14 @@ set(UTIL_LIBS
   glog
   gutil
   histogram_proto
+  libev
   pb_util_proto
   protobuf
   version_info_proto
   encryption_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
+  ${OPENSSL_SSL_LIBRARY}
   ${UTIL_LIBS_EXTENSIONS})
 
 if (NOT APPLE AND NOT USING_LINUXBREW)
@@ -291,6 +300,7 @@ list(APPEND UTIL_LIBS curl dl)
 ADD_YB_LIBRARY(yb_util
   SRCS ${UTIL_SRCS}
   DEPS ${UTIL_LIBS})
+
 cotire(yb_util)
 
 add_dependencies(yb_util gen_version_info)
@@ -300,12 +310,16 @@ add_dependencies(yb_util gen_version_info)
 #######################################
 
 add_library(yb_test_util
+  logging_test_util.cc
   test_util.cc)
 target_link_libraries(yb_test_util
   gflags
   glog
   gmock
   yb_util)
+
+add_library(encryption_test_util encryption_test_util.cc header_manager_mock_impl.cc)
+target_link_libraries(encryption_test_util yb_test_util)
 
 #######################################
 # yb_test_main
@@ -329,7 +343,7 @@ endif()
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS}  ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
@@ -351,12 +365,12 @@ ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(jsonreader-test)
 ADD_YB_TEST(lockfree-test)
-ADD_YB_TEST(logging-test)
 ADD_YB_TEST(map-util-test)
 ADD_YB_TEST(memcmpable_varint-test LABELS no_tsan)
 ADD_YB_TEST(memenv/memenv-test)
 ADD_YB_TEST(memory/arena-test)
 ADD_YB_TEST(memory/mc_types-test)
+ADD_YB_TEST(memory/memory_usage-test)
 ADD_YB_TEST(mem_tracker-test)
 ADD_YB_TEST(metrics-test)
 ADD_YB_TEST(monotime-test)
@@ -391,6 +405,7 @@ ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)
 ADD_YB_TEST(stack_watchdog-test)
+ADD_YB_TEST(stats/iostats_context_test)
 ADD_YB_TEST(status-test)
 ADD_YB_TEST(stol_utils-test)
 ADD_YB_TEST(string_case-test)
@@ -470,10 +485,8 @@ if(NOT "${NO_TESTS}")
     proto_container_test_proto)
 endif()
 
-#######################################
-# enterprise tests
-#######################################
+ADD_YB_TEST(encrypted_env-test)
+target_link_libraries(encrypted_env-test encryption_test_util)
 
-foreach(test ${UTIL_TESTS_EXTENSIONS})
-  ADD_YB_TEST(${test})
-endforeach()
+ADD_YB_TEST(ctr_cipher_stream-test)
+target_link_libraries(ctr_cipher_stream-test encryption_test_util)

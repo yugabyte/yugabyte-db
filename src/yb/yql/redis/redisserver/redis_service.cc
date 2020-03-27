@@ -61,6 +61,7 @@
 #include "yb/util/redis_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/shared_lock.h"
 
 using yb::operator"" _MB;
 using namespace std::literals;
@@ -1127,7 +1128,7 @@ void RedisServiceImplData::RemoveFromSubscribers(
 
 std::unordered_set<string> RedisServiceImplData::GetSubscriptions(
     AsPattern type, Connection* conn) {
-  boost::shared_lock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
+  SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   return (
       type == AsPattern::kTrue ? clients_to_subscriptions_[conn].patterns
                                : clients_to_subscriptions_[conn].channels);
@@ -1136,7 +1137,7 @@ std::unordered_set<string> RedisServiceImplData::GetSubscriptions(
 // ENG-4199: Consider getting all the cluster-wide subscriptions?
 std::unordered_set<string> RedisServiceImplData::GetAllSubscriptions(AsPattern type) {
   unordered_set<string> ret;
-  boost::shared_lock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
+  SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   for (const auto& element :
        (type == AsPattern::kTrue ? patterns_to_clients_ : channels_to_clients_)) {
     ret.insert(element.first);
@@ -1146,7 +1147,7 @@ std::unordered_set<string> RedisServiceImplData::GetAllSubscriptions(AsPattern t
 
 // ENG-4199: Consider getting all the cluster-wide subscribers?
 int RedisServiceImplData::NumSubscribers(AsPattern type, const std::string& channel) {
-  boost::shared_lock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
+  SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   const auto& look_in = (type ? patterns_to_clients_ : channels_to_clients_);
   const auto& iter = look_in.find(channel);
   return (iter == look_in.end() ? 0 : iter->second.size());
@@ -1155,7 +1156,7 @@ int RedisServiceImplData::NumSubscribers(AsPattern type, const std::string& chan
 void RedisServiceImplData::LogToMonitors(
     const string& end, const string& db, const RedisClientCommand& cmd) {
   {
-    boost::shared_lock<decltype(pubsub_mutex_)> rlock(pubsub_mutex_);
+    SharedLock<decltype(pubsub_mutex_)> rlock(pubsub_mutex_);
     if (monitoring_clients_.empty()) return;
   }
 
@@ -1280,7 +1281,7 @@ string PMessageFor(const string& pattern, const string& channel, const string& m
 
 int RedisServiceImplData::PublishToLocalClients(
     IsMonitorMessage mode, const string& channel, const string& message) {
-  boost::shared_lock<decltype(pubsub_mutex_)> rlock(pubsub_mutex_);
+  SharedLock<decltype(pubsub_mutex_)> rlock(pubsub_mutex_);
 
   int num_pushed_to = 0;
   // Send the message to all the monitoring clients.

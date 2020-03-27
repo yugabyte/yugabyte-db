@@ -17,12 +17,14 @@
 namespace yb {
 namespace rpc {
 
+YB_STRONGLY_TYPED_BOOL(ShouldReject);
+
 struct CallData {
  public:
   CallData() : data_(nullptr), size_(0) {}
 
-  explicit CallData(size_t size)
-      : data_(size ? static_cast<char*>(malloc(size)) : nullptr), size_(size) {}
+  explicit CallData(size_t size, ShouldReject should_reject = ShouldReject::kFalse)
+      : data_(!should_reject && size ? static_cast<char*>(malloc(size)) : nullptr), size_(size) {}
 
   CallData(const CallData&) = delete;
   void operator=(const CallData&) = delete;
@@ -59,9 +61,13 @@ struct CallData {
     return data_;
   }
 
+  bool should_reject() const { return data_ == nullptr; }
+
   size_t size() const {
     return size_;
   }
+
+  size_t DynamicMemoryUsage() const { return size_; }
 
  private:
   char* data_;

@@ -49,6 +49,10 @@ using std::set;
 using std::unordered_map;
 using std::unordered_set;
 
+// ------------------------------------------------------------------------------------------------
+// ColumnSchema
+// ------------------------------------------------------------------------------------------------
+
 // TODO: include attributes_.ToString() -- need to fix unit tests
 // first
 string ColumnSchema::ToString() const {
@@ -73,6 +77,10 @@ size_t ColumnSchema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
+// ------------------------------------------------------------------------------------------------
+// TableProperties
+// ------------------------------------------------------------------------------------------------
+
 void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   if (HasDefaultTimeToLive()) {
     pb->set_default_time_to_live(default_time_to_live_);
@@ -83,6 +91,12 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   if (HasCopartitionTableId()) {
     pb->set_copartition_table_id(copartition_table_id_);
   }
+  pb->set_use_mangled_column_name(use_mangled_column_name_);
+  if (HasNumTablets()) {
+    pb->set_num_tablets(num_tablets_);
+  }
+  pb->set_is_ysql_catalog_table(is_ysql_catalog_table_);
+  pb->set_is_backfilling(is_backfilling_);
 }
 
 TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& pb) {
@@ -102,6 +116,18 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   if (pb.has_copartition_table_id()) {
     table_properties.SetCopartitionTableId(pb.copartition_table_id());
   }
+  if (pb.has_use_mangled_column_name()) {
+    table_properties.SetUseMangledColumnName(pb.use_mangled_column_name());
+  }
+  if (pb.has_num_tablets()) {
+    table_properties.SetNumTablets(pb.num_tablets());
+  }
+  if (pb.has_is_ysql_catalog_table()) {
+    table_properties.set_is_ysql_catalog_table(pb.is_ysql_catalog_table());
+  }
+  if (pb.has_is_backfilling()) {
+    table_properties.SetIsBackfilling(pb.is_backfilling());
+  }
   return table_properties;
 }
 
@@ -118,6 +144,18 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   if (pb.has_copartition_table_id()) {
     SetCopartitionTableId(pb.copartition_table_id());
   }
+  if (pb.has_use_mangled_column_name()) {
+    SetUseMangledColumnName(pb.use_mangled_column_name());
+  }
+  if (pb.has_num_tablets()) {
+    SetNumTablets(pb.num_tablets());
+  }
+  if (pb.has_is_ysql_catalog_table()) {
+    set_is_ysql_catalog_table(pb.is_ysql_catalog_table());
+  }
+  if (pb.has_is_backfilling()) {
+    SetIsBackfilling(pb.is_backfilling());
+  }
 }
 
 void TableProperties::Reset() {
@@ -126,7 +164,31 @@ void TableProperties::Reset() {
   is_transactional_ = false;
   consistency_level_ = YBConsistencyLevel::STRONG;
   copartition_table_id_ = kNoCopartitionTableId;
+  use_mangled_column_name_ = false;
+  num_tablets_ = 0;
+  is_ysql_catalog_table_ = false;
+  is_backfilling_ = false;
 }
+
+string TableProperties::ToString() const {
+  std::string result("{ ");
+  if (HasDefaultTimeToLive()) {
+    result += Format("default_time_to_live: $0 ", default_time_to_live_);
+  }
+  result += Format("contain_counters: $0 is_transactional: $1 ",
+                   contain_counters_, is_transactional_);
+  if (HasCopartitionTableId()) {
+    result += Format("copartition_table_id: $0 ", copartition_table_id_);
+  }
+  return result + Format(
+      "consistency_level: $0 is_ysql_catalog_table: $1 }",
+      consistency_level_,
+      is_ysql_catalog_table_);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Schema
+// ------------------------------------------------------------------------------------------------
 
 Schema::Schema(const Schema& other)
   : name_to_index_bytes_(0),
@@ -166,6 +228,10 @@ void Schema::CopyFrom(const Schema& other) {
   has_statics_ = other.has_statics_;
   table_properties_ = other.table_properties_;
   cotable_id_ = other.cotable_id_;
+  pgtable_id_ = other.pgtable_id_;
+
+  // Schema cannot have both, cotable ID and pgtable ID.
+  DCHECK(cotable_id_.IsNil() || pgtable_id_ == 0);
 }
 
 void Schema::swap(Schema& other) {
@@ -180,18 +246,24 @@ void Schema::swap(Schema& other) {
   std::swap(has_statics_, other.has_statics_);
   std::swap(table_properties_, other.table_properties_);
   std::swap(cotable_id_, other.cotable_id_);
+  std::swap(pgtable_id_, other.pgtable_id_);
+
+  // Schema cannot have both, cotable ID or pgtable ID.
+  DCHECK(cotable_id_.IsNil() || pgtable_id_ == 0);
 }
 
 Status Schema::Reset(const vector<ColumnSchema>& cols,
                      const vector<ColumnId>& ids,
                      int key_columns,
                      const TableProperties& table_properties,
-                     const Uuid& cotable_id) {
+                     const Uuid& cotable_id,
+                     const PgTableOid pgtable_id) {
   cols_ = cols;
   num_key_columns_ = key_columns;
   num_hash_key_columns_ = 0;
   table_properties_ = table_properties;
   cotable_id_ = cotable_id;
+  pgtable_id_ = pgtable_id;
 
   // Determine whether any column is nullable or static, and count number of hash columns.
   has_nullables_ = false;
@@ -221,6 +293,11 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   if (PREDICT_FALSE(!ids.empty() && ids.size() != cols_.size())) {
     return STATUS(InvalidArgument, "Bad schema",
       "The number of ids does not match with the number of columns");
+  }
+
+  if (PREDICT_FALSE(!cotable_id.IsNil() && pgtable_id > 0)) {
+    return STATUS(InvalidArgument,
+                  "Bad schema", "Cannot have both cotable ID and pgtable ID");
   }
 
   // Verify that the key columns are not nullable nor static
@@ -297,7 +374,7 @@ Status Schema::CreateProjectionByNames(const std::vector<GStringPiece>& col_name
     }
     cols.push_back(column(idx));
   }
-  return out->Reset(cols, ids, num_key_columns, TableProperties(), cotable_id_);
+  return out->Reset(cols, ids, num_key_columns, TableProperties(), cotable_id_, pgtable_id_);
 }
 
 Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
@@ -312,7 +389,7 @@ Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& c
     cols.push_back(column(idx));
     filtered_col_ids.push_back(id);
   }
-  return out->Reset(cols, filtered_col_ids, 0, TableProperties(), cotable_id_);
+  return out->Reset(cols, filtered_col_ids, 0, TableProperties(), cotable_id_, pgtable_id_);
 }
 
 Schema Schema::CopyWithColumnIds() const {
@@ -321,12 +398,12 @@ Schema Schema::CopyWithColumnIds() const {
   for (int32_t i = 0; i < num_columns(); i++) {
     ids.push_back(ColumnId(kFirstColumnId + i));
   }
-  return Schema(cols_, ids, num_key_columns_, table_properties_, cotable_id_);
+  return Schema(cols_, ids, num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
 }
 
 Schema Schema::CopyWithoutColumnIds() const {
   CHECK(has_column_ids());
-  return Schema(cols_, num_key_columns_, table_properties_, cotable_id_);
+  return Schema(cols_, num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
 }
 
 Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
@@ -400,7 +477,8 @@ string Schema::ToString() const {
                 JoinStrings(col_strs, ",\n\t"),
                 "\n]\nproperties: ",
                 tablet_properties_pb.ShortDebugString(),
-                cotable_id_.IsNil() ? "" : ("\ncotable_id: " + cotable_id_.ToString()));
+                cotable_id_.IsNil() ? "" : ("\ncotable_id: " + cotable_id_.ToString()),
+                pgtable_id_ == 0 ? "" : ("\npgtable_id: " + std::to_string(pgtable_id_)));
 }
 
 Status Schema::DecodeRowKey(Slice encoded_key,

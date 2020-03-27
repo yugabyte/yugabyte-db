@@ -11,18 +11,25 @@
 // under the License.
 //
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/txn-test-base.h"
 
+#include "yb/common/ql_value.h"
+
+#include "yb/consensus/raft_consensus.h"
+
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/enums.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -30,6 +37,10 @@ using namespace std::literals;
 
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_int32(inject_load_transaction_delay_ms);
+DECLARE_int32(inject_status_resolver_delay_ms);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_uint64(max_transactions_in_status_request);
 
 namespace yb {
 namespace client {
@@ -37,26 +48,28 @@ namespace client {
 YB_DEFINE_ENUM(BankAccountsOption, (kTimeStrobe)(kStepDown)(kTimeJump));
 typedef EnumBitSet<BankAccountsOption> BankAccountsOptions;
 
-class SnapshotTxnTest : public TransactionTestBase {
+class SnapshotTxnTest : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase> {
  protected:
+  void SetUp() override {
+    SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+    TransactionTestBase::SetUp();
+  }
+
   void TestBankAccounts(BankAccountsOptions options, CoarseDuration duration,
                         int minimal_updates_per_second);
   void TestBankAccountsThread(
      int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool);
-
-  IsolationLevel GetIsolationLevel() override {
-    return IsolationLevel::SNAPSHOT_ISOLATION;
-  }
+  void TestRemoteBootstrap();
 };
 
 void SnapshotTxnTest::TestBankAccountsThread(
     int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool) {
   bool failure = true;
-  BOOST_SCOPE_EXIT(&failure, stop) {
+  auto se = ScopeExit([&failure, stop] {
     if (failure) {
       stop->store(true, std::memory_order_release);
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
   auto session = CreateSession();
   YBTransactionPtr txn;
   int32_t key1 = 0, key2 = 0;
@@ -126,7 +139,7 @@ std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* s
   // Clock skew is modified by a random amount every 100ms.
   return std::thread([cluster, stop] {
     const server::SkewedClock::DeltaTime upperbound =
-        std::chrono::microseconds(FLAGS_max_clock_skew_usec) / 2;
+        std::chrono::microseconds(GetAtomicFlag(&FLAGS_max_clock_skew_usec)) / 2;
     const auto lowerbound = -upperbound;
     while (!stop->load(std::memory_order_acquire)) {
       auto num_servers = cluster->num_tablet_servers();
@@ -206,8 +219,8 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
 
   std::atomic<int64_t> updates(0);
   std::vector<std::thread> threads;
-  BOOST_SCOPE_EXIT(
-      &stop, &threads, &updates, &strobe_thread, duration, minimal_updates_per_second) {
+  auto se = ScopeExit(
+      [&stop, &threads, &updates, &strobe_thread, duration, minimal_updates_per_second] {
     stop.store(true, std::memory_order_release);
 
     for (auto& thread : threads) {
@@ -221,7 +234,7 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
     LOG(INFO) << "Total updates: " << updates.load(std::memory_order_acquire);
     ASSERT_GT(updates.load(std::memory_order_acquire),
               minimal_updates_per_second * duration / 1s);
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   while (threads.size() != kThreads) {
     threads.emplace_back(std::bind(
@@ -511,6 +524,341 @@ TEST_F_EX(SnapshotTxnTest, InconsistentPaging, SingleTabletSnapshotTxnTest) {
     EXPECT_GE(counts.inconsistent, 1);
   }
   EXPECT_EQ(counts.failed, 0);
+}
+
+TEST_F(SnapshotTxnTest, HotRow) {
+  constexpr int kBlockSize = RegularBuildVsSanitizers(1000, 100);
+  constexpr int kNumBlocks = 10;
+  constexpr int kIterations = kBlockSize * kNumBlocks;
+  constexpr int kKey = 42;
+
+  MonoDelta block_time;
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  auto session = CreateSession();
+  MonoTime start = MonoTime::Now();
+  for (int i = 1; i <= kIterations; ++i) {
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+    session->SetTransaction(txn);
+
+    ASSERT_OK(Increment(&table_, session, kKey));
+    ASSERT_OK(session->FlushFuture().get());
+    ASSERT_OK(txn->CommitFuture().get());
+    if (i % kBlockSize == 0) {
+      auto now = MonoTime::Now();
+      auto passed = now - start;
+      start = now;
+
+      LOG(INFO) << "Written: " << i << " for " << passed;
+      if (block_time) {
+        ASSERT_LE(passed, block_time * 2);
+      } else {
+        block_time = passed;
+      }
+    }
+  }
+}
+
+struct KeyToCheck {
+  int value;
+  KeyToCheck* next = nullptr;
+
+  explicit KeyToCheck(int value_) : value(value_) {}
+
+  friend void SetNext(KeyToCheck* key_to_check, KeyToCheck* next) {
+    key_to_check->next = next;
+  }
+
+  friend KeyToCheck* GetNext(KeyToCheck* key_to_check) {
+    return key_to_check->next;
+  }
+};
+
+// Concurrently execute multiple transaction, each of them writes the same key multiple times.
+// And perform tserver restarts in parallel to it.
+// This test checks that transaction participant state correctly restored after restart.
+TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
+  constexpr int kNumWritesPerKey = 10;
+
+  FLAGS_inject_load_transaction_delay_ms = 25;
+
+  TestThreadHolder thread_holder;
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    int ts_idx_to_restart = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(5s);
+      ts_idx_to_restart = (ts_idx_to_restart + 1) % cluster_->num_tablet_servers();
+      ASSERT_OK(cluster_->mini_tablet_server(ts_idx_to_restart)->Restart());
+    }
+  });
+
+  MPSCQueue<KeyToCheck> keys_to_check;
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  std::atomic<int> key(0);
+  std::atomic<int> good_keys(0);
+  for (int i = 0; i != 25; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &pool, &key, &keys_to_check, &good_keys] {
+      auto session = CreateSession();
+      while (!stop.load(std::memory_order_acquire)) {
+        int k = key.fetch_add(1, std::memory_order_acq_rel);
+        auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+        session->SetTransaction(txn);
+        bool good = true;
+        for (int j = 1; j <= kNumWritesPerKey; ++j) {
+          if (j > 1) {
+            std::this_thread::sleep_for(100ms);
+          }
+          auto write_status = WriteRow(&table_, session, k, j);
+          if (!write_status.ok()) {
+            auto msg = write_status.status().ToString();
+            if (msg.find("Service is shutting down") == std::string::npos) {
+              ASSERT_OK(write_status);
+            }
+            good = false;
+            break;
+          }
+        }
+        if (!good) {
+          continue;
+        }
+        auto commit_status = txn->CommitFuture().get();
+        if (!commit_status.ok()) {
+          auto msg = commit_status.ToString();
+          if (msg.find("Commit of expired transaction") == std::string::npos &&
+              msg.find("Transaction expired") == std::string::npos &&
+              msg.find("Transaction aborted") == std::string::npos &&
+              msg.find("Not the leader") == std::string::npos &&
+              msg.find("Timed out") == std::string::npos &&
+              msg.find("Network error") == std::string::npos) {
+            ASSERT_OK(commit_status);
+          }
+        } else {
+          keys_to_check.Push(new KeyToCheck(k));
+          good_keys.fetch_add(1, std::memory_order_acq_rel);
+        }
+      }
+    });
+  }
+
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &keys_to_check, kNumWritesPerKey] {
+    auto session = CreateSession();
+    for (;;) {
+      std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
+      if (key == nullptr) {
+        if (stop.load(std::memory_order_acquire)) {
+          break;
+        }
+        std::this_thread::sleep_for(10ms);
+        continue;
+      }
+      YBqlReadOpPtr op;
+      for (;;) {
+        op = ReadRow(session, key->value);
+        auto flush_result = session->Flush();
+        if (flush_result.ok()) {
+          break;
+        }
+      }
+      ASSERT_TRUE(op->succeeded()) << "Read failed: " << op->response().ShortDebugString();
+      auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
+      ASSERT_EQ(rowblock->row_count(), 1);
+      const auto& first_column = rowblock->row(0).column(0);
+      ASSERT_EQ(InternalType::kInt32Value, first_column.type());
+      ASSERT_EQ(first_column.int32_value(), kNumWritesPerKey);
+    }
+  });
+
+  thread_holder.WaitAndStop(60s);
+
+  for (;;) {
+    std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
+    if (key == nullptr) {
+      break;
+    }
+  }
+
+  ASSERT_GE(good_keys.load(std::memory_order_relaxed), key.load(std::memory_order_relaxed) * 0.8);
+}
+
+using RemoteBootstrapOnStartBase = TransactionCustomLogSegmentSizeTest<128, SnapshotTxnTest>;
+
+void SnapshotTxnTest::TestRemoteBootstrap() {
+  constexpr int kTransactionsCount = RegularBuildVsSanitizers(100, 10);
+  FLAGS_log_min_seconds_to_retain = 1;
+  DisableTransactionTimeout();
+
+  for (int iteration = 0; iteration != 4; ++iteration) {
+    DisableApplyingIntents();
+
+    TestThreadHolder thread_holder;
+
+    std::atomic<int> transactions(0);
+
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &transactions] {
+      auto session = CreateSession();
+      for (int transaction_idx = 0; !stop.load(std::memory_order_acquire); ++transaction_idx) {
+        auto txn = CreateTransaction();
+        session->SetTransaction(txn);
+        if (WriteRows(session, transaction_idx).ok() && txn->CommitFuture().get().ok()) {
+          transactions.fetch_add(1);
+        }
+      }
+    });
+
+    ASSERT_OK(thread_holder.WaitCondition([&transactions] {
+      return transactions.load(std::memory_order_acquire) >= kTransactionsCount;
+    }));
+
+    cluster_->mini_tablet_server(0)->Shutdown();
+
+    SetIgnoreApplyingProbability(0.0);
+
+    std::this_thread::sleep_for(FLAGS_log_min_seconds_to_retain * 1s);
+
+    auto start_transactions = transactions.load(std::memory_order_acquire);
+    ASSERT_OK(thread_holder.WaitCondition([&transactions, start_transactions] {
+      return transactions.load(std::memory_order_acquire) >=
+             start_transactions + kTransactionsCount;
+    }));
+
+    thread_holder.Stop();
+
+    LOG(INFO) << "Flushing";
+    ASSERT_OK(cluster_->FlushTablets());
+
+    LOG(INFO) << "Clean logs";
+    ASSERT_OK(cluster_->CleanTabletLogs());
+
+    // Shutdown to reset cached logs.
+    for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
+      cluster_->mini_tablet_server(i)->Shutdown();
+    }
+
+    // Start all servers. Cluster verifier should check that all tablets are synchronized.
+    for (int i = cluster_->num_tablet_servers(); i-- > 0;) {
+      ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    }
+
+    ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
+                      "All tablets running"));
+  }
+}
+
+TEST_F_EX(SnapshotTxnTest, RemoteBootstrapOnStart, RemoteBootstrapOnStartBase) {
+  TestRemoteBootstrap();
+}
+
+TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
+  FLAGS_inject_load_transaction_delay_ms = 50;
+
+  constexpr int kTransactionsCount = RegularBuildVsSanitizers(20, 5);
+  FLAGS_log_min_seconds_to_retain = 1;
+  DisableTransactionTimeout();
+
+  DisableApplyingIntents();
+
+  TestThreadHolder thread_holder;
+
+  std::atomic<int> transactions(0);
+
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &transactions] {
+    auto session = CreateSession();
+    for (int transaction_idx = 0; !stop.load(std::memory_order_acquire); ++transaction_idx) {
+      auto txn = CreateTransaction();
+      session->SetTransaction(txn);
+      if (WriteRows(session, transaction_idx).ok() && txn->CommitFuture().get().ok()) {
+        transactions.fetch_add(1);
+      }
+    }
+  });
+
+  while (transactions.load(std::memory_order_acquire) < kTransactionsCount) {
+    std::this_thread::sleep_for(100ms);
+  }
+
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  thread_holder.Stop();
+
+  ASSERT_OK(client_->TruncateTable(table_.table()->id()));
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+
+  ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
+                    "All tablets running"));
+}
+
+TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
+  SetIgnoreApplyingProbability(0.5);
+
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  auto session = CreateSession();
+  auto prev_ht = clock_->Now();
+  for (int i = 0; i != 4; ++i) {
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(isolation_level_));
+    session->SetTransaction(txn);
+    ASSERT_OK(WriteRow(session, i, -i));
+    ASSERT_OK(txn->CommitFuture().get());
+
+    auto peers = ListTabletPeers(
+        cluster_.get(), [](const std::shared_ptr<tablet::TabletPeer>& peer) {
+      if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+        return false;
+      }
+      return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+    });
+    ASSERT_EQ(peers.size(), 1);
+    auto peer = peers[0];
+    auto tablet = peer->tablet();
+    ASSERT_OK(tablet->transaction_participant()->ResolveIntents(
+        peer->clock().Now(), CoarseTimePoint::max()));
+    auto current_ht = clock_->Now();
+    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+    bool found = false;
+    auto files = tablet->TEST_db()->GetLiveFilesMetaData();
+    for (const auto& meta : files) {
+      auto min_ht = down_cast<docdb::ConsensusFrontier&>(
+          *meta.smallest.user_frontier).hybrid_time();
+      auto max_ht = down_cast<docdb::ConsensusFrontier&>(
+          *meta.largest.user_frontier).hybrid_time();
+      if (min_ht > prev_ht && max_ht < current_ht) {
+        found = true;
+        break;
+      }
+    }
+
+    ASSERT_TRUE(found) << "Cannot find SST file that fits into " << prev_ht << " - " << current_ht
+                       << " range, files: " << AsString(files);
+
+    prev_ht = current_ht;
+  }
+}
+
+TEST_F(SnapshotTxnTest, DeleteOnLoad) {
+  constexpr int kTransactions = 400;
+
+  FLAGS_inject_status_resolver_delay_ms = 150 * kTimeMultiplier;
+
+  DisableApplyingIntents();
+
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  auto session = CreateSession();
+  for (int i = 0; i != kTransactions; ++i) {
+    WriteData(WriteOpType::INSERT, i);
+  }
+
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  ASSERT_OK(client_->DeleteTable(table_.table()->name(), /* wait= */ false));
+
+  // Wait delete table request to replicate on alive node.
+  std::this_thread::sleep_for(1s * kTimeMultiplier);
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
 }
 
 } // namespace client

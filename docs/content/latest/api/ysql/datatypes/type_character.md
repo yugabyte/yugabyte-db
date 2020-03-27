@@ -1,7 +1,8 @@
 ---
 title: TEXT
-linktitle: Character
-description: Character Types
+linkTitle: Character
+headerTitle: Character Types
+description: Character-based data types are used to specify data of a string of Unicode characters.
 summary: String of Unicode characters
 menu:
   latest:
@@ -14,10 +15,11 @@ showAsideToc: true
 ---
 
 ## Synopsis
-Character-based datatypes are used to specify data of a string of Unicode characters.
 
-DataType | Description |
----------|-------------|
+Character-based data types are used to specify data of a string of Unicode characters.
+
+Data type | Description |
+----------|-------------|
 `CHAR` | Character string of 1 byte |
 `CHAR` (n) | Character string of fixed-length (n) and blank padded |
 `CHARACTER` (n) | Character string of fixed-length (n) and blank padded |
@@ -27,14 +29,14 @@ DataType | Description |
 `TEXT` | Character string of variable and unlimited length |
 
 ## Description
+
 ```
 text_literal ::= "'" [ '' | letter ...] "'"
 ```
 
-Where 
+Where
 
 - Single quote must be escaped as ('').
 - `letter` is any character except for single quote (`[^']`).
-- Character-based datatypes can be part of the `PRIMARY KEY`.
-- Value of character datatype are convertible and comparable to non-text datatypes.
-
+- Character-based data types can be part of the `PRIMARY KEY`.
+- Value of character data type are convertible and comparable to non-text data types.

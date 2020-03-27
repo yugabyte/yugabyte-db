@@ -54,13 +54,12 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/opid.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-
-struct OpId;
 
 namespace log {
 class Log;
@@ -84,12 +83,11 @@ class TabletServerErrorPB;
 
 namespace consensus {
 
-class ConsensusCommitContinuation;
-class ReplicaOperationFactory;
-
 typedef int64_t ConsensusTerm;
 
-typedef std::function<void(const Status& status, int64_t leader_term)> ConsensusReplicatedCallback;
+typedef std::function<void(
+    const Status& status, int64_t leader_term, OpIds* applied_op_ids)>
+        ConsensusReplicatedCallback;
 
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
@@ -279,9 +277,12 @@ class Consensus {
 
   // Returns the leader status (see LeaderStatus type description for details).
   // If leader is ready, then also returns term, otherwise OpId::kUnknownTerm is returned.
-  virtual LeaderState GetLeaderState() const = 0;
+  //
+  // allow_stale could be used to avoid refreshing cache, when we are OK to read slightly outdated
+  // value.
+  virtual LeaderState GetLeaderState(bool allow_stale = false) const = 0;
 
-  LeaderStatus GetLeaderStatus() const;
+  LeaderStatus GetLeaderStatus(bool allow_stale = false) const;
   int64_t LeaderTerm() const;
 
   // Returns the uuid of this peer.
@@ -316,21 +317,11 @@ class Consensus {
 
   // Returns the last OpId (either received or committed, depending on the 'type' argument) that the
   // Consensus implementation knows about.  Primarily used for testing purposes.
-  virtual CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) {
-    return STATUS(NotFound, "Not implemented.");
-  }
+  Result<yb::OpId> GetLastOpId(OpIdType type);
 
-  Result<OpId> GetLastOpId(OpIdType type) {
-    OpId result;
-    RETURN_NOT_OK(GetLastOpId(type, &result));
-    return result;
-  }
+  virtual yb::OpId GetLastReceivedOpId() = 0;
 
-  Result<OpId> GetLastReceivedOpId() {
-    OpId result;
-    RETURN_NOT_OK(GetLastOpId(OpIdType::RECEIVED_OPID, &result));
-    return result;
-  }
+  virtual yb::OpId GetLastCommittedOpId() = 0;
 
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).
@@ -353,7 +344,11 @@ class Consensus {
   // This includes heartbeats too.
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
 
-  virtual CHECKED_STATUS ReadReplicatedMessages(const OpId& from, ReplicateMsgs* msgs) = 0;
+  // Read majority replicated messages for CDC producer.
+  virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& from,
+                                                             int64_t* repl_index) = 0;
+
+  virtual void UpdateCDCConsumerOpId(const yb::OpId& op_id) = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;
@@ -529,7 +524,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   }
 
   // If a continuation was set, notifies it that the round has been replicated.
-  void NotifyReplicationFinished(const Status& status, int64_t leader_term);
+  void NotifyReplicationFinished(
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids);
 
   // Binds this round such that it may not be eventually executed in any term
   // other than 'term'.

@@ -76,6 +76,10 @@ DEFINE_string(instance_uuid_override, "",
               "directory, use this UUID instead of randomly-generated one. Can be used to replace "
               "a node that had its disk wiped in some scenarios.");
 
+DEFINE_test_flag(bool, simulate_fs_create_failure, false,
+                 "Simulate failure during initial creation of fs during the first time "
+                 "process creation.");
+
 using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
 using std::map;
@@ -95,6 +99,7 @@ const char *FsManager::kRaftGroupMetadataDirName = "tablet-meta";
 const char *FsManager::kDataDirName = "data";
 const char *FsManager::kCorruptedSuffix = ".corrupted";
 const char *FsManager::kInstanceMetadataFileName = "instance";
+const char *FsManager::kFsLockFileName = "fs-lock";
 const char *FsManager::kConsensusMetadataDirName = "consensus-meta";
 const char *FsManager::kLogsDirName = "logs";
 
@@ -224,6 +229,11 @@ Status FsManager::Init() {
 
 Status FsManager::Open() {
   RETURN_NOT_OK(Init());
+
+  if (HasAnyLockFiles()) {
+    return STATUS(Corruption, "Lock file is present, filesystem may be in inconsistent state");
+  }
+
   for (const string& root : canonicalized_all_fs_roots_) {
     gscoped_ptr<InstanceMetadataPB> pb(new InstanceMetadataPB);
     RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(env_, GetInstanceMetadataPath(root), pb.get()));
@@ -238,6 +248,34 @@ Status FsManager::Open() {
 
   LOG(INFO) << "Opened local filesystem: " << JoinStrings(canonicalized_all_fs_roots_, ",")
             << std::endl << metadata_->DebugString();
+  return Status::OK();
+}
+
+bool FsManager::HasAnyLockFiles() {
+  for (const string& root : canonicalized_all_fs_roots_) {
+    if (Exists(GetFsLockFilePath(root))) {
+      LOG(INFO) << "Found lock file in dir " << root;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+Status FsManager::DeleteLockFiles() {
+  CHECK(!read_only_);
+  vector<string> removal_list;
+  for (const string& root : canonicalized_all_fs_roots_) {
+    std::string lock_file_path = GetFsLockFilePath(root);
+    if (Exists(lock_file_path)) {
+      removal_list.push_back(lock_file_path);
+    }
+  }
+
+  for (const string& target : removal_list) {
+    RETURN_NOT_OK_PREPEND(env_->DeleteFile(target), "Lock file delete failed");
+  }
+
   return Status::OK();
 }
 
@@ -272,13 +310,24 @@ Status FsManager::DeleteFileSystemLayout(bool delete_logs_also) {
       RETURN_NOT_OK(env_->DeleteFile(target));
     }
   }
+
+  RETURN_NOT_OK(DeleteLockFiles());
+
   return Status::OK();
 }
 
-Status FsManager::CreateInitialFileSystemLayout() {
+Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
   CHECK(!read_only_);
 
   RETURN_NOT_OK(Init());
+
+  bool fs_cleaned = false;
+
+  // If lock file is present, delete existing filesystem layout before continuing.
+  if (delete_fs_if_lock_found && HasAnyLockFiles()) {
+    RETURN_NOT_OK(DeleteFileSystemLayout());
+    fs_cleaned = true;
+  }
 
   // It's OK if a root already exists as long as there's nothing in it.
   for (const string& root : canonicalized_all_fs_roots_) {
@@ -299,10 +348,8 @@ Status FsManager::CreateInitialFileSystemLayout() {
   //
   // In the event of failure, delete everything we created.
   std::deque<std::unique_ptr<ScopedFileDeleter>> delete_on_failure;
-
-  InstanceMetadataPB metadata;
-  CreateInstanceMetadata(&metadata);
   unordered_set<string> to_sync;
+
   for (const string& root : canonicalized_all_fs_roots_) {
     bool created;
     std::string out_dir;
@@ -311,6 +358,18 @@ Status FsManager::CreateInitialFileSystemLayout() {
       delete_on_failure.emplace_front(new ScopedFileDeleter(env_, out_dir));
       to_sync.insert(DirName(out_dir));
     }
+    const string lock_file_path = GetFsLockFilePath(root);
+    if (fs_cleaned || !Exists(lock_file_path)) {
+      std::unique_ptr<WritableFile> file;
+      RETURN_NOT_OK_PREPEND(env_->NewWritableFile(lock_file_path, &file),
+                            "Unable to create lock file.");
+      // Do not delete lock file on error. It is used to detect failed initial create.
+    }
+  }
+
+  InstanceMetadataPB metadata;
+  CreateInstanceMetadata(&metadata);
+  for (const string& root : canonicalized_all_fs_roots_) {
     const string instance_metadata_path = GetInstanceMetadataPath(root);
     RETURN_NOT_OK_PREPEND(WriteInstanceMetadata(metadata, instance_metadata_path),
                           "Unable to write instance metadata");
@@ -360,10 +419,17 @@ Status FsManager::CreateInitialFileSystemLayout() {
     }
   }
 
+  if (FLAGS_simulate_fs_create_failure) {
+    return STATUS(IOError, "Simulated fs creation error");
+  }
+
   // Success: don't delete any files.
   for (const auto& deleter : delete_on_failure) {
     deleter->Cancel();
   }
+
+  RETURN_NOT_OK(DeleteLockFiles());
+
   return Status::OK();
 }
 
@@ -450,11 +516,14 @@ vector<string> FsManager::GetWalRootDirs() const {
   return wal_dirs;
 }
 
+std::string FsManager::GetRaftGroupMetadataDir(const std::string& data_dir) {
+  return JoinPathSegments(data_dir, kRaftGroupMetadataDirName);
+}
+
 string FsManager::GetRaftGroupMetadataDir() const {
   DCHECK(initted_);
-  return JoinPathSegments(
-      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_),
-      kRaftGroupMetadataDirName);
+  return GetRaftGroupMetadataDir(
+      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_));
 }
 
 string FsManager::GetRaftGroupMetadataPath(const string& tablet_id) const {
@@ -499,11 +568,18 @@ std::string FsManager::GetInstanceMetadataPath(const string& root) const {
   return JoinPathSegments(GetServerTypeDataPath(root, server_type_), kInstanceMetadataFileName);
 }
 
+std::string FsManager::GetFsLockFilePath(const string& root) const {
+  return JoinPathSegments(GetServerTypeDataPath(root, server_type_), kFsLockFileName);
+}
+
 std::string FsManager::GetConsensusMetadataDir() const {
   DCHECK(initted_);
-  return JoinPathSegments(
-      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_),
-      kConsensusMetadataDirName);
+  return GetConsensusMetadataDir(
+      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_));
+}
+
+std::string FsManager::GetConsensusMetadataDir(const std::string& data_dir) {
+  return JoinPathSegments(data_dir, kConsensusMetadataDirName);
 }
 
 std::string FsManager::GetFirstTabletWalDirOrDie(const std::string& table_id,

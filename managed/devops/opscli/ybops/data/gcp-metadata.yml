@@ -1,0 +1,73 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+region_cidr_format: "{}.0.0/16"
+zone_cidr_format: "{}.{}.0/20"
+regions:
+  us-central1:
+    cidr_prefix: "10.200"
+    image: centos-7-v20171213
+    project: centos-cloud
+  europe-west1:
+    cidr_prefix: "10.201"
+    image: centos-7-v20171213
+    project: centos-cloud
+  us-west1:
+    cidr_prefix: "10.202"
+    image: centos-7-v20171213
+    project: centos-cloud
+  asia-east1:
+    cidr_prefix: "10.203"
+    image: centos-7-v20171213
+    project: centos-cloud
+  us-east1:
+    cidr_prefix: "10.204"
+    image: centos-7-v20171213
+    project: centos-cloud
+  asia-northeast1:
+    cidr_prefix: "10.205"
+    image: centos-7-v20171213
+    project: centos-cloud
+  asia-southeast1:
+    cidr_prefix: "10.206"
+    image: centos-7-v20171213
+    project: centos-cloud
+  us-east4:
+    cidr_prefix: "10.207"
+    image: centos-7-v20171213
+    project: centos-cloud
+  australia-southeast1:
+    cidr_prefix: "10.208"
+    image: centos-7-v20171213
+    project: centos-cloud
+  europe-west2:
+    cidr_prefix: "10.209"
+    image: centos-7-v20171213
+    project: centos-cloud
+  europe-west3:
+    cidr_prefix: "10.210"
+    image: centos-7-v20171213
+    project: centos-cloud
+  southamerica-east1:
+    cidr_prefix: "10.211"
+    image: centos-7-v20171213
+    project: centos-cloud
+  asia-south1:
+    cidr_prefix: "10.212"
+    image: centos-7-v20171213
+    project: centos-cloud
+  northamerica-northeast1:
+    cidr_prefix: "10.213"
+    image: centos-7-v20171213
+    project: centos-cloud
+  europe-west4:
+    cidr_prefix: "10.214"
+    image: centos-7-v20171213
+    project: centos-cloud
+
+credential_vars: ['GOOGLE_APPLICATION_CREDENTIALS', 'GCE_PROJECT']

@@ -47,6 +47,8 @@
 #include "yb/util/test_util.h"
 #include "yb/client/yb_table_name.h"
 
+DECLARE_int32(yb_num_shards_per_tserver);
+
 namespace yb {
 namespace master {
 
@@ -144,7 +146,8 @@ void CreateTabletForTesting(MiniMaster* mini_master,
   }
 
   GetTableLocationsResponsePB resp;
-  ASSERT_OK(WaitForRunningTabletCount(mini_master, table_name, 1, &resp));
+  ASSERT_OK(WaitForRunningTabletCount(
+        mini_master, table_name, FLAGS_yb_num_shards_per_tserver, &resp));
   *tablet_id = resp.tablet_locations(0).tablet_id();
   LOG(INFO) << "Got tablet " << *tablet_id << " for table " << table_name.ToString();
 }

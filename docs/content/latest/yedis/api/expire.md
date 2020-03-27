@@ -14,16 +14,18 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`EXPIRE key timeout`</b><br>
 Set a timeout on key (in seconds). After the timeout has expired, the key will automatically be deleted.
 
-## Return Value
+## Return value
+
 Returns integer reply, specifically 1 if the timeout was set and 0 if key does not exist.
 
 ## Examples
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```
@@ -46,5 +48,6 @@ $ EXPIRE non-existent-key 10
 (integer) 0
 ```
 
-## See Also
+## See also
+
 [`expireat`](../expireat/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/)

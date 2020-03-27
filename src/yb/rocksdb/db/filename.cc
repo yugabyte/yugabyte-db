@@ -382,10 +382,10 @@ Status SetCurrentFile(Env* env, const std::string& dbname,
   }
   if (s.ok()) {
     if (directory_to_fsync != nullptr && !disable_data_sync) {
-      directory_to_fsync->Fsync();
+      RETURN_NOT_OK(directory_to_fsync->Fsync());
     }
   } else {
-    env->DeleteFile(tmp);
+    env->CleanupFile(tmp);
   }
   return s;
 }
@@ -400,7 +400,7 @@ Status SetIdentityFile(Env* env, const std::string& dbname) {
     s = env->RenameFile(tmp, IdentityFileName(dbname));
   }
   if (!s.ok()) {
-    env->DeleteFile(tmp);
+    env->CleanupFile(tmp);
   }
   return s;
 }

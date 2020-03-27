@@ -28,7 +28,7 @@ abort_transaction ::= 'ABORT' [ 'TRANSACTION' | 'WORK' ] ;
 
 ## Semantics
 - The `SERIALIZABLE` isolation level not yet supported. (This is currently in progress).
-- Currently YugaByte will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
+- Currently Yugabyte will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
 
 ## Examples
 

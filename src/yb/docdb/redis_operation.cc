@@ -35,7 +35,7 @@ namespace docdb {
 
 // A simple conversion from RedisDataTypes to ValueTypes
 // Note: May run into issues if we want to support ttl on individual set elements,
-// as they are represented by ValueType::kNull.
+// as they are represented by ValueType::kNullLow.
 ValueType ValueTypeFromRedisType(RedisDataType dt) {
   switch(dt) {
   case RedisDataType::REDIS_TYPE_STRING:
@@ -188,7 +188,7 @@ Result<RedisDataType> GetRedisValueType(
       return REDIS_TYPE_SORTEDSET;
     case ValueType::kRedisList:
       return REDIS_TYPE_LIST;
-    case ValueType::kNull: FALLTHROUGH_INTENDED; // This value is a set member.
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED; // This value is a set member.
     case ValueType::kString:
       return REDIS_TYPE_STRING;
     default:
@@ -1080,7 +1080,7 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
   // If no value is present, 0 is the default.
   int64_t old_value = 0, new_value;
   if (value->type != REDIS_TYPE_NONE) {
-    auto old = util::CheckedStoll(value->value);
+    auto old = CheckedStoll(value->value);
     if (!old.ok()) {
       // This can happen if there are leading or trailing spaces, or the value
       // is out of range.
@@ -1236,7 +1236,7 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
 
     set_entries.SetChild(
         PrimitiveValue(kv.subkey(i).string_subkey()),
-        SubDocument(PrimitiveValue(ValueType::kNull)));
+        SubDocument(PrimitiveValue(ValueType::kNullLow)));
   }
 
   RETURN_NOT_OK(set_entries.ConvertToRedisSet());
@@ -1265,10 +1265,14 @@ Status RedisWriteOperation::ApplyRemove(const DocOperationApplyData& data) {
 
 Status RedisReadOperation::Execute() {
   SimulateTimeoutIfTesting(&deadline_);
+  // If we have a KEYS command, we don't specify any key for the iterator. Therefore, don't use
+  // bloom filters for this command.
   SubDocKey doc_key(
       DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+  auto bloom_filter_mode = request_.has_keys_request() ?
+      BloomFilterMode::DONT_USE_BLOOM_FILTER : BloomFilterMode::USE_BLOOM_FILTER;
   auto iter = yb::docdb::CreateIntentAwareIterator(
-      doc_db_, BloomFilterMode::USE_BLOOM_FILTER,
+      doc_db_, bloom_filter_mode,
       doc_key.Encode().AsSlice(),
       redis_query_id(), /* txn_op_context */ boost::none, deadline_, read_time_);
   iterator_ = std::move(iter);
@@ -1897,7 +1901,12 @@ Status RedisReadOperation::ExecuteKeys() {
     if (deadline_info_.get_ptr() && deadline_info_->CheckAndSetDeadlinePassed()) {
       return STATUS(Expired, "Deadline for query passed.");
     }
-    auto key = VERIFY_RESULT(iterator_->FetchKey());
+    auto key = VERIFY_RESULT(iterator_->FetchKey()).key;
+
+    // Key could be invalidated because we could move iterator, so back it up.
+    KeyBytes key_copy(key);
+    key = key_copy.AsSlice();
+
     DocKey doc_key;
     RETURN_NOT_OK(doc_key.FullyDecodeFrom(key));
     const PrimitiveValue& key_primitive = doc_key.hashed_group().front();

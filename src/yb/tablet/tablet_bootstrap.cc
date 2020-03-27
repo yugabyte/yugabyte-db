@@ -37,6 +37,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/server/hybrid_clock.h"
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -48,6 +49,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/opid.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/env_util.h"
 #include "yb/consensus/log_index.h"
@@ -74,6 +76,15 @@ DEFINE_bool(force_recover_flushed_frontier, false,
             "recover it from the log instead.");
 TAG_FLAG(force_recover_flushed_frontier, hidden);
 TAG_FLAG(force_recover_flushed_frontier, advanced);
+
+DEFINE_bool(skip_flushed_entries, true,
+            "Only replay WAL entries that are not flushed to RocksDB or within the retryable "
+            "request timeout.");
+
+DECLARE_int32(retryable_request_timeout_secs);
+
+DEFINE_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
+              "The segment size for transaction status tablet log roll-overs, in bytes.");
 
 namespace yb {
 namespace tablet {
@@ -155,14 +166,15 @@ struct ReplayState {
   bool CanApply(log::LogEntryPB* entry);
 
   template<class Handler>
-  void ApplyCommittedPendingReplicates(const Handler& handler) {
+  CHECKED_STATUS ApplyCommittedPendingReplicates(const Handler& handler) {
     auto iter = pending_replicates.begin();
     while (iter != pending_replicates.end() && CanApply(iter->second.entry.get())) {
       std::unique_ptr<log::LogEntryPB> entry = std::move(iter->second.entry);
-      handler(entry.get(), iter->second.entry_time);
+      RETURN_NOT_OK(handler(entry.get(), iter->second.entry_time));
       iter = pending_replicates.erase(iter);  // erase and advance the iterator (C++11)
       ++num_entries_applied_to_rocksdb;
     }
+    return Status::OK();
   }
 
   bool UpdateCommittedFromStored();
@@ -297,20 +309,16 @@ bool ReplayState::CanApply(LogEntryPB* entry) {
 // ============================================================================
 TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
     : data_(data),
-      meta_(data.meta),
-      mem_tracker_(data.mem_tracker),
-      block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
-      metric_registry_(data.metric_registry),
+      meta_(data.tablet_init_data.metadata),
+      mem_tracker_(data.tablet_init_data.parent_mem_tracker),
       listener_(data.listener),
-      log_anchor_registry_(data.log_anchor_registry),
-      tablet_options_(data.tablet_options),
       append_pool_(data.append_pool),
       skip_wal_rewrite_(FLAGS_skip_wal_rewrite) {
 }
 
 TabletBootstrap::~TabletBootstrap() {}
 
-Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
+Status TabletBootstrap::Bootstrap(TabletPtr* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
                                   ConsensusBootstrapInfo* consensus_info) {
   string tablet_id = meta_->raft_group_id();
@@ -343,7 +351,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
 
   bool needs_recovery;
   RETURN_NOT_OK(PrepareToReplay(&needs_recovery));
-  if (needs_recovery) {
+  if (needs_recovery && !skip_wal_rewrite_) {
     RETURN_NOT_OK(OpenLogReader());
   }
 
@@ -369,6 +377,10 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
   }
 
   RETURN_NOT_OK_PREPEND(PlaySegments(consensus_info), "Failed log replay. Reason");
+
+  if (cmeta_->current_term() < consensus_info->last_id.term()) {
+    cmeta_->set_current_term(consensus_info->last_id.term());
+  }
 
   // Flush the consensus metadata once at the end to persist our changes, if any.
   RETURN_NOT_OK(cmeta_->Flush());
@@ -396,20 +408,18 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
 
 Status TabletBootstrap::FinishBootstrap(const string& message,
                                         scoped_refptr<log::Log>* rebuilt_log,
-                                        shared_ptr<TabletClass>* rebuilt_tablet) {
+                                        TabletPtr* rebuilt_tablet) {
   tablet_->MarkFinishedBootstrapping();
   listener_->StatusMessage(message);
-  rebuilt_tablet->reset(tablet_.release());
+  *rebuilt_tablet = std::move(tablet_);
   rebuilt_log->swap(log_);
   return Status::OK();
 }
 
 Result<bool> TabletBootstrap::OpenTablet() {
-  auto tablet = std::make_unique<TabletClass>(
-      meta_, data_.client_future, data_.clock, mem_tracker_, block_based_table_mem_tracker_,
-      metric_registry_, log_anchor_registry_, tablet_options_, data_.log_prefix_suffix,
-      data_.transaction_participant_context, data_.local_tablet_filter,
-      data_.transaction_coordinator_context);
+  CleanupSnapshots();
+
+  auto tablet = std::make_shared<Tablet>(data_.tablet_init_data);
   // Doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());
@@ -550,15 +560,24 @@ Status TabletBootstrap::RemoveRecoveryDir() {
 
 Status TabletBootstrap::OpenNewLog() {
   auto log_options = LogOptions();
+  const auto& metadata = *tablet_->metadata();
+  log_options.retention_secs = metadata.wal_retention_secs();
   log_options.env = GetEnv();
+  if (tablet_->metadata()->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    auto log_segment_size = FLAGS_transaction_status_tablet_log_segment_size_bytes;
+    if (log_segment_size) {
+      log_options.segment_size_bytes = log_segment_size;
+    }
+  }
   RETURN_NOT_OK(Log::Open(log_options,
                           tablet_->tablet_id(),
-                          tablet_->metadata()->wal_dir(),
-                          tablet_->metadata()->fs_manager()->uuid(),
+                          metadata.wal_dir(),
+                          metadata.fs_manager()->uuid(),
                           *tablet_->schema(),
-                          tablet_->metadata()->schema_version(),
+                          metadata.schema_version(),
                           tablet_->GetMetricEntity(),
                           append_pool_,
+                          metadata.cdc_min_replicated_index(),
                           &log_));
   // Disable sync temporarily in order to speed up appends during the bootstrap process.
   log_->DisableSync();
@@ -667,10 +686,8 @@ Status TabletBootstrap::HandleReplicateMessage(
   // that entry. This allows us to decide when we can replay a REPLICATE entry during bootstrap.
   state->UpdateCommittedOpId(replicate.committed_op_id());
 
-  state->ApplyCommittedPendingReplicates(
+  return state->ApplyCommittedPendingReplicates(
       std::bind(&TabletBootstrap::HandleEntryPair, this, state, _1, _2));
-
-  return Status::OK();
 }
 
 Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
@@ -711,34 +728,7 @@ Status TabletBootstrap::PlayTabletSnapshotOpRequest(ReplicateMsg* replicate_msg)
 
   SnapshotOperationState tx_state(/* tablet */ nullptr, snapshot);
 
-  RETURN_NOT_OK(tablet_->PrepareForSnapshotOp(&tx_state));
-  bool handled = false;
-
-  // Apply the snapshot operation to the tablet.
-  switch (snapshot->operation()) {
-    case TabletSnapshotOpRequestPB::CREATE: {
-      handled = true;
-      RETURN_NOT_OK_PREPEND(tablet_->CreateSnapshot(&tx_state), "Failed to CreateSnapshot:");
-      break;
-    }
-    case TabletSnapshotOpRequestPB::RESTORE: {
-      handled = true;
-      RETURN_NOT_OK_PREPEND(tablet_->RestoreSnapshot(&tx_state), "Failed to RestoreSnapshot:");
-      break;
-    }
-    case TabletSnapshotOpRequestPB::DELETE: {
-      handled = true;
-      RETURN_NOT_OK_PREPEND(tablet_->DeleteSnapshot(&tx_state), "Failed to DeleteSnapshot:");
-      break;
-    }
-    case TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-  }
-
-  if (!handled) {
-    FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation,
-                             snapshot->operation());
-  }
-  return Status::OK();
+  return tablet_->snapshots().Bootstrap(&tx_state);
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.
@@ -836,18 +826,67 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
                           << state.intents_stored_op_id.ShortDebugString();
   }
 
-  log::SegmentSequence segments;
-  RETURN_NOT_OK(log_reader_->GetSegmentsSnapshot(&segments));
-
   // Open a new log. If skip_wal_rewrite is false, append each replayed entry to this new log.
   // Otherwise, defer appending to this log until bootstrap is finished to preserve the state of
   // old log.
   RETURN_NOT_OK_PREPEND(OpenNewLog(), "Failed to open new log");
 
-  int segment_count = 0;
+  log::SegmentSequence segments;
+  RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
+
+  // Find the earliest log segment we need to read, so the rest can be ignored
+  auto iter = FLAGS_skip_flushed_entries ? segments.end() : segments.begin();
+  if (FLAGS_skip_flushed_entries) {
+    // Lower bound on op IDs that need to be replayed
+    yb::OpId regular_op_id = yb::OpId::FromPB(state.regular_stored_op_id);
+    yb::OpId intents_op_id = yb::OpId::FromPB(state.intents_stored_op_id);
+    yb::OpId op_id_replay_lowest = regular_op_id;
+    if (tablet_->doc_db().intents) {
+      op_id_replay_lowest = std::min(regular_op_id,
+                                     intents_op_id);
+    }
+    LOG(INFO) << "Bootstrap optimizer: op_id_replay_lowest=" << op_id_replay_lowest;
+
+    // Time point of the last WAL entry and
+    //    how far back in time from it we should retain other entries
+    bool read_last_time = false;
+    RestartSafeCoarseTimePoint last_time;
+    RestartSafeCoarseDuration retain_limit =
+        std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+
+    while (iter != segments.begin()) {
+      --iter;
+      const scoped_refptr <ReadableLogSegment>& segment = *iter;
+
+      Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> res =
+              segment->ReadFirstEntryMetadata();
+      if (res.ok()) {
+        yb::OpId op_id = res->first;
+        RestartSafeCoarseTimePoint time = res->second;
+
+        // This is the first entry
+        if (!read_last_time) {
+            last_time = time;
+            read_last_time = true;
+        }
+
+        // Previous segment would have op_id and time less than required,
+        // so we can ignore it.
+        if (op_id <= op_id_replay_lowest && time <= last_time - retain_limit) {
+          LOG(INFO) << "Bootstrap optimizer, found first mandatory segment op id: " << op_id
+                    << ", time: " << time.ToString() << ", last time: " << last_time.ToString()
+                    << ", number of segments to be skipped: " << (iter - segments.begin());
+          break;
+        }
+      }
+    }
+  }
+
   yb::OpId last_committed_op_id;
   RestartSafeCoarseTimePoint last_entry_time;
-  for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
+  for (; iter != segments.end(); ++iter) {
+    const scoped_refptr<ReadableLogSegment>& segment = *iter;
+
     auto read_result = segment->ReadEntries();
     last_committed_op_id = std::max(last_committed_op_id, read_result.committed_op_id);
     for (int entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
@@ -883,17 +922,22 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
 
     // TODO: could be more granular here and log during the segments as well, plus give info about
     // number of MB processed, but this is better than nothing.
-    listener_->StatusMessage(Substitute("Bootstrap replayed $0/$1 log segments. "
-                                        "Stats: $2. Pending: $3 replicates",
-                                        segment_count + 1, log_reader_->num_segments(),
-                                        stats_.ToString(),
-                                        state.pending_replicates.size()));
-    segment_count++;
+    auto status = Format(
+        "Bootstrap replayed $0/$1 log segments. $2. Pending: $3 replicates. "
+            "Last read committed op id: $4",
+        (iter - segments.begin()) + 1, segments.size(), stats_,
+        state.pending_replicates.size(), read_result.committed_op_id);
+    if (read_result.entry_metadata.empty()) {
+      status += ", no entries in last segment";
+    } else {
+      status += ", last entry metadata: " + read_result.entry_metadata.back().ToString();
+    }
+    listener_->StatusMessage(status);
   }
 
   if (state.UpdateCommittedFromStored()) {
-    state.ApplyCommittedPendingReplicates(
-        std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2));
+    RETURN_NOT_OK(state.ApplyCommittedPendingReplicates(
+        std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2)));
   }
 
   if (last_committed_op_id.index > state.committed_op_id.index()) {
@@ -903,8 +947,8 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       // be overriden by a new leader.
       if (last_committed_op_id.term == it->second.entry->replicate().id().term()) {
         state.UpdateCommittedOpId(last_committed_op_id.ToPB<consensus::OpId>());
-        state.ApplyCommittedPendingReplicates(
-            std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2));
+        RETURN_NOT_OK(state.ApplyCommittedPendingReplicates(
+            std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2)));
       } else {
         LOG_WITH_PREFIX(DFATAL)
             << "Invalid last committed op id: " << last_committed_op_id
@@ -956,16 +1000,19 @@ void TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg) {
 
   WriteOperationState operation_state(nullptr, write, nullptr);
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
-  operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+  HybridTime hybrid_time(replicate_msg->hybrid_time());
+  operation_state.set_hybrid_time(hybrid_time);
+
+  tablet_->mvcc_manager()->AddPending(&hybrid_time);
 
   tablet_->StartOperation(&operation_state);
 
   // Use committed OpId for mem store anchoring.
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
 
-  tablet_->ApplyRowOperations(&operation_state);
+  WARN_NOT_OK(tablet_->ApplyRowOperations(&operation_state), "ApplyRowOperations failed: ");
 
-  tablet_->mvcc_manager()->Replicated(operation_state.hybrid_time());
+  tablet_->mvcc_manager()->Replicated(hybrid_time);
 }
 
 Status TabletBootstrap::PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {
@@ -989,6 +1036,12 @@ Status TabletBootstrap::PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {
     // Also update the log information. Normally, the AlterSchema() call above takes care of this,
     // but our new log isn't hooked up to the tablet yet.
     log_->SetSchemaForNextLogSegment(schema, operation_state.schema_version());
+  }
+
+  if (request->has_wal_retention_secs()) {
+    RETURN_NOT_OK_PREPEND(tablet_->AlterWalRetentionSecs(&operation_state),
+                          "Failed to alter wal retention secs");
+    log_->set_wal_retention_secs(request->wal_retention_secs());
   }
 
   return Status::OK();
@@ -1043,16 +1096,23 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(
   UpdateTxnOperationState operation_state(
       nullptr, replicate_msg->mutable_transaction_state());
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
-  operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+  HybridTime hybrid_time(replicate_msg->hybrid_time());
+  operation_state.set_hybrid_time(hybrid_time);
 
-  if (operation_state.request()->status() == TransactionStatus::APPLYING) {
-    auto transaction_participant = tablet_->transaction_participant();
+  tablet_->mvcc_manager()->AddPending(&hybrid_time);
+  auto scope_exit = ScopeExit([this, hybrid_time] {
+    tablet_->mvcc_manager()->Replicated(hybrid_time);
+  });
+
+  auto transaction_participant = tablet_->transaction_participant();
+  if (transaction_participant) {
     TransactionParticipant::ReplicatedData replicated_data = {
-        yb::OpId::kUnknownTerm,
-        *operation_state.request(),
-        operation_state.op_id(),
-        operation_state.hybrid_time(),
-        already_applied
+        .leader_term = yb::OpId::kUnknownTerm,
+        .state = *operation_state.request(),
+        .op_id = operation_state.op_id(),
+        .hybrid_time = operation_state.hybrid_time(),
+        .sealed = operation_state.request()->sealed(),
+        .already_applied = already_applied
     };
     return transaction_participant->ProcessReplicated(replicated_data);
   } else {
@@ -1068,7 +1128,7 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(
 }
 
 void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
-  data_.clock->Update(HybridTime(hybrid_time));
+  data_.tablet_init_data.clock->Update(HybridTime(hybrid_time));
 }
 
 string TabletBootstrap::LogPrefix() const {
@@ -1076,22 +1136,53 @@ string TabletBootstrap::LogPrefix() const {
 }
 
 Env* TabletBootstrap::GetEnv() {
-  if (tablet_options_.env) {
-    return tablet_options_.env;
+  if (data_.tablet_init_data.tablet_options.env) {
+    return data_.tablet_init_data.tablet_options.env;
   }
   return meta_->fs_manager()->env();
+}
+
+void TabletBootstrap::CleanupSnapshots() {
+  // Disk clean-up: deleting temporary/incomplete snapshots.
+  const string top_snapshots_dir = TabletSnapshots::SnapshotsDirName(meta_->rocksdb_dir());
+
+  if (meta_->fs_manager()->env()->FileExists(top_snapshots_dir)) {
+    vector<string> snapshot_dirs;
+    Status s = meta_->fs_manager()->env()->GetChildren(
+        top_snapshots_dir, ExcludeDots::kTrue, &snapshot_dirs);
+
+    if (!s.ok()) {
+      LOG(WARNING) << "Cannot get list of snapshot directories in "
+                   << top_snapshots_dir << ": " << s;
+    } else {
+      for (const string& dir_name : snapshot_dirs) {
+        const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
+
+        if (TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
+          LOG(INFO) << "Deleting old temporary snapshot directory " << snapshot_dir;
+
+          s = meta_->fs_manager()->env()->DeleteRecursively(snapshot_dir);
+          if (!s.ok()) {
+            LOG(WARNING) << "Cannot delete old temporary snapshot directory "
+                         << snapshot_dir << ": " << s;
+          }
+
+          s = meta_->fs_manager()->env()->SyncDir(top_snapshots_dir);
+          if (!s.ok()) {
+            LOG(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir << ": " << s;
+          }
+        }
+      }
+    }
+  }
 }
 
 // ============================================================================
 //  Class TabletBootstrap::Stats.
 // ============================================================================
 string TabletBootstrap::Stats::ToString() const {
-  return Substitute("ops{read=$0 overwritten=$1} "
-                    "inserts{seen=$2 ignored=$3} "
-                    "mutations{seen=$4 ignored=$5}",
-                    ops_read, ops_overwritten,
-                    inserts_seen, inserts_ignored,
-                    mutations_seen, mutations_ignored);
+  return Format("Read operations: $0, overwritten operations: $1",
+                ops_read, ops_overwritten);
 }
 
 } // namespace tablet

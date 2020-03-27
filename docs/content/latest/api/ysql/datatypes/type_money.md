@@ -1,8 +1,8 @@
 ---
-title: MONEY Datatypes
-linktitle: Money
-summary: MONEY Datatypes
-description: MONEY Datatypes
+title: MONEY data types
+linkTitle: Money
+summary: MONEY data types
+description: MONEY data types
 menu:
   latest:
     identifier: api-ysql-datatypes-money
@@ -14,10 +14,11 @@ showAsideToc: true
 ---
 
 ## Synopsis
-MONEY datatype represents currency with a fixed precision for fraction.
 
-Datatype | Description | Min | Max |
----------|-------------|-----|-----|
+The `MONEY` data type represents currency with a fixed precision for fraction.
+
+Data type | Description | Min | Max |
+----------|-------------|-----|-----|
 MONEY | 8 bytes | -92233720368547758.08 | +92233720368547758.07 |
 
 ## Description
@@ -26,5 +27,4 @@ MONEY | 8 bytes | -92233720368547758.08 | +92233720368547758.07 |
 type_specification ::= MONEY
 ```
 
-- To avoid precision loss, MONEY value can be cast to NUMERIC type before applying calculations.
-
+To avoid precision loss, `MONEY` value can be cast to `NUMERIC` type before applying calculations.

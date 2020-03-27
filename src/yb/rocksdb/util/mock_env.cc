@@ -237,12 +237,20 @@ class MockRandomAccessFile : public RandomAccessFile {
     file_->Unref();
   }
 
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      char* scratch) const override {
-    return file_->Read(offset, n, result, reinterpret_cast<uint8_t*>(scratch));
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
+    return file_->Read(offset, n, result, scratch);
   }
 
+  yb::Result<uint64_t> Size() const override { return file_->Size(); }
+
+  yb::Result<uint64_t> INode() const override { return STATUS(NotSupported, "Not supported"); };
+
+  const std::string& filename() const override { return filename_; }
+
+  size_t memory_footprint() const override { return 0; }
+
  private:
+  std::string filename_ = "MockRandomAccessFile";
   MemFile* file_;
 };
 
@@ -399,7 +407,7 @@ class TestMemLogger : public Logger {
       assert(p <= limit);
       const size_t write_size = p - base;
 
-      file_->Append(Slice(base, write_size));
+      CHECK_OK(file_->Append(Slice(base, write_size)));
       flush_pending_ = true;
       log_size_ += write_size;
       uint64_t now_micros = static_cast<uint64_t>(now_tv.tv_sec) * 1000000 +

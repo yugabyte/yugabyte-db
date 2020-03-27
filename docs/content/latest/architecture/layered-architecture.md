@@ -1,37 +1,37 @@
 ---
-title: Layered Architecture
-linkTitle: Layered Architecture
-description: Layered Architecture
+title: Layered architecture in YugabyteDB
+headerTitle: Layered architecture
+linkTitle: Layered architecture
+description: Learn about the layered architecture of YugabyteDB in the query layer and the storage layer.
 aliases:
   - /latest/architecture/layered-architecture/
 menu:
   latest:
     identifier: architecture-layered-architecture
     parent: architecture
-    weight: 1110
+    weight: 1109
 isTocNested: true
 showAsideToc: true
 ---
 
-YugaByte DB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
+YugabyteDB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
 
-* **YugaByte Query Layer**
+* **Yugabyte Query Layer**
 * **DocDB** distributed document store
 
-![YugaByte DB Logical Architecture](/images/architecture/yb-arch-new.png)
+![YugabyteDB Logical Architecture](/images/architecture/yb-arch-new.png)
 
+## Yugabyte Query Layer
 
-## YugaByte Query Layer
-
-The [YugaByte Query Layer or YQL](../query-layer/) is the upper layer of YugaByte DB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
+The [Yugabyte Query Layer or YQL](../query-layer/) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
 
 Currently, YQL supports two flavors of distributed SQL APIs.
 
-#### YugaByte SQL (YSQL)
+### Yugabyte SQL (YSQL)
 
 YSQL is a distributed SQL API that is built by re-using the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL.
 
-#### YugaByte Cloud QL (YCQL)
+### Yugabyte Cloud QL (YCQL)
 
 YCQL is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of clustering of data across nodes.
 
@@ -51,26 +51,25 @@ Understanding [the design of the query layer](../query-layer/overview/).
 
 Data in DocDB is stored in tables. Each table is composed of rows, each row contains a key and a document. Here are some key points:
 
-#### Sharding
+### Sharding
 
 Data is stored inside tables in DocDB. A DocDB table is often sharded into a number of **tablets**. This sharding of tables is transparent to users.
 
 You can read more about [how sharding works in DocDB](../docdb/sharding/).
 
-#### Replication
+### Replication
 
 Each tablet consisting of user data is replicated according to some replication factor using the Raft consensus algorithm. Replication is performed at a tablet level, and ensures single row linearizability even in the presence of failures.
 
 You can read more about [how replication works in DocDB](../docdb/replication/).
 
-
-#### Persistence
+### Persistence
 
 In order to persist data, a log-structured row/document-oriented storage is used. It includes several optimizations for handling ever-growing datasets efficiently.
 
 You can read more about [how persistence of data works in DocDB](../docdb/persistence/).
 
-#### Transactions
+### Transactions
 
 DocDB has support for both single-row and multi-row transactions. This means that DocDB allows modifying multiple keys while preserving ACID properties.
 
@@ -78,15 +77,16 @@ DocDB has support for both single-row and multi-row transactions. This means tha
 * [Single-row transactions](../transactions/single-row-transactions/).
 * [Multi-row transactions](../transactions/distributed-txns/).
 
-## What's Next?
+## What's next
 
 You can now read about the following:
 
 {{< note title="" >}}
-* [The design goals of YugaByte DB](../design-goals/)
+
+* [The design goals of YugabyteDB](../design-goals/)
 * [Architecture of DocDB](../docdb/)
 * [Transactions in DocDB](../transactions/)
 * [Design of the query layer](../query-layer/)
 * [How various functions work, like the read and write IO paths](../core-functions/)
-{{< /note >}}
 
+{{< /note >}}

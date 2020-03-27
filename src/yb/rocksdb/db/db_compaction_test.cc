@@ -868,11 +868,6 @@ TEST_F(DBCompactionTest, ClogMultipleCompactionQueues) {
   ASSERT_EQ(num_small_compactions, 0);
   int num_large_compactions_before_small_flushes = num_large_compactions;
 
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
-      {"DBImpl:BackgroundCompaction:LargeCompaction",
-          "DBImpl:BackgroundCompaction:SmallCompaction"}
-  });
-
   for (int num = 0; num < options.level0_stop_writes_trigger; num++) {
     for (int i = 0; i < kNumKeysPerSmallFile; i++) {
       ASSERT_OK(Put(3, Key(i), ""));
@@ -888,7 +883,7 @@ TEST_F(DBCompactionTest, ClogMultipleCompactionQueues) {
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 
-  ASSERT_GT(num_small_compactions, options.level0_stop_writes_trigger);
+  ASSERT_GE(num_small_compactions, options.level0_stop_writes_trigger);
   ASSERT_GT(num_large_compactions, num_large_compactions_before_small_flushes);
 }
 

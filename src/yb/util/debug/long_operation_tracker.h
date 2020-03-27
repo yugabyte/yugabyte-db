@@ -31,6 +31,9 @@ class LongOperationTracker {
   LongOperationTracker(const LongOperationTracker&) = delete;
   void operator=(const LongOperationTracker&) = delete;
 
+  LongOperationTracker(LongOperationTracker&&) = default;
+  LongOperationTracker& operator=(LongOperationTracker&&) = default;
+
   struct TrackedOperation;
 
  private:

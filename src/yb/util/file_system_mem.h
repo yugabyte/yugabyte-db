@@ -15,6 +15,7 @@
 #define YB_UTIL_FILE_SYSTEM_MEM_H
 
 #include "yb/util/file_system.h"
+#include "yb/util/malloc.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
@@ -78,6 +79,39 @@ class InMemorySequentialFile : public SequentialFile {
  private:
   const std::shared_ptr<InMemoryFileState> file_;
   size_t pos_;
+};
+
+class InMemoryRandomAccessFile : public RandomAccessFile {
+ public:
+  explicit InMemoryRandomAccessFile(std::shared_ptr<InMemoryFileState> file)
+    : file_(std::move(file)) {}
+
+  ~InMemoryRandomAccessFile() {}
+
+  virtual Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
+    return file_->Read(offset, n, result, scratch);
+  }
+
+  Result<uint64_t> Size() const override {
+    return file_->Size();
+  }
+
+  Result<uint64_t> INode() const override {
+    return 0;
+  }
+
+  const string& filename() const override {
+    return file_->filename();
+  }
+
+  size_t memory_footprint() const override {
+    // The FileState is actually shared between multiple files, but the double
+    // counting doesn't matter much since MemEnv is only used in tests.
+    return malloc_usable_size(this) + file_->memory_footprint();
+  }
+
+ private:
+  const std::shared_ptr<InMemoryFileState> file_;
 };
 
 } // namespace yb

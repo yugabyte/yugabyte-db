@@ -30,6 +30,7 @@ class Master;
 class CatalogManager;
 class FlushManager;
 class PermissionsManager;
+class EncryptionManager;
 
 // Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
 // or to hold it throughout the handler invocation (kTrue).
@@ -41,15 +42,13 @@ class MasterServiceBase {
   explicit MasterServiceBase(Master* server) : server_(server) {}
 
  protected:
-  // If 's' is not OK and 'resp' has no application specific error set,
-  // set the error field of 'resp' to match 's' and set the code to
-  // UNKNOWN_ERROR.
-  template<class RespClass>
-  static void CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp);
-
   template <class ReqType, class RespType, class FnType>
   void HandleOnLeader(const ReqType* req, RespType* resp, rpc::RpcContext* rpc, FnType f,
                       HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
+
+  template <class HandlerType, class ReqType, class RespType>
+  void HandleOnAllMasters(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
+                          Status (HandlerType::*f)(const ReqType* req, RespType*));
 
   template <class HandlerType, class ReqType, class RespType>
   void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
@@ -66,9 +65,10 @@ class MasterServiceBase {
       Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*),
       HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
 
-  YB_EDITION_NS_PREFIX CatalogManager* handler(CatalogManager*);
+  enterprise::CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
   PermissionsManager* handler(PermissionsManager*);
+  EncryptionManager* handler(EncryptionManager*);
 
   Master* server_;
 

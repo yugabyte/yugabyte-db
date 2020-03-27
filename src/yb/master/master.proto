@@ -40,6 +40,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
 import "yb/util/encryption.proto";
+import "yb/cdc/cdc_consumer.proto";
 
 ////////////////////////////////////////////////////////////
 // Common data structures
@@ -127,6 +128,8 @@ message MasterErrorPB {
 
     // Indicator to client that load balancer was recently active.
     LOAD_BALANCER_RECENTLY_ACTIVE = 33;
+
+    INTERNAL_ERROR = 34;
   }
 
   // The error code.
@@ -207,9 +210,11 @@ message ReplicationInfoPB {
 message BlacklistPB {
   repeated HostPortPB hosts = 1;
 
-  // Field to track the number of replicas in current set of tablets which have a blacklist server.
-  // Client should not set this. Set by server side when persisting the blacklist load.
+  // Fields to track the number of replicas/leaders in current set of tablets which have a
+  // blacklist server/leader. Client should not set this. Set by server side when persisting
+  // the blacklist load.
   optional int32 initial_replica_load = 2;
+  optional int32 initial_leader_load = 3;
 }
 
 ////////////////////////////////////////////////////////////
@@ -231,6 +236,8 @@ message SysRowEntry {
     SNAPSHOT = 7;
     REDIS_CONFIG = 8;
     SYS_CONFIG = 9;
+    CDC_STREAM = 10;
+    UNIVERSE_REPLICATION = 11;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -249,6 +256,10 @@ message SysRowEntry {
   // encoded the same way in Protobuf.
   // https://groups.google.com/forum/#!msg/protobuf/au6eQBkRT5s/Bhpctql7Q5sJ
   optional bytes data = 3;
+}
+
+message SysRowEntries {
+  repeated SysRowEntry entries = 1;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -281,6 +292,14 @@ message SysTabletsEntryPB {
   required bytes table_id = 6;
   // Table ids for all the tables on this tablet.
   repeated bytes table_ids = 8;
+
+  // True if the tablet is colocated.
+  optional bool colocated = 9 [ default = false ];
+
+  // If the tablet is in the backfilling state, this is used to keep track
+  // of how far along backfill has completed. Encoded as the DocKey for
+  // the next row to be backfilled.
+  optional bytes backfilled_until = 10;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -331,6 +350,8 @@ message SysTablesEntryPB {
   optional State state = 6 [ default = UNKNOWN ];
   optional bytes state_msg = 7;
 
+  // TODO(neil) OLDER INDEXes will always have the deprecated fields. To remove the old format, we
+  // first need to come up with a way to convert existing catalog content to new format.
   // Secondary indexes of the table.
   repeated IndexInfoPB indexes = 12;
 
@@ -344,6 +365,17 @@ message SysTablesEntryPB {
 
   // For Postgres:
   optional bool is_pg_shared_table = 16 [ default = false ]; // Is this a shared table?
+
+  optional uint32 wal_retention_secs = 24;
+
+  optional bool colocated = 25 [ default = false ]; // Is this a colocated table?
+
+  // For index backfill/schema related changes.
+  // When a schema change is going on, we want to make sure that the master returns the "older"
+  // fully applied version until all the tablets have moved on to the newer version.
+  optional uint32 fully_applied_schema_version = 23;
+  repeated IndexInfoPB fully_applied_indexes = 26;
+  optional IndexInfoPB fully_applied_index_info = 27;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -359,6 +391,9 @@ message SysNamespaceEntryPB {
 
   // For Postgres:
   optional uint32 next_pg_oid = 3; // Next oid to assign.
+
+  // True if the namespace is colocated.
+  optional bool colocated = 4 [ default = false ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -369,26 +404,117 @@ message SysUDTypeEntryPB {
   repeated QLTypePB field_types = 4;
 }
 
-// The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
+// The data part of a SysRowEntry in the sys.catalog table for Redis Config.
 message SysRedisConfigEntryPB {
   optional string key = 1;
   repeated bytes args = 2;
 }
 
+// The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
+message SysCDCStreamEntryPB {
+  enum State {
+    ACTIVE = 0;
+    DELETING = 1;
+    // Currently DELETED is not being used because we delete streams entries from sys catalog.
+    DELETED = 2;
+  }
+  optional string table_id = 1;
+  repeated CDCStreamOptionsPB options = 2;
+  optional State state = 3 [default = ACTIVE];
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a universe replication record.
+message SysUniverseReplicationEntryPB {
+  enum State {
+    // Setting up replication.
+    INITIALIZING = 0;
+    // Validated table schemas.
+    VALIDATED = 1;
+    // Active.
+    ACTIVE = 2;
+    // Failed.
+    // Setting up universe replication consists of a sequence of steps like validating schemas,
+    // creating CDC streams, starting subscribers. If any of these fail, we set the universe
+    // replication state to FAILED.
+    FAILED = 3;
+    // Disabled.
+    DISABLED = 6;
+    // Deleted.
+    DELETED = 4;
+    // Error while cleaning up state of deleted entry. This indicates that universe replication has
+    // been deleted but there is still some uncleaned up state - for example, there may be left over
+    // CDC streams.
+    DELETED_ERROR = 5;
+  }
+
+  optional string producer_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+
+  // producer table IDs.
+  repeated string tables = 3;
+
+  optional State state = 4 [default = INITIALIZING];
+
+  // producer table ID -> consumer table ID map.
+  map<string, string> validated_tables = 5;
+
+  // producer table ID -> producer CDC stream map.
+  map<string, string> table_streams = 6;
+}
+
 message ChangeEncryptionInfoRequestPB {
   optional bool encryption_enabled = 1;
   optional string key_path = 2;
+  optional string version_id = 3;
+  optional bool in_memory = 4;
 }
 
 message ChangeEncryptionInfoResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message IsEncryptionEnabledRequestPB {
+}
+
+message IsEncryptionEnabledResponsePB {
+  optional bool encryption_enabled = 1;
+  optional string key_id = 2;
+  optional MasterErrorPB error = 3;
+}
+
 message EncryptionInfoPB {
-  optional bool encryption_enabled = 1 [default = false];
+  optional bool encryption_enabled = 1;
   optional bytes universe_key_registry_encoded = 2;
   optional string key_path = 3;
+  optional string latest_version_id = 4;
+  optional bool key_in_memory = 5;
 }
+
+message AddUniverseKeysRequestPB {
+  optional UniverseKeysPB universe_keys = 1;
+}
+
+message AddUniverseKeysResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetUniverseKeyRegistryRequestPB {
+}
+
+message GetUniverseKeyRegistryResponsePB {
+  optional MasterErrorPB error = 1;
+  optional UniverseKeysPB universe_keys = 2;
+}
+
+message HasUniverseKeyInMemoryRequestPB {
+  optional string version_id = 1;
+}
+
+message HasUniverseKeyInMemoryResponsePB {
+  optional bool has_key = 1;
+  optional MasterErrorPB error = 2;
+}
+
 
 // The on-disk entry in the sys.catalog table for configuration vinformation
 // that are relevant to the entire cluster. This has a version entry that is
@@ -398,7 +524,9 @@ message SysClusterConfigEntryPB {
   optional string cluster_uuid = 4;
   optional ReplicationInfoPB replication_info = 2;
   optional BlacklistPB server_blacklist = 3;
+  optional BlacklistPB leader_blacklist = 7;
   optional EncryptionInfoPB encryption_info = 5;
+  optional cdc.ConsumerRegistryPB consumer_registry = 6;
 }
 
 message SysRoleEntryPB {
@@ -428,6 +556,11 @@ message SysYSQLCatalogConfigEntryPB {
 
   // If this is set, initdb has failed.
   optional string initdb_error = 5;
+
+  // true if transactional system catalogs have been enabled on this cluster. This means all
+  // YSQL system catalog tables have been made transactional, both in their schema and in the tablet
+  // metadata.
+  optional bool transactional_sys_catalog_enabled = 6;
 }
 
 // Various cluster configuration.
@@ -515,6 +648,7 @@ message TServerMetricsPB {
   optional double write_ops_per_sec = 4;
   optional int64 uncompressed_sst_file_size = 5;
   optional uint64 uptime_seconds = 6;
+  optional uint64 num_sst_files = 7;
 }
 
 // Heartbeat sent from the tablet-server to the master
@@ -545,6 +679,8 @@ message TSHeartbeatRequestPB {
 
   // Number of tablets for which this ts is a leader.
   optional int32 leader_count = 7;
+
+  optional int32 cluster_config_version = 8;
 }
 
 message TSHeartbeatResponsePB {
@@ -583,6 +719,10 @@ message TSHeartbeatResponsePB {
   optional uint64 ysql_catalog_version = 10;
 
   optional UniverseKeyRegistryPB universe_key_registry = 11;
+
+  optional cdc.ConsumerRegistryPB consumer_registry = 12;
+
+  optional int32 cluster_config_version = 13;
 }
 
 message TSInformationPB {
@@ -669,13 +809,14 @@ message CreateTableRequestPB {
 
   required string name = 1;
   optional SchemaPB schema = 2;
-  optional int32 num_tablets = 3;
+  optional int32 num_tablets = 3;  // deprecated
   optional PartitionSchemaPB partition_schema = 5;
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
   optional NamespaceIdentifierPB namespace = 8;
 
   // For index table.
+  optional IndexInfoPB index_info = 16;
   optional bytes indexed_table_id = 9; // Indexed table id of this index.
   optional bool is_local_index = 10 [ default = false ];  // Is a local index?
   optional bool is_unique_index = 11 [ default = false ]; // Is a unique index?
@@ -687,6 +828,9 @@ message CreateTableRequestPB {
   optional bytes table_id = 13; // id to assign to this table.
   optional bool is_pg_catalog_table = 14 [ default = false ]; // Is this a sys catalog table?
   optional bool is_pg_shared_table = 15 [ default = false ];  // Is this a shared table?
+
+  // Is this a colocated table? This field is only applicable for a colocated database.
+  optional bool colocated = 17 [ default = true ];
 }
 
 message CreateTableResponsePB {
@@ -852,6 +996,7 @@ message AlterTableRequestPB {
   optional string new_table_name = 3;
   optional NamespaceIdentifierPB new_namespace = 4;
   optional TablePropertiesPB alter_properties = 5;
+  optional uint32 wal_retention_secs = 6;
 }
 
 message AlterTableResponsePB {
@@ -997,10 +1142,15 @@ message DumpMasterStateRequestPB {
   // If set to true, the leader sends request to all current peers to dump their state too.
   // The on_disk is sent along to peers too.
   optional bool peers_also = 2 [default = false];
+
+  // If set to true, the dump will be returned back as a string in the response.
+  // Else the dump will be saved into the master respective log files.
+  optional bool return_dump_as_string = 3 [default = false];
 }
 
 message DumpMasterStateResponsePB {
   optional MasterErrorPB error = 1;
+  optional string dump = 2;
 }
 
 message ChangeLoadBalancerStateRequestPB {
@@ -1048,10 +1198,20 @@ message SetPreferredZonesResponsePB {
 message GetLoadMovePercentRequestPB {
 }
 
+// Get the percentage of tablet leadership that got moved as part of a leader blacklist config
+// change. Handled by the master leader and picked up by new leader on failover.
+message GetLeaderBlacklistPercentRequestPB {
+}
+
 // When no errors, the percent reflects the progress of load removal from the blacklisted tservers.
 message GetLoadMovePercentResponsePB {
   optional MasterErrorPB error = 1;
+
+  // To be deprecated. Replaced by "100 * (total - remaining) / total".
   optional double percent = 2;
+
+  optional uint64 remaining = 3;
+  optional uint64 total = 4;
 }
 
 // Is load balancer idle.
@@ -1111,8 +1271,11 @@ message CreateNamespaceRequestPB {
   // For Postgres:
   optional bytes namespace_id = 4; // id to assign to this namespace.
   optional bytes source_namespace_id = 5; // namespace id of the source database to copy from.
-  optional uint32 next_pg_oid = 6; // Next oid to assign. Ingored when source_namespace_id is given
+  optional uint32 next_pg_oid = 6; // Next oid to assign. Ignored when source_namespace_id is given
                                    // and the next_pg_oid from source namespace will be used.
+
+  // True if the namespace is colocated.
+  optional bool colocated = 7 [ default = false ];
 }
 
 message CreateNamespaceResponsePB {
@@ -1133,6 +1296,18 @@ message DeleteNamespaceRequestPB {
 // Fails if the namespace is NOT empty
 
 message DeleteNamespaceResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message AlterNamespaceRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+
+  // New name for the namespace in the alter operation.
+  optional string new_name = 2;
+}
+
+message AlterNamespaceResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
@@ -1333,6 +1508,65 @@ message UDTypeInfoPB {
   optional NamespaceIdentifierPB namespace = 5;
 }
 
+// ============================================================================
+//  CDC Stream
+// ============================================================================
+
+message CreateCDCStreamRequestPB {
+  optional string table_id = 1;
+  repeated CDCStreamOptionsPB options = 3;
+}
+
+// Options for CDC stream. This will include details such as:
+// Stream sink: YB Universe / Kafka / Elastic Search.
+// Log retention time: Amount of time to retain logs for CDC.
+// Sink details: For example, Kafka cluster IP, port.
+message CDCStreamOptionsPB {
+  optional string key = 1;
+  optional bytes value = 2;
+}
+
+message CreateCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional bytes stream_id = 2;
+}
+
+message DeleteCDCStreamRequestPB {
+  repeated bytes stream_id = 1;
+}
+
+message DeleteCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message ListCDCStreamsRequestPB {
+  optional string table_id = 1;
+}
+
+message ListCDCStreamsResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  repeated CDCStreamInfoPB streams = 2;
+}
+
+message GetCDCStreamRequestPB {
+  optional bytes stream_id = 1;
+}
+
+message GetCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional CDCStreamInfoPB stream = 2;
+}
+
+message CDCStreamInfoPB {
+  optional bytes stream_id = 1;
+  optional bytes table_id = 2;
+  repeated CDCStreamOptionsPB options = 3;
+}
+
 // TODO: rename to FlushOrCompact TablesRequestPB
 // https://github.com/YugaByte/yugabyte-db/issues/729
 message FlushTablesRequestPB {
@@ -1358,7 +1592,7 @@ message IsFlushTablesDoneResponsePB {
   // true if the flush tables operation is completed, false otherwise.
   optional bool done = 2;
 
-  // true if the flush tables operation is successfull.
+  // true if the flush tables operation is successful.
   optional bool success = 3;
 }
 
@@ -1393,11 +1627,62 @@ message IsInitDbDoneResponsePB {
   // Someone started running initdb, as indicated by the existence of template1.pg_proc.
   optional bool pg_proc_exists = 2;
 
-  // This is true if the master ran initdb and it finished, succesfully or not.
+  // This is true if the master ran initdb and it finished, successfully or not.
   optional bool done = 4;
 
   // If this is set to a non-empty string, initdb has failed.
   optional string initdb_error = 5;
+}
+
+message SetupUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+  repeated string producer_table_ids = 3;
+
+  // An id generated by the producer when BootstrapProducer rpc is called.
+  repeated string producer_bootstrap_ids = 4;
+}
+
+message SetupUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+}
+
+message DeleteUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message AlterUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+  // The below options are currently mutually exclusive.  Only 1 operation at a time.
+  repeated HostPortPB producer_master_addresses = 2;
+  repeated string producer_table_ids_to_add = 4;
+  repeated string producer_table_ids_to_remove = 5;
+}
+
+message AlterUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message SetUniverseReplicationEnabledRequestPB {
+  optional string producer_id = 1;
+  optional bool is_enabled = 2;
+}
+
+message SetUniverseReplicationEnabledResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+}
+
+message GetUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SysUniverseReplicationEntryPB entry = 2;
 }
 
 service MasterService {
@@ -1425,6 +1710,7 @@ service MasterService {
 
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
+  rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
 
   // For Postgres:
@@ -1444,6 +1730,12 @@ service MasterService {
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);
   rpc GetUDTypeInfo(GetUDTypeInfoRequestPB) returns (GetUDTypeInfoResponsePB);
+
+  // CDC stream RPCs.
+  rpc CreateCDCStream(CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
+  rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
+  rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
+  rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
 
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);
@@ -1476,6 +1768,8 @@ service MasterService {
       returns (ChangeMasterClusterConfigResponsePB);
   rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)
       returns (GetLoadMovePercentResponsePB);
+  rpc GetLeaderBlacklistCompletion(GetLeaderBlacklistPercentRequestPB)
+      returns (GetLoadMovePercentResponsePB);
   rpc IsLoadBalanced(IsLoadBalancedRequestPB)
       returns (IsLoadBalancedResponsePB);
   rpc IsLoadBalancerIdle(IsLoadBalancerIdleRequestPB)
@@ -1489,4 +1783,22 @@ service MasterService {
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
 
   rpc ChangeEncryptionInfo(ChangeEncryptionInfoRequestPB) returns (ChangeEncryptionInfoResponsePB);
+
+  rpc IsEncryptionEnabled(IsEncryptionEnabledRequestPB) returns (IsEncryptionEnabledResponsePB);
+
+  rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
+      returns (SetupUniverseReplicationResponsePB);
+  rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
+      returns (DeleteUniverseReplicationResponsePB);
+  rpc AlterUniverseReplication(AlterUniverseReplicationRequestPB)
+      returns (AlterUniverseReplicationResponsePB);
+  rpc SetUniverseReplicationEnabled(SetUniverseReplicationEnabledRequestPB)
+      returns (SetUniverseReplicationEnabledResponsePB);
+  rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
+      returns (GetUniverseReplicationResponsePB);
+  rpc AddUniverseKeys(AddUniverseKeysRequestPB)  returns (AddUniverseKeysResponsePB);
+  rpc GetUniverseKeyRegistry(GetUniverseKeyRegistryRequestPB)
+      returns (GetUniverseKeyRegistryResponsePB);
+  rpc HasUniverseKeyInMemory(HasUniverseKeyInMemoryRequestPB)
+      returns (HasUniverseKeyInMemoryResponsePB);
 }

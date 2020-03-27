@@ -17,8 +17,6 @@
 #include <memory>
 #include <sstream>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/statistics.h"
 
@@ -34,6 +32,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
@@ -54,7 +53,7 @@ using std::stringstream;
 using strings::Substitute;
 
 using yb::util::ApplyEagerLineContinuation;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 using yb::util::TrimStr;
 using yb::util::LeftShiftTextBlock;
 using yb::util::TrimCppComments;
@@ -75,9 +74,9 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override {
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override {
     Fail();
-    return boost::none;
+    return STATUS(Expired, "");
   }
 
   int64_t RegisterRequest() override {
@@ -97,6 +96,11 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
+  void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
+    Fail();
+  }
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";
@@ -108,7 +112,7 @@ NonTransactionalStatusProvider kNonTransactionalStatusProvider;
 } // namespace
 
 const TransactionOperationContext kNonTransactionalOperationContext = {
-    boost::uuids::nil_uuid(), &kNonTransactionalStatusProvider
+    TransactionId::Nil(), &kNonTransactionalStatusProvider
 };
 
 PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
@@ -214,7 +218,7 @@ PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
       }
       return PrimitiveValue(s);
     }
-    case 2: return PrimitiveValue(ValueType::kNull);
+    case 2: return PrimitiveValue(ValueType::kNullLow);
     case 3: return PrimitiveValue(ValueType::kTrue);
     case 4: return PrimitiveValue(ValueType::kFalse);
     case 5: return PrimitiveValue(kFruit[(*rng)() % kFruit.size()]);
@@ -234,7 +238,8 @@ vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng, int 
 }
 
 DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
-  return use_hash ? DocKey(static_cast<DocKeyHash>((*rng)()), {}, {}) : DocKey();
+  return use_hash ? DocKey(static_cast<DocKeyHash>((*rng)()), std::vector<PrimitiveValue>(),
+      std::vector<PrimitiveValue>()) : DocKey();
 }
 
 DocKey GenRandomDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
@@ -601,9 +606,9 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
 void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
   LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
   SetHistoryCutoffHybridTime(history_cutoff);
-  BOOST_SCOPE_EXIT(this_) {
-    this_->SetHistoryCutoffHybridTime(HybridTime::kMin);
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
 
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_OK(FullyCompactDB(rocksdb_.get()));
@@ -616,9 +621,9 @@ void DocDBRocksDBFixture::MinorCompaction(
 
   ASSERT_OK(FlushRocksDbAndWait());
   SetHistoryCutoffHybridTime(history_cutoff);
-  BOOST_SCOPE_EXIT(this_) {
-    this_->SetHistoryCutoffHybridTime(HybridTime::kMin);
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
 
   rocksdb::ColumnFamilyMetaData cf_meta;
   rocksdb_->GetColumnFamilyMetaData(&cf_meta);

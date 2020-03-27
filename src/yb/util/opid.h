@@ -17,6 +17,10 @@
 
 #include <cstdint>
 #include <iosfwd>
+#include <vector>
+
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 
@@ -28,6 +32,18 @@ struct OpId {
 
   OpId() noexcept : term(0), index(0) {}
   OpId(int64_t term_, int64_t index_) noexcept : term(term_), index(index_) {}
+
+  static OpId Invalid() {
+    return OpId(kUnknownTerm, -1);
+  }
+
+  static OpId Max() {
+    return OpId(std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max());
+  }
+
+  bool valid() const {
+    return term >= 0 && index >= 0;
+  }
 
   bool empty() const {
     return term == 0 && index == 0;
@@ -62,6 +78,11 @@ struct OpId {
   static OpId FromPB(const PB& pb) {
     return OpId(pb.term(), pb.index());
   }
+
+  std::string ToString() const;
+
+  // Parse OpId from TERM.INDEX string.
+  static Result<OpId> FromString(Slice input);
 };
 
 inline bool operator==(const OpId& lhs, const OpId& rhs) {
@@ -97,6 +118,8 @@ struct OpIdHash {
     return hash_value(v);
   }
 };
+
+typedef std::vector<OpId> OpIds;
 
 } // namespace yb
 

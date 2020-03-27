@@ -16,6 +16,7 @@
 #define YB_YQL_PGGATE_PG_EXPR_H_
 
 #include "yb/client/client.h"
+#include "yb/common/ql_expr.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_tuple.h"
 
@@ -46,6 +47,9 @@ class PgExpr {
     PG_EXPR_MAX,
     PG_EXPR_MIN,
 
+    // Serialized YSQL/PG Expr node.
+    PG_EXPR_EVAL_EXPR_CALL,
+
     PG_EXPR_GENERATE_ROWID,
   };
 
@@ -67,13 +71,27 @@ class PgExpr {
 
   // Convert this expression structure to PB format.
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, QLValuePB *result);
 
   // Access methods.
   Opcode opcode() const {
     return opcode_;
   }
-  bool is_constant() {
+  bool is_constant() const {
     return opcode_ == Opcode::PG_EXPR_CONSTANT;
+  }
+  bool is_colref() const {
+    return opcode_ == Opcode::PG_EXPR_COLREF;
+  }
+  bool is_aggregate() const {
+    // Only return true for pushdown supported aggregates.
+    return (opcode_ == Opcode::PG_EXPR_SUM ||
+            opcode_ == Opcode::PG_EXPR_COUNT ||
+            opcode_ == Opcode::PG_EXPR_MAX ||
+            opcode_ == Opcode::PG_EXPR_MIN);
+  }
+  virtual bool is_ybbasetid() const {
+    return false;
   }
 
   // Read the result from input buffer (yb_cursor) that was computed by and sent from DocDB.
@@ -174,8 +192,12 @@ class PgExpr {
   // Find opcode.
   static CHECKED_STATUS CheckOperatorName(const char *name);
   static Opcode NameToOpcode(const char *name);
+  static bfpg::TSOpcode PGOpcodeToTSOpcode(const PgExpr::Opcode opcode);
+  static bfpg::TSOpcode OperandTypeToSumTSOpcode(InternalType type);
 
  protected:
+  void InitializeTranslateData();
+
   // Data members.
   Opcode opcode_;
   const PgTypeEntity *type_entity_;
@@ -194,7 +216,8 @@ class PgConstant : public PgExpr {
   typedef std::unique_ptr<const PgConstant> UniPtrConst;
 
   // Constructor.
-  explicit PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null);
+  explicit PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
+      PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
 
   // Destructor.
   virtual ~PgConstant();
@@ -212,7 +235,8 @@ class PgConstant : public PgExpr {
   void UpdateConstant(const void *value, size_t bytes, bool is_null);
 
   // Expression to PB.
-  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
+  CHECKED_STATUS Eval(PgDml *pg_stmt, QLValuePB *result) override;
 
   // Read binary value.
   const string &binary_value() {
@@ -244,6 +268,9 @@ class PgColumnRef : public PgExpr {
     return attr_num_;
   }
 
+  virtual bool is_ybbasetid() const {
+    return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
+  }
  private:
   int attr_num_;
 };
@@ -264,28 +291,12 @@ class PgOperator : public PgExpr {
   // Append arguments.
   void AppendArg(PgExpr *arg);
 
+  // Setup operator expression when constructing statement.
+  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+
  private:
   const string opname_;
   std::vector<PgExpr*> args_;
-};
-
-class PgGenerateRowId : public PgExpr {
- public:
-  // Public types.
-  typedef std::shared_ptr<PgGenerateRowId> SharedPtr;
-  typedef std::shared_ptr<const PgGenerateRowId> SharedPtrConst;
-
-  typedef std::unique_ptr<PgGenerateRowId> UniPtr;
-  typedef std::unique_ptr<const PgGenerateRowId> UniPtrConst;
-
-  // Constructor.
-  PgGenerateRowId();
-  virtual ~PgGenerateRowId();
-
-  // Convert this expression structure to PB format.
-  CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
-
- private:
 };
 
 }  // namespace pggate

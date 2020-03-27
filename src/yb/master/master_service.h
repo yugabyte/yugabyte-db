@@ -49,179 +49,235 @@ class MasterServiceImpl : public MasterServiceIf,
   MasterServiceImpl(const MasterServiceImpl&) = delete;
   void operator=(const MasterServiceImpl&) = delete;
 
-  virtual void TSHeartbeat(const TSHeartbeatRequestPB* req,
-                           TSHeartbeatResponsePB* resp,
-                           rpc::RpcContext rpc) override;
+  void TSHeartbeat(const TSHeartbeatRequestPB* req,
+                   TSHeartbeatResponsePB* resp,
+                   rpc::RpcContext rpc) override;
 
-  virtual void GetTabletLocations(const GetTabletLocationsRequestPB* req,
-                                  GetTabletLocationsResponsePB* resp,
-                                  rpc::RpcContext rpc) override;
-
-  virtual void CreateTable(const CreateTableRequestPB* req,
-                           CreateTableResponsePB* resp,
-                           rpc::RpcContext rpc) override;
-  virtual void IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
-                                 IsCreateTableDoneResponsePB* resp,
-                                 rpc::RpcContext rpc) override;
-  virtual void TruncateTable(const TruncateTableRequestPB* req,
-                             TruncateTableResponsePB* resp,
-                             rpc::RpcContext rpc) override;
-  virtual void IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
-                                   IsTruncateTableDoneResponsePB* resp,
-                                   rpc::RpcContext rpc) override;
-  virtual void DeleteTable(const DeleteTableRequestPB* req,
-                           DeleteTableResponsePB* resp,
-                           rpc::RpcContext rpc) override;
-  virtual void IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
-                                 IsDeleteTableDoneResponsePB* resp,
-                                 rpc::RpcContext rpc) override;
-  virtual void AlterTable(const AlterTableRequestPB* req,
-                          AlterTableResponsePB* resp,
+  void GetTabletLocations(const GetTabletLocationsRequestPB* req,
+                          GetTabletLocationsResponsePB* resp,
                           rpc::RpcContext rpc) override;
-  virtual void IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
-                                IsAlterTableDoneResponsePB* resp,
-                                rpc::RpcContext rpc) override;
-  virtual void ListTables(const ListTablesRequestPB* req,
-                          ListTablesResponsePB* resp,
-                          rpc::RpcContext rpc) override;
-  virtual void GetTableLocations(const GetTableLocationsRequestPB* req,
-                                 GetTableLocationsResponsePB* resp,
-                                 rpc::RpcContext rpc) override;
-  virtual void GetTableSchema(const GetTableSchemaRequestPB* req,
-                              GetTableSchemaResponsePB* resp,
-                              rpc::RpcContext rpc) override;
-  virtual void ListTabletServers(const ListTabletServersRequestPB* req,
-                                 ListTabletServersResponsePB* resp,
-                                 rpc::RpcContext rpc) override;
 
-  virtual void CreateNamespace(const CreateNamespaceRequestPB* req,
-                               CreateNamespaceResponsePB* resp,
-                               rpc::RpcContext rpc) override;
-  virtual void DeleteNamespace(const DeleteNamespaceRequestPB* req,
-                               DeleteNamespaceResponsePB* resp,
-                               rpc::RpcContext rpc) override;
-  virtual void ListNamespaces(const ListNamespacesRequestPB* req,
-                              ListNamespacesResponsePB* resp,
-                              rpc::RpcContext rpc) override;
-
-  virtual void ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
-                                ReservePgsqlOidsResponsePB* resp,
-                                rpc::RpcContext rpc) override;
-
-  virtual void GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
-                                    GetYsqlCatalogConfigResponsePB* resp,
-                                    rpc::RpcContext rpc) override;
-
-  virtual void CreateRole(const CreateRoleRequestPB* req,
-                          CreateRoleResponsePB* resp,
-                          rpc::RpcContext rpc) override;
-  virtual void AlterRole(const AlterRoleRequestPB* req,
-                         AlterRoleResponsePB* resp,
+  void CreateTable(const CreateTableRequestPB* req,
+                   CreateTableResponsePB* resp,
+                   rpc::RpcContext rpc) override;
+  void IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
+                         IsCreateTableDoneResponsePB* resp,
                          rpc::RpcContext rpc) override;
-  virtual void DeleteRole(const DeleteRoleRequestPB* req,
-                          DeleteRoleResponsePB* resp,
-                          rpc::RpcContext rpc) override;
-  virtual void GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
-                               GrantRevokeRoleResponsePB* resp,
-                               rpc::RpcContext rpc) override;
-  virtual void GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
-                                     GrantRevokePermissionResponsePB* resp,
-                                     rpc::RpcContext rpc) override;
-  virtual void GetPermissions(const GetPermissionsRequestPB* req,
-                              GetPermissionsResponsePB* resp,
-                              rpc::RpcContext rpc) override;
-
-  virtual void RedisConfigSet(const RedisConfigSetRequestPB* req,
-                              RedisConfigSetResponsePB* resp,
-                              rpc::RpcContext rpc) override;
-  virtual void RedisConfigGet(const RedisConfigGetRequestPB* req,
-                              RedisConfigGetResponsePB* resp,
-                              rpc::RpcContext rpc) override;
-
-  virtual void CreateUDType(const CreateUDTypeRequestPB* req,
-                            CreateUDTypeResponsePB* resp,
-                            rpc::RpcContext rpc) override;
-  virtual void DeleteUDType(const DeleteUDTypeRequestPB* req,
-                            DeleteUDTypeResponsePB* resp,
-                            rpc::RpcContext rpc) override;
-  virtual void ListUDTypes(const ListUDTypesRequestPB* req,
-                           ListUDTypesResponsePB* resp,
+  void TruncateTable(const TruncateTableRequestPB* req,
+                     TruncateTableResponsePB* resp,
+                     rpc::RpcContext rpc) override;
+  void IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
+                           IsTruncateTableDoneResponsePB* resp,
                            rpc::RpcContext rpc) override;
-  virtual void GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
-                             GetUDTypeInfoResponsePB* resp,
-                             rpc::RpcContext rpc) override;
-
-  virtual void ListMasters(const ListMastersRequestPB* req,
-                           ListMastersResponsePB* resp,
-                           rpc::RpcContext rpc) override;
-
-  virtual void ListMasterRaftPeers(const ListMasterRaftPeersRequestPB* req,
-                                   ListMasterRaftPeersResponsePB* resp,
-                                   rpc::RpcContext rpc) override;
-
-  virtual void GetMasterRegistration(const GetMasterRegistrationRequestPB* req,
-                                     GetMasterRegistrationResponsePB* resp,
-                                     rpc::RpcContext rpc) override;
-
-  virtual void DumpState(const DumpMasterStateRequestPB* req,
-                         DumpMasterStateResponsePB* resp,
+  void DeleteTable(const DeleteTableRequestPB* req,
+                   DeleteTableResponsePB* resp,
+                   rpc::RpcContext rpc) override;
+  void IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
+                         IsDeleteTableDoneResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+  void AlterTable(const AlterTableRequestPB* req,
+                  AlterTableResponsePB* resp,
+                  rpc::RpcContext rpc) override;
+  void IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
+                        IsAlterTableDoneResponsePB* resp,
+                        rpc::RpcContext rpc) override;
+  void ListTables(const ListTablesRequestPB* req,
+                  ListTablesResponsePB* resp,
+                  rpc::RpcContext rpc) override;
+  void GetTableLocations(const GetTableLocationsRequestPB* req,
+                         GetTableLocationsResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+  void GetTableSchema(const GetTableSchemaRequestPB* req,
+                      GetTableSchemaResponsePB* resp,
+                      rpc::RpcContext rpc) override;
+  void ListTabletServers(const ListTabletServersRequestPB* req,
+                         ListTabletServersResponsePB* resp,
                          rpc::RpcContext rpc) override;
 
-  virtual void ChangeLoadBalancerState(const ChangeLoadBalancerStateRequestPB*
-                                       req, ChangeLoadBalancerStateResponsePB* resp,
-                                       rpc::RpcContext rpc) override;
+  void CreateNamespace(const CreateNamespaceRequestPB* req,
+                       CreateNamespaceResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+  void DeleteNamespace(const DeleteNamespaceRequestPB* req,
+                       DeleteNamespaceResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+  void AlterNamespace(const AlterNamespaceRequestPB* req,
+                      AlterNamespaceResponsePB* resp,
+                      rpc::RpcContext rpc) override;
+  void ListNamespaces(const ListNamespacesRequestPB* req,
+                      ListNamespacesResponsePB* resp,
+                      rpc::RpcContext rpc) override;
 
-  virtual void RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
-                                   RemovedMasterUpdateResponsePB* resp,
-                                   rpc::RpcContext rpc) override;
+  void ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
+                        ReservePgsqlOidsResponsePB* resp,
+                        rpc::RpcContext rpc) override;
 
-  virtual void SetPreferredZones(const SetPreferredZonesRequestPB* req,
-                                 SetPreferredZonesResponsePB* resp,
-                                 rpc::RpcContext rpc) override;
+  void GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
+                            GetYsqlCatalogConfigResponsePB* resp,
+                            rpc::RpcContext rpc) override;
 
-  virtual void GetMasterClusterConfig(const GetMasterClusterConfigRequestPB* req,
-                                      GetMasterClusterConfigResponsePB* resp,
-                                      rpc::RpcContext rpc) override;
+  void CreateRole(const CreateRoleRequestPB* req,
+                  CreateRoleResponsePB* resp,
+                  rpc::RpcContext rpc) override;
+  void AlterRole(const AlterRoleRequestPB* req,
+                 AlterRoleResponsePB* resp,
+                 rpc::RpcContext rpc) override;
+  void DeleteRole(const DeleteRoleRequestPB* req,
+                  DeleteRoleResponsePB* resp,
+                  rpc::RpcContext rpc) override;
+  void GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
+                       GrantRevokeRoleResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+  void GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
+                             GrantRevokePermissionResponsePB* resp,
+                             rpc::RpcContext rpc) override;
+  void GetPermissions(const GetPermissionsRequestPB* req,
+                      GetPermissionsResponsePB* resp,
+                      rpc::RpcContext rpc) override;
 
-  virtual void ChangeMasterClusterConfig(const ChangeMasterClusterConfigRequestPB* req,
-                                         ChangeMasterClusterConfigResponsePB* resp,
-                                         rpc::RpcContext rpc) override;
+  void RedisConfigSet(const RedisConfigSetRequestPB* req,
+                      RedisConfigSetResponsePB* resp,
+                      rpc::RpcContext rpc) override;
+  void RedisConfigGet(const RedisConfigGetRequestPB* req,
+                      RedisConfigGetResponsePB* resp,
+                      rpc::RpcContext rpc) override;
 
-  virtual void GetLoadMoveCompletion(const GetLoadMovePercentRequestPB* req,
-                                     GetLoadMovePercentResponsePB* resp,
-                                     rpc::RpcContext rpc) override;
+  void CreateUDType(const CreateUDTypeRequestPB* req,
+                    CreateUDTypeResponsePB* resp,
+                    rpc::RpcContext rpc) override;
+  void DeleteUDType(const DeleteUDTypeRequestPB* req,
+                    DeleteUDTypeResponsePB* resp,
+                    rpc::RpcContext rpc) override;
+  void ListUDTypes(const ListUDTypesRequestPB* req,
+                   ListUDTypesResponsePB* resp,
+                   rpc::RpcContext rpc) override;
+  void GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
+                     GetUDTypeInfoResponsePB* resp,
+                     rpc::RpcContext rpc) override;
 
-  virtual void IsMasterLeaderServiceReady(const IsMasterLeaderReadyRequestPB* req,
-                                          IsMasterLeaderReadyResponsePB* resp,
-                                          rpc::RpcContext rpc) override;
+  void CreateCDCStream(const CreateCDCStreamRequestPB* req,
+                       CreateCDCStreamResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+  void DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+                       DeleteCDCStreamResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+  void ListCDCStreams(const ListCDCStreamsRequestPB* req,
+                      ListCDCStreamsResponsePB* resp,
+                      rpc::RpcContext rpc) override;
+  void GetCDCStream(const GetCDCStreamRequestPB* req,
+                    GetCDCStreamResponsePB* resp,
+                    rpc::RpcContext rpc) override;
 
-  virtual void IsLoadBalanced(const IsLoadBalancedRequestPB* req,
-                              IsLoadBalancedResponsePB* resp,
-                              rpc::RpcContext rpc) override;
+  void ListMasters(const ListMastersRequestPB* req,
+                   ListMastersResponsePB* resp,
+                   rpc::RpcContext rpc) override;
 
-  virtual void IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
-                                  IsLoadBalancerIdleResponsePB* resp,
-                                  rpc::RpcContext rpc) override;
-
-  virtual void AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
-                                         AreLeadersOnPreferredOnlyResponsePB* resp,
-                                         rpc::RpcContext rpc) override;
-
-  virtual void FlushTables(const FlushTablesRequestPB* req,
-                           FlushTablesResponsePB* resp,
+  void ListMasterRaftPeers(const ListMasterRaftPeersRequestPB* req,
+                           ListMasterRaftPeersResponsePB* resp,
                            rpc::RpcContext rpc) override;
 
-  virtual void IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
-                                 IsFlushTablesDoneResponsePB* resp,
+  void GetMasterRegistration(const GetMasterRegistrationRequestPB* req,
+                             GetMasterRegistrationResponsePB* resp,
+                             rpc::RpcContext rpc) override;
+
+  void DumpState(const DumpMasterStateRequestPB* req,
+                 DumpMasterStateResponsePB* resp,
+                 rpc::RpcContext rpc) override;
+
+  void ChangeLoadBalancerState(const ChangeLoadBalancerStateRequestPB* req,
+                               ChangeLoadBalancerStateResponsePB* resp,
+                               rpc::RpcContext rpc) override;
+
+  void RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
+                           RemovedMasterUpdateResponsePB* resp,
+                           rpc::RpcContext rpc) override;
+
+  void SetPreferredZones(const SetPreferredZonesRequestPB* req,
+                         SetPreferredZonesResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+
+  void GetMasterClusterConfig(const GetMasterClusterConfigRequestPB* req,
+                              GetMasterClusterConfigResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+
+  void ChangeMasterClusterConfig(const ChangeMasterClusterConfigRequestPB* req,
+                                 ChangeMasterClusterConfigResponsePB* resp,
                                  rpc::RpcContext rpc) override;
 
-  virtual void IsInitDbDone(const IsInitDbDoneRequestPB* req,
-                            IsInitDbDoneResponsePB* resp,
-                            rpc::RpcContext rpc) override;
+  void GetLoadMoveCompletion(const GetLoadMovePercentRequestPB* req,
+                             GetLoadMovePercentResponsePB* resp,
+                             rpc::RpcContext rpc) override;
+
+  void GetLeaderBlacklistCompletion(const GetLeaderBlacklistPercentRequestPB* req,
+                             GetLoadMovePercentResponsePB* resp,
+                             rpc::RpcContext rpc) override;
+
+  void IsMasterLeaderServiceReady(const IsMasterLeaderReadyRequestPB* req,
+                                  IsMasterLeaderReadyResponsePB* resp,
+                                  rpc::RpcContext rpc) override;
+
+  void IsLoadBalanced(const IsLoadBalancedRequestPB* req,
+                      IsLoadBalancedResponsePB* resp,
+                      rpc::RpcContext rpc) override;
+
+  void IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
+                          IsLoadBalancerIdleResponsePB* resp,
+                          rpc::RpcContext rpc) override;
+
+  void AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
+                                 AreLeadersOnPreferredOnlyResponsePB* resp,
+                                 rpc::RpcContext rpc) override;
+
+  void FlushTables(const FlushTablesRequestPB* req,
+                   FlushTablesResponsePB* resp,
+                   rpc::RpcContext rpc) override;
+
+  void IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
+                         IsFlushTablesDoneResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+
+  void IsInitDbDone(const IsInitDbDoneRequestPB* req,
+                    IsInitDbDoneResponsePB* resp,
+                    rpc::RpcContext rpc) override;
 
   void ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                             ChangeEncryptionInfoResponsePB* resp,
                             rpc::RpcContext rpc) override;
+
+  void IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
+                           IsEncryptionEnabledResponsePB* resp,
+                           rpc::RpcContext rpc) override;
+
+  void GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
+                              GetUniverseKeyRegistryResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+
+  void AddUniverseKeys(const AddUniverseKeysRequestPB* req,
+                       AddUniverseKeysResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+
+  void HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
+                              HasUniverseKeyInMemoryResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+
+  void SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
+                                SetupUniverseReplicationResponsePB* resp,
+                                rpc::RpcContext rpc) override;
+
+  void DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
+                                 DeleteUniverseReplicationResponsePB* resp,
+                                 rpc::RpcContext rpc) override;
+
+  void AlterUniverseReplication(const AlterUniverseReplicationRequestPB* req,
+                                AlterUniverseReplicationResponsePB* resp,
+                                rpc::RpcContext rpc) override;
+
+  void SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
+                                     SetUniverseReplicationEnabledResponsePB* resp,
+                                     rpc::RpcContext rpc) override;
+
+  void GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
+                              GetUniverseReplicationResponsePB* resp,
+                              rpc::RpcContext rpc) override;
 
  private:
 };

@@ -1,8 +1,9 @@
 ---
-title: SHOW
+title: SHOW statement [YSQL]
+headerTitle: SHOW
 linkTitle: SHOW
-summary: Display values of a system or session variable
-description: SHOW
+summary: Display the value of a run-time parameter.
+description: Use the `SHOW` statement to display the value of a run-time parameter.
 menu:
   latest:
     identifier: api-ysql-commands-show
@@ -15,27 +16,47 @@ showAsideToc: true
 
 ## Synopsis
 
-`SHOW` command displays the value of specified parameters.
+Use the `SHOW` statement to display the value of a run-time parameter.
 
 ## Syntax
 
-### Diagram 
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="172" height="63" viewbox="0 0 172 63"><path class="connector" d="M0 21h5m57 0h30m55 0h20m-90 0q5 0 5 5v19q0 5 5 5h5m40 0h20q5 0 5-5v-19q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="57" height="24" rx="7"/><text class="text" x="15" y="21">SHOW</text><a xlink:href="../../grammar_diagrams#name"><rect class="rule" x="92" y="5" width="55" height="24"/><text class="text" x="102" y="21">name</text></a><rect class="literal" x="92" y="34" width="40" height="24" rx="7"/><text class="text" x="102" y="50">ALL</text></svg>
-
-### Grammar
-```
-show_stmt ::= SHOW { name | ALL }
-```
-
-Where
-- `name` specifies the name of the parameter to be showed.
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/show_stmt.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/show_stmt.diagram.md" /%}}
+  </div>
+</div>
 
 ## Semantics
 
-- Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+- Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in Yugabyte. The factory-settings or default behaviors will be used for the moment.
 
-## See Also
-[`SET`](../cmd_set)
-[`RESET`](../cmd_reset)
-[Other YSQL Statements](..)
+### *configuration_parameter*
+
+Specify the name of the parameter to be displayed.
+
+### ALL
+
+Show the values of all configuration parameters, with descriptions.
+
+## See also
+
+- [`SET`](../cmd_set)
+- [`RESET`](../cmd_reset)

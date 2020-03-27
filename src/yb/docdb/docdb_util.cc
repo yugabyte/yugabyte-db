@@ -30,7 +30,7 @@ using std::string;
 using std::make_shared;
 using std::endl;
 using strings::Substitute;
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 using yb::util::ApplyEagerLineContinuation;
 using std::vector;
 
@@ -67,15 +67,18 @@ Status DocDBRocksDBUtil::OpenRocksDB() {
   return Status::OK();
 }
 
-Status DocDBRocksDBUtil::ReopenRocksDB() {
+void DocDBRocksDBUtil::CloseRocksDB() {
   intents_db_.reset();
   rocksdb_.reset();
+}
+
+Status DocDBRocksDBUtil::ReopenRocksDB() {
+  CloseRocksDB();
   return OpenRocksDB();
 }
 
 Status DocDBRocksDBUtil::DestroyRocksDB() {
-  intents_db_.reset();
-  rocksdb_.reset();
+  CloseRocksDB();
   LOG(INFO) << "Destroying RocksDB database at " << rocksdb_dir_;
   RETURN_NOT_OK(rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_));
   RETURN_NOT_OK(rocksdb::DestroyDB(IntentsDBDir(), rocksdb_options_));
@@ -93,8 +96,8 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     bool decode_dockey,
     bool increment_write_id,
     PartialRangeKeyIntents partial_range_key_intents) const {
-  for (const auto& entry : dwb.key_value_pairs()) {
-    if (decode_dockey) {
+  if (decode_dockey) {
+    for (const auto& entry : dwb.key_value_pairs()) {
       SubDocKey subdoc_key;
       // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
       // don't contain the HybridTime.
@@ -112,7 +115,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
     PrepareTransactionWriteBatch(
         kv_write_batch, hybrid_time, rocksdb_write_batch, *current_txn_id_, txn_isolation_level_,
-        partial_range_key_intents, &intra_txn_write_id_);
+        partial_range_key_intents, /* replicated_batches_state= */ Slice(), &intra_txn_write_id_);
   } else {
     // TODO: this block has common code with docdb::PrepareNonTransactionWriteBatch and probably
     // can be refactored, so common code is reused.
@@ -201,6 +204,16 @@ Status DocDBRocksDBUtil::WriteToRocksDBAndClear(
   RETURN_NOT_OK(WriteToRocksDB(*dwb, hybrid_time, decode_dockey, increment_write_id));
   dwb->Clear();
   return Status::OK();
+}
+
+Status DocDBRocksDBUtil::WriteSimple(int index) {
+  auto encoded_doc_key = DocKey(PrimitiveValues(Format("row$0", index), 11111 * index)).Encode();
+  op_id_.term = index / 2;
+  op_id_.index = index;
+  auto& dwb = DefaultDocWriteBatch();
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      DocPath(encoded_doc_key, PrimitiveValue(ColumnId(10))), PrimitiveValue(index)));
+  return WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000 * index));
 }
 
 void DocDBRocksDBUtil::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
@@ -319,6 +332,14 @@ DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
   return DocWriteBatch(
       DocDB::FromRegularUnbounded(rocksdb_.get()), init_marker_behavior, &monotonic_counter_);
+}
+
+DocWriteBatch& DocDBRocksDBUtil::DefaultDocWriteBatch() {
+  if (!doc_write_batch_) {
+    doc_write_batch_ = MakeDocWriteBatch();
+  }
+
+  return *doc_write_batch_;
 }
 
 void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_behavior) {

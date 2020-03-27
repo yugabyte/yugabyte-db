@@ -7,3 +7,7 @@
 test: yb_create_large_table
 test: yb_large_copy
 test: yb_select_large
+test: yb_large_copy_abort
+test: yb_select_large_abort
+test: yb_large_copy_ddl
+test: yb_select_large_ddl

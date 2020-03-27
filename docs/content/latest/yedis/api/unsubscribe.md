@@ -12,14 +12,15 @@ aliases:
 isTocNested: true
 showAsideToc: true
 ---
-`UNSUBSCRIBE` 
 
 ## Synopsis
+
 <b>`UNSUBSCRIBE [channel [channel ...]]`</b><br>
-This command unsubscribes the client from the specified channel(s). 
+This command unsubscribes the client from the specified channel(s).
  If no channel is specified, the client is unsubscribed from all channels that it has subscribed to.
 
-## See Also
+## See also
+
 [`pubsub`](../pubsub/), 
 [`publish`](../publish/), 
 [`subscribe`](../subscribe/), 

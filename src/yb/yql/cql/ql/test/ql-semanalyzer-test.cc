@@ -404,7 +404,7 @@ TEST_F(QLTestAnalyzer, TestIndexSelection) {
   EXPECT_OK(processor->Run("CREATE INDEX i6 ON t ((c1, r2), c2);"));
   EXPECT_OK(processor->Run("CREATE INDEX i7 ON t ((h2, h1), c1) INCLUDE (c2);"));
 
-  client::YBTableName table_name(kDefaultKeyspaceName, "t");
+  client::YBTableName table_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "t");
   processor->RemoveCachedTableDesc(table_name);
 
   // Should select from the indexed table.
@@ -454,7 +454,7 @@ TEST_F(QLTestAnalyzer, TestIndexBasedOnJsonAttribute) {
                            "with transactions = {'enabled':true};"));
 
   EXPECT_OK(processor->Run("CREATE INDEX i1 ON t (j->>'a');"));
-  EXPECT_OK(processor->Run("CREATE INDEX i2 ON t (j->3);"));
+  EXPECT_NOT_OK(processor->Run("CREATE INDEX i2 ON t (j->3);"));
 }
 
 TEST_F(QLTestAnalyzer, TestTruncate) {

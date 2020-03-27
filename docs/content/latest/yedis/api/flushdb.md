@@ -14,12 +14,14 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`FLUSHDB`</b><br>
 This command deletes all keys from a database.
 
 This functionality can be disabled by setting the yb-tserver gflag `yedis_enable_flush` to `false`.
 
-## Return Value
+## Return value
+
 Returns status string.
 
 ## Examples
@@ -80,5 +82,6 @@ $ GET yuga2
 (null)
 ```
 
-## See Also
+## See also
+
 [`del`](../del/), [`flushall`](../flushall/),[`deletedb`](../deletedb/)

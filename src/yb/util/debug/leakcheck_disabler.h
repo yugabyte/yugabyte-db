@@ -64,6 +64,15 @@ class ScopedLeakCheckDisabler {
 #define DISABLE_ASAN
 #endif
 
+#if defined(__has_feature)
+  #if __has_feature(address_sanitizer)
+    #define DISABLE_UBSAN __attribute__((no_sanitize("undefined")))
+  #endif
+#endif
+#ifndef DISABLE_UBSAN
+#define DISABLE_UBSAN
+#endif
+
 } // namespace debug
 } // namespace yb
 

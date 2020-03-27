@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 .search-by-algolia {
   height: 30px;
@@ -27,7 +27,7 @@
   }
 
   .search-title a {
-    font-family: Montserrat, "Open Sans", sans-serif !important;
+    font-family: 'Rubik', sans-serif !important;
     font-size: 18px;
     color: $YB_DARK_BLUE !important;
   }
@@ -87,7 +87,7 @@
   }
 
   .algolia-autocomplete {
-    font-family: Montserrat, sans-serif !important;
+    font-family: 'Rubik', sans-serif !important;
   }
 
   .algolia-autocomplete .aa-hint {

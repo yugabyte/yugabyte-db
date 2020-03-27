@@ -33,9 +33,7 @@ public class TestPartitionMetadata extends BaseCQLTest {
                                                        table.getName());
   }
 
-  @Test
-  public void testCreateDropTable() throws Exception {
-
+  private void internalTestCreateDropTable() throws Exception {
     final int MAX_WAIT_SECONDS = 10;
 
     // Create test table. Verify that the PartitionMetadata gets notified of the table creation
@@ -67,5 +65,27 @@ public class TestPartitionMetadata extends BaseCQLTest {
       Thread.sleep(1000);
     }
     assertFalse(found);
+  }
+
+  @Test
+  public void testCreateDropTable() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+    internalTestCreateDropTable();
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
+
+  @Test
+  public void testCreateDropTableGFlag() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+    destroyMiniCluster();
+    // Testing cql_server_always_send_events flag enabled.
+    tserverArgs.add("--cql_server_always_send_events=true");
+    createMiniCluster();
+    setUpCqlClient();
+
+    internalTestCreateDropTable();
+
+    tserverArgs.remove("--cql_server_always_send_events=true");
+    LOG.info("End test: " + getCurrentTestMethodName());
   }
 }

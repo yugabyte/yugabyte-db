@@ -116,7 +116,25 @@ public class TestReadFromFollowers extends BaseJedisTest {
     for (int i = 0; i < nReads; i++) {
       String s = generator.generate(20);
       LOG.info("Iteration {}. Setting and getting {}", i, s);
-      assertEquals("OK", jedis_client.set(s, "v"));
+      boolean write_succeeded = false;
+      String ret;
+      for (int j = 0; j < 20; j++) {
+        try {
+          ret = jedis_client.set(s, "v");
+        } catch (Exception e) {
+          if (e.getMessage().contains("Not the leader")) {
+            continue;
+          }
+          throw e;
+        }
+        if (ret.equals("OK")) {
+          write_succeeded = true;
+          break;
+        }
+      }
+
+      assertTrue(write_succeeded);
+
       TestUtils.waitFor(() -> {
         if (jedis_client.get(s) == null) {
           return false;
@@ -186,6 +204,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
         "--placement_zone=" + PLACEMENT_ZONE2, "--placement_uuid=" + PLACEMENT_UUID));
 
     createMiniCluster(3, masterArgs, tserverArgs);
+    waitForTServersAtMasterLeader();
 
     YBClient syncClient = miniCluster.getClient();
 

@@ -19,6 +19,7 @@
 
 
 #define DEFAULT_INDEX_TYPE	"btree"
+#define DEFAULT_YB_INDEX_TYPE	"lsm"
 
 /* Typedef for callback function for IndexBuildHeapScan */
 typedef void (*IndexBuildCallback) (Relation index,
@@ -65,6 +66,7 @@ extern Oid index_create(Relation heapRelation,
 			 Oid *classObjectId,
 			 int16 *coloptions,
 			 Datum reloptions,
+			 List *index_options,
 			 bits16 flags,
 			 bits16 constr_flags,
 			 bool allow_system_table_mods,

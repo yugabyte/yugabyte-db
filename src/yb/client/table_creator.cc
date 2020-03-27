@@ -17,41 +17,16 @@
 #include "yb/client/client-internal.h"
 
 #include "yb/common/wire_protocol.h"
+#include "yb/common/common_flags.h"
 
 #include "yb/util/flag_tags.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
-DEFINE_test_flag(int32, yb_num_total_tablets, 0,
-                 "The total number of tablets per table when a table is created.");
-
 DECLARE_bool(client_suppress_created_logs);
-DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {
 namespace client {
-
-namespace {
-
-TableType ClientToPBTableType(YBTableType table_type) {
-  switch (table_type) {
-    case YBTableType::YQL_TABLE_TYPE:
-      return TableType::YQL_TABLE_TYPE;
-    case YBTableType::REDIS_TABLE_TYPE:
-      return TableType::REDIS_TABLE_TYPE;
-    case YBTableType::PGSQL_TABLE_TYPE:
-      return TableType::PGSQL_TABLE_TYPE;
-    case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
-      return TableType::TRANSACTION_STATUS_TABLE_TYPE;
-    case YBTableType::UNKNOWN_TABLE_TYPE:
-      break;
-  }
-  FATAL_INVALID_ENUM_VALUE(YBTableType, table_type);
-  // Returns a dummy value to avoid compilation warning.
-  return TableType::DEFAULT_TABLE_TYPE;
-}
-
-} // namespace
 
 YBTableCreator::YBTableCreator(YBClient* client)
   : client_(client) {
@@ -66,7 +41,7 @@ YBTableCreator& YBTableCreator::table_name(const YBTableName& name) {
 }
 
 YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
-  table_type_ = ClientToPBTableType(table_type);
+  table_type_ = YBTable::ClientToPBTableType(table_type);
   return *this;
 }
 
@@ -107,6 +82,11 @@ YBTableCreator& YBTableCreator::hash_schema(YBHashSchema hash_schema) {
 
 YBTableCreator& YBTableCreator::num_tablets(int32_t count) {
   num_tablets_ = count;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::colocated(const bool colocated) {
+  colocated_ = colocated;
   return *this;
 }
 
@@ -151,17 +131,22 @@ YBTableCreator& YBTableCreator::replication_info(const master::ReplicationInfoPB
 }
 
 YBTableCreator& YBTableCreator::indexed_table_id(const std::string& id) {
-  indexed_table_id_ = id;
+  index_info_.set_indexed_table_id(id);
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_local_index(bool is_local_index) {
-  is_local_index_ = is_local_index;
+  index_info_.set_is_local(is_local_index);
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
-  is_unique_index_ = is_unique_index;
+  index_info_.set_is_unique(is_unique_index);
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::use_mangled_column_name(bool value) {
+  index_info_.set_use_mangled_column_name(value);
   return *this;
 }
 
@@ -175,8 +160,13 @@ YBTableCreator& YBTableCreator::wait(bool wait) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::TEST_use_old_style_create_request() {
+  TEST_use_old_style_create_request_ = true;
+  return *this;
+}
+
 Status YBTableCreator::Create() {
-  const char *object_type = indexed_table_id_.empty() ? "table" : "index";
+  const char *object_type = index_info_.has_indexed_table_id() ? "index" : "table";
   if (table_name_.table_name().empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument, "Missing $0 name", object_type);
   }
@@ -203,6 +193,7 @@ Status YBTableCreator::Create() {
   req.set_name(table_name_.table_name());
   table_name_.SetIntoNamespaceIdentifierPB(req.mutable_namespace_());
   req.set_table_type(table_type_);
+  req.set_colocated(colocated_);
 
   if (!creator_role_name_.empty()) {
     req.set_creator_role_name(creator_role_name_);
@@ -228,35 +219,35 @@ Status YBTableCreator::Create() {
 
   SchemaToPB(internal::GetSchema(*schema_), req.mutable_schema());
 
-  // Setup the number splits (i.e. number of tablets).
-  if (num_tablets_ <= 0) {
+  // Setup the number splits (i.e. number of splits).
+  if (num_tablets_ > 0) {
+    VLOG(1) << "num_tablets: number of tablets explicitly specified: " << num_tablets_;
+  } else if (schema_->table_properties().num_tablets() > 0) {
+    num_tablets_ = schema_->table_properties().num_tablets();
+  } else {
     if (table_name_.is_system()) {
       num_tablets_ = 1;
       VLOG(1) << "num_tablets=1: using one tablet for a system table";
     } else {
-      if (FLAGS_yb_num_total_tablets > 0) {
-        num_tablets_ = FLAGS_yb_num_total_tablets;
-        VLOG(1) << "num_tablets=" << num_tablets_
-                << ": --yb_num_total_tablets is specified.";
-      } else {
-        int tserver_count = 0;
-        RETURN_NOT_OK(client_->TabletServerCount(&tserver_count, true /* primary_only */));
-        num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
-        VLOG(1) << "num_tablets = " << num_tablets_ << ": "
-                << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
-                << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
-      }
+      num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable(table_type_));
     }
-  } else {
-    VLOG(1) << "num_tablets: number of tablets explicitly specified: " << num_tablets_;
   }
+  req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets_);
   req.set_num_tablets(num_tablets_);
+
   req.mutable_partition_schema()->CopyFrom(partition_schema_);
 
-  if (!indexed_table_id_.empty()) {
-    req.set_indexed_table_id(indexed_table_id_);
-    req.set_is_local_index(is_local_index_);
-    req.set_is_unique_index(is_unique_index_);
+  // Index mapping with data-table being indexed.
+  if (index_info_.has_indexed_table_id()) {
+    if (!TEST_use_old_style_create_request_) {
+      req.mutable_index_info()->CopyFrom(index_info_);
+    }
+
+    // For compatibility reasons, set the old fields just in case we have new clients talking to
+    // old master server during rolling upgrade.
+    req.set_indexed_table_id(index_info_.indexed_table_id());
+    req.set_is_local_index(index_info_.is_local());
+    req.set_is_unique_index(index_info_.is_unique());
   }
 
   auto deadline = CoarseMonoClock::Now() +

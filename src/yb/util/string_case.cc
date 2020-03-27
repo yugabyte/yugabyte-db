@@ -29,11 +29,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <cctype>
+#include <algorithm>
+#include <glog/logging.h>
 
 #include "yb/util/string_case.h"
-
-#include <glog/logging.h>
-#include <ctype.h>
 
 namespace yb {
 
@@ -94,6 +94,10 @@ void Capitalize(string *word) {
   for (int i = 1; i < size; i++) {
     (*word)[i] = tolower((*word)[i]);
   }
+}
+
+bool ContainsUpperCase(const string& str) {
+  return std::any_of(str.begin(), str.end(), isupper);
 }
 
 }  // namespace yb

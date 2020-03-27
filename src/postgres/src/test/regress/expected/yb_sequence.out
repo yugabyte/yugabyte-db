@@ -191,8 +191,8 @@ SELECT * FROM information_schema.sequences
   ORDER BY sequence_name ASC;
  sequence_catalog | sequence_schema |   sequence_name    | data_type | numeric_precision | numeric_precision_radix | numeric_scale | start_value | minimum_value |    maximum_value    | increment | cycle_option
 ------------------+-----------------+--------------------+-----------+-------------------+-------------------------+---------------+-------------+---------------+---------------------+-----------+--------------
- postgres         | public          | sequence_test1     | bigint    |                64 |                       2 |             0 | 1           | 1             | 9223372036854775807 | 1         | NO
- postgres         | public          | serialtest1_f2_seq | integer   |                32 |                       2 |             0 | 1           | 1             | 2147483647          | 1         | NO
+ yugabyte         | public          | sequence_test1     | bigint    |                64 |                       2 |             0 | 1           | 1             | 9223372036854775807 | 1         | NO
+ yugabyte         | public          | serialtest1_f2_seq | integer   |                32 |                       2 |             0 | 1           | 1             | 2147483647          | 1         | NO
 (2 rows)
 
 SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by, cycle, cache_size, last_value
@@ -204,3 +204,6 @@ WHERE sequencename ~ ANY(ARRAY['sequence_test', 'serialtest'])
  public     | sequence_test1     |           1 |         1 | 9223372036854775807 |            1 | f     |          1 |
  public     | serialtest1_f2_seq |           1 |         1 |          2147483647 |            1 | f     |          1 |
 (2 rows)
+
+-- TODO(jason): remove when issue #1721 is closed or closing.
+DISCARD TEMP;

@@ -1,0 +1,203 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: ybclusters.yugabyte.com
+spec:
+  group: yugabyte.com
+  names:
+    kind: YBCluster
+    listKind: YBClusterList
+    singular: ybcluster
+    plural: ybclusters
+  scope: Namespaced
+  version: v1alpha1
+  validation:
+    openAPIV3Schema:
+      type: object
+      description: Custom resource object for YugabyteDB Cluster operator.
+      properties:
+        spec:
+          type: object
+          properties:
+            image:
+              type: object
+              properties:
+                repository:
+                  type: string
+                tag:
+                  type: string
+                pullPolicy:
+                  type: string
+                  enum: ["Always", "Never", "IfNotPresent"]
+              required: ["repository", "tag", "pullPolicy"]
+            tls:
+              type: object
+              description: Enable TLS encryption for YugabyteDB (if desired). Specify tls.cert & tls.key, if it is enabled, omit them otherwise.
+              properties:
+                enabled:
+                  type: boolean
+                rootCA:
+                  type: object
+                  properties:
+                    cert:
+                      type: string
+                    key:
+                      type: string
+              required: ["enabled"]
+            replicationFactor:
+              type: integer
+              description: Data replication factor for the cluster
+              minimum: 1
+            master:
+              type: object
+              description: All properties pertaining to YB-Master go here.
+              properties:
+                replicas:
+                  type: integer
+                  description: Count of YB-Masters to run
+                masterUIPort:
+                  type: integer
+                masterRPCPort:
+                  type: integer
+                enableLoadBalancer:
+                  type: boolean
+                  description: If set to true, YB-Master UI will be accessible over the internet.
+                podManagementPolicy:
+                  type: string
+                  description: Dictates if YB-Master pods will come up one-after-the-other or simultaneously.
+                  enum: ["OrderedReady", "Parallel"]
+                storage:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    size:
+                      type: string
+                      pattern: ^[0-9]{1,4}[MGT][IBib]$
+                    storageClass:
+                      type: string
+                  required: ["size"]
+                resources:
+                  type: object
+                  description: Specify resource requests & limits for YB-Master pods.
+                  properties:
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
+                          type: integer
+                          minimum: 1
+                          maximum: 64
+                        memory:
+                          type: string
+                          pattern: ^[0-9]{1,4}[MGT][IBib]$
+                      required: ["cpu", "memory"]
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: integer
+                          minimum: 1
+                          maximum: 64
+                        memory:
+                          type: string
+                          pattern: ^[0-9]{1,4}[MGT][IBib]$
+                      required: ["cpu", "memory"]
+                  anyOf:
+                    - required: ["requests"]
+                    - required: ["limits"]
+                gflags:
+                  type: array
+                  description: List of GFlags for additional control on YB-Master. Specify this attribute if you want to add one or more GFlags, omit otherwise.
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        oneOf:
+                          - type: string
+                          - type: number
+                    required: ["key", "value"]
+                  minItems: 1
+              required: ["replicas", "storage"]
+            tserver:
+              type: object
+              description: All properties pertaining to YB-TServer go here.
+              properties:
+                replicas:
+                  type: integer
+                  description: Count of YB-TServers to run
+                tserverUIPort:
+                  type: integer
+                tserverRPCPort:
+                  type: integer
+                ycqlPort:
+                  type: integer
+                yedisPort:
+                  type: integer
+                ysqlPort:
+                  type: integer
+                enableLoadBalancer:
+                  type: boolean
+                  description: If set to true, YB-TServer UI will be accessible over the internet. This property will be ignored if tserver.tserverUIPort is not specified.
+                podManagementPolicy:
+                  type: string
+                  description: Dictates if YB-TServer pods will come up one-after-the-other or simultaneously.
+                  enum: ["OrderedReady", "Parallel"]
+                storage:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    size:
+                      type: string
+                      pattern: ^[0-9]{1,4}[MGT][IBib]$
+                    storageClass:
+                      type: string
+                  required: ["count", "size"]
+                resources:
+                  type: object
+                  description: Specify resource requests & limits for YB-TServer pods.
+                  properties:
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
+                          type: integer
+                          minimum: 1
+                          maximum: 64
+                        memory:
+                          type: string
+                          pattern: ^[0-9]{1,4}[MGT][IBib]$
+                      required: ["cpu", "memory"]
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: integer
+                          minimum: 1
+                          maximum: 64
+                        memory:
+                          type: string
+                          pattern: ^[0-9]{1,4}[MGT][IBib]$
+                      required: ["cpu", "memory"]
+                  anyOf:
+                    - required: ["requests"]
+                    - required: ["limits"]
+                gflags:
+                  type: array
+                  description: List of GFlags for additional control on YB-TServer. Specify this attribute if you want to add one or more GFlags, omit otherwise.
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        oneOf:
+                          - type: string
+                          - type: number
+                    required: ["key", "value"]
+                  minItems: 1
+              required: ["replicas", "storage"]
+          required: ["replicationFactor", "master", "tserver"]

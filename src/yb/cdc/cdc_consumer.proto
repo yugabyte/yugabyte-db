@@ -1,0 +1,64 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto3";
+
+package yb.cdc;
+
+option java_package = "org.yb.cdc";
+
+import "yb/common/common.proto";
+
+message ProducerTabletListPB {
+  // List of tablet ids for a given producer table.
+  repeated string tablets = 1;
+}
+
+message StreamEntryPB {
+  // Map from consumer to producer tablet id.
+  map<string, ProducerTabletListPB> consumer_producer_tablet_map = 1;
+  string consumer_table_id = 2;
+  string producer_table_id = 3;
+  bool same_num_producer_consumer_tablets = 4;
+}
+
+message ProducerEntryPB {
+  // Map from stream id to metadata for that stream.
+  map<string, StreamEntryPB> stream_map = 1;
+  repeated HostPortPB master_addrs = 2;
+  repeated HostPortPB tserver_addrs = 3;
+  bool disable_stream = 4; // [default = false] implicit in proto3
+}
+
+message ConsumerRegistryPB {
+  // Map from producer universe uuid to metadata for that producer.
+  map<string, ProducerEntryPB> producer_map = 1;
+}

@@ -33,6 +33,7 @@
 #include "yb/master/master-path-handlers.h"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <map>
 #include <iomanip>
@@ -47,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -58,6 +60,38 @@
 #include "yb/util/version_info.pb.h"
 
 namespace yb {
+
+namespace {
+static constexpr const char* kDBTypeNameUnknown = "unknown";
+static constexpr const char* kDBTypeNameCql = "ycql";
+static constexpr const char* kDBTypeNamePgsql = "ysql";
+static constexpr const char* kDBTypeNameRedis = "yedis";
+
+const char* DatabaseTypeName(YQLDatabase db) {
+  switch (db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypeNameCql;
+    case YQL_DATABASE_PGSQL: return kDBTypeNamePgsql;
+    case YQL_DATABASE_REDIS: return kDBTypeNameRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypeNameUnknown;
+}
+
+YQLDatabase DatabaseTypeByName(const string& db_type_name) {
+  static const std::array<pair<const char*, YQLDatabase>, 3> db_types{
+      make_pair(kDBTypeNameCql, YQLDatabase::YQL_DATABASE_CQL),
+      make_pair(kDBTypeNamePgsql, YQLDatabase::YQL_DATABASE_PGSQL),
+      make_pair(kDBTypeNameRedis, YQLDatabase::YQL_DATABASE_REDIS)};
+  for (const auto& db : db_types) {
+    if (db_type_name == db.first) {
+      return db.second;
+    }
+  }
+  return YQLDatabase::YQL_DATABASE_UNKNOWN;
+}
+
+} // namespace
 
 using consensus::RaftPeerPB;
 using std::vector;
@@ -102,9 +136,8 @@ void MasterPathHandlers::TabletCounts::operator+=(const TabletCounts& other) {
 
 MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(
   const TabletCounts& tablet_counts,
-  uint32_t active_tablets_count
-  ) : tablet_counts(tablet_counts),
-      active_tablets_count(active_tablets_count) {
+  uint32_t active_tablets_count) : tablet_counts(tablet_counts),
+                                   active_tablets_count(active_tablets_count) {
 }
 
 void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& other) {
@@ -183,7 +216,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Status & Uptime</th>\n"
           << "      <th>User Tablet-Peers / Leaders</th>\n"
           << "      <th>RAM Used</th>\n"
-          << "      <th>SST Files Size</th>\n"
+          << "      <th>Num SST Files</th>\n"
+          << "      <th>Total SST Files Size</th>\n"
           << "      <th>Uncompressed SST </br>Files Size</th>\n"
           << "      <th>Read ops/sec</th>\n"
           << "      <th>Write ops/sec</th>\n"
@@ -250,6 +284,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
               : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers)
               << " / " << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->total_memory_usage()) << "</td>";
+      *output << "    <td>" << desc->num_sst_files() << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->total_sst_file_size()) << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->uncompressed_sst_file_size()) << "</td>";
       *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
@@ -478,16 +513,18 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.StartObject();
 
-        const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
+        // Some stats may be repeated as strings due to backwards compatability.
         jw.String("time_since_hb");
-        jw.String(time_since_hb);
+        jw.String(StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds()));
+        jw.String("time_since_hb_sec");
+        jw.Double(desc->TimeSinceHeartbeat().ToSeconds());
 
         if (master_->ts_manager()->IsTSLive(desc)) {
           jw.String("status");
           jw.String(kTserverAlive);
 
           jw.String("uptime_seconds");
-          jw.Uint(desc->uptime_seconds());
+          jw.Uint64(desc->uptime_seconds());
         } else {
           jw.String("status");
           jw.String(kTserverDead);
@@ -498,12 +535,21 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.String("ram_used");
         jw.String(BytesToHumanReadable(desc->total_memory_usage()));
+        jw.String("ram_used_bytes");
+        jw.Uint64(desc->total_memory_usage());
+
+        jw.String("num_sst_files");
+        jw.Uint64(desc->num_sst_files());
 
         jw.String("total_sst_file_size");
         jw.String(BytesToHumanReadable(desc->total_sst_file_size()));
+        jw.String("total_sst_file_size_bytes");
+        jw.Uint64(desc->total_sst_file_size());
 
         jw.String("uncompressed_sst_file_size");
         jw.String(BytesToHumanReadable(desc->uncompressed_sst_file_size()));
+        jw.String("uncompressed_sst_file_size_bytes");
+        jw.Uint64(desc->uncompressed_sst_file_size());
 
         jw.String("read_ops_per_sec");
         jw.Double(desc->read_ops_per_sec());
@@ -549,9 +595,141 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   jw.EndObject();
 }
 
+void MasterPathHandlers::HandleHealthCheck(
+    const Webserver::WebRequest& req, stringstream* output) {
+  // TODO: Lock not needed since other APIs handle it.  Refactor other functions accordingly
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  SysClusterConfigEntryPB config;
+  Status s = master_->catalog_manager()->GetClusterConfig(&config);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    return;
+  }
+  int replication_factor;
+  s = master_->catalog_manager()->GetReplicationFactor(&replication_factor);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    return;
+  }
+
+  vector<std::shared_ptr<TSDescriptor> > descs;
+  const auto* ts_manager = master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
+
+  const auto& live_placement_uuid = config.replication_info().live_replicas().placement_uuid();
+  // Ignore read replica health for V1.
+
+  vector<std::shared_ptr<TSDescriptor> > dead_nodes;
+  uint64_t most_recent_uptime = std::numeric_limits<uint64_t>::max();
+
+  jw.StartObject();
+  {
+    // Iterate TabletServers, looking for health anomalies.
+    for (const auto & desc : descs) {
+      if (desc->placement_uuid() == live_placement_uuid) {
+        if (!master_->ts_manager()->IsTSLive(desc)) {
+          // 1. Are any of the TS marked dead in the master?
+          dead_nodes.push_back(desc);
+        } else {
+          // 2. Have any of the servers restarted lately?
+          most_recent_uptime = min(most_recent_uptime, desc->uptime_seconds());
+        }
+      }
+    }
+
+    jw.String("dead_nodes");
+    jw.StartArray();
+    for (auto const & ts_desc : dead_nodes) {
+      jw.String(ts_desc->permanent_uuid());
+    }
+    jw.EndArray();
+
+    jw.String("most_recent_uptime");
+    jw.Uint(most_recent_uptime);
+
+    auto time_arg = req.parsed_args.find("tserver_death_interval_msecs");
+    int64 death_interval_msecs = 0;
+    if (time_arg != req.parsed_args.end()) {
+      death_interval_msecs = atoi(time_arg->second.c_str());
+    }
+
+    // Get all the tablets and add the tablet id for each tablet that has
+    // replication locations lesser than 'replication_factor'.
+    jw.String("under_replicated_tablets");
+    jw.StartArray();
+
+    vector<scoped_refptr<TableInfo>> tables;
+    master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+    for (const auto& table : tables) {
+      // Ignore tables that are neither user tables nor user indexes.
+      // However there are a bunch of system tables that still need to be investigated:
+      // 1. Redis system table.
+      // 2. Transaction status table.
+      // 3. Metrics table.
+      if (!master_->catalog_manager()->IsUserTable(*table) &&
+          table->GetTableType() != REDIS_TABLE_TYPE &&
+          table->GetTableType() != TRANSACTION_STATUS_TABLE_TYPE &&
+          !(table->namespace_id() == kSystemNamespaceId &&
+            table->name() == kMetricsSnapshotsTableName)) {
+        continue;
+      }
+
+      TabletInfos tablets;
+      table->GetAllTablets(&tablets);
+
+      for (const auto& tablet : tablets) {
+        TabletInfo::ReplicaMap replication_locations;
+        tablet->GetReplicaLocations(&replication_locations);
+
+        if (replication_locations.size() < replication_factor) {
+          // These tablets don't have the required replication locations needed.
+          jw.String(tablet->tablet_id());
+          continue;
+        }
+
+        // Check if we have tablets that have replicas on the dead node.
+        if (dead_nodes.size() == 0) {
+          continue;
+        }
+        int recent_replica_count = 0;
+        for (const auto& iter : replication_locations) {
+          if (std::find_if(dead_nodes.begin(),
+                           dead_nodes.end(),
+                           [iter, death_interval_msecs] (const auto& ts) {
+                               return (ts->permanent_uuid() == iter.first &&
+                                       ts->TimeSinceHeartbeat().ToMilliseconds() >
+                                           death_interval_msecs); }) ==
+                  dead_nodes.end()) {
+            ++recent_replica_count;
+          }
+        }
+        if (recent_replica_count < replication_factor) {
+          jw.String(tablet->tablet_id());
+        }
+      }
+    }
+    jw.EndArray();
+
+    // TODO: Add these health checks in a subsequent diff
+    //
+    // 4. is the load balancer busy moving tablets/leaders around
+    /* Use: CHECKED_STATUS IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
+                                              IsLoadBalancerIdleResponsePB* resp);
+     */
+    // 5. do any of the TS have tablets they were not able to start up
+  }
+  jw.EndObject();
+}
+
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                                               stringstream* output,
-                                              bool skip_system_tables) {
+                                              bool only_user_tables) {
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   vector<scoped_refptr<TableInfo> > tables;
@@ -572,52 +750,74 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       continue;
     }
 
-    table_cat = kUserTable;
-    // Determine the table category.
-    if (master_->catalog_manager()->IsUserIndex(*table)) {
-      table_cat = kIndexTable;
-    } else if (!master_->catalog_manager()->IsUserTable(*table)) {
-      // Skip system tables if we should.
-      if (skip_system_tables) {
-        continue;
-      }
+    string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
+    bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;
+
+    // Determine the table category. YugaWare tables should be displayed as system tables.
+    if (is_platform) {
       table_cat = kSystemTable;
+    } else if (master_->catalog_manager()->IsUserIndex(*table)) {
+      table_cat = kUserIndex;
+    } else if (master_->catalog_manager()->IsUserTable(*table)) {
+      table_cat = kUserTable;
+    } else {
+      table_cat = kSystemTable;
+    }
+    // Skip non-user tables if we should.
+    if (only_user_tables && (table_cat != kUserIndex && table_cat != kUserTable)) {
+      continue;
     }
 
     string table_uuid = table->id();
-    string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
+    string ysql_table_oid;
+    if (table->GetTableType() == PGSQL_TABLE_TYPE &&
+        !master_->catalog_manager()->IsColocatedParentTable(*table)) {
+      const auto result = GetPgsqlTableOid(table_uuid);
+      if (result.ok()) {
+        ysql_table_oid = std::to_string(*result);
+      } else {
+        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+      }
+    }
     (*ordered_tables[table_cat])[table_uuid] = Substitute(
-        "<tr><td>$0</td><td><a href=\"/table?id=$4\">$1</a>"
-            "</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
+        "<tr>" \
+        "<td>$0</td>" \
+        "<td><a href=\"/table?id=$4\">$1</a></td>" \
+        "<td>$2</td>" \
+        "<td>$3</td>" \
+        "<td>$4</td>" \
+        "<td>$5</td>" \
+        "</tr>\n",
         EscapeForHtmlToString(keyspace),
         EscapeForHtmlToString(l->data().name()),
         state,
         EscapeForHtmlToString(l->data().pb.state_msg()),
-        EscapeForHtmlToString(table_uuid));
+        EscapeForHtmlToString(table_uuid),
+        ysql_table_oid);
   }
 
   for (int i = 0; i < kNumTypes; ++i) {
-    if (skip_system_tables && table_type_[i] == "System") {
+    if (only_user_tables && (table_type_[i] != "Index" && table_type_[i] != "User")) {
       continue;
     }
-
     (*output) << "<div class='panel panel-default'>\n"
               << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[i]
-              << " Tables</h2></div>\n";
+              << " tables</h2></div>\n";
     (*output) << "<div class='panel-body table-responsive'>";
 
     if (ordered_tables[i]->empty()) {
       (*output) << "There are no " << static_cast<char>(tolower(table_type_[i][0]))
-                << table_type_[i].substr(1) << " type tables.\n";
+                << table_type_[i].substr(1) << " tables.\n";
     } else {
       *output << "<table class='table table-striped' style='table-layout: fixed;'>\n";
-      *output << "  <tr><th style='width: 2*;'>Keyspace</th>\n"
-              << "      <th style='width: 3*;'>Table Name</th>\n"
-              << "      <th style='width: 1*;'>State</th>\n"
-              << "      <th style='width: 2*'>Message</th>\n"
-              << "      <th style='width: 4*'>UUID</th></tr>\n";
+      *output << "  <tr><th width='14%'>Keyspace</th>\n"
+              << "      <th width='21%'>Table Name</th>\n"
+              << "      <th width='9%'>State</th>\n"
+              << "      <th width='14%'>Message</th>\n"
+              << "      <th width='28%'>UUID</th>\n"
+              << "      <th width='14%'>YSQL OID</th></tr>\n";
       for (const StringMap::value_type &table : *(ordered_tables[i])) {
         *output << table.second;
       }
@@ -642,31 +842,38 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   // True if table_id, false if (keyspace, table).
-  bool has_id = false;
-  if (ContainsKey(req.parsed_args, "id")) {
-    has_id = true;
-  } else if (ContainsKey(req.parsed_args, "keyspace_name") &&
-             ContainsKey(req.parsed_args, "table_name")) {
-    has_id = false;
-  } else {
-    *output << " Missing 'id' argument or 'keyspace_name, table_name' argument pair.";
-    *output << " Arguments must either contain the table id or the "
-               " (keyspace_name, table_name) pair.";
-    return;
+  const auto arg_end = req.parsed_args.end();
+  auto id_arg = req.parsed_args.find("id");
+  auto keyspace_arg = arg_end;
+  auto table_arg = arg_end;
+  if (id_arg == arg_end) {
+    keyspace_arg = req.parsed_args.find("keyspace_name");
+    table_arg = req.parsed_args.find("table_name");
+    if (keyspace_arg == arg_end || table_arg == arg_end) {
+      *output << " Missing 'id' argument or 'keyspace_name, table_name' argument pair.";
+      *output << " Arguments must either contain the table id or the "
+                 " (keyspace_name, table_name) pair.";
+      return;
+    }
   }
 
   scoped_refptr<TableInfo> table;
 
-  if (has_id) {
-    string table_id;
-    FindCopy(req.parsed_args, "id", &table_id);
-    table = master_->catalog_manager()->GetTableInfo(table_id);
+  if (id_arg != arg_end) {
+    table = master_->catalog_manager()->GetTableInfo(id_arg->second);
   } else {
-    string keyspace, table_name;
-    FindCopy(req.parsed_args, "table_name", &table_name);
-    FindCopy(req.parsed_args, "keyspace_name", &keyspace);
-    table = master_->catalog_manager()
-        ->GetTableInfoFromNamespaceNameAndTableName(keyspace, table_name);
+    const auto keyspace_type_arg = req.parsed_args.find("keyspace_type");
+    const auto keyspace_type = (keyspace_type_arg == arg_end
+        ? GetDefaultDatabaseType(keyspace_arg->second)
+        : DatabaseTypeByName(keyspace_type_arg->second));
+    if (keyspace_type == YQLDatabase::YQL_DATABASE_UNKNOWN) {
+      *output << "Wrong keyspace_type found '" << keyspace_type_arg->second << "'."
+              << "Possible values are: " << kDBTypeNameCql << ", "
+              << kDBTypeNamePgsql << ", " << kDBTypeNameRedis << ".";
+      return;
+    }
+    table = master_->catalog_manager()->GetTableInfoFromNamespaceNameAndTableName(
+        keyspace_type, keyspace_arg->second, table_arg->second);
   }
 
   if (table == nullptr) {
@@ -700,8 +907,10 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
             << "</td></tr>\n";
     *output << "</table>\n";
 
-    SchemaFromPB(l->data().pb.schema(), &schema);
-    Status s = PartitionSchema::FromPB(l->data().pb.partition_schema(), schema, &partition_schema);
+    Status s = SchemaFromPB(l->data().pb.schema(), &schema);
+    if (s.ok()) {
+      s = PartitionSchema::FromPB(l->data().pb.partition_schema(), schema, &partition_schema);
+    }
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
       return;
@@ -747,7 +956,8 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   master_->catalog_manager()->GetAllTables(&tables);
   *output << "<h3>Active Tasks</h3>\n";
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
+  *output << "  <tr><th>Task Name</th><th>State</th><th>Start "
+             "Time</th><th>Time</th><th>Description</th></tr>\n";
   for (const auto& table : tables) {
     for (const auto& task : table->GetTasks()) {
       HtmlOutputTask(task, output);
@@ -755,16 +965,39 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   }
   *output << "</table>\n";
 
+  std::vector<std::shared_ptr<MonitoredTask>> jobs =
+      master_->catalog_manager()->GetRecentJobs();
+  *output << Substitute(
+      "<h3>Last $0 user-initiated jobs started in the past $1 "
+      "hours</h3>\n",
+      FLAGS_tasks_tracker_num_long_term_tasks,
+      FLAGS_long_term_tasks_tracker_keep_time_multiplier *
+          MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms)
+              .ToSeconds() /
+          3600);
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Job Name</th><th>State</th><th>Start "
+             "Time</th><th>Duration</th><th>Description</th></tr>\n";
+  for (std::vector<std::shared_ptr<MonitoredTask>>::reverse_iterator iter =
+           jobs.rbegin();
+       iter != jobs.rend(); ++iter) {
+    HtmlOutputTask(*iter, output);
+  }
+  *output << "</table>\n";
+
   std::vector<std::shared_ptr<MonitoredTask> > tasks =
     master_->catalog_manager()->GetRecentTasks();
-  *output << Substitute("<h3>Last $0 tasks started in the past $1 seconds</h3>\n",
-                        FLAGS_tasks_tracker_num_tasks,
-                        FLAGS_tasks_tracker_keep_time_multiplier *
-                        MonoDelta::FromMilliseconds(
-                            FLAGS_catalog_manager_bg_task_wait_ms).ToSeconds());
+  *output << Substitute(
+      "<h3>Last $0 tasks started in the past $1 seconds</h3>\n",
+      FLAGS_tasks_tracker_num_tasks,
+      FLAGS_tasks_tracker_keep_time_multiplier *
+          MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms)
+              .ToSeconds());
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
-  for (std::vector<std::shared_ptr<MonitoredTask>>::reverse_iterator iter = tasks.rbegin();
+  *output << "  <tr><th>Task Name</th><th>State</th><th>Start "
+             "Time</th><th>Duration</th><th>Description</th></tr>\n";
+  for (std::vector<std::shared_ptr<MonitoredTask>>::reverse_iterator iter =
+           tasks.rbegin();
        iter != tasks.rend(); ++iter) {
     HtmlOutputTask(*iter, output);
   }
@@ -849,7 +1082,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   VersionInfo::GetVersionInfoPB(&version_info);
 
   // Display the overview information.
-  (*output) << "<h1>YugaByte DB</h1>\n";
+  (*output) << "<h1>YugabyteDB</h1>\n";
 
   (*output) << "<div class='row dashboard-content'>\n";
 
@@ -908,10 +1141,23 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                           "See all tables &raquo;");
   (*output) << "  </tr>\n";
 
+  // Load Balancer State
+  {
+    IsLoadBalancerIdleRequestPB req;
+    IsLoadBalancerIdleResponsePB resp;
+    Status isIdle = master_->catalog_manager()->IsLoadBalancerIdle(&req, &resp);
+
+    (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
+                            "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
+                            "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
+                            "Is Load Balanced?",
+                            isIdle.ok() ? "fa-check"
+                                        : "fa-times label label-danger");
+  }
   // Build version and type.
   (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-code-fork yb-dashboard-icon' aria-hidden='true'></i>",
-                          "YugaByte Version ", version_info.version_number());
+                          "YugabyteDB Version ", version_info.version_number());
   (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-terminal yb-dashboard-icon' aria-hidden='true'></i>",
                           "Build Type ", version_info.build_type());
@@ -927,7 +1173,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // Display the user tables if any.
   (*output) << "<div class='col-md-12 col-lg-12'>\n";
-  HandleCatalogManager(req, output, true /* skip_system_tables */);
+  HandleCatalogManager(req, output, true /* only_user_tables */);
   (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
 }
 
@@ -1045,6 +1291,9 @@ class JsonKeyspaceDumper : public Visitor<PersistentNamespaceInfo>, public JsonD
 
     jw_->String("keyspace_name");
     jw_->String(metadata.name());
+
+    jw_->String("keyspace_type");
+    jw_->String(DatabaseTypeName((metadata.database_type())));
 
     jw_->EndObject();
     return Status::OK();
@@ -1188,7 +1437,6 @@ void MasterPathHandlers::HandleGetClusterConfig(
   << "<pre class=\"prettyprint\">" << config.DebugString() << "</pre>";
 }
 
-
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -1203,29 +1451,21 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/tablet-servers", "Tablet Servers",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-server");
-  cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
-  server->RegisterPathHandler(
-    "/api/v1/tablet-servers", "Tserver Statuses",
-    std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
-                 this, _1, _2, false /* skip_system_tables */);
+      this, _1, _2, false /* only_user_tables */);
   server->RegisterPathHandler(
       "/tables", "Tables",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-table");
-  cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
 
-  // The set of handlers not visible on the nav bar.
+  // The set of handlers not currently visible on the nav bar.
+  cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
   server->RegisterPathHandler(
       "/table", "", std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
       is_styled, false);
   server->RegisterPathHandler(
       "/masters", "Masters", std::bind(&MasterPathHandlers::HandleMasters, this, _1, _2), is_styled,
       false);
-  cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
-  server->RegisterPathHandler(
-      "/dump-entities", "Dump Entities",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
   server->RegisterPathHandler(
       "/cluster-config", "Cluster Config",
@@ -1236,6 +1476,20 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/tasks", "Tasks",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
+
+  // JSON Endpoints
+  cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/tablet-servers", "Tserver Statuses",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleHealthCheck, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/health-check", "Cluster Health Check",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
+  server->RegisterPathHandler(
+      "/dump-entities", "Dump Entities",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   return Status::OK();
 }
 

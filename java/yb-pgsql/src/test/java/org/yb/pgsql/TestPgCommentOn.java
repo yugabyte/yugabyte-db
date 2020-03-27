@@ -59,7 +59,7 @@ public class TestPgCommentOn extends BasePgSQLTest {
       statement.execute("COMMENT ON OPERATOR = (text, text) IS 'text equality operator'");
       statement.execute("COMMENT ON COLLATION \"default\" IS 'some collation comment'");
       statement.execute("COMMENT ON LANGUAGE internal IS 'some internal language'");
-      statement.execute("COMMENT ON ROLE postgres IS 'some role comment'");
+      statement.execute("COMMENT ON ROLE yugabyte IS 'some role comment'");
       statement.execute("COMMENT ON TABLESPACE pg_default IS 'some tablespace comment'");
       statement.execute("COMMENT ON AGGREGATE max (int) IS 'some aggregate comment'");
       statement.execute("COMMENT ON RULE pg_settings_u ON pg_settings IS 'some rule comment'");
@@ -93,7 +93,7 @@ public class TestPgCommentOn extends BasePgSQLTest {
       );
       assertEquals("some collation comment", getObjectComment("collation", "default"));
       assertEquals("some internal language", getObjectComment("language", "internal"));
-      assertEquals("some role comment", getSharedObjectComment("role", "postgres"));
+      assertEquals("some role comment", getSharedObjectComment("role", "yugabyte"));
       assertEquals("some tablespace comment", getSharedObjectComment("tablespace", "pg_default"));
       assertEquals("some aggregate comment", getObjectComment("aggregate", "max", "int"));
       assertEquals("some rule comment", getObjectComment("rule", "pg_settings, pg_settings_u"));

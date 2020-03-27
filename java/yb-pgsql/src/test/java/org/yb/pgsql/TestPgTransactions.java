@@ -14,10 +14,10 @@ package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
 import org.junit.Test;
-import org.junit.Ignore;
 import org.junit.runner.RunWith;
 import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -37,6 +37,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
 
 import static org.yb.AssertionWrappers.*;
@@ -44,35 +45,25 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgTransactions extends BasePgSQLTest {
 
-  // A "skew" of 0.3 means that we expect the difference between the win percentage of the first
-  // and the second txn would be under 30% of the total number of attempts, i.e. if one transaction
-  // wins in 35% of cases and the other wins in 65% cases, we're still fine.
-  private static final double DEFAULT_SKEW_THRESHOLD = 0.3;
-
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
   private static boolean isYBTransactionError(PSQLException ex) {
-    String msg = ex.getMessage();
-    // TODO: test for error codes here when we move to more PostgreSQL-friendly transaction errors.
-    return (
-        msg.contains("Conflicts with higher priority transaction") ||
-        msg.contains("Transaction expired") ||
-        msg.contains("Restart read required") ||
-        msg.contains("Conflicts with committed transaction") ||
-        msg.contains(
-            "current transaction is aborted, commands ignored until end of transaction block")) ||
-        msg.contains("Value write after transaction start");
+    return ex.getSQLState().equals("40001");
+  }
+
+  private static boolean isTransactionAbortedError(PSQLException ex) {
+    return PSQLState.IN_FAILED_SQL_TRANSACTION.getState().equals(ex.getSQLState());
   }
 
   private void checkTransactionFairness(
       int numFirstWinners,
       int numSecondWinners,
-      int totalIterations,
-      double skewThreshold) {
-    double skew = Math.abs(numFirstWinners - numSecondWinners) * 1.0 / totalIterations;
-    LOG.info("Skew between the number of wins by two connections: " + skew);
-    assertTrue("Expecting the skew to be below the threshold " + skewThreshold + ", got " + skew,
-        skew < skewThreshold);
+      int totalIterations) {
+    // similar logic to cxx-test: PgLibPqTest.SerializableReadWriteOnConflict
+    // break if we hit 25% accuracy
+    // Coin Toss Problem: 100 iterations, 25 heads.  False positive probability == 1 in 1.6M
+    assertLessThan("First Win Too Low", totalIterations / 4, numFirstWinners);
+    assertLessThan("Second Win Too Low", totalIterations / 4, numSecondWinners);
   }
 
   @Override
@@ -177,7 +168,6 @@ public class TestPgTransactions extends BasePgSQLTest {
   }
 
   private void runReadDelayWriteTest(final IsolationLevel isolationLevel) throws Exception {
-    Connection setupConn = createConnection(isolationLevel, AutoCommit.ENABLED);
     Statement statement = connection.createStatement();
     statement.execute("CREATE TABLE counters (k INT PRIMARY KEY, v INT)");
 
@@ -283,7 +273,7 @@ public class TestPgTransactions extends BasePgSQLTest {
                 hadErrors.set(true);
               }
             } catch (PSQLException ex) {
-              if (!isYBTransactionError(ex)) {
+              if (!isYBTransactionError(ex) && !isTransactionAbortedError(ex)) {
                 throw ex;
               }
               LOG.info(
@@ -387,7 +377,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     }
     LOG.info("INSERT succeeded " + numSuccess1 + " times, " +
              "SELECT succeeded " + numSuccess2 + " times");
-    checkTransactionFairness(numSuccess1, numSuccess2, TOTAL_ITERATIONS, DEFAULT_SKEW_THRESHOLD);
+    checkTransactionFairness(numSuccess1, numSuccess2, TOTAL_ITERATIONS);
   }
 
   @Test
@@ -480,9 +470,9 @@ public class TestPgTransactions extends BasePgSQLTest {
             String.format("INSERT INTO test(h, r, v) VALUES (%d, %d, %d)", i, i, 200 * i));
         executed2 = true;
       } catch (PSQLException ex) {
-        // TODO: validate the exception message.
         // Not reporting a stack trace here on purpose, because this will happen a lot in a test.
-        LOG.info("Error while inserting on the second connection:" + ex.getMessage());
+        // [#1289] Don't think this should ever be a isTransactionAbortedError
+        assertTrue(ex.getMessage(), isYBTransactionError(ex));
       }
       TransactionState txnState1BeforeCommit = getPgTxnState(connection1);
       TransactionState txnState2BeforeCommit = getPgTxnState(connection2);
@@ -545,7 +535,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     }
     LOG.info(String.format(
         "First txn won in %d cases, second won in %d cases", numFirstWinners, numSecondWinners));
-    checkTransactionFairness(numFirstWinners, numSecondWinners, totalIterations, 0.3);
+    checkTransactionFairness(numFirstWinners, numSecondWinners, totalIterations);
   }
 
   @Test
@@ -605,5 +595,127 @@ public class TestPgTransactions extends BasePgSQLTest {
 
     }
 
+  }
+
+  private void testSingleRowTransactionGuards(List<String> stmts, List<String> guard_start_stmts,
+                                              List<String> guard_end_stmts) throws Exception {
+    Statement statement = connection.createStatement();
+
+    // With guard (e.g. BEGIN/END, secondary index, trigger, etc.), statements should use txn path.
+    for (String guard_start_stmt : guard_start_stmts) {
+      statement.execute(guard_start_stmt);
+    }
+    for (String stmt : stmts) {
+      verifyStatementTxnMetric(statement, stmt, 1);
+    }
+
+    // After ending guard, statements should go back to using non-txn path.
+    for (String guard_end_stmt : guard_end_stmts) {
+      statement.execute(guard_end_stmt);
+    }
+    for (String stmt : stmts) {
+      verifyStatementTxnMetric(statement, stmt, 0);
+    }
+  }
+
+  private void testSingleRowTransactionGuards(List<String> stmts, String guard_start_stmt,
+                                              String guard_end_stmt) throws Exception {
+    testSingleRowTransactionGuards(stmts,
+                                   Arrays.asList(guard_start_stmt),
+                                   Arrays.asList(guard_end_stmt));
+  }
+
+  private void testSingleRowStatements(List<String> stmts) throws Exception {
+    // Verify standalone statements use non-txn path.
+    Statement statement = connection.createStatement();
+    for (String stmt : stmts) {
+      verifyStatementTxnMetric(statement, stmt, 0);
+    }
+
+    // Test in txn block.
+    testSingleRowTransactionGuards(
+        stmts,
+        "BEGIN",
+        "END");
+
+    // Test with secondary index.
+    testSingleRowTransactionGuards(
+        stmts,
+        "CREATE INDEX test_index ON test (v)",
+        "DROP INDEX test_index");
+
+    // Test with trigger.
+    testSingleRowTransactionGuards(
+        stmts,
+        "CREATE TRIGGER test_trigger BEFORE UPDATE ON test " +
+        "FOR EACH ROW EXECUTE PROCEDURE suppress_redundant_updates_trigger()",
+        "DROP TRIGGER test_trigger ON test");
+
+    // Test with foreign key.
+    testSingleRowTransactionGuards(
+        stmts,
+        Arrays.asList(
+            "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+            "DROP TABLE IF EXISTS foreign_table",
+            "CREATE TABLE foreign_table (v int PRIMARY KEY)",
+            "INSERT INTO foreign_table VALUES (1), (2)",
+            "DROP TABLE IF EXISTS test",
+            "CREATE TABLE test (k int PRIMARY KEY, v int references foreign_table(v))"),
+        Arrays.asList(
+            "DROP TABLE test",
+            "DROP TABLE foreign_table",
+            "CREATE TABLE test (k int PRIMARY KEY, v int)",
+            "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  }
+
+  @Test
+  public void testSingleRowNoTransaction() throws Exception {
+    Statement statement = connection.createStatement();
+    statement.execute("CREATE TABLE test (k int PRIMARY KEY, v int)");
+
+    // Test regular INSERT/UPDATE/DELETE single-row statements.
+    testSingleRowStatements(
+        Arrays.asList(
+            "INSERT INTO test VALUES (1, 1)",
+            "UPDATE test SET v = 2 WHERE k = 1",
+            "DELETE FROM test WHERE k = 1"));
+
+    // Test INSERT/UPDATE/DELETE single-row prepared statements.
+    statement.execute("PREPARE insert_stmt (int, int) AS INSERT INTO test VALUES ($1, $2)");
+    statement.execute("PREPARE delete_stmt (int) AS DELETE FROM test WHERE k = $1");
+    statement.execute("PREPARE update_stmt (int, int) AS UPDATE test SET v = $2 WHERE k = $1");
+    testSingleRowStatements(
+        Arrays.asList(
+            "EXECUTE insert_stmt (1, 1)",
+            "EXECUTE update_stmt (1, 2)",
+            "EXECUTE delete_stmt (1)"));
+
+    // Verify statements with WITH clause use txn path.
+    verifyStatementTxnMetric(statement,
+                             "WITH test2 AS (UPDATE test SET v = 2 WHERE k = 1) " +
+                             "UPDATE test SET v = 3 WHERE k = 1", 1);
+
+    // Verify JDBC single-row prepared statements use non-txn path.
+    long oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+
+    PreparedStatement insertStatement =
+      connection.prepareStatement("INSERT INTO test VALUES (?, ?)");
+    insertStatement.setInt(1, 1);
+    insertStatement.setInt(2, 1);
+    insertStatement.executeUpdate();
+
+    PreparedStatement deleteStatement =
+      connection.prepareStatement("DELETE FROM test WHERE k = ?");
+    deleteStatement.setInt(1, 1);
+    deleteStatement.executeUpdate();
+
+    PreparedStatement updateStatement =
+      connection.prepareStatement("UPDATE test SET v = ? WHERE k = ?");
+    updateStatement.setInt(1, 1);
+    updateStatement.setInt(2, 1);
+    updateStatement.executeUpdate();
+
+    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    assertEquals(oldTxnValue, newTxnValue);
   }
 }

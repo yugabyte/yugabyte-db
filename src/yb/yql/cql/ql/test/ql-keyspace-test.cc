@@ -15,19 +15,7 @@
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
-#define EXEC_INVALID_STMT_WITH_ERROR(stmt, expected_error, expected_error_msg) \
-  do {                                                                         \
-    Status s = processor->Run(stmt);                                           \
-    EXPECT_FALSE(s.ok()) << s.ToString();                                      \
-    const auto expected_error_copy = (expected_error);                         \
-    const auto expected_error_msg_copy = (expected_error_msg);                 \
-    if (!std::string(expected_error_copy).empty()) {                           \
-      EXPECT_FALSE(s.ToString().find(expected_error_copy) == string::npos) << s.ToString(); \
-    }                                                                          \
-    if (!std::string(expected_error_msg_copy).empty()) {                       \
-      EXPECT_FALSE(s.ToString().find(expected_error_msg_copy) == string::npos) << s.ToString(); \
-    }                                                                          \
-  } while (false)
+#include "yb/common/ql_value.h"
 
 namespace yb {
 namespace ql {
@@ -95,8 +83,8 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
 
   // Try to delete unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
-  EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1), "Keyspace Not Found",
-      "Keyspace name not found");
+  EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1),
+      "Keyspace Not Found. Keyspace name not found");
 
   // Delete unknown keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceIfExistsStmt(keyspace1);
@@ -108,8 +96,8 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
 
   // Try to create the keyspace1 once again.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);
-  EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceStmt(keyspace1), "Keyspace Already Exists",
-      "already exists");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceStmt(keyspace1),
+      "Keyspace Already Exists. Keyspace 'test' already exists");
 
   // Delete the keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
@@ -117,8 +105,8 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
 
   // Try to delete already deleted keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
-  EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1), "Keyspace Not Found",
-      "Keyspace name not found");
+  EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1),
+      "Keyspace Not Found. Keyspace name not found");
 
   // Delete already deleted keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceIfExistsStmt(keyspace1);
@@ -127,17 +115,17 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
   // Try to create a keyspace with a syntax error ('KEYSPAC' instead of 'KEYSPACE').
   LOG(INFO) << "Exec SQL: " << CreateStmt("KEYSPAC " + keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(CreateStmt("KEYSPAC " + keyspace1),
-      "Invalid SQL Statement", "syntax error");
+      "Invalid SQL Statement. syntax error");
 
   // Try to create 2 keyspaces in one request.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt("ks1 ks2;");
   EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceStmt("ks1 ks2;"),
-      "Invalid SQL Statement", "syntax error");
+      "Invalid SQL Statement. syntax error");
 
   // Try to create a keyspaces with unsupported AUTHORIZATION keyword.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt("ks1 AUTHORIZATION user1;");
   EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceStmt("ks1 AUTHORIZATION user1;"),
-      "Feature Not Supported", "AUTHORIZATION");
+      "Feature Not Supported");
 }
 
 TEST_F(TestQLKeyspace, TestQLCreateKeyspaceIfNotExists) {
@@ -160,19 +148,19 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceIfNotExists) {
   // Try to create a keyspace with a syntax error ('EXIST' instead of 'EXISTS').
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt("IF NOT EXIST " + keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceStmt("IF NOT EXIST " + keyspace1),
-      "Invalid SQL Statement", "syntax error");
+      "Invalid SQL Statement. syntax error");
 
   // THE FOLLOWING TESTS FAIL DUE TO UNKNOWN PARSER BUG. TODO: Investigate
 
   // Try to create 2 keyspaces in one request.
 //  LOG(INFO) << "Exec SQL: " << CreateKeyspaceIfNotExistsStmt("ks1 ks2;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceIfNotExistsStmt("ks1 ks2;"),
-//      "Invalid SQL Statement", "syntax error");
+//      "Invalid SQL Statement. syntax error");
 
   // Try to create a keyspaces with unsupported AUTHORIZATION keyword.
 //  LOG(INFO) << "Exec SQL: " << CreateKeyspaceIfNotExistsStmt("ks1 AUTHORIZATION user1;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceIfNotExistsStmt("ks1 AUTHORIZATION user1;"),
-//      "Feature Not Supported", "AUTHORIZATION");
+//      "Feature Not Supported. AUTHORIZATION");
 }
 
 TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
@@ -186,8 +174,8 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
 
   // Try to delete unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
-  EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1), "Keyspace Not Found",
-      "Keyspace name not found");
+  EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1),
+      "Keyspace Not Found. Keyspace name not found");
 
   // Delete unknown keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropSchemaIfExistsStmt(keyspace1);
@@ -199,8 +187,8 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
 
   // Try to create the keyspace1 once again.
   LOG(INFO) << "Exec SQL: " << CreateSchemaStmt(keyspace1);
-  EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaStmt(keyspace1), "Keyspace Already Exists",
-      "already exists");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaStmt(keyspace1),
+      "Keyspace Already Exists. Keyspace 'test' already exists");
 
   // Delete the keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
@@ -208,8 +196,8 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
 
   // Try to delete already deleted keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
-  EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1), "Keyspace Not Found",
-      "Keyspace name not found");
+  EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1),
+      "Keyspace Not Found. Keyspace name not found");
 
   // Delete already deleted keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropSchemaIfExistsStmt(keyspace1);
@@ -218,17 +206,17 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
   // Try to create the keyspace1 with a syntax error ('SCHEM' instead of 'SCHEMA').
   LOG(INFO) << "Exec SQL: " << CreateStmt("SCHEM " + keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(CreateStmt("SCHEM " + keyspace1),
-      "Invalid SQL Statement", "syntax error");
+      "Invalid SQL Statement. syntax error");
 
   // Try to create 2 keyspaces in one request.
   LOG(INFO) << "Exec SQL: " << CreateSchemaStmt("ks1 ks2;");
   EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaStmt("ks1 ks2;"),
-      "Invalid SQL Statement", "syntax error");
+      "Invalid SQL Statement. syntax error");
 
   // Try to create a keyspaces with unsupported AUTHORIZATION keyword.
   LOG(INFO) << "Exec SQL: " << CreateSchemaStmt("ks1 AUTHORIZATION user1;");
   EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaStmt("ks1 AUTHORIZATION user1;"),
-      "Feature Not Supported", "AUTHORIZATION");
+      "Feature Not Supported");
 }
 
 TEST_F(TestQLKeyspace, TestQLCreateSchemaIfNotExists) {
@@ -251,19 +239,19 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaIfNotExists) {
   // Try to create a keyspace with a syntax error ('EXIST' instead of 'EXISTS').
   LOG(INFO) << "Exec SQL: " << CreateSchemaStmt("IF NOT EXIST " + keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaStmt("IF NOT EXIST " + keyspace1),
-      "Invalid SQL Statement", "syntax error");
+      "Invalid SQL Statement. syntax error");
 
   // THE FOLLOWING TESTS FAIL DUE TO UNKNOWN PARSER BUG. TODO: Investigate
 
   // Try to create 2 keyspaces in one request.
 //  LOG(INFO) << "Exec SQL: " << CreateSchemaIfNotExistsStmt("ks1 ks2;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaIfNotExistsStmt("ks1 ks2;"),
-//      "Invalid SQL Statement", "syntax error");
+//      "Invalid SQL Statement. syntax error");
 
   // Try to create a keyspaces with unsupported AUTHORIZATION keyword.
 //  LOG(INFO) << "Exec SQL: " << CreateSchemaIfNotExistsStmt("ks1 AUTHORIZATION user1;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaIfNotExistsStmt("ks1 AUTHORIZATION user1;"),
-//      "Feature Not Supported", "AUTHORIZATION");
+//      "Feature Not Supported. AUTHORIZATION");
 }
 
 TEST_F(TestQLKeyspace, TestQLUseKeyspaceSimple) {
@@ -277,8 +265,8 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceSimple) {
 
   // Try to use unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << UseStmt(keyspace1);
-  EXEC_INVALID_STMT_WITH_ERROR(UseStmt(keyspace1), "Keyspace Not Found",
-      "Cannot use unknown keyspace");
+  EXEC_INVALID_STMT_WITH_ERROR(UseStmt(keyspace1),
+      "Keyspace Not Found. Cannot use unknown keyspace");
 
   // Create the keyspace1.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);
@@ -294,8 +282,8 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceSimple) {
 
   // Try to use deleted keyspace1.
   LOG(INFO) << "Exec SQL: " << UseStmt(keyspace1);
-  EXEC_INVALID_STMT_WITH_ERROR(UseStmt(keyspace1), "Keyspace Not Found",
-      "Cannot use unknown keyspace");
+  EXEC_INVALID_STMT_WITH_ERROR(UseStmt(keyspace1),
+      "Keyspace Not Found. Cannot use unknown keyspace");
 }
 
 TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
@@ -320,7 +308,7 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
   // 'system' keyspace (not supported yet)
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(system_table2);
   EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(system_table2),
-                               ErrorText(ErrorCode::SYSTEM_NAMESPACE_READONLY), "");
+                               ErrorText(ErrorCode::SYSTEM_NAMESPACE_READONLY));
 
   // 'default' keyspace is always available.
   // TODO: It's failed now because 'DEFAULT' is a reserved keyword. Discuss & fix the case.
@@ -329,12 +317,13 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
 
   // The keyspace (keyspace1) has not been created yet.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_table3);
-  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_table3), "Keyspace Not Found",
-      "Keyspace name not found");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_table3),
+      "Keyspace Not Found. Error creating table test.table3 on the master: "
+      "Keyspace name not found: test");
 
   // Invalid name 'keyspace.SOMETHING.table'.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_any_table4);
-  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_any_table4), "Invalid table name", "");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_any_table4), "Invalid table name");
 
   // Create the keyspace1.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);
@@ -350,8 +339,8 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
 
   // Use current keyspace. The table has been already created.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(table3);
-  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(table3), "Duplicate Object",
-      " already exists");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(table3),
+      "Duplicate Object. Object 'test.table3' already exists");
 
   // Create the keyspace2.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace2);
@@ -401,7 +390,7 @@ TEST_F(TestQLKeyspace, TestQLSelectInvalidTable) {
   const string select_stmt = "SELECT * FROM my_keyspace1.test_table WHERE h1 = 1 AND h2 = 'h1';";
 
   LOG(INFO) << "Exec SQL: " << select_stmt;
-  EXEC_INVALID_STMT_WITH_ERROR(select_stmt, "Object Not Found", "");
+  EXEC_INVALID_STMT_WITH_ERROR(select_stmt, "Object Not Found");
 }
 
 } // namespace ql

@@ -41,6 +41,7 @@
 #include "pg_yb_utils.h"
 #include "catalog/ybctype.h"
 
+#include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "common/pg_yb_common.h"
 
@@ -51,9 +52,9 @@
 #include "access/htup_details.h"
 #include "access/tupdesc.h"
 
-YBCPgSession ybc_pg_session = NULL;
+#include "tcop/utility.h"
 
-uint64 yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 /** These values are lazily initialized based on corresponding environment variables. */
 int ybc_pg_double_write = -1;
@@ -61,11 +62,14 @@ int ybc_disable_pg_locking = -1;
 
 YBCStatus ybc_commit_status = NULL;
 
+/* Forward declarations */
+static void YBCInstallTxnDdlHook();
+
 bool
 IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
-	return ybc_pg_session != NULL;
+	return YBCPgIsYugaByteEnabled();
 }
 
 void
@@ -79,7 +83,8 @@ void
 CheckIsYBSupportedRelationByKind(char relkind)
 {
 	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
-		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE))
+		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
+		  relkind == RELKIND_COMPOSITE_TYPE))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));
@@ -107,6 +112,14 @@ IsYBRelationById(Oid relid)
 	bool     is_supported = IsYBRelation(relation);
 	RelationClose(relation);
 	return is_supported;
+}
+
+bool
+IsYBBackedRelation(Relation relation)
+{
+	return IsYBRelation(relation) ||
+		(relation->rd_rel->relkind == RELKIND_VIEW &&
+		relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP);
 }
 
 bool
@@ -139,8 +152,31 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 			(trigdesc->trig_update_after_row ||
 			trigdesc->trig_update_before_row)) ||
 		(operation == CMD_DELETE &&
-			(trigdesc->trig_delete_after_row || 
+			(trigdesc->trig_delete_after_row ||
 			trigdesc->trig_delete_before_row))));
+}
+
+bool
+YBRelHasSecondaryIndices(Relation relation)
+{
+	if (!relation->rd_rel->relhasindex)
+		return false;
+
+	bool	 has_indices = false;
+	List	 *indexlist = RelationGetIndexList(relation);
+	ListCell *lc;
+
+	foreach(lc, indexlist)
+	{
+		if (lfirst_oid(lc) == relation->rd_pkindex)
+			continue;
+		has_indices = true;
+		break;
+	}
+
+	list_free(indexlist);
+
+	return has_indices;
 }
 
 bool
@@ -175,23 +211,47 @@ YBShouldReportErrorStatus()
 	return cached_value;
 }
 
+char* DupYBStatusMessage(YBCStatus status, bool message_only) {
+  const char* code_as_cstring = YBCStatusCodeAsCString(status);
+  size_t code_strlen = strlen(code_as_cstring);
+	size_t status_len = YBCStatusMessageLen(status);
+	size_t sz = code_strlen + status_len + 3;
+	if (message_only) {
+		sz -= 2 + code_strlen;
+	}
+	char* msg_buf = palloc(sz);
+	char* pos = msg_buf;
+	if (!message_only) {
+		memcpy(msg_buf, code_as_cstring, code_strlen);
+		pos += code_strlen;
+		*pos++ = ':';
+		*pos++ = ' ';
+	}
+	memcpy(pos, YBCStatusMessageBegin(status), status_len);
+	pos[status_len] = 0;
+	return msg_buf;
+}
+
 void
 HandleYBStatus(YBCStatus status)
 {
-	if (!status)
-		return;
-	if (YBShouldReportErrorStatus()) {
-		YBC_LOG_ERROR("HandleYBStatus: %s", status->msg);
-	}
+	if (!status) {
+    return;
+  }
 	/* Copy the message to the current memory context and free the YBCStatus. */
-	size_t status_len = strlen(status->msg);
-	char* msg_buf = palloc(status_len + 1);
-	strncpy(msg_buf, status->msg, status_len + 1);
+	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
+	char* msg_buf = DupYBStatusMessage(status, pg_err_code == ERRCODE_UNIQUE_VIOLATION);
+
+	if (YBShouldReportErrorStatus()) {
+		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+	}
+	const uint16_t txn_err_code = YBCStatusTransactionError(status);
 	YBCFreeStatus(status);
-	/* TODO: consider creating PostgreSQL error codes for YB statuses. */
 	ereport(ERROR,
-			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("%s", msg_buf)));
+			(errmsg("%s", msg_buf),
+			 errcode(pg_err_code),
+			 yb_txn_errcode(txn_err_code),
+			 errhidecontext(true)));
 }
 
 void
@@ -239,6 +299,33 @@ HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 	HandleYBStatus(status);
 }
 
+/*
+ * Fetches relation's unique constraint name to specified buffer.
+ * If relation is not an index and it has primary key the name of primary key index is returned.
+ * In other cases, relation name is used.
+ */
+static void
+FetchUniqueConstraintName(Oid relation_id, char* dest, size_t max_size)
+{
+	// strncat appends source to destination, so destination must be empty.
+	dest[0] = 0;
+	Relation rel = RelationIdGetRelation(relation_id);
+
+	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
+	{
+		Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
+
+		strncat(dest, RelationGetRelationName(pkey), max_size);
+
+		RelationClose(pkey);
+	} else
+	{
+		strncat(dest, RelationGetRelationName(rel), max_size);
+	}
+
+	RelationClose(rel);
+}
+
 void
 YBInitPostgresBackend(
 	const char *program_name,
@@ -259,46 +346,33 @@ YBInitPostgresBackend(
 		const YBCPgTypeEntity *type_table;
 		int count;
 		YBCGetTypeTable(&type_table, &count);
-		YBCInitPgGate(type_table, count);
+		YBCPgCallbacks callbacks;
+		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
+		YBCInitPgGate(type_table, count, callbacks);
+		YBCInstallTxnDdlHook();
 
-		if (ybc_pg_session != NULL) {
-			YBC_LOG_FATAL("Double initialization of ybc_pg_session");
-		}
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
 		 * when accessing YugaByte storage.
 		 *
 		 * TODO: do we really need to DB name / username here?
 		 */
-		if (db_name != NULL)
-		{
-			HandleYBStatus(YBCPgCreateSession(
-				/* pg_env */ NULL, db_name, &ybc_pg_session));
-		}
-		else if (user_name != NULL)
-		{
-			HandleYBStatus(YBCPgCreateSession(
-				/* pg_env */ NULL, user_name, &ybc_pg_session));
-		}
+    HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
 	}
 }
 
 void
 YBOnPostgresBackendShutdown()
 {
-	static bool shutdown_done = false;
-
-	if (shutdown_done)
-	{
-		return;
-	}
-	if (ybc_pg_session)
-	{
-		YBCPgDestroySession(ybc_pg_session);
-		ybc_pg_session = NULL;
-	}
 	YBCDestroyPgGate();
-	shutdown_done = true;
+}
+
+void
+YBCRestartTransaction()
+{
+	if (!IsYugaByteEnabled())
+		return;
+	HandleYBStatus(YBCPgRestartTransaction());
 }
 
 static void
@@ -317,8 +391,7 @@ YBCCommitTransaction()
 	if (!IsYugaByteEnabled())
 		return true;
 
-	YBCStatus status =
-		YBCPgTxnManager_CommitTransaction_Status(YBCGetPgTxnManager());
+	YBCStatus status = YBCPgCommitTransaction();
 	if (status != NULL) {
 		YBCResetCommitStatus();
 		ybc_commit_status = status;
@@ -333,8 +406,7 @@ YBCHandleCommitError()
 {
 	YBCStatus status = ybc_commit_status;
 	if (status != NULL) {
-		char* msg = palloc(strlen(status->msg) + 1);
-		strcpy(msg, status->msg);
+		char* msg = DupYBStatusMessage(status, false /* message_only */);
 		YBCResetCommitStatus();
 		ereport(ERROR,
 				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
@@ -456,6 +528,45 @@ YBPgTypeOidToStr(Oid type_id) {
 		case TSM_HANDLEROID: return "TSM_HANDLER";
 		case ANYRANGEOID: return "ANYRANGE";
 		default: return "user_defined_type";
+	}
+}
+
+const char*
+YBCPgDataTypeToStr(YBCPgDataType yb_type) {
+	switch (yb_type) {
+		case YB_YQL_DATA_TYPE_NOT_SUPPORTED: return "NOT_SUPPORTED";
+		case YB_YQL_DATA_TYPE_UNKNOWN_DATA: return "UNKNOWN_DATA";
+		case YB_YQL_DATA_TYPE_NULL_VALUE_TYPE: return "NULL_VALUE_TYPE";
+		case YB_YQL_DATA_TYPE_INT8: return "INT8";
+		case YB_YQL_DATA_TYPE_INT16: return "INT16";
+		case YB_YQL_DATA_TYPE_INT32: return "INT32";
+		case YB_YQL_DATA_TYPE_INT64: return "INT64";
+		case YB_YQL_DATA_TYPE_STRING: return "STRING";
+		case YB_YQL_DATA_TYPE_BOOL: return "BOOL";
+		case YB_YQL_DATA_TYPE_FLOAT: return "FLOAT";
+		case YB_YQL_DATA_TYPE_DOUBLE: return "DOUBLE";
+		case YB_YQL_DATA_TYPE_BINARY: return "BINARY";
+		case YB_YQL_DATA_TYPE_TIMESTAMP: return "TIMESTAMP";
+		case YB_YQL_DATA_TYPE_DECIMAL: return "DECIMAL";
+		case YB_YQL_DATA_TYPE_VARINT: return "VARINT";
+		case YB_YQL_DATA_TYPE_INET: return "INET";
+		case YB_YQL_DATA_TYPE_LIST: return "LIST";
+		case YB_YQL_DATA_TYPE_MAP: return "MAP";
+		case YB_YQL_DATA_TYPE_SET: return "SET";
+		case YB_YQL_DATA_TYPE_UUID: return "UUID";
+		case YB_YQL_DATA_TYPE_TIMEUUID: return "TIMEUUID";
+		case YB_YQL_DATA_TYPE_TUPLE: return "TUPLE";
+		case YB_YQL_DATA_TYPE_TYPEARGS: return "TYPEARGS";
+		case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE: return "USER_DEFINED_TYPE";
+		case YB_YQL_DATA_TYPE_FROZEN: return "FROZEN";
+		case YB_YQL_DATA_TYPE_DATE: return "DATE";
+		case YB_YQL_DATA_TYPE_TIME: return "TIME";
+		case YB_YQL_DATA_TYPE_JSONB: return "JSONB";
+		case YB_YQL_DATA_TYPE_UINT8: return "UINT8";
+		case YB_YQL_DATA_TYPE_UINT16: return "UINT16";
+		case YB_YQL_DATA_TYPE_UINT32: return "UINT32";
+		case YB_YQL_DATA_TYPE_UINT64: return "UINT64";
+		default: return "unknown";
 	}
 }
 
@@ -609,7 +720,7 @@ YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 	appendStringInfoChar(&buf, '(');
 	for (int attnum = 1; attnum <= natts; ++attnum) {
 		attr = heap_getattr(tuple, attnum, tupleDesc, &isnull);
-		if (isnull) 
+		if (isnull)
 		{
 			appendStringInfoString(&buf, "null");
 		}
@@ -630,6 +741,188 @@ bool
 YBIsInitDbAlreadyDone()
 {
 	bool done = false;
-	HandleYBStatus(YBCPgIsInitDbDone(ybc_pg_session, &done));
+	HandleYBStatus(YBCPgIsInitDbDone(&done));
 	return done;
+}
+
+/*---------------------------------------------------------------------------*/
+/* Transactional DDL support                                                 */
+/*---------------------------------------------------------------------------*/
+
+static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+static int ddl_nesting_level = 0;
+
+static void YBIncrementDdlNestingLevel() {
+	if (ddl_nesting_level == 0) {
+		YBCPgEnterSeparateDdlTxnMode();
+	}
+	ddl_nesting_level++;
+}
+
+static void YBDecrementDdlNestingLevel(bool success) {
+	ddl_nesting_level--;
+	if (ddl_nesting_level == 0) {
+		YBCPgExitSeparateDdlTxnMode(success);
+	}
+}
+
+static bool IsTransactionalDdlStatement(NodeTag node_tag) {
+	switch (node_tag) {
+		// The lists of tags here have been generated using e.g.:
+		// cat $( find src/postgres -name "nodes.h" ) | grep "T_Create" | sort | uniq |
+		//   sed 's/,//g' | while read s; do echo -e "\t\tcase $s:"; done
+		// All T_Create... tags from nodes.h:
+		case T_CreateAmStmt:
+		case T_CreateCastStmt:
+		case T_CreateConversionStmt:
+		case T_CreateDomainStmt:
+		case T_CreateEnumStmt:
+		case T_CreateEventTrigStmt:
+		case T_CreateExtensionStmt:
+		case T_CreateFdwStmt:
+		case T_CreateForeignServerStmt:
+		case T_CreateForeignTableStmt:
+		case T_CreateFunctionStmt:
+		case T_CreateOpClassItem:
+		case T_CreateOpClassStmt:
+		case T_CreateOpFamilyStmt:
+		case T_CreatePLangStmt:
+		case T_CreatePolicyStmt:
+		case T_CreatePublicationStmt:
+		case T_CreateRangeStmt:
+		case T_CreateReplicationSlotCmd:
+		case T_CreateRoleStmt:
+		case T_CreateSchemaStmt:
+		case T_CreateSeqStmt:
+		case T_CreateStatsStmt:
+		case T_CreateStmt:
+		case T_CreateSubscriptionStmt:
+		case T_CreateTableAsStmt:
+		case T_CreateTableSpaceStmt:
+		case T_CreateTransformStmt:
+		case T_CreateTrigStmt:
+		case T_CreateUserMappingStmt:
+		case T_CreatedbStmt:
+		// All T_Drop... tags from nodes.h:
+		case T_DropOwnedStmt:
+		case T_DropReplicationSlotCmd:
+		case T_DropRoleStmt:
+		case T_DropStmt:
+		case T_DropSubscriptionStmt:
+		case T_DropTableSpaceStmt:
+		case T_DropUserMappingStmt:
+		case T_DropdbStmt:
+		// All T_Alter... tags from nodes.h:
+		case T_AlterCollationStmt:
+		case T_AlterDatabaseSetStmt:
+		case T_AlterDatabaseStmt:
+		case T_AlterDefaultPrivilegesStmt:
+		case T_AlterDomainStmt:
+		case T_AlterEnumStmt:
+		case T_AlterEventTrigStmt:
+		case T_AlterExtensionContentsStmt:
+		case T_AlterExtensionStmt:
+		case T_AlterFdwStmt:
+		case T_AlterForeignServerStmt:
+		case T_AlterFunctionStmt:
+		case T_AlterObjectDependsStmt:
+		case T_AlterObjectSchemaStmt:
+		case T_AlterOpFamilyStmt:
+		case T_AlterOperatorStmt:
+		case T_AlterOwnerStmt:
+		case T_AlterPolicyStmt:
+		case T_AlterPublicationStmt:
+		case T_AlterRoleSetStmt:
+		case T_AlterRoleStmt:
+		case T_AlterSeqStmt:
+		case T_AlterSubscriptionStmt:
+		case T_AlterSystemStmt:
+		case T_AlterTSConfigurationStmt:
+		case T_AlterTSDictionaryStmt:
+		case T_AlterTableCmd:
+		case T_AlterTableMoveAllStmt:
+		case T_AlterTableSpaceOptionsStmt:
+		case T_AlterTableStmt:
+		case T_AlterUserMappingStmt:
+		case T_AlternativeSubPlan:
+		case T_AlternativeSubPlanState:
+		// T_Grant...
+		case T_GrantStmt:
+		case T_GrantRoleStmt:
+		// T_Index...
+		case T_IndexStmt:
+			return true;
+		default:
+			return false;
+	}
+}
+
+static void YBTxnDdlProcessUtility(
+		PlannedStmt *pstmt,
+		const char *queryString,
+		ProcessUtilityContext context,
+		ParamListInfo params,
+		QueryEnvironment *queryEnv,
+		DestReceiver *dest,
+		char *completionTag) {
+	Node	   *parsetree = pstmt->utilityStmt;
+	NodeTag node_tag = nodeTag(parsetree);
+
+	bool is_txn_ddl = IsTransactionalDdlStatement(node_tag);
+
+	if (is_txn_ddl) {
+		YBIncrementDdlNestingLevel();
+	}
+	PG_TRY();
+	{
+		if (prev_ProcessUtility)
+			prev_ProcessUtility(pstmt, queryString,
+								context, params, queryEnv,
+								dest, completionTag);
+		else
+			standard_ProcessUtility(pstmt, queryString,
+									context, params, queryEnv,
+									dest, completionTag);
+	}
+	PG_CATCH();
+	{
+		if (is_txn_ddl) {
+			YBDecrementDdlNestingLevel(/* success */ false);
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	if (is_txn_ddl) {
+		YBDecrementDdlNestingLevel(/* success */ true);
+	}
+}
+
+
+static void YBCInstallTxnDdlHook() {
+	if (!YBCIsInitDbModeEnvVarSet()) {
+		prev_ProcessUtility = ProcessUtility_hook;
+		ProcessUtility_hook = YBTxnDdlProcessUtility;
+	}
+};
+
+static int buffering_nesting_level = 0;
+
+void YBBeginOperationsBuffering() {
+	if (++buffering_nesting_level == 1) {
+		YBCPgStartOperationsBuffering();
+	}
+}
+
+void YBEndOperationsBuffering() {
+	// buffering_nesting_level could be 0 because YBResetOperationsBuffering was called
+	// on starting new query and postgres calls standard_ExecutorFinish on non finished executor
+	// from previous failed query.
+	if (buffering_nesting_level && !--buffering_nesting_level) {
+		HandleYBStatus(YBCPgFlushBufferedOperations());
+	}
+}
+
+void YBResetOperationsBuffering() {
+	buffering_nesting_level = 0;
+	YBCPgResetOperationsBuffering();
 }

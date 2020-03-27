@@ -76,7 +76,6 @@ namespace rocksdb {
 
 class FileLock;
 class Logger;
-class RandomAccessFile;
 class WritableFile;
 class Directory;
 struct DBOptions;
@@ -85,6 +84,7 @@ class ThreadStatusUpdater;
 struct ThreadStatus;
 
 typedef yb::SequentialFile SequentialFile;
+typedef yb::RandomAccessFile RandomAccessFile;
 
 using std::unique_ptr;
 using std::shared_ptr;
@@ -98,9 +98,6 @@ struct EnvOptions : public yb::FileSystemOptions {
 
   // construct from Options
   explicit EnvOptions(const DBOptions& options);
-
-  // If true, then use mmap to read data
-  bool use_mmap_reads = false;
 
   // If true, then use mmap to write data
   bool use_mmap_writes = true;
@@ -292,6 +289,9 @@ class Env {
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) = 0;
 
+  void GetChildrenWarnNotOk(const std::string& dir,
+                            std::vector<std::string>* result);
+
   // Store in *result the attributes of the children of the specified directory.
   // In case the implementation lists the directory prior to iterating the files
   // and files are concurrently deleted, the deleted files will be omitted from
@@ -303,6 +303,9 @@ class Env {
 
   // Delete the named file.
   virtual Status DeleteFile(const std::string& fname) = 0;
+
+  // Delete file, print warning on failure.
+  void CleanupFile(const std::string& fname);
 
   // Create the specified directory. Returns error if directory exists.
   virtual Status CreateDir(const std::string& dirname) = 0;
@@ -493,56 +496,10 @@ class Env {
 // constructor to initialize thread_status_updater_.
 ThreadStatusUpdater* CreateThreadStatusUpdater();
 
-// A file abstraction for randomly reading the contents of a file.
-class RandomAccessFile : public File {
- public:
-  RandomAccessFile() { }
-  virtual ~RandomAccessFile();
-
-  // Read up to "n" bytes from the file starting at "offset".
-  // "scratch[0..n-1]" may be written by this routine.  Sets "*result"
-  // to the data that was read (including if fewer than "n" bytes were
-  // successfully read).  May set "*result" to point at data in
-  // "scratch[0..n-1]", so "scratch[0..n-1]" must be live when
-  // "*result" is used.  If an error was encountered, returns a non-OK
-  // status.
-  //
-  // Safe for concurrent use by multiple threads.
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      char* scratch) const = 0;
-
-  // Used by the file_reader_writer to decide if the ReadAhead wrapper
-  // should simply forward the call and do not enact buffering or locking.
-  virtual bool ShouldForwardRawRequest() const {
-    return false;
-  }
-
-  // For cases when read-ahead is implemented in the platform dependent
-  // layer
-  virtual void EnableReadAhead() {}
-
-  // For documentation, refer to File::GetUniqueId()
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
-    return 0; // Default implementation to prevent issues with backwards
-              // compatibility.
-  }
-
-  enum AccessPattern { NORMAL, RANDOM, SEQUENTIAL, WILLNEED, DONTNEED };
-
-  virtual void Hint(AccessPattern pattern) {}
-
-  // Remove any kind of caching of data from the offset to offset+length
-  // of this file. If the length is 0, then it refers to the end of file.
-  // If the system is not caching the file contents, then this is a noop.
-  virtual Status InvalidateCache(size_t offset, size_t length) {
-    return STATUS(NotSupported, "InvalidateCache not supported.");
-  }
-};
-
 // A file abstraction for sequential writing.  The implementation
 // must provide buffering since callers may append small fragments
 // at a time to the file.
-class WritableFile : public File {
+class WritableFile : public yb::FileWithUniqueId {
  public:
   WritableFile()
     : last_preallocated_block_(0),
@@ -638,7 +595,7 @@ class WritableFile : public File {
   }
 
   // For documentation, refer to File::GetUniqueId()
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
+  virtual size_t GetUniqueId(char* id) const override {
     return 0; // Default implementation to prevent issues with backwards
   }
 
@@ -676,8 +633,9 @@ class WritableFile : public File {
     if (new_last_preallocated_block > last_preallocated_block_) {
       size_t num_spanned_blocks =
         new_last_preallocated_block - last_preallocated_block_;
-      Allocate(block_size * last_preallocated_block_,
-               block_size * num_spanned_blocks);
+      WARN_NOT_OK(
+          Allocate(block_size * last_preallocated_block_, block_size * num_spanned_blocks),
+          "Failed to pre-allocate space for a file");
       last_preallocated_block_ = new_last_preallocated_block;
     }
   }
@@ -769,6 +727,11 @@ class Logger {
   virtual InfoLogLevel GetInfoLogLevel() const { return log_level_; }
   virtual void SetInfoLogLevel(const InfoLogLevel log_level) {
     log_level_ = log_level;
+  }
+
+  virtual const std::string& Prefix() const {
+    static const std::string kEmptyString;
+    return kEmptyString;
   }
 
  private:
@@ -925,6 +888,9 @@ class EnvWrapper : public Env {
   Status FileExists(const std::string& f) override {
     return target_->FileExists(f);
   }
+  bool DirExists(const std::string& f) override {
+    return target_->DirExists(f);
+  }
   Status GetChildren(const std::string& dir,
                      std::vector<std::string>* r) override {
     return target_->GetChildren(dir, r);
@@ -1042,35 +1008,6 @@ class EnvWrapper : public Env {
   Env* target_;
 };
 
-class RandomAccessFileWrapper : public RandomAccessFile {
- public:
-  explicit RandomAccessFileWrapper(std::unique_ptr<RandomAccessFile> t) : target_(std::move(t)) { }
-
-  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const override {
-    return target_->Read(offset, n , result, scratch);
-  }
-
-  bool ShouldForwardRawRequest() const override {
-    return target_->ShouldForwardRawRequest();
-  }
-
-  void EnableReadAhead() override { return target_->EnableReadAhead(); }
-
-  size_t GetUniqueId(char* id, size_t max_size) const override {
-    return target_->GetUniqueId(id, max_size);
-  }
-
-  void Hint(AccessPattern pattern) override { return target_->Hint(pattern); }
-
-  Status InvalidateCache(size_t offset, size_t length) override {
-    return target_->InvalidateCache(offset, length);
-  }
-
- private:
-  std::unique_ptr<RandomAccessFile> target_;
-
-};
-
 // An implementation of WritableFile that forwards all calls to another
 // WritableFile. May be useful to clients who wish to override just part of the
 // functionality of another WritableFile.
@@ -1099,8 +1036,8 @@ class WritableFileWrapper : public WritableFile {
                               size_t* last_allocated_block) override {
     target_->GetPreallocationStatus(block_size, last_allocated_block);
   }
-  size_t GetUniqueId(char* id, size_t max_size) const override {
-    return target_->GetUniqueId(id, max_size);
+  size_t GetUniqueId(char* id) const override {
+    return target_->GetUniqueId(id);
   }
   Status InvalidateCache(size_t offset, size_t length) override {
     return target_->InvalidateCache(offset, length);

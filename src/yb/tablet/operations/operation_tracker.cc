@@ -119,11 +119,8 @@ OperationTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
 #undef GINIT
 #undef MINIT
 
-OperationTracker::State::State()
-  : memory_footprint(0) {
-}
-
-OperationTracker::OperationTracker() {
+OperationTracker::OperationTracker(const std::string& log_prefix)
+    : log_prefix_(log_prefix) {
 }
 
 OperationTracker::~OperationTracker() {
@@ -187,23 +184,33 @@ void OperationTracker::DecrementCounters(const OperationDriver& driver) const {
   metrics_->operations_inflight[index]->Decrement();
 }
 
-void OperationTracker::Release(OperationDriver* driver) {
+void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
   DecrementCounters(*driver);
 
   State st;
+  yb::OpId op_id = driver->GetOpId();
+  OperationType operation_type = driver->operation_type();
   {
     // Remove the operation from the map, retaining the state for use
     // below.
     std::lock_guard<simple_spinlock> l(lock_);
     st = FindOrDie(pending_operations_, driver);
     if (PREDICT_FALSE(pending_operations_.erase(driver) != 1)) {
-      LOG(FATAL) << "Could not remove pending operation from map: "
+      LOG_WITH_PREFIX(FATAL) << "Could not remove pending operation from map: "
           << driver->ToStringUnlocked();
     }
   }
 
-  if (mem_tracker_) {
+  if (mem_tracker_ && st.memory_footprint) {
     mem_tracker_->Release(st.memory_footprint);
+  }
+
+  if (operation_type != OperationType::kEmpty) {
+    if (applied_op_ids) {
+      applied_op_ids->push_back(op_id);
+    } else if (post_tracker_) {
+      post_tracker_(op_id);
+    }
   }
 }
 
@@ -249,15 +256,16 @@ Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const {
     }
     int64_t waited_ms = diff.ToMilliseconds();
     if (waited_ms / complain_ms > num_complaints) {
-      LOG(WARNING) << Substitute("OperationTracker waiting for $0 outstanding operations to"
-                                 " complete now for $1 ms", operations.size(), waited_ms);
+      LOG_WITH_PREFIX(WARNING)
+          << Substitute("OperationTracker waiting for $0 outstanding operations to"
+                        " complete now for $1 ms", operations.size(), waited_ms);
       num_complaints++;
     }
     wait_time = std::min(wait_time * 5 / 4, 1000000);
 
-    LOG(INFO) << "Dumping currently running operations: ";
+    LOG_WITH_PREFIX(INFO) << "Dumping currently running operations: ";
     for (scoped_refptr<OperationDriver> driver : operations) {
-      LOG(INFO) << driver->ToString();
+      LOG_WITH_PREFIX(INFO) << driver->ToString();
     }
     SleepFor(MonoDelta::FromMicroseconds(wait_time));
   }

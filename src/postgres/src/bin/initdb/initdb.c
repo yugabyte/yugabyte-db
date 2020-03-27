@@ -1031,8 +1031,12 @@ test_config_settings(void)
 	 */
 #define MIN_BUFS_FOR_CONNS(nconns)	((nconns) * 10)
 
+	/*
+	 * For YugaByte we try larger number of connections (300) first.
+	 * TODO: we should also consider lowering the shared buffers below
+	 */
 	static const int trial_conns[] = {
-		100, 50, 40, 30, 20
+		300, 100, 50, 40, 30, 20
 	};
 	static const int trial_bufs[] = {
 		16384, 8192, 4096, 3584, 3072, 2560, 2048, 1536,
@@ -1329,92 +1333,94 @@ setup_config(void)
 
 	free(conflines);
 
+	/* Do not create pg_hba.conf in yugabyte */
+	if (!IsYugaByteGlobalClusterInitdb() && !IsYugaByteLocalNodeInitdb()) {
+		/* pg_hba.conf */
 
-	/* pg_hba.conf */
-
-	conflines = readfile(hba_file);
+		conflines = readfile(hba_file);
 
 #ifndef HAVE_UNIX_SOCKETS
-	conflines = filter_lines_with_token(conflines, "@remove-line-for-nolocal@");
+		conflines = filter_lines_with_token(conflines, "@remove-line-for-nolocal@");
 #else
-	conflines = replace_token(conflines, "@remove-line-for-nolocal@", "");
+		conflines = replace_token(conflines, "@remove-line-for-nolocal@", "");
 #endif
 
 #ifdef HAVE_IPV6
 
-	/*
-	 * Probe to see if there is really any platform support for IPv6, and
-	 * comment out the relevant pg_hba line if not.  This avoids runtime
-	 * warnings if getaddrinfo doesn't actually cope with IPv6.  Particularly
-	 * useful on Windows, where executables built on a machine with IPv6 may
-	 * have to run on a machine without.
-	 */
-	{
-		struct addrinfo *gai_result;
-		struct addrinfo hints;
-		int			err = 0;
+		/*
+		* Probe to see if there is really any platform support for IPv6, and
+		* comment out the relevant pg_hba line if not.  This avoids runtime
+		* warnings if getaddrinfo doesn't actually cope with IPv6.  Particularly
+		* useful on Windows, where executables built on a machine with IPv6 may
+		* have to run on a machine without.
+		*/
+		{
+			struct addrinfo *gai_result;
+			struct addrinfo hints;
+			int			err = 0;
 
 #ifdef WIN32
-		/* need to call WSAStartup before calling getaddrinfo */
-		WSADATA		wsaData;
+			/* need to call WSAStartup before calling getaddrinfo */
+			WSADATA		wsaData;
 
-		err = WSAStartup(MAKEWORD(2, 2), &wsaData);
+			err = WSAStartup(MAKEWORD(2, 2), &wsaData);
 #endif
 
-		/* for best results, this code should match parse_hba() */
-		hints.ai_flags = AI_NUMERICHOST;
-		hints.ai_family = AF_UNSPEC;
-		hints.ai_socktype = 0;
-		hints.ai_protocol = 0;
-		hints.ai_addrlen = 0;
-		hints.ai_canonname = NULL;
-		hints.ai_addr = NULL;
-		hints.ai_next = NULL;
+			/* for best results, this code should match parse_hba() */
+			hints.ai_flags = AI_NUMERICHOST;
+			hints.ai_family = AF_UNSPEC;
+			hints.ai_socktype = 0;
+			hints.ai_protocol = 0;
+			hints.ai_addrlen = 0;
+			hints.ai_canonname = NULL;
+			hints.ai_addr = NULL;
+			hints.ai_next = NULL;
 
-		if (err != 0 ||
-			getaddrinfo("::1", NULL, &hints, &gai_result) != 0)
-		{
-			conflines = replace_token(conflines,
-									  "host    all             all             ::1",
-									  "#host    all             all             ::1");
-			conflines = replace_token(conflines,
-									  "host    replication     all             ::1",
-									  "#host    replication     all             ::1");
+			if (err != 0 ||
+				getaddrinfo("::1", NULL, &hints, &gai_result) != 0)
+			{
+				conflines = replace_token(conflines,
+											"host    all             all             ::1",
+											"#host    all             all             ::1");
+				conflines = replace_token(conflines,
+											"host    replication     all             ::1",
+											"#host    replication     all             ::1");
+			}
 		}
-	}
 #else							/* !HAVE_IPV6 */
-	/* If we didn't compile IPV6 support at all, always comment it out */
-	conflines = replace_token(conflines,
-							  "host    all             all             ::1",
-							  "#host    all             all             ::1");
-	conflines = replace_token(conflines,
-							  "host    replication     all             ::1",
-							  "#host    replication     all             ::1");
+		/* If we didn't compile IPV6 support at all, always comment it out */
+		conflines = replace_token(conflines,
+									"host    all             all             ::1",
+									"#host    all             all             ::1");
+		conflines = replace_token(conflines,
+									"host    replication     all             ::1",
+									"#host    replication     all             ::1");
 #endif							/* HAVE_IPV6 */
 
-	/* Replace default authentication methods */
-	conflines = replace_token(conflines,
-							  "@authmethodhost@",
-							  authmethodhost);
-	conflines = replace_token(conflines,
-							  "@authmethodlocal@",
-							  authmethodlocal);
+		/* Replace default authentication methods */
+		conflines = replace_token(conflines,
+									"@authmethodhost@",
+									authmethodhost);
+		conflines = replace_token(conflines,
+									"@authmethodlocal@",
+									authmethodlocal);
 
-	conflines = replace_token(conflines,
-							  "@authcomment@",
-							  (strcmp(authmethodlocal, "trust") == 0 || strcmp(authmethodhost, "trust") == 0) ? AUTHTRUST_WARNING : "");
+		conflines = replace_token(conflines,
+									"@authcomment@",
+									(strcmp(authmethodlocal, "trust") == 0 || strcmp(authmethodhost, "trust") == 0) ? AUTHTRUST_WARNING : "");
 
-	snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
+		snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
 
-	writefile(path, conflines);
-	if (chmod(path, pg_file_create_mode) != 0)
-	{
-		fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
-				progname, path, strerror(errno));
-		exit_nicely();
+		writefile(path, conflines);
+		if (chmod(path, pg_file_create_mode) != 0)
+		{
+			fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
+					progname, path, strerror(errno));
+			exit_nicely();
+		}
+
+		free(conflines);
 	}
-
-	free(conflines);
 
 	/* pg_ident.conf */
 
@@ -1722,7 +1728,12 @@ setup_depend(FILE *cmdfd)
 	};
 
 	for (line = pg_depend_setup; *line != NULL; line++)
+	{
+		/* Skip VACUUM commands in YugaByte mode */
+		if (IsYugaByteGlobalClusterInitdb() && strncmp(*line, "VACUUM", 6) == 0)
+			continue;
 		PG_CMD_PUTS(*line);
+	}
 }
 
 /*
@@ -2178,6 +2189,42 @@ make_postgres(FILE *cmdfd)
 		PG_CMD_PUTS(*line);
 }
 
+
+/*
+ * Create yugabyte database and user.
+ */
+static void
+make_yugabyte(FILE *cmdfd)
+{
+	const char *const *line;
+	static const char *const yugabyte_setup[] = {
+		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'yugabyte';\n\n"
+		"CREATE DATABASE yugabyte;\n\n",
+		"COMMENT ON DATABASE yugabyte IS 'default administrative connection database';\n\n",
+		NULL
+	};
+
+	for (line = yugabyte_setup; *line; line++)
+		PG_CMD_PUTS(*line);
+}
+
+
+/*
+ * Create system_platform database.
+ */
+static void
+make_system_platform(FILE *cmdfd) {
+	const char *const *line;
+	static const char *const system_platform_setup[] = {
+		"CREATE DATABASE system_platform;\n\n",
+		"COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';\n\n",
+		NULL
+	};
+
+	for (line = system_platform_setup; *line; line++)
+		PG_CMD_PUTS(*line);
+}
+
 /*
  * signal handler in case we are interrupted.
  *
@@ -2428,9 +2475,9 @@ setlocales(void)
 		lc_collate = pg_strdup(kYBDefaultLocaleForSortOrder);
 		fprintf(
 			stderr,
-			_("In YugaByte DB, setting LC_COLLATE to %s and all other locale settings to %s "
+			_("In YugabyteDB, setting LC_COLLATE to %s and all other locale settings to %s "
 			  "by default. Locale support will be enhanced as part of addressing "
-			  "https://github.com/YugaByte/yugabyte-db/issues/1557"),
+			  "https://github.com/yugabyte/yugabyte-db/issues/1557"),
 			lc_collate, locale);
 	}
 
@@ -3144,8 +3191,7 @@ initialize_data_directory(void)
 
 	setup_auth(cmdfd);
 
-	if (!IsYugaByteGlobalClusterInitdb())
-		setup_depend(cmdfd);
+	setup_depend(cmdfd);
 
 	/*
 	 * Note that no objects created after setup_depend() will be "pinned".
@@ -3165,16 +3211,16 @@ initialize_data_directory(void)
 		setup_conversion(cmdfd);
 
 		setup_dictionary(cmdfd);
-
-		setup_privileges(cmdfd);
 	}
+
+	setup_privileges(cmdfd);
 
 	setup_schema(cmdfd);
 
-  load_plpgsql(cmdfd);
+	load_plpgsql(cmdfd);
 
-  if (!IsYugaByteGlobalClusterInitdb())
-  {
+	if (!IsYugaByteGlobalClusterInitdb())
+	{
 		/* Do not need to vacuum in YB */
 		vacuum_db(cmdfd);
 	}
@@ -3182,6 +3228,14 @@ initialize_data_directory(void)
 	make_template0(cmdfd);
 
 	make_postgres(cmdfd);
+
+	if (IsYugaByteGlobalClusterInitdb()) {
+		/* Create the yugabyte db and user (defaults for YugaByte/ysqlsh) */
+		make_yugabyte(cmdfd);
+
+		/* Create the system_platform database used by the YugaByte platform UI */
+		make_system_platform(cmdfd);
+	}
 
 	PG_CMD_CLOSE;
 

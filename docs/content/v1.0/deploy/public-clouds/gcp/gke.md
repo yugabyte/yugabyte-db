@@ -34,12 +34,12 @@ Create a Kubernetes cluster if you have not already done so by running the follo
 $ gcloud container clusters create yugabyte
 ```
 
-## 2. Create a YugaByte DB cluster
+## 2. Create a YugabyteDB cluster
 
-Create a YugaByte DB cluster by running the following.
+Create a YugabyteDB cluster by running the following.
 
 ```sh
-$ kubectl create -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
+$ kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
 ```
 
 ```sh
@@ -116,10 +116,10 @@ system_schema  system_auth  system
 
 ## 5. Destroy cluster (optional)
 
-Destroy the YugaByte DB cluster we created above by running the following.
+Destroy the YugabyteDB cluster we created above by running the following.
 
 ```sh
-$ kubectl delete -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
+$ kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
 ```
 
 ```sh

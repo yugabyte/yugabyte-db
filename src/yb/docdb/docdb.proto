@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-syntax = "proto3";
+syntax = "proto2";
 
 package yb.docdb;
 
@@ -20,22 +20,25 @@ import "yb/util/opid.proto";
 option java_package = "org.yb.docdb";
 
 message KeyValuePairPB {
-  bytes key = 1;
-  bytes value = 2;
+  optional bytes key = 1;
+  optional bytes value = 2;
+  optional fixed64 external_hybrid_time = 3;
 }
 
 // A set of key/value pairs to be written into RocksDB.
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
-  TransactionMetadataPB transaction = 2;
-  bool may_have_metadata = 3;
-  // Used by serializable isolation, to store read intents.
+  optional TransactionMetadataPB transaction = 2;
+  optional bool DEPRECATED_may_have_metadata = 3;
+  // Used by serializable isolation transactions and row locking statements to store read intents.
   // In case of read-modify-write operation both read_pairs and write_pairs could present.
   repeated KeyValuePairPB read_pairs = 5;
+  optional RowMarkType row_mark_type = 6;
 }
 
 message ConsensusFrontierPB {
-  OpIdPB op_id = 1;
-  fixed64 hybrid_time = 2;
-  fixed64 history_cutoff = 3;
+  optional OpIdPB op_id = 1;
+  optional fixed64 hybrid_time = 2;
+  optional fixed64 history_cutoff = 3;
+  optional fixed64 hybrid_time_filter = 4;
 }

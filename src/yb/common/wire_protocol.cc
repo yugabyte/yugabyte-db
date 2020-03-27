@@ -40,6 +40,8 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -47,6 +49,8 @@
 #include "yb/util/safe_math.h"
 #include "yb/util/slice.h"
 #include "yb/util/enums.h"
+
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using google::protobuf::RepeatedPtrField;
 using std::vector;
@@ -141,38 +145,97 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     pb->set_message(status.message().cdata(), status.message().size());
   }
 
-  if (status.IsQLError()) {
-    pb->set_ql_error_code(status.error_code());
-  } else if (status.error_code() != -1) {
-    pb->set_posix_code(status.error_code());
+  auto error_codes = status.ErrorCodesSlice();
+  pb->set_errors(error_codes.data(), error_codes.size());
+  // We always has 0 as terminating byte for error codes, so non empty error codes would have
+  // more than one bytes.
+  if (error_codes.size() > 1) {
+    // Set old protobuf fields for backward compatibility.
+    Errno err(status);
+    if (err != 0) {
+      pb->set_posix_code(err.value());
+    }
+    const auto* ql_error_data = status.ErrorData(ql::QLError::kCategory);
+    if (ql_error_data) {
+      pb->set_ql_error_code(static_cast<int64_t>(ql::QLErrorTag::Decode(ql_error_data)));
+    }
   }
 
   pb->set_source_file(status.file_name());
   pb->set_source_line(status.line_number());
 }
 
-Status StatusFromPB(const AppStatusPB& pb) {
-  int error_code = pb.has_posix_code() ? pb.posix_code() : -1;
+struct WireProtocolTabletServerErrorTag {
+  static constexpr uint8_t kCategory = 5;
 
+  enum Value {};
+
+  static size_t EncodedSize(Value value) {
+    return sizeof(Value);
+  }
+
+  static uint8_t* Encode(Value value, uint8_t* out) {
+    Store<Value, LittleEndian>(out, value);
+    return out + sizeof(Value);
+  }
+};
+
+// Backward compatibility.
+Status StatusFromOldPB(const AppStatusPB& pb) {
+  auto code = kErrorCodeToStatus[pb.code()];
+
+  auto status_factory = [code, &pb](const Slice& errors) {
+    return Status(
+        code, pb.source_file().c_str(), pb.source_line(), pb.message(), errors, DupFileName::kTrue);
+  };
+
+  #define ENCODE_ERROR_AND_RETURN_STATUS(Tag, value) \
+    auto error_code = static_cast<Tag::Value>((value)); \
+    auto size = 2 + Tag::EncodedSize(error_code); \
+    uint8_t* buffer = static_cast<uint8_t*>(alloca(size)); \
+    buffer[0] = Tag::kCategory; \
+    Tag::Encode(error_code, buffer + 1); \
+    buffer[size - 1] = 0; \
+    return status_factory(Slice(buffer, size)); \
+    /**/
+
+  if (code == Status::kQLError) {
+    if (!pb.has_ql_error_code()) {
+      return STATUS(InternalError, "Query error code missing");
+    }
+
+    ENCODE_ERROR_AND_RETURN_STATUS(ql::QLErrorTag, pb.ql_error_code())
+  } else if (pb.has_posix_code()) {
+    if (code == Status::kIllegalState || code == Status::kLeaderNotReadyToServe ||
+        code == Status::kLeaderHasNoLease) {
+
+      ENCODE_ERROR_AND_RETURN_STATUS(WireProtocolTabletServerErrorTag, pb.posix_code())
+    } else {
+      ENCODE_ERROR_AND_RETURN_STATUS(ErrnoTag, pb.posix_code())
+    }
+  }
+
+  return Status(code, pb.source_file().c_str(), pb.source_line(), pb.message(), "",
+                nullptr /* error */, DupFileName::kTrue);
+  #undef ENCODE_ERROR_AND_RETURN_STATUS
+}
+
+Status StatusFromPB(const AppStatusPB& pb) {
   if (pb.code() == AppStatusPB::OK) {
     return Status::OK();
   } else if (pb.code() == AppStatusPB::UNKNOWN_ERROR ||
              static_cast<size_t>(pb.code()) >= kErrorCodeToStatus.size()) {
     LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();
     return STATUS_FORMAT(
-        RuntimeError, "($0 unknown): $1, $2", pb.code(), pb.message(), error_code);
+        RuntimeError, "($0 unknown): $1", pb.code(), pb.message());
   }
 
-  auto code = kErrorCodeToStatus[pb.code()];
-  if (code == Status::kQLError) {
-    if (!pb.has_ql_error_code()) {
-      return STATUS(InternalError, "Query error code missing");
-    }
-    error_code = pb.ql_error_code();
+  if (pb.has_errors()) {
+    return Status(kErrorCodeToStatus[pb.code()], pb.source_file().c_str(), pb.source_line(),
+                  pb.message(), pb.errors(), DupFileName::kTrue);
   }
 
-  return Status(code, pb.source_file().c_str(), pb.source_line(), pb.message(), "", error_code,
-                DupFileName::kTrue);
+  return StatusFromOldPB(pb);
 }
 
 void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb) {
@@ -205,6 +268,13 @@ Status EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint)
 void HostPortsToPBs(const std::vector<HostPort>& addrs, RepeatedPtrField<HostPortPB>* pbs) {
   for (const auto& addr : addrs) {
     HostPortToPB(addr, pbs->Add());
+  }
+}
+
+void HostPortsFromPBs(const RepeatedPtrField<HostPortPB>& pbs, std::vector<HostPort>* addrs) {
+  addrs->reserve(pbs.size());
+  for (const auto& pb : pbs) {
+    addrs->push_back(HostPortFromPB(pb));
   }
 }
 
@@ -276,31 +346,15 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
     pb->set_is_key(true);
     pb->set_is_hash_key(true);
   }
-
-  // Set JSON attribute path (for c->'a'->>'b' case).
-  for (const auto& op : col_schema.json_ops()) {
-    QLJsonOperationPB* const json_op_pb = pb->add_json_operations();
-    json_op_pb->set_json_operator(op.first);
-    *(json_op_pb->mutable_operand()->mutable_value()) = op.second;
-  }
 }
 
-ColumnSchema::QLJsonOperations JsonOpsFromPB(
-    const RepeatedPtrField<QLJsonOperationPB>& json_ops) {
-  ColumnSchema::QLJsonOperations op_vec;
-  for (const QLJsonOperationPB& pb : json_ops) {
-    op_vec.push_back(ColumnSchema::QLJsonOperation(pb.json_operator(), pb.operand().value()));
-  }
-  return op_vec;
-}
 
 ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(), pb.order(),
-                      ColumnSchema::SortingType(pb.sorting_type()),
-                      JsonOpsFromPB(pb.json_operations()));
+                      ColumnSchema::SortingType(pb.sorting_type()));
 }
 
 CHECKED_STATUS ColumnPBsToColumnTuple(

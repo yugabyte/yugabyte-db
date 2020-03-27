@@ -32,7 +32,7 @@ $ gcloud config get-value compute/zone
 
 ## 2. Create a regional cluster
 
-Choose a region that has at least 3 zones in it. We will deploy a multi-zone YugaByte DB cluster in `us-west1` region in this tutorial. To list the various regions and the zones in them run the following command.
+Choose a region that has at least 3 zones in it. We will deploy a multi-zone YugabyteDB cluster in `us-west1` region in this tutorial. To list the various regions and the zones in them run the following command.
 
 ```sh
 $ gcloud compute zones list
@@ -48,7 +48,7 @@ us-west1-a                 us-west1                 UP
 ```
 
 
-Create the multi-zone regional cluster. Remember to set --num-nodes to 1 since we just need one node per region. We are just creating the Kubernetes master in this configuration, each node will have one core. We will deploy a separate node pool for the YugaByte machines. This is to allow the application to be deployed in a separate node pool in the same GKE kubernetes cluster.
+Create the multi-zone regional cluster. Remember to set --num-nodes to 1 since we just need one node per region. We are just creating the Kubernetes master in this configuration, each node will have one core. We will deploy a separate node pool for the Yugabyte machines. This is to allow the application to be deployed in a separate node pool in the same GKE kubernetes cluster.
 
 ```sh
 $ gcloud beta container clusters create yugabyte-us-west1 --region us-west1 --num-nodes 1
@@ -79,7 +79,7 @@ node-pool-multi-zone-yb  n1-standard-8  100           1.8.8-gke.0
 ```
 
 
-Select the labels for the nodes with local SSDs. You should see labels showing their region and zone. As shown below, we will setup the YugaByte DB cluster in region `us-west1` across zones `us-west1-a`, `us-west1-b` and `us-west1-c`.
+Select the labels for the nodes with local SSDs. You should see labels showing their region and zone. As shown below, we will setup the YugabyteDB cluster in region `us-west1` across zones `us-west1-a`, `us-west1-b` and `us-west1-c`.
 
 ```sh
 $ kubectl get nodes --selector cloud.google.com/gke-local-ssd=true --show-labels

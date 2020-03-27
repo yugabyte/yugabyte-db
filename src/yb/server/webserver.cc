@@ -73,6 +73,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
+#include "yb/util/shared_lock.h"
 
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
@@ -291,7 +292,7 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
                                     struct sq_request_info* request_info) {
   PathHandler* handler;
   {
-    boost::shared_lock<boost::shared_mutex> lock(lock_);
+    SharedLock<boost::shared_mutex> lock(lock_);
     PathHandlerMap::const_iterator it = path_handlers_.find(request_info->uri);
     if (it == path_handlers_.end()) {
       // Let Mongoose deal with this request; returning NULL will fall through
@@ -376,11 +377,13 @@ int Webserver::RunPathHandler(const PathHandler& handler,
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"
               "Content-Type: text/plain\r\n"
               "Content-Length: %zd\r\n"
+              "Access-Control-Allow-Origin: *\r\n"
               "\r\n", str.length());
   } else {
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"
               "Content-Type: text/html\r\n"
               "Content-Length: %zd\r\n"
+              "Access-Control-Allow-Origin: *\r\n"
               "\r\n", str.length());
   }
 
@@ -407,7 +410,7 @@ void Webserver::RegisterPathHandler(const string& path,
 const char* const PAGE_HEADER = "<!DOCTYPE html>"
 "<html>"
 "  <head>"
-"    <title>YugaByte DB</title>"
+"    <title>YugabyteDB</title>"
 "    <link rel='shortcut icon' href='/favicon.ico'>"
 "    <link href='/bootstrap/css/bootstrap.min.css' rel='stylesheet' media='screen' />"
 "    <link href='/bootstrap/css/bootstrap-theme.min.css' rel='stylesheet' media='screen' />"
@@ -421,7 +424,7 @@ const char* const PAGE_HEADER = "<!DOCTYPE html>"
 static const char* const NAVIGATION_BAR_PREFIX =
 "  <nav class=\"navbar navbar-fixed-top navbar-inverse sidebar-wrapper\" role=\"navigation\">"
 "    <ul class=\"nav sidebar-nav\">"
-"      <li><a href='/'><img src='/logo.png' alt='YugaByte DB' class='nav-logo' /></a></li>"
+"      <li><a href='/'><img src='/logo.png' alt='YugabyteDB' class='nav-logo' /></a></li>"
 "\n";
 
 static const char* const NAVIGATION_BAR_SUFFIX =
@@ -461,7 +464,7 @@ void Webserver::set_footer_html(const std::string& html) {
 }
 
 void Webserver::BootstrapPageFooter(stringstream* output) {
-  boost::shared_lock<boost::shared_mutex> l(lock_);
+  SharedLock<boost::shared_mutex> l(lock_);
   *output << "<div class='yb-bottom-spacer'></div></div>\n"; // end bootstrap 'container' div
   if (!footer_html_.empty()) {
     *output << "<footer class='footer'><div class='yb-footer container text-muted'>";

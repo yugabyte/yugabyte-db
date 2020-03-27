@@ -79,6 +79,8 @@ class SkipListBase {
   // Returns true iff an entry that compares equal to key is in the list.
   bool Contains(Key key) const;
 
+  bool Erase(Key key, Comparator cmp);
+
   // Return estimated number of entries smaller than `key`.
   uint64_t EstimateCount(Key key) const;
 
@@ -161,6 +163,9 @@ class SkipListBase {
   Node** prev_;
   int32_t prev_height_;
 
+  // Whether prev_ is valid, prev_ is invalidated during erase.
+  bool prev_valid_ = true;
+
   int GetMaxHeight() const {
     return max_height_.load(std::memory_order_relaxed);
   }
@@ -198,7 +203,7 @@ struct SkipListNode {
     DCHECK_GE(n, 0);
     // Use an 'acquire load' so that we observe a fully initialized
     // version of the returned Node.
-    return (next_[n].load(std::memory_order_acquire));
+    return next_[n].load(std::memory_order_acquire);
   }
 
   void SetNext(int n, SkipListNode* x) {
@@ -449,10 +454,10 @@ uint64_t SkipListBase<Key, Comparator, NodeType>::EstimateCount(Key key) const {
 template<class Key, class Comparator, class NodeType>
 void SkipListBase<Key, Comparator, NodeType>::PrepareInsert(Key key) {
   // fast path for sequential insertion
-  if (!KeyIsAfterNode(key, prev_[0]->NoBarrier_Next(0)) &&
+  if (prev_valid_ && !KeyIsAfterNode(key, prev_[0]->NoBarrier_Next(0)) &&
       (prev_[0] == head_ || KeyIsAfterNode(key, prev_[0]))) {
     DCHECK(prev_[0] != head_ || (prev_height_ == 1 && GetMaxHeight() == 1))
-        << "(prev_height_: " << prev_height_ << ", GetMaxHeight(): " << GetMaxHeight();
+        << "prev_height_: " << prev_height_ << ", GetMaxHeight(): " << GetMaxHeight();
 
     // Outside of this method prev_[1..max_height_] is the predecessor
     // of prev_[0], and prev_height_ refers to prev_[0].  Inside Insert
@@ -466,6 +471,7 @@ void SkipListBase<Key, Comparator, NodeType>::PrepareInsert(Key key) {
     // optimization for architectures where memory_order_acquire needs
     // a synchronization instruction.  Doesn't matter on x86
     FindLessThan(key, prev_);
+    prev_valid_ = true;
   }
 
   // Our data structure does not allow duplicate insertion
@@ -490,8 +496,7 @@ SkipListBase<Key, Comparator, NodeType>::SkipListBase(
   // Allocate the prev_ Node* array, directly from the passed-in allocator.
   // prev_ does not need to be freed, as its life cycle is tied up with
   // the allocator as a whole.
-  prev_ = reinterpret_cast<Node**>(
-            allocator_->AllocateAligned(sizeof(Node*) * kMaxHeight_));
+  prev_ = reinterpret_cast<Node**>(allocator_->AllocateAligned(sizeof(Node*) * kMaxHeight_));
   for (int i = 0; i < kMaxHeight_; i++) {
     head_->SetNext(i, nullptr);
     prev_[i] = head_;
@@ -531,11 +536,27 @@ void SkipListBase<Key, Comparator, NodeType>::CompleteInsert(NodeType* node, int
 template<class Key, class Comparator, class NodeType>
 bool SkipListBase<Key, Comparator, NodeType>::Contains(Key key) const {
   Node* x = FindGreaterOrEqual(key);
-  if (x != nullptr && Equal(key, x->key)) {
-    return true;
-  } else {
+  return x != nullptr && Equal(key, x->key);
+}
+
+template<class Key, class Comparator, class NodeType>
+bool SkipListBase<Key, Comparator, NodeType>::Erase(Key key, Comparator cmp) {
+  auto prev = static_cast<Node**>(alloca(sizeof(Node*) * kMaxHeight_));
+  auto node = FindLessThan(key, prev);
+  node = node->Next(0);
+  if (node == nullptr || cmp(key, node->key) != 0) {
     return false;
   }
+
+  for (int level = max_height_; --level >= 0;) {
+    if (prev[level]->NoBarrier_Next(level) == node) {
+      prev[level]->SetNext(level, node->Next(level));
+    }
+  }
+
+  prev_valid_ = false;
+
+  return true;
 }
 
 struct SingleWriterInlineSkipListNode {
@@ -543,7 +564,7 @@ struct SingleWriterInlineSkipListNode {
   char key[0];
 
   explicit SingleWriterInlineSkipListNode(int height) {
-    memcpy(&next_[0], &height, sizeof(int));
+    memcpy(static_cast<void*>(&next_[0]), &height, sizeof(int));
   }
 
   // Accessors/mutators for links.  Wrapped in methods so we can add

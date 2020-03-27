@@ -133,6 +133,17 @@ IndexNext(IndexScanState *node)
 	 */
 	if (IsYugaByteEnabled()) {
 		scandesc->yb_exec_params = &estate->yb_exec_params;
+		// Add row marks.
+		scandesc->yb_exec_params->rowmark = -1;
+		ListCell   *l;
+		foreach(l, estate->es_rowMarks) {
+			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+			// Do not propogate non-row-locking row marks.
+			if (erm->markType != ROW_MARK_REFERENCE &&
+				erm->markType != ROW_MARK_COPY)
+				scandesc->yb_exec_params->rowmark = erm->markType;
+			break;
+		}
 	}
 
 	/*
@@ -1069,7 +1080,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 			SortSupport orderbysort = &indexstate->iss_SortSupport[i];
 
 			/* Initialize sort support */
-			orderbysort->ssup_cxt = CurrentMemoryContext;
+			orderbysort->ssup_cxt = GetCurrentMemoryContext();
 			orderbysort->ssup_collation = orderbyColl;
 			/* See cmp_orderbyvals() comments on NULLS LAST */
 			orderbysort->ssup_nulls_first = false;

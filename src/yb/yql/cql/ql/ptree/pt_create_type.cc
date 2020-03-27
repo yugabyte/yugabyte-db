@@ -55,8 +55,8 @@ CHECKED_STATUS PTTypeField::Analyze(SemContext *sem_context) {
                               ErrorCode::INVALID_TYPE_DEFINITION);
   }
 
-  if (!datatype_->ql_type()->GetUserDefinedTypeIds().empty()) {
-    return sem_context->Error(this, "UDT field types cannot refer to other user-defined types",
+  if (!datatype_->ql_type()->GetUserDefinedTypeIds().empty() && !datatype_->ql_type()->IsFrozen()) {
+    return sem_context->Error(this, "A user-defined type cannot contain non-frozen UDTs",
                               ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
@@ -88,10 +88,12 @@ CHECKED_STATUS PTCreateType::Analyze(SemContext *sem_context) {
   // Processing type name.
   RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TYPE));
 
-  // TODO(hector): Check whether a type is created globally. If so, this is the right check.
   if (FLAGS_use_cassandra_authentication) {
-    RETURN_NOT_OK(sem_context->CheckHasAllKeyspacesPermission(loc(),
-        PermissionType::CREATE_PERMISSION));
+    if (!sem_context->CheckHasAllKeyspacesPermission(loc(),
+        PermissionType::CREATE_PERMISSION).ok()) {
+      RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(),
+          PermissionType::CREATE_PERMISSION, yb_type_name().namespace_name()));
+    }
   }
 
   // Save context state, and set "this" as current column in the context.

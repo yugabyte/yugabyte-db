@@ -4,7 +4,7 @@ linkTitle: Quick Start
 description: Community Edition Quick Start
 image: /images/section_icons/index/quick_start.png
 
-headcontent: The easiest way to test YugaByte DB's basic features and APIs is to create a local multi-node cluster on a single host.
+headcontent: The easiest way to test YugabyteDB's basic features and APIs is to create a local multi-node cluster on a single host.
 type: page
 menu:
   v1.1:
@@ -24,7 +24,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
     <a class="section-link icon-offset" href="install/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">1. Install YugaByte DB</div>
+        <div class="title">1. Install YugabyteDB</div>
       </div>
       <div class="body">
         Install the binary on macOS/Linux or use Docker/Kubernetes to run on any OS of choice.
@@ -51,7 +51,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
         <div class="title">3. Test YCQL API</div>
       </div>
       <div class="body">
-        Test Cassandra-compatible YugaByte Cloud Query Language (YCQL) API.
+        Test Cassandra-compatible Yugabyte Cloud Query Language (YCQL) API.
       </div>
     </a>
   </div>
@@ -63,7 +63,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
         <div class="title">4. Test YEDIS API</div>
       </div>
       <div class="body">
-        Test Redis-compatible YugaByte Dictionary Service (YEDIS) API.
+        Test Redis-compatible Yugabyte Dictionary Service (YEDIS) API.
       </div>
     </a>
   </div>
@@ -75,7 +75,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
         <div class="title">5. Test YSQL API</div>
       </div>
       <div class="body">
-        Test PostgreSQL-compatible YugaByte SQL (YSQL) API.
+        Test PostgreSQL-compatible Yugabyte SQL (YSQL) API.
       </div>
     </a>
   </div>

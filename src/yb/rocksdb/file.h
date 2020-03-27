@@ -1,5 +1,4 @@
-//  Copyright (c) Yugabyte, Inc.  All rights reserved.
-
+// Copyright (c) YugaByte, Inc.
 //
 // The following only applies to changes made to this file as part of YugaByte development.
 //
@@ -15,8 +14,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_FILE_H
-#define ROCKSDB_INCLUDE_ROCKSDB_FILE_H
+#ifndef YB_ROCKSDB_FILE_H
+#define YB_ROCKSDB_FILE_H
 
 namespace rocksdb {
 
@@ -26,10 +25,7 @@ class File {
 
   // Tries to get an unique ID for this file that will be the same each time
   // the file is opened (and will stay the same while the file is open).
-  // Furthermore, it tries to make this ID at most "max_size" bytes. If such an
-  // ID can be created this function returns the length of the ID and places it
-  // in "id"; otherwise, this function returns 0, in which case "id"
-  // may not have been modified.
+  // id should have at least capacity of kPosixFileUniqueIdMaxSize to hold the result.
   //
   // This function guarantees, for IDs from a given environment, two unique ids
   // cannot be made equal to eachother by adding arbitrary bytes to one of
@@ -39,9 +35,9 @@ class File {
   // a single varint.
   //
   // Note: these IDs are only valid for the duration of the process.
-  virtual size_t GetUniqueId(char *id, size_t max_size) const = 0;
+  virtual size_t GetUniqueId(char *id) const = 0;
 };
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_INCLUDE_ROCKSDB_FILE_H
+#endif  // YB_ROCKSDB_FILE_H

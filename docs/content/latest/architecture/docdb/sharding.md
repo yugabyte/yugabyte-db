@@ -1,7 +1,8 @@
 ---
-title: Sharding
+title: Hash and range sharding in DocDB
+headerTitle: Sharding
 linkTitle: Sharding
-description: Sharding into Tablets
+description: Learn how YugabyteDB uses hash and range sharding to manage tables.
 aliases:
   - /latest/architecture/docdb/sharding/
   - /latest/architecture/concepts/sharding/
@@ -12,24 +13,17 @@ menu:
     parent: docdb
     weight: 1142
 isTocNested: false
-showAsideToc: false
+showAsideToc: true
 ---
 
 User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as
 **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. This is shown in the figure below.
 
-![Partitioning a table into tablets](/images/architecture/partitioning-table-into-tablets.png)
+![Sharding a table into tablets](/images/architecture/partitioning-table-into-tablets.png)
 
+## Hash sharding
 
-For data distribution purposes, a hash based partitioning scheme is used.
-
-{{< note title="Note" >}}
-In order to enable use cases such as ordered secondary indexes, support for range-partitioned tables is in the works.
-{{< /note >}}
-
-## Hash Partitioning Tables
-
-The hash space for hash partitioned YugaByte DB tables is the 2-byte range from 0x0000 to 0xFFFF. Such
+The hash space for hash-sharded YugabyteDB tables is the 2-byte range from 0x0000 to 0xFFFF. Such
 a table may therefore have at most 64K tablets. We expect this to be sufficient in practice even for
 very large data sets or cluster sizes.
 
@@ -38,7 +32,7 @@ As an example, for a table with 16 tablets the overall hash space [0x0000 to 0xF
 
 ![tablet_overview](/images/architecture/tablet_overview.png)
 
-Read/write operations are processed by converting the primary key into an internal key and its hash
+Read and write operations are processed by converting the primary key into an internal key and its hash
 value, and determining what tablet the operation should be routed to.
 
 The figure below illustrates this.
@@ -53,3 +47,4 @@ The insert/update/upsert by the end user is processed by serializing and hashing
 
 ![tablet_hash_2](/images/architecture/tablet_hash_2.png)
 
+## Range sharding

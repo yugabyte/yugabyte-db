@@ -30,6 +30,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/util/logging.h"
+#include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 

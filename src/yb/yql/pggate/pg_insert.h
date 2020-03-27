@@ -34,18 +34,15 @@ class PgInsert : public PgDmlWrite {
   typedef std::unique_ptr<const PgInsert> UniPtrConst;
 
   // Constructors.
-  PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_op_txn);
-  virtual ~PgInsert();
+  PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_row_txn)
+      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn) {}
 
   StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
 
-  // Prepare write operations.
-  CHECKED_STATUS Prepare() override;
-
  private:
-  void AllocWriteRequest() override;
-
-  std::unique_ptr<PgGenerateRowId> generate_rowid_;
+  std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
+    return target_desc_->NewPgsqlInsert();
+  }
 };
 
 }  // namespace pggate

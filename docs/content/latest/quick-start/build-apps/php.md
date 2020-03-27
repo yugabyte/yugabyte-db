@@ -1,7 +1,7 @@
 ---
-title: PHP
+title: Build a PHP application
 linkTitle: PHP
-description: Build a PHP App
+description: Build a PHP application
 aliases:
   - /develop/client-drivers/php/
   - /latest/develop/client-drivers/php/
@@ -10,6 +10,7 @@ menu:
     identifier: build-apps-php
     parent: build-apps
     weight: 555
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

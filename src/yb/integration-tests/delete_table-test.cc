@@ -261,6 +261,30 @@ void DeleteTableTest::DeleteTabletWithRetries(const TServerDetails* ts,
   ASSERT_OK(s);
 }
 
+TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
+  vector<string> tserver_flags, master_flags;
+  master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=5000");
+  // Disable tablet delete operations.
+  tserver_flags.push_back("--rpc_delete_tablet_fail=true");
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 3));
+  // Create a table on the cluster. We're just using TestWorkload
+  // as a convenient way to create it.
+  auto test_workload = TestWorkload(cluster_.get());
+  test_workload.Setup();
+
+  // The table should have replicas on all three tservers.
+  ASSERT_OK(inspect_->WaitForReplicaCount(3));
+
+  client_->TEST_set_admin_operation_timeout(MonoDelta::FromSeconds(10));
+
+  // Delete the table.
+  DeleteTable(TestWorkloadOptions::kDefaultTableName);
+
+  // Wait for the load balancer to report no pending deletes after the delete table fails.
+  ASSERT_OK(WaitFor([&] () { return client_->IsLoadBalanced(3); },
+            MonoDelta::FromSeconds(30), "IsLoadBalanced"));
+}
+
 // Test deleting an empty table, and ensure that the tablets get removed,
 // and the master no longer shows the table as existing.
 TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
@@ -419,7 +443,8 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
   int n_iters = AllowSlowTests() ? 20 : 1;
   for (int i = 0; i < n_iters; i++) {
     TestWorkload workload(cluster_.get());
-    workload.set_table_name(YBTableName("my_keyspace", Substitute("table-$0", i)));
+    workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace",
+        Substitute("table-$0", i)));
 
     // We'll delete the table underneath the writers, so we expcted
     // a NotFound error during the writes.
@@ -453,6 +478,37 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
     cluster_->Shutdown();
     ASSERT_OK(cluster_->Restart());
     ASSERT_OK(inspect_->WaitForNoData());
+  }
+}
+
+TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
+  ASSERT_NO_FATALS(StartCluster());
+  constexpr auto kNumIters = 10;
+  for (int iter = 0; iter < kNumIters; iter++) {
+    TestWorkload workload(cluster_.get());
+    workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace", Format("table-$0", iter)));
+
+    // We'll delete the table underneath the writers, so we expect a NotFound error during the
+    // writes.
+    workload.set_not_found_allowed(true);
+    workload.Setup();
+    workload.Start();
+
+    AssertLoggedWaitFor(
+        [&workload] { return workload.rows_inserted() > 100; }, 60s,
+        "Waiting until we have inserted some data...", 10ms);
+
+    auto tablets = inspect_->ListTabletsWithDataOnTS(1);
+    ASSERT_EQ(1, tablets.size());
+    const auto& tablet_id = tablets[0];
+
+    ASSERT_NO_FATALS(DeleteTable(workload.table_name()));
+    for (int ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ts_idx++) {
+      ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(ts_idx, tablet_id, SUPERBLOCK_EXPECTED));
+    }
+
+    workload.StopAndJoin();
+    cluster_->AssertNoCrashes();
   }
 }
 
@@ -826,6 +882,60 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
 }
 
+// Verify that memtable is not flushed when tablet is deleted.
+TEST_F(DeleteTableTest, TestMemtableNoFlushOnTabletDelete) {
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+
+  const int kNumTabletServers = 1;
+  vector<string> ts_flags, master_flags;
+  master_flags.push_back("--replication_factor=1");
+  master_flags.push_back("--yb_num_shards_per_tserver=1");
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
+
+  const int kTsIndex = 0;  // We'll test with the first TS.
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
+
+  // Create the table.
+  TestWorkload workload(cluster_.get());
+  workload.Setup();
+
+  // Figure out the tablet ids of the created tablets.
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
+  const string& tablet_id = tablets[0].tablet_status().tablet_id();
+
+  // Wait until all replicas are up and running.
+  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
+                                            tablet_id, timeout));
+  }
+
+  // Elect TS 0 as leader.
+  const int kLeaderIndex = 0;
+  const string kLeaderUuid = cluster_->tablet_server(kLeaderIndex)->uuid();
+  TServerDetails* leader = ts_map_[kLeaderUuid].get();
+  ASSERT_OK(itest::StartElection(leader, tablet_id, timeout));
+  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, 1));
+
+  // Now write a single row to the leader.
+  LOG(INFO) << "Writing a row";
+  ASSERT_OK(WriteSimpleTestRow(leader, tablet_id, 1, 1, "hola, world", MonoDelta::FromSeconds(5)));
+
+  // Set test flag to detect that memtable should not be flushed on table delete.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kLeaderIndex),
+        "TEST_rocksdb_crash_on_flush", "true"));
+
+  // Now delete the tablet.
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_DELETED, boost::none, timeout));
+
+  // Sleep to allow background memtable flush to be scheduled (in case).
+  SleepFor(MonoDelta::FromMilliseconds(5 * 1000));
+
+  // Unset test flag to allow other memtable flushes (if any) in teardown
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kLeaderIndex),
+        "TEST_rocksdb_crash_on_flush", "false"));
+}
+
 // Test that orphaned blocks are cleared from the superblock when a tablet is tombstoned.
 TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   const MonoDelta timeout = MonoDelta::FromSeconds(30);
@@ -1022,11 +1132,12 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   // injecting any faults, then we delete the second tablet while exercising
   // several fault injection points.
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
-      TestWorkloadOptions::kDefaultTableName.namespace_name()));
+      TestWorkloadOptions::kDefaultTableName.namespace_name(),
+      TestWorkloadOptions::kDefaultTableName.namespace_type()));
   const int kNumTablets = 2;
   Schema schema(GetSimpleTestSchema());
   client::YBSchema client_schema(client::YBSchemaFromSchema(schema));
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(TestWorkloadOptions::kDefaultTableName)
                           .num_tablets(kNumTablets)
                           .schema(&client_schema)

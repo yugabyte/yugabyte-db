@@ -25,6 +25,7 @@ import com.datastax.driver.core.Row;
 
 import org.junit.Test;
 import org.yb.client.TestUtils;
+import org.json.JSONObject;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -424,17 +425,31 @@ public class TestBindVariable extends BaseCQLTest {
     setupTable("test_bind", 0 /* num_rows */);
 
     {
-      // insert data into the test table. Bind by position.
+      // Insert data into the test table. Bind by position.
       String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
-                           "VALUES (?, ?, ?, ?, ?, ?);";
+                          "VALUES (?, ?, ?, ?, ?, ?);";
       PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt.bind(new Integer(1), "h2", new Integer(1), "r1", new Integer(1), "v1"));
+
+      try {
+        session.execute(stmt.bind(null, "h2", new Integer(1), "r1", new Integer(1), "v1"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null hash PK");
+      } catch (java.lang.NullPointerException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      try {
+        session.execute(stmt.bind(new Integer(1), "h2", null, "r1", new Integer(1), "v1"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null range PK");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
     }
 
     {
-      // insert data into the test table. Bind by name.
+      // Insert data into the test table. Bind by name.
       String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
-                           "VALUES (?, ?, ?, ?, ?, ?);";
+                          "VALUES (?, ?, ?, ?, ?, ?);";
       PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt
                       .bind()
@@ -444,12 +459,40 @@ public class TestBindVariable extends BaseCQLTest {
                       .setString("r2", "r2")
                       .setInt("v1", 2)
                       .setString("v2", "v2"));
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setToNull("h1")  // NULL hash key
+                .setString("h2", "h2")
+                .setInt("r1", 2)
+                .setString("r2", "r2")
+                .setInt("v1", 2)
+                .setString("v2", "v2"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null hash PK");
+      } catch (java.lang.NullPointerException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setInt("h1", 1)
+                .setString("h2", "h2")
+                .setToNull("r1") // NULL range key
+                .setString("r2", "r2")
+                .setInt("v1", 2)
+                .setString("v2", "v2"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null range PK");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
     }
 
     {
-      // insert data into the test table. Bind by name with named markers.
+      // Insert data into the test table. Bind by name with named markers.
       String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
-                           "VALUES (:b1, :b2, :b3, :b4, :b5, :b6);";
+                          "VALUES (:b1, :b2, :b3, :b4, :b5, :b6);";
       PreparedStatement stmt = session.prepare(insertStmt);
       session.execute(stmt
                       .bind()
@@ -459,15 +502,86 @@ public class TestBindVariable extends BaseCQLTest {
                       .setString("b4", "r3")
                       .setInt("b5", 3)
                       .setString("b6", "v3"));
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setToNull("b1") // NULL hash key
+                .setString("b2", "h2")
+                .setInt("b3", 3)
+                .setString("b4", "r3")
+                .setInt("b5", 3)
+                .setString("b6", "v3"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null hash PK");
+      } catch (java.lang.NullPointerException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setInt("b1", 1)
+                .setString("b2", "h2")
+                .setToNull("b3") // NULL range key
+                .setString("b4", "r3")
+                .setInt("b5", 3)
+                .setString("b6", "v3"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null range PK");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
+    }
+
+    {
+      // Insert data into the test table. Bind by column index.
+      String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
+                          "VALUES (?, ?, ?, ?, ?, ?);";
+      PreparedStatement stmt = session.prepare(insertStmt);
+      session.execute(stmt
+              .bind()
+              .setInt(0, 1)
+              .setString(1, "h2")
+              .setInt(2, 4)
+              .setString(3, "r4")
+              .setInt(4, 4)
+              .setString(5, "v4"));
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setToNull(0) // NULL hash key
+                .setString(1, "h2")
+                .setInt(2, 4)
+                .setString(3, "r4")
+                .setInt(4, 4)
+                .setString(5, "v4"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null hash PK");
+      } catch (java.lang.NullPointerException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      try {
+        session.execute(stmt
+                .bind()
+                .setInt(0, 1)
+                .setString(1, "h2")
+                .setToNull(2) // NULL range key
+                .setString(3, "r4")
+                .setInt(4, 4)
+                .setString(5, "v4"));
+        fail("Statement \"" + insertStmt + "\" did not fail with Null range PK");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
     }
 
     {
       // Select data from the test table.
-      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                           " WHERE h1 = 1 AND h2 = 'h2';";
+      String selectStmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind " +
+                          "WHERE h1 = 1 AND h2 = 'h2';";
       ResultSet rs = session.execute(selectStmt);
 
-      for (int i = 1; i <= 3; i++) {
+      for (int i = 1; i <= 4; i++) {
         Row row = rs.one();
         // Assert exactly 1 row is returned each time with expected column values.
         assertNotNull(row);
@@ -478,6 +592,141 @@ public class TestBindVariable extends BaseCQLTest {
         assertEquals(i, row.getInt(4));
         assertEquals("v" + i, row.getString(5));
       }
+    }
+
+    LOG.info("End test");
+  }
+
+  @Test
+  public void testPrepareInsertBindLongJson() throws Exception {
+    LOG.info("Begin test");
+
+    // Create table
+    session.execute("CREATE TABLE test_bind (id int PRIMARY KEY, data jsonb, v int);");
+
+    // Insert data into the test table via prepared statement. Bind by name.
+    String insertStmt = "INSERT INTO test_bind (id, data, v) VALUES (?, ?, ?);";
+    PreparedStatement stmt = session.prepare(insertStmt);
+
+    {
+      session.execute(stmt.bind().setInt("id", 0)
+                                 .setString("data", "{ \"a\" : 1 }")
+                                 .setInt("v", 100));
+
+      // Select data from the test table.
+      ResultSet rs = session.execute("SELECT * FROM test_bind WHERE id = 0;");
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(0, row.getInt(0));
+      assertEquals("{\"a\":1}", row.getJson("data"));
+      assertEquals(100, row.getInt(2));
+    }
+    {
+      StringBuilder builder = new StringBuilder();
+      builder.append("{\"0000000\":\"1234567890\"");
+      for (int i = 1; i < 100; ++i) {
+        builder.append(String.format(",\"%07d\":\"1234567890\"", i));
+      }
+      String jsonStr = builder.toString() + "}";
+      LOG.info("Executing INSERT for JSON data length = " + jsonStr.length());
+
+      // Insert long JSON value.
+      session.execute(stmt.bind().setInt("id", 1)
+                                 .setString("data", jsonStr)
+                                 .setInt("v", 101));
+      LOG.info("INSERT executed");
+
+      // Select data from the test table.
+      ResultSet rs = session.execute("SELECT * FROM test_bind WHERE id = 1;");
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(1, row.getInt(0));
+      assertEquals(jsonStr, row.getJson("data"));
+      assertEquals(101, row.getInt(2));
+    }
+    {
+      StringBuilder builder = new StringBuilder();
+      builder.append("{\"0000000\":\"1234567890\"");
+      for (int i = 1; i < 3000000; ++i) {
+        builder.append(String.format(",\"%07d\":\"1234567890\"", i));
+      }
+      String jsonStr = builder.toString() + "}";
+      LOG.info("Executing INSERT for JSON data length = " + jsonStr.length());
+
+      // Insert huge JSON value - expecting 'value too long' exception.
+      try {
+        session.execute(stmt.bind().setInt("id", 2)
+                                   .setString("data", jsonStr)
+                                   .setInt("v", 102));
+        fail("Statement \"" + insertStmt + "\" did not fail");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Prepared INSERT failed. Expected exception", e);
+      }
+    }
+    {
+      // Change column type.
+      session.execute("ALTER TABLE test_bind DROP v;");
+      session.execute("ALTER TABLE test_bind ADD v text;");
+
+      // Test the new text column.
+      session.execute("INSERT INTO test_bind (id, data, v) VALUES (9, '{}', 'abc');");
+      ResultSet rs = session.execute("SELECT * FROM test_bind WHERE id = 9;");
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(9, row.getInt(0));
+      assertEquals("{}", row.getJson("data"));
+      assertEquals("abc", row.getString(2));
+
+      // Insert INT instead of TEXT - expecting 'Datatype Mismatch' exception.
+      try {
+        String invalidStmt = "INSERT INTO test_bind (id, data, v) VALUES (8, '{}', 123);";
+        session.execute(invalidStmt);
+        fail("Statement \"" + invalidStmt + "\" did not fail");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("INSERT failed. Expected exception", e);
+      }
+    }
+    {
+      // Create new prepared INSERT for the new TEXT type and try to set INT into the TEXT.
+      PreparedStatement newStmt =
+        session.prepare("INSERT INTO test_bind (id, data, v) VALUES (?, ?, ?);");
+
+      // TOFIX: EXPECTING EXCEPTION HERE
+      //        https://github.com/yugabyte/yugabyte-db/issues/2446
+      session.execute(newStmt.bind().setInt("id", 3)
+                                    .setString("data", "{}")
+                                    .setInt("v", 0x41414141)); // 0x41 == 'A'
+
+      // Select data from the test table.
+      String selectStmt = "SELECT * FROM test_bind WHERE id = 3;";
+      ResultSet rs = session.execute(selectStmt);
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(3, row.getInt(0));
+      assertEquals("{}", row.getJson("data"));
+      assertEquals("AAAA", row.getString(2));
+    }
+    {
+      // Try to use old prepared statement with 'int' type for column 'v'.
+      // TOFIX: EXPECTING EXCEPTION HERE
+      //        https://github.com/yugabyte/yugabyte-db/issues/2446
+      session.execute(stmt.bind().setInt("id", 4)
+                                 .setString("data", "{ \"b\" : 2 }")
+                                 .setInt("v", 0x42424242)); // 0x42 == 'B'
+
+      // Select data from the test table.
+      String selectStmt = "SELECT * FROM test_bind WHERE id = 4;";
+      ResultSet rs = session.execute(selectStmt);
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(4, row.getInt(0));
+      assertEquals("{\"b\":2}", row.getJson("data"));
+      assertEquals("BBBB", row.getString(2));
     }
 
     LOG.info("End test");
@@ -2006,4 +2255,146 @@ public class TestBindVariable extends BaseCQLTest {
     }
   }
 
+  private Row expected_one_row(ResultSet rs) {
+      LOG.info(String.format("Result: %s", rs.toString()));
+      Row row = rs.one();
+      LOG.info(row.toString());
+      assertNotNull(row);
+      assertNull(rs.one()); // Assert exactly 1 row.
+      return row;
+  }
+
+  interface Checker {
+    void check(ResultSet rs);
+  };
+
+  @Test
+  public void testSelectBindWithExpr() throws Exception {
+    LOG.info("Begin test");
+
+    Checker myjson = (ResultSet rs) -> {
+      // Assert exactly 1 row is returned with expected column values.
+      Row row = expected_one_row(rs);
+      assertEquals(1, row.getInt(0));
+      assertEquals(5, new JSONObject(row.getJson("j")).getInt("y"));
+    };
+
+    session.execute("CREATE TABLE test_tbl (h int PRIMARY KEY, j jsonb);");
+    session.execute("INSERT INTO test_tbl (h, j) VALUES (1, '{\"y\":5}');");
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE h = 1 ;";
+      myjson.check(session.execute(sel_stmt));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE h = ? ;";
+      myjson.check(session.execute(sel_stmt, new Integer(1)));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE j = ? ;";
+      myjson.check(session.execute(sel_stmt, new String("{\"y\":5}")));
+    }
+    {
+      // Bind using expression based on JSONB.
+      String sel_stmt = "SELECT * FROM test_tbl WHERE j->>'y' = ? ;";
+      myjson.check(session.execute(sel_stmt, new String("5")));
+    }
+    {
+      // Bind using expression based on JSONB with binded variable name.
+      String sel_stmt = "SELECT * FROM test_tbl WHERE j->>'y' = :my_var_name ;";
+      myjson.check(session.execute(sel_stmt, new HashMap<String, Object>()
+          {{ put("my_var_name", "5"); }}));
+    }
+    // Test internal names for the bind variables.
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE h = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      myjson.check(session.execute(prep_stmt.bind().setInt("h", 1)));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE j->>'y' = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      myjson.check(session.execute(prep_stmt.bind().setString("json_attr(j)", "5")));
+    }
+
+    Checker mymap = (ResultSet rs) -> {
+      // Assert exactly 1 row is returned with expected column values.
+      Row row = expected_one_row(rs);
+      Map<Integer, String> map_value = row.getMap(1, Integer.class, String.class);
+      assertEquals(2, map_value.size());
+      assertTrue(map_value.containsKey(2));
+      assertEquals("b", map_value.get(2));
+      assertTrue(map_value.containsKey(3));
+      assertEquals("c", map_value.get(3));
+    };
+
+    session.execute("CREATE TABLE test_map (h int PRIMARY KEY, m map<int, varchar>);");
+    session.execute("INSERT INTO test_map (h, m) VALUES (1, {2:'b', 3:'c'});");
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE h = 1 ;";
+      mymap.check(session.execute(sel_stmt));
+    }
+    {
+      // Bind using expression based on MAP.
+      String sel_stmt = "SELECT * FROM test_map WHERE m[2] = ? ;";
+      mymap.check(session.execute(sel_stmt, new String("b")));
+    }
+    // Test PreparedStatement API.
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE m[2] = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind(new String("b"))));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE m[2] = :my_var_name ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind().setString("my_var_name", "b")));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE h = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind(new Integer(1))));
+    }
+    // Test internal names for the bind variables.
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE h = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind().setInt("h", 1)));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE m[2] = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind().setString("value(m)", "b")));
+    }
+
+    LOG.info("End test");
+  }
+
+  @Test
+  public void testTransactionUnboundArg() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    session.execute("CREATE TABLE productkey (key text," +
+                    "                         key_type text," +
+                    "                         tenant text," +
+                    "                         PRIMARY KEY (key)) " +
+                    "WITH TRANSACTIONS = {'enabled' : true};");
+    String stmt =
+        "BEGIN TRANSACTION " +
+        "  insert into productkey (key, tenant) values (:key, :timestamp); " +
+        "  insert into productkey (key, key_type, tenant) values (:key, :keyType, :tenant); " +
+        "END TRANSACTION;";
+    PreparedStatement preparedStatement = session.prepare(stmt);
+    BoundStatement boundStatement  = preparedStatement.bind();
+    boundStatement.setString("key", "test");
+
+    try {
+      ResultSet rs = session.execute(boundStatement);
+      assertNull(rs.one());
+      fail("Prepared statement \"" + stmt + "\" did not fail");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+      LOG.info("Expected exception", e);
+    }
+
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
 }

@@ -34,8 +34,6 @@
 
 #include <algorithm>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/client/client.h"
 
 #include "yb/consensus/consensus.h"
@@ -47,17 +45,21 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+
+#include "yb/rocksdb/db/db_impl.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/skewed_clock.h"
 
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
@@ -99,6 +101,14 @@ namespace {
 const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
 const int kMasterLeaderElectionWaitTimeSeconds = NonTsanVsTsan(20, 60);
 
+std::string GetClusterDataDirName(const MiniClusterOptions& options) {
+  std::string cluster_name = "minicluster-data";
+  if (options.cluster_id == "") {
+    return cluster_name;
+  }
+  return Format("$0-$1", cluster_name, options.cluster_id);
+}
+
 std::string GetFsRoot(const MiniClusterOptions& options) {
   if (!options.data_root.empty()) {
     return options.data_root;
@@ -106,7 +116,7 @@ std::string GetFsRoot(const MiniClusterOptions& options) {
   if (!FLAGS_mini_cluster_base_dir.empty()) {
     return FLAGS_mini_cluster_base_dir;
   }
-  return JoinPathSegments(GetTestDataDirectory(), "minicluster-data");
+  return JoinPathSegments(GetTestDataDirectory(), GetClusterDataDirName(options));
 }
 
 } // namespace
@@ -139,6 +149,9 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
     RETURN_NOT_OK(env_->CreateDir(fs_root_));
   }
 
+  // TODO: properly handle setting these variables in case of multiple MiniClusters in the same
+  // process.
+
   // Use conservative number of threads for the mini cluster for unit test env
   // where several unit tests tend to run in parallel.
   // To get default number of threads - try to find SERVICE_POOL_OPTIONS macro usage.
@@ -156,11 +169,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_use_private_ip = "cloud";
 
   // This dictates the RF of newly created tables.
-  if (num_ts_initial_ >= 3) {
-    FLAGS_replication_factor = 3;
-  } else {
-    FLAGS_replication_factor = 1;
-  }
+  SetAtomicFlag(num_ts_initial_ >= 3 ? 3 : 1, &FLAGS_replication_factor);
   FLAGS_memstore_size_mb = 16;
 
   // start the masters
@@ -202,15 +211,15 @@ Status MiniCluster::StartMasters() {
   }
 
   bool started = false;
-  BOOST_SCOPE_EXIT(this_, &started) {
+  auto se = ScopeExit([this, &started] {
     if (!started) {
-      for (const auto& master : this_->mini_masters_) {
+      for (const auto& master : mini_masters_) {
         if (master) {
           master->Shutdown();
         }
       }
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   for (int i = 0; i < num_masters_initial_; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(
@@ -298,13 +307,24 @@ Status MiniCluster::AddTabletServer() {
   return AddTabletServer(*options);
 }
 
+string MiniCluster::GetMasterAddresses() const {
+  string peer_addrs = "";
+  for (const auto& master : mini_masters_) {
+    if (!peer_addrs.empty()) {
+      peer_addrs += ",";
+    }
+    peer_addrs += master->bound_rpc_addr_str();
+  }
+  return peer_addrs;
+}
+
 MiniMaster* MiniCluster::leader_mini_master() {
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < kMasterLeaderElectionWaitTimeSeconds) {
     for (int i = 0; i < mini_masters_.size(); i++) {
       MiniMaster* master = mini_master(i);
-      if (master->master()->IsShutdown()) {
+      if (master->master() == nullptr || master->master()->IsShutdown()) {
         continue;
       }
       CatalogManager::ScopedLeaderSharedLock l(master->master()->catalog_manager());
@@ -386,6 +406,9 @@ MiniTabletServer* MiniCluster::mini_tablet_server(int idx) {
 
 MiniTabletServer* MiniCluster::find_tablet_server(const std::string& uuid) {
   for (const auto& server : mini_tablet_servers_) {
+    if (!server->server()) {
+      continue;
+    }
     if (server->server()->instance_pb().permanent_uuid() == uuid) {
       return server.get();
     }
@@ -672,6 +695,110 @@ Status WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, MonoDelta t
     auto replication_factor = cluster->num_tablet_servers();
     return tablet_ids.size() * replication_factor == peers.size();
   }, timeout, "Wait for all replicas to have a specific Raft index");
+}
+
+template <class Collection>
+void PushBackIfNotNull(const typename Collection::value_type& value, Collection* collection) {
+  if (value != nullptr) {
+    collection->push_back(value);
+  }
+}
+
+std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster, bool include_intents) {
+  std::vector<rocksdb::DB*> dbs;
+  for (auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    const auto* tablet = peer->tablet();
+    PushBackIfNotNull(tablet->TEST_db(), &dbs);
+    if (include_intents) {
+      PushBackIfNotNull(tablet->TEST_intents_db(), &dbs);
+    }
+  }
+  return dbs;
+}
+
+int NumTotalRunningCompactions(MiniCluster* cluster) {
+  int compactions = 0;
+  for (auto* db : GetAllRocksDbs(cluster)) {
+    compactions += down_cast<rocksdb::DBImpl*>(db)->TEST_NumTotalRunningCompactions();
+  }
+  return compactions;
+}
+
+int NumRunningFlushes(MiniCluster* cluster) {
+  int flushes = 0;
+  for (auto* db : GetAllRocksDbs(cluster)) {
+    flushes += down_cast<rocksdb::DBImpl*>(db)->TEST_NumRunningFlushes();
+  }
+  return flushes;
+}
+
+Result<scoped_refptr<master::TableInfo>> FindTable(
+    MiniCluster* cluster, const client::YBTableName& table_name) {
+  auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
+  scoped_refptr<master::TableInfo> table_info;
+  master::TableIdentifierPB identifier;
+  table_name.SetIntoTableIdentifierPB(&identifier);
+  RETURN_NOT_OK(catalog_manager->FindTable(identifier, &table_info));
+  return table_info;
+}
+
+Status WaitForInitDb(MiniCluster* cluster) {
+  const auto start_time = CoarseMonoClock::now();
+  const auto kTimeout = NonTsanVsTsan(600s, 1800s);
+  while (CoarseMonoClock::now() <= start_time + kTimeout) {
+    auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
+    master::IsInitDbDoneRequestPB req;
+    master::IsInitDbDoneResponsePB resp;
+    auto status = catalog_manager->IsInitDbDone(&req, &resp);
+    if (!status.ok()) {
+      LOG(INFO) << "IsInitDbDone failure: " << status;
+      continue;
+    }
+    if (resp.done()) {
+      return Status::OK();
+    }
+    if (resp.has_initdb_error()) {
+      return STATUS_FORMAT(RuntimeError, "Init DB failed: $0", resp.initdb_error());
+    }
+    std::this_thread::sleep_for(500ms);
+  }
+
+  return STATUS_FORMAT(TimedOut, "Unable to init db in $0", kTimeout);
+}
+
+size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
+  size_t result = 0;
+  auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+  for (const auto &peer : peers) {
+    auto participant = peer->tablet() ? peer->tablet()->transaction_participant() : nullptr;
+    if (!participant) {
+      continue;
+    }
+    if (filter && !filter(peer.get())) {
+      continue;
+    }
+    auto intents_count = participant->TEST_CountIntents();
+    if (intents_count.first) {
+      result += intents_count.first;
+      LOG(INFO) << Format("T $0 P $1: Intents present: $2, transactions: $3", peer->tablet_id(),
+                          peer->permanent_uuid(), intents_count.first, intents_count.second);
+    }
+  }
+  return result;
+}
+
+MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    auto server = cluster->mini_tablet_server(i);
+    if (!server->server()) { // Server is shut down.
+      continue;
+    }
+    if (server->server()->LeaderAndReady(tablet_id)) {
+      return server;
+    }
+  }
+
+  return nullptr;
 }
 
 }  // namespace yb

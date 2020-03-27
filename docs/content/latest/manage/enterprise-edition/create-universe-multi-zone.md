@@ -1,7 +1,8 @@
 ---
-title: Create Universe - Multi-Zone
-linkTitle: Create Universe  - Multi-Zone
-description: Create Universe - Multi-Zone
+title: Create a multi-zone Yugabyte Platform universe
+headerTitle: Create universe - Multi-zone
+linkTitle: Create universe  - Multi-zone
+description: Use YugaWare to create a Yugabyte Platform universe in one geographic region across multiple zones.
 aliases:
   - /manage/enterprise-edition/create-universe/
 menu:
@@ -13,11 +14,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to create a universe in one geographic region across multiple zones. We will examine the various nodes created by YugaWare, run some workloads against this universe and take a look at the metrics against the running universe.
+This section will describe how to create a universe in one geographic region across multiple availability zones. We will examine the various nodes created by YugaWare, run some workloads against this universe and take a look at the metrics against the running universe.
 
 ## 1. Create the universe
 
-If there are no universes created yet, the Dashboard page will look like the following. Click on "Create Universe" to create the universe.
+If there are no universes created yet, the Dashboard page will look like the following. Click **Create Universe** to create the universe.
 
 ![Dashboard with No Universes](/images/ee/no-univ-dashboard.png)
 
@@ -31,14 +32,13 @@ We are going to enter the following values to create a multi-zone universe on [G
 - Enter the region (**Oregon**)
 - Change instance type (**n1-standard-8**)
 
-All other options as set to the default values (replication factor = 3, number of nodes = 3). Click on create.
+All other options as set to the default values (replication factor = 3, number of nodes = 3). Click **Create**.
 
 ![Create Universe on GCP](/images/ee/create-univ-multi-zone.png)
 
 Here's how a Universe in Pending state looks like.
 
 ![Dashboard with Pending Universe](/images/ee/pending-univ-dashboard.png)
-
 
 ## 2. Examine the universe
 
@@ -60,7 +60,7 @@ You can browse to the nodes tab for the universe to see a list of nodes - in the
 
 ![Nodes for a Pending Universe](/images/ee/pending-univ-nodes.png)
 
-### Cloud Provider instances for the universe
+### Cloud provider instances for the universe
 
 Browse to the cloud provider's instances page. In this example, since we are using Google Cloud Platform as the cloud provider, browse to `Compute Engine` -> `VM Instances` and search for instances that have `helloworld1` in their name. You should see something as follows.
 
@@ -83,7 +83,7 @@ This should bring up a dialog showing how to connect to the nodes.
 Copy the first command (highlighted above) and run it from the YugaWare machine. This will connect us to the first node, `yb-dev-helloworld1-n1`.
 
 ```
-centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4 -p 54422
+centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4
 Are you sure you want to continue connecting (yes/no)? yes
 [centos@yb-dev-helloworld1-n1 ~]$
 ```

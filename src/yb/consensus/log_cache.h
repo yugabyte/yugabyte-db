@@ -64,6 +64,13 @@ namespace consensus {
 
 class ReplicateMsg;
 
+struct ReadOpsResult {
+  ReplicateMsgs messages;
+  yb::OpId preceding_op;
+  bool have_more_messages = false;
+  int64_t read_from_disk_size = 0;
+};
+
 // Write-through cache for the log.
 //
 // This stores a set of log messages by their index. New operations can be appended to the end as
@@ -77,6 +84,9 @@ class LogCache {
            const std::string& local_uuid,
            const std::string& tablet_id);
   ~LogCache();
+
+  static std::shared_ptr<MemTracker> GetServerMemTracker(
+      const std::shared_ptr<MemTracker>& server_tracker);
 
   // Initialize the cache.
   //
@@ -98,22 +108,16 @@ class LogCache {
   // If the ops being requested are not available in the log, this will synchronously read these ops
   // from disk. Therefore, this function may take a substantial amount of time and should not be
   // called with important locks held, etc.
-  CHECKED_STATUS ReadOps(int64_t after_op_index,
-                         int max_size_bytes,
-                         ReplicateMsgs* messages,
-                         OpId* preceding_op,
-                         bool* have_more_messages = nullptr);
+  Result<ReadOpsResult> ReadOps(int64_t after_op_index,
+                                int max_size_bytes);
 
   // Same as above but also includes a 'to_op_index' parameter which will be used to limit results
   // until 'to_op_index' (inclusive).
   //
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
-  CHECKED_STATUS ReadOps(int64_t after_op_index,
-                         int64_t to_op_index,
-                         int max_size_bytes,
-                         ReplicateMsgs* messages,
-                         OpId* preceding_op,
-                         bool* have_more_messages = nullptr);
+  Result<ReadOpsResult> ReadOps(int64_t after_op_index,
+                                int64_t to_op_index,
+                                int max_size_bytes);
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.
@@ -131,14 +135,17 @@ class LogCache {
   bool HasOpBeenWritten(int64_t log_index) const;
 
   // Evict any operations with op index <= 'index'.
-  void EvictThroughOp(int64_t index);
+  size_t EvictThroughOp(
+      int64_t index, int64_t bytes_to_evict = std::numeric_limits<int64_t>::max());
 
   // Return the number of bytes of memory currently in use by the cache.
   int64_t BytesUsed() const;
 
   int64_t num_cached_ops() const {
-    return metrics_.log_cache_num_ops->value();
+    return metrics_.num_ops->value();
   }
+
+  int64_t earliest_op_index() const;
 
   // Dump the current contents of the cache to the log.
   void DumpToLog() const;
@@ -158,7 +165,10 @@ class LogCache {
   // Returns "Incomplete" if the op has not yet been written.
   // Returns "NotFound" if the op has been GCed.
   // Returns another bad Status if the log index fails to load (eg. due to an IO error).
-  CHECKED_STATUS LookupOpId(int64_t op_index, OpId* op_id) const;
+  Result<yb::OpId> LookupOpId(int64_t op_index) const;
+
+  // Start memory tracking of following operations in case they are still present in cache.
+  void TrackOperationsMemory(const OpIds& op_ids);
 
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
@@ -172,12 +182,15 @@ class LogCache {
     // The cached value of msg->SpaceUsedLong(). This method is expensive
     // to compute, so we compute it only once upon insertion.
     int64_t mem_usage;
+
+    // Did we start memory tracking for this entry.
+    bool tracked = false;
   };
 
   // Try to evict the oldest operations from the queue, stopping either when
   // 'bytes_to_evict' bytes have been evicted, or the op with index
   // 'stop_after_index' has been evicted, whichever comes first.
-  void EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict);
+  size_t EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict);
 
   // Update metrics and MemTracker to account for the removal of the
   // given message.
@@ -191,7 +204,6 @@ class LogCache {
   std::string LogPrefixUnlocked() const;
 
   void LogCallback(int64_t last_idx_in_batch,
-                   bool borrowed_memory,
                    const StatusCallback& user_callback,
                    const Status& log_status);
 
@@ -200,8 +212,6 @@ class LogCache {
     int64_t mem_required = 0;
     // Last idx in batch of provided operations.
     int64_t last_idx_in_batch = -1;
-    // true if we exceeded mem tracker limit while preparing provided operations.
-    bool borrowed_memory = false;
   };
 
   Result<PrepareAppendResult> PrepareAppendOperations(const ReplicateMsgs& msgs);
@@ -246,10 +256,12 @@ class LogCache {
     explicit Metrics(const scoped_refptr<MetricEntity>& metric_entity);
 
     // Keeps track of the total number of operations in the cache.
-    scoped_refptr<AtomicGauge<int64_t> > log_cache_num_ops;
+    scoped_refptr<AtomicGauge<int64_t>> num_ops;
 
     // Keeps track of the memory consumed by the cache, in bytes.
-    scoped_refptr<AtomicGauge<int64_t> > log_cache_size;
+    scoped_refptr<AtomicGauge<int64_t>> size;
+
+    scoped_refptr<Counter> disk_reads;
   };
   Metrics metrics_;
 

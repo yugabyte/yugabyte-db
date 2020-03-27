@@ -1,7 +1,8 @@
 ---
-title: Build a Python App
-linkTitle: Build a Python App
-description: Build a Python App
+title: Use Python to build a YugabyteDB application
+headerTitle: Build a Python application
+linkTitle: Build a Python application
+description: Use Python and YSQL to build a YugabyteDB application
 aliases:
   - /develop/client-drivers/python/
   - /latest/develop/client-drivers/python/
@@ -17,7 +18,6 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -40,77 +40,91 @@ showAsideToc: true
   </li>
 </ul>
 
-## Install the psycopg2 driver
+The following tutorial creates a simple Python application that connects to a YugabyteDB cluster using the `psycopg` database adapter, performs a few basic database operations — creating a table, inserting data, and running a SQL query — and prints the results to the screen.
 
-Install the python PostgreSQL driver using the following command. You can get further details for the driver [here](https://pypi.org/project/psycopg2/).
+## Before you begin
+
+This tutorial assumes that you have satisfied the following prerequisites.
+
+### YugabyteDB
+
+YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
+
+### Python
+
+Python 3, or later, is installed.
+
+### Psycopg database adapter
+
+[Psycopg](http://initd.org/psycopg/),the popular PostgreSQL database adapter for Python, is installed. To install a binary version of `psycopg2`, run the following `pip3` command.
 
 ```sh
-$ pip install psycopg2-binary
+$ pip3 install psycopg2-binary
 ```
 
-## Working Example
+For details about using this database adapter, see the [Psycopg documentation](http://initd.org/psycopg/docs/).
 
-### Prerequisites
-
-This tutorial assumes that you have:
-
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
-
-
-### Writing the python code
+## Create the Python application
 
 Create a file `yb-sql-helloworld.py` and add the following content to it.
 
 ```python
 import psycopg2
 
-# Create the database connection.                                                                 
-conn = psycopg2.connect("host=127.0.0.1 port=5433 dbname=postgres user=postgres password=postgres")
+# Create the database connection.
 
-# Open a cursor to perform database operations
-# The default mode for psycopg2 is "autocommit=False".
+conn = psycopg2.connect("host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte")
+
+# Open a cursor to perform database operations.
+# The default mode for psycopg2 is "autocommit=false".
+
 conn.set_session(autocommit=True)
 cur = conn.cursor()
 
-# Create the table. (It might pre-exist.)
+# Create the table. (It might preexist.)
+
 cur.execute(
-  """                                                                                             
+  """
   DROP TABLE IF EXISTS employee
   """)
 
 cur.execute(
-  """                                                                                             
-  CREATE TABLE employee (id int PRIMARY KEY,                                                      
-                         name varchar,                                                            
-                         age int,                                                                 
+  """
+  CREATE TABLE employee (id int PRIMARY KEY,
+                         name varchar,
+                         age int,
                          language varchar)
   """)
 print("Created table employee")
 cur.close()
 
 # Take advantage of ordinary, transactional behavior for DMLs.
+
 conn.set_session(autocommit=False)
 cur = conn.cursor()
 
-# Insert a row.                                                                                   
+# Insert a row.
+
 cur.execute("INSERT INTO employee (id, name, age, language) VALUES (%s, %s, %s, %s)",
             (1, 'John', 35, 'Python'))
 print("Inserted (id, name, age, language) = (1, 'John', 35, 'Python')")
 
-# Query the row.                                                                                  
+# Query the row.
+
 cur.execute("SELECT name, age, language FROM employee WHERE id = 1")
 row = cur.fetchone()
 print("Query returned: %s, %s, %s" % (row[0], row[1], row[2]))
 
-# Commit and close down. 
-conn.commit()                                                                         
+# Commit and close down.
+
+conn.commit()
 cur.close()
 conn.close()
 ```
 
-### Running the application
+### Run the application
 
-To run the application, type the following:
+To run the application, run the following Python script you just created.
 
 ```sh
 $ python yb-sql-helloworld.py

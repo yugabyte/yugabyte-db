@@ -15,7 +15,7 @@ DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-
 
 ![DocDB Document Storage Layer](/images/architecture/docdb-rocksdb.png)
 
-A number of enhancements or customizations were done to RocksDB in order to schieve scale and performance. These are described below.
+A number of enhancements or customizations were done to RocksDB in order to achieve scale and performance. These are described below.
 
 ## Enhancements to RocksDB
 
@@ -43,7 +43,7 @@ customized compaction hooks.
 ### Raft vs RocksDB WAL logs
 
 DocDB uses Raft for replication. Changes to the distributed system are already recorded/journalled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional WAL mechanism in RocksDB (under DocDB) is unnecessary and adds overhead.
-For correctness, in addition to disabling the WAL mechanism in RocksDB, YugaByte tracks the Raft
+For correctness, in addition to disabling the WAL mechanism in RocksDB, Yugabyte tracks the Raft
 “sequence id” up to which data has been flushed from RocksDB’s memtables to SSTable files. This
 ensures that we can correctly garbage collect the Raft WAL logs as well as replay the minimal number
 of records from Raft WAL logs on a server crash or restart.
@@ -55,7 +55,7 @@ Multi-version concurrency control (MVCC) in DocDB is done at a higher layer, and
 The mutations to records in the
 system are versioned using hybrid-timestamps maintained at the YBase layer. As a result, the notion
 of MVCC as implemented in a vanilla RocksDB (using sequence ids) is not necessary and only adds
-overhead. YugaByte does not use RocksDB’s sequence ids, and instead uses hybrid-timestamps that are
+overhead. Yugabyte does not use RocksDB’s sequence ids, and instead uses hybrid-timestamps that are
 part of the encoded key to implement MVCC.
 
 ### Backups/Snapshots

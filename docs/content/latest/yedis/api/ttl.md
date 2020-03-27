@@ -14,10 +14,12 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`TTL key`</b><br>
 Returns the remaining time to live of a key that has a timeout, in seconds.
 
-## Return Value
+## Return value
+
 Returns TTL in seconds, encoded as integer response.
 
 ## Examples
@@ -25,7 +27,7 @@ Returns TTL in seconds, encoded as integer response.
 You can do this as shown below.
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```
@@ -48,5 +50,6 @@ $ TTL yugakey
 (integer) 10
 ```
 
-## See Also
+## See also
+
 [`set`](../set/), [`expire`](../expire/), [`expireat`](../expireat/), [`pttl`](../pttl/)

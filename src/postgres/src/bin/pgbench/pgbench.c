@@ -59,6 +59,9 @@
 
 #include "pgbench.h"
 
+#define ERRCODE_IN_FAILED_SQL_TRANSACTION  "25P02"
+#define ERRCODE_T_R_SERIALIZATION_FAILURE  "40001"
+#define ERRCODE_T_R_DEADLOCK_DETECTED  "40P01"
 #define ERRCODE_UNDEFINED_TABLE  "42P01"
 
 /*
@@ -100,7 +103,7 @@ static int	pthread_join(pthread_t th, void **thread_return);
 #define MAXCLIENTS	1024
 #endif
 
-#define DEFAULT_INIT_STEPS "dtgvp"	/* default -I setting */
+#define DEFAULT_INIT_STEPS "dtgp"	/* default -I setting */
 
 #define LOG_STEP_SECONDS	5	/* seconds between log messages */
 #define DEFAULT_NXACTS	10		/* default nxacts */
@@ -116,7 +119,7 @@ int64		end_time = 0;		/* when to stop in micro seconds, under -T */
 
 /*
  * scaling factor. for example, scale = 10 will make 1000000 tuples in
- * pgbench_accounts table.
+ * ysql_bench_accounts table.
  */
 int			scale = 1;
 
@@ -125,6 +128,7 @@ int			scale = 1;
  * space during inserts and leave 10 percent free.
  */
 int			fillfactor = 100;
+bool			set_fillfactor = false;
 
 /*
  * use unlogged tables?
@@ -187,8 +191,25 @@ bool		progress_timestamp = false; /* progress report with Unix time */
 int			nclients = 1;		/* number of clients */
 int			nthreads = 1;		/* number of threads */
 bool		is_connect;			/* establish connection for each transaction */
-bool		is_latencies;		/* report per-command latencies */
+bool		report_per_command = false;	/* report per-command latencies, retries
+										 * after the failures and errors
+										 * (failures without retrying) */
 int			main_pid;			/* main process id used in log filename */
+uint32		batch_size = 1024;	/* Batch size used for a transaction */
+
+/*
+ * There're different types of restrictions for deciding that the current failed
+ * transaction can no longer be retried and should be reported as failed:
+ * - max_tries can be used to limit the number of tries;
+ * - latency_limit can be used to limit the total time of tries.
+ *
+ * They can be combined together, and you need to use at least one of them to
+ * retry the failed transactions. By default, failed transactions are not
+ * retried at all.
+ */
+uint32		max_tries = 0;		/* we cannot retry a failed transaction if its
+								 * number of tries reaches this maximum; if its
+								 * value is zero, it is not used */
 
 char	   *pghost = "";
 char	   *pgport = "";
@@ -243,15 +264,75 @@ typedef struct SimpleStats
 typedef struct StatsData
 {
 	time_t		start_time;		/* interval start time, for aggregates */
-	int64		cnt;			/* number of transactions, including skipped */
+	int64		cnt;			/* number of sucessfull transactions, including
+								 * skipped */
 	int64		skipped;		/* number of transactions skipped under --rate
 								 * and --latency-limit */
+	int64		retries;
+	int64		retried;		/* number of transactions that were retried
+								 * after a serialization or a deadlock
+								 * failure */
+	int64		errors;			/* number of transactions that were not retried
+								 * after a serialization or a deadlock
+								 * failure or had another error (including meta
+								 * commands errors) */
+	int64		errors_in_failed_tx;	/* number of transactions that failed in
+										 * a error
+										 * ERRCODE_IN_FAILED_SQL_TRANSACTION */
 	SimpleStats latency;
 	SimpleStats lag;
 } StatsData;
 
 /* Various random sequences are initialized from this one. */
 static unsigned short base_random_sequence[3];
+
+/*
+ * Data structure for client variables.
+ */
+typedef struct Variables
+{
+	Variable   *array;			/* array of variable definitions */
+	int			nvariables;		/* number of variables */
+	bool		vars_sorted;	/* are variables sorted by name? */
+} Variables;
+
+/*
+ * Data structure for thread/client random seed.
+ */
+typedef struct RandomState
+{
+	unsigned short data[3];
+} RandomState;
+
+/*
+ * Data structure for repeating a transaction from the beginnning with the same
+ * parameters.
+ */
+typedef struct RetryState
+{
+	RandomState random_state;	/* random seed */
+	Variables   variables;		/* client variables */
+} RetryState;
+
+/*
+ * For the failures during script execution.
+ */
+typedef enum FailureStatus
+{
+	NO_FAILURE = 0,
+	ANOTHER_FAILURE,			/* other failures that are not listed by
+								 * themselves below */
+	SERIALIZATION_FAILURE,
+	DEADLOCK_FAILURE,
+	IN_FAILED_SQL_TRANSACTION
+} FailureStatus;
+
+typedef struct Failure
+{
+	FailureStatus status;		/* type of the failure */
+	int			command;		/* command number in script where the failure
+								 * occurred */
+} Failure;
 
 /*
  * Connection state machine states.
@@ -308,6 +389,22 @@ typedef enum
 	CSTATE_END_COMMAND,
 
 	/*
+	 * States for transactions with serialization or deadlock failures.
+	 *
+	 * First, remember the failure in CSTATE_FAILURE. Then process other
+	 * commands of the failed transaction if any and go to CSTATE_RETRY. If we
+	 * can re-execute the transaction from the very beginning, report this as a
+	 * failure, set the same parameters for the transaction execution as in the
+	 * previous tries and process the first transaction command in
+	 * CSTATE_START_COMMAND. Otherwise, report this as an error, set the
+	 * parameters for the transaction execution as they were before the first
+	 * run of this transaction (except for a random state) and go to
+	 * CSTATE_END_TX to complete this transaction.
+	 */
+	CSTATE_FAILURE,
+	CSTATE_RETRY,
+
+	/*
 	 * CSTATE_END_TX performs end-of-transaction processing.  Calculates
 	 * latency, and logs the transaction.  In --connect mode, closes the
 	 * current connection.  Chooses the next script to execute and starts over
@@ -333,14 +430,13 @@ typedef struct
 	int			id;				/* client No. */
 	ConnectionStateEnum state;	/* state machine's current state. */
 	ConditionalStack cstack;	/* enclosing conditionals state */
+	RandomState random_state;	/* separate randomness for each client */
 
 	int			use_file;		/* index in sql_script for this client */
 	int			command;		/* command number in script */
 
 	/* client variables */
-	Variable   *variables;		/* array of variable definitions */
-	int			nvariables;		/* number of variables */
-	bool		vars_sorted;	/* are variables sorted by name? */
+	Variables   variables;
 
 	/* various times about current transaction */
 	int64		txn_scheduled;	/* scheduled start time of transaction (usec) */
@@ -349,6 +445,18 @@ typedef struct
 	instr_time	stmt_begin;		/* used for measuring statement latencies */
 
 	bool		prepared[MAX_SCRIPTS];	/* whether client prepared the script */
+
+	/*
+	 * For processing errors and repeating transactions with serialization or
+	 * deadlock failures:
+	 */
+	Failure		first_failure;	/* status and command number of the first
+								 * failure in the current transaction execution;
+								 * status NO_FAILURE if there were no failures
+								 * or errors */
+	RetryState  retry_state;
+	uint32			retries;	/* how many times have we already retried the
+								 * current transaction? */
 
 	/* per client collected stats */
 	int64		cnt;			/* client transaction count, for -t */
@@ -393,7 +501,7 @@ typedef struct
 	pthread_t	thread;			/* thread handle */
 	CState	   *state;			/* array of CState */
 	int			nstate;			/* length of state[] */
-	unsigned short random_state[3]; /* separate randomness for each thread */
+	RandomState random_state; 	/* separate randomness for each thread */
 	int64		throttle_trigger;	/* previous/next throttling (us) */
 	FILE	   *logfile;		/* where to log, or NULL */
 	ZipfCache	zipf_cache;		/* for thread-safe  zipfian random number
@@ -403,7 +511,8 @@ typedef struct
 	instr_time	start_time;		/* thread start time */
 	instr_time	conn_time;
 	StatsData	stats;
-	int64		latency_late;	/* executed but late transactions */
+	int64		latency_late;	/* executed but late transactions (including
+								 * errors) */
 } TState;
 
 #define INVALID_THREAD		((pthread_t) 0)
@@ -449,6 +558,10 @@ typedef struct
 	char	   *argv[MAX_ARGS]; /* command word list */
 	PgBenchExpr *expr;			/* parsed expression, if needed */
 	SimpleStats stats;			/* time spent in this command */
+	int64		retries;
+	int64		errors;			/* number of failures that were not retried */
+	int64		errors_in_failed_tx;	/* number of errors
+										 * ERRCODE_IN_FAILED_SQL_TRANSACTION */
 } Command;
 
 typedef struct ParsedScript
@@ -464,7 +577,18 @@ static int	num_scripts;		/* number of scripts in sql_script[] */
 static int	num_commands = 0;	/* total number of Command structs */
 static int64 total_weight = 0;
 
-static int	debug = 0;			/* debug flag */
+typedef enum DebugLevel
+{
+	NO_DEBUG = 0,				/* no debugging output (except PGBENCH_DEBUG) */
+	DEBUG_FAILS,				/* print only failure messages, errors and
+								 * retries */
+	DEBUG_ALL,					/* print all debugging output (throttling,
+								 * executed/sent/received commands etc.) */
+	NUM_DEBUGLEVEL
+} DebugLevel;
+
+static DebugLevel debug_level = NO_DEBUG;	/* debug flag */
+static const char *DEBUGLEVEL[] = {"no", "fails", "all"};
 
 /* Builtin test scripts */
 typedef struct BuiltinScript
@@ -484,11 +608,11 @@ static const BuiltinScript builtin_script[] =
 		"\\set tid random(1, " CppAsString2(ntellers) " * :scale)\n"
 		"\\set delta random(-5000, 5000)\n"
 		"BEGIN;\n"
-		"UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
-		"SELECT abalance FROM pgbench_accounts WHERE aid = :aid;\n"
-		"UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;\n"
-		"UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;\n"
-		"INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+		"UPDATE ysql_bench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
+		"SELECT abalance FROM ysql_bench_accounts WHERE aid = :aid;\n"
+		"UPDATE ysql_bench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;\n"
+		"UPDATE ysql_bench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;\n"
+		"INSERT INTO ysql_bench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
 		"END;\n"
 	},
 	{
@@ -499,18 +623,118 @@ static const BuiltinScript builtin_script[] =
 		"\\set tid random(1, " CppAsString2(ntellers) " * :scale)\n"
 		"\\set delta random(-5000, 5000)\n"
 		"BEGIN;\n"
-		"UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
-		"SELECT abalance FROM pgbench_accounts WHERE aid = :aid;\n"
-		"INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+		"UPDATE ysql_bench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
+		"SELECT abalance FROM ysql_bench_accounts WHERE aid = :aid;\n"
+		"INSERT INTO ysql_bench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
 		"END;\n"
 	},
 	{
 		"select-only",
 		"<builtin: select only>",
 		"\\set aid random(1, " CppAsString2(naccounts) " * :scale)\n"
-		"SELECT abalance FROM pgbench_accounts WHERE aid = :aid;\n"
+		"SELECT abalance FROM ysql_bench_accounts WHERE aid = :aid;\n"
 	}
 };
+
+typedef enum ErrorLevel
+{
+	/*
+	 * To report throttling, executed/sent/received commands etc.
+	 */
+	ELEVEL_DEBUG,
+
+	/*
+	 * Normal failure of the SQL/meta command, or processing of the failed
+	 * transaction (its end/retry).
+	 */
+	ELEVEL_LOG_CLIENT_FAIL,
+
+	/*
+	 * Something serious e.g. connection with the backend was lost.. therefore
+	 * abort the client.
+	 */
+	ELEVEL_LOG_CLIENT_ABORTED,
+
+	/*
+	 * To report the error/log messages of the main program and/or
+	 * PGBENCH_DEBUG.
+	 */
+	ELEVEL_LOG_MAIN,
+
+	/*
+	 * To report the error messages of the main program and to exit immediately.
+	 */
+	ELEVEL_FATAL
+} ErrorLevel;
+
+typedef struct ErrorData
+{
+	ErrorLevel	elevel;
+	PQExpBufferData message;
+} ErrorData;
+
+typedef ErrorData *Error;
+
+#if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
+/* use the local ErrorData in ereport */
+#define LOCAL_ERROR_DATA()	ErrorData edata;
+
+#define errstart(elevel)	errstartImpl(&edata, elevel)
+#define errmsg(...)			errmsgImpl(&edata, __VA_ARGS__)
+#define errfinish(...)		errfinishImpl(&edata, __VA_ARGS__)
+#else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
+/* use the global ErrorData in ereport... */
+#define LOCAL_ERROR_DATA()
+static ErrorData edata;
+static Error error = &edata;
+
+/* ...and protect it with a mutex if necessary */
+#ifdef ENABLE_THREAD_SAFETY
+static pthread_mutex_t error_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif							/* ENABLE_THREAD_SAFETY */
+
+#define errstart	errstartImpl
+#define errmsg		errmsgImpl
+#define errfinish	errfinishImpl
+#endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
+
+/*
+ * Error reporting API: to be used in this way:
+ *		ereport(ELEVEL_LOG,
+ *				(errmsg("connection to database \"%s\" failed\n", dbName),
+ *				... other errxxx() fields as needed ...));
+ *
+ * The error level is required, and so is a primary error message. All else is
+ * optional.
+ *
+ * If elevel >= ELEVEL_FATAL, the call will not return; we try to inform the
+ * compiler of that via abort(). However, no useful optimization effect is
+ * obtained unless the compiler sees elevel as a compile-time constant, else
+ * we're just adding code bloat. So, if __builtin_constant_p is available, use
+ * that to cause the second if() to vanish completely for non-constant cases. We
+ * avoid using a local variable because it's not necessary and prevents gcc from
+ * making the unreachability deduction at optlevel -O0.
+ */
+#ifdef HAVE__BUILTIN_CONSTANT_P
+#define ereport(elevel, rest) \
+	do { \
+		LOCAL_ERROR_DATA() \
+		if (errstart(elevel)) \
+			errfinish rest; \
+		if (__builtin_constant_p(elevel) && (elevel) >= ELEVEL_FATAL) \
+			abort(); \
+	} while(0)
+#else							/* !HAVE__BUILTIN_CONSTANT_P */
+#define ereport(elevel, rest) \
+	do { \
+		const int elevel_ = (elevel); \
+		LOCAL_ERROR_DATA() \
+		if (errstart(elevel_)) \
+			errfinish rest; \
+		if (elevel_ >= ELEVEL_FATAL) \
+			abort(); \
+	} while(0)
+#endif							/* HAVE__BUILTIN_CONSTANT_P */
 
 
 /* Function prototypes */
@@ -529,6 +753,16 @@ static void *threadRun(void *arg);
 static void setalarm(int seconds);
 static void finishCon(CState *st);
 
+#if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
+static bool errstartImpl(Error error, ErrorLevel elevel);
+static int  errmsgImpl(Error error,
+					   const char *fmt,...) pg_attribute_printf(2, 3);
+static void errfinishImpl(Error error, int dummy,...);
+#else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
+static bool errstartImpl(ErrorLevel elevel);
+static int  errmsgImpl(const char *fmt,...) pg_attribute_printf(1, 2);
+static void errfinishImpl(int dummy,...);
+#endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
 
 /* callback functions for our flex lexer */
 static const PsqlScanCallbacks pgbench_callbacks = {
@@ -540,12 +774,12 @@ static const PsqlScanCallbacks pgbench_callbacks = {
 static void
 usage(void)
 {
-	printf("%s is a benchmarking tool for PostgreSQL.\n\n"
+	printf("%s is a benchmarking tool for YSQL.\n\n"
 		   "Usage:\n"
 		   "  %s [OPTION]... [DBNAME]\n"
 		   "\nInitialization options:\n"
 		   "  -i, --initialize         invokes initialization mode\n"
-		   "  -I, --init-steps=[dtgvpf]+ (default \"dtgvp\")\n"
+		   "  -I, --init-steps=[dtgvpf]+ (default \"dtgp\")\n"
 		   "                           run selected initialization steps\n"
 		   "  -F, --fillfactor=NUM     set fill factor\n"
 		   "  -n, --no-vacuum          do not run VACUUM during initialization\n"
@@ -560,7 +794,7 @@ usage(void)
 		   "  -b, --builtin=NAME[@W]   add builtin script NAME weighted at W (default: 1)\n"
 		   "                           (use \"-b list\" to list available scripts)\n"
 		   "  -f, --file=FILENAME[@W]  add script FILENAME weighted at W (default: 1)\n"
-		   "  -N, --skip-some-updates  skip updates of pgbench_tellers and pgbench_branches\n"
+		   "  -N, --skip-some-updates  skip updates of ysql_bench_tellers and ysql_bench_branches\n"
 		   "                           (same as \"-b simple-update\")\n"
 		   "  -S, --select-only        perform SELECT-only transactions\n"
 		   "                           (same as \"-b select-only\")\n"
@@ -576,7 +810,7 @@ usage(void)
 		   "                           protocol for submitting queries (default: simple)\n"
 		   "  -n, --no-vacuum          do not run VACUUM before tests\n"
 		   "  -P, --progress=NUM       show thread progress report every NUM seconds\n"
-		   "  -r, --report-latencies   report average latency per command\n"
+		   "  -r, --report-per-command report latencies, errors and retries per command\n"
 		   "  -R, --rate=NUM           target rate in transactions per second\n"
 		   "  -s, --scale=NUM          report this scale factor in output\n"
 		   "  -t, --transactions=NUM   number of transactions each client runs (default: 10)\n"
@@ -584,19 +818,21 @@ usage(void)
 		   "  -v, --vacuum-all         vacuum all four standard tables before tests\n"
 		   "  --aggregate-interval=NUM aggregate data over NUM seconds\n"
 		   "  --log-prefix=PREFIX      prefix for transaction time log file\n"
-		   "                           (default: \"pgbench_log\")\n"
+		   "                           (default: \"ysql_bench_log\")\n"
+		   "  --max-tries=NUM          max number of tries to run transaction\n"
 		   "  --progress-timestamp     use Unix epoch timestamps for progress\n"
 		   "  --random-seed=SEED       set random seed (\"time\", \"rand\", integer)\n"
 		   "  --sampling-rate=NUM      fraction of transactions to log (e.g., 0.01 for 1%%)\n"
+		   "  --batch-size=NUM         batch size for a transaction\n"
 		   "\nCommon options:\n"
-		   "  -d, --debug              print debugging output\n"
+		   "  -d, --debug=no|fails|all print debugging output (default: no)\n"
 		   "  -h, --host=HOSTNAME      database server host or socket directory\n"
 		   "  -p, --port=PORT          database server port number\n"
 		   "  -U, --username=USERNAME  connect as specified database user\n"
 		   "  -V, --version            output version information, then exit\n"
 		   "  -?, --help               show this help, then exit\n"
 		   "\n"
-		   "Report bugs to <pgsql-bugs@postgresql.org>.\n",
+		   "Report bugs on https://github.com/YugaByte/yugabyte-db/issues/new.\n",
 		   progname, progname);
 }
 
@@ -671,7 +907,10 @@ strtoint64(const char *str)
 
 	/* require at least one digit */
 	if (!isdigit((unsigned char) *ptr))
-		fprintf(stderr, "invalid input syntax for integer: \"%s\"\n", str);
+	{
+		ereport(ELEVEL_LOG_MAIN,
+				(errmsg("invalid input syntax for integer: \"%s\"\n", str)));
+	}
 
 	/* process digits */
 	while (*ptr && isdigit((unsigned char) *ptr))
@@ -679,7 +918,11 @@ strtoint64(const char *str)
 		int64		tmp = result * 10 + (*ptr++ - '0');
 
 		if ((tmp / 10) != result)	/* overflow? */
-			fprintf(stderr, "value \"%s\" is out of range for type bigint\n", str);
+		{
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg("value \"%s\" is out of range for type bigint\n",
+							str)));
+		}
 		result = tmp;
 	}
 
@@ -690,7 +933,10 @@ gotdigits:
 		ptr++;
 
 	if (*ptr != '\0')
-		fprintf(stderr, "invalid input syntax for integer: \"%s\"\n", str);
+	{
+		ereport(ELEVEL_LOG_MAIN,
+				(errmsg("invalid input syntax for integer: \"%s\"\n", str)));
+	}
 
 	return ((sign < 0) ? -result : result);
 }
@@ -704,7 +950,7 @@ gotdigits:
  * range, because of the limited precision of pg_erand48().
  */
 static int64
-getrand(TState *thread, int64 min, int64 max)
+getrand(RandomState *random_state, int64 min, int64 max)
 {
 	/*
 	 * Odd coding is so that min and max have approximately the same chance of
@@ -715,7 +961,7 @@ getrand(TState *thread, int64 min, int64 max)
 	 * protected by a mutex, and therefore a bottleneck on machines with many
 	 * CPUs.
 	 */
-	return min + (int64) ((max - min + 1) * pg_erand48(thread->random_state));
+	return min + (int64) ((max - min + 1) * pg_erand48(random_state->data));
 }
 
 /*
@@ -724,7 +970,8 @@ getrand(TState *thread, int64 min, int64 max)
  * value is exp(-parameter).
  */
 static int64
-getExponentialRand(TState *thread, int64 min, int64 max, double parameter)
+getExponentialRand(RandomState *random_state, int64 min, int64 max,
+				   double parameter)
 {
 	double		cut,
 				uniform,
@@ -734,7 +981,7 @@ getExponentialRand(TState *thread, int64 min, int64 max, double parameter)
 	Assert(parameter > 0.0);
 	cut = exp(-parameter);
 	/* erand in [0, 1), uniform in (0, 1] */
-	uniform = 1.0 - pg_erand48(thread->random_state);
+	uniform = 1.0 - pg_erand48(random_state->data);
 
 	/*
 	 * inner expression in (cut, 1] (if parameter > 0), rand in [0, 1)
@@ -747,7 +994,8 @@ getExponentialRand(TState *thread, int64 min, int64 max, double parameter)
 
 /* random number generator: gaussian distribution from min to max inclusive */
 static int64
-getGaussianRand(TState *thread, int64 min, int64 max, double parameter)
+getGaussianRand(RandomState *random_state, int64 min, int64 max,
+				double parameter)
 {
 	double		stdev;
 	double		rand;
@@ -775,8 +1023,8 @@ getGaussianRand(TState *thread, int64 min, int64 max, double parameter)
 		 * are expected in (0, 1] (see
 		 * https://en.wikipedia.org/wiki/Box-Muller_transform)
 		 */
-		double		rand1 = 1.0 - pg_erand48(thread->random_state);
-		double		rand2 = 1.0 - pg_erand48(thread->random_state);
+		double		rand1 = 1.0 - pg_erand48(random_state->data);
+		double		rand2 = 1.0 - pg_erand48(random_state->data);
 
 		/* Box-Muller basic form transform */
 		double		var_sqrt = sqrt(-2.0 * log(rand1));
@@ -803,7 +1051,7 @@ getGaussianRand(TState *thread, int64 min, int64 max, double parameter)
  * will approximate a Poisson distribution centered on the given value.
  */
 static int64
-getPoissonRand(TState *thread, int64 center)
+getPoissonRand(RandomState *random_state, int64 center)
 {
 	/*
 	 * Use inverse transform sampling to generate a value > 0, such that the
@@ -812,7 +1060,7 @@ getPoissonRand(TState *thread, int64 center)
 	double		uniform;
 
 	/* erand in [0, 1), uniform in (0, 1] */
-	uniform = 1.0 - pg_erand48(thread->random_state);
+	uniform = 1.0 - pg_erand48(random_state->data);
 
 	return (int64) (-log(uniform) * ((double) center) + 0.5);
 }
@@ -890,7 +1138,7 @@ zipfFindOrCreateCacheCell(ZipfCache *cache, int64 n, double s)
  * Luc Devroye, p. 550-551, Springer 1986.
  */
 static int64
-computeIterativeZipfian(TState *thread, int64 n, double s)
+computeIterativeZipfian(RandomState *random_state, int64 n, double s)
 {
 	double		b = pow(2.0, s - 1.0);
 	double		x,
@@ -901,8 +1149,8 @@ computeIterativeZipfian(TState *thread, int64 n, double s)
 	while (true)
 	{
 		/* random variates */
-		u = pg_erand48(thread->random_state);
-		v = pg_erand48(thread->random_state);
+		u = pg_erand48(random_state->data);
+		v = pg_erand48(random_state->data);
 
 		x = floor(pow(u, -1.0 / (s - 1.0)));
 
@@ -920,10 +1168,11 @@ computeIterativeZipfian(TState *thread, int64 n, double s)
  * Jim Gray et al, SIGMOD 1994
  */
 static int64
-computeHarmonicZipfian(TState *thread, int64 n, double s)
+computeHarmonicZipfian(TState *thread, RandomState *random_state, int64 n,
+					   double s)
 {
 	ZipfCell   *cell = zipfFindOrCreateCacheCell(&thread->zipf_cache, n, s);
-	double		uniform = pg_erand48(thread->random_state);
+	double		uniform = pg_erand48(random_state->data);
 	double		uz = uniform * cell->harmonicn;
 
 	if (uz < 1.0)
@@ -935,7 +1184,8 @@ computeHarmonicZipfian(TState *thread, int64 n, double s)
 
 /* random number generator: zipfian distribution from min to max inclusive */
 static int64
-getZipfianRand(TState *thread, int64 min, int64 max, double s)
+getZipfianRand(TState *thread, RandomState *random_state, int64 min,
+			   int64 max, double s)
 {
 	int64		n = max - min + 1;
 
@@ -944,8 +1194,8 @@ getZipfianRand(TState *thread, int64 min, int64 max, double s)
 
 
 	return min - 1 + ((s > 1)
-					  ? computeIterativeZipfian(thread, n, s)
-					  : computeHarmonicZipfian(thread, n, s));
+					  ? computeIterativeZipfian(random_state, n, s)
+					  : computeHarmonicZipfian(thread, random_state, n, s));
 }
 
 /*
@@ -1045,6 +1295,10 @@ initStats(StatsData *sd, time_t start_time)
 	sd->start_time = start_time;
 	sd->cnt = 0;
 	sd->skipped = 0;
+	sd->retries = 0;
+	sd->retried = 0;
+	sd->errors = 0;
+	sd->errors_in_failed_tx = 0;
 	initSimpleStats(&sd->latency);
 	initSimpleStats(&sd->lag);
 }
@@ -1053,8 +1307,30 @@ initStats(StatsData *sd, time_t start_time)
  * Accumulate one additional item into the given stats object.
  */
 static void
-accumStats(StatsData *stats, bool skipped, double lat, double lag)
+accumStats(StatsData *stats, bool skipped, double lat, double lag,
+		   FailureStatus first_error, int64 retries)
 {
+	/*
+	 * Record the number of retries regardless of whether the transaction was
+	 * successful or failed.
+	 */
+	stats->retries += retries;
+	if (retries > 0)
+		stats->retried++;
+
+	/* Record the failed transaction */
+	if (first_error != NO_FAILURE)
+	{
+		stats->errors++;
+
+		if (first_error == IN_FAILED_SQL_TRANSACTION)
+			stats->errors_in_failed_tx++;
+
+		return;
+	}
+
+	/* Record the successful transaction */
+
 	stats->cnt++;
 
 	if (skipped)
@@ -1080,10 +1356,7 @@ executeStatement(PGconn *con, const char *sql)
 
 	res = PQexec(con, sql);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-	{
-		fprintf(stderr, "%s", PQerrorMessage(con));
-		exit(1);
-	}
+		ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
 	PQclear(res);
 }
 
@@ -1096,8 +1369,9 @@ tryExecuteStatement(PGconn *con, const char *sql)
 	res = PQexec(con, sql);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		fprintf(stderr, "%s", PQerrorMessage(con));
-		fprintf(stderr, "(ignoring this error and continuing anyway)\n");
+		ereport(ELEVEL_LOG_MAIN,
+				(errmsg("%s(ignoring this error and continuing anyway)\n",
+						PQerrorMessage(con))));
 	}
 	PQclear(res);
 }
@@ -1143,8 +1417,8 @@ doConnect(void)
 
 		if (!conn)
 		{
-			fprintf(stderr, "connection to database \"%s\" failed\n",
-					dbName);
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg("connection to database \"%s\" failed\n", dbName)));
 			return NULL;
 		}
 
@@ -1162,8 +1436,9 @@ doConnect(void)
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(conn) == CONNECTION_BAD)
 	{
-		fprintf(stderr, "connection to database \"%s\" failed:\n%s",
-				dbName, PQerrorMessage(conn));
+		ereport(ELEVEL_LOG_MAIN,
+				(errmsg("connection to database \"%s\" failed:\n%s",
+						dbName, PQerrorMessage(conn))));
 		PQfinish(conn);
 		return NULL;
 	}
@@ -1195,39 +1470,39 @@ compareVariableNames(const void *v1, const void *v2)
 
 /* Locate a variable by name; returns NULL if unknown */
 static Variable *
-lookupVariable(CState *st, char *name)
+lookupVariable(Variables *variables, char *name)
 {
 	Variable	key;
 
 	/* On some versions of Solaris, bsearch of zero items dumps core */
-	if (st->nvariables <= 0)
+	if (variables->nvariables <= 0)
 		return NULL;
 
 	/* Sort if we have to */
-	if (!st->vars_sorted)
+	if (!variables->vars_sorted)
 	{
-		qsort((void *) st->variables, st->nvariables, sizeof(Variable),
-			  compareVariableNames);
-		st->vars_sorted = true;
+		qsort((void *) variables->array, variables->nvariables,
+			  sizeof(Variable), compareVariableNames);
+		variables->vars_sorted = true;
 	}
 
 	/* Now we can search */
 	key.name = name;
 	return (Variable *) bsearch((void *) &key,
-								(void *) st->variables,
-								st->nvariables,
+								(void *) variables->array,
+								variables->nvariables,
 								sizeof(Variable),
 								compareVariableNames);
 }
 
 /* Get the value of a variable, in string form; returns NULL if unknown */
 static char *
-getVariable(CState *st, char *name)
+getVariable(Variables *variables, char *name)
 {
 	Variable   *var;
 	char		stringform[64];
 
-	var = lookupVariable(st, name);
+	var = lookupVariable(variables, name);
 	if (var == NULL)
 		return NULL;			/* not found */
 
@@ -1301,9 +1576,9 @@ makeVariableValue(Variable *var)
 
 		if (sscanf(var->svalue, "%lf%c", &dv, &xs) != 1)
 		{
-			fprintf(stderr,
-					"malformed variable \"%s\" value: \"%s\"\n",
-					var->name, var->svalue);
+			ereport(ELEVEL_LOG_CLIENT_FAIL,
+					(errmsg("malformed variable \"%s\" value: \"%s\"\n",
+							var->name, var->svalue)));
 			return false;
 		}
 		setDoubleValue(&var->value, dv);
@@ -1348,14 +1623,16 @@ valid_variable_name(const char *name)
 /*
  * Lookup a variable by name, creating it if need be.
  * Caller is expected to assign a value to the variable.
- * Returns NULL on failure (bad name).
+ * On failure (bad name): if this is a client run returns NULL; exits the
+ * program otherwise.
  */
 static Variable *
-lookupCreateVariable(CState *st, const char *context, char *name)
+lookupCreateVariable(Variables *variables, const char *context, char *name,
+					 bool client)
 {
 	Variable   *var;
 
-	var = lookupVariable(st, name);
+	var = lookupVariable(variables, name);
 	if (var == NULL)
 	{
 		Variable   *newvars;
@@ -1366,45 +1643,49 @@ lookupCreateVariable(CState *st, const char *context, char *name)
 		 */
 		if (!valid_variable_name(name))
 		{
-			fprintf(stderr, "%s: invalid variable name: \"%s\"\n",
-					context, name);
+			/*
+			 * About the error level used: if we process client commands, it a
+			 * normal failure; otherwise it is not and we exit the program.
+			 */
+			ereport(client ? ELEVEL_LOG_CLIENT_FAIL : ELEVEL_FATAL,
+					(errmsg("%s: invalid variable name: \"%s\"\n",
+							context, name)));
 			return NULL;
 		}
 
 		/* Create variable at the end of the array */
-		if (st->variables)
-			newvars = (Variable *) pg_realloc(st->variables,
-											  (st->nvariables + 1) * sizeof(Variable));
+		if (variables->array)
+			newvars = (Variable *) pg_realloc(variables->array,
+								(variables->nvariables + 1) * sizeof(Variable));
 		else
 			newvars = (Variable *) pg_malloc(sizeof(Variable));
 
-		st->variables = newvars;
+		variables->array = newvars;
 
-		var = &newvars[st->nvariables];
+		var = &newvars[variables->nvariables];
 
 		var->name = pg_strdup(name);
 		var->svalue = NULL;
 		/* caller is expected to initialize remaining fields */
 
-		st->nvariables++;
+		variables->nvariables++;
 		/* we don't re-sort the array till we have to */
-		st->vars_sorted = false;
+		variables->vars_sorted = false;
 	}
 
 	return var;
 }
 
 /* Assign a string value to a variable, creating it if need be */
-/* Returns false on failure (bad name) */
-static bool
-putVariable(CState *st, const char *context, char *name, const char *value)
+/* Exits on failure (bad name) */
+static void
+putVariable(Variables *variables, const char *context, char *name,
+			const char *value)
 {
 	Variable   *var;
 	char	   *val;
 
-	var = lookupCreateVariable(st, context, name);
-	if (!var)
-		return false;
+	var = lookupCreateVariable(variables, context, name, false);
 
 	/* dup then free, in case value is pointing at this variable */
 	val = pg_strdup(value);
@@ -1413,19 +1694,20 @@ putVariable(CState *st, const char *context, char *name, const char *value)
 		free(var->svalue);
 	var->svalue = val;
 	var->value.type = PGBT_NO_VALUE;
-
-	return true;
 }
 
-/* Assign a value to a variable, creating it if need be */
-/* Returns false on failure (bad name) */
+/*
+ * Assign a value to a variable, creating it if need be.
+ * On failure (bad name): if this is a client run returns false; exits the
+ * program otherwise.
+ */
 static bool
-putVariableValue(CState *st, const char *context, char *name,
-				 const PgBenchValue *value)
+putVariableValue(Variables *variables, const char *context, char *name,
+				 const PgBenchValue *value, bool client)
 {
 	Variable   *var;
 
-	var = lookupCreateVariable(st, context, name);
+	var = lookupCreateVariable(variables, context, name, client);
 	if (!var)
 		return false;
 
@@ -1437,15 +1719,19 @@ putVariableValue(CState *st, const char *context, char *name,
 	return true;
 }
 
-/* Assign an integer value to a variable, creating it if need be */
-/* Returns false on failure (bad name) */
+/*
+ * Assign an integer value to a variable, creating it if need be.
+ * On failure (bad name): if this is a client run returns false; exits the
+ * program otherwise.
+ */
 static bool
-putVariableInt(CState *st, const char *context, char *name, int64 value)
+putVariableInt(Variables *variables, const char *context, char *name,
+			   int64 value, bool client)
 {
 	PgBenchValue val;
 
 	setIntValue(&val, value);
-	return putVariableValue(st, context, name, &val);
+	return putVariableValue(variables, context, name, &val, client);
 }
 
 /*
@@ -1500,7 +1786,7 @@ replaceVariable(char **sql, char *param, int len, char *value)
 }
 
 static char *
-assignVariables(CState *st, char *sql)
+assignVariables(Variables *variables, char *sql)
 {
 	char	   *p,
 			   *name,
@@ -1521,7 +1807,7 @@ assignVariables(CState *st, char *sql)
 			continue;
 		}
 
-		val = getVariable(st, name);
+		val = getVariable(variables, name);
 		free(name);
 		if (val == NULL)
 		{
@@ -1536,12 +1822,13 @@ assignVariables(CState *st, char *sql)
 }
 
 static void
-getQueryParams(CState *st, const Command *command, const char **params)
+getQueryParams(Variables *variables, const Command *command,
+			   const char **params)
 {
 	int			i;
 
 	for (i = 0; i < command->argc - 1; i++)
-		params[i] = getVariable(st, command->argv[i + 1]);
+		params[i] = getVariable(variables, command->argv[i + 1]);
 }
 
 static char *
@@ -1576,7 +1863,8 @@ coerceToBool(PgBenchValue *pval, bool *bval)
 	}
 	else						/* NULL, INT or DOUBLE */
 	{
-		fprintf(stderr, "cannot coerce %s to boolean\n", valueTypeName(pval));
+		ereport(ELEVEL_LOG_CLIENT_FAIL,
+				(errmsg("cannot coerce %s to boolean\n", valueTypeName(pval))));
 		*bval = false;			/* suppress uninitialized-variable warnings */
 		return false;
 	}
@@ -1621,7 +1909,8 @@ coerceToInt(PgBenchValue *pval, int64 *ival)
 
 		if (dval < PG_INT64_MIN || PG_INT64_MAX < dval)
 		{
-			fprintf(stderr, "double to int overflow for %f\n", dval);
+			ereport(ELEVEL_LOG_CLIENT_FAIL,
+					(errmsg("double to int overflow for %f\n", dval)));
 			return false;
 		}
 		*ival = (int64) dval;
@@ -1629,7 +1918,8 @@ coerceToInt(PgBenchValue *pval, int64 *ival)
 	}
 	else						/* BOOLEAN or NULL */
 	{
-		fprintf(stderr, "cannot coerce %s to int\n", valueTypeName(pval));
+		ereport(ELEVEL_LOG_CLIENT_FAIL,
+				(errmsg("cannot coerce %s to int\n", valueTypeName(pval))));
 		return false;
 	}
 }
@@ -1650,7 +1940,8 @@ coerceToDouble(PgBenchValue *pval, double *dval)
 	}
 	else						/* BOOLEAN or NULL */
 	{
-		fprintf(stderr, "cannot coerce %s to double\n", valueTypeName(pval));
+		ereport(ELEVEL_LOG_CLIENT_FAIL,
+				(errmsg("cannot coerce %s to double\n", valueTypeName(pval))));
 		return false;
 	}
 }
@@ -1831,8 +2122,9 @@ evalStandardFunc(TState *thread, CState *st,
 
 	if (l != NULL)
 	{
-		fprintf(stderr,
-				"too many function arguments, maximum is %d\n", MAX_FARGS);
+		ereport(ELEVEL_LOG_CLIENT_FAIL,
+				(errmsg("too many function arguments, maximum is %d\n",
+					   MAX_FARGS)));
 		return false;
 	}
 
@@ -1955,7 +2247,8 @@ evalStandardFunc(TState *thread, CState *st,
 						case PGBENCH_MOD:
 							if (ri == 0)
 							{
-								fprintf(stderr, "division by zero\n");
+								ereport(ELEVEL_LOG_CLIENT_FAIL,
+										(errmsg("division by zero\n")));
 								return false;
 							}
 							/* special handling of -1 divisor */
@@ -1966,7 +2259,9 @@ evalStandardFunc(TState *thread, CState *st,
 									/* overflow check (needed for INT64_MIN) */
 									if (li == PG_INT64_MIN)
 									{
-										fprintf(stderr, "bigint out of range\n");
+										ereport(
+											ELEVEL_LOG_CLIENT_FAIL,
+											(errmsg("bigint out of range\n")));
 										return false;
 									}
 									else
@@ -2067,22 +2362,42 @@ evalStandardFunc(TState *thread, CState *st,
 		case PGBENCH_DEBUG:
 			{
 				PgBenchValue *varg = &vargs[0];
+				PQExpBufferData errormsg_buf;
 
 				Assert(nargs == 1);
 
-				fprintf(stderr, "debug(script=%d,command=%d): ",
-						st->use_file, st->command + 1);
+				initPQExpBuffer(&errormsg_buf);
+				printfPQExpBuffer(&errormsg_buf,
+								  "debug(script=%d,command=%d): ",
+								  st->use_file, st->command + 1);
 
 				if (varg->type == PGBT_NULL)
-					fprintf(stderr, "null\n");
+				{
+					appendPQExpBuffer(&errormsg_buf, "null\n");
+				}
 				else if (varg->type == PGBT_BOOLEAN)
-					fprintf(stderr, "boolean %s\n", varg->u.bval ? "true" : "false");
+				{
+					appendPQExpBuffer(&errormsg_buf,
+									  "boolean %s\n",
+									  varg->u.bval ? "true" : "false");
+				}
 				else if (varg->type == PGBT_INT)
-					fprintf(stderr, "int " INT64_FORMAT "\n", varg->u.ival);
+				{
+					appendPQExpBuffer(&errormsg_buf,
+									  "int " INT64_FORMAT "\n", varg->u.ival);
+				}
 				else if (varg->type == PGBT_DOUBLE)
-					fprintf(stderr, "double %.*g\n", DBL_DIG, varg->u.dval);
+				{
+					appendPQExpBuffer(&errormsg_buf,
+									  "double %.*g\n", DBL_DIG, varg->u.dval);
+				}
 				else			/* internal error, unexpected type */
+				{
 					Assert(0);
+				}
+
+				ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errormsg_buf.data)));
+				termPQExpBuffer(&errormsg_buf);
 
 				*retval = *varg;
 
@@ -2206,20 +2521,22 @@ evalStandardFunc(TState *thread, CState *st,
 				/* check random range */
 				if (imin > imax)
 				{
-					fprintf(stderr, "empty range given to random\n");
+					ereport(ELEVEL_LOG_CLIENT_FAIL,
+							(errmsg("empty range given to random\n")));
 					return false;
 				}
 				else if (imax - imin < 0 || (imax - imin) + 1 < 0)
 				{
 					/* prevent int overflows in random functions */
-					fprintf(stderr, "random range is too large\n");
+					ereport(ELEVEL_LOG_CLIENT_FAIL,
+							(errmsg("random range is too large\n")));
 					return false;
 				}
 
 				if (func == PGBENCH_RANDOM)
 				{
 					Assert(nargs == 2);
-					setIntValue(retval, getrand(thread, imin, imax));
+					setIntValue(retval, getrand(&st->random_state, imin, imax));
 				}
 				else			/* gaussian & exponential */
 				{
@@ -2234,39 +2551,42 @@ evalStandardFunc(TState *thread, CState *st,
 					{
 						if (param < MIN_GAUSSIAN_PARAM)
 						{
-							fprintf(stderr,
-									"gaussian parameter must be at least %f "
-									"(not %f)\n", MIN_GAUSSIAN_PARAM, param);
+							ereport(ELEVEL_LOG_CLIENT_FAIL,
+									(errmsg("gaussian parameter must be at least %f (not %f)\n",
+											MIN_GAUSSIAN_PARAM, param)));
 							return false;
 						}
 
 						setIntValue(retval,
-									getGaussianRand(thread, imin, imax, param));
+									getGaussianRand(&st->random_state, imin,
+													imax, param));
 					}
 					else if (func == PGBENCH_RANDOM_ZIPFIAN)
 					{
 						if (param <= 0.0 || param == 1.0 || param > MAX_ZIPFIAN_PARAM)
 						{
-							fprintf(stderr,
-									"zipfian parameter must be in range (0, 1) U (1, %d]"
-									" (got %f)\n", MAX_ZIPFIAN_PARAM, param);
+							ereport(ELEVEL_LOG_CLIENT_FAIL,
+									(errmsg("zipfian parameter must be in range (0, 1) U (1, %d] (got %f)\n",
+											MAX_ZIPFIAN_PARAM, param)));
 							return false;
 						}
 						setIntValue(retval,
-									getZipfianRand(thread, imin, imax, param));
+									getZipfianRand(thread, &st->random_state,
+												   imin, imax, param));
 					}
 					else		/* exponential */
 					{
 						if (param <= 0.0)
 						{
-							fprintf(stderr,
-									"exponential parameter must be greater than zero"
-									" (got %f)\n", param);
+							ereport(ELEVEL_LOG_CLIENT_FAIL,
+									(errmsg("exponential parameter must be greater than zero (got %f)\n",
+											param)));
 							return false;
 						}
 
 						setIntValue(retval,
-									getExponentialRand(thread, imin, imax, param));
+									getExponentialRand(&st->random_state, imin,
+													   imax, param));
 					}
 				}
 
@@ -2369,10 +2689,11 @@ evaluateExpr(TState *thread, CState *st, PgBenchExpr *expr, PgBenchValue *retval
 			{
 				Variable   *var;
 
-				if ((var = lookupVariable(st, expr->u.variable.varname)) == NULL)
+				if ((var = lookupVariable(&st->variables, expr->u.variable.varname)) == NULL)
 				{
-					fprintf(stderr, "undefined variable \"%s\"\n",
-							expr->u.variable.varname);
+					ereport(ELEVEL_LOG_CLIENT_FAIL,
+							(errmsg("undefined variable \"%s\"\n",
+									expr->u.variable.varname)));
 					return false;
 				}
 
@@ -2391,9 +2712,9 @@ evaluateExpr(TState *thread, CState *st, PgBenchExpr *expr, PgBenchValue *retval
 
 		default:
 			/* internal error which should never occur */
-			fprintf(stderr, "unexpected enode type in evaluation: %d\n",
-					expr->etype);
-			exit(1);
+			ereport(ELEVEL_FATAL,
+					(errmsg("unexpected enode type in evaluation: %d\n",
+							expr->etype)));
 	}
 }
 
@@ -2433,7 +2754,7 @@ getMetaCommand(const char *cmd)
  * Return true if succeeded, or false on error.
  */
 static bool
-runShellCommand(CState *st, char *variable, char **argv, int argc)
+runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 {
 	char		command[SHELL_COMMAND_SIZE];
 	int			i,
@@ -2464,17 +2785,19 @@ runShellCommand(CState *st, char *variable, char **argv, int argc)
 		{
 			arg = argv[i] + 1;	/* a string literal starting with colons */
 		}
-		else if ((arg = getVariable(st, argv[i] + 1)) == NULL)
+		else if ((arg = getVariable(variables, argv[i] + 1)) == NULL)
 		{
-			fprintf(stderr, "%s: undefined variable \"%s\"\n",
-					argv[0], argv[i]);
+			ereport(ELEVEL_LOG_CLIENT_FAIL,
+					(errmsg("%s: undefined variable \"%s\"\n",
+							argv[0], argv[i])));
 			return false;
 		}
 
 		arglen = strlen(arg);
 		if (len + arglen + (i > 0 ? 1 : 0) >= SHELL_COMMAND_SIZE - 1)
 		{
-			fprintf(stderr, "%s: shell command is too long\n", argv[0]);
+			ereport(ELEVEL_LOG_CLIENT_FAIL,
+					(errmsg("%s: shell command is too long\n", argv[0])));
 			return false;
 		}
 
@@ -2492,7 +2815,11 @@ runShellCommand(CState *st, char *variable, char **argv, int argc)
 		if (system(command))
 		{
 			if (!timer_exceeded)
-				fprintf(stderr, "%s: could not launch shell command\n", argv[0]);
+			{
+				ereport(ELEVEL_LOG_CLIENT_FAIL,
+						(errmsg("%s: could not launch shell command\n",
+								argv[0])));
+			}
 			return false;
 		}
 		return true;
@@ -2501,19 +2828,25 @@ runShellCommand(CState *st, char *variable, char **argv, int argc)
 	/* Execute the command with pipe and read the standard output. */
 	if ((fp = popen(command, "r")) == NULL)
 	{
-		fprintf(stderr, "%s: could not launch shell command\n", argv[0]);
+		ereport(ELEVEL_LOG_CLIENT_FAIL,
+				(errmsg("%s: could not launch shell command\n", argv[0])));
 		return false;
 	}
 	if (fgets(res, sizeof(res), fp) == NULL)
 	{
 		if (!timer_exceeded)
-			fprintf(stderr, "%s: could not read result of shell command\n", argv[0]);
+		{
+			ereport(ELEVEL_LOG_CLIENT_FAIL,
+					(errmsg("%s: could not read result of shell command\n",
+							argv[0])));
+		}
 		(void) pclose(fp);
 		return false;
 	}
 	if (pclose(fp) < 0)
 	{
-		fprintf(stderr, "%s: could not close shell command\n", argv[0]);
+		ereport(ELEVEL_LOG_CLIENT_FAIL,
+				(errmsg("%s: could not close shell command\n", argv[0])));
 		return false;
 	}
 
@@ -2523,11 +2856,12 @@ runShellCommand(CState *st, char *variable, char **argv, int argc)
 		endptr++;
 	if (*res == '\0' || *endptr != '\0')
 	{
-		fprintf(stderr, "%s: shell command must return an integer (not \"%s\")\n",
-				argv[0], res);
+		ereport(ELEVEL_LOG_CLIENT_FAIL,
+				(errmsg("%s: shell command must return an integer (not \"%s\")\n",
+						argv[0], res)));
 		return false;
 	}
-	if (!putVariableInt(st, "setshell", variable, retval))
+	if (!putVariableInt(variables, "setshell", variable, retval, true))
 		return false;
 
 #ifdef DEBUG
@@ -2544,11 +2878,50 @@ preparedStatementName(char *buffer, int file, int state)
 }
 
 static void
-commandFailed(CState *st, const char *cmd, const char *message)
+commandFailed(CState *st, const char *cmd, const char *message,
+			  ErrorLevel elevel)
 {
-	fprintf(stderr,
-			"client %d aborted in command %d (%s) of script %d; %s\n",
-			st->id, st->command, cmd, st->use_file, message);
+	switch (elevel)
+	{
+		case ELEVEL_LOG_CLIENT_FAIL:
+			if (st->first_failure.status == NO_FAILURE)
+			{
+				/*
+				 * This is the first failure during the execution of the current
+				 * script.
+				 */
+				ereport(ELEVEL_LOG_CLIENT_FAIL,
+						(errmsg("client %d got a failure in command %d (%s) of script %d; %s\n",
+								st->id, st->command, cmd, st->use_file,
+								message)));
+			}
+			else
+			{
+				/*
+				 * This is not the first failure during the execution of the
+				 * current script.
+				 */
+				ereport(ELEVEL_LOG_CLIENT_FAIL,
+						(errmsg("client %d continues a failed transaction in command %d (%s) of script %d; %s\n",
+								st->id, st->command, cmd, st->use_file,
+								message)));
+			}
+			break;
+		case ELEVEL_LOG_CLIENT_ABORTED:
+			ereport(ELEVEL_LOG_CLIENT_ABORTED,
+					(errmsg("client %d aborted in command %d (%s) of script %d; %s\n",
+							st->id, st->command, cmd, st->use_file, message)));
+			break;
+		case ELEVEL_DEBUG:
+		case ELEVEL_LOG_MAIN:
+		case ELEVEL_FATAL:
+		default:
+			/* internal error which should never occur */
+			ereport(ELEVEL_FATAL,
+					(errmsg("unexpected error level when the command failed: %d\n",
+							elevel)));
+			break;
+	}
 }
 
 /* return a script number with a weighted choice. */
@@ -2561,7 +2934,7 @@ chooseScript(TState *thread)
 	if (num_scripts == 1)
 		return 0;
 
-	w = getrand(thread, 0, total_weight - 1);
+	w = getrand(&thread->random_state, 0, total_weight - 1);
 	do
 	{
 		w -= sql_script[i++].weight;
@@ -2581,10 +2954,9 @@ sendCommand(CState *st, Command *command)
 		char	   *sql;
 
 		sql = pg_strdup(command->argv[0]);
-		sql = assignVariables(st, sql);
+		sql = assignVariables(&st->variables, sql);
 
-		if (debug)
-			fprintf(stderr, "client %d sending %s\n", st->id, sql);
+		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, sql)));
 		r = PQsendQuery(st->con, sql);
 		free(sql);
 	}
@@ -2593,10 +2965,9 @@ sendCommand(CState *st, Command *command)
 		const char *sql = command->argv[0];
 		const char *params[MAX_ARGS];
 
-		getQueryParams(st, command, params);
+		getQueryParams(&st->variables, command, params);
 
-		if (debug)
-			fprintf(stderr, "client %d sending %s\n", st->id, sql);
+		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, sql)));
 		r = PQsendQueryParams(st->con, sql, command->argc - 1,
 							  NULL, params, NULL, NULL, 0);
 	}
@@ -2621,17 +2992,19 @@ sendCommand(CState *st, Command *command)
 				res = PQprepare(st->con, name,
 								commands[j]->argv[0], commands[j]->argc - 1, NULL);
 				if (PQresultStatus(res) != PGRES_COMMAND_OK)
-					fprintf(stderr, "%s", PQerrorMessage(st->con));
+				{
+					ereport(ELEVEL_LOG_MAIN,
+							(errmsg("%s", PQerrorMessage(st->con))));
+				}
 				PQclear(res);
 			}
 			st->prepared[st->use_file] = true;
 		}
 
-		getQueryParams(st, command, params);
+		getQueryParams(&st->variables, command, params);
 		preparedStatementName(name, st->use_file, st->command);
 
-		if (debug)
-			fprintf(stderr, "client %d sending %s\n", st->id, name);
+		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, name)));
 		r = PQsendQueryPrepared(st->con, name, command->argc - 1,
 								params, NULL, NULL, 0);
 	}
@@ -2640,10 +3013,9 @@ sendCommand(CState *st, Command *command)
 
 	if (r == 0)
 	{
-		if (debug)
-			fprintf(stderr, "client %d could not send %s\n",
-					st->id, command->argv[0]);
-		st->ecnt++;
+		ereport(ELEVEL_DEBUG,
+				(errmsg("client %d could not send %s\n",
+						st->id, command->argv[0])));
 		return false;
 	}
 	else
@@ -2655,17 +3027,18 @@ sendCommand(CState *st, Command *command)
  * of delay, in microseconds.  Returns true on success, false on error.
  */
 static bool
-evaluateSleep(CState *st, int argc, char **argv, int *usecs)
+evaluateSleep(Variables *variables, int argc, char **argv, int *usecs)
 {
 	char	   *var;
 	int			usec;
 
 	if (*argv[1] == ':')
 	{
-		if ((var = getVariable(st, argv[1] + 1)) == NULL)
+		if ((var = getVariable(variables, argv[1] + 1)) == NULL)
 		{
-			fprintf(stderr, "%s: undefined variable \"%s\"\n",
-					argv[0], argv[1]);
+			ereport(ELEVEL_LOG_CLIENT_FAIL,
+					(errmsg("%s: undefined variable \"%s\"\n",
+							argv[0], argv[1])));
 			return false;
 		}
 		usec = atoi(var);
@@ -2688,6 +3061,186 @@ evaluateSleep(CState *st, int argc, char **argv, int *usecs)
 }
 
 /*
+ * Get the number of all processed transactions including skipped ones and
+ * errors.
+ */
+static int64
+getTotalCnt(const CState *st)
+{
+	return st->cnt + st->ecnt;
+}
+
+/*
+ * Copy an array of random state.
+ */
+static void
+copyRandomState(RandomState *destination, const RandomState *source)
+{
+	memcpy(destination->data, source->data, sizeof(unsigned short) * 3);
+}
+
+/*
+ * Make a deep copy of variables array.
+ */
+static void
+copyVariables(Variables *destination_vars, const Variables *source_vars)
+{
+	Variable   *destination;
+	Variable   *current_destination;
+	const Variable *source;
+	const Variable *current_source;
+	int			nvariables;
+
+	if (!destination_vars || !source_vars)
+		return;
+
+	destination = destination_vars->array;
+	source = source_vars->array;
+	nvariables = source_vars->nvariables;
+
+	for (current_destination = destination;
+		 current_destination - destination < destination_vars->nvariables;
+		 ++current_destination)
+	{
+		pg_free(current_destination->name);
+		pg_free(current_destination->svalue);
+	}
+
+	destination_vars->array = pg_realloc(destination_vars->array,
+										 sizeof(Variable) * nvariables);
+	destination = destination_vars->array;
+
+	for (current_source = source, current_destination = destination;
+		 current_source - source < nvariables;
+		 ++current_source, ++current_destination)
+	{
+		current_destination->name = pg_strdup(current_source->name);
+		if (current_source->svalue)
+			current_destination->svalue = pg_strdup(current_source->svalue);
+		else
+			current_destination->svalue = NULL;
+		current_destination->value = current_source->value;
+	}
+
+	destination_vars->nvariables = nvariables;
+	destination_vars->vars_sorted = source_vars->vars_sorted;
+}
+
+/*
+ * Returns true if this type of failure can be retried.
+ */
+static bool
+canRetryFailure(FailureStatus failure_status)
+{
+	return (failure_status == SERIALIZATION_FAILURE ||
+			failure_status == DEADLOCK_FAILURE);
+}
+
+/*
+ * Returns true if the failure can be retried.
+ */
+static bool
+canRetry(CState *st, instr_time *now)
+{
+	FailureStatus failure_status = st->first_failure.status;
+
+	Assert(failure_status != NO_FAILURE);
+
+	/* We can only retry serialization or deadlock failures. */
+	if (!canRetryFailure(failure_status))
+		return false;
+
+	/*
+	 * We must have at least one option to limit the retrying of failed
+	 * transactions.
+	 */
+	Assert(max_tries || latency_limit);
+
+	/*
+	 * We cannot retry the failure if we have reached the maximum number of
+	 * tries.
+	 */
+	if (max_tries && st->retries + 1 >= max_tries)
+		return false;
+
+	/*
+	 * We cannot retry the failure if we spent too much time on this
+	 * transaction.
+	 */
+	if (latency_limit)
+	{
+		if (INSTR_TIME_IS_ZERO(*now))
+			INSTR_TIME_SET_CURRENT(*now);
+
+		if (INSTR_TIME_GET_MICROSEC(*now) - st->txn_scheduled >= latency_limit)
+			return false;
+	}
+
+	/* OK */
+	return true;
+}
+
+/*
+ * Process the conditional stack depending on the condition value; is used for
+ * the meta commands \if and \elif.
+ */
+static void
+executeCondition(CState *st, bool condition)
+{
+	Command    *command = sql_script[st->use_file].commands[st->command];
+
+	/* execute or not depending on evaluated condition */
+	if (command->meta == META_IF)
+	{
+		conditional_stack_push(st->cstack,
+							   condition ? IFSTATE_TRUE : IFSTATE_FALSE);
+	}
+	else if (command->meta == META_ELIF)
+	{
+		/* we should get here only if the "elif" needed evaluation */
+		Assert(conditional_stack_peek(st->cstack) == IFSTATE_FALSE);
+		conditional_stack_poke(st->cstack,
+							   condition ? IFSTATE_TRUE : IFSTATE_FALSE);
+	}
+}
+
+/*
+ * Get the failure status from the error code.
+ */
+static FailureStatus
+getFailureStatus(char *sqlState)
+{
+	if (sqlState)
+	{
+		if (strcmp(sqlState, ERRCODE_T_R_SERIALIZATION_FAILURE) == 0)
+			return SERIALIZATION_FAILURE;
+		else if (strcmp(sqlState, ERRCODE_T_R_DEADLOCK_DETECTED) == 0)
+			return DEADLOCK_FAILURE;
+		else if (strcmp(sqlState, ERRCODE_IN_FAILED_SQL_TRANSACTION) == 0)
+			return IN_FAILED_SQL_TRANSACTION;
+	}
+
+	return ANOTHER_FAILURE;
+}
+
+/*
+ * If the latency limit is used, return a percentage of the current transaction
+ * latency from the latency limit. Otherwise return zero.
+ */
+static double
+getLatencyUsed(CState *st, instr_time *now)
+{
+	if (!latency_limit)
+		return 0;
+
+	if (INSTR_TIME_IS_ZERO(*now))
+		INSTR_TIME_SET_CURRENT(*now);
+
+	return (100.0 * (INSTR_TIME_GET_MICROSEC(*now) - st->txn_scheduled) /
+			latency_limit);
+}
+
+/*
  * Advance the state machine of a connection, if possible.
  */
 static void
@@ -2698,6 +3251,7 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 	instr_time	now;
 	bool		end_tx_processed = false;
 	int64		wait;
+	FailureStatus failure_status = NO_FAILURE;
 
 	/*
 	 * gettimeofday() isn't free, so we get the current timestamp lazily the
@@ -2728,9 +3282,9 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 
 				st->use_file = chooseScript(thread);
 
-				if (debug)
-					fprintf(stderr, "client %d executing script \"%s\"\n", st->id,
-							sql_script[st->use_file].desc);
+				ereport(ELEVEL_DEBUG,
+						(errmsg("client %d executing script \"%s\"\n",
+								st->id, sql_script[st->use_file].desc)));
 
 				if (throttle_delay > 0)
 					st->state = CSTATE_START_THROTTLE;
@@ -2738,6 +3292,11 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					st->state = CSTATE_START_TX;
 				/* check consistency */
 				Assert(conditional_stack_empty(st->cstack));
+
+				/* reset transaction variables to default values */
+				st->first_failure.status = NO_FAILURE;
+				st->retries = 0;
+
 				break;
 
 				/*
@@ -2755,7 +3314,7 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				 * away.
 				 */
 				Assert(throttle_delay > 0);
-				wait = getPoissonRand(thread, throttle_delay);
+				wait = getPoissonRand(&thread->random_state, throttle_delay);
 
 				thread->throttle_trigger += wait;
 				st->txn_scheduled = thread->throttle_trigger;
@@ -2785,16 +3344,17 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 						INSTR_TIME_SET_CURRENT(now);
 					now_us = INSTR_TIME_GET_MICROSEC(now);
 					while (thread->throttle_trigger < now_us - latency_limit &&
-						   (nxacts <= 0 || st->cnt < nxacts))
+						   (nxacts <= 0 || getTotalCnt(st) < nxacts))
 					{
 						processXactStats(thread, st, &now, true, agg);
 						/* next rendez-vous */
-						wait = getPoissonRand(thread, throttle_delay);
+						wait = getPoissonRand(&thread->random_state,
+											  throttle_delay);
 						thread->throttle_trigger += wait;
 						st->txn_scheduled = thread->throttle_trigger;
 					}
 					/* stop client if -t exceeded */
-					if (nxacts > 0 && st->cnt >= nxacts)
+					if (nxacts > 0 && getTotalCnt(st) >= nxacts)
 					{
 						st->state = CSTATE_FINISHED;
 						break;
@@ -2802,9 +3362,9 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				}
 
 				st->state = CSTATE_THROTTLE;
-				if (debug)
-					fprintf(stderr, "client %d throttling " INT64_FORMAT " us\n",
-							st->id, wait);
+				ereport(ELEVEL_DEBUG,
+						(errmsg("client %d throttling " INT64_FORMAT " us\n",
+								st->id, wait)));
 				break;
 
 				/*
@@ -2836,8 +3396,9 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					start = now;
 					if ((st->con = doConnect()) == NULL)
 					{
-						fprintf(stderr, "client %d aborted while establishing connection\n",
-								st->id);
+						ereport(ELEVEL_LOG_CLIENT_ABORTED,
+								(errmsg("client %d aborted while establishing connection\n",
+										st->id)));
 						st->state = CSTATE_ABORTED;
 						break;
 					}
@@ -2847,6 +3408,15 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					/* Reset session-local state */
 					memset(st->prepared, 0, sizeof(st->prepared));
 				}
+
+				/*
+				 * It is the first try to run this transaction. Remember its
+				 * parameters just in case if it fails or we should repeat it in
+				 * future.
+				 */
+				copyRandomState(&st->retry_state.random_state,
+								&st->random_state);
+				copyVariables(&st->retry_state.variables, &st->variables);
 
 				/*
 				 * Record transaction start time under logging, progress or
@@ -2884,7 +3454,15 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				 */
 				if (command == NULL)
 				{
-					st->state = CSTATE_END_TX;
+					if (st->first_failure.status == NO_FAILURE)
+					{
+						st->state = CSTATE_END_TX;
+					}
+					else
+					{
+						/* check if we can retry the failure */
+						st->state = CSTATE_RETRY;
+					}
 					break;
 				}
 
@@ -2892,7 +3470,7 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				 * Record statement start time if per-command latencies are
 				 * requested
 				 */
-				if (is_latencies)
+				if (report_per_command)
 				{
 					if (INSTR_TIME_IS_ZERO(now))
 						INSTR_TIME_SET_CURRENT(now);
@@ -2903,7 +3481,8 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				{
 					if (!sendCommand(st, command))
 					{
-						commandFailed(st, "SQL", "SQL command send failed");
+						commandFailed(st, "SQL", "SQL command send failed",
+									  ELEVEL_LOG_CLIENT_ABORTED);
 						st->state = CSTATE_ABORTED;
 					}
 					else
@@ -2914,14 +3493,19 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					int			argc = command->argc,
 								i;
 					char	  **argv = command->argv;
+					PQExpBufferData errmsg_buf;
 
-					if (debug)
-					{
-						fprintf(stderr, "client %d executing \\%s", st->id, argv[0]);
-						for (i = 1; i < argc; i++)
-							fprintf(stderr, " %s", argv[i]);
-						fprintf(stderr, "\n");
-					}
+					initPQExpBuffer(&errmsg_buf);
+					printfPQExpBuffer(&errmsg_buf, "client %d executing \\%s",
+									  st->id, argv[0]);
+					for (i = 1; i < argc; i++)
+						appendPQExpBuffer(&errmsg_buf, " %s", argv[i]);
+					appendPQExpBufferChar(&errmsg_buf, '\n');
+					ereport(ELEVEL_DEBUG, (errmsg("%s", errmsg_buf.data)));
+					termPQExpBuffer(&errmsg_buf);
+
+					/* change it if the meta command fails */
+					failure_status = NO_FAILURE;
 
 					if (command->meta == META_SLEEP)
 					{
@@ -2934,10 +3518,13 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 						 */
 						int			usec;
 
-						if (!evaluateSleep(st, argc, argv, &usec))
+						if (!evaluateSleep(&st->variables, argc, argv, &usec))
 						{
-							commandFailed(st, "sleep", "execution of meta-command failed");
-							st->state = CSTATE_ABORTED;
+							commandFailed(st, "sleep",
+										  "execution of meta-command failed",
+										  ELEVEL_LOG_CLIENT_FAIL);
+							failure_status = ANOTHER_FAILURE;
+							st->state = CSTATE_FAILURE;
 							break;
 						}
 
@@ -2968,38 +3555,37 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 
 						if (!evaluateExpr(thread, st, expr, &result))
 						{
-							commandFailed(st, argv[0], "evaluation of meta-command failed");
-							st->state = CSTATE_ABORTED;
+							commandFailed(st, argv[0],
+										  "evaluation of meta-command failed",
+										  ELEVEL_LOG_CLIENT_FAIL);
+
+							/*
+							 * Do not ruin the following conditional commands,
+							 * if any.
+							 */
+							executeCondition(st, false);
+
+							failure_status = ANOTHER_FAILURE;
+							st->state = CSTATE_FAILURE;
 							break;
 						}
 
 						if (command->meta == META_SET)
 						{
-							if (!putVariableValue(st, argv[0], argv[1], &result))
+							if (!putVariableValue(&st->variables,  argv[0],
+												  argv[1], &result, true))
 							{
-								commandFailed(st, "set", "assignment of meta-command failed");
-								st->state = CSTATE_ABORTED;
+								commandFailed(st, "set",
+											  "assignment of meta-command failed",
+											  ELEVEL_LOG_CLIENT_FAIL);
+								failure_status = ANOTHER_FAILURE;
+								st->state = CSTATE_FAILURE;
 								break;
 							}
 						}
 						else	/* if and elif evaluated cases */
 						{
-							bool		cond = valueTruth(&result);
-
-							/* execute or not depending on evaluated condition */
-							if (command->meta == META_IF)
-							{
-								conditional_stack_push(st->cstack, cond ? IFSTATE_TRUE : IFSTATE_FALSE);
-							}
-							else	/* elif */
-							{
-								/*
-								 * we should get here only if the "elif"
-								 * needed evaluation
-								 */
-								Assert(conditional_stack_peek(st->cstack) == IFSTATE_FALSE);
-								conditional_stack_poke(st->cstack, cond ? IFSTATE_TRUE : IFSTATE_FALSE);
-							}
+							executeCondition(st, valueTruth(&result));
 						}
 					}
 					else if (command->meta == META_ELSE)
@@ -3028,7 +3614,9 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					}
 					else if (command->meta == META_SETSHELL)
 					{
-						bool		ret = runShellCommand(st, argv[1], argv + 2, argc - 2);
+						bool		ret = runShellCommand(&st->variables,
+														  argv[1], argv + 2,
+														  argc - 2);
 
 						if (timer_exceeded) /* timeout */
 						{
@@ -3037,8 +3625,11 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 						}
 						else if (!ret)	/* on error */
 						{
-							commandFailed(st, "setshell", "execution of meta-command failed");
-							st->state = CSTATE_ABORTED;
+							commandFailed(st, "setshell",
+										  "execution of meta-command failed",
+										  ELEVEL_LOG_CLIENT_FAIL);
+							failure_status = ANOTHER_FAILURE;
+							st->state = CSTATE_FAILURE;
 							break;
 						}
 						else
@@ -3048,7 +3639,8 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					}
 					else if (command->meta == META_SHELL)
 					{
-						bool		ret = runShellCommand(st, NULL, argv + 1, argc - 1);
+						bool		ret = runShellCommand(&st->variables, NULL,
+														  argv + 1, argc - 1);
 
 						if (timer_exceeded) /* timeout */
 						{
@@ -3057,8 +3649,11 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 						}
 						else if (!ret)	/* on error */
 						{
-							commandFailed(st, "shell", "execution of meta-command failed");
-							st->state = CSTATE_ABORTED;
+							commandFailed(st, "shell",
+										  "execution of meta-command failed",
+										  ELEVEL_LOG_CLIENT_FAIL);
+							failure_status = ANOTHER_FAILURE;
+							st->state = CSTATE_FAILURE;
 							break;
 						}
 						else
@@ -3174,37 +3769,55 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				 * Wait for the current SQL command to complete
 				 */
 			case CSTATE_WAIT_RESULT:
-				command = sql_script[st->use_file].commands[st->command];
-				if (debug)
-					fprintf(stderr, "client %d receiving\n", st->id);
-				if (!PQconsumeInput(st->con))
-				{				/* there's something wrong */
-					commandFailed(st, "SQL", "perhaps the backend died while processing");
-					st->state = CSTATE_ABORTED;
-					break;
-				}
-				if (PQisBusy(st->con))
-					return;		/* don't have the whole result yet */
-
-				/*
-				 * Read and discard the query result;
-				 */
-				res = PQgetResult(st->con);
-				switch (PQresultStatus(res))
 				{
-					case PGRES_COMMAND_OK:
-					case PGRES_TUPLES_OK:
-					case PGRES_EMPTY_QUERY:
-						/* OK */
-						PQclear(res);
-						discard_response(st);
-						st->state = CSTATE_END_COMMAND;
-						break;
-					default:
-						commandFailed(st, "SQL", PQerrorMessage(st->con));
-						PQclear(res);
+					char	   *sqlState;
+
+					command = sql_script[st->use_file].commands[st->command];
+					ereport(ELEVEL_DEBUG,
+							(errmsg("client %d receiving\n", st->id)));
+					if (!PQconsumeInput(st->con))
+					{				/* there's something wrong */
+						commandFailed(st, "SQL",
+									  "perhaps the backend died while processing",
+									  ELEVEL_LOG_CLIENT_ABORTED);
 						st->state = CSTATE_ABORTED;
 						break;
+					}
+					if (PQisBusy(st->con))
+						return;		/* don't have the whole result yet */
+
+					/*
+					 * Read and discard the query result;
+					 */
+					res = PQgetResult(st->con);
+					sqlState = PQresultErrorField(res, PG_DIAG_SQLSTATE);
+					switch (PQresultStatus(res))
+					{
+						case PGRES_COMMAND_OK:
+						case PGRES_TUPLES_OK:
+						case PGRES_EMPTY_QUERY:
+							/* OK */
+							PQclear(res);
+							discard_response(st);
+							failure_status = NO_FAILURE;
+							st->state = CSTATE_END_COMMAND;
+							break;
+						case PGRES_NONFATAL_ERROR:
+						case PGRES_FATAL_ERROR:
+							failure_status = getFailureStatus(sqlState);
+							commandFailed(st, "SQL", PQerrorMessage(st->con),
+										  ELEVEL_LOG_CLIENT_FAIL);
+							PQclear(res);
+							discard_response(st);
+							st->state = CSTATE_FAILURE;
+							break;
+						default:
+							commandFailed(st, "SQL", PQerrorMessage(st->con),
+										  ELEVEL_LOG_CLIENT_ABORTED);
+							PQclear(res);
+							st->state = CSTATE_ABORTED;
+							break;
+					}
 				}
 				break;
 
@@ -3233,7 +3846,7 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				 * in thread-local data structure, if per-command latencies
 				 * are requested.
 				 */
-				if (is_latencies)
+				if (report_per_command)
 				{
 					if (INSTR_TIME_IS_ZERO(now))
 						INSTR_TIME_SET_CURRENT(now);
@@ -3252,6 +3865,139 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				break;
 
 				/*
+				 * Remember the failure and go ahead with next command.
+				 */
+			case CSTATE_FAILURE:
+
+				Assert(failure_status != NO_FAILURE);
+
+				/*
+				 * All subsequent failures will be "retried"/"failed" if the
+				 * first failure of this transaction can be/cannot be retried.
+				 * Therefore remember only the first failure.
+				 */
+				if (st->first_failure.status == NO_FAILURE)
+				{
+					st->first_failure.status = failure_status;
+					st->first_failure.command = st->command;
+				}
+
+				/* Go ahead with next command, to be executed or skipped */
+				st->command++;
+				st->state = conditional_active(st->cstack) ?
+					CSTATE_START_COMMAND : CSTATE_SKIP_COMMAND;
+				break;
+
+			/*
+			 * Retry the failed transaction if possible.
+			 */
+			case CSTATE_RETRY:
+				{
+					PQExpBufferData errmsg_buf;
+
+					command = sql_script[st->use_file].commands[st->first_failure.command];
+
+					if (canRetry(st, &now))
+					{
+						/*
+						 * The failed transaction will be retried. So accumulate
+						 * the retry.
+						 */
+						st->retries++;
+						command->retries++;
+
+						/*
+						 * Report this with failures to indicate that the failed
+						 * transaction will be retried.
+						 */
+						initPQExpBuffer(&errmsg_buf);
+						printfPQExpBuffer(&errmsg_buf,
+										  "client %d repeats the failed transaction (try %d",
+										  st->id, st->retries + 1);
+						if (max_tries)
+							appendPQExpBuffer(&errmsg_buf, "/%d", max_tries);
+						if (latency_limit)
+						{
+							appendPQExpBuffer(&errmsg_buf,
+											  ", %.3f%% of the maximum time of tries was used",
+											  getLatencyUsed(st, &now));
+						}
+						appendPQExpBufferStr(&errmsg_buf, ")\n");
+						ereport(ELEVEL_LOG_CLIENT_FAIL,
+								(errmsg("%s", errmsg_buf.data)));
+						termPQExpBuffer(&errmsg_buf);
+
+						/*
+						 * Reset the execution parameters as they were at the
+						 * beginning of the transaction.
+						 */
+						copyRandomState(&st->random_state,
+										&st->retry_state.random_state);
+						copyVariables(&st->variables, &st->retry_state.variables);
+
+						/* Process the first transaction command */
+						st->command = 0;
+						st->first_failure.status = NO_FAILURE;
+						st->state = CSTATE_START_COMMAND;
+					}
+					else
+					{
+						/*
+						 * We will not be able to retry this failed transaction.
+						 * So accumulate the error.
+						 */
+						command->errors++;
+						if (st->first_failure.status ==
+							IN_FAILED_SQL_TRANSACTION)
+							command->errors_in_failed_tx++;
+
+						/*
+						 * Report this with failures to indicate that the failed
+						 * transaction will not be retried.
+						 */
+						initPQExpBuffer(&errmsg_buf);
+						printfPQExpBuffer(&errmsg_buf,
+										  "client %d ends the failed transaction (try %d",
+										  st->id, st->retries + 1);
+
+						/*
+						 * Report the actual number and/or time of tries. We do
+						 * not need this information if this type of failure can
+						 * be never retried.
+						 */
+						if (canRetryFailure(st->first_failure.status))
+						{
+							if (max_tries)
+							{
+								appendPQExpBuffer(&errmsg_buf, "/%d",
+												  max_tries);
+							}
+							if (latency_limit)
+							{
+								appendPQExpBuffer(&errmsg_buf,
+												  ", %.3f%% of the maximum time of tries was used",
+												  getLatencyUsed(st, &now));
+							}
+						}
+						appendPQExpBufferStr(&errmsg_buf, ")\n");
+						ereport(ELEVEL_LOG_CLIENT_FAIL,
+								(errmsg("%s", errmsg_buf.data)));
+						termPQExpBuffer(&errmsg_buf);
+
+						/*
+						 * Reset the execution parameters as they were at the
+						 * beginning of the transaction except for a random
+						 * state.
+						 */
+						copyVariables(&st->variables, &st->retry_state.variables);
+
+						/* End the failed transaction */
+						st->state = CSTATE_END_TX;
+					}
+				}
+				break;
+
+				/*
 				 * End of transaction.
 				 */
 			case CSTATE_END_TX:
@@ -3262,8 +4008,8 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				/* conditional stack must be empty */
 				if (!conditional_stack_empty(st->cstack))
 				{
-					fprintf(stderr, "end of script reached within a conditional, missing \\endif\n");
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("end of script reached within a conditional, missing \\endif\n")));
 				}
 
 				if (is_connect)
@@ -3272,7 +4018,8 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					INSTR_TIME_SET_ZERO(now);
 				}
 
-				if ((st->cnt >= nxacts && duration <= 0) || timer_exceeded)
+				if ((getTotalCnt(st) >= nxacts && duration <= 0) ||
+					timer_exceeded)
 				{
 					/* exit success */
 					st->state = CSTATE_FINISHED;
@@ -3332,7 +4079,7 @@ doLog(TState *thread, CState *st,
 	 * to the random sample.
 	 */
 	if (sample_rate != 0.0 &&
-		pg_erand48(thread->random_state) > sample_rate)
+		pg_erand48(thread->random_state.data) > sample_rate)
 		return;
 
 	/* should we aggregate the results or not? */
@@ -3348,13 +4095,15 @@ doLog(TState *thread, CState *st,
 		while (agg->start_time + agg_interval <= now)
 		{
 			/* print aggregated report to logfile */
-			fprintf(logfile, "%ld " INT64_FORMAT " %.0f %.0f %.0f %.0f",
+			fprintf(logfile, "%ld " INT64_FORMAT " %.0f %.0f %.0f %.0f " INT64_FORMAT " " INT64_FORMAT,
 					(long) agg->start_time,
 					agg->cnt,
 					agg->latency.sum,
 					agg->latency.sum2,
 					agg->latency.min,
-					agg->latency.max);
+					agg->latency.max,
+					agg->errors,
+					agg->errors_in_failed_tx);
 			if (throttle_delay)
 			{
 				fprintf(logfile, " %.0f %.0f %.0f %.0f",
@@ -3365,6 +4114,10 @@ doLog(TState *thread, CState *st,
 				if (latency_limit)
 					fprintf(logfile, " " INT64_FORMAT, agg->skipped);
 			}
+			if (max_tries > 1 || latency_limit)
+				fprintf(logfile, " " INT64_FORMAT " " INT64_FORMAT,
+						agg->retried,
+						agg->retries);
 			fputc('\n', logfile);
 
 			/* reset data and move to next interval */
@@ -3372,7 +4125,8 @@ doLog(TState *thread, CState *st,
 		}
 
 		/* accumulate the current transaction */
-		accumStats(agg, skipped, latency, lag);
+		accumStats(agg, skipped, latency, lag, st->first_failure.status,
+				   st->retries);
 	}
 	else
 	{
@@ -3382,14 +4136,25 @@ doLog(TState *thread, CState *st,
 		gettimeofday(&tv, NULL);
 		if (skipped)
 			fprintf(logfile, "%d " INT64_FORMAT " skipped %d %ld %ld",
-					st->id, st->cnt, st->use_file,
+					st->id, getTotalCnt(st), st->use_file,
+					(long) tv.tv_sec, (long) tv.tv_usec);
+		else if (st->first_failure.status == NO_FAILURE)
+			fprintf(logfile, "%d " INT64_FORMAT " %.0f %d %ld %ld",
+					st->id, getTotalCnt(st), latency, st->use_file,
+					(long) tv.tv_sec, (long) tv.tv_usec);
+		else if (st->first_failure.status == IN_FAILED_SQL_TRANSACTION)
+			fprintf(logfile, "%d " INT64_FORMAT " in_failed_tx %d %ld %ld",
+					st->id, getTotalCnt(st), st->use_file,
 					(long) tv.tv_sec, (long) tv.tv_usec);
 		else
-			fprintf(logfile, "%d " INT64_FORMAT " %.0f %d %ld %ld",
-					st->id, st->cnt, latency, st->use_file,
+			fprintf(logfile, "%d " INT64_FORMAT " failed %d %ld %ld",
+					st->id, getTotalCnt(st), st->use_file,
 					(long) tv.tv_sec, (long) tv.tv_usec);
+
 		if (throttle_delay)
 			fprintf(logfile, " %.0f", lag);
+		if (max_tries > 1 || latency_limit)
+			fprintf(logfile, " %d", st->retries);
 		fputc('\n', logfile);
 	}
 }
@@ -3409,7 +4174,8 @@ processXactStats(TState *thread, CState *st, instr_time *now,
 	bool		thread_details = progress || throttle_delay || latency_limit,
 				detailed = thread_details || use_log || per_script_stats;
 
-	if (detailed && !skipped)
+	if (detailed && !skipped &&
+		(st->first_failure.status == NO_FAILURE || latency_limit))
 	{
 		if (INSTR_TIME_IS_ZERO(*now))
 			INSTR_TIME_SET_CURRENT(*now);
@@ -3422,7 +4188,8 @@ processXactStats(TState *thread, CState *st, instr_time *now,
 	if (thread_details)
 	{
 		/* keep detailed thread stats */
-		accumStats(&thread->stats, skipped, latency, lag);
+		accumStats(&thread->stats, skipped, latency, lag,
+				   st->first_failure.status, st->retries);
 
 		/* count transactions over the latency limit, if needed */
 		if (latency_limit && latency > latency_limit)
@@ -3430,19 +4197,24 @@ processXactStats(TState *thread, CState *st, instr_time *now,
 	}
 	else
 	{
-		/* no detailed stats, just count */
-		thread->stats.cnt++;
+		/* no detailed stats */
+		accumStats(&thread->stats, skipped, 0, 0, st->first_failure.status,
+				   st->retries);
 	}
 
 	/* client stat is just counting */
-	st->cnt++;
+	if (st->first_failure.status == NO_FAILURE)
+		st->cnt++;
+	else
+		st->ecnt++;
 
 	if (use_log)
 		doLog(thread, st, agg, skipped, latency, lag);
 
 	/* XXX could use a mutex here, but we choose not to */
 	if (per_script_stats)
-		accumStats(&sql_script[st->use_file].stats, skipped, latency, lag);
+		accumStats(&sql_script[st->use_file].stats, skipped, latency, lag,
+				   st->first_failure.status, st->retries);
 }
 
 
@@ -3462,24 +4234,24 @@ disconnect_all(CState *state, int length)
 static void
 initDropTables(PGconn *con)
 {
-	fprintf(stderr, "dropping old tables...\n");
+	ereport(ELEVEL_LOG_MAIN, (errmsg("dropping old tables...\n")));
 
 	/*
 	 * We drop all the tables in one command, so that whether there are
 	 * foreign key dependencies or not doesn't matter.
 	 */
 	executeStatement(con, "drop table if exists "
-					 "pgbench_accounts, "
-					 "pgbench_branches, "
-					 "pgbench_history, "
-					 "pgbench_tellers");
+					 "ysql_bench_accounts, "
+					 "ysql_bench_branches, "
+					 "ysql_bench_history, "
+					 "ysql_bench_tellers");
 }
 
 /*
  * Create pgbench's standard tables
  */
 static void
-initCreateTables(PGconn *con)
+initCreateTables(PGconn *con, bool use_primary_key)
 {
 	/*
 	 * The scale factor at/beyond which 32-bit integers are insufficient for
@@ -3494,7 +4266,7 @@ initCreateTables(PGconn *con)
 	/*
 	 * Note: TPC-B requires at least 100 bytes per row, and the "filler"
 	 * fields in these table declarations were intended to comply with that.
-	 * The pgbench_accounts table complies with that because the "filler"
+	 * The ysql_bench_accounts table complies with that because the "filler"
 	 * column is set to blank-padded empty string. But for all other tables
 	 * the columns default to NULL and so don't actually take any space.  We
 	 * could fix that by giving them non-null default values.  However, that
@@ -3507,37 +4279,46 @@ initCreateTables(PGconn *con)
 		const char *table;		/* table name */
 		const char *smcols;		/* column decls if accountIDs are 32 bits */
 		const char *bigcols;	/* column decls if accountIDs are 64 bits */
+		const char *pkey;     /* optional use primary key for the table */
 		int			declare_fillfactor;
 	};
 	static const struct ddlinfo DDLs[] = {
 		{
-			"pgbench_history",
+			"ysql_bench_history",
 			"tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22)",
 			"tid int,bid int,aid bigint,delta int,mtime timestamp,filler char(22)",
+			"",
 			0
 		},
 		{
-			"pgbench_tellers",
+			"ysql_bench_tellers",
 			"tid int not null,bid int,tbalance int,filler char(84)",
 			"tid int not null,bid int,tbalance int,filler char(84)",
+      ",PRIMARY KEY(tid)",
 			1
 		},
 		{
-			"pgbench_accounts",
+			"ysql_bench_accounts",
 			"aid    int not null,bid int,abalance int,filler char(84)",
 			"aid bigint not null,bid int,abalance int,filler char(84)",
+      ",PRIMARY KEY(aid)",
 			1
 		},
 		{
-			"pgbench_branches",
+			"ysql_bench_branches",
 			"bid int not null,bbalance int,filler char(88)",
 			"bid int not null,bbalance int,filler char(88)",
+      ",PRIMARY KEY(bid)",
 			1
 		}
 	};
 	int			i;
 
-	fprintf(stderr, "creating tables...\n");
+	if (use_primary_key) {
+		ereport(ELEVEL_LOG_MAIN, (errmsg("creating tables (with primary keys)...\n")));
+	} else {
+		ereport(ELEVEL_LOG_MAIN, (errmsg("creating tables...\n")));
+	}
 
 	for (i = 0; i < lengthof(DDLs); i++)
 	{
@@ -3548,7 +4329,7 @@ initCreateTables(PGconn *con)
 
 		/* Construct new create table statement. */
 		opts[0] = '\0';
-		if (ddl->declare_fillfactor)
+		if (ddl->declare_fillfactor && set_fillfactor)
 			snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
 					 " with (fillfactor=%d)", fillfactor);
 		if (tablespace != NULL)
@@ -3564,9 +4345,11 @@ initCreateTables(PGconn *con)
 
 		cols = (scale >= SCALE_32BIT_THRESHOLD) ? ddl->bigcols : ddl->smcols;
 
-		snprintf(buffer, sizeof(buffer), "create%s table %s(%s)%s",
+		snprintf(buffer, sizeof(buffer), "create%s table %s(%s%s)%s",
 				 unlogged_tables ? " unlogged" : "",
-				 ddl->table, cols, opts);
+				 ddl->table, cols,
+				 use_primary_key ? ddl->pkey : "",
+				 opts);
 
 		executeStatement(con, buffer);
 	}
@@ -3590,23 +4373,17 @@ initGenerateData(PGconn *con)
 				remaining_sec;
 	int			log_interval = 1;
 
-	fprintf(stderr, "generating data...\n");
-
-	/*
-	 * we do all of this in one transaction to enable the backend's
-	 * data-loading optimizations
-	 */
-	executeStatement(con, "begin");
+	ereport(ELEVEL_LOG_MAIN, (errmsg("generating data...\n")));
 
 	/*
 	 * truncate away any old data, in one command in case there are foreign
 	 * keys
 	 */
 	executeStatement(con, "truncate table "
-					 "pgbench_accounts, "
-					 "pgbench_branches, "
-					 "pgbench_history, "
-					 "pgbench_tellers");
+					 "ysql_bench_accounts, "
+					 "ysql_bench_branches, "
+					 "ysql_bench_history, "
+					 "ysql_bench_tellers");
 
 	/*
 	 * fill branches, tellers, accounts in that order in case foreign keys
@@ -3616,7 +4393,7 @@ initGenerateData(PGconn *con)
 	{
 		/* "filler" column defaults to NULL */
 		snprintf(sql, sizeof(sql),
-				 "insert into pgbench_branches(bid,bbalance) values(%d,0)",
+				 "insert into ysql_bench_branches(bid,bbalance) values(%d,0)",
 				 i + 1);
 		executeStatement(con, sql);
 	}
@@ -3625,20 +4402,23 @@ initGenerateData(PGconn *con)
 	{
 		/* "filler" column defaults to NULL */
 		snprintf(sql, sizeof(sql),
-				 "insert into pgbench_tellers(tid,bid,tbalance) values (%d,%d,0)",
+				 "insert into ysql_bench_tellers(tid,bid,tbalance) values (%d,%d,0)",
 				 i + 1, i / ntellers + 1);
 		executeStatement(con, sql);
 	}
 
 	/*
+	 * we do all of this in one transaction to enable the backend's
+	 * data-loading optimizations
+	 */
+	executeStatement(con, "begin");
+
+	/*
 	 * accounts is big enough to be worth using COPY and tracking runtime
 	 */
-	res = PQexec(con, "copy pgbench_accounts from stdin");
+	res = PQexec(con, "copy ysql_bench_accounts from stdin");
 	if (PQresultStatus(res) != PGRES_COPY_IN)
-	{
-		fprintf(stderr, "%s", PQerrorMessage(con));
-		exit(1);
-	}
+		ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
 	PQclear(res);
 
 	INSTR_TIME_SET_CURRENT(start);
@@ -3652,10 +4432,7 @@ initGenerateData(PGconn *con)
 				 INT64_FORMAT "\t" INT64_FORMAT "\t%d\t\n",
 				 j, k / naccounts + 1, 0);
 		if (PQputline(con, sql))
-		{
-			fprintf(stderr, "PQputline failed\n");
-			exit(1);
-		}
+			ereport(ELEVEL_FATAL, (errmsg("PQputline failed\n")));
 
 		/*
 		 * If we want to stick with the original logging, print a message each
@@ -3669,10 +4446,12 @@ initGenerateData(PGconn *con)
 			elapsed_sec = INSTR_TIME_GET_DOUBLE(diff);
 			remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
 
-			fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)\n",
-					j, (int64) naccounts * scale,
-					(int) (((int64) j * 100) / (naccounts * (int64) scale)),
-					elapsed_sec, remaining_sec);
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)\n",
+							j, (int64) naccounts * scale,
+							(int) (((int64) j * 100) /
+								   (naccounts * (int64) scale)),
+							elapsed_sec, remaining_sec)));
 		}
 		/* let's not call the timing for each row, but only each 100 rows */
 		else if (use_quiet && (j % 100 == 0))
@@ -3686,28 +4465,40 @@ initGenerateData(PGconn *con)
 			/* have we reached the next interval (or end)? */
 			if ((j == scale * naccounts) || (elapsed_sec >= log_interval * LOG_STEP_SECONDS))
 			{
-				fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)\n",
-						j, (int64) naccounts * scale,
-						(int) (((int64) j * 100) / (naccounts * (int64) scale)), elapsed_sec, remaining_sec);
+				ereport(ELEVEL_LOG_MAIN,
+						(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)\n",
+								j, (int64) naccounts * scale,
+								(int) (((int64) j * 100) /
+									   (naccounts * (int64) scale)),
+								elapsed_sec, remaining_sec)));
 
 				/* skip to the next interval */
 				log_interval = (int) ceil(elapsed_sec / LOG_STEP_SECONDS);
 			}
 		}
 
-	}
-	if (PQputline(con, "\\.\n"))
-	{
-		fprintf(stderr, "very last PQputline failed\n");
-		exit(1);
-	}
-	if (PQendcopy(con))
-	{
-		fprintf(stderr, "PQendcopy failed\n");
-		exit(1);
-	}
+		if (j % batch_size == 0 || j == (int64) naccounts * scale)
+		{
+			/* We have submitted the batch. Commit the transaction. */
+			 if (PQputline(con, "\\.\n"))
+				ereport(ELEVEL_FATAL, (errmsg("very last PQputline failed\n")));
+			if (PQendcopy(con))
+				ereport(ELEVEL_FATAL, (errmsg("PQendcopy failed\n")));
+			executeStatement(con, "commit");
 
-	executeStatement(con, "commit");
+			if (j != (int64) naccounts * scale)
+			{
+				/* We would need to begin a new transaction if we have more
+				* records to be pushed to the database.
+				*/
+				executeStatement(con, "begin");
+				res = PQexec(con, "copy ysql_bench_accounts from stdin");
+				if (PQresultStatus(res) != PGRES_COPY_IN)
+					ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
+				PQclear(res);
+			}
+		}
+	}
 }
 
 /*
@@ -3716,46 +4507,11 @@ initGenerateData(PGconn *con)
 static void
 initVacuum(PGconn *con)
 {
-	fprintf(stderr, "vacuuming...\n");
-	executeStatement(con, "vacuum analyze pgbench_branches");
-	executeStatement(con, "vacuum analyze pgbench_tellers");
-	executeStatement(con, "vacuum analyze pgbench_accounts");
-	executeStatement(con, "vacuum analyze pgbench_history");
-}
-
-/*
- * Create primary keys on the standard tables
- */
-static void
-initCreatePKeys(PGconn *con)
-{
-	static const char *const DDLINDEXes[] = {
-		"alter table pgbench_branches add primary key (bid)",
-		"alter table pgbench_tellers add primary key (tid)",
-		"alter table pgbench_accounts add primary key (aid)"
-	};
-	int			i;
-
-	fprintf(stderr, "creating primary keys...\n");
-	for (i = 0; i < lengthof(DDLINDEXes); i++)
-	{
-		char		buffer[256];
-
-		strlcpy(buffer, DDLINDEXes[i], sizeof(buffer));
-
-		if (index_tablespace != NULL)
-		{
-			char	   *escape_tablespace;
-
-			escape_tablespace = PQescapeIdentifier(con, index_tablespace,
-												   strlen(index_tablespace));
-			snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer),
-					 " using index tablespace %s", escape_tablespace);
-			PQfreemem(escape_tablespace);
-		}
-
-		executeStatement(con, buffer);
-	}
+	ereport(ELEVEL_LOG_MAIN, (errmsg("vacuuming...\n")));
+	executeStatement(con, "vacuum analyze ysql_bench_branches");
+	executeStatement(con, "vacuum analyze ysql_bench_tellers");
+	executeStatement(con, "vacuum analyze ysql_bench_accounts");
+	executeStatement(con, "vacuum analyze ysql_bench_history");
 }
 
 /*
@@ -3765,15 +4521,15 @@ static void
 initCreateFKeys(PGconn *con)
 {
 	static const char *const DDLKEYs[] = {
-		"alter table pgbench_tellers add constraint pgbench_tellers_bid_fkey foreign key (bid) references pgbench_branches",
-		"alter table pgbench_accounts add constraint pgbench_accounts_bid_fkey foreign key (bid) references pgbench_branches",
-		"alter table pgbench_history add constraint pgbench_history_bid_fkey foreign key (bid) references pgbench_branches",
-		"alter table pgbench_history add constraint pgbench_history_tid_fkey foreign key (tid) references pgbench_tellers",
-		"alter table pgbench_history add constraint pgbench_history_aid_fkey foreign key (aid) references pgbench_accounts"
+		"alter table ysql_bench_tellers add constraint ysql_bench_tellers_bid_fkey foreign key (bid) references ysql_bench_branches",
+		"alter table ysql_bench_accounts add constraint ysql_bench_accounts_bid_fkey foreign key (bid) references ysql_bench_branches",
+		"alter table ysql_bench_history add constraint ysql_bench_history_bid_fkey foreign key (bid) references ysql_bench_branches",
+		"alter table ysql_bench_history add constraint ysql_bench_history_tid_fkey foreign key (tid) references ysql_bench_tellers",
+		"alter table ysql_bench_history add constraint ysql_bench_history_aid_fkey foreign key (aid) references ysql_bench_accounts"
 	};
 	int			i;
 
-	fprintf(stderr, "creating foreign keys...\n");
+	ereport(ELEVEL_LOG_MAIN, (errmsg("creating foreign keys...\n")));
 	for (i = 0; i < lengthof(DDLKEYs); i++)
 	{
 		executeStatement(con, DDLKEYs[i]);
@@ -3793,19 +4549,16 @@ checkInitSteps(const char *initialize_steps)
 	const char *step;
 
 	if (initialize_steps[0] == '\0')
-	{
-		fprintf(stderr, "no initialization steps specified\n");
-		exit(1);
-	}
+		ereport(ELEVEL_FATAL, (errmsg("no initialization steps specified\n")));
 
 	for (step = initialize_steps; *step != '\0'; step++)
 	{
 		if (strchr("dtgvpf ", *step) == NULL)
 		{
-			fprintf(stderr, "unrecognized initialization step \"%c\"\n",
-					*step);
-			fprintf(stderr, "allowed steps are: \"d\", \"t\", \"g\", \"v\", \"p\", \"f\"\n");
-			exit(1);
+			ereport(ELEVEL_FATAL,
+					(errmsg("unrecognized initialization step \"%c\"\n"
+							"allowed steps are: \"d\", \"t\", \"g\", \"v\", \"p\", \"f\"\n",
+							*step)));
 		}
 	}
 }
@@ -3822,6 +4575,11 @@ runInitSteps(const char *initialize_steps)
 	if ((con = doConnect()) == NULL)
 		exit(1);
 
+  bool use_primary_key = false;
+  for (step = initialize_steps; *step != '\0'; step++)
+  {
+    use_primary_key |= (*step == 'p');
+  }
 	for (step = initialize_steps; *step != '\0'; step++)
 	{
 		switch (*step)
@@ -3830,7 +4588,7 @@ runInitSteps(const char *initialize_steps)
 				initDropTables(con);
 				break;
 			case 't':
-				initCreateTables(con);
+				initCreateTables(con, use_primary_key);
 				break;
 			case 'g':
 				initGenerateData(con);
@@ -3839,22 +4597,23 @@ runInitSteps(const char *initialize_steps)
 				initVacuum(con);
 				break;
 			case 'p':
-				initCreatePKeys(con);
-				break;
+          // handled via 'use_primary_key' in conjunction with 't'
+          break;
 			case 'f':
 				initCreateFKeys(con);
 				break;
 			case ' ':
 				break;			/* ignore */
 			default:
-				fprintf(stderr, "unrecognized initialization step \"%c\"\n",
-						*step);
+				ereport(ELEVEL_LOG_MAIN,
+						(errmsg("unrecognized initialization step \"%c\"\n",
+								*step)));
 				PQfinish(con);
 				exit(1);
 		}
 	}
 
-	fprintf(stderr, "done.\n");
+	ereport(ELEVEL_LOG_MAIN, (errmsg("done.\n")));
 	PQfinish(con);
 }
 
@@ -3892,8 +4651,9 @@ parseQuery(Command *cmd)
 
 		if (cmd->argc >= MAX_ARGS)
 		{
-			fprintf(stderr, "statement has too many arguments (maximum is %d): %s\n",
-					MAX_ARGS - 1, cmd->argv[0]);
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg("statement has too many arguments (maximum is %d): %s\n",
+							MAX_ARGS - 1, cmd->argv[0])));
 			pg_free(name);
 			return false;
 		}
@@ -3917,11 +4677,22 @@ static void
 pgbench_error(const char *fmt,...)
 {
 	va_list		ap;
+	PQExpBufferData errmsg_buf;
+	bool		done;
 
 	fflush(stdout);
-	va_start(ap, fmt);
-	vfprintf(stderr, _(fmt), ap);
-	va_end(ap);
+	initPQExpBuffer(&errmsg_buf);
+
+	/* Loop in case we have to retry after enlarging the buffer. */
+	do
+	{
+		va_start(ap, fmt);
+		done = appendPQExpBufferVA(&errmsg_buf, fmt, ap);
+		va_end(ap);
+	} while (!done);
+
+	ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errmsg_buf.data)));
+	termPQExpBuffer(&errmsg_buf);
 }
 
 /*
@@ -3941,26 +4712,32 @@ syntax_error(const char *source, int lineno,
 			 const char *line, const char *command,
 			 const char *msg, const char *more, int column)
 {
-	fprintf(stderr, "%s:%d: %s", source, lineno, msg);
+	PQExpBufferData errmsg_buf;
+
+	initPQExpBuffer(&errmsg_buf);
+	printfPQExpBuffer(&errmsg_buf, "%s:%d: %s", source, lineno, msg);
 	if (more != NULL)
-		fprintf(stderr, " (%s)", more);
+		appendPQExpBuffer(&errmsg_buf, " (%s)", more);
 	if (column >= 0 && line == NULL)
-		fprintf(stderr, " at column %d", column + 1);
+		appendPQExpBuffer(&errmsg_buf, " at column %d", column + 1);
 	if (command != NULL)
-		fprintf(stderr, " in command \"%s\"", command);
-	fprintf(stderr, "\n");
+		appendPQExpBuffer(&errmsg_buf, " in command \"%s\"", command);
+	appendPQExpBufferChar(&errmsg_buf, '\n');
 	if (line != NULL)
 	{
-		fprintf(stderr, "%s\n", line);
+		appendPQExpBuffer(&errmsg_buf, "%s\n", line);
 		if (column >= 0)
 		{
 			int			i;
 
 			for (i = 0; i < column; i++)
-				fprintf(stderr, " ");
-			fprintf(stderr, "^ error found here\n");
+				appendPQExpBufferChar(&errmsg_buf, ' ');
+			appendPQExpBufferStr(&errmsg_buf, "^ error found here\n");
 		}
 	}
+
+	ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errmsg_buf.data)));
+	termPQExpBuffer(&errmsg_buf);
 	exit(1);
 }
 
@@ -4210,10 +4987,9 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 static void
 ConditionError(const char *desc, int cmdn, const char *msg)
 {
-	fprintf(stderr,
-			"condition error in script \"%s\" command %d: %s\n",
-			desc, cmdn, msg);
-	exit(1);
+	ereport(ELEVEL_FATAL,
+			(errmsg("condition error in script \"%s\" command %d: %s\n",
+					desc, cmdn, msg)));
 }
 
 /*
@@ -4412,18 +5188,18 @@ process_file(const char *filename, int weight)
 		fd = stdin;
 	else if ((fd = fopen(filename, "r")) == NULL)
 	{
-		fprintf(stderr, "could not open file \"%s\": %s\n",
-				filename, strerror(errno));
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("could not open file \"%s\": %s\n",
+						filename, strerror(errno))));
 	}
 
 	buf = read_file_contents(fd);
 
 	if (ferror(fd))
 	{
-		fprintf(stderr, "could not read file \"%s\": %s\n",
-				filename, strerror(errno));
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("could not read file \"%s\": %s\n",
+						filename, strerror(errno))));
 	}
 
 	if (fd != stdin)
@@ -4446,11 +5222,16 @@ static void
 listAvailableScripts(void)
 {
 	int			i;
+	PQExpBufferData errmsg_buf;
 
-	fprintf(stderr, "Available builtin scripts:\n");
+	initPQExpBuffer(&errmsg_buf);
+	printfPQExpBuffer(&errmsg_buf, "Available builtin scripts:\n");
 	for (i = 0; i < lengthof(builtin_script); i++)
-		fprintf(stderr, "\t%s\n", builtin_script[i].name);
-	fprintf(stderr, "\n");
+		appendPQExpBuffer(&errmsg_buf, "\t%s\n", builtin_script[i].name);
+	appendPQExpBufferChar(&errmsg_buf, '\n');
+
+	ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errmsg_buf.data)));
+	termPQExpBuffer(&errmsg_buf);
 }
 
 /* return builtin script "name" if unambiguous, fails if not found */
@@ -4477,10 +5258,16 @@ findBuiltin(const char *name)
 
 	/* error cases */
 	if (found == 0)
-		fprintf(stderr, "no builtin script found for name \"%s\"\n", name);
-	else						/* found > 1 */
-		fprintf(stderr,
-				"ambiguous builtin name: %d builtin scripts found for prefix \"%s\"\n", found, name);
+	{
+		ereport(ELEVEL_LOG_MAIN,
+				(errmsg("no builtin script found for name \"%s\"\n", name)));
+	}
+	else
+	{						/* found > 1 */
+		ereport(ELEVEL_LOG_MAIN,
+				(errmsg("ambiguous builtin name: %d builtin scripts found for prefix \"%s\"\n",
+						found, name)));
+	}
 
 	listAvailableScripts();
 	exit(1);
@@ -4513,15 +5300,14 @@ parseScriptWeight(const char *option, char **script)
 		wtmp = strtol(sep + 1, &badp, 10);
 		if (errno != 0 || badp == sep + 1 || *badp != '\0')
 		{
-			fprintf(stderr, "invalid weight specification: %s\n", sep);
-			exit(1);
+			ereport(ELEVEL_FATAL,
+					(errmsg("invalid weight specification: %s\n", sep)));
 		}
 		if (wtmp > INT_MAX || wtmp < 0)
 		{
-			fprintf(stderr,
-					"weight specification out of range (0 .. %u): " INT64_FORMAT "\n",
-					INT_MAX, (int64) wtmp);
-			exit(1);
+			ereport(ELEVEL_FATAL,
+					(errmsg("weight specification out of range (0 .. %u): " INT64_FORMAT "\n",
+							INT_MAX, (int64) wtmp)));
 		}
 		weight = wtmp;
 	}
@@ -4540,14 +5326,15 @@ addScript(ParsedScript script)
 {
 	if (script.commands == NULL || script.commands[0] == NULL)
 	{
-		fprintf(stderr, "empty command list for script \"%s\"\n", script.desc);
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("empty command list for script \"%s\"\n",
+						script.desc)));
 	}
 
 	if (num_scripts >= MAX_SCRIPTS)
 	{
-		fprintf(stderr, "at most %d SQL scripts are allowed\n", MAX_SCRIPTS);
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("at most %d SQL scripts are allowed\n", MAX_SCRIPTS)));
 	}
 
 	CheckConditional(script);
@@ -4577,7 +5364,8 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 	double		time_include,
 				tps_include,
 				tps_exclude;
-	int64		ntx = total->cnt - total->skipped;
+	int64		ntx = total->cnt - total->skipped,
+				total_ntx = total->cnt + total->errors;
 	int			i,
 				totalCacheOverflows = 0;
 
@@ -4595,11 +5383,12 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 	printf("query mode: %s\n", QUERYMODE[querymode]);
 	printf("number of clients: %d\n", nclients);
 	printf("number of threads: %d\n", nthreads);
+	printf("batch size: %d\n", batch_size);
 	if (duration <= 0)
 	{
 		printf("number of transactions per client: %d\n", nxacts);
-		printf("number of transactions actually processed: " INT64_FORMAT "/%d\n",
-			   ntx, nxacts * nclients);
+		printf("number of transactions actually processed: " INT64_FORMAT "/" INT64_FORMAT "\n",
+			   ntx, total_ntx);
 	}
 	else
 	{
@@ -4607,6 +5396,43 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 		printf("number of transactions actually processed: " INT64_FORMAT "\n",
 			   ntx);
 	}
+
+	if (total->errors > 0)
+		printf("number of errors: " INT64_FORMAT " (%.3f%%)\n",
+			   total->errors, 100.0 * total->errors / total_ntx);
+
+	if (total->errors_in_failed_tx > 0)
+		printf("number of errors \"in failed SQL transaction\": " INT64_FORMAT " (%.3f%%)\n",
+			   total->errors_in_failed_tx,
+			   100.0 * total->errors_in_failed_tx / total_ntx);
+
+	/*
+	 * It can be non-zero only if max_tries is greater than one or
+	 * latency_limit is used.
+	 */
+	if (total->retried > 0)
+	{
+		printf("number of retried: " INT64_FORMAT " (%.3f%%)\n",
+			   total->retried, 100.0 * total->retried / total_ntx);
+		printf("number of retries: " INT64_FORMAT "\n", total->retries);
+	}
+
+	if (max_tries)
+		printf("maximum number of tries: %d\n", max_tries);
+
+	if (latency_limit)
+	{
+		printf("number of transactions above the %.1f ms latency limit: " INT64_FORMAT "/" INT64_FORMAT " (%.3f %%)",
+			   latency_limit / 1000.0, latency_late, total_ntx,
+			   (total_ntx > 0) ? 100.0 * latency_late / total_ntx : 0.0);
+
+		/* this statistics includes both successful and failed transactions */
+		if (total->errors > 0)
+			printf(" (including errors)");
+
+		printf("\n");
+	}
+
 	/* Report zipfian cache overflow */
 	for (i = 0; i < nthreads; i++)
 	{
@@ -4626,18 +5452,19 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 			   total->skipped,
 			   100.0 * total->skipped / total->cnt);
 
-	if (latency_limit)
-		printf("number of transactions above the %.1f ms latency limit: " INT64_FORMAT "/" INT64_FORMAT " (%.3f %%)\n",
-			   latency_limit / 1000.0, latency_late, ntx,
-			   (ntx > 0) ? 100.0 * latency_late / ntx : 0.0);
-
 	if (throttle_delay || progress || latency_limit)
 		printSimpleStats("latency", &total->latency);
 	else
 	{
 		/* no measurement, show average latency computed from run time */
-		printf("latency average = %.3f ms\n",
-			   1000.0 * time_include * nclients / total->cnt);
+		printf("latency average = %.3f ms",
+			   1000.0 * time_include * nclients / total_ntx);
+
+		/* this statistics includes both successful and failed transactions */
+		if (total->errors > 0)
+			printf(" (including errors)");
+
+		printf("\n");
 	}
 
 	if (throttle_delay)
@@ -4656,7 +5483,7 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 	printf("tps = %f (excluding connections establishing)\n", tps_exclude);
 
 	/* Report per-script/command statistics */
-	if (per_script_stats || is_latencies)
+	if (per_script_stats || report_per_command)
 	{
 		int			i;
 
@@ -4665,6 +5492,7 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 			if (per_script_stats)
 			{
 				StatsData  *sstats = &sql_script[i].stats;
+				int64		script_total_ntx = sstats->cnt + sstats->errors;
 
 				printf("SQL script %d: %s\n"
 					   " - weight: %d (targets %.1f%% of total)\n"
@@ -4673,8 +5501,32 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 					   sql_script[i].weight,
 					   100.0 * sql_script[i].weight / total_weight,
 					   sstats->cnt,
-					   100.0 * sstats->cnt / total->cnt,
+					   100.0 * sstats->cnt / script_total_ntx,
 					   (sstats->cnt - sstats->skipped) / time_include);
+
+				if (total->errors > 0)
+					printf(" - number of errors: " INT64_FORMAT " (%.3f%%)\n",
+						   sstats->errors,
+						   100.0 * sstats->errors / script_total_ntx);
+
+				if (total->errors_in_failed_tx > 0)
+					printf(" - number of errors \"in failed SQL transaction\": " INT64_FORMAT " (%.3f%%)\n",
+						   sstats->errors_in_failed_tx,
+						   (100.0 * sstats->errors_in_failed_tx /
+							script_total_ntx));
+
+				/*
+				 * It can be non-zero only if max_tries is greater than one or
+				 * latency_limit is used.
+				 */
+				if (total->retried > 0)
+				{
+					printf(" - number of retried: " INT64_FORMAT " (%.3f%%)\n",
+						   sstats->retried,
+						   100.0 * sstats->retried / script_total_ntx);
+					printf(" - number of retries: " INT64_FORMAT "\n",
+						   sstats->retries);
+				}
 
 				if (throttle_delay && latency_limit && sstats->cnt > 0)
 					printf(" - number of transactions skipped: " INT64_FORMAT " (%.3f%%)\n",
@@ -4684,15 +5536,33 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 				printSimpleStats(" - latency", &sstats->latency);
 			}
 
-			/* Report per-command latencies */
-			if (is_latencies)
+			/* Report per-command latencies and errors */
+			if (report_per_command)
 			{
 				Command   **commands;
 
 				if (per_script_stats)
-					printf(" - statement latencies in milliseconds:\n");
+					printf(" - statement latencies in milliseconds");
 				else
-					printf("statement latencies in milliseconds:\n");
+					printf("statement latencies in milliseconds");
+
+				if (total->errors > 0)
+				{
+					printf("%s errors",
+						   ((total->errors_in_failed_tx == 0 &&
+							total->retried == 0) ?
+							" and" : ","));
+				}
+				if (total->errors_in_failed_tx > 0)
+				{
+					printf("%s errors \"in failed SQL transaction\"",
+						   total->retried == 0 ? " and" : ",");
+				}
+				if (total->retried > 0)
+				{
+					printf(" and retries");
+				}
+				printf(":\n");
 
 				for (commands = sql_script[i].commands;
 					 *commands != NULL;
@@ -4700,10 +5570,25 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 				{
 					SimpleStats *cstats = &(*commands)->stats;
 
-					printf("   %11.3f  %s\n",
+					printf("   %11.3f",
 						   (cstats->count > 0) ?
-						   1000.0 * cstats->sum / cstats->count : 0.0,
-						   (*commands)->line);
+						   1000.0 * cstats->sum / cstats->count : 0.0);
+					if (total->errors > 0)
+					{
+						printf("  %20" INT64_MODIFIER "d",
+							   (*commands)->errors);
+					}
+					if (total->errors_in_failed_tx > 0)
+					{
+						printf("  %20" INT64_MODIFIER "d",
+							   (*commands)->errors_in_failed_tx);
+					}
+					if (total->retried > 0)
+					{
+						printf("  %20" INT64_MODIFIER "d",
+							   (*commands)->retries);
+					}
+					printf("  %s\n", (*commands)->line);
 				}
 			}
 		}
@@ -4734,9 +5619,8 @@ set_random_seed(const char *seed)
 		if (!pg_strong_random(&iseed, sizeof(iseed)))
 #endif
 		{
-			fprintf(stderr,
-					"cannot seed random from a strong source, none available: "
-					"use \"time\" or an unsigned integer value.\n");
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg("cannot seed random from a strong source, none available: use \"time\" or an unsigned integer value.\n")));
 			return false;
 		}
 	}
@@ -4747,15 +5631,15 @@ set_random_seed(const char *seed)
 
 		if (sscanf(seed, UINT64_FORMAT "%c", &iseed, &garbage) != 1)
 		{
-			fprintf(stderr,
-					"unrecognized random seed option \"%s\": expecting an unsigned integer, \"time\" or \"rand\"\n",
-					seed);
+                        ereport(ELEVEL_LOG_MAIN,
+                                        (errmsg("unrecognized random seed option \"%s\": expecting an unsigned integer, \"time\" or \"rand\"\n",
+                                                        seed)));
 			return false;
 		}
 	}
 
 	if (seed != NULL)
-		fprintf(stderr, "setting random seed to " UINT64_FORMAT "\n", iseed);
+		ereport(ELEVEL_LOG_MAIN, (errmsg("setting random seed to " UINT64_FORMAT "\n", iseed)));
 	random_seed = iseed;
 
 	/* Fill base_random_sequence with low-order bits of seed */
@@ -4764,6 +5648,21 @@ set_random_seed(const char *seed)
 	base_random_sequence[2] = (iseed >> 32) & 0xFFFF;
 
 	return true;
+}
+
+/*
+ * Initialize the random state of the client/thread.
+ */
+static void
+initRandomState(RandomState *random_state)
+{
+	random_state->data[0] = (unsigned short)
+                (pg_jrand48(base_random_sequence) & 0xFFFF);
+	random_state->data[1] =(unsigned short)
+                (pg_jrand48(base_random_sequence) & 0xFFFF);
+	random_state->data[2] = (unsigned short)
+                (pg_jrand48(base_random_sequence) & 0xFFFF);
+
 }
 
 
@@ -4775,7 +5674,7 @@ main(int argc, char **argv)
 		{"builtin", required_argument, NULL, 'b'},
 		{"client", required_argument, NULL, 'c'},
 		{"connect", no_argument, NULL, 'C'},
-		{"debug", no_argument, NULL, 'd'},
+		{"debug", required_argument, NULL, 'd'},
 		{"define", required_argument, NULL, 'D'},
 		{"file", required_argument, NULL, 'f'},
 		{"fillfactor", required_argument, NULL, 'F'},
@@ -4790,7 +5689,7 @@ main(int argc, char **argv)
 		{"progress", required_argument, NULL, 'P'},
 		{"protocol", required_argument, NULL, 'M'},
 		{"quiet", no_argument, NULL, 'q'},
-		{"report-latencies", no_argument, NULL, 'r'},
+		{"report-per-command", no_argument, NULL, 'r'},
 		{"rate", required_argument, NULL, 'R'},
 		{"scale", required_argument, NULL, 's'},
 		{"select-only", no_argument, NULL, 'S'},
@@ -4809,6 +5708,8 @@ main(int argc, char **argv)
 		{"log-prefix", required_argument, NULL, 7},
 		{"foreign-keys", no_argument, NULL, 8},
 		{"random-seed", required_argument, NULL, 9},
+		{"max-tries", required_argument, NULL, 10},
+		{"batch-size", required_argument, NULL, 11},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -4857,7 +5758,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pgbench (PostgreSQL) " PG_VERSION);
+			puts("ysql_bench (YSQL) " PG_VERSION);
 			exit(0);
 		}
 	}
@@ -4880,11 +5781,11 @@ main(int argc, char **argv)
 	/* set random seed early, because it may be used while parsing scripts. */
 	if (!set_random_seed(getenv("PGBENCH_RANDOM_SEED")))
 	{
-		fprintf(stderr, "error while setting random seed from PGBENCH_RANDOM_SEED environment variable\n");
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("error while setting random seed from PGBENCH_RANDOM_SEED environment variable\n")));
 	}
 
-	while ((c = getopt_long(argc, argv, "iI:h:nvp:dqb:SNc:j:Crs:t:T:U:lf:D:F:M:P:R:L:", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "iI:h:nvp:d:qb:SNc:j:Crs:t:T:U:lf:D:F:M:P:R:L:", long_options, &optindex)) != -1)
 	{
 		char	   *script;
 
@@ -4914,16 +5815,30 @@ main(int argc, char **argv)
 				pgport = pg_strdup(optarg);
 				break;
 			case 'd':
-				debug++;
-				break;
+				{
+					for (debug_level = 0;
+						 debug_level < NUM_DEBUGLEVEL;
+						 debug_level++)
+					{
+						if (strcmp(optarg, DEBUGLEVEL[debug_level]) == 0)
+							break;
+					}
+					if (debug_level >= NUM_DEBUGLEVEL)
+					{
+						ereport(ELEVEL_FATAL,
+								(errmsg("invalid debug level (-d): \"%s\"\n",
+										optarg)));
+					}
+					break;
+				}
 			case 'c':
 				benchmarking_option_set = true;
 				nclients = atoi(optarg);
 				if (nclients <= 0 || nclients > MAXCLIENTS)
 				{
-					fprintf(stderr, "invalid number of clients: \"%s\"\n",
-							optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid number of clients: \"%s\"\n",
+									optarg)));
 				}
 #ifdef HAVE_GETRLIMIT
 #ifdef RLIMIT_NOFILE			/* most platforms use RLIMIT_NOFILE */
@@ -4932,15 +5847,16 @@ main(int argc, char **argv)
 				if (getrlimit(RLIMIT_OFILE, &rlim) == -1)
 #endif							/* RLIMIT_NOFILE */
 				{
-					fprintf(stderr, "getrlimit failed: %s\n", strerror(errno));
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("getrlimit failed: %s\n",
+									strerror(errno))));
 				}
 				if (rlim.rlim_cur < nclients + 3)
 				{
-					fprintf(stderr, "need at least %d open files, but system limit is %ld\n",
-							nclients + 3, (long) rlim.rlim_cur);
-					fprintf(stderr, "Reduce number of clients, or use limit/ulimit to increase the system limit.\n");
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("need at least %d open files, but system limit is %ld\n"
+									"Reduce number of clients, or use limit/ulimit to increase the system limit.\n",
+									nclients + 3, (long) rlim.rlim_cur)));
 				}
 #endif							/* HAVE_GETRLIMIT */
 				break;
@@ -4949,15 +5865,15 @@ main(int argc, char **argv)
 				nthreads = atoi(optarg);
 				if (nthreads <= 0)
 				{
-					fprintf(stderr, "invalid number of threads: \"%s\"\n",
-							optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid number of threads: \"%s\"\n",
+									optarg)));
 				}
 #ifndef ENABLE_THREAD_SAFETY
 				if (nthreads != 1)
 				{
-					fprintf(stderr, "threads are not supported on this platform; use -j1\n");
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("threads are not supported on this platform; use -j1\n")));
 				}
 #endif							/* !ENABLE_THREAD_SAFETY */
 				break;
@@ -4967,15 +5883,16 @@ main(int argc, char **argv)
 				break;
 			case 'r':
 				benchmarking_option_set = true;
-				is_latencies = true;
+				report_per_command = true;
 				break;
 			case 's':
 				scale_given = true;
 				scale = atoi(optarg);
 				if (scale <= 0)
 				{
-					fprintf(stderr, "invalid scaling factor: \"%s\"\n", optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid scaling factor: \"%s\"\n",
+									optarg)));
 				}
 				break;
 			case 't':
@@ -4983,9 +5900,9 @@ main(int argc, char **argv)
 				nxacts = atoi(optarg);
 				if (nxacts <= 0)
 				{
-					fprintf(stderr, "invalid number of transactions: \"%s\"\n",
-							optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid number of transactions: \"%s\"\n",
+									optarg)));
 				}
 				break;
 			case 'T':
@@ -4993,8 +5910,8 @@ main(int argc, char **argv)
 				duration = atoi(optarg);
 				if (duration <= 0)
 				{
-					fprintf(stderr, "invalid duration: \"%s\"\n", optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid duration: \"%s\"\n", optarg)));
 				}
 				break;
 			case 'U':
@@ -5042,23 +5959,23 @@ main(int argc, char **argv)
 
 					if ((p = strchr(optarg, '=')) == NULL || p == optarg || *(p + 1) == '\0')
 					{
-						fprintf(stderr, "invalid variable definition: \"%s\"\n",
-								optarg);
-						exit(1);
+						ereport(ELEVEL_FATAL,
+								(errmsg("invalid variable definition: \"%s\"\n",
+										optarg)));
 					}
 
 					*p++ = '\0';
-					if (!putVariable(&state[0], "option", optarg, p))
-						exit(1);
+					putVariable(&state[0].variables, "option", optarg, p);
 				}
 				break;
 			case 'F':
 				initialization_option_set = true;
 				fillfactor = atoi(optarg);
+				set_fillfactor = true;
 				if (fillfactor < 10 || fillfactor > 100)
 				{
-					fprintf(stderr, "invalid fillfactor: \"%s\"\n", optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid fillfactor: \"%s\"\n", optarg)));
 				}
 				break;
 			case 'M':
@@ -5068,9 +5985,9 @@ main(int argc, char **argv)
 						break;
 				if (querymode >= NUM_QUERYMODE)
 				{
-					fprintf(stderr, "invalid query mode (-M): \"%s\"\n",
-							optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid query mode (-M): \"%s\"\n",
+									optarg)));
 				}
 				break;
 			case 'P':
@@ -5078,9 +5995,9 @@ main(int argc, char **argv)
 				progress = atoi(optarg);
 				if (progress <= 0)
 				{
-					fprintf(stderr, "invalid thread progress delay: \"%s\"\n",
-							optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid thread progress delay: \"%s\"\n",
+									optarg)));
 				}
 				break;
 			case 'R':
@@ -5092,8 +6009,9 @@ main(int argc, char **argv)
 
 					if (throttle_value <= 0.0)
 					{
-						fprintf(stderr, "invalid rate limit: \"%s\"\n", optarg);
-						exit(1);
+						ereport(ELEVEL_FATAL,
+								(errmsg("invalid rate limit: \"%s\"\n",
+										optarg)));
 					}
 					/* Invert rate limit into a time offset */
 					throttle_delay = (int64) (1000000.0 / throttle_value);
@@ -5105,9 +6023,9 @@ main(int argc, char **argv)
 
 					if (limit_ms <= 0.0)
 					{
-						fprintf(stderr, "invalid latency limit: \"%s\"\n",
-								optarg);
-						exit(1);
+						ereport(ELEVEL_FATAL,
+								(errmsg("invalid latency limit: \"%s\"\n",
+										optarg)));
 					}
 					benchmarking_option_set = true;
 					latency_limit = (int64) (limit_ms * 1000);
@@ -5130,8 +6048,9 @@ main(int argc, char **argv)
 				sample_rate = atof(optarg);
 				if (sample_rate <= 0.0 || sample_rate > 1.0)
 				{
-					fprintf(stderr, "invalid sampling rate: \"%s\"\n", optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid sampling rate: \"%s\"\n",
+									optarg)));
 				}
 				break;
 			case 5:				/* aggregate-interval */
@@ -5139,9 +6058,9 @@ main(int argc, char **argv)
 				agg_interval = atoi(optarg);
 				if (agg_interval <= 0)
 				{
-					fprintf(stderr, "invalid number of seconds for aggregation: \"%s\"\n",
-							optarg);
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid number of seconds for aggregation: \"%s\"\n",
+									optarg)));
 				}
 				break;
 			case 6:				/* progress-timestamp */
@@ -5160,13 +6079,41 @@ main(int argc, char **argv)
 				benchmarking_option_set = true;
 				if (!set_random_seed(optarg))
 				{
-					fprintf(stderr, "error while setting random seed from --random-seed option\n");
-					exit(1);
+					ereport(ELEVEL_FATAL,
+							(errmsg("error while setting random seed from --random-seed option\n")));
+				}
+				break;
+			case 10:			/* max-tries */
+				{
+					int32		max_tries_arg = atoi(optarg);
+
+					if (max_tries_arg <= 0)
+					{
+						ereport(ELEVEL_FATAL,
+								(errmsg("invalid number of maximum tries: \"%s\"\n",
+										optarg)));
+					}
+					benchmarking_option_set = true;
+					max_tries = (uint32) max_tries_arg;
+				}
+				break;
+			case 11:			/* batch-size */
+				{
+					int32		batch_size_arg = atoi(optarg);
+
+					if (batch_size_arg <= 0)
+					{
+						ereport(ELEVEL_FATAL,
+								(errmsg("invalid number of batch_size: \"%s\"\n",
+										optarg)));
+					}
+					batch_size = (uint32) batch_size_arg;
 				}
 				break;
 			default:
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
-				exit(1);
+				ereport(ELEVEL_FATAL,
+						(errmsg(_("Try \"%s --help\" for more information.\n"),
+								progname)));
 				break;
 		}
 	}
@@ -5204,8 +6151,8 @@ main(int argc, char **argv)
 
 	if (total_weight == 0 && !is_init_mode)
 	{
-		fprintf(stderr, "total script weight must not be zero\n");
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("total script weight must not be zero\n")));
 	}
 
 	/* show per script stats if several scripts are used */
@@ -5239,8 +6186,8 @@ main(int argc, char **argv)
 	{
 		if (benchmarking_option_set)
 		{
-			fprintf(stderr, "some of the specified options cannot be used in initialization (-i) mode\n");
-			exit(1);
+			ereport(ELEVEL_FATAL,
+					(errmsg("some of the specified options cannot be used in initialization (-i) mode\n")));
 		}
 
 		if (initialize_steps == NULL)
@@ -5274,15 +6221,15 @@ main(int argc, char **argv)
 	{
 		if (initialization_option_set)
 		{
-			fprintf(stderr, "some of the specified options cannot be used in benchmarking mode\n");
-			exit(1);
+			ereport(ELEVEL_FATAL,
+					(errmsg("some of the specified options cannot be used in benchmarking mode\n")));
 		}
 	}
 
 	if (nxacts > 0 && duration > 0)
 	{
-		fprintf(stderr, "specify either a number of transactions (-t) or a duration (-T), not both\n");
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("specify either a number of transactions (-t) or a duration (-T), not both\n")));
 	}
 
 	/* Use DEFAULT_NXACTS if neither nxacts nor duration is specified. */
@@ -5292,46 +6239,52 @@ main(int argc, char **argv)
 	/* --sampling-rate may be used only with -l */
 	if (sample_rate > 0.0 && !use_log)
 	{
-		fprintf(stderr, "log sampling (--sampling-rate) is allowed only when logging transactions (-l)\n");
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("log sampling (--sampling-rate) is allowed only when logging transactions (-l)\n")));
 	}
 
 	/* --sampling-rate may not be used with --aggregate-interval */
 	if (sample_rate > 0.0 && agg_interval > 0)
 	{
-		fprintf(stderr, "log sampling (--sampling-rate) and aggregation (--aggregate-interval) cannot be used at the same time\n");
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("log sampling (--sampling-rate) and aggregation (--aggregate-interval) cannot be used at the same time\n")));
 	}
 
 	if (agg_interval > 0 && !use_log)
 	{
-		fprintf(stderr, "log aggregation is allowed only when actually logging transactions\n");
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("log aggregation is allowed only when actually logging transactions\n")));
 	}
 
 	if (!use_log && logfile_prefix)
 	{
-		fprintf(stderr, "log file prefix (--log-prefix) is allowed only when logging transactions (-l)\n");
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("log file prefix (--log-prefix) is allowed only when logging transactions (-l)\n")));
 	}
 
 	if (duration > 0 && agg_interval > duration)
 	{
-		fprintf(stderr, "number of seconds for aggregation (%d) must not be higher than test duration (%d)\n", agg_interval, duration);
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("number of seconds for aggregation (%d) must not be higher than test duration (%d)\n",
+						agg_interval, duration)));
 	}
 
 	if (duration > 0 && agg_interval > 0 && duration % agg_interval != 0)
 	{
-		fprintf(stderr, "duration (%d) must be a multiple of aggregation interval (%d)\n", duration, agg_interval);
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("duration (%d) must be a multiple of aggregation interval (%d)\n",
+						duration, agg_interval)));
 	}
 
 	if (progress_timestamp && progress == 0)
 	{
-		fprintf(stderr, "--progress-timestamp is allowed only under --progress\n");
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("--progress-timestamp is allowed only under --progress\n")));
 	}
+
+	/* If necessary set the default tries limit  */
+	if (!max_tries && !latency_limit)
+		max_tries = 1;
 
 	/*
 	 * save main process id in the global variable because process id will be
@@ -5350,21 +6303,19 @@ main(int argc, char **argv)
 			int			j;
 
 			state[i].id = i;
-			for (j = 0; j < state[0].nvariables; j++)
+			for (j = 0; j < state[0].variables.nvariables; j++)
 			{
-				Variable   *var = &state[0].variables[j];
+				Variable   *var = &state[0].variables.array[j];
 
 				if (var->value.type != PGBT_NO_VALUE)
 				{
-					if (!putVariableValue(&state[i], "startup",
-										  var->name, &var->value))
-						exit(1);
+					putVariableValue(&state[i].variables, "startup", var->name,
+									 &var->value, false);
 				}
 				else
 				{
-					if (!putVariable(&state[i], "startup",
-									 var->name, var->svalue))
-						exit(1);
+					putVariable(&state[i].variables, "startup", var->name,
+								var->svalue);
 				}
 			}
 		}
@@ -5374,17 +6325,17 @@ main(int argc, char **argv)
 	for (i = 0; i < nclients; i++)
 	{
 		state[i].cstack = conditional_stack_create();
+		initRandomState(&state[i].random_state);
 	}
 
-	if (debug)
-	{
-		if (duration <= 0)
-			printf("pghost: %s pgport: %s nclients: %d nxacts: %d dbName: %s\n",
-				   pghost, pgport, nclients, nxacts, dbName);
-		else
-			printf("pghost: %s pgport: %s nclients: %d duration: %d dbName: %s\n",
-				   pghost, pgport, nclients, duration, dbName);
-	}
+	if (duration <= 0)
+		ereport(ELEVEL_DEBUG,
+				(errmsg("pghost: %s pgport: %s nclients: %d nxacts: %d dbName: %s\n",
+						pghost, pgport, nclients, nxacts, dbName)));
+	else
+		ereport(ELEVEL_DEBUG,
+				(errmsg("pghost: %s pgport: %s nclients: %d duration: %d dbName: %s\n",
+						pghost, pgport, nclients, duration, dbName)));
 
 	/* opening connection... */
 	con = doConnect();
@@ -5393,56 +6344,62 @@ main(int argc, char **argv)
 
 	if (PQstatus(con) == CONNECTION_BAD)
 	{
-		fprintf(stderr, "connection to database \"%s\" failed\n", dbName);
-		fprintf(stderr, "%s", PQerrorMessage(con));
-		exit(1);
+		ereport(ELEVEL_FATAL,
+				(errmsg("connection to database \"%s\" failed\n%s",
+						dbName, PQerrorMessage(con))));
 	}
 
 	if (internal_script_used)
 	{
 		/*
 		 * get the scaling factor that should be same as count(*) from
-		 * pgbench_branches if this is not a custom query
+		 * ysql_bench_branches if this is not a custom query
 		 */
-		res = PQexec(con, "select count(*) from pgbench_branches");
+		res = PQexec(con, "select count(*) from ysql_bench_branches");
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
 			char	   *sqlState = PQresultErrorField(res, PG_DIAG_SQLSTATE);
+			PQExpBufferData errmsg_buf;
 
-			fprintf(stderr, "%s", PQerrorMessage(con));
+			initPQExpBuffer(&errmsg_buf);
+			printfPQExpBuffer(&errmsg_buf, "%s", PQerrorMessage(con));
 			if (sqlState && strcmp(sqlState, ERRCODE_UNDEFINED_TABLE) == 0)
 			{
-				fprintf(stderr, "Perhaps you need to do initialization (\"pgbench -i\") in database \"%s\"\n", PQdb(con));
+				appendPQExpBuffer(&errmsg_buf,
+								  "Perhaps you need to do initialization (\"ysql_bench -i\") in database \"%s\"\n",
+								  PQdb(con));
 			}
 
+			ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errmsg_buf.data)));
+			termPQExpBuffer(&errmsg_buf);
 			exit(1);
 		}
 		scale = atoi(PQgetvalue(res, 0, 0));
 		if (scale < 0)
 		{
-			fprintf(stderr, "invalid count(*) from pgbench_branches: \"%s\"\n",
-					PQgetvalue(res, 0, 0));
-			exit(1);
+			ereport(ELEVEL_FATAL,
+					(errmsg("invalid count(*) from ysql_bench_branches: \"%s\"\n",
+							PQgetvalue(res, 0, 0))));
 		}
 		PQclear(res);
 
 		/* warn if we override user-given -s switch */
 		if (scale_given)
-			fprintf(stderr,
-					"scale option ignored, using count from pgbench_branches table (%d)\n",
-					scale);
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg("scale option ignored, using count from ysql_bench_branches table (%d)\n",
+							scale)));
 	}
 
 	/*
 	 * :scale variables normally get -s or database scale, but don't override
 	 * an explicit -D switch
 	 */
-	if (lookupVariable(&state[0], "scale") == NULL)
+	if (lookupVariable(&state[0].variables, "scale") == NULL)
 	{
 		for (i = 0; i < nclients; i++)
 		{
-			if (!putVariableInt(&state[i], "startup", "scale", scale))
-				exit(1);
+			putVariableInt(&state[i].variables, "startup", "scale", scale,
+						   false);
 		}
 	}
 
@@ -5450,46 +6407,47 @@ main(int argc, char **argv)
 	 * Define a :client_id variable that is unique per connection. But don't
 	 * override an explicit -D switch.
 	 */
-	if (lookupVariable(&state[0], "client_id") == NULL)
+	if (lookupVariable(&state[0].variables, "client_id") == NULL)
 	{
 		for (i = 0; i < nclients; i++)
-			if (!putVariableInt(&state[i], "startup", "client_id", i))
-				exit(1);
+			putVariableInt(&state[i].variables, "startup", "client_id", i,
+						   false);
 	}
 
 	/* set default seed for hash functions */
-	if (lookupVariable(&state[0], "default_seed") == NULL)
+	if (lookupVariable(&state[0].variables, "default_seed") == NULL)
 	{
 		uint64		seed =
 		((uint64) pg_jrand48(base_random_sequence) & 0xFFFFFFFF) |
 		(((uint64) pg_jrand48(base_random_sequence) & 0xFFFFFFFF) << 32);
 
 		for (i = 0; i < nclients; i++)
-			if (!putVariableInt(&state[i], "startup", "default_seed", (int64) seed))
-				exit(1);
+			putVariableInt(&state[i].variables, "startup", "default_seed",
+						   (int64) seed, false);
 	}
 
 	/* set random seed unless overwritten */
-	if (lookupVariable(&state[0], "random_seed") == NULL)
+	if (lookupVariable(&state[0].variables, "random_seed") == NULL)
 	{
 		for (i = 0; i < nclients; i++)
-			if (!putVariableInt(&state[i], "startup", "random_seed", random_seed))
-				exit(1);
+			putVariableInt(&state[i].variables, "startup", "random_seed",
+						   random_seed, false);
 	}
 
 	if (!is_no_vacuum)
 	{
-		fprintf(stderr, "starting vacuum...");
-		tryExecuteStatement(con, "vacuum pgbench_branches");
-		tryExecuteStatement(con, "vacuum pgbench_tellers");
-		tryExecuteStatement(con, "truncate pgbench_history");
-		fprintf(stderr, "end.\n");
+		ereport(ELEVEL_LOG_MAIN, (errmsg("starting vacuum...")));
+		tryExecuteStatement(con, "vacuum ysql_bench_branches");
+		tryExecuteStatement(con, "vacuum ysql_bench_tellers");
+		tryExecuteStatement(con, "truncate ysql_bench_history");
+		ereport(ELEVEL_LOG_MAIN, (errmsg("end.\n")));
 
 		if (do_vacuum_accounts)
 		{
-			fprintf(stderr, "starting vacuum pgbench_accounts...");
-			tryExecuteStatement(con, "vacuum analyze pgbench_accounts");
-			fprintf(stderr, "end.\n");
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg("starting vacuum ysql_bench_accounts...")));
+			tryExecuteStatement(con, "vacuum analyze ysql_bench_accounts");
+			ereport(ELEVEL_LOG_MAIN, (errmsg("end.\n")));
 		}
 	}
 	PQfinish(con);
@@ -5506,12 +6464,7 @@ main(int argc, char **argv)
 		thread->state = &state[nclients_dealt];
 		thread->nstate =
 			(nclients - nclients_dealt + nthreads - i - 1) / (nthreads - i);
-		thread->random_state[0] = (unsigned short)
-			(pg_jrand48(base_random_sequence) & 0xFFFF);
-		thread->random_state[1] = (unsigned short)
-			(pg_jrand48(base_random_sequence) & 0xFFFF);
-		thread->random_state[2] = (unsigned short)
-			(pg_jrand48(base_random_sequence) & 0xFFFF);
+		initRandomState(&thread->random_state);
 		thread->logfile = NULL; /* filled in later */
 		thread->latency_late = 0;
 		thread->zipf_cache.nb_cells = 0;
@@ -5552,8 +6505,9 @@ main(int argc, char **argv)
 
 			if (err != 0 || thread->thread == INVALID_THREAD)
 			{
-				fprintf(stderr, "could not create thread: %s\n", strerror(err));
-				exit(1);
+				ereport(ELEVEL_FATAL,
+						(errmsg("could not create thread: %s\n",
+								strerror(err))));
 			}
 		}
 		else
@@ -5593,6 +6547,10 @@ main(int argc, char **argv)
 		mergeSimpleStats(&stats.lag, &thread->stats.lag);
 		stats.cnt += thread->stats.cnt;
 		stats.skipped += thread->stats.skipped;
+		stats.retries += thread->stats.retries;
+		stats.retried += thread->stats.retried;
+		stats.errors += thread->stats.errors;
+		stats.errors_in_failed_tx += thread->stats.errors_in_failed_tx;
 		latency_late += thread->latency_late;
 		INSTR_TIME_ADD(conn_total_time, thread->conn_time);
 	}
@@ -5651,7 +6609,7 @@ threadRun(void *arg)
 	if (use_log)
 	{
 		char		logpath[MAXPGPATH];
-		char	   *prefix = logfile_prefix ? logfile_prefix : "pgbench_log";
+		char	   *prefix = logfile_prefix ? logfile_prefix : "ysql_bench_log";
 
 		if (thread->tid == 0)
 			snprintf(logpath, sizeof(logpath), "%s.%d", prefix, main_pid);
@@ -5662,8 +6620,9 @@ threadRun(void *arg)
 
 		if (thread->logfile == NULL)
 		{
-			fprintf(stderr, "could not open logfile \"%s\": %s\n",
-					logpath, strerror(errno));
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg("could not open logfile \"%s\": %s\n",
+							logpath, strerror(errno))));
 			goto done;
 		}
 	}
@@ -5741,8 +6700,9 @@ threadRun(void *arg)
 
 				if (sock < 0)
 				{
-					fprintf(stderr, "invalid socket: %s",
-							PQerrorMessage(st->con));
+					ereport(ELEVEL_LOG_MAIN,
+							(errmsg("invalid socket: %s",
+									PQerrorMessage(st->con))));
 					goto done;
 				}
 
@@ -5818,7 +6778,8 @@ threadRun(void *arg)
 					continue;
 				}
 				/* must be something wrong */
-				fprintf(stderr, "select() failed: %s\n", strerror(errno));
+				ereport(ELEVEL_LOG_MAIN,
+						(errmsg("select() failed: %s\n", strerror(errno))));
 				goto done;
 			}
 		}
@@ -5842,8 +6803,9 @@ threadRun(void *arg)
 
 				if (sock < 0)
 				{
-					fprintf(stderr, "invalid socket: %s",
-							PQerrorMessage(st->con));
+					ereport(ELEVEL_LOG_MAIN,
+							(errmsg("invalid socket: %s",
+									PQerrorMessage(st->con))));
 					goto done;
 				}
 
@@ -5877,7 +6839,11 @@ threadRun(void *arg)
 				/* generate and show report */
 				StatsData	cur;
 				int64		run = now - last_report,
-							ntx;
+							ntx,
+							retries,
+							retried,
+							errors,
+							errors_in_failed_tx;
 				double		tps,
 							total_run,
 							latency,
@@ -5885,6 +6851,7 @@ threadRun(void *arg)
 							lag,
 							stdev;
 				char		tbuf[315];
+				PQExpBufferData progress_buf;
 
 				/*
 				 * Add up the statistics of all threads.
@@ -5904,6 +6871,11 @@ threadRun(void *arg)
 					mergeSimpleStats(&cur.lag, &thread[i].stats.lag);
 					cur.cnt += thread[i].stats.cnt;
 					cur.skipped += thread[i].stats.skipped;
+					cur.retries += thread[i].stats.retries;
+					cur.retried += thread[i].stats.retried;
+					cur.errors += thread[i].stats.errors;
+					cur.errors_in_failed_tx +=
+						thread[i].stats.errors_in_failed_tx;
 				}
 
 				/* we count only actually executed transactions */
@@ -5921,6 +6893,11 @@ threadRun(void *arg)
 				{
 					latency = sqlat = stdev = lag = 0;
 				}
+				retries = cur.retries - last.retries;
+				retried = cur.retried - last.retried;
+				errors = cur.errors - last.errors;
+				errors_in_failed_tx = cur.errors_in_failed_tx -
+					last.errors_in_failed_tx;
 
 				if (progress_timestamp)
 				{
@@ -5942,18 +6919,44 @@ threadRun(void *arg)
 					snprintf(tbuf, sizeof(tbuf), "%.1f s", total_run);
 				}
 
-				fprintf(stderr,
-						"progress: %s, %.1f tps, lat %.3f ms stddev %.3f",
-						tbuf, tps, latency, stdev);
+				initPQExpBuffer(&progress_buf);
+				printfPQExpBuffer(&progress_buf,
+								  "progress: %s, %.1f tps, lat %.3f ms stddev %.3f",
+								  tbuf, tps, latency, stdev);
+
+				if (errors > 0)
+				{
+					appendPQExpBuffer(&progress_buf,
+									  ", " INT64_FORMAT " failed" , errors);
+					if (errors_in_failed_tx > 0)
+						appendPQExpBuffer(&progress_buf,
+										  " (" INT64_FORMAT " in failed tx)",
+										  errors_in_failed_tx);
+				}
 
 				if (throttle_delay)
 				{
-					fprintf(stderr, ", lag %.3f ms", lag);
+					appendPQExpBuffer(&progress_buf, ", lag %.3f ms", lag);
 					if (latency_limit)
-						fprintf(stderr, ", " INT64_FORMAT " skipped",
-								cur.skipped - last.skipped);
+						appendPQExpBuffer(&progress_buf,
+										  ", " INT64_FORMAT " skipped",
+										  cur.skipped - last.skipped);
 				}
-				fprintf(stderr, "\n");
+
+				/*
+				 * It can be non-zero only if max_tries is greater than one or
+				 * latency_limit is used.
+				 */
+				if (retried > 0)
+				{
+					appendPQExpBuffer(&progress_buf,
+									  ", " INT64_FORMAT " retried, " INT64_FORMAT " retries",
+									  retried, retries);
+				}
+				appendPQExpBufferChar(&progress_buf, '\n');
+
+				ereport(ELEVEL_LOG_MAIN, (errmsg("%s", progress_buf.data)));
+				termPQExpBuffer(&progress_buf);
 
 				last = cur;
 				last_report = now;
@@ -6037,10 +7040,7 @@ setalarm(int seconds)
 		!CreateTimerQueueTimer(&timer, queue,
 							   win32_timer_callback, NULL, seconds * 1000, 0,
 							   WT_EXECUTEINTIMERTHREAD | WT_EXECUTEONLYONCE))
-	{
-		fprintf(stderr, "failed to set timer\n");
-		exit(1);
-	}
+		ereport(ELEVEL_FATAL, (errmsg("failed to set timer\n")));
 }
 
 /* partial pthread implementation for Windows */
@@ -6110,3 +7110,164 @@ pthread_join(pthread_t th, void **thread_return)
 }
 
 #endif							/* WIN32 */
+
+/*
+ * errstartImpl --- begin an error-reporting cycle
+ *
+ * Initialize the error data and store the given parameters in it.
+ * Subsequently, errmsg() and perhaps other routines will be called to further
+ * populate the error data.  Finally, errfinish() will be called to actually
+ * process the error report.  If multiple threads can use the same error data,
+ * the error mutex is locked before the error data is initialized and will be
+ * unlocked in the end of the errfinish() call.
+ *
+ * Returns true in normal case.  Returns false to short-circuit the error
+ * report (if the debugging level does not resolve this error/logging level).
+ */
+static bool
+#if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
+errstartImpl(Error error, ErrorLevel elevel)
+#else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
+errstartImpl(ErrorLevel elevel)
+#endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
+{
+	bool		start_error_reporting;
+
+	/* Check if we have the appropriate debugging level */
+	switch (elevel)
+	{
+		case ELEVEL_DEBUG:
+			/*
+			 * Print the message only if there's a debugging mode for all types
+			 * of messages.
+			 */
+			start_error_reporting = debug_level >= DEBUG_ALL;
+			break;
+		case ELEVEL_LOG_CLIENT_FAIL:
+			/*
+			 * Print a failure message only if there's at least a debugging mode
+			 * for fails.
+			 */
+			start_error_reporting = debug_level >= DEBUG_FAILS;
+			break;
+		case ELEVEL_LOG_CLIENT_ABORTED:
+		case ELEVEL_LOG_MAIN:
+		case ELEVEL_FATAL:
+			/*
+			 * Always print an error message if the client is aborted or this is
+			 * the main program error/log message.
+			 */
+			start_error_reporting = true;
+			break;
+		default:
+			/* internal error which should never occur */
+			ereport(ELEVEL_FATAL,
+					(errmsg("unexpected error level: %d\n", elevel)));
+			break;
+	}
+
+	/* Initialize the error data */
+	if (start_error_reporting)
+	{
+		Assert(error);
+
+#if defined(ENABLE_THREAD_SAFETY) && !defined(HAVE__VA_ARGS)
+		pthread_mutex_lock(&error_mutex);
+#endif							/* ENABLE_THREAD_SAFETY && !HAVE__VA_ARGS */
+
+		error->elevel = elevel;
+		initPQExpBuffer(&error->message);
+	}
+
+	return start_error_reporting;
+}
+
+/*
+ * errmsgImpl --- add a primary error message text to the current error
+ */
+static int
+#if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
+errmsgImpl(Error error, const char *fmt,...)
+#else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
+errmsgImpl(const char *fmt,...)
+#endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
+{
+	va_list		ap;
+	bool		done;
+
+	Assert(error);
+
+	if (PQExpBufferBroken(&error->message))
+	{
+		/* Already failed. */
+		/* Return value does not matter. */
+		return 0;
+	}
+
+	/* Loop in case we have to retry after enlarging the buffer. */
+	do
+	{
+		va_start(ap, fmt);
+		done = appendPQExpBufferVA(&error->message, fmt, ap);
+		va_end(ap);
+	} while (!done);
+
+	/* Return value does not matter. */
+	return 0;
+}
+
+/*
+ * errfinishImpl --- end an error-reporting cycle
+ *
+ * Print the appropriate error report to stderr.
+ *
+ * If elevel is ELEVEL_FATAL or worse, control does not return to the caller.
+ * See ErrorLevel enumeration for the error level definitions.
+ *
+ * If the error message buffer is empty or broken, prints a corresponding error
+ * message and exits the program.
+ */
+static void
+#if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
+errfinishImpl(Error error, int dummy,...)
+#else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
+errfinishImpl(int dummy,...)
+#endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
+{
+	bool		error_during_reporting = false;
+	ErrorLevel  elevel;
+
+	Assert(error);
+	elevel = error->elevel;
+
+	/*
+	 * Immediately print the message to stderr so as not to get an endless cycle
+	 * of errors...
+	 */
+	if (PQExpBufferDataBroken(error->message))
+	{
+		error_during_reporting = true;
+		fprintf(stderr, "out of memory\n");
+	}
+	else if (*(error->message.data) == '\0')
+	{
+		/* internal error which should never occur */
+		error_during_reporting = true;
+		fprintf(stderr, "empty error message cannot be reported\n");
+	}
+	else
+	{
+		fprintf(stderr, "%s", error->message.data);
+	}
+
+	/* Release the error data and exit if needed */
+
+	termPQExpBuffer(&error->message);
+
+#if defined(ENABLE_THREAD_SAFETY) && !defined(HAVE__VA_ARGS)
+	pthread_mutex_unlock(&error_mutex);
+#endif							/* ENABLE_THREAD_SAFETY && !HAVE__VA_ARGS */
+
+	if (elevel >= ELEVEL_FATAL || error_during_reporting)
+		exit(1);
+}

@@ -28,10 +28,11 @@ DECLARE_int64(transaction_rpc_timeout_ms);
 namespace yb {
 namespace client {
 
-class SerializableTxnTest : public TransactionTestBase {
+class SerializableTxnTest : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase> {
  protected:
-  IsolationLevel GetIsolationLevel() override {
-    return IsolationLevel::SERIALIZABLE_ISOLATION;
+  void SetUp() override {
+    SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
+    TransactionTestBase::SetUp();
   }
 
   void TestIncrements(bool transactional);
@@ -152,7 +153,6 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
 
   std::vector<Entry> entries;
 
-  auto value_column_id = table_.ColumnId(kValueColumn);
   for (int i = 0; i != kIncrements; ++i) {
     Entry entry;
     entry.txn = transactional ? CreateTransaction() : nullptr;
@@ -174,24 +174,8 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
       bool entry_complete = false;
       if (!entry.op) {
         // Execute UPDATE table SET value = value + 1 WHERE key = kKey
-        entry.op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
-        auto* const req = entry.op->mutable_request();
-        QLAddInt32HashValue(req, key);
-        req->mutable_column_refs()->add_ids(value_column_id);
-        auto* column_value = req->add_column_values();
-        column_value->set_column_id(value_column_id);
-        auto* bfcall = column_value->mutable_expr()->mutable_bfcall();
-        bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI64ToI32_18));
-        bfcall = bfcall->add_operands()->mutable_bfcall();
-
-        bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
-        auto column_op = bfcall->add_operands()->mutable_bfcall();
-        column_op->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI32ToI64_13));
-        column_op->add_operands()->set_column_id(value_column_id);
-        bfcall->add_operands()->mutable_value()->set_int64_value(1);
-
         entry.session->SetTransaction(entry.txn);
-        ASSERT_OK(entry.session->Apply(entry.op));
+        entry.op = ASSERT_RESULT(Increment(&table_, entry.session, key));
         entry.write_future = entry.session->FlushFuture();
       } else if (entry.write_future.valid()) {
         if (entry.write_future.wait_for(0s) == std::future_status::ready) {

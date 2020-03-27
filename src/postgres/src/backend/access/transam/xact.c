@@ -190,8 +190,10 @@ typedef struct TransactionStateData
 	bool		didLogXid;		/* has xid been included in WAL record? */
 	int			parallelModeLevel;	/* Enter/ExitParallelMode counter */
 	struct TransactionStateData *parent;	/* back link to parent */
+	bool		ybDataSent; /* Whether some tuples have been transmitted to
+				             * frontend as part of this execution */
 	bool		isYBTxnWithPostgresRel; /* does the current transaction
-										   * operate on a postgres table? */
+				                         * operate on a postgres table? */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -222,7 +224,9 @@ static TransactionStateData TopTransactionStateData = {
 	false,						/* startedInRecovery */
 	false,						/* didLogXid */
 	0,							/* parallelModeLevel */
-	NULL						/* link to parent state block */
+	NULL,						/* link to parent state block */
+	false,						/* ybDataSent */
+	false						/* isYBTxnWithPostgresRel */
 };
 
 /*
@@ -989,6 +993,26 @@ ForceSyncCommit(void)
 	forceSyncCommit = true;
 }
 
+/*
+ * Mark current transaction as having sent some data back to the client.
+ * This prevents automatic transaction restart.
+ */
+void YBMarkDataSent(void)
+{
+	TransactionState s = CurrentTransactionState;
+	s->ybDataSent = true;
+}
+
+/*
+ * Whether some data has been transmitted to frontend as part of this transaction.
+ */
+bool YBIsDataSent(void)
+{
+	// Note: we don't support nested transactions (savepoints) yet,
+	// but once we do - we have to make sure this works as intended.
+	TransactionState s = CurrentTransactionState;
+	return s->ybDataSent;
+}
 
 /* ----------------------------------------------------------------
  *						StartTransaction stuff
@@ -1818,6 +1842,25 @@ AtSubCleanup_Memory(void)
  */
 
 /*
+ * Do a Yugabyte-specific initialization of transaction when it starts,
+ * called as a part of StartTransaction
+ */
+static void
+YBStartTransaction(TransactionState s)
+{
+	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
+	s->ybDataSent             = false;
+
+	if (YBTransactionsEnabled())
+	{
+		YBCPgBeginTransaction();
+		YBCPgSetTransactionIsolationLevel(XactIsoLevel);
+		YBCPgSetTransactionReadOnly(XactReadOnly);
+		YBCPgSetTransactionDeferrable(XactDeferrable);
+	}
+}
+
+/*
  *	StartTransaction
  */
 static void
@@ -1836,8 +1879,6 @@ StartTransaction(void)
 
 	/* check the current transaction state */
 	Assert(s->state == TRANS_DEFAULT);
-
-	s->isYBTxnWithPostgresRel = IsYugaByteEnabled() ? false : true;
 
 	/*
 	 * Set the current transaction state information appropriately during
@@ -1967,10 +2008,7 @@ StartTransaction(void)
 	 */
 	s->state = TRANS_INPROGRESS;
 
-	if (YBTransactionsEnabled())
-	{
-		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager(), XactIsoLevel);
-	}
+	YBStartTransaction(s);
 
 	ShowTransactionState("StartTransaction");
 }
@@ -2684,7 +2722,7 @@ AbortTransaction(void)
 	}
 
 	if (YBTransactionsEnabled()) {
-		YBCPgTxnManager_AbortTransaction(YBCGetPgTxnManager());
+		YBCPgAbortTransaction();
 	}
 
 	/*
@@ -2748,6 +2786,9 @@ CleanupTransaction(void)
 void
 StartTransactionCommand(void)
 {
+	if (IsYugaByteEnabled())
+		YBResetOperationsBuffering();
+
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)
@@ -2837,7 +2878,11 @@ YBCCommitTransactionAndUpdateBlockState() {
 		CommitTransaction();
 		s->blockState = TBLOCK_DEFAULT;
 	} else {
-		s->blockState = TBLOCK_ABORT;
+    /*
+     * TBLOCK_STARTED means that we aren't in a transaction block, so should switch to
+     * default state in this case.
+     */
+		s->blockState = s->blockState == TBLOCK_STARTED ? TBLOCK_DEFAULT : TBLOCK_ABORT;
 		YBCHandleCommitError();
 	}
 }
@@ -4631,7 +4676,7 @@ IsSubTransaction(void)
  * If you're wondering why this is separate from PushTransaction: it's because
  * we can't conveniently do this stuff right inside DefineSavepoint.  The
  * SAVEPOINT utility command will be executed inside a Portal, and if we
- * muck with CurrentMemoryContext or CurrentResourceOwner then exit from
+ * muck with GetCurrentMemoryContext() or CurrentResourceOwner then exit from
  * the Portal will undo those settings.  So we make DefineSavepoint just
  * push a dummy transaction block, and when control returns to the main
  * idle loop, CommitTransactionCommand will be called, and we'll come here

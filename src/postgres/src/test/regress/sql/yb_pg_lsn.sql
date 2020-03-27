@@ -39,3 +39,16 @@ SELECT DISTINCT (i || '/' || j)::pg_lsn f
        generate_series(1, 5) k
   WHERE i <= 10 AND j > 0 AND j <= 10
   ORDER BY f;
+
+-- Check ordering
+CREATE TABLE PG_LSN_TBL_ASC(a INT, b PG_LSN, PRIMARY KEY(a HASH, b ASC));
+INSERT INTO PG_LSN_TBL_ASC VALUES
+  (1, 'DEADBEAF/DEADBEAF'),
+  (1, '7FFFFFFF/FFFFFFFF'),
+  (1, '80000000/00000000'),
+  (1, '0/0'),
+  (1, '0/1'),
+  (1, 'FFFFFFFF/FFFFFFFF'),
+  (1, '0/64'),
+  (1, 'FFFFFFFF/FFFFFF9C');
+SELECT b FROM PG_LSN_TBL_ASC WHERE a=1;

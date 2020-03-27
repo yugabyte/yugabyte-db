@@ -13,11 +13,11 @@ showAsideToc: true
 
 ## Overview
 
-`ysqlsh` is a command line shell for interacting with YugaByte DB through [YSQL](../../api/ysql/). It is derived from [`psql`](https://www.postgresql.org/docs/11/app-psql.html), the PostgreSQL shell.
+`ysqlsh` is a command line shell for interacting with YugabyteDB through [YSQL](../../api/ysql/). It is derived from [`psql`](https://www.postgresql.org/docs/11/app-psql.html), the PostgreSQL shell.
 
 ## Download 
 
-ysqlsh is installed as part of YugaByte DB and is located in the bin directory of YugaByte home. 
+ysqlsh is installed as part of YugabyteDB and is located in the bin directory of Yugabyte home. 
 
 ## Example
 

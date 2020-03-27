@@ -43,13 +43,15 @@ class BinaryCallParser {
                             IncludeHeader include_header, SkipEmptyMessages skip_empty_messages,
                             BinaryCallParserListener* listener);
 
+  // If tracker_for_throttle is not nullptr - throttle big requests when tracker_for_throttle
+  // (or any of its ancestors) exceeds soft memory limit.
   Result<ProcessDataResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
-                                  ReadBufferFull read_buffer_full);
+                                  ReadBufferFull read_buffer_full,
+                                  const MemTrackerPtr* tracker_for_throttle);
 
  private:
-  MemTrackerPtr mandatory_tracker_;
   MemTrackerPtr buffer_tracker_;
-  std::vector<char> buffer_;
+  std::vector<char> call_header_buffer_;
   ScopedTrackedConsumption call_data_consumption_;
   CallData call_data_;
   const size_t size_offset_;
@@ -58,6 +60,11 @@ class BinaryCallParser {
   const SkipEmptyMessages skip_empty_messages_;
   BinaryCallParserListener* const listener_;
 };
+
+// Returns whether we should throttle RPC call based on its size and memory consumption.
+// Uses specified throttle_message when logging a warning about throttling an RPC call.
+bool ShouldThrottleRpc(
+    const MemTrackerPtr& throttle_tracker, size_t call_data_size, const char* throttle_message);
 
 } // namespace rpc
 } // namespace yb

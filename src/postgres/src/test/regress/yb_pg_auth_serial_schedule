@@ -1,0 +1,15 @@
+# src/test/regress/yb_pg_auth_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This includes tests related to postgres roles.
+####################################################################################################
+# `yb_pg_int8` is a dependency for `yb_pg_privileges`
+test: yb_pg_int8
+
+test: yb_roleattributes
+test: yb_rolenames
+test: yb_password
+test: yb_pg_privileges
+test: yb_init_privs
+test: yb_pg_rowsecurity

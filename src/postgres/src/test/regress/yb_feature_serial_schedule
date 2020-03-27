@@ -14,5 +14,6 @@ test: yb_feature_config
 test: yb_feature_copy
 test: yb_feature_copyselect
 test: yb_feature_alter_table
+test: yb_feature_alter_rename
 test: yb_feature_temp
 test: yb_feature_db

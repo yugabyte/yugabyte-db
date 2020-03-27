@@ -23,10 +23,10 @@
 #include <unistd.h>
 #include <string>
 #include <glog/logging.h>
-#include <boost/scope_exit.hpp>
 
-#include "yb/util/random_util.h"
 #include "yb/util/errno.h"
+#include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 
 namespace yb {
 
@@ -69,11 +69,11 @@ std::string GetSharedMemoryDirectory() {
 
 #if defined(__linux__)
   auto* mount_file = fopen("/proc/mounts", "r");
-  BOOST_SCOPE_EXIT(&mount_file) {
+  auto se = ScopeExit([&mount_file] {
     if (mount_file) {
       fclose(mount_file);
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   if (mount_file) {
     while (struct mntent* mount_info = getmntent(mount_file)) {
@@ -196,11 +196,11 @@ Result<int> CreateTempSharedMemoryFile() {
 Result<SharedMemorySegment> SharedMemorySegment::Create(size_t segment_size) {
   int fd = -1;
   bool auto_close_fd = true;
-  BOOST_SCOPE_EXIT(&fd, &auto_close_fd) {
+  auto se = ScopeExit([&fd, &auto_close_fd] {
     if (fd != -1 && auto_close_fd) {
       close(fd);
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
 #if defined(__linux__)
   // Prefer memfd_create over creating temporary files, if available.
@@ -233,7 +233,7 @@ Result<SharedMemorySegment> SharedMemorySegment::Open(
     AccessMode access_mode,
     size_t segment_size) {
   void* segment_address = VERIFY_RESULT(MMap(fd, access_mode, segment_size));
-  return SharedMemorySegment(segment_address, fd, segment_size);
+  return SharedMemorySegment(DCHECK_NOTNULL(segment_address), fd, segment_size);
 }
 
 SharedMemorySegment::SharedMemorySegment(void* base_address, int fd, size_t segment_size)
@@ -251,13 +251,13 @@ SharedMemorySegment::SharedMemorySegment(SharedMemorySegment&& other)
 }
 
 SharedMemorySegment::~SharedMemorySegment() {
-  if (fd_ != -1) {
-    close(fd_);
-  }
-
   if (base_address_ && munmap(base_address_, segment_size_) == -1) {
     LOG(ERROR) << "Failed to unmap shared memory segment: errno=" << errno
                << ": " << ErrnoToString(errno);
+  }
+
+  if (fd_ != -1) {
+    close(fd_);
   }
 }
 

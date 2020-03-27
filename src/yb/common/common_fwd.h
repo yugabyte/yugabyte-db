@@ -21,7 +21,21 @@ class HybridTime;
 class IndexInfo;
 class IndexMap;
 class PartitionSchema;
+
+class PgsqlBCallPB;
+class PgsqlConditionPB;
+class PgsqlExpressionPB;
+class PgsqlRSRowDescPB;
+class PgsqlWriteRequestPB;
+
+class QLJsonColumnOperationsPB;
+class QLJsonOperationPB;
+class QLRSColDescPB;
+class QLRSRowDescPB;
 class QLType;
+class QLValue;
+class QLValuePB;
+
 class TableProperties;
 
 } // namespace yb

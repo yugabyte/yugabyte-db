@@ -121,7 +121,7 @@ preprocess_targetlist(PlannerInfo *root)
 	 */
 	tlist = parse->targetList;
 	if (command_type == CMD_INSERT || command_type == CMD_UPDATE ||
-			(IsYugaByteEnabled() && command_type == CMD_DELETE && parse->returningList != NULL))
+			(command_type == CMD_DELETE && IsYBRelation(target_relation) && parse->returningList != NULL))
 		tlist = expand_targetlist(tlist, command_type,
 								  result_relation, target_relation);
 
@@ -143,14 +143,34 @@ preprocess_targetlist(PlannerInfo *root)
 
 		if (rc->allMarkTypes & ~(1 << ROW_MARK_COPY))
 		{
-			/* Need to fetch TID */
-			var = makeVar(rc->rti,
-						  SelfItemPointerAttributeNumber,
-						  TIDOID,
-						  -1,
-						  InvalidOid,
-						  0);
-			snprintf(resname, sizeof(resname), "ctid%u", rc->rowmarkId);
+			bool is_yb_relation = false;
+			if (!target_relation)
+				is_yb_relation = IsYBRelationById(getrelid(rc->rti, range_table));
+			else
+				is_yb_relation = IsYBBackedRelation(target_relation);
+
+			if (is_yb_relation)
+			{
+				/* Need to fetch YB TID */
+				var = makeVar(rc->rti,
+								YBTupleIdAttributeNumber,
+								BYTEAOID,
+								-1,
+								InvalidOid,
+								0);
+				snprintf(resname, sizeof(resname), "ybctid%u", rc->rowmarkId);
+			}
+			else
+			{
+				/* Need to fetch TID */
+				var = makeVar(rc->rti,
+								SelfItemPointerAttributeNumber,
+								TIDOID,
+								-1,
+								InvalidOid,
+								0);
+				snprintf(resname, sizeof(resname), "ctid%u", rc->rowmarkId);
+			}
 			tle = makeTargetEntry((Expr *) var,
 								  list_length(tlist) + 1,
 								  pstrdup(resname),
@@ -381,13 +401,26 @@ expand_targetlist(List *tlist, int command_type,
 					// This case is added only for DELETE from YugaByte table with RETURNING clause.
 					if (IsYugaByteEnabled())
 					{
-						// Query all attribute in the YugaByte relation.
-						new_expr = (Node *) makeVar(result_relation,
-													attrno,
-													atttype,
-													atttypmod,
-													attcollation,
-													0);
+						if (att_tup->attisdropped) {
+						/* Insert NULL for dropped column */
+							new_expr = (Node *) makeConst(INT4OID,
+														  -1,
+														  InvalidOid,
+														  sizeof(int32),
+														  (Datum) 0,
+														  true, /* isnull */
+														  true /* byval */ );
+						}
+						else
+						{
+							// Query all attribute in the YugaByte relation.
+							new_expr = (Node *) makeVar(result_relation,
+														attrno,
+														atttype,
+														atttypmod,
+														attcollation,
+														0);
+						}
 						break;
 					}
 					/* FALLTHROUGH */

@@ -4,8 +4,35 @@
 # We are invoking it here using a submodule.
 
 set -euo pipefail
-script_dir=$( cd "${BASH_SOURCE%/*}" && pwd )
-. "$script_dir/../build-support/common-build-env.sh"
-update_submodules
-"$YB_SRC_ROOT/submodules/yugabyte-installation/bin/yb-ctl" "$@"
 
+# Update submodules.
+script_dir=$( cd "${BASH_SOURCE%/*}" && pwd )
+. "$script_dir/../build-support/common-test-env.sh"
+update_submodules
+
+# Get environment variables for ASAN/TSAN.
+if [[ -z ${BUILD_ROOT:-} ]]; then
+  pushd "$YB_SRC_ROOT"/build/latest
+  cd -P .
+  handle_build_root_from_current_dir
+  popd
+  set_build_root
+else
+  predefined_build_root=$BUILD_ROOT
+  handle_predefined_build_root
+  unset preset_build_root
+fi
+build_root_basename=${BUILD_ROOT##*/}
+if [[ $build_root_basename =~ ^(asan|tsan) ]]; then
+  if [[ -z ${ASAN_SYMBOLIZER_PATH:-} || ! -f ${ASAN_SYMBOLIZER_PATH:-} ]]; then
+    if [[ -n "${ASAN_SYMBOLIZER_PATH:-}" ]]; then
+      log "ASAN_SYMBOLIZER_PATH is set to '$ASAN_SYMBOLIZER_PATH' but that file does not " \
+          "exist, reverting to default behavior."
+    fi
+    ASAN_SYMBOLIZER_PATH="$(which llvm-symbolizer)"
+  fi
+fi
+set_sanitizer_runtime_options
+
+# Invoke the actual yb-ctl script.
+"$YB_SRC_ROOT"/submodules/yugabyte-installation/bin/yb-ctl "$@"

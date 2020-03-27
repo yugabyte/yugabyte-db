@@ -30,7 +30,17 @@
 #define YBTupleIdAttributeNumber				(-8)
 #define YBFirstLowInvalidAttributeNumber		(-9)
 
-#define YBBaseTupleIdAttributeNumber      (-101)
-#define YBIndexKeySuffixAttributeNumber   (-102)
+/*
+ * RowId is an auto-generated DocDB column used for tables without a
+ * primary key, but is not present in the postgres table.
+ *
+ * It is included here to reserve the number and for use in YB postgres
+ * code that requires knowledge about this column.
+ */
+#define YBRowIdAttributeNumber					(-100)
+
+#define YBIdxBaseTupleIdAttributeNumber			(-101)
+#define YBUniqueIdxKeySuffixAttributeNumber		(-102)
+#define YBSystemFirstLowInvalidAttributeNumber	(-103)
 
 #endif							/* SYSATTR_H */

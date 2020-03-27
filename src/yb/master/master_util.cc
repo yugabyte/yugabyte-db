@@ -15,8 +15,10 @@
 
 #include <boost/container/stable_vector.hpp>
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master.service.h"
 #include "yb/util/flag_tags.h"
@@ -108,6 +110,48 @@ void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest) {
 
 void CopyRegistration(ServerRegistrationPB source, TSInfoPB* dest) {
   TakeRegistration(&source, dest);
+}
+
+bool IsSystemNamespace(const std::string& namespace_name) {
+  return namespace_name == master::kSystemNamespaceName ||
+      namespace_name == master::kSystemAuthNamespaceName ||
+      namespace_name == master::kSystemDistributedNamespaceName ||
+      namespace_name == master::kSystemSchemaNamespaceName ||
+      namespace_name == master::kSystemTracesNamespaceName;
+}
+
+YQLDatabase GetDefaultDatabaseType(const std::string& keyspace_name) {
+  return keyspace_name == common::kRedisKeyspaceName ? YQLDatabase::YQL_DATABASE_REDIS
+                                                     : YQLDatabase::YQL_DATABASE_CQL;
+}
+
+YQLDatabase GetDatabaseTypeForTable(const TableType table_type) {
+  switch (table_type) {
+    case TableType::YQL_TABLE_TYPE:
+      return YQLDatabase::YQL_DATABASE_CQL;
+    case TableType::REDIS_TABLE_TYPE:
+      return YQLDatabase::YQL_DATABASE_REDIS;
+    case TableType::PGSQL_TABLE_TYPE:
+      return YQLDatabase::YQL_DATABASE_PGSQL;
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      // Transactions status table is created in "system" keyspace in CQL.
+      return YQLDatabase::YQL_DATABASE_CQL;
+  }
+  return YQL_DATABASE_UNKNOWN;
+}
+
+TableType GetTableTypeForDatabase(const YQLDatabase database_type) {
+  switch (database_type) {
+    case YQLDatabase::YQL_DATABASE_CQL:
+      return TableType::YQL_TABLE_TYPE;
+    case YQLDatabase::YQL_DATABASE_REDIS:
+      return TableType::REDIS_TABLE_TYPE;
+    case YQLDatabase::YQL_DATABASE_PGSQL:
+      return TableType::PGSQL_TABLE_TYPE;
+    default:
+      DCHECK_EQ(database_type, YQLDatabase::YQL_DATABASE_UNKNOWN);
+      return TableType::DEFAULT_TABLE_TYPE;
+  }
 }
 
 } // namespace master

@@ -1,7 +1,8 @@
 ---
-title: Upgrade Universe
-linkTitle: Upgrade Universe
-description: Upgrade Universe
+title: Upgrade universes using YugaWare
+headerTitle: Upgrade universe
+linkTitle: Upgrade universe
+description: Upgrade universes using YugaWare.
 aliases:
   - /manage/enterprise-edition/upgrade-universe/
 menu:
@@ -13,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugaByte DB powering a universe can be upgraded by clicking `Upgrade Software` from the `More` dropdown on the Universe Detail page. Select the new YugaByte DB version from the dropdown in the resulting confirmation and let the YugaWare Admin Console upgrade the universe in a rolling manner. 
+YugabyteDB powering a universe can be upgraded by clicking **Upgrade Software** from the **More** drop-down on the **Universe Detail** page. Select the new YugabyteDB version from the drop-down in the resulting confirmation and let the YugaWare Admin Console upgrade the universe in a rolling manner.
 
 ![Upgrade Universe Dropdown](/images/ee/upgrade-univ-1.png)
 

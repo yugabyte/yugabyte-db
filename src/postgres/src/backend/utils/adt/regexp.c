@@ -1310,11 +1310,11 @@ regexp_split_to_array(PG_FUNCTION_ARGS)
 								  build_regexp_split_result(splitctx),
 								  false,
 								  TEXTOID,
-								  CurrentMemoryContext);
+								  GetCurrentMemoryContext());
 		splitctx->next_match++;
 	}
 
-	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, CurrentMemoryContext));
+	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, GetCurrentMemoryContext()));
 }
 
 /* This is separate to keep the opr_sanity regression test from complaining */

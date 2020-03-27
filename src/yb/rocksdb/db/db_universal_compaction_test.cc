@@ -1347,7 +1347,39 @@ INSTANTIATE_TEST_CASE_P(DBTestUniversalManualCompactionOutputPathId,
 class DBTestUniversalCompaction : public DBTestBase {
  public:
   DBTestUniversalCompaction() : DBTestBase("/db_universal_compaction_test") {}
+  void GenerateFilesAndCheckCompactionResult(
+      const Options& options, const std::vector<size_t>& keys_per_file, int value_size,
+      int num_output_files);
 };
+
+void DBTestUniversalCompaction::GenerateFilesAndCheckCompactionResult(
+    const Options& options, const std::vector<size_t>& keys_per_file, int value_size,
+    int num_output_files) {
+  DestroyAndReopen(options);
+
+  ASSERT_OK(dbfull()->SetOptions({{"disable_auto_compactions", "true"}}));
+
+  LOG(INFO) << "Generating files with keys counts: " << yb::ToString(keys_per_file);
+
+  Random rnd(301);
+  int key_idx = 0;
+
+  for (size_t num = 0; num < keys_per_file.size(); num++) {
+    for (size_t i = 0; i < keys_per_file[num]; i++) {
+      ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, value_size)));
+      key_idx++;
+    }
+    ASSERT_OK(Flush());
+    dbfull()->TEST_WaitForFlushMemTable();
+    ASSERT_EQ(NumSortedRuns(0), num + 1);
+  }
+
+  ASSERT_OK(dbfull()->EnableAutoCompaction({dbfull()->DefaultColumnFamily()}));
+
+  dbfull()->TEST_WaitForCompact();
+
+  ASSERT_EQ(NumSortedRuns(0), num_output_files);
+}
 
 TEST_F(DBTestUniversalCompaction, DontDeleteOutput) {
   Options options;
@@ -1383,6 +1415,63 @@ TEST_F(DBTestUniversalCompaction, DontDeleteOutput) {
 
   stop_requested = true;
   purge_thread.join();
+}
+
+TEST_F(DBTestUniversalCompaction, IncludeFilesSmallerThanThreshold) {
+  const auto value_size = 10_KB;
+  Options options;
+  options.compaction_style = kCompactionStyleUniversal;
+  options.num_levels = 1;
+  // Make write_buffer_size high to avoid auto flush.
+  options.write_buffer_size = 10000 * value_size;
+  options.level0_file_num_compaction_trigger = 5;
+  // Set high percentage to avoid triggering compactions based on size amplification for this test.
+  options.compaction_options_universal.max_size_amplification_percent = 10000;
+  options.compaction_options_universal.stop_style = kCompactionStopStyleTotalSize;
+  options.compaction_options_universal.size_ratio = 20;
+  options.compaction_options_universal.always_include_size_threshold = 10 * value_size;
+  options.compaction_options_universal.min_merge_width = 4;
+  options = CurrentOptions(options);
+
+  // Sequence of SST files matches read amplification compaction rule if each earlier file is less
+  // than <sum of newer files sizes> * (100 + size_ratio) / 100 or less than
+  // always_include_size_threshold. See UniversalCompactionPicker::PickCompactionUniversalReadAmp.
+
+  // Should be compacted into 2 files since 150 > 1.2 * (10+11+25+55) = 121.
+  GenerateFilesAndCheckCompactionResult(options, {150, 55, 25, 11, 10}, value_size, 2);
+
+  // Should be compacted into 1 file since the whole files sequence matches size_ratio
+  // (each earlier file is less than 1.2 * <sum of newer files>).
+  GenerateFilesAndCheckCompactionResult(options, {120, 55, 25, 11, 10}, value_size, 1);
+
+  // No compaction should happen since 60 > 1.2*(10+11+25) = 55.2.
+  GenerateFilesAndCheckCompactionResult(options, {120, 60, 25, 11, 10}, value_size, 5);
+
+  options.compaction_options_universal.always_include_size_threshold = 35 * value_size;
+
+  // No compaction should happen even with higher threshold.
+  GenerateFilesAndCheckCompactionResult(options, {120, 60, 25, 11, 10}, value_size, 5);
+
+  // No compaction should happen since each earlier file is more than 1.2 * <sum of newer files>
+  // and only 3 files are smaller than threshold.
+  GenerateFilesAndCheckCompactionResult(options, {100, 40, 16, 8, 4}, value_size, 5);
+
+  // Should be compacted into 1 file since all files are smaller than threshold.
+  GenerateFilesAndCheckCompactionResult(options, {25, 10, 4, 2, 1}, value_size, 1);
+
+  // Should be compacted into 1 file since {180, 80, 40} matches size_ratio and {25, 10} are smaller
+  // than threshold.
+  GenerateFilesAndCheckCompactionResult(options, {180, 80, 40, 25, 10}, value_size, 1);
+
+  // Should be compacted into 2 files since {80, 40} matches matches size_ratio and {25, 10} are
+  // smaller than threshold while 200 > 1.2*(10+25+40+80)=186 and shouldn't be compacted.
+  GenerateFilesAndCheckCompactionResult(options, {200, 80, 40, 25, 10}, value_size, 2);
+
+  // Should be compacted into 1 file since all files are smaller than threshold.
+  const std::vector<size_t> file_sizes = {350, 150, 60, 25, 10, 4, 2, 1};
+  options.compaction_options_universal.always_include_size_threshold =
+      *std::max_element(file_sizes.begin(), file_sizes.end()) * value_size * 1.2;
+  GenerateFilesAndCheckCompactionResult(options, file_sizes, value_size, 1);
 }
 
 }  // namespace rocksdb

@@ -63,8 +63,11 @@ CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
         break;
       }
       case OBJECT_TYPE:
-        RETURN_NOT_OK(sem_context->CheckHasAllKeyspacesPermission(loc(),
-            PermissionType::DROP_PERMISSION));
+        if (!sem_context->CheckHasAllKeyspacesPermission(loc(),
+            PermissionType::DROP_PERMISSION).ok()) {
+          RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(),
+              PermissionType::DROP_PERMISSION, yb_table_name().namespace_name()));
+        }
         break;
       case OBJECT_SCHEMA:
         RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(),

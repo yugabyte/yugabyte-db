@@ -89,7 +89,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
   InitGoogleLoggingSafe(argv[0]);
   FLAGS_logtostderr = true;
 
-  YBTableName table_name(argv[1]); // Default namespace.
+  YBTableName table_name(YQL_DATABASE_CQL, argv[1]); // Default namespace.
 
   vector<string> addrs = strings::Split(FLAGS_master_address, ",");
   CHECK(!addrs.empty()) << "At least one master address must be specified!";

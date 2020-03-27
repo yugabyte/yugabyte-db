@@ -1,7 +1,8 @@
 ---
-title: Table Creation
-linkTitle: Table Creation
-description: Table Creation
+title: Table creation in YugabyteDB
+headerTitle: Table creation
+linkTitle: Table creation
+description: Learn how the YugabyteDB YB-Master leader creates tables.
 aliases:
   - /architecture/core-functions/table-creation/
 menu:
@@ -13,7 +14,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-The user issued table creation is handled by the YB-Master leader, and is an asychronous API. The
+In YugabyteDB, user-issued table creation is handled by the YB-Master leader, and is an asynchronous API. The
 YB-Master leader returns a success for the API once it has replicated both the table schema as well
 as all the other information needed to perform the table creation to the other YB-Masters in the
 RAFT group to make it resilient to failures.
@@ -21,19 +22,23 @@ RAFT group to make it resilient to failures.
 The table creation is accomplished by the YB-Master leader using the following steps:
 
 ## Step 1. Validation
+
 Validates the table schema and creates the desired number of tablets for the table. These tablets
 are not yet assigned to YB-TServers.
 
 ## Step 2. Replication
+
 Replicates the table schema as well as the newly created (and still unassigned) tablets to the
 YB-Master RAFT group. This ensures that the table creation can succeed even if the current YB-Master
 leader fails.
 
 ## Step 3. Acknowledgement
+
 At this point, the asynchronous table creation API returns a success, since the operation can
 proceed even if the current YB-Master leader fails.
 
 ## Step 4. Execution
+
 Assigns each of the tablets to as many YB-TServers as the replication factor of the table. The
 tablet-peer placement is done in such a manner as to ensure that the desired fault tolerance is
 achieved and the YB-TServers are evenly balanced with respect to the number of tablets they are
@@ -41,13 +46,14 @@ assigned. Note that in certain deployment scenarios, the assignment of the table
 may need to satisfy many more constraints such as distributing the individual replicas of each
 tablet across multiple cloud providers, regions and availability zones.
 
-## Step 5. Continuous Monitoring
+## Step 5. Continuous monitoring
+
 Keeps track of the entire tablet assignment operation and can report on its progress and completion
 to user issued APIs.
 
-## An Example
+## An example
 
-Let us take our standard example of creating a table in a YugaByte universe with 4 nodes. Also, as
+Let us take our standard example of creating a table in a YugabyteDB universe with 4 nodes. Also, as
 before, let us say the table has 16 tablets and a replication factor of 3. The table creation
 process is illustrated below. First, the YB-Master leader validates the schema, creates the 16
 tablets (48 tablet-peers because of the replication factor of 3) and replicates this data needed for

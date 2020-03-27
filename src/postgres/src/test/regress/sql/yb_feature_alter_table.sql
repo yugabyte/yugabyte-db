@@ -114,6 +114,7 @@ create index "testing_idx" on atacc1(a);
 create index "testing_idx" on atacc1("........pg.dropped.1........");
 alter table atacc1 rename a to z;
 alter table atacc1 add constraint checka check (a >= 0);
+alter table if exists atacc1 add constraint checka check (a >= 0);
 
 -- test create as and select into
 insert into atacc1 values (21, 22, 23);
@@ -126,9 +127,13 @@ drop table test2;
 
 -- test constraints
 alter table atacc1 add constraint checkb check (b < 0); -- should fail
+alter table if exists atacc1 add constraint checkb check (b < 0); -- should fail
 alter table atacc1 add constraint checkb check (b > 0);
 alter table atacc1 add constraint checkb2 check (b > 10);
 alter table atacc1 add constraint checkb3 check (b > 10);
+insert into atacc1 values (5, 5, 5); -- should fail
+alter table atacc1 drop constraint checkb2;
+alter table if exists atacc1 add constraint checkb2 check (b > 10);
 insert into atacc1 values (5, 5, 5); -- should fail
 alter table atacc1 drop constraint checkb2;
 insert into atacc1 values (5, 5, 5);
@@ -160,3 +165,193 @@ SELECT * FROM tmp_new;
 SELECT * FROM tmp;		-- should fail
 
 DROP TABLE tmp_new;
+
+-- alter table / alter column [set/drop] not null tests
+-- try altering system catalogs, should fail
+alter table pg_class alter column relname drop not null;
+alter table pg_class alter relname set not null;
+
+-- try altering non-existent table, should fail
+alter table non_existent alter column bar set not null;
+alter table non_existent alter column bar drop not null;
+
+-- try altering non-existent table with IF EXISTS clause, should pass with a notice message
+alter table if exists non_existent alter column bar set not null;
+alter table if exists non_existent alter column bar drop not null;
+alter table if exists non_existent
+    add constraint some_constraint_name foreign key (k) references atacc1;
+
+-- test setting columns to null and not null and vice versa
+-- test checking for null values and primary key
+create table atacc1tmp (test int not null PRIMARY KEY);
+alter table atacc1tmp alter column test drop not null;
+drop table atacc1tmp;
+
+create table atacc1 (test int not null);
+alter table atacc1 alter column test drop not null;
+insert into atacc1 values (null);
+alter table atacc1 alter test set not null;
+delete from atacc1;
+alter table atacc1 alter test set not null;
+
+-- try altering a non-existent column, should fail
+alter table atacc1 alter bar set not null;
+alter table atacc1 alter bar drop not null;
+
+-- -- try altering the oid column, should fail
+-- alter table atacc1 alter oid set not null;
+-- alter table atacc1 alter oid drop not null;
+
+-- try creating a view and altering that, should fail
+create view myview as select * from atacc1;
+alter table myview alter column test drop not null;
+alter table myview alter column test set not null;
+drop view myview;
+
+drop table atacc1;
+
+-- test setting and removing default values
+create table def_test (
+	c1	int4 default 5,
+	c2	text default 'initial_default'
+);
+insert into def_test default values;
+alter table def_test alter column c1 drop default;
+insert into def_test default values;
+alter table def_test alter column c2 drop default;
+insert into def_test default values;
+alter table def_test alter column c1 set default 10;
+alter table def_test alter column c2 set default 'new_default';
+insert into def_test default values;
+select * from def_test order by c1, c2;
+
+-- set defaults to an incorrect type: this should fail
+alter table def_test alter column c1 set default 'wrong_datatype';
+alter table def_test alter column c2 set default 20;
+
+-- set defaults on a non-existent column: this should fail
+alter table def_test alter column c3 set default 30;
+
+-- set defaults on views: we need to create a view, add a rule
+-- to allow insertions into it, and then alter the view to add
+-- a default
+create view def_view_test as select * from def_test;
+create rule def_view_test_ins as
+	on insert to def_view_test
+	do instead insert into def_test select new.*;
+insert into def_view_test default values;
+alter table def_view_test alter column c1 set default 45;
+insert into def_view_test default values;
+alter table def_view_test alter column c2 set default 'view_default';
+insert into def_view_test default values;
+select * from def_view_test ORDER BY c1 NULLS FIRST, c2 NULLS FIRST;
+
+drop rule def_view_test_ins on def_view_test;
+drop view def_view_test;
+drop table def_test;
+
+-- test ADD COLUMN IF NOT EXISTS
+CREATE TABLE test_add_column(c1 integer);
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer, -- fail because c2 already exists
+	ADD COLUMN c3 integer;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN c3 integer; -- fail because c3 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer; -- skipping because c3 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer, -- skipping because c3 already exists
+	ADD COLUMN c4 integer;
+\d test_add_column
+DROP TABLE test_add_column;
+
+-- test Add/Set/Drop Identity
+CREATE TABLE test_identity(
+    c1 integer NOT NULL,
+    c2 integer NOT NULL
+);
+
+-- test ADD GENERATED ALWAYS
+ALTER TABLE test_identity ALTER COLUMN c1 ADD GENERATED ALWAYS AS IDENTITY;
+\d test_identity;
+INSERT INTO test_identity (c1, c2) VALUES (0, 0);
+INSERT INTO test_identity (c2) VALUES (1);
+INSERT INTO test_identity (c2) VALUES (2);
+-- test DROP IDENTITY
+ALTER TABLE test_identity ALTER COLUMN c1 DROP IDENTITY;
+\d test_identity;
+ALTER TABLE test_identity ALTER COLUMN c1 DROP IDENTITY;
+\d test_identity;
+
+-- test ADD GENERATED BY DEFAULT
+ALTER TABLE test_identity ALTER COLUMN c1 ADD GENERATED BY DEFAULT AS IDENTITY;
+\d test_identity;
+INSERT INTO test_identity (c1, c2) VALUES (1000, 3);
+INSERT INTO test_identity (c2) VALUES (4);
+INSERT INTO test_identity (c2) VALUES (5);
+-- test DROP IDENTITY IF EXISTS
+ALTER TABLE test_identity ALTER COLUMN c1 DROP IDENTITY IF EXISTS;
+\d test_identity;
+ALTER TABLE test_identity ALTER COLUMN c1 DROP IDENTITY IF EXISTS;
+\d test_identity;
+
+-- test SET GENERATED
+ALTER TABLE test_identity ALTER COLUMN c1 ADD GENERATED BY DEFAULT AS IDENTITY (INCREMENT 10 MINVALUE 10);
+\d test_identity;
+ALTER TABLE test_identity ALTER c1 SET GENERATED ALWAYS;
+\d test_identity;
+ALTER TABLE test_identity ALTER c1 SET GENERATED BY DEFAULT;
+\d test_identity;
+INSERT INTO test_identity (c2) VALUES (6);
+INSERT INTO test_identity (c2) VALUES (7);
+ALTER TABLE test_identity ALTER c1 SET INCREMENT 20;
+INSERT INTO test_identity (c2) VALUES (8);
+INSERT INTO test_identity (c2) VALUES (9);
+ALTER TABLE test_identity ALTER c1 RESTART;
+INSERT INTO test_identity (c2) VALUES (10);
+INSERT INTO test_identity (c2) VALUES (11);
+ALTER TABLE test_identity ALTER c1 SET INCREMENT 50 RESTART WITH 100;
+INSERT INTO test_identity (c2) VALUES (12);
+INSERT INTO test_identity (c2) VALUES (13);
+SELECT * FROM test_identity ORDER BY c2;
+
+DROP TABLE test_identity;
+-- Test that updating table after dropping a column does not result in spurious error #1969
+create table test_update_dropped(a int, b int);
+insert into test_update_dropped(a, b) values(1, 1);
+update test_update_dropped set a = 2 where a = 1;
+alter table test_update_dropped drop column b;
+update test_update_dropped set a = 3 where a = 2;
+\d test_update_dropped;
+select * from test_update_dropped;
+DROP TABLE test_update_dropped;
+
+-- Test that deleting table with a returning clause after dropping a column
+-- does not result in spurious error #2938.
+create table test_delete_dropped(a int, b int);
+insert into test_delete_dropped(a, b) values(1, 1), (2, 2);
+alter table test_delete_dropped drop column b;
+delete from test_delete_dropped where a = 1 returning *;
+\d test_delete_dropped;
+select * from test_delete_dropped;
+DROP TABLE test_delete_dropped;

@@ -38,7 +38,6 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <boost/scope_exit.hpp>
 
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus-test-util.h"
@@ -51,6 +50,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 
@@ -79,6 +79,10 @@ constexpr int kNumMessages = 100;
 constexpr int kMessageIndex1 = 60;
 constexpr int kMessageIndex2 = 80;
 
+std::string OpIdToString(const yb::OpId& opid) {
+  return Format("$0.$1", opid.term, opid.index);
+}
+
 class LogCacheTest : public YBTest {
  public:
   LogCacheTest()
@@ -100,6 +104,7 @@ class LogCacheTest : public YBTest {
                             0, // schema_version
                             NULL,
                             append_pool_.get(),
+                            std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                             &log_));
 
     CloseAndReopenCache(MinimumOpId());
@@ -133,6 +138,8 @@ class LogCacheTest : public YBTest {
       RETURN_NOT_OK(cache_->AppendOperations(
           msgs, yb::OpId() /* committed_op_id */, RestartSafeCoarseMonoClock().Now(),
           Bind(&FatalOnError)));
+      cache_->TrackOperationsMemory({yb::OpId::FromPB(msgs[0]->id())});
+      std::this_thread::sleep_for(100ms);
     }
     return Status::OK();
   }
@@ -148,59 +155,50 @@ class LogCacheTest : public YBTest {
 };
 
 TEST_F(LogCacheTest, TestAppendAndGetMessages) {
-  ASSERT_EQ(0, cache_->metrics_.log_cache_num_ops->value());
-  ASSERT_EQ(0, cache_->metrics_.log_cache_size->value());
+  ASSERT_EQ(0, cache_->metrics_.num_ops->value());
+  ASSERT_EQ(0, cache_->metrics_.size->value());
   ASSERT_OK(AppendReplicateMessagesToCache(1, kNumMessages));
-  ASSERT_EQ(kNumMessages, cache_->metrics_.log_cache_num_ops->value());
-  ASSERT_GE(cache_->metrics_.log_cache_size->value(), 5 * kNumMessages);
+  ASSERT_EQ(kNumMessages, cache_->metrics_.num_ops->value());
+  ASSERT_GE(cache_->metrics_.size->value(), 5 * kNumMessages);
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
-  ReplicateMsgs messages;
-  OpId preceding;
-  bool have_more_messages;
-  ASSERT_OK(cache_->ReadOps(0, 8_MB, &messages, &preceding));
-  EXPECT_EQ(kNumMessages, messages.size());
-  EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(preceding));
+  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 8_MB));
+  EXPECT_EQ(kNumMessages, read_result.messages.size());
+  EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(read_result.preceding_op));
 
   // Get starting in the middle of the cache.
-  messages.clear();
-  ASSERT_OK(cache_->ReadOps(kMessageIndex1, 8_MB, &messages, &preceding));
-  EXPECT_EQ(kNumMessages - kMessageIndex1, messages.size());
-  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1), OpIdToString(preceding));
-  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1 + 1), OpIdToString(messages[0]->id()));
+  read_result = ASSERT_RESULT(cache_->ReadOps(kMessageIndex1, 8_MB));
+  EXPECT_EQ(kNumMessages - kMessageIndex1, read_result.messages.size());
+  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1), OpIdToString(read_result.preceding_op));
+  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1 + 1), OpIdToString(read_result.messages[0]->id()));
 
   // Get at the end of the cache.
-  messages.clear();
-  ASSERT_OK(cache_->ReadOps(kNumMessages, 8_MB, &messages, &preceding));
-  EXPECT_EQ(0, messages.size());
-  EXPECT_EQ(OpIdStrForIndex(kNumMessages), OpIdToString(preceding));
+  read_result = ASSERT_RESULT(cache_->ReadOps(kNumMessages, 8_MB));
+  EXPECT_EQ(0, read_result.messages.size());
+  EXPECT_EQ(OpIdStrForIndex(kNumMessages), OpIdToString(read_result.preceding_op));
 
   // Get messages from the beginning until some point in the middle of the cache.
-  messages.clear();
-  ASSERT_OK(cache_->ReadOps(0, kMessageIndex1, 8_MB, &messages, &preceding, &have_more_messages));
-  EXPECT_EQ(kMessageIndex1, messages.size());
-  EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(preceding));
-  EXPECT_EQ(OpIdStrForIndex(1), OpIdToString(messages[0]->id()));
+  read_result = ASSERT_RESULT(cache_->ReadOps(0, kMessageIndex1, 8_MB));
+  EXPECT_EQ(kMessageIndex1, read_result.messages.size());
+  EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(read_result.preceding_op));
+  EXPECT_EQ(OpIdStrForIndex(1), OpIdToString(read_result.messages[0]->id()));
 
   // Get messages from some point in the middle of the cache until another point.
-  messages.clear();
-  ASSERT_OK(cache_->ReadOps(kMessageIndex1, kMessageIndex2, 8_MB, &messages, &preceding,
-                            &have_more_messages));
-  EXPECT_EQ(kMessageIndex2 - kMessageIndex1, messages.size());
-  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1), OpIdToString(preceding));
-  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1 + 1), OpIdToString(messages[0]->id()));
+  read_result = ASSERT_RESULT(cache_->ReadOps(kMessageIndex1, kMessageIndex2, 8_MB));
+  EXPECT_EQ(kMessageIndex2 - kMessageIndex1, read_result.messages.size());
+  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1), OpIdToString(read_result.preceding_op));
+  EXPECT_EQ(OpIdStrForIndex(kMessageIndex1 + 1), OpIdToString(read_result.messages[0]->id()));
 
   // Evict some and verify that the eviction took effect.
   cache_->EvictThroughOp(kNumMessages / 2);
-  ASSERT_EQ(kNumMessages / 2, cache_->metrics_.log_cache_num_ops->value());
+  ASSERT_EQ(kNumMessages / 2, cache_->metrics_.num_ops->value());
 
-  messages.clear();
   // Can still read data that was evicted, since it got written through.
   int start = (kNumMessages / 2) - 10;
-  ASSERT_OK(cache_->ReadOps(start, 8_MB, &messages, &preceding));
-  EXPECT_EQ(kNumMessages - start, messages.size());
-  EXPECT_EQ(OpIdStrForIndex(start), OpIdToString(preceding));
-  EXPECT_EQ(OpIdStrForIndex(start + 1), OpIdToString(messages[0]->id()));
+  read_result = ASSERT_RESULT(cache_->ReadOps(start, 8_MB));
+  EXPECT_EQ(kNumMessages - start, read_result.messages.size());
+  EXPECT_EQ(OpIdStrForIndex(start), OpIdToString(read_result.preceding_op));
+  EXPECT_EQ(OpIdStrForIndex(start + 1), OpIdToString(read_result.messages[0]->id()));
 }
 
 
@@ -217,16 +215,13 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
   // We should get one of them, even though we only ask for 100 bytes
-  ReplicateMsgs messages;
-  OpId preceding;
-  ASSERT_OK(cache_->ReadOps(0, 100, &messages, &preceding));
-  ASSERT_EQ(1, messages.size());
+  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 100));
+  ASSERT_EQ(1, read_result.messages.size());
 
   // Should yield one op also in the 'cache miss' case.
-  messages.clear();
   cache_->EvictThroughOp(50);
-  ASSERT_OK(cache_->ReadOps(0, 100, &messages, &preceding));
-  ASSERT_EQ(1, messages.size());
+  read_result = ASSERT_RESULT(cache_->ReadOps(0, 100));
+  ASSERT_EQ(1, read_result.messages.size());
 }
 
 // Tests that the cache returns STATUS(NotFound, "") if queried for messages after an
@@ -237,39 +232,29 @@ TEST_F(LogCacheTest, TestCacheEdgeCases) {
   ASSERT_OK(AppendReplicateMessagesToCache(1, 1));
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
-  ReplicateMsgs messages;
-  OpId preceding;
-
   // Test when the searched index is MinimumOpId().index().
-  ASSERT_OK(cache_->ReadOps(0, 100, &messages, &preceding));
-  ASSERT_EQ(1, messages.size());
-  ASSERT_OPID_EQ(MakeOpId(0, 0), preceding);
+  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 100));
+  ASSERT_EQ(1, read_result.messages.size());
+  ASSERT_EQ(yb::OpId(0, 0), read_result.preceding_op);
 
-  messages.clear();
-  preceding.Clear();
   // Test when 'after_op_index' is the last index in the cache.
-  ASSERT_OK(cache_->ReadOps(1, 100, &messages, &preceding));
-  ASSERT_EQ(0, messages.size());
-  ASSERT_OPID_EQ(MakeOpId(0, 1), preceding);
+  read_result = ASSERT_RESULT(cache_->ReadOps(1, 100));
+  ASSERT_EQ(0, read_result.messages.size());
+  ASSERT_EQ(yb::OpId(0, 1), read_result.preceding_op);
 
-  messages.clear();
-  preceding.Clear();
   // Now test the case when 'after_op_index' is after the last index
   // in the cache.
-  Status s = cache_->ReadOps(2, 100, &messages, &preceding);
-  ASSERT_TRUE(s.IsIncomplete()) << "unexpected status: " << s.ToString();
-  ASSERT_EQ(0, messages.size());
-  ASSERT_FALSE(preceding.IsInitialized());
-
-  messages.clear();
-  preceding.Clear();
+  auto failed_result = cache_->ReadOps(2, 100);
+  ASSERT_FALSE(failed_result.ok());
+  ASSERT_TRUE(failed_result.status().IsIncomplete())
+      << "unexpected status: " << failed_result.status();
 
   // Evict entries from the cache, and ensure that we can still read
   // entries at the beginning of the log.
   cache_->EvictThroughOp(50);
-  ASSERT_OK(cache_->ReadOps(0, 100, &messages, &preceding));
-  ASSERT_EQ(1, messages.size());
-  ASSERT_OPID_EQ(MakeOpId(0, 0), preceding);
+  read_result = ASSERT_RESULT(cache_->ReadOps(0, 100));
+  ASSERT_EQ(1, read_result.messages.size());
+  ASSERT_EQ(yb::OpId(0, 0), read_result.preceding_op);
 }
 
 
@@ -354,7 +339,7 @@ TEST_F(LogCacheTest, TestReplaceMessages) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
   EXPECT_EQ(size_with_one_msg, tracker->consumption());
-  EXPECT_EQ(Substitute("Pinned index: 2, LogCacheStats(num_ops=1, bytes=$0)",
+  EXPECT_EQ(Substitute("Pinned index: 2, LogCacheStats(num_ops=1, bytes=$0, disk_reads=0)",
                        size_with_one_msg),
             cache_->ToString());
 }
@@ -378,9 +363,7 @@ TEST_F(LogCacheTest, TestMTReadAndWrite) {
     }
   };
 
-  BOOST_SCOPE_EXIT(&stop_workload) {
-    stop_workload();
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit(stop_workload);
 
   // Add a writer thread.
   threads.emplace_back([&] {
@@ -402,15 +385,13 @@ TEST_F(LogCacheTest, TestMTReadAndWrite) {
   threads.emplace_back([&] {
     int64_t index = 0;
     while (!stop) {
-      ReplicateMsgs messages;
-      OpId preceding;
       if (index >= next_index) {
         // We've gone ahead of the writer.
         std::this_thread::sleep_for(5ms);
         continue;
       }
-      ASSERT_OK(cache_->ReadOps(index, 1_MB, &messages, &preceding));
-      index += messages.size();
+      auto read_result = ASSERT_RESULT(cache_->ReadOps(index, 1_MB));
+      index += read_result.messages.size();
     }
   });
 

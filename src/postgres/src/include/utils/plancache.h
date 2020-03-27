@@ -68,7 +68,7 @@ struct RawStmt;
  * that have no reason to be saved at all.  We therefore support a "oneshot"
  * variant that does no data copying or invalidation checking.  In this case
  * there are no separate memory contexts: the CachedPlanSource struct and
- * all subsidiary data live in the caller's CurrentMemoryContext, and there
+ * all subsidiary data live in the caller's GetCurrentMemoryContext(), and there
  * is no way to free memory short of clearing that entire context.  A oneshot
  * plan is always treated as unsaved.
  *
@@ -115,6 +115,7 @@ typedef struct CachedPlanSource
 	double		generic_cost;	/* cost of generic plan, or -1 if not known */
 	double		total_custom_cost;	/* total cost of custom plans so far */
 	int			num_custom_plans;	/* number of plans included in total */
+	bool 		usesPostgresRel; /* Does this plan use pg relations */
 } CachedPlanSource;
 
 /*
@@ -141,6 +142,7 @@ typedef struct CachedPlan
 	int			generation;		/* parent's generation number for this plan */
 	int			refcount;		/* count of live references to this struct */
 	MemoryContext context;		/* context containing this CachedPlan */
+	bool 		usesPostgresRel; /* Does this plan use pg relations */
 } CachedPlan;
 
 

@@ -31,8 +31,8 @@ void PgColumn::Init(PgSystemAttrNum attr_num) {
     case PgSystemAttrNum::kMaxCommandId:
     case PgSystemAttrNum::kTableOid:
     case PgSystemAttrNum::kYBRowId:
-    case PgSystemAttrNum::kYBBaseTupleId:
-    case PgSystemAttrNum::kYBIndexKeySuffix:
+    case PgSystemAttrNum::kYBIdxBaseTupleId:
+    case PgSystemAttrNum::kYBUniqueIdxKeySuffix:
       break;
 
     case PgSystemAttrNum::kYBTupleId: {
@@ -44,7 +44,8 @@ void PgColumn::Init(PgSystemAttrNum attr_num) {
                  false,
                  idx,
                  QLType::Create(DataType::BINARY),
-                 InternalType::kBinaryValue);
+                 InternalType::kBinaryValue,
+                 ColumnSchema::SortingType::kNotSpecified);
       return;
     }
   }
@@ -116,6 +117,16 @@ PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlReadRequestPB *read_req) {
     }
   }
   return bind_pb_;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgsqlExpressionPB *PgColumn::AllocBindConditionExprPB(PgsqlReadRequestPB *read_req) {
+  if (bind_condition_expr_pb_ == nullptr) {
+    bind_condition_expr_pb_ = read_req->mutable_condition_expr();
+    bind_condition_expr_pb_->mutable_condition()->set_op(QL_OP_AND);
+  }
+  return bind_condition_expr_pb_->mutable_condition()->add_operands();
 }
 
 }  // namespace pggate

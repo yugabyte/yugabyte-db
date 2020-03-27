@@ -49,6 +49,10 @@ class GenericServiceImpl : public GenericServiceIf {
                SetFlagResponsePB* resp,
                rpc::RpcContext rpc) override;
 
+  void GetFlag(const GetFlagRequestPB* req,
+               GetFlagResponsePB* resp,
+               rpc::RpcContext rpc) override;
+
   void FlushCoverage(const FlushCoverageRequestPB* req,
                      FlushCoverageResponsePB* resp,
                      rpc::RpcContext rpc) override;

@@ -33,6 +33,8 @@ class YQLStorageIf;
 
 namespace docdb {
 
+YB_STRONGLY_TYPED_BOOL(IsUpsert);
+
 class PgsqlWriteOperation :
     public DocOperationBase<DocOperationType::PGSQL_WRITE_OPERATION, PgsqlWriteRequestPB>,
     public DocExprExecutor {
@@ -61,10 +63,12 @@ class PgsqlWriteOperation :
     }
   }
 
-  // Insert, update, and delete operations.
-  CHECKED_STATUS ApplyInsert(const DocOperationApplyData& data);
+  // Insert, update, delete, and colocated truncate operations.
+  CHECKED_STATUS ApplyInsert(
+      const DocOperationApplyData& data, IsUpsert is_upsert = IsUpsert::kFalse);
   CHECKED_STATUS ApplyUpdate(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyTruncateColocated(const DocOperationApplyData& data);
 
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);
@@ -76,8 +80,9 @@ class PgsqlWriteOperation :
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row);
 
   // Reading path to operate on.
-  CHECKED_STATUS GetDocPaths(
-      GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
+  CHECKED_STATUS GetDocPaths(GetDocPathsMode mode,
+                             DocPathsToLock *paths,
+                             IsolationLevel *level) const override;
 
   //------------------------------------------------------------------------------------------------
   // Context.
@@ -117,6 +122,13 @@ class PgsqlReadOperation : public DocExprExecutor {
                          PgsqlResultSet *result_set,
                          HybridTime *restart_read_ht);
 
+  CHECKED_STATUS ExecuteBatch(const common::YQLStorageIf& ql_storage,
+                              CoarseTimePoint deadline,
+                              const ReadHybridTime& read_time,
+                              const Schema& schema,
+                              PgsqlResultSet *resultset,
+                              HybridTime *restart_read_ht);
+
   CHECKED_STATUS GetTupleId(QLValue *result) const override;
 
   CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
@@ -134,7 +146,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   // state in the response object.
   CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
                                            const PgsqlResultSet* resultset,
-                                           const size_t row_count_limit);
+                                           const size_t row_count_limit,
+                                           const bool scan_time_exceeded);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;

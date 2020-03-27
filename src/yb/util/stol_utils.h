@@ -17,7 +17,6 @@
 #include "yb/util/result.h"
 
 namespace yb {
-namespace util {
 
 Result<int64_t> CheckedStoll(Slice slice);
 
@@ -41,7 +40,6 @@ inline Result<int32_t> CheckedStoi(Slice slice) {
 
 Result<long double> CheckedStold(Slice slice);
 
-} // namespace util
 } // namespace yb
 
 #endif // YB_UTIL_STOL_UTILS_H

@@ -456,29 +456,27 @@ begin transaction isolation level read committed;
 insert into selfconflict values (1,1), (1,2) on conflict do nothing;
 commit;
 
--- TODO(neil) The following transaction cause a crash.
--- begin transaction isolation level repeatable read;
--- insert into selfconflict values (2,1), (2,2) on conflict do nothing;
--- commit;
+begin transaction isolation level repeatable read;
+insert into selfconflict values (2,1), (2,2) on conflict do nothing;
+commit;
 
--- begin transaction isolation level serializable;
--- insert into selfconflict values (3,1), (3,2) on conflict do nothing;
--- commit;
+begin transaction isolation level serializable;
+insert into selfconflict values (3,1), (3,2) on conflict do nothing;
+commit;
 
 begin transaction isolation level read committed;
 insert into selfconflict values (4,1), (4,2) on conflict(f1) do update set f2 = 0;
 commit;
 
--- TODO(neil) The following transaction cause a crash.
--- begin transaction isolation level repeatable read;
--- insert into selfconflict values (5,1), (5,2) on conflict(f1) do update set f2 = 0;
--- commit;
+begin transaction isolation level repeatable read;
+insert into selfconflict values (5,1), (5,2) on conflict(f1) do update set f2 = 0;
+commit;
 
--- begin transaction isolation level serializable;
--- insert into selfconflict values (6,1), (6,2) on conflict(f1) do update set f2 = 0;
--- commit;
+begin transaction isolation level serializable;
+insert into selfconflict values (6,1), (6,2) on conflict(f1) do update set f2 = 0;
+commit;
 
-select * from selfconflict;
+select * from selfconflict order by f1;
 
 drop table selfconflict;
 

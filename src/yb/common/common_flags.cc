@@ -15,6 +15,7 @@
 
 #include <thread>
 
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/tsan_util.h"
@@ -25,10 +26,13 @@ DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
     "value is -1, the system automatically determines the number of tablets.");
 
+DEFINE_int32(ysql_num_shards_per_tserver, 8,
+    "The default number of shards per YSQL table per tablet server when a table is created.");
+
 namespace yb {
 
 void InitCommonFlags() {
-  if (FLAGS_yb_num_shards_per_tserver == -1) {
+  if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == -1) {
     int value = 8;
     if (IsTsan()) {
       value = 2;
@@ -36,7 +40,7 @@ void InitCommonFlags() {
       value = 4;
     }
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
-    FLAGS_yb_num_shards_per_tserver = value;
+    SetAtomicFlag(value, &FLAGS_yb_num_shards_per_tserver);
   }
 }
 

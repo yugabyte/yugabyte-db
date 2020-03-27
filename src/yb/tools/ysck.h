@@ -164,6 +164,8 @@ class YsckTable {
     return tablets_;
   }
 
+  std::string ToString() const;
+
  private:
   TableId id_;
   const client::YBTableName name_;

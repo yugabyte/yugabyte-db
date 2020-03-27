@@ -51,6 +51,7 @@ class PriorityThreadPool;
 
 namespace rocksdb {
 
+class Arena;
 class BoundaryValuesExtractor;
 class Cache;
 class CompactionFilter;
@@ -70,9 +71,12 @@ class TablePropertiesCollectorFactory;
 class RateLimiter;
 class SliceTransform;
 class Statistics;
+class InternalIterator;
 class InternalKeyComparator;
 class WalFilter;
 class MemoryMonitor;
+
+struct FileMetaData;
 
 typedef std::shared_ptr<const InternalKeyComparator> InternalKeyComparatorPtr;
 
@@ -823,6 +827,8 @@ struct ColumnFamilyOptions {
 };
 
 typedef std::function<yb::Result<bool>(const MemTable&)> MemTableFilter;
+using IteratorReplacer =
+    std::function<InternalIterator*(InternalIterator*, Arena*, const Slice&)>;
 
 struct DBOptions {
   // Some functions that make it easier to optimize RocksDB
@@ -868,7 +874,7 @@ struct DBOptions {
   // Env used to create checkpoints. Default: Env::Default()
   Env* checkpoint_env;
 
-  yb::PriorityThreadPool* compaction_thread_pool = nullptr;
+  yb::PriorityThreadPool* priority_thread_pool_for_compactions_and_flushes = nullptr;
 
   // Use to control write rate of flush and compaction. Flush has higher
   // priority than compaction. Rate limiting is disabled if nullptr.
@@ -1340,6 +1346,10 @@ struct DBOptions {
 
   // Specific mem tracker for block based tables created by this RocksDB instance.
   std::shared_ptr<yb::MemTracker> block_based_table_mem_tracker;
+
+  // Adds ability to modify iterator created for SST file.
+  // For instance some additional filtering could be added.
+  std::shared_ptr<IteratorReplacer> iterator_replacer;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)
@@ -1551,13 +1561,19 @@ struct WriteOptions {
         ignore_missing_column_families(false) {}
 };
 
+// On each call returned value is incremented by 1.
+// Could be used to track whether one action happened before another.
+int64_t FlushTick();
+
 // Options that control flush operations
 struct FlushOptions {
   // If true, the flush will wait until the flush is done.
   // Default: true
-  bool wait;
+  bool wait = true;
 
-  FlushOptions() : wait(true) {}
+  static constexpr int64_t kNeverIgnore = std::numeric_limits<int64_t>::max();
+
+  int64_t ignore_if_flushed_after_tick = kNeverIgnore;
 };
 
 // Get options based on some guidelines. Now only tune parameter based on

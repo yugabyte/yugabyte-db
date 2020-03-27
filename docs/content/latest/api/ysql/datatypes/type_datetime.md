@@ -1,8 +1,8 @@
 ---
-title: DATE-TIME Datatypes
-linktitle: Date-time
-summary: DATE-TIME Datatypes
-description: DATE-TIME Datatypes
+title: DATE and TIME data types
+linkTitle: Date and time
+summary: DATE and TIME data types
+description: DATE and TIME data types
 menu:
   latest:
     identifier: api-ysql-datatypes-datetime
@@ -14,10 +14,11 @@ showAsideToc: true
 ---
 
 ## Synopsis
-DATE, TIME, TIMESTAMP, and INTERVAL datatypes are supported in YSQL.
 
-Datatype | Description | Min | Max |
----------|-------------|-----|-----|
+The `DATE`, `TIME`, `TIMESTAMP`, and `INTERVAL` data types are supported in YSQL.
+
+Data type | Description | Min | Max |
+----------|-------------|-----|-----|
 TIMESTAMP [ (p) ] [ WITHOUT TIME ZONE ] | 8-byte date and time | 4713 BC | 294276 AD |
 TIMESTAMP [ (p) ] WITH TIME ZONE | 8-byte date and time | 4713 BC | 294276 AD |
 DATE | 4-byte date | 4713 BC | 5874897 AD |
@@ -27,5 +28,4 @@ INTERVAL [ fields ] [ (p) ] | 16-byte time interval | -178000000 years | 1780000
 
 ## Description
 
-- Date and time inputs can be in various format including ISO, SQL, Postgres-extension, and many others.
-
+Date and time inputs can be in various formats, including ISO, SQL, Postgres-extension, and many others.

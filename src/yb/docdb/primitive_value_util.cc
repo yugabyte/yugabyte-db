@@ -13,12 +13,25 @@
 
 #include <iostream>
 
+#include "yb/common/ql_value.h"
 #include "yb/docdb/primitive_value_util.h"
 
 using std::vector;
 
 namespace yb {
 namespace docdb {
+namespace {
+
+PrimitiveValue NullValue(ColumnSchema::SortingType sorting) {
+  using SortingType = ColumnSchema::SortingType;
+
+  return PrimitiveValue(
+      sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
+      ? ValueType::kNullHigh
+      : ValueType::kNullLow);
+}
+
+} // namespace
 
 // Add primary key column values to the component group. Verify that they are in the same order
 // as in the table schema.
@@ -35,7 +48,7 @@ Status QLKeyColumnValuesToPrimitiveValues(
     }
 
     if (!column_value.has_value() || IsNull(column_value.value())) {
-      components->push_back(PrimitiveValue(ValueType::kNull));
+      components->push_back(PrimitiveValue(ValueType::kNullLow));
     } else {
       components->push_back(PrimitiveValue::FromQLValuePB(
           column_value.value(), schema.column(column_idx).sorting_type()));
@@ -46,7 +59,6 @@ Status QLKeyColumnValuesToPrimitiveValues(
 }
 
 // ------------------------------------------------------------------------------------------------
-
 Status InitKeyColumnPrimitiveValues(
     const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
     const Schema &schema,
@@ -60,14 +72,11 @@ Status InitKeyColumnPrimitiveValues(
       LOG(DFATAL) << status;
       return status;
     }
-
+    const auto sorting_type = schema.column(column_idx).sorting_type();
     if (column_value.has_value()) {
-      if (IsNull(column_value.value())) {
-        components->push_back(PrimitiveValue(ValueType::kNull));
-      } else {
-        components->push_back(PrimitiveValue::FromQLValuePB(
-            column_value.value(), schema.column(column_idx).sorting_type()));
-      }
+      const auto& value = column_value.value();
+      components->push_back(IsNull(value) ? NullValue(sorting_type)
+                                          : PrimitiveValue::FromQLValuePB(value, sorting_type));
     } else {
       // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
       // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
@@ -76,10 +85,9 @@ Status InitKeyColumnPrimitiveValues(
       // Use regular executor for now.
       QLExprExecutor executor;
       QLValue result;
-      RETURN_NOT_OK(executor.EvalExpr(column_value, nullptr, &result));
+      RETURN_NOT_OK(executor.EvalExpr(column_value, nullptr, &result, &schema));
 
-      components->push_back(PrimitiveValue::FromQLValuePB(
-          result.value(), schema.column(column_idx).sorting_type()));
+      components->push_back(PrimitiveValue::FromQLValuePB(result.value(), sorting_type));
     }
     column_idx++;
   }

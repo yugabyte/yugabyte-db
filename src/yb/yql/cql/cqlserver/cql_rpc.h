@@ -49,6 +49,14 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
     compression_scheme_ = compression_scheme;
   }
 
+  // Accessor methods for registered CQL events.
+  CQLMessage::Events registered_events() const {
+    return registered_events_;
+  }
+  void add_registered_events(CQLMessage::Events events) {
+    registered_events_ |= events;
+  }
+
   static std::string Name() { return "CQL"; }
 
  private:
@@ -75,6 +83,9 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
 
   // CQL message compression scheme to use.
   CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::kNone;
+
+  // Stored registered events for the connection.
+  CQLMessage::Events registered_events_ = CQLMessage::kNoEvents;
 
   rpc::BinaryCallParser parser_;
 
@@ -126,6 +137,13 @@ class CQLInboundCall : public rpc::InboundCall {
 #else
     std::atomic_store_explicit(&request_, request, std::memory_order_release);
 #endif
+  }
+
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override {
+    // TODO - who is tracking request_ memory usage ?
+    return DynamicMemoryUsageOf(response_msg_buf_);
   }
 
  private:

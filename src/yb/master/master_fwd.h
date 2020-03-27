@@ -17,6 +17,8 @@
 #include <memory>
 #include <vector>
 
+#include "yb/gutil/ref_counted.h"
+
 namespace yb {
 namespace master {
 
@@ -25,6 +27,27 @@ typedef std::shared_ptr<TSDescriptor> TSDescriptorPtr;
 typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
 class TSRegistrationPB;
+class EncryptionManager;
+
+class AddUniverseKeysRequestPB;
+class AddUniverseKeysResponsePB;
+class GetUniverseKeyRegistryRequestPB;
+class GetUniverseKeyRegistryResponsePB;
+class HasUniverseKeyInMemoryRequestPB;
+class HasUniverseKeyInMemoryResponsePB;
+class EncryptionInfoPB;
+class ChangeEncryptionInfoRequestPB;
+class ChangeEncryptionInfoResponsePB;
+class IsEncryptionEnabledRequestPB;
+class IsEncryptionEnabledResponsePB;
+class ListSnapshotsResponsePB;
+class ListSnapshotRestorationsResponsePB;
+class TabletInfo;
+class TSHeartbeatRequestPB;
+class TSHeartbeatResponsePB;
+
+typedef scoped_refptr<TabletInfo> TabletInfoPtr;
+typedef std::vector<TabletInfoPtr> TabletInfos;
 
 } // namespace master
 } // namespace yb

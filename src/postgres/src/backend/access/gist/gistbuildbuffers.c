@@ -70,7 +70,7 @@ gistInitBuildBuffers(int pagesPerBuffer, int levelStep, int maxLevel)
 	 * Current memory context will be used for all in-memory data structures
 	 * of buffers which are persistent during buffering build.
 	 */
-	gfbb->context = CurrentMemoryContext;
+	gfbb->context = GetCurrentMemoryContext();
 
 	/*
 	 * nodeBuffersTab hash is association between index blocks and it's
@@ -79,7 +79,7 @@ gistInitBuildBuffers(int pagesPerBuffer, int levelStep, int maxLevel)
 	memset(&hashCtl, 0, sizeof(hashCtl));
 	hashCtl.keysize = sizeof(BlockNumber);
 	hashCtl.entrysize = sizeof(GISTNodeBuffer);
-	hashCtl.hcxt = CurrentMemoryContext;
+	hashCtl.hcxt = GetCurrentMemoryContext();
 	gfbb->nodeBuffersTab = hash_create("gistbuildbuffers",
 									   1024,
 									   &hashCtl,

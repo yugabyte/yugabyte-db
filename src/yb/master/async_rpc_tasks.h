@@ -18,19 +18,20 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/monitored_task.h"
 #include "yb/util/status.h"
 #include "yb/util/memory/memory.h"
-#include "yb/common/entity_ids.h"
 
-#include "yb/server/monitored_task.h"
-#include "yb/rpc/rpc_controller.h"
 
 namespace yb {
 
@@ -153,13 +154,9 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   void TransitionToTerminalState(MonitoredTaskState expected, MonitoredTaskState terminal_state);
 
-  static bool IsStateTerminal(MonitoredTaskState state) {
-    return state == MonitoredTaskState::kComplete || state == MonitoredTaskState::kFailed ||
-           state == MonitoredTaskState::kAborted;
-  }
-
   void AbortTask();
 
+  virtual MonoTime ComputeDeadline();
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
   void RpcCallback();
 
@@ -170,6 +167,9 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Handle the actual work of the RPC callback. This is run on the master's worker
   // pool, rather than a reactor thread, so it may do blocking IO operations.
   void DoRpcCallback();
+
+  // Called when the async task unregisters either successfully or unsuccessfully.
+  virtual void UnregisterAsyncTaskCallback();
 
   Master* const master_;
   ThreadPool* const callback_pool_;
@@ -189,10 +189,19 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   std::atomic<rpc::ScheduledTaskId> reactor_task_id_{rpc::kInvalidTaskId};
 
+  // Mutex protecting calls to UnregisterAsyncTask to avoid races between Run and user triggered
+  // Aborts.
+  std::mutex unregister_mutex_;
+
  private:
   // Returns true if we should impose a limit in the number of retries for this task type.
   bool RetryLimitTaskType() {
     return type() != ASYNC_CREATE_REPLICA && type() != ASYNC_DELETE_REPLICA;
+  }
+
+  // Returns true if we should not retry for this task type.
+  bool NoRetryTaskType() {
+    return type() == ASYNC_FLUSH_TABLETS;
   }
 
   // Reschedules the current task after a backoff delay.
@@ -211,6 +220,9 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Only abort this task on reactor if it has been scheduled.
   void AbortIfScheduled();
+
+  virtual int num_max_retries();
+  virtual int max_delay_ms();
 
   // Use state() and MarkX() accessors.
   std::atomic<MonitoredTaskState> state_;
@@ -286,7 +298,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Delete Tablet"; }
 
   std::string description() const override {
-    return tablet_id_ + " Delete Tablet RPC for TS=" + permanent_uuid_;
+    return "Delete Tablet RPC for " + tablet_id_ + " on TS=" + permanent_uuid_;
   }
 
  protected:
@@ -294,6 +306,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void UnregisterAsyncTaskCallback() override;
 
   const TabletId tablet_id_;
   const tablet::TabletDataState delete_type_;
@@ -321,17 +334,33 @@ class AsyncAlterTable : public RetryingTSRpcTask {
 
   std::string description() const override;
 
- private:
-  TabletId tablet_id() const override;
-
+ protected:
   TabletServerId permanent_uuid() const;
-
-  void HandleResponse(int attempt) override;
-  bool SendRequest(int attempt) override;
 
   uint32_t schema_version_;
   scoped_refptr<TabletInfo> tablet_;
+
+  TabletId tablet_id() const override;
+
   tserver::ChangeMetadataResponsePB resp_;
+
+ private:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+};
+
+class AsyncBackfillDone : public AsyncAlterTable {
+ public:
+  AsyncBackfillDone(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
+      : AsyncAlterTable(master, callback_pool, tablet) {}
+
+  Type type() const override { return ASYNC_BACKFILL_DONE; }
+
+  std::string type_name() const override { return "Mark backfill done."; }
+
+ private:
+  bool SendRequest(int attempt) override;
 };
 
 class AsyncCopartitionTable : public RetryingTSRpcTask {
@@ -506,6 +535,60 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   const std::string new_leader_uuid_;
   consensus::LeaderStepDownRequestPB stepdown_req_;
   consensus::LeaderStepDownResponsePB stepdown_resp_;
+};
+
+// Task to add a table to a tablet. Catalog Manager uses this task to send the request to the
+// tserver admin service.
+class AsyncAddTableToTablet : public RetryingTSRpcTask {
+ public:
+  AsyncAddTableToTablet(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const scoped_refptr<TableInfo>& table);
+
+  Type type() const override { return ASYNC_ADD_TABLE_TO_TABLET; }
+
+  std::string type_name() const override { return "Add Table to Tablet"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return tablet_id_; }
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  scoped_refptr<TabletInfo> tablet_;
+  scoped_refptr<TableInfo> table_;
+  const TabletId tablet_id_;
+  tserver::AddTableToTabletRequestPB req_;
+  tserver::AddTableToTabletResponsePB resp_;
+};
+
+// Task to remove a table from a tablet. Catalog Manager uses this task to send the request to the
+// tserver admin service.
+class AsyncRemoveTableFromTablet : public RetryingTSRpcTask {
+ public:
+  AsyncRemoveTableFromTablet(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const scoped_refptr<TableInfo>& table);
+
+  Type type() const override { return ASYNC_REMOVE_TABLE_FROM_TABLET; }
+
+  std::string type_name() const override { return "Remove Table from Tablet"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override { return tablet_id_; }
+
+  bool SendRequest(int attempt) override;
+  void HandleResponse(int attempt) override;
+
+  const scoped_refptr<TableInfo> table_;
+  const scoped_refptr<TabletInfo> tablet_;
+  const TabletId tablet_id_;
+  tserver::RemoveTableFromTabletRequestPB req_;
+  tserver::RemoveTableFromTabletResponsePB resp_;
 };
 
 } // namespace master

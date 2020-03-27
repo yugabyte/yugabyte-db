@@ -96,6 +96,7 @@ GramProcessor::symbol_type LexProcessor::Scan() {
 
   // Return the token if it doesn't require lookahead. Otherwise, set the token length.
   switch (cur_token.token()) {
+    case GramProcessor::token::TOK_GROUP_P:
     case GramProcessor::token::TOK_OFFSET:
     case GramProcessor::token::TOK_NOT:
     case GramProcessor::token::TOK_NULLS_P:
@@ -115,6 +116,18 @@ GramProcessor::symbol_type LexProcessor::Scan() {
   // Replace cur_token if needed, based on lookahead.
   GramProcessor::token_type next_token_type = lookahead_.token();
   switch (cur_token.token()) {
+    case GramProcessor::token::TOK_GROUP_P: {
+      // Replace GROUP_P with GROUP_LA to support SELECT ... GROUP BY ...
+      // - Token GROUP_P is accepted when being used as column name (practically all names).
+      // - Token GROUP_LA is accepted when being used in GROUP BY clause.
+      //   group_clause: GROUP_LA BY <group_by_list>
+      int next_tok = static_cast<int>(next_token_type);
+      if (next_tok == GramProcessor::token::TOK_BY) {
+        return GramProcessor::make_GROUP_LA(cursor_);
+      }
+      break;
+    }
+
     case GramProcessor::token::TOK_OFFSET: {
       // Replace OFFSET with OFFSET_LA to support SELECT ... OFFSET ...
       // - Token OFFSET is accepted when being used as column name (practically all names).

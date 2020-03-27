@@ -21,8 +21,8 @@ using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
-using yb::util::FormatBytesAsStr;
-using yb::util::QuotesType;
+using yb::FormatBytesAsStr;
+using yb::QuotesType;
 
 namespace yb {
 
@@ -31,14 +31,6 @@ void InitRocksDBWriteOptions(rocksdb::WriteOptions* write_options) {
   // replay it during recovery.
   write_options->disableWAL = true;
   write_options->sync = false;
-}
-
-std::string FormatRocksDBSliceAsStr(const rocksdb::Slice& rocksdb_slice,
-                                    const size_t max_length) {
-  return FormatBytesAsStr(rocksdb_slice.cdata(),
-                          rocksdb_slice.size(),
-                          QuotesType::kDoubleQuotes,
-                          max_length);
 }
 
 }  // namespace yb

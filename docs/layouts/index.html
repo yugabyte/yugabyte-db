@@ -25,7 +25,7 @@
 
 				{{ partial "detect_version" . }}
 
-				<h1>{{ .Title }} {{ if .IsDraft }} (Draft){{ end }}</h1>
+				<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}</h1>
 
 				{{ .TableOfContents }}
 

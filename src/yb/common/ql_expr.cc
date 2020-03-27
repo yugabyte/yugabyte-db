@@ -2,9 +2,11 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/jsonb.h"
 #include "yb/common/ql_expr.h"
+
 #include "yb/common/ql_bfunc.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/jsonb.h"
 
 namespace yb {
 
@@ -20,14 +22,27 @@ bfql::TSOpcode QLExprExecutor::GetTSWriteInstruction(const QLExpressionPB& ql_ex
 
 CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
                                         const QLTableRow& table_row,
-                                        QLValue *result) {
+                                        QLValue *result,
+                                        const Schema *schema,
+                                        const QLValuePB** result_ptr) {
   switch (ql_expr.expr_case()) {
     case QLExpressionPB::ExprCase::kValue:
-      *result = ql_expr.value();
+      if (result_ptr) {
+        *result_ptr = &ql_expr.value();
+      } else {
+        *result = ql_expr.value();
+      }
       break;
 
     case QLExpressionPB::ExprCase::kColumnId:
-      RETURN_NOT_OK(table_row.ReadColumn(ql_expr.column_id(), result));
+      if (result_ptr) {
+        *result_ptr = table_row.GetColumn(ql_expr.column_id());
+        if (!*result_ptr) {
+          result->SetNull();
+        }
+      } else {
+        RETURN_NOT_OK(table_row.ReadColumn(ql_expr.column_id(), result));
+      }
       break;
 
     case QLExpressionPB::ExprCase::kJsonColumn: {
@@ -54,7 +69,7 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
       return EvalBFCall(ql_expr.bfcall(), table_row, result);
 
     case QLExpressionPB::ExprCase::kTscall:
-      return EvalTSCall(ql_expr.tscall(), table_row, result);
+      return EvalTSCall(ql_expr.tscall(), table_row, result, schema);
 
     case QLExpressionPB::ExprCase::kCondition:
       return EvalCondition(ql_expr.condition(), table_row, result);
@@ -70,10 +85,11 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::EvalExpr(QLExpressionPB* ql_expr,
-                                        const QLTableRow& table_row) {
+                                        const QLTableRow& table_row,
+                                        const Schema *schema) {
   if (!ql_expr->has_value()) {
     QLValue temp;
-    RETURN_NOT_OK(EvalExpr(*ql_expr, table_row, &temp));
+    RETURN_NOT_OK(EvalExpr(*ql_expr, table_row, &temp, schema));
     ql_expr->mutable_value()->Swap(temp.mutable_value());
   }
   return Status::OK();
@@ -128,7 +144,8 @@ CHECKED_STATUS QLExprExecutor::EvalBFCall(const QLBCallPB& bfcall,
 
 CHECKED_STATUS QLExprExecutor::EvalTSCall(const QLBCallPB& ql_expr,
                                           const QLTableRow& table_row,
-                                          QLValue *result) {
+                                          QLValue *result,
+                                          const Schema *schema) {
   result->SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }
@@ -205,7 +222,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const QLConditionPB& condition,
     case QL_OP_IS_TRUE:
       CHECK_EQ(operands.size(), 1);
       RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
-      if (temp.type() != QLValue::InternalType::kBoolValue)
+      if (temp.type() != InternalType::kBoolValue)
         return STATUS(RuntimeError, "not a bool value");
       result->set_bool_value(!temp.IsNull() && temp.bool_value());
       return Status::OK();
@@ -213,7 +230,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const QLConditionPB& condition,
     case QL_OP_IS_FALSE: {
       CHECK_EQ(operands.size(), 1);
       RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
-      if (temp.type() != QLValue::InternalType::kBoolValue)
+      if (temp.type() != InternalType::kBoolValue)
         return STATUS(RuntimeError, "not a bool value");
       result->set_bool_value(!temp.IsNull() && !temp.bool_value());
       return Status::OK();
@@ -344,7 +361,8 @@ bfpg::TSOpcode QLExprExecutor::GetTSWriteInstruction(const PgsqlExpressionPB& ql
 
 CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
                                         const QLTableRow::SharedPtrConst& table_row,
-                                        QLValue *result) {
+                                        QLValue *result,
+                                        const Schema *schema) {
   switch (ql_expr.expr_case()) {
     case PgsqlExpressionPB::ExprCase::kValue:
       *result = ql_expr.value();
@@ -357,7 +375,7 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
       return EvalBFCall(ql_expr.bfcall(), table_row, result);
 
     case PgsqlExpressionPB::ExprCase::kTscall:
-      return EvalTSCall(ql_expr.tscall(), table_row, result);
+      return EvalTSCall(ql_expr.tscall(), table_row, result, schema);
 
     case PgsqlExpressionPB::ExprCase::kCondition:
       return EvalCondition(ql_expr.condition(), table_row, result);
@@ -423,7 +441,8 @@ CHECKED_STATUS QLExprExecutor::EvalBFCall(const PgsqlBCallPB& bfcall,
 
 CHECKED_STATUS QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
                                           const QLTableRow::SharedPtrConst& table_row,
-                                          QLValue *result) {
+                                          QLValue *result,
+                                          const Schema *schema) {
   result->SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }
@@ -500,7 +519,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
     case QL_OP_IS_TRUE:
       CHECK_EQ(operands.size(), 1);
       RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
-      if (temp.type() != QLValue::InternalType::kBoolValue)
+      if (temp.type() != InternalType::kBoolValue)
         return STATUS(RuntimeError, "not a bool value");
       result->set_bool_value(!temp.IsNull() && temp.bool_value());
       return Status::OK();
@@ -508,7 +527,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
     case QL_OP_IS_FALSE: {
       CHECK_EQ(operands.size(), 1);
       RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
-      if (temp.type() != QLValue::InternalType::kBoolValue)
+      if (temp.type() != InternalType::kBoolValue)
         return STATUS(RuntimeError, "not a bool value");
       result->set_bool_value(!temp.IsNull() && !temp.bool_value());
       return Status::OK();
@@ -627,14 +646,23 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS QLTableRow::ReadColumn(ColumnIdRep col_id, QLValue *col_value) const {
+const QLValuePB* QLTableRow::GetColumn(ColumnIdRep col_id) const {
   const auto& col_iter = col_map_.find(col_id);
   if (col_iter == col_map_.end()) {
+    return nullptr;
+  }
+
+  return &col_iter->second.value;
+}
+
+CHECKED_STATUS QLTableRow::ReadColumn(ColumnIdRep col_id, QLValue *col_value) const {
+  auto value = GetColumn(col_id);
+  if (value == nullptr) {
     col_value->SetNull();
     return Status::OK();
   }
 
-  *col_value = col_iter->second.value;
+  *col_value = *value;
   return Status::OK();
 }
 
@@ -705,6 +733,10 @@ boost::optional<const QLValuePB&> QLTableRow::GetValue(ColumnIdRep col_id) const
     return boost::none;
   }
   return col_iter->second.value;
+}
+
+bool QLTableRow::IsColumnSpecified(ColumnIdRep col_id) const {
+  return col_map_.find(col_id) != col_map_.end();
 }
 
 void QLTableRow::ClearValue(ColumnIdRep col_id) {

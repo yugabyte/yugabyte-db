@@ -47,7 +47,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     yb::util::PendingOperationCounter* pending_op_counter = nullptr);
+                     PendingOperationCounter* pending_op_counter = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      const Schema &schema,
@@ -55,7 +55,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     yb::util::PendingOperationCounter* pending_op_counter = nullptr)
+                     PendingOperationCounter* pending_op_counter = nullptr)
       : DocRowwiseIterator(
             *projection, schema, txn_op_context, doc_db, deadline, read_time,
             pending_op_counter) {
@@ -186,7 +186,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
   // RocksDB does not get destroyed while the iterator is still in use.
-  yb::util::ScopedPendingOperation pending_op_;
+  ScopedPendingOperation pending_op_;
 
   // The mutable fields that follow are modified by HasNext, a const method.
 
@@ -219,6 +219,9 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<KeyBytes> tuple_key_;
+
+  // Hybrid time of the table tombstone, if found.
+  mutable DocHybridTime table_tombstone_time_ = DocHybridTime::kInvalid;
 };
 
 }  // namespace docdb

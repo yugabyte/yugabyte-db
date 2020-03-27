@@ -1703,7 +1703,12 @@ Status GetFromString(DBOptions* source, DBOptions* destination) {
   return GetDBOptionsFromString(*source, kOptionsString, destination);
 }
 
+// We want padding bytes to have the same values for test purposes, therefore we need to use
+// exactly the same saved default value instead of using CompactionOptionsUniversal().
+static CompactionOptionsUniversal kCompactionOptionsUniversalDefault;
+
 void InitDefault(ColumnFamilyOptions* options) {
+  options->compaction_options_universal = kCompactionOptionsUniversalDefault;
   // Deprecatd option which is not initialized. Need to set it to avoid
   // Valgrind error
   options->max_mem_compaction_level = 0;
@@ -1767,7 +1772,7 @@ Status GetFromString(ColumnFamilyOptions* source, ColumnFamilyOptions* destinati
   // GetColumnFamilyOptionsFromString():
   destination->rate_limit_delay_max_milliseconds = 33;
   destination->compaction_pri = CompactionPri::kOldestSmallestSeqFirst;
-  destination->compaction_options_universal = CompactionOptionsUniversal();
+  destination->compaction_options_universal = kCompactionOptionsUniversalDefault;
   destination->compression_opts = CompressionOptions();
   destination->hard_rate_limit = 0;
   destination->soft_rate_limit = 0;
@@ -1912,7 +1917,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
   const OffsetGaps kDBOptionsBlacklist = {
       BLACKLIST_ENTRY(DBOptions, env),
       BLACKLIST_ENTRY(DBOptions, checkpoint_env),
-      BLACKLIST_ENTRY(DBOptions, compaction_thread_pool),
+      BLACKLIST_ENTRY(DBOptions, priority_thread_pool_for_compactions_and_flushes),
       BLACKLIST_ENTRY(DBOptions, rate_limiter),
       BLACKLIST_ENTRY(DBOptions, sst_file_manager),
       BLACKLIST_ENTRY(DBOptions, info_log),
@@ -1929,6 +1934,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, log_prefix),
       BLACKLIST_ENTRY(DBOptions, mem_tracker),
       BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
+      BLACKLIST_ENTRY(DBOptions, iterator_replacer),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);

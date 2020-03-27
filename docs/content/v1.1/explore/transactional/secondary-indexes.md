@@ -11,11 +11,11 @@ menu:
 
 A database index is a data structure that improves the speed of data retrieval operations on a database table. Secondary indexes require additional writes and storage space to maintain the index data structure. They can be created using one or more columns of a database table, providing the basis for both rapid random lookups and efficient access of ordered records.
 
-YugaByte DB provides consistent (ACID), performant secondary indexes. They are built on top of [distributed ACID transactions](../../../explore/transactional/acid-transactions). You can [read more about transactions](../../../architecture/transactions/) in our architecture docs.
+YugabyteDB provides consistent (ACID), performant secondary indexes. They are built on top of [distributed ACID transactions](../../../explore/transactional/acid-transactions). You can [read more about transactions](../../../architecture/transactions/) in our architecture docs.
 
-If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
-**NOTE:** Secondary indexes are a work in progress. Here are some requirements to keep in mind currently when using secondary indexes in YugaByte:
+**NOTE:** Secondary indexes are a work in progress. Here are some requirements to keep in mind currently when using secondary indexes in Yugabyte:
 
 - To create a secondary index on a table, the primary table needs to be created with distributed transaction enabled using the `with transactions = { 'enabled' : true }` clause.
 - The secondary index needs to be created before any data is inserted into the primary table.

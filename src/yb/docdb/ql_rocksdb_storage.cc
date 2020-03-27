@@ -12,6 +12,9 @@
 //
 
 #include "yb/docdb/ql_rocksdb_storage.h"
+
+#include "yb/common/pgsql_protocol.pb.h"
+
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -89,12 +92,58 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
   // Construct the scan spec basing on the WHERE condition.
   spec->reset(new DocQLScanSpec(schema, hash_code, max_hash_code, hashed_components,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
+      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
       request.query_id(), request.is_forward_scan(),
       request.is_forward_scan() && include_static_columns, start_sub_doc_key.doc_key()));
   return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
+
+Status QLRocksDBStorage::CreateIterator(const Schema& projection,
+                                        const Schema& schema,
+                                        const TransactionOperationContextOpt& txn_op_context,
+                                        CoarseTimePoint deadline,
+                                        const ReadHybridTime& read_time,
+                                        common::YQLRowwiseIteratorIf::UniPtr* iter) const {
+  auto doc_iter = std::make_unique<DocRowwiseIterator>(
+      projection, schema, txn_op_context, doc_db_, deadline, read_time);
+  *iter = std::move(doc_iter);
+  return Status::OK();
+}
+
+Status QLRocksDBStorage::InitIterator(common::YQLRowwiseIteratorIf* iter,
+                                      const PgsqlReadRequestPB& request,
+                                      const Schema& schema,
+                                      const QLValuePB& ybctid) const {
+  // Populate dockey from ybctid.
+  DocKey range_doc_key(schema);
+  RETURN_NOT_OK(range_doc_key.DecodeFrom(ybctid.binary_value()));
+  DocRowwiseIterator *doc_iter = static_cast<DocRowwiseIterator*>(iter);
+  RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema, request.stmt_id(), range_doc_key)));
+  return Status::OK();
+}
+
+Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
+                                     const Schema& projection,
+                                     const Schema& schema,
+                                     const TransactionOperationContextOpt& txn_op_context,
+                                     CoarseTimePoint deadline,
+                                     const ReadHybridTime& read_time,
+                                     const QLValuePB& ybctid,
+                                     common::YQLRowwiseIteratorIf::UniPtr* iter) const {
+  std::unique_ptr<DocRowwiseIterator> doc_iter;
+
+  // Populate dockey from ybctid.
+  DocKey range_doc_key(schema);
+  RETURN_NOT_OK(range_doc_key.DecodeFrom(ybctid.binary_value()));
+  doc_iter = std::make_unique<DocRowwiseIterator>(
+      projection, schema, txn_op_context, doc_db_, deadline, read_time);
+  RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema, request.stmt_id(), range_doc_key)));
+
+  *iter = std::move(doc_iter);
+  return Status::OK();
+}
 
 Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
                                      const Schema& projection,
@@ -164,6 +213,9 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
       RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema,
                                                     request.stmt_id(),
                                                     hashed_components,
+                                                    request.has_condition_expr()
+                                                      ? &request.condition_expr().condition()
+                                                      : nullptr,
                                                     hash_code,
                                                     max_hash_code,
                                                     request.has_where_expr()

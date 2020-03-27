@@ -1,4 +1,4 @@
-/* Copyright (c) YugaByte, Inc. */
+/* Copyright (c) Yugabyte, Inc. */
 
 @import "./_colors.scss";
 @import "./mixins.scss";
@@ -26,6 +26,10 @@ a {
   display: none;
 }
 
+dd {
+  margin-inline-start: 40px;
+}
+
 .article {
   flex: 1;
   min-width: 0;
@@ -36,28 +40,28 @@ a {
   color: $YB_DARK;
 
   h1, h2, h3, h4 {
-    font-family: Montserrat, "Open Sans", sans-serif !important;
+    font-family: 'Rubik', sans-serif !important;
     color: $YB_DARK_BLUE !important;
     letter-spacing: -.02em;
     line-height: 36px;
     position: relative;
   }
   h1 {
+    z-index: 1006;
     padding-top: 0 !important;
+    padding-bottom: 0 !important;
     margin: 26px 0 0;
     font-size: 40px;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: -.02em;
-    margin-bottom: 20px;
     @media only screen and (max-width: 767px) {
       font-size: 28px;
     }
   }
   h2 {
-    margin-top: 48px;
-    padding-top: 0;
+    z-index: 1005;
     font-size: 28px;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: -.02em;
     margin-top: -52px;
     padding-top: 100px !important;
@@ -67,10 +71,11 @@ a {
     }
   }
   h3 {
+    z-index: 1004;
     margin-top: 36px;
     padding-top: 0;
-    font-size: 20px;
-    font-weight: 600;
+    font-size: 22px;
+    font-weight: 500;
     margin-top: -52px;
     padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
@@ -78,14 +83,42 @@ a {
     }
   }
   h4 {
+    z-index: 1003;
     margin-top: 24px;
-    font-size: 17px;
-    font-weight: 600;
-    font-style: normal;
+    font-size: 18px;
+    font-weight: 500;
     margin-top: -52px;
     padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
       font-size: 16px;
+    }
+  }
+  h5 {
+    z-index: 1002;
+    margin-top: 24px;
+    font-size: 16px;
+    line-height: 20px;
+    font-weight: 700;
+    font-style: normal;
+    margin-top: -32px;
+    padding-top: 60px !important;
+
+    @media only screen and (max-width: 767px) {
+      font-size: 15px;
+    }
+  }
+  h6 {
+    z-index: 1001;
+    margin-top: 24px;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+    font-style: normal;
+    margin-top: -32px;
+    padding-top: 60px !important;
+
+    @media only screen and (max-width: 767px) {
+      font-size: 14px;
     }
   }
 
@@ -129,8 +162,8 @@ a {
     color: #F0F9FF;
     background-color: #35A3FF;
     border-radius: 4px;
-    font-family: 'Open Sans', sans-serif;
-    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
     text-transform: uppercase;
     font-size: 14px;
     line-height: 30px;
@@ -189,6 +222,7 @@ a {
   a {
     border-bottom: 1px dashed;
     color: $YB_ORANGE;
+
     &:hover {
       color: $YB_ORANGE;
       border-bottom-style: solid;
@@ -208,7 +242,7 @@ a {
       width: 24px; 
       height: 24px;
       text-align: center;
-      line-height: 24px;
+      line-height: 20px;
     }
   }
 
@@ -249,7 +283,7 @@ a {
 
   p, pre, ul, li, a {
     position: relative;
-    z-index: 2;
+    z-index: 1020;
   }
 
   i {
@@ -434,9 +468,9 @@ h1, h2, h3, h4, h5, h6 {
     }
   }
   > ul > li > a {
-    font-family: Montserrat, sans-serif;
+    font-family: 'Rubik', sans-serif;
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 500;
   }
   .node-toggle {
     position: relative;
@@ -513,7 +547,7 @@ h1, h2, h3, h4, h5, h6 {
       > a.node-toggle {
         text-transform: uppercase;
         font-size: 15px;
-        font-weight: 600;
+        font-weight: 500;
         line-height: 36px !important;
         display: block;
         margin-left: -35px;
@@ -576,9 +610,9 @@ h1, h2, h3, h4, h5, h6 {
       }
 
       > ul > li > a {
-        font-family: Montserrat, sans-serif;
+        font-family: 'Rubik', sans-serif;
         font-size: 15px;
-        font-weight: 400;
+        font-weight: 300;
       }
     }
   }
@@ -600,30 +634,38 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-.article pre {
-  width: 100% !important;
-  overflow: auto;
-  background: none !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  padding: 0 !important;
-}
-.article code {
-  display: inline-block;
-  vertical-align: middle;
-  margin: 0 2px;
-  padding: 0 3px;
-  font-size: 16px !important;
-  border-radius: 4px;
-  background: $YB_LIGHT_GRAY;
-  border: 1px solid #DEE0EA;
-  line-height: 1;
+.article {
+  pre {
+    width: 100% !important;
+    overflow: auto;
+    background: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+  }
+  code {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0 2px;
+    padding: 0 3px;
+    font-size: 16px;
+    border-radius: 4px;
+    background: $YB_LIGHT_GRAY;
+    border: 1px solid #DEE0EA;
+    line-height: 1;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    code {
+      font-size: inherit;
+    }
+  }
 }
 
 .article pre code {
   display: block;
   width: 100% !important;
   line-height: 1.5;
+  
   border-radius: 7px;
   padding: 12px 20px;
   margin: 0;
@@ -657,8 +699,8 @@ h1, h2, h3, h4, h5, h6 {
     margin: 0px 0px 10px 0px;
     color: $YB_DARK_BLUE;
     padding: 0;
-    font-family: Montserrat, sans-serif;
-    font-weight: 600;
+    font-family: 'Rubik', sans-serif;
+    font-weight: 500;
     display: block;
     font-size: 20px;
   
@@ -828,10 +870,10 @@ h1, h2, h3, h4, h5, h6 {
 
             .title {
               display: block;
-              font-family: Montserrat, sans-serif;
+              font-family: 'Rubik', sans-serif;
               font-size: 24px;
               line-height: 30px;
-              font-weight: 600;
+              font-weight: 500;
               max-width: 100%;
               letter-spacing: -.02em;
               color: #2D365D !important;
@@ -881,6 +923,11 @@ h1, h2, h3, h4, h5, h6 {
     }
   }
 }
+
+#drift-widget {
+  display: none !important;
+}
+
 .footer-links {
   overflow: visible;
   width: 100%;
@@ -930,10 +977,10 @@ h1, h2, h3, h4, h5, h6 {
           }
 
           .title {
-            font-family: Montserrat, sans-serif;
+            font-family: 'Rubik', sans-serif;
             font-size: 18px;
             display: block;
-            font-weight: 600;
+            font-weight: 500;
             color: $YB_DARK;
             letter-spacing: -0.03em;
             line-height: 20px;
@@ -991,7 +1038,7 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 14px;
     background-color: #f75821;
     cursor: pointer;
-    z-index: 4999;
+    z-index: 2147483638;
 
     -moz-transition: bottom 300ms ease;
     -webkit-transition: bottom 300ms ease;
@@ -1021,7 +1068,7 @@ h1, h2, h3, h4, h5, h6 {
     padding: 5px 20px 10px 20px;
     bottom: -150px;
     right: 60px;
-    z-index: 500;
+    z-index: 17483638;
     width: 180px;
     font-size: 14px;
     margin-top: 0;
@@ -1051,6 +1098,12 @@ h1, h2, h3, h4, h5, h6 {
 
   .help-footer-menu.shown {
     bottom: 0;
+  }
+
+  @media only screen and (max-width: 559px) {
+    .help-footer-btn, .help-footer-menu {
+      right: calc(50% - 90px);
+    }
   }
 }
 .pagination a .button,
@@ -1144,11 +1197,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .breadcrumbs {
   position: relative;
-  font-weight: 300;
+  font-weight: 500;
 
   a {
     border-bottom: none !important;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   i {
@@ -1226,7 +1279,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .caption {
-    font-family: "Open Sans", sans-serif;
+    font-family: "Inter", sans-serif;
     font-size: 14px;
     color: $YB_DARK_BLUE;
   }
@@ -1266,8 +1319,8 @@ table code {
 
 .toc-container {
   font-size: 16px;
-  font-weight: 600;
-  font-family: Montserrat, sans-serif;
+  font-weight: 500;
+  font-family: 'Rubik', sans-serif;
   padding: 0 25px 25px 25px;
 
   & > ul {
@@ -1283,7 +1336,7 @@ table code {
     margin-top: 0 !important;
     font-size: 13px;
     font-weight: 400;
-    font-family: "Open Sans", sans-serif;
+    font-family: "Inter", sans-serif;
 
     li {
       margin-top: 12px !important;

@@ -65,7 +65,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 
-static const YBTableName kTableName("my_keyspace", "ysck-test-table");
+static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "ysck-test-table");
 
 class RemoteYsckTest : public YBTest {
  public:
@@ -94,8 +94,9 @@ class RemoteYsckTest : public YBTest {
     client_ = ASSERT_RESULT(mini_cluster_->CreateClient());
 
     // Create one table.
-    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                  kTableName.namespace_type()));
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
                      .schema(&schema_)
                      .num_tablets(3)

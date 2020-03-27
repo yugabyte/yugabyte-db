@@ -1,153 +1,472 @@
 --
--- CREATE_TABLE
+-- YB_TABLE Testsuite: Testing DDL Statments for TABLE.
 --
 --
--- CLASS DEFINITIONS
+-- CREATE TABLE AS SELECT
 --
-CREATE TABLE hobbies_r (
-	name		text,
-	person 		text
-);
-CREATE TABLE equipment_r (
-	name 		text,
-	hobby		text
-);
-CREATE TABLE onek (
-	unique1		int4,
-	unique2		int4,
-	two			int4,
-	four		int4,
-	ten			int4,
-	twenty		int4,
-	hundred		int4,
-	thousand	int4,
-	twothousand	int4,
-	fivethous	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-);
-CREATE TABLE tenk1 (
-	unique1		int4,
-	unique2		int4,
-	two			int4,
-	four		int4,
-	ten			int4,
-	twenty		int4,
-	hundred		int4,
-	thousand	int4,
-	twothousand	int4,
-	fivethous	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-) WITH OIDS;
-ERROR:  OIDs are not supported for user tables.
-CREATE TABLE tenk2 (
-	unique1 	int4,
-	unique2 	int4,
-	two 	 	int4,
-	four 		int4,
-	ten			int4,
-	twenty 		int4,
-	hundred 	int4,
-	thousand 	int4,
-	twothousand int4,
-	fivethous 	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-);
-CREATE TABLE person (
-	name 		text,
-	age			int4,
-	location 	point
-);
-CREATE TABLE emp (
-	salary 		int4,
-	manager 	name
-) INHERITS (person) WITH OIDS;
-ERROR:  INHERITS not supported yet
-LINE 4: ) INHERITS (person) WITH OIDS;
-          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
-CREATE TABLE student (
-	gpa 		float8
-) INHERITS (person);
-ERROR:  INHERITS not supported yet
-LINE 3: ) INHERITS (person);
-          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
-CREATE TABLE stud_emp (
-	percent 	int4
-) INHERITS (emp, student);
-ERROR:  INHERITS not supported yet
-LINE 3: ) INHERITS (emp, student);
-          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
-CREATE TABLE city (
-	name		name,
-	location 	box,
-	budget 		city_budget
-);
-ERROR:  type "city_budget" does not exist
-LINE 4:  budget   city_budget
-                  ^
-CREATE TABLE dept (
-	dname		name,
-	mgrname 	text
-);
-CREATE TABLE slow_emp4000 (
-	home_base	 box
-);
-CREATE TABLE fast_emp4000 (
-	home_base	 box
-);
-CREATE TABLE road (
-	name		text,
-	thepath 	path
-);
-CREATE TABLE ihighway () INHERITS (road);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE ihighway () INHERITS (road);
-                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
-CREATE TABLE shighway (
-	surface		text
-) INHERITS (road);
-ERROR:  INHERITS not supported yet
-LINE 3: ) INHERITS (road);
-          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
-CREATE TABLE real_city (
-	pop			int4,
-	cname		text,
-	outline 	path
-);
+CREATE TABLE table_create_org(
+			 col_smallint			SMALLINT,
+			 col_integer			INTEGER,
+			 col_bigint				BIGINT,
+			 col_real					REAL,
+			 col_double				DOUBLE PRECISION,
+			 col_char					CHARACTER(7),
+			 col_varchar			VARCHAR(7),
+			 col_text					TEXT,
+			 col_bytea				BYTEA,
+			 col_timestamp		TIMESTAMP(2),
+			 col_timestamp_tz TIMESTAMP WITH TIME ZONE,
+			 col_bool					BOOLEAN,
+			 col_array_int		INTEGER[],
+			 col_array_text		TEXT[],
+			 PRIMARY KEY(col_smallint));
+--
+INSERT INTO table_create_org VALUES(
+			 1,
+			 1,
+			 1,
+			 1.1,
+			 1.1,
+			 'one',
+			 'one',
+			 'one',
+			 E'\\x11F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'January 1, 2019 01:01:01.1111',
+			 'January 1, 2019 01:01:01.1111 PST AD',
+			 TRUE,
+			 '{ 1, 1, 1 }',
+			 '{ "one", "one", "one" }');
+INSERT INTO table_create_org VALUES(
+			 11,
+			 1,
+			 1,
+			 1.1,
+			 1.1,
+			 'one',
+			 'one',
+			 'one',
+			 E'\\x11F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'January 1, 2019 01:01:01.1111',
+			 'January 1, 2019 01:01:01.1111 PST AD',
+			 TRUE,
+			 '{ 1, 1, 1 }',
+			 '{ "one", "one", "one" }');
+--
+INSERT INTO table_create_org VALUES(
+			 2,
+			 2,
+			 2,
+			 2.2,
+			 2.2,
+			 'two',
+			 'two',
+			 'two',
+			 E'\\x22F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'February 2, 2019 02:02:02.2222',
+			 'February 2, 2019 02:02:02.2222 PST AD',
+			 TRUE,
+			 '{ 2, 2, 2 }',
+			 '{ "two", "two", "two" }');
+INSERT INTO table_create_org VALUES(
+			 12,
+			 2,
+			 2,
+			 2.2,
+			 2.2,
+			 'two',
+			 'two',
+			 'two',
+			 E'\\x22F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'February 2, 2019 02:02:02.2222',
+			 'February 2, 2019 02:02:02.2222 PST AD',
+			 TRUE,
+			 '{ 2, 2, 2 }',
+			 '{ "two", "two", "two" }');
+--
+INSERT INTO table_create_org VALUES(
+			 3,
+			 3,
+			 3,
+			 3.3,
+			 3.3,
+			 'three',
+			 'three',
+			 'three',
+			 E'\\x33F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'March 3, 2019 03:03:03.3333',
+			 'March 3, 2019 03:03:03.3333 PST AD',
+			 TRUE,
+			 '{ 3, 3, 3 }',
+			 '{ "three", "three", "three" }');
+INSERT INTO table_create_org VALUES(
+			 13,
+			 3,
+			 3,
+			 3.3,
+			 3.3,
+			 'three',
+			 'three',
+			 'three',
+			 E'\\x33F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'March 3, 2019 03:03:03.3333',
+			 'March 3, 2019 03:03:03.3333 PST AD',
+			 TRUE,
+			 '{ 3, 3, 3 }',
+			 '{ "three", "three", "three" }');
+--
+INSERT INTO table_create_org VALUES(
+			 4,
+			 4,
+			 4,
+			 4.4,
+			 4.4,
+			 'four',
+			 'four',
+			 'four',
+			 E'\\x44F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'April 4, 2019 04:04:04.4444',
+			 'April 4, 2019 04:04:04.4444 PST AD',
+			 TRUE,
+			 '{ 4, 4, 4 }',
+			 '{ "four", "four", "four" }');
+INSERT INTO table_create_org VALUES(
+			 14,
+			 4,
+			 4,
+			 4.4,
+			 4.4,
+			 'four',
+			 'four',
+			 'four',
+			 E'\\x44F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'April 4, 2019 04:04:04.4444',
+			 'April 4, 2019 04:04:04.4444 PST AD',
+			 TRUE,
+			 '{ 4, 4, 4 }',
+			 '{ "four", "four", "four" }');
+--
+INSERT INTO table_create_org VALUES(
+			 5,
+			 5,
+			 5,
+			 5.5,
+			 5.5,
+			 'five',
+			 'five',
+			 'five',
+			 E'\\x55F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'May 5, 2019 05:05:05.5555',
+			 'May 5, 2019 05:05:05.5555 PST AD',
+			 TRUE,
+			 '{ 5, 5, 5 }',
+			 '{ "five", "five", "five" }');
+INSERT INTO table_create_org VALUES(
+			 15,
+			 5,
+			 5,
+			 5.5,
+			 5.5,
+			 'five',
+			 'five',
+			 'five',
+			 E'\\x55F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'May 5, 2019 05:05:05.5555',
+			 'May 5, 2019 05:05:05.5555 PST AD',
+			 TRUE,
+			 '{ 5, 5, 5 }',
+			 '{ "five", "five", "five" }');
+--
+INSERT INTO table_create_org VALUES(
+			 6,
+			 6,
+			 6,
+			 6.6,
+			 6.6,
+			 'six',
+			 'six',
+			 'six',
+			 E'\\x66F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'June 6, 2019 06:06:06.6666',
+			 'June 6, 2019 06:06:06.6666 PST AD',
+			 TRUE,
+			 '{ 6, 6, 6 }',
+			 '{ "six", "six", "six" }');
+INSERT INTO table_create_org VALUES(
+			 16,
+			 6,
+			 6,
+			 6.6,
+			 6.6,
+			 'six',
+			 'six',
+			 'six',
+			 E'\\x66F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'June 6, 2019 06:06:06.6666',
+			 'June 6, 2019 06:06:06.6666 PST AD',
+			 TRUE,
+			 '{ 6, 6, 6 }',
+			 '{ "six", "six", "six" }');
+--
+INSERT INTO table_create_org VALUES(
+			 7,
+			 7,
+			 7,
+			 7.7,
+			 7.7,
+			 'seven',
+			 'seven',
+			 'seven',
+			 E'\\x77F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'July 7, 2019 07:07:07.7777',
+			 'July 7, 2019 07:07:07.7777 PST AD',
+			 TRUE,
+			 '{ 7, 7, 7 }',
+			 '{ "seven", "seven", "seven" }');
+INSERT INTO table_create_org VALUES(
+			 17,
+			 7,
+			 7,
+			 7.7,
+			 7.7,
+			 'seven',
+			 'seven',
+			 'seven',
+			 E'\\x77F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'July 7, 2019 07:07:07.7777',
+			 'July 7, 2019 07:07:07.7777 PST AD',
+			 TRUE,
+			 '{ 7, 7, 7 }',
+			 '{ "seven", "seven", "seven" }');
+--
+INSERT INTO table_create_org VALUES(
+			 8,
+			 8,
+			 8,
+			 8.8,
+			 8.8,
+			 'eight',
+			 'eight',
+			 'eight',
+			 E'\\x88F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'August 8, 2019 08:08:08.8888',
+			 'August 8, 2019 08:08:08.8888 PST AD',
+			 TRUE,
+			 '{ 8, 8, 8 }',
+			 '{ "eight", "eight", "eight" }');
+INSERT INTO table_create_org VALUES(
+			 18,
+			 8,
+			 8,
+			 8.8,
+			 8.8,
+			 'eight',
+			 'eight',
+			 'eight',
+			 E'\\x88F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'August 8, 2019 08:08:08.8888',
+			 'August 8, 2019 08:08:08.8888 PST AD',
+			 TRUE,
+			 '{ 8, 8, 8 }',
+			 '{ "eight", "eight", "eight" }');
+--
+INSERT INTO table_create_org VALUES(
+			 9,
+			 9,
+			 9,
+			 9.9,
+			 9.9,
+			 'nine',
+			 'nine',
+			 'nine',
+			 E'\\x99F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'September 9, 2019 09:09:09.9999',
+			 'September 9, 2019 09:09:09.9999 PST AD',
+			 TRUE,
+			 '{ 9, 9, 9 }',
+			 '{ "nine", "nine", "nine" }');
+INSERT INTO table_create_org VALUES(
+			 19,
+			 9,
+			 9,
+			 9.9,
+			 9.9,
+			 'nine',
+			 'nine',
+			 'nine',
+			 E'\\x99F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'September 9, 2019 09:09:09.9999',
+			 'September 9, 2019 09:09:09.9999 PST AD',
+			 TRUE,
+			 '{ 9, 9, 9 }',
+			 '{ "nine", "nine", "nine" }');
+--
+CREATE TABLE table_create_ctas_nodata AS SELECT * FROM table_create_org WITH NO DATA;
+--
+SELECT * FROM table_create_ctas_nodata;
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text | col_bytea | col_timestamp | col_timestamp_tz | col_bool | col_array_int | col_array_text
+--------------+-------------+------------+----------+------------+----------+-------------+----------+-----------+---------------+------------------+----------+---------------+----------------
+(0 rows)
+
+--
+CREATE TABLE table_create_ctas2_nodata
+			 AS SELECT col_smallint id,
+			 					 col_text "name",
+								 col_array_int AS private_data,
+								 col_array_text AS information
+			 		FROM table_create_org
+					WITH NO DATA;
+--
+SELECT * FROM table_create_ctas2_nodata;
+ id | name | private_data | information
+----+------+--------------+-------------
+(0 rows)
+
+--
+CREATE TABLE table_create_ctas AS SELECT * FROM table_create_org;
+--
+SELECT * FROM table_create_ctas ORDER BY col_smallint;
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+--------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
+            1 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:01:01.11 2019 | Tue Jan 01 01:01:01.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
+            2 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
+            3 |           3 |          3 |      3.3 |        3.3 | three    | three       | three    | \x33f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Mar 03 03:03:03.33 2019 | Sun Mar 03 03:03:03.3333 2019 PST | t        | {3,3,3}       | {three,three,three}
+            4 |           4 |          4 |      4.4 |        4.4 | four     | four        | four     | \x44f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Apr 04 04:04:04.44 2019 | Thu Apr 04 05:04:04.4444 2019 PDT | t        | {4,4,4}       | {four,four,four}
+            5 |           5 |          5 |      5.5 |        5.5 | five     | five        | five     | \x55f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun May 05 05:05:05.56 2019 | Sun May 05 06:05:05.5555 2019 PDT | t        | {5,5,5}       | {five,five,five}
+            6 |           6 |          6 |      6.6 |        6.6 | six      | six         | six      | \x66f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Jun 06 06:06:06.67 2019 | Thu Jun 06 07:06:06.6666 2019 PDT | t        | {6,6,6}       | {six,six,six}
+            7 |           7 |          7 |      7.7 |        7.7 | seven    | seven       | seven    | \x77f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Jul 07 07:07:07.78 2019 | Sun Jul 07 08:07:07.7777 2019 PDT | t        | {7,7,7}       | {seven,seven,seven}
+            8 |           8 |          8 |      8.8 |        8.8 | eight    | eight       | eight    | \x88f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Aug 08 08:08:08.89 2019 | Thu Aug 08 09:08:08.8888 2019 PDT | t        | {8,8,8}       | {eight,eight,eight}
+            9 |           9 |          9 |      9.9 |        9.9 | nine     | nine        | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 09:09:10 2019    | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
+           11 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:01:01.11 2019 | Tue Jan 01 01:01:01.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
+           12 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
+           13 |           3 |          3 |      3.3 |        3.3 | three    | three       | three    | \x33f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Mar 03 03:03:03.33 2019 | Sun Mar 03 03:03:03.3333 2019 PST | t        | {3,3,3}       | {three,three,three}
+           14 |           4 |          4 |      4.4 |        4.4 | four     | four        | four     | \x44f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Apr 04 04:04:04.44 2019 | Thu Apr 04 05:04:04.4444 2019 PDT | t        | {4,4,4}       | {four,four,four}
+           15 |           5 |          5 |      5.5 |        5.5 | five     | five        | five     | \x55f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun May 05 05:05:05.56 2019 | Sun May 05 06:05:05.5555 2019 PDT | t        | {5,5,5}       | {five,five,five}
+           16 |           6 |          6 |      6.6 |        6.6 | six      | six         | six      | \x66f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Jun 06 06:06:06.67 2019 | Thu Jun 06 07:06:06.6666 2019 PDT | t        | {6,6,6}       | {six,six,six}
+           17 |           7 |          7 |      7.7 |        7.7 | seven    | seven       | seven    | \x77f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Jul 07 07:07:07.78 2019 | Sun Jul 07 08:07:07.7777 2019 PDT | t        | {7,7,7}       | {seven,seven,seven}
+           18 |           8 |          8 |      8.8 |        8.8 | eight    | eight       | eight    | \x88f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Aug 08 08:08:08.89 2019 | Thu Aug 08 09:08:08.8888 2019 PDT | t        | {8,8,8}       | {eight,eight,eight}
+           19 |           9 |          9 |      9.9 |        9.9 | nine     | nine        | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 09:09:10 2019    | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
+(18 rows)
+
+--
+CREATE TABLE table_create_ctas2
+			 AS SELECT col_smallint id,
+			 					 col_text "name",
+								 col_array_int AS private_data,
+								 col_array_text AS information
+			 		FROM table_create_org
+					WHERE col_smallint < 11;
+--
+SELECT * FROM table_create_ctas2 ORDER BY id;
+ id | name  | private_data |     information
+----+-------+--------------+---------------------
+  1 | one   | {1,1,1}      | {one,one,one}
+  2 | two   | {2,2,2}      | {two,two,two}
+  3 | three | {3,3,3}      | {three,three,three}
+  4 | four  | {4,4,4}      | {four,four,four}
+  5 | five  | {5,5,5}      | {five,five,five}
+  6 | six   | {6,6,6}      | {six,six,six}
+  7 | seven | {7,7,7}      | {seven,seven,seven}
+  8 | eight | {8,8,8}      | {eight,eight,eight}
+  9 | nine  | {9,9,9}      | {nine,nine,nine}
+(9 rows)
+
+--
+-- CREATE TABLE WITH
+--
 CREATE TABLE patient (
 	name		text,
-	age		    int4,
-	dob      	date
+	age			int4,
+	dob			date
 ) WITH (fillfactor=40);
 WARNING:  Storage parameter fillfactor is unsupported, ignoring
 CREATE TABLE planetrip (
 	origin		text,
-	dest	    text,
-	day         date,
-	depart     	time
+	dest		text,
+	day			date,
+	depart		time
 ) WITH (user_catalog_table=true);
 ERROR:  Users cannot create system catalog tables.
 CREATE TABLE client (
-    name        text,
-    phonenum    int8,
-    deadline    date
+	name		text,
+	phonenum	int8,
+	deadline	date
 ) WITH (oids=false);
+--
+-- CREATE TABLE SPLIT
+--
+CREATE TABLE tbl1 (
+	a			int4 primary key
+) SPLIT (INTO 20 TABLETS);
+CREATE TABLE tbl2 (
+	a			int4,
+	primary key (a asc)
+) SPLIT AT VALUES ((4), (25), (100));
+WARNING:  Range split points are not supported, ignoring
+CREATE TABLE tbl3 (
+	a			int4,
+	primary key (a asc)
+) SPLIT AT VALUES ((25), (100), (4));
+ERROR:  Split points must be in sorted order
+CREATE TABLE tbl4 (
+	a			int4,
+	b			text,
+	primary key (a asc, b)
+) SPLIT AT VALUES ((1, 'c'), (1, 'cb'), (2, 'a'));
+WARNING:  Range split points are not supported, ignoring
+CREATE TABLE tbl5 (
+	a			int4,
+	b			text,
+	primary key (b asc)
+) SPLIT AT VALUES (('a'), ('aba'), ('ac'));
+WARNING:  Range split points are not supported, ignoring
+CREATE TABLE tbl6 (
+	a			int4,
+	b			text,
+	primary key (b asc)
+) SPLIT AT VALUES (('a'), (2, 'aba'), ('ac'));
+ERROR:  Split points must specify a split at each primary key column
+CREATE TABLE tbl7 (
+	a			int4,
+	primary key (a asc)
+) SPLIT AT VALUES (('a'), ('b'), ('c'));
+ERROR:  invalid input syntax for integer: "a"
+CREATE TABLE tbl8 (
+	a			text,
+	primary key (a asc)
+) SPLIT AT VALUES ((100), (1000), (10000));
+ERROR:  Type mismatch in split point
+CREATE TABLE tbl9 (
+	a			int4,
+	primary key (a hash)
+) SPLIT AT VALUES ((100), (1000), (10000));
+ERROR:  HASH columns cannot be used for split points
+CREATE TEMPORARY TABLE tbl10 (
+	a			int4 primary key
+) SPLIT INTO 20 TABLETS;
+WARNING:  Split options on TEMP table will be ignored
+CREATE TABLE tbl11 (
+	a			int4,
+	b			int4,
+	c			int4,
+	primary key (a asc, b desc)
+) SPLIT AT VALUES ((-7, 1), (0, 0), (23, 4));
+WARNING:  Range split points are not supported, ignoring
+CREATE TABLE tbl12 (
+	a			int4,
+	b			text,
+	primary key (b desc)
+) SPLIT AT VALUES (('bienvenidos'), ('goodbye'), ('hello'), ('hola'));
+WARNING:  Range split points are not supported, ignoring
+CREATE TABLE tbl12 (
+	a			text,
+	b			date,
+	c			time
+) SPLIT INTO 9 TABLETS;
+ERROR:  Cannot have SPLIT options in the absence of a primary key
+CREATE TABLE tbl13 (
+	a			int4,
+	primary key (a asc)
+) SPLIT AT VALUES ((MINVALUE), (0), (MAXVALUE));
+ERROR:  Split points must specify finite values
+-- TODO(jason): remove when issue #1721 is closed or closing.
+DISCARD TEMP;

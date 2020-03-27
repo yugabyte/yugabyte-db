@@ -43,6 +43,10 @@
 #include "yb/server/metadata.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_snapshots.h"
+
+#include "yb/tserver/remote_bootstrap_snapshots.h"
+
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
@@ -70,13 +74,14 @@ using tablet::RaftGroupReplicaSuperBlockPB;
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
-    std::string requestor_uuid, FsManager* fs_manager, const std::atomic<int>* nsessions)
+    std::string requestor_uuid, const std::atomic<int>* nsessions)
     : tablet_peer_(tablet_peer),
       session_id_(std::move(session_id)),
       requestor_uuid_(std::move(requestor_uuid)),
-      fs_manager_(fs_manager),
       succeeded_(false),
-      nsessions_(nsessions) {}
+      nsessions_(nsessions) {
+  AddSource<RemoteBootstrapSnapshotsSource>();
+}
 
 RemoteBootstrapSession::~RemoteBootstrapSession() {
   // No lock taken in the destructor, should only be 1 thread with access now.
@@ -84,7 +89,7 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
 
   // Delete checkpoint directory.
   if (!checkpoint_dir_.empty()) {
-    auto s = fs_manager_->env()->DeleteRecursively(checkpoint_dir_);
+    auto s = env()->DeleteRecursively(checkpoint_dir_);
     if (!s.ok()) {
       LOG(WARNING) << "Unable to delete checkpoint directory " << checkpoint_dir_;
     } else {
@@ -206,6 +211,8 @@ Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::
   return result;
 }
 
+const std::string RemoteBootstrapSession::kCheckpointsDir = "checkpoints";
+
 Status RemoteBootstrapSession::Init() {
   // Take locks to support re-initialization of the same session.
   std::lock_guard<std::mutex> lock(mutex_);
@@ -237,7 +244,7 @@ Status RemoteBootstrapSession::Init() {
 
   MonoTime now = MonoTime::Now();
   auto* kv_store = tablet_superblock_.mutable_kv_store();
-  const auto checkpoints_dir = JoinPathSegments(kv_store->rocksdb_dir(), "checkpoints");
+  const auto checkpoints_dir = JoinPathSegments(kv_store->rocksdb_dir(), kCheckpointsDir);
 
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
@@ -245,14 +252,18 @@ Status RemoteBootstrapSession::Init() {
   // Clear any previous RocksDB files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
   kv_store->clear_rocksdb_files();
-  auto status = tablet->CreateCheckpoint(checkpoint_dir_);
+  auto status = tablet->snapshots().CreateCheckpoint(checkpoint_dir_);
   if (status.ok()) {
     *kv_store->mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
   } else if (!status.IsNotSupported()) {
     RETURN_NOT_OK(status);
   }
 
-  RETURN_NOT_OK(InitSnapshotFiles());
+  for (const auto& source : sources_) {
+    if (source) {
+      RETURN_NOT_OK(source->Init());
+    }
+  }
 
   // Get the current segments from the log, including the active segment.
   // The Log doesn't add the active segment to the log reader's list until
@@ -285,12 +296,6 @@ Status RemoteBootstrapSession::Init() {
   return Status::OK();
 }
 
-Status RemoteBootstrapSession::InitSnapshotFiles() {
-  // Snapshots are not supported in the community edition.
-  tablet_superblock_.mutable_kv_store()->clear_snapshot_files();
-  return Status::OK();
-}
-
 const std::string& RemoteBootstrapSession::tablet_id() const {
   return tablet_peer_->tablet_id();
 }
@@ -299,8 +304,10 @@ const std::string& RemoteBootstrapSession::requestor_uuid() const {
   return requestor_uuid_;
 }
 
+namespace {
+
 // Determine the length of the data chunk to return to the client.
-static int64_t DetermineReadLength(int64_t bytes_remaining, int64_t requested_len) {
+int64_t DetermineReadLength(int64_t bytes_remaining, int64_t requested_len) {
   // Determine the size of the chunks we want to read.
   // Choose "system max" as a multiple of typical HDD block size (4K) with 4K to
   // spare for other stuff in the message, like headers, other protobufs, etc.
@@ -319,39 +326,29 @@ static int64_t DetermineReadLength(int64_t bytes_remaining, int64_t requested_le
 
 // Calculate the size of the data to return given a maximum client message
 // length, the file itself, and the offset into the file to be read from.
-static Status GetResponseDataSize(int64_t total_size,
-                                  uint64_t offset, int64_t client_maxlen,
-                                  RemoteBootstrapErrorPB::Code* error_code, int64_t* data_size) {
+Result<int64_t> GetResponseDataSize(GetDataPieceInfo* info) {
   // If requested offset is off the end of the data, bail.
-  if (offset >= total_size) {
-    *error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
-    return STATUS(InvalidArgument,
-        Substitute("Requested offset ($0) is beyond the data size ($1)",
-                   offset, total_size));
+  if (info->offset >= info->data_size) {
+    info->error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
+    return STATUS_FORMAT(InvalidArgument,
+                         "Requested offset ($0) is beyond the data size ($1)",
+                         info->offset, info->data_size);
   }
 
-  int64_t bytes_remaining = total_size - offset;
-
-  *data_size = DetermineReadLength(bytes_remaining, client_maxlen);
-  DCHECK_GT(*data_size, 0);
-  if (client_maxlen > 0) {
-    DCHECK_LE(*data_size, client_maxlen);
+  auto result = DetermineReadLength(info->bytes_remaining(), info->client_maxlen);
+  DCHECK_GT(result, 0);
+  if (info->client_maxlen > 0) {
+    DCHECK_LE(result, info->client_maxlen);
   }
 
-  return Status::OK();
+  return result;
 }
-
-namespace {
 
 // Read a chunk of a file into a buffer.
 // data_name provides a string for the block/log to be used in error messages.
-Status ReadFileChunkToBuf(RandomAccessFile* file, int64_t file_size,
-                          uint64_t offset, int64_t client_maxlen, const string& data_name,
-                          string* data, RemoteBootstrapErrorPB::Code* error_code) {
-  int64_t response_data_size = 0;
-  RETURN_NOT_OK_PREPEND(GetResponseDataSize(file_size, offset, client_maxlen, error_code,
-                                            &response_data_size),
-                        Substitute("Error reading $0", data_name));
+Status ReadFileChunkToBuf(RandomAccessFile* file, const string& data_name, GetDataPieceInfo* info) {
+  auto response_data_size = VERIFY_RESULT_PREPEND(
+      GetResponseDataSize(info), Format("Error reading $0", data_name));
 
   Stopwatch chunk_timer(Stopwatch::THIS_THREAD);
   chunk_timer.start();
@@ -359,15 +356,14 @@ Status ReadFileChunkToBuf(RandomAccessFile* file, int64_t file_size,
   // Writing into a std::string buffer is basically guaranteed to work on C++11,
   // however any modern compiler should be compatible with it.
   // Violates the API contract, but avoids excessive copies.
-  data->resize(response_data_size);
-  uint8_t* buf = reinterpret_cast<uint8_t*>(const_cast<char*>(data->data()));
+  info->data.resize(response_data_size);
+  auto buf = reinterpret_cast<uint8_t*>(const_cast<char*>(info->data.data()));
   Slice slice;
-  Status s = env_util::ReadFully(file, offset, response_data_size, &slice, buf);
+  Status s = env_util::ReadFully(file, info->offset, response_data_size, &slice, buf);
   if (PREDICT_FALSE(!s.ok())) {
-    s = s.CloneAndPrepend(
-        Substitute("Unable to read existing file for $0", data_name));
-    LOG(WARNING) << s.ToString();
-    *error_code = RemoteBootstrapErrorPB::IO_ERROR;
+    s = s.CloneAndPrepend(Format("Unable to read existing file for $0", data_name));
+    LOG(WARNING) << s;
+    info->error_code = RemoteBootstrapErrorPB::IO_ERROR;
     return s;
   }
   // Figure out if Slice points to buf or if Slice points to the mmap.
@@ -384,34 +380,91 @@ Status ReadFileChunkToBuf(RandomAccessFile* file, int64_t file_size,
 
 } // namespace
 
-// Caches file size and holds a shared_ptr reference to a RandomAccessFile.
-// Assumes that the file underlying the RandomAccessFile is immutable.
-struct ImmutableRandomAccessFileInfo {
-  std::shared_ptr<RandomAccessFile> readable;
-  int64_t size = 0;
-  uint64_t segment_seqno = 0;
+Env* RemoteBootstrapSession::env() const {
+  return tablet_peer_->tablet_metadata()->fs_manager()->env();
+}
 
-  ImmutableRandomAccessFileInfo(std::shared_ptr<RandomAccessFile> readable,
-                                int64_t size)
-      : readable(std::move(readable)), size(size) {}
-};
+RemoteBootstrapSource* RemoteBootstrapSession::Source(DataIdPB::IdType id_type) const {
+  size_t idx = id_type;
+  return idx < sources_.size() ? sources_[idx].get() : nullptr;
+}
 
-Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno,
-                                                  uint64_t offset, int64_t client_maxlen,
-                                                  std::string* data, int64_t* block_file_size,
-                                                  RemoteBootstrapErrorPB::Code* error_code) {
+Status RemoteBootstrapSession::ValidateDataId(const yb::tserver::DataIdPB& data_id) {
+  const auto& source = Source(data_id.type());
+
+  if (source) {
+    return source->ValidateDataId(data_id);
+  }
+
+  switch (data_id.type()) {
+    case DataIdPB::LOG_SEGMENT:
+      if (PREDICT_FALSE(!data_id.wal_segment_seqno())) {
+        return STATUS(InvalidArgument,
+            "segment sequence number must be specified for type == LOG_SEGMENT",
+            data_id.ShortDebugString());
+      }
+      return Status::OK();
+    case DataIdPB::ROCKSDB_FILE:
+      if (PREDICT_FALSE(data_id.file_name().empty())) {
+        return STATUS(InvalidArgument,
+            "file name must be specified for type == ROCKSDB_FILE",
+            data_id.ShortDebugString());
+      }
+      return Status::OK();
+    case DataIdPB::SNAPSHOT_FILE: FALLTHROUGH_INTENDED;
+    case DataIdPB::UNKNOWN:
+      return STATUS(InvalidArgument, "Type not supported", data_id.ShortDebugString());
+  }
+  LOG(FATAL) << "Invalid data id type: " << data_id.type();
+}
+
+Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) {
+  const auto& source = sources_[data_id.type()];
+
+  if (source) {
+    // Fetching a snapshot file chunk.
+    RETURN_NOT_OK_PREPEND(
+        source->GetDataPiece(data_id, info),
+        "Unable to get piece of snapshot file");
+    return Status::OK();
+  }
+
+
+  switch (data_id.type()) {
+    case DataIdPB::LOG_SEGMENT: {
+      // Fetching a log segment chunk.
+      RETURN_NOT_OK_PREPEND(GetLogSegmentPiece(data_id.wal_segment_seqno(), info),
+                            "Unable to get piece of log segment");
+      break;
+    }
+    case DataIdPB::ROCKSDB_FILE: {
+      // Fetching a RocksDB file chunk.
+      const string file_name = data_id.file_name();
+      RETURN_NOT_OK_PREPEND(GetRocksDBFilePiece(data_id.file_name(), info),
+                            "Unable to get piece of RocksDB file");
+      break;
+    }
+    default:
+      info->error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
+      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
+  }
+  DCHECK(info->client_maxlen == 0 || info->data.size() <= info->client_maxlen)
+      << "client_maxlen: " << info->client_maxlen << ", data->size(): " << info->data.size();
+
+  return Status::OK();
+}
+
+Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDataPieceInfo* info) {
   std::shared_ptr<RandomAccessFile> file;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (opened_log_segment_seqno_ != segment_seqno) {
-      RETURN_NOT_OK(OpenLogSegment(segment_seqno, error_code));
+      RETURN_NOT_OK(OpenLogSegment(segment_seqno, &info->error_code));
     }
-    *block_file_size = opened_log_segment_file_size_;
+    info->data_size = opened_log_segment_file_size_;
     file = opened_log_segment_file_;
   }
-  RETURN_NOT_OK(ReadFileChunkToBuf(
-      file.get(), *block_file_size, offset, client_maxlen,
-      Substitute("log segment $0", segment_seqno), data, error_code));
+  RETURN_NOT_OK(ReadFileChunkToBuf(file.get(), Substitute("log segment $0", segment_seqno), info));
 
   // Note: We do not eagerly close log segment files, since we share ownership
   // of the LogSegment objects with the Log itself.
@@ -419,38 +472,31 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno,
   return Status::OK();
 }
 
-Status RemoteBootstrapSession::GetRocksDBFilePiece(const std::string file_name,
-                                                   uint64_t offset, int64_t client_maxlen,
-                                                   std::string* data, int64_t* log_file_size,
-                                                   RemoteBootstrapErrorPB::Code* error_code) {
-  return GetFilePiece(
-      checkpoint_dir_, file_name, offset, client_maxlen, data, log_file_size, error_code);
+Status RemoteBootstrapSession::GetRocksDBFilePiece(
+    const std::string& file_name, GetDataPieceInfo* info) {
+  return GetFilePiece(checkpoint_dir_, file_name, env(), info);
 }
 
-Status RemoteBootstrapSession::GetFilePiece(const std::string& path,
-                                            const std::string& file_name,
-                                            uint64_t offset, int64_t client_maxlen,
-                                            std::string* data, int64_t* block_file_size,
-                                            RemoteBootstrapErrorPB::Code* error_code) {
+Status RemoteBootstrapSession::GetFilePiece(
+    const std::string& path, const std::string& file_name, Env* env, GetDataPieceInfo* info) {
   auto file_path = JoinPathSegments(path, file_name);
-  if (!fs_manager_->env()->FileExists(file_path)) {
-    *error_code = RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND;
+  if (!env->FileExists(file_path)) {
+    info->error_code = RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND;
     return STATUS(NotFound, Substitute("Unable to find RocksDB file $0 in directory $1",
                                        file_name, path));
   }
 
   std::unique_ptr<RandomAccessFile> readable_file;
 
-  RETURN_NOT_OK(fs_manager_->env()->NewRandomAccessFile(file_path, &readable_file));
+  RETURN_NOT_OK(env->NewRandomAccessFile(file_path, &readable_file));
 
-  *block_file_size = VERIFY_RESULT(readable_file->Size());
+  info->data_size = VERIFY_RESULT(readable_file->Size());
   auto inode = VERIFY_RESULT(readable_file->INode());
-  VLOG(2) << "Reading RocksDB file. File path: " << file_path << ", file size: " << *block_file_size
+  VLOG(2) << "Reading RocksDB file. File path: " << file_path << ", file size: " << info->data_size
           << ", inode: " << inode;
 
-  RETURN_NOT_OK(ReadFileChunkToBuf(readable_file.get(), *block_file_size, offset, client_maxlen,
-                                   Substitute("rocksdb file $0", file_name),
-                                   data, error_code));
+  RETURN_NOT_OK(ReadFileChunkToBuf(
+      readable_file.get(), Substitute("rocksdb file $0", file_name), info));
 
   return Status::OK();
 }

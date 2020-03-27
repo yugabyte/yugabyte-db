@@ -46,7 +46,9 @@ enum class StmtOp {
   STMT_INSERT,
   STMT_UPDATE,
   STMT_DELETE,
+  STMT_TRUNCATE,
   STMT_SELECT,
+  STMT_ALTER_DATABASE,
 };
 
 class PgStatement : public RefCountedThreadSafe<PgStatement> {

@@ -43,11 +43,13 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/alignment.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/crc.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/malloc.h"
 #include "yb/util/memenv/memenv.h"
+#include "yb/util/os-util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/path_util.h"
@@ -800,6 +802,46 @@ TEST_F(TestEnv, TestGetTotalRAMBytes) {
 
   // Can't test much about it.
   ASSERT_GT(ram, 0);
+}
+
+TEST_F(TestEnv, TestGetFreeSpace) {
+  char cwd[1024];
+  char* ret = getcwd(cwd, sizeof(cwd));
+  ASSERT_NE(ret, nullptr);
+
+  constexpr int64_t kMaxAllowedDeltaBytes = 65536;
+
+  // Number of times the difference between the return value from GetFreeSpaceBytes and
+  // the output from command 'df' should be less than kMaxAllowedDeltaBytes before we consider
+  // this test has passed.
+  constexpr int kCountRequired = 10;
+
+  // Minimum block size for MacOS is 512.
+  constexpr int block_size = 512;
+  const string cmd = strings::Substitute(
+      "(export BLOCKSIZE=$0; df $1 | tail -1 | awk '{print $$4}' | tr -d '\\n')", block_size, cwd);
+
+  int success_count = 0;
+  for (int i = 0; i < kCountRequired * 10; i++) {
+    const int64_t free_space = static_cast<int64_t>(ASSERT_RESULT(env_->GetFreeSpaceBytes(cwd)));
+
+    string df_free_space_str;
+    ASSERT_TRUE(RunShellProcess(cmd, &df_free_space_str));
+    const int64_t df_free_space = block_size * ASSERT_RESULT(CheckedStoll(df_free_space_str));
+
+     // We might not get the exact same answer because disk space is being consumed and freed.
+    const int64_t delta_bytes = abs(df_free_space - free_space);
+    if (delta_bytes > kMaxAllowedDeltaBytes) {
+      LOG(INFO) << "df returned: " << df_free_space
+                << ", GetFreeSpaceBytes returned: " << free_space;
+    } else {
+      success_count++;
+      if (success_count >= kCountRequired) {
+        break;
+      }
+    }
+  }
+  ASSERT_GE(success_count, kCountRequired);
 }
 
 // Test that CopyFile() copies all the bytes properly.

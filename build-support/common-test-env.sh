@@ -14,6 +14,8 @@
 
 # Common bash code for test scripts/
 
+declare -i global_exit_code=0
+
 if [[ $BASH_SOURCE == $0 ]]; then
   echo "$BASH_SOURCE must be sourced, not executed" >&2
   exit 1
@@ -64,8 +66,6 @@ pthread .*: Device or resource busy|\
 FATAL: could not create shared memory segment: No space left on device"
 
 # We use this to submit test jobs for execution on Spark.
-readonly SPARK_SUBMIT_CMD_PATH_NON_ASAN_TSAN=/n/tools/spark/current/bin/spark-submit
-readonly SPARK_SUBMIT_CMD_PATH_ASAN_TSAN=/n/tools/spark/current-tsan/bin/spark-submit
 readonly INITIAL_SPARK_DRIVER_CORES=8
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
@@ -471,6 +471,9 @@ prepare_for_running_cxx_test() {
   test_cmd_line=( "$abs_test_binary_path" ${YB_EXTRA_GTEST_FLAGS:-} )
 
   test_log_path_prefix="$YB_TEST_LOG_ROOT_DIR/$rel_test_log_path_prefix"
+  register_test_artifact_files \
+      "$test_log_path_prefix.*" \
+      "${test_log_path_prefix}_test_report.json"
   xml_output_file="$test_log_path_prefix.xml"
   if is_known_non_gtest_test_by_rel_path "$rel_test_binary"; then
     is_gtest_test=false
@@ -809,7 +812,8 @@ determine_test_timeout() {
     timeout_sec=$YB_TEST_TIMEOUT
   else
     if [[ $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_libpq-test" ]]; then
+          $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
+          $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" ]]; then
       # This test is particularly slow on TSAN, and it has to be run all at once (we cannot use
       # --gtest_filter) because of dependencies between tests.
       timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
@@ -1113,53 +1117,53 @@ did_test_succeed() {
   fi
 
   if [[ ! -f "$log_path" ]]; then
-    log "Log path '$log_path' not found."
+    log "Test failure reason: Log path '$log_path' not found."
     return 1
   fi
 
   if grep -q 'Running 0 tests from 0 test cases' "$log_path" && \
      ! egrep -q 'YOU HAVE [[:digit:]]+ DISABLED TEST' "$log_path"; then
-    log 'No tests were run, and no disabled tests found, invalid test filter?'
+    log 'Test failure reason: No tests were run, and no disabled tests found, invalid test filter?'
     return 1
   fi
 
   if grep -q 'LeakSanitizer: detected memory leaks' "$log_path"; then
-    log 'Detected memory leaks'
+    log 'Test failure reason: Detected memory leaks'
     return 1
   fi
 
   if grep -q 'AddressSanitizer: heap-use-after-free' "$log_path"; then
-    log 'Detected use of freed memory'
+    log 'Test failure reason: Detected use of freed memory'
     return 1
   fi
 
   if grep -q 'AddressSanitizer: undefined-behavior' "$log_path"; then
-    log 'Detected ASAN undefined behavior'
+    log 'Test failure reason: Detected ASAN undefined behavior'
     return 1
   fi
 
   if grep -q 'UndefinedBehaviorSanitizer: undefined-behavior' "$log_path"; then
-    log 'Detected UBSAN undefined behavior'
+    log 'Test failure reason: Detected UBSAN undefined behavior'
     return 1
   fi
 
   if grep -q 'ThreadSanitizer' "$log_path"; then
-    log 'ThreadSanitizer failures'
+    log 'Test failure reason: ThreadSanitizer failures'
     return 1
   fi
 
   if egrep -q 'Leak check.*detected leaks' "$log_path"; then
-    log 'Leak check failures'
+    log 'Test failure reason: Leak check failures'
     return 1
   fi
 
   if egrep -q 'Segmentation fault: ' "$log_path"; then
-    log 'Segmentation fault'
+    log 'Test failure reason: Segmentation fault'
     return 1
   fi
 
   if egrep -q '^\[  FAILED  \]' "$log_path"; then
-    log 'GTest failures'
+    log 'Test failure reason: GTest failures'
     return 1
   fi
 
@@ -1198,18 +1202,18 @@ did_test_succeed() {
       SIGIO \
       SIGPWR; do
     if grep -q " $signal_str " "$log_path"; then
-      log "Caught signal: $signal_str"
+      log "Test failure reason: Caught signal: $signal_str"
       return 1
     fi
   done
 
   if grep -q 'Check failed: ' "$log_path"; then
-    log 'Check failed'
+    log 'Test failure reason: Check failed'
     return 1
   fi
 
   if egrep -q '^\[INFO\] BUILD FAILURE$' "$log_path"; then
-    log "Java build or tests failed"
+    log "Test failure reason: Java build or tests failed"
     return 1
   fi
 
@@ -1230,7 +1234,7 @@ find_test_binary() {
 }
 
 show_disk_usage() {
-  header "Disk usage (df -h)"
+  heading "Disk usage (df -h)"
 
   df -h
 
@@ -1240,11 +1244,22 @@ show_disk_usage() {
 }
 
 find_spark_submit_cmd() {
-  if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
-    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_ASAN_TSAN
-  else
-    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_NON_ASAN_TSAN
+  if [[ -n ${YB_SPARK_SUBMIT_CMD_OVERRIDE:-} ]]; then
+    spark_submit_cmd_path=$YB_SPARK_SUBMIT_CMD_OVERRIDE
+    return
   fi
+
+  if is_mac; then
+    spark_submit_cmd_path=$YB_MACOS_SPARK_SUBMIT_CMD
+    return
+  fi
+
+  if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
+    spark_submit_cmd_path=$YB_ASAN_TSAN_SPARK_SUBMIT_CMD
+    return
+  fi
+
+  spark_submit_cmd_path=$YB_LINUX_SPARK_SUBMIT_CMD
 }
 
 spark_available() {
@@ -1490,9 +1505,19 @@ run_java_test() {
     fatal "Maven not found on PATH. PATH: $PATH"
   fi
 
+  # Note: "$surefire_reports_dir" contains the test method name as well.
   local junit_xml_path=$surefire_reports_dir/TEST-$test_class.xml
+  local test_report_json_path=$surefire_reports_dir/TEST-${test_class}_test_report.json
   local log_files_path_prefix=$surefire_reports_dir/$test_class
   local test_log_path=$log_files_path_prefix-output.txt
+
+  # For the log file prefix, remember the pattern with a trailing "*" -- we will expand it
+  # after the test has run.
+  register_test_artifact_files \
+    "$junit_xml_path" \
+    "$test_log_path" \
+    "$test_report_json_path" \
+    "${log_files_path_prefix}*"
   log "Using surefire reports directory: $surefire_reports_dir"
   log "Test log path: $test_log_path"
 
@@ -1680,12 +1705,36 @@ collect_java_tests() {
 }
 
 run_all_java_test_methods_separately() {
+  # Create a subshell to be able to export environment variables temporarily.
   (
     export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     export YB_REDIRECT_MVN_OUTPUT_TO_FILE=1
+    declare -i num_successes=0
+    declare -i num_failures=0
+    declare -i total_tests=0
     collect_java_tests
+    declare -i start_time_sec=$(date +%s)
     for java_test_name in $( cat "$java_test_list_path" | sort ); do
-      resolve_and_run_java_test "$java_test_name"
+      if resolve_and_run_java_test "$java_test_name"; then
+        log "Java test succeeded: $java_test_name"
+        let num_successes+=1
+      else
+        log "Java test failed: $java_test_name"
+        global_exit_code=1
+        let num_failures+=1
+      fi
+      let total_tests+=1
+      declare -i success_pct=$(( $num_successes * 100 / $total_tests ))
+      declare -i current_time_sec=$(date +%s)
+      declare -i elapsed_time_sec=$(( $current_time_sec - $start_time_sec ))
+      declare -i avg_test_time_sec=$(( $elapsed_time_sec / $total_tests ))
+      heading "Current Java test stats: " \
+              "$num_successes successful," \
+              "$num_failures failed," \
+              "$total_tests total," \
+              "success rate: $success_pct%," \
+              "elapsed time: $elapsed_time_sec sec," \
+              "avg test time: $avg_test_time_sec sec"
     done
   )
 }
@@ -1696,16 +1745,23 @@ run_python_doctest() {
   export PYTHONPATH=$python_root
 
   local IFS=$'\n'
-  local file_list=$( git ls-files '*.py' )
+  local file_list=$( cd "$YB_SRC_ROOT" && git ls-files '*.py' )
 
   local python_file
   for python_file in $file_list; do
     local basename=${python_file##*/}
-    if [[ $basename == .ycm_extra_conf.py ||
-          $basename == split_long_command_line.py ]]; then
+    if [[ $python_file == managed/* ||
+          $python_file == cloud/* ||
+          $python_file == src/postgres/src/test/locale/sort-test.py ||
+          $python_file == bin/test_bsopt.py ]]; then
       continue
     fi
-    ( set -x; python -m doctest "$python_file" )
+    if [[ $basename == .ycm_extra_conf.py ||
+          $basename == split_long_command_line.py ||
+          $python_file =~ managed/.* ]]; then
+      continue
+    fi
+    python -m doctest "$python_file"
   done
 }
 
@@ -1837,6 +1893,24 @@ resolve_and_run_java_test() {
   else
     # TODO: support enterprise case by passing rel_module_dir here.
     run_repeat_unit_test "$module_name" "$java_test_name" --java
+  fi
+}
+
+# Allows remembering all the generated test log files in a file whose path is specified by the
+# YB_TEST_ARTIFACT_LIST_PATH variable.
+# Example patterns for Java test results (relative to $YB_SRC_ROOT, and broken over multiple lines):
+#
+# java/yb-jedis-tests/target/surefire-reports_redis.clients.jedis.tests.commands.
+# AllKindOfValuesCommandsTest__expireAt/TEST-redis.clients.jedis.tests.commands.
+# AllKindOfValuesCommandsTest{.xml,-output.txt,_test_report.json}
+register_test_artifact_files() {
+  if [[ -n ${YB_TEST_ARTIFACT_LIST_PATH:-} ]]; then
+    local file_path
+    (
+      for file_path in "$@"; do
+        echo "$file_path"
+      done
+    ) >>"$YB_TEST_ARTIFACT_LIST_PATH"
   fi
 }
 

@@ -56,11 +56,13 @@ class KeyBytes {
   }
 
   void Reserve(size_t len) {
-    data_.reserve(len);
+    if (len > data_.capacity()) {
+      data_.reserve(len);
+    }
   }
 
   std::string ToString() const {
-    return yb::util::FormatBytesAsStr(data_);
+    return yb::FormatBytesAsStr(data_);
   }
 
   bool empty() const {
@@ -148,6 +150,14 @@ class KeyBytes {
     util::AppendInt64ToKey(x, &data_);
   }
 
+  void AppendUInt64(uint64_t x) {
+    AppendUInt64ToKey(x, &data_);
+  }
+
+  void AppendDescendingUInt64(int64_t x) {
+    AppendUInt64ToKey(~x, &data_);
+  }
+
   void AppendInt32(int32_t x) {
     util::AppendInt32ToKey(x, &data_);
   }
@@ -193,10 +203,6 @@ class KeyBytes {
     AppendUInt16ToKey(x, &data_);
   }
 
-  void AppendHybridTimeForSeek(HybridTime hybrid_time) {
-    DocHybridTime(hybrid_time, kMaxWriteId).AppendEncodedInDocDbFormat(&data_);
-  }
-
   void AppendHybridTime(const DocHybridTime& hybrid_time) {
     hybrid_time.AppendEncodedInDocDbFormat(&data_);
   }
@@ -227,19 +233,11 @@ class KeyBytes {
     data_.pop_back();
   }
 
-  // Assuming the key bytes currently end with a hybrid time, replace that hybrid time with a
-  // different one.
-  CHECKED_STATUS ReplaceLastHybridTimeForSeek(HybridTime hybrid_time);
-
   size_t size() const { return data_.size(); }
 
   bool IsPrefixOf(const rocksdb::Slice& slice) const {
     return slice.starts_with(data_);
   }
-
-  // Checks whether the other slice can be obtained by adding an encoded DocHybridTime to
-  // to this encoded key.
-  CHECKED_STATUS OnlyLacksHybridTimeFrom(const rocksdb::Slice& other_slice, bool* result) const;
 
   rocksdb::Slice AsSlice() const { return rocksdb::Slice(data_); }
 
@@ -290,7 +288,6 @@ class KeyBytes {
   }
 
  private:
-
   std::string data_;
 };
 

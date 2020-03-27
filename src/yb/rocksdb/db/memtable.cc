@@ -123,7 +123,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
   }
 }
 
-MemTable::~MemTable() { assert(refs_ == 0); }
+MemTable::~MemTable() { DCHECK_EQ(refs_, 0); }
 
 size_t MemTable::ApproximateMemoryUsage() {
   size_t arena_usage = arena_.ApproximateMemoryUsage();
@@ -479,6 +479,90 @@ void MemTable::Add(SequenceNumber s, ValueType type,
   }
 
   UpdateFlushState();
+}
+
+// This comparator is used for deciding whether to erase a found key from a memtable instead of
+// writing a deletion mark. This is exactly what we need for erasing records in memory
+// (without writing new deletion marks). It expects a special key consisting of the user key being
+// erased followed by 8 0xff bytes as the first argument, and a key from a memtable as the second
+// argument (with the usual user_key + value_type + seqno format).
+// It returns zero if the user key parts of both arguments match and the second argument's value
+// type is not a deletion.
+//
+// Note: this comparator's return value cannot be used to establish order,
+// only to test for "equality" as defined above.
+class EraseHelperKeyComparator : public MemTableRep::KeyComparator {
+ public:
+  explicit EraseHelperKeyComparator(const Comparator* user_comparator, bool* had_delete)
+      : user_comparator_(user_comparator), had_delete_(had_delete) {}
+
+  int operator()(const char* prefix_len_key1, const char* prefix_len_key2) const override {
+    // Internal keys are encoded as length-prefixed strings.
+    Slice k1 = GetLengthPrefixedSlice(prefix_len_key1);
+    Slice k2 = GetLengthPrefixedSlice(prefix_len_key2);
+    return Compare(k1, k2);
+  }
+
+  int operator()(const char* prefix_len_key, const Slice& key) const override {
+    // Internal keys are encoded as length-prefixed strings.
+    Slice a = GetLengthPrefixedSlice(prefix_len_key);
+    return Compare(a, key);
+  }
+
+  int Compare(const Slice& a, const Slice& b) const {
+    auto user_b = ExtractUserKey(b);
+    auto result = user_comparator_->Compare(ExtractUserKey(a), user_b);
+    if (result == 0) {
+      // This comparator is used only to check whether we should delete the entry we found.
+      // So any non zero result should satisfy our needs.
+      // `b` is a value stored in mem table, so we check only it.
+      // `a` is key that we created for erase and user key is always followed by eight 0xff.
+      auto value_type = static_cast<ValueType>(b[user_b.size()]);
+      DCHECK_LE(value_type, ValueType::kTypeColumnFamilySingleDeletion);
+      if (value_type == ValueType::kTypeSingleDeletion ||
+          value_type == ValueType::kTypeColumnFamilySingleDeletion) {
+        *had_delete_ = true;
+        return -1;
+      }
+    }
+    return result;
+  }
+
+ private:
+  const Comparator* user_comparator_;
+  bool* had_delete_;
+};
+
+bool MemTable::Erase(const Slice& user_key) {
+  uint32_t user_key_size = static_cast<uint32_t>(user_key.size());
+  uint32_t internal_key_size = user_key_size + 8;
+  const uint32_t encoded_len = VarintLength(internal_key_size) + internal_key_size;
+
+  if (erase_key_buffer_.size() < encoded_len) {
+    erase_key_buffer_.resize(encoded_len);
+  }
+  char* buf = erase_key_buffer_.data();
+  char* p = EncodeVarint32(buf, internal_key_size);
+  memcpy(p, user_key.data(), user_key_size);
+  p += user_key_size;
+  // Fill key tail with 0xffffffffffffffff so it we be less than actual user key.
+  // Please note descending order is used for key tail.
+  EncodeFixed64(p, -1LL);
+  bool had_delete = false;
+  EraseHelperKeyComparator only_user_key_comparator(
+      comparator_.comparator.user_comparator(), &had_delete);
+  if (table_->Erase(buf, only_user_key_comparator)) {
+    // this is a bit ugly, but is the way to avoid locked instructions
+    // when incrementing an atomic
+    num_erased_.store(num_erased_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+
+    UpdateFlushState();
+    return true;
+  } else if (had_delete) { // Do nothing in case when we already had delete.
+    return true;
+  }
+
+  return false;
 }
 
 // Callback from MemTable::Get()
@@ -839,6 +923,22 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
   }
 
   return num_successive_merges;
+}
+
+UserFrontierPtr MemTable::GetFrontier(UpdateUserValueType type) const {
+  std::lock_guard<SpinMutex> l(frontiers_mutex_);
+  if (!frontiers_) {
+    return nullptr;
+  }
+
+  switch (type) {
+    case UpdateUserValueType::kSmallest:
+      return frontiers_->Smallest().Clone();
+    case UpdateUserValueType::kLargest:
+      return frontiers_->Largest().Clone();
+  }
+
+  FATAL_INVALID_ENUM_VALUE(UpdateUserValueType, type);
 }
 
 void MemTableRep::Get(const LookupKey& k, void* callback_args,

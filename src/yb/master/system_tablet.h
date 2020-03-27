@@ -77,6 +77,10 @@ class SystemTablet : public tablet::AbstractTablet {
     return IsolationLevel::NON_TRANSACTIONAL;
   }
 
+  // Decides whether the given request should go through the distributed transaction framework
+  // based on internal properties of the tablet and whether it is a YSQL request (is_ysql_request).
+  bool IsTransactionalRequest(bool is_ysql_request) const override { return false; }
+
  private:
   HybridTime DoGetSafeTime(
       tablet::RequireLease require_lease, HybridTime min_allowed,

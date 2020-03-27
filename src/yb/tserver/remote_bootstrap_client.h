@@ -46,11 +46,13 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
+#include "yb/tserver/remote_bootstrap_file_downloader.h"
 #include "yb/util/status.h"
 
 namespace yb {
 
 class BlockIdPB;
+class Env;
 class FsManager;
 class HostPort;
 
@@ -74,6 +76,14 @@ class DataChunkPB;
 class RemoteBootstrapServiceProxy;
 class TSTabletManager;
 
+class RemoteBootstrapComponent {
+ public:
+  virtual CHECKED_STATUS CreateDirectories(const string& db_dir, FsManager* fs) = 0;
+  virtual CHECKED_STATUS Download() = 0;
+
+  virtual ~RemoteBootstrapComponent() = default;
+};
+
 // Client class for using remote bootstrap to copy a tablet from another host.
 // This class is not thread-safe.
 //
@@ -85,13 +95,11 @@ class RemoteBootstrapClient {
 
   // Construct the remote bootstrap client.
   // 'fs_manager' and 'messenger' must remain valid until this object is destroyed.
-  // 'client_permanent_uuid' is the permanent UUID of the caller server.
-  RemoteBootstrapClient(std::string tablet_id, FsManager* fs_manager,
-                        std::string client_permanent_uuid);
+  RemoteBootstrapClient(std::string tablet_id, FsManager* fs_manager);
 
   // Attempt to clean up resources on the remote end by sending an
   // EndRemoteBootstrapSession() RPC
-  virtual ~RemoteBootstrapClient();
+  ~RemoteBootstrapClient();
 
   // Pass in the existing metadata for a tombstoned tablet, which will be
   // replaced if validation checks pass in Start().
@@ -120,11 +128,11 @@ class RemoteBootstrapClient {
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
   // from the leader of the specified consensus configuration.
-  virtual CHECKED_STATUS FetchAll(tablet::TabletStatusListener* status_listener);
+  CHECKED_STATUS FetchAll(tablet::TabletStatusListener* status_listener);
 
   // After downloading all files successfully, write out the completed
   // replacement superblock.
-  virtual CHECKED_STATUS Finish();
+  CHECKED_STATUS Finish();
 
   // Verify that the remote bootstrap was completed successfully by verifying that the ChangeConfig
   // request was propagated.
@@ -134,9 +142,13 @@ class RemoteBootstrapClient {
   // Removes session at server.
   CHECKED_STATUS Remove();
 
- protected:
+ private:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
-  FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles);
+
+  template <class Component>
+  void AddComponent() {
+    components_.push_back(std::make_unique<Component>(&downloader_, &new_superblock_));
+  }
 
   // Update the bootstrap StatusListener with a message.
   // The string "RemoteBootstrap: " will be prepended to each message.
@@ -154,24 +166,9 @@ class RemoteBootstrapClient {
   // downloaded as part of initiating the remote bootstrap session.
   CHECKED_STATUS WriteConsensusMetadata();
 
-  // Download a single remote file. The block and WAL implementations delegate
-  // to this method when downloading files.
-  //
-  // An Appendable is typically a WritableFile (WAL).
-  //
-  // Only used in one compilation unit, otherwise the implementation would
-  // need to be in the header.
-  template<class Appendable>
-  CHECKED_STATUS DownloadFile(const DataIdPB& data_id, Appendable* appendable);
-
-  virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
+  CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
 
   CHECKED_STATUS DownloadRocksDBFiles();
-
-  CHECKED_STATUS VerifyData(uint64_t offset, const DataChunkPB& resp);
-
-  CHECKED_STATUS DownloadFile(
-      const tablet::FilePB& file_pb, const std::string& dir, DataIdPB* data_id);
 
   // End the remote bootstrap session.
   CHECKED_STATUS EndRemoteSession();
@@ -181,22 +178,31 @@ class RemoteBootstrapClient {
     return log_prefix_;
   }
 
+  const std::string& session_id() const {
+    return downloader_.session_id();
+  }
+
+  FsManager& fs_manager() const {
+    return downloader_.fs_manager();
+  }
+
+  Env& env() const;
+
+  const std::string& permanent_uuid() const;
+
   // Set-once members.
   const std::string tablet_id_;
-  FsManager* const fs_manager_;
-  const std::string permanent_uuid_;
 
   // State flags that enforce the progress of remote bootstrap.
-  bool started_;            // Session started.
+  bool started_ = false;            // Session started.
   // Total number of remote bootstrap sessions. Used to calculate the transmission rate across all
   // the sessions.
-  static std::atomic<int32_t> n_started_;
-  bool downloaded_wal_;     // WAL segments downloaded.
-  bool downloaded_blocks_;  // Data blocks downloaded.
-  bool downloaded_rocksdb_files_;
+  bool downloaded_wal_ = false;     // WAL segments downloaded.
+  bool downloaded_blocks_ = false;  // Data blocks downloaded.
+  bool downloaded_rocksdb_files_ = false;
 
   // Session-specific data items.
-  bool replace_tombstoned_tablet_;
+  bool replace_tombstoned_tablet_ = false;
 
   bool remove_required_ = false;
 
@@ -207,32 +213,32 @@ class RemoteBootstrapClient {
   // bootstrapping a new replica (rather than replacing an old one).
   std::unique_ptr<consensus::ConsensusMetadata> cmeta_;
 
-  tablet::TabletStatusListener* status_listener_;
+  tablet::TabletStatusListener* status_listener_ = nullptr;
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
-  std::string session_id_;
-  uint64_t session_idle_timeout_millis_;
   gscoped_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
-  gscoped_ptr<tablet::RaftGroupReplicaSuperBlockPB> new_superblock_;
+  tablet::RaftGroupReplicaSuperBlockPB new_superblock_;
   gscoped_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
   std::vector<uint64_t> wal_seqnos_;
+
+  // Components of this remote bootstrap client.
+  std::vector<std::unique_ptr<RemoteBootstrapComponent>> components_;
 
   // First available WAL segment.
   uint64_t first_wal_seqno_ = 0;
 
-  int64_t start_time_micros_;
+  int64_t start_time_micros_ = 0;
 
   // We track whether this session succeeded and send this information as part of the
   // EndRemoteBootstrapSessionRequestPB request.
-  bool succeeded_;
+  bool succeeded_ = false;
 
   const std::string log_prefix_;
-
- private:
-  std::unordered_map<uint64_t, std::string> inode2file_;
+  RemoteBootstrapFileDownloader downloader_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapClient);
 };
 
 } // namespace tserver
 } // namespace yb
+
 #endif // YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H

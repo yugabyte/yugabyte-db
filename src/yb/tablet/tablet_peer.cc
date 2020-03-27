@@ -91,6 +91,10 @@ using std::string;
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
 
+DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
+    "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
+    "value to max int64 to avoid retaining any logs");
+
 namespace yb {
 namespace tablet {
 
@@ -143,16 +147,19 @@ TabletPeer::TabletPeer(
     const consensus::RaftPeerPB& local_peer_pb,
     const scoped_refptr<server::Clock> &clock,
     const std::string& permanent_uuid,
-    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
+    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+    MetricRegistry* metric_registry)
   : meta_(meta),
     tablet_id_(meta->raft_group_id()),
     local_peer_pb_(local_peer_pb),
     state_(RaftGroupStatePB::NOT_STARTED),
+    operation_tracker_(Format("T $0 P $1: ", tablet_id_, permanent_uuid)),
     status_listener_(new TabletStatusListener(meta)),
     clock_(clock),
     log_anchor_registry_(new LogAnchorRegistry()),
     mark_dirty_clbk_(std::move(mark_dirty_clbk)),
-    permanent_uuid_(permanent_uuid) {}
+    permanent_uuid_(permanent_uuid),
+    metric_registry_(metric_registry) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
@@ -161,7 +168,7 @@ TabletPeer::~TabletPeer() {
   LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
 }
 
-Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
+Status TabletPeer::InitTabletPeer(const TabletPtr &tablet,
                                   const std::shared_future<client::YBClient*> &client_future,
                                   const std::shared_ptr<MemTracker>& server_mem_tracker,
                                   Messenger* messenger,
@@ -220,6 +227,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
       };
     });
 
+    tablet_->SetCleanupPool(raft_pool);
+
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();
 
@@ -250,38 +259,14 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         raft_pool,
         retryable_requests);
     has_consensus_.store(true, std::memory_order_release);
-    auto ht_lease_provider = [this](MicrosTime min_allowed, CoarseTimePoint deadline) {
-      MicrosTime lease_micros {
-          consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
-      if (!lease_micros) {
-        return HybridTime::kInvalid;
-      }
-      if (lease_micros >= kMaxHybridTimePhysicalMicros) {
-        // This could happen when leader leases are disabled.
-        return HybridTime::kMax;
-      }
-      return HybridTime(lease_micros, /* logical */ 0);
-    };
-    tablet_->SetHybridTimeLeaseProvider(ht_lease_provider);
 
-    auto* mvcc_manager = tablet_->mvcc_manager();
-    consensus_->SetPropagatedSafeTimeProvider([mvcc_manager, ht_lease_provider] {
-      // Get the current majority-replicated HT leader lease without any waiting.
-      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
-      if (!ht_lease) {
-        return HybridTime::kInvalid;
-      }
-      return mvcc_manager->SafeTime(ht_lease);
-    });
+    tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
+    operation_tracker_.SetPostTracker(
+        std::bind(&RaftConsensus::TrackOperationMemory, consensus_.get(), _1));
 
     prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
 
-    consensus_->SetMajorityReplicatedListener([mvcc_manager, ht_lease_provider] {
-      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
-      if (ht_lease) {
-        mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
-      }
-    });
+    ChangeConfigReplicated(RaftConfig()); // Set initial flag value.
   }
 
   RETURN_NOT_OK(prepare_thread_->Start());
@@ -296,10 +281,64 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     tablet_->transaction_coordinator()->Start();
   }
 
+  if (tablet_->transaction_participant()) {
+    tablet_->transaction_participant()->Start();
+  }
+
+  RETURN_NOT_OK(set_cdc_min_replicated_index(meta_->cdc_min_replicated_index()));
+
   TRACE("TabletPeer::Init() finished");
   VLOG_WITH_PREFIX(2) << "Peer Initted";
 
   return Status::OK();
+}
+
+FixedHybridTimeLease TabletPeer::HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline) {
+  auto time = clock_->Now();
+  MicrosTime lease_micros {
+      consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
+  if (!lease_micros) {
+    return {
+      .time = HybridTime::kInvalid,
+      .lease = HybridTime::kInvalid,
+    };
+  }
+  if (lease_micros >= kMaxHybridTimePhysicalMicros) {
+    // This could happen when leader leases are disabled.
+    return FixedHybridTimeLease();
+  }
+  return {
+    .time = time,
+    .lease = HybridTime(lease_micros, /* logical */ 0)
+  };
+}
+
+HybridTime TabletPeer::PropagatedSafeTime() {
+  // Get the current majority-replicated HT leader lease without any waiting.
+  auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
+  if (!ht_lease.lease) {
+    return HybridTime::kInvalid;
+  }
+  return tablet_->mvcc_manager()->SafeTime(ht_lease);
+}
+
+void TabletPeer::MajorityReplicated() {
+  auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
+  if (ht_lease.lease) {
+    tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(ht_lease);
+  }
+}
+
+void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
+  tablet_->mvcc_manager()->SetLeaderOnlyMode(config.peers_size() == 1);
+}
+
+uint64_t TabletPeer::NumSSTFiles() {
+  return tablet_->GetCurrentVersionNumSSTFiles();
+}
+
+void TabletPeer::ListenNumSSTFilesChanged(std::function<void()> listener) {
+  tablet_->ListenNumSSTFilesChanged(std::move(listener));
 }
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
@@ -310,6 +349,12 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
     VLOG_WITH_PREFIX(2) << "Peer starting";
 
     VLOG(2) << "RaftConfig before starting: " << consensus_->CommittedConfig().DebugString();
+
+    // If tablet was previously considered shutdown w.r.t. metrics,
+    // fix that for a tablet now being reinstated.
+    DVLOG_WITH_PREFIX(3)
+      << "Remove from set of tablets that have been shutdown so as to allow reporting metrics";
+    metric_registry_->tablets_shutdown_erase(tablet_id());
 
     RETURN_NOT_OK(consensus_->Start(bootstrap_info));
     RETURN_NOT_OK(UpdateState(RaftGroupStatePB::BOOTSTRAPPING, RaftGroupStatePB::RUNNING,
@@ -323,7 +368,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions();
+  return tablet_->EnableCompactions(/* operation_pause */ nullptr);
 }
 
 const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
@@ -334,8 +379,11 @@ const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
-  if (tablet_) {
-    tablet_->SetShutdownRequestedFlag();
+  {
+    std::lock_guard<decltype(lock_)> lock(lock_);
+    if (tablet_) {
+      tablet_->StartShutdown();
+    }
   }
 
   {
@@ -359,14 +407,17 @@ bool TabletPeer::StartShutdown() {
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
-  if (consensus_) {
-    consensus_->Shutdown();
+  {
+    std::lock_guard<decltype(lock_)> lock(lock_);
+    if (consensus_) {
+      consensus_->Shutdown();
+    }
   }
 
   return true;
 }
 
-void TabletPeer::CompleteShutdown() {
+void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   auto wait_start = CoarseMonoClock::now();
   auto last_report = wait_start;
   while (preparing_operations_.load(std::memory_order_acquire) != 0) {
@@ -396,7 +447,7 @@ void TabletPeer::CompleteShutdown() {
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
-    tablet_->Shutdown();
+    tablet_->CompleteShutdown(is_drop_table);
   }
 
   // Only mark the peer as SHUTDOWN when all other components have shut down.
@@ -411,18 +462,46 @@ void TabletPeer::CompleteShutdown() {
     LOG_IF_WITH_PREFIX(DFATAL, state != RaftGroupStatePB::QUIESCING) <<
         "Bad state when completing shutdown: " << RaftGroupStatePB_Name(state);
     state_.store(RaftGroupStatePB::SHUTDOWN, std::memory_order_release);
+
+    if (metric_registry_) {
+      DVLOG_WITH_PREFIX(3)
+        << "Add to set of tablets that have been shutdown so as to avoid reporting metrics";
+      metric_registry_->tablets_shutdown_insert(tablet_id());
+    }
   }
 }
 
 void TabletPeer::WaitUntilShutdown() {
+  const MonoDelta kSingleWait = 10ms;
+  const MonoDelta kReportInterval = 5s;
+  const MonoDelta kMaxWait = 30s;
+
+  MonoDelta waited = MonoDelta::kZero;
+  MonoDelta last_reported = MonoDelta::kZero;
   while (state_.load(std::memory_order_acquire) != RaftGroupStatePB::SHUTDOWN) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
+    if (waited >= last_reported + kReportInterval) {
+      if (waited >= kMaxWait) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Wait for shutdown " << waited << " exceeded kMaxWait " << kMaxWait;
+      } else {
+        LOG_WITH_PREFIX(WARNING) << "Long wait for shutdown: " << waited;
+      }
+      last_reported = waited;
+    }
+    SleepFor(kSingleWait);
+    waited += kSingleWait;
+  }
+
+  if (metric_registry_) {
+    DVLOG_WITH_PREFIX(3)
+      << "Add to set of tablets that have been shutdown so as to avoid reporting metrics";
+    metric_registry_->tablets_shutdown_insert(tablet_id());
   }
 }
 
-void TabletPeer::Shutdown() {
+void TabletPeer::Shutdown(IsDropTable is_drop_table) {
   if (StartShutdown()) {
-    CompleteShutdown();
+    CompleteShutdown(is_drop_table);
   } else {
     WaitUntilShutdown();
   }
@@ -516,8 +595,7 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
     }
   }
   if (!status.ok()) {
-    operation->Finish(Operation::ABORTED);
-    operation->state()->CompleteWithStatus(status);
+    operation->Aborted(status);
   }
 
   if (operation_type == OperationType::kWrite) {
@@ -527,8 +605,21 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
 
 void TabletPeer::SubmitUpdateTransaction(
     std::unique_ptr<UpdateTxnOperationState> state, int64_t term) {
+  if (!state->tablet()) {
+    state->SetTablet(tablet());
+  }
   auto operation = std::make_unique<tablet::UpdateTxnOperation>(std::move(state));
   Submit(std::move(operation), term);
+}
+
+HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
+  return tablet_->mvcc_manager()->SafeTimeForFollower(
+      /* min_allowed= */ HybridTime::kMin, /* deadline= */ CoarseTimePoint::min());
+}
+
+void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
+  consensus_->GetLastCommittedOpId().ToPB(&data->op_id);
+  data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
 }
 
 HybridTime TabletPeer::Now() {
@@ -564,9 +655,12 @@ Status TabletPeer::RunLogGC() {
   if (!CheckRunning().ok()) {
     return Status::OK();
   }
-  int64_t min_log_index = 0;
+  auto s = reset_cdc_min_replicated_index_if_stale();
+  if (!s.ok()) {
+    LOG(WARNING) << "Unable to reset cdc min replicated index " << s;
+  }
+  int64_t min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex());
   int32_t num_gced = 0;
-  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_log_index));
   return log_->GC(min_log_index, &num_gced);
 }
 
@@ -635,7 +729,7 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
     }
 
     consensus::OperationStatusPB status_pb;
-    status_pb.mutable_op_id()->CopyFrom(driver->GetOpId());
+    driver->GetOpId().ToPB(status_pb.mutable_op_id());
     status_pb.set_operation_type(MapOperationTypeToPB(op_type));
     status_pb.set_description(driver->ToString());
     int64_t running_for_micros =
@@ -648,15 +742,19 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
   }
 }
 
-Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
+Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
-  *min_index = log_->GetLatestEntryOpId().index;
+  auto latest_log_entry_op_id = log_->GetLatestEntryOpId();
+  int64_t min_index = latest_log_entry_op_id.index;
+  if (details) {
+    *details += Format("Latest log entry op id: $0\n", latest_log_entry_op_id);
+  }
 
   // If we never have written to the log, no need to proceed.
-  if (*min_index == 0) {
-    return Status::OK();
+  if (min_index == 0) {
+    return min_index;
   }
 
   // Next, we interrogate the anchor registry.
@@ -667,70 +765,101 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
     if (PREDICT_FALSE(!s.ok())) {
       DCHECK(s.IsNotFound()) << "Unexpected error calling LogAnchorRegistry: " << s.ToString();
     } else {
-      *min_index = std::min(*min_index, min_anchor_index);
+      min_index = std::min(min_index, min_anchor_index);
+      if (details) {
+        *details += Format("Min anchor index: $0\n", min_anchor_index);
+      }
     }
   }
 
   // Next, interrogate the OperationTracker.
+  int64_t min_pending_op_index = std::numeric_limits<int64_t>::max();
   for (const auto& driver : operation_tracker_.GetPendingOperations()) {
-    OpId tx_op_id = driver->GetOpId();
+    auto tx_op_id = driver->GetOpId();
     // A operation which doesn't have an opid hasn't been submitted for replication yet and
     // thus has no need to anchor the log.
-    if (tx_op_id.IsInitialized()) {
-      *min_index = std::min(*min_index, tx_op_id.index());
+    if (tx_op_id != yb::OpId::Invalid()) {
+      min_pending_op_index = std::min(min_pending_op_index, tx_op_id.index);
     }
   }
 
-  *min_index = std::min(*min_index, consensus_->MinRetryableRequestOpId().index);
+  min_index = std::min(min_index, min_pending_op_index);
+  if (details && min_pending_op_index != std::numeric_limits<int64_t>::max()) {
+    *details += Format("Min pending op id index: $0\n", min_pending_op_index);
+  }
+
+  auto min_retryable_request_op_id = consensus_->MinRetryableRequestOpId();
+  min_index = std::min(min_index, min_retryable_request_op_id.index);
+  if (details) {
+    *details += Format("Min retryable request op id: $0\n", min_retryable_request_op_id);
+  }
 
   auto* transaction_coordinator = tablet()->transaction_coordinator();
   if (transaction_coordinator) {
-    *min_index = std::min(*min_index, transaction_coordinator->PrepareGC());
-  }
-
-  int64_t last_committed_write_index = tablet_->last_committed_write_index();
-  if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    auto max_persistent_op_id = VERIFY_RESULT(tablet_->MaxPersistentOpId());
-    int64_t max_persistent_index = max_persistent_op_id.regular.index;
-    if (max_persistent_op_id.intents
-        && max_persistent_op_id.intents < max_persistent_op_id.regular) {
-      max_persistent_index = max_persistent_op_id.intents.index;
-    }
-    // Check whether we had writes after last persistent entry.
-    // Note that last_committed_write_index could be zero if logs were cleaned before restart.
-    // So correct check is 'less', and NOT 'not equals to'.
-    if (max_persistent_index < last_committed_write_index) {
-      *min_index = std::min(*min_index, max_persistent_index);
-    }
+    auto transaction_coordinator_min_op_index = transaction_coordinator->PrepareGC(details);
+    min_index = std::min(min_index, transaction_coordinator_min_op_index);
   }
 
   // We keep at least one committed operation in the log so that we can always recover safe time
   // during bootstrap.
-  OpId committed_op_id;
-  const Status get_committed_op_id_status =
-      consensus()->GetLastOpId(OpIdType::COMMITTED_OPID, &committed_op_id);
-  if (!get_committed_op_id_status.IsNotFound()) {
-    // NotFound is returned by local consensus. We should get rid of this logic once local
-    // consensus is gone.
-    RETURN_NOT_OK(get_committed_op_id_status);
-    *min_index = std::min(*min_index, static_cast<int64_t>(committed_op_id.index()));
+  // Last committed op id should be read before MaxPersistentOpId to avoid race condition
+  // described in MaxPersistentOpIdForDb.
+  //
+  // If we read last committed op id AFTER reading last persistent op id (INCORRECT):
+  // - We read max persistent op id and find there is no new data, so we ignore it.
+  // - New data gets written and Raft-committed, but not yet flushed to an SSTable.
+  // - We read the last committed op id, which is greater than what max persistent op id would have
+  //   returned.
+  // - We garbage-collect the Raft log entries corresponding to the new data.
+  // - Power is lost and the server reboots, losing committed data.
+  //
+  // If we read last committed op id BEFORE reading last persistent op id (CORRECT):
+  // - We read the last committed op id.
+  // - We read max persistent op id and find there is no new data, so we ignore it.
+  // - New data gets written and Raft-committed, but not yet flushed to an SSTable.
+  // - We still don't garbage-collect the logs containing the committed but unflushed data,
+  //   because the earlier value of the last committed op id that we read prevents us from doing so.
+  auto last_committed_op_id = consensus()->GetLastCommittedOpId();
+  min_index = std::min(min_index, last_committed_op_id.index);
+  if (details) {
+    *details += Format("Last committed op id: $0\n", last_committed_op_id);
   }
 
-  return Status::OK();
+  if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    tablet_->FlushIntentsDbIfNecessary(latest_log_entry_op_id);
+    auto max_persistent_op_id = VERIFY_RESULT(
+        tablet_->MaxPersistentOpId(true /* invalid_if_no_new_data */));
+    if (max_persistent_op_id.regular.valid()) {
+      min_index = std::min(min_index, max_persistent_op_id.regular.index);
+      if (details) {
+        *details += Format("Max persistent regular op id: $0\n", max_persistent_op_id.regular);
+      }
+    }
+    if (max_persistent_op_id.intents.valid()) {
+      min_index = std::min(min_index, max_persistent_op_id.intents.index);
+      if (details) {
+        *details += Format("Max persistent intents op id: $0\n", max_persistent_op_id.intents);
+      }
+    }
+  }
+
+  if (details) {
+    *details += Format("Earliest needed log index: $0\n", min_index);
+  }
+
+  return min_index;
 }
 
 Status TabletPeer::GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const {
   RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx;
-  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_op_idx));
+  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
   log_->GetMaxIndexesToSegmentSizeMap(min_op_idx, idx_size_map);
   return Status::OK();
 }
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx;
-  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_op_idx));
+  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
   RETURN_NOT_OK(log_->GetGCableDataSize(min_op_idx, retention_size));
   return Status::OK();
 }
@@ -747,6 +876,34 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
     return log->GetLatestEntryOpId();
   }
   return yb::OpId();
+}
+
+Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
+  LOG_WITH_PREFIX(INFO) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
+  RETURN_NOT_OK(meta_->set_cdc_min_replicated_index(cdc_min_replicated_index));
+  Log* log = log_atomic_.load(std::memory_order_acquire);
+  if (log) {
+    log->set_cdc_min_replicated_index(cdc_min_replicated_index);
+  }
+  cdc_min_replicated_index_refresh_time_ = MonoTime::Now();
+  return Status::OK();
+}
+
+Status TabletPeer::set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {
+  std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
+  return set_cdc_min_replicated_index_unlocked(cdc_min_replicated_index);
+}
+
+Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
+  std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
+  auto seconds_since_last_refresh =
+      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
+  if (seconds_since_last_refresh > FLAGS_cdc_min_replicated_index_considered_stale_secs) {
+    LOG_WITH_PREFIX(INFO) << "Resetting cdc min replicated index. Seconds since last update: "
+                          << seconds_since_last_refresh;
+    RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
+  }
+  return Status::OK();
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
@@ -813,15 +970,22 @@ Status TabletPeer::StartReplicaOperation(
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
+  auto operation_type = operation->operation_type();
   OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
-      std::bind(&OperationDriver::ReplicationFinished, driver.get(), _1, _2));
+      std::bind(&OperationDriver::ReplicationFinished, driver.get(), _1, _2, _3));
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
   }
+
+  if (operation_type == OperationType::kWrite ||
+      operation_type == OperationType::kUpdateTransaction) {
+    tablet()->mvcc_manager()->AddPending(&ht);
+  }
+
   driver->ExecuteAsync();
   return Status::OK();
 }
@@ -841,6 +1005,10 @@ bool TabletPeer::ShouldApplyWrite() {
 }
 
 consensus::Consensus* TabletPeer::consensus() const {
+  return raft_consensus();
+}
+
+consensus::RaftConsensus* TabletPeer::raft_consensus() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return consensus_.get();
 }
@@ -885,6 +1053,7 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   gscoped_ptr<MaintenanceOp> log_gc(new LogGCOp(this));
   maint_mgr->RegisterOp(log_gc.get());
   maintenance_ops_.push_back(log_gc.release());
+  LOG_WITH_PREFIX(INFO) << "Registered log gc";
 }
 
 void TabletPeer::UnregisterMaintenanceOps() {
@@ -903,7 +1072,8 @@ uint64_t TabletPeer::OnDiskSize() const {
   }
 
   if (tablet_) {
-    ret += tablet_->GetTotalSSTFileSizes();
+    // TODO: consider updating this to include all on-disk SST files.
+    ret += tablet_->GetCurrentVersionSstFilesSize();
   }
 
   if (log_) {
@@ -911,6 +1081,10 @@ uint64_t TabletPeer::OnDiskSize() const {
   }
 
   return ret;
+}
+
+int TabletPeer::GetNumLogSegments() const {
+  return (log_) ? log_->num_segments() : 0;
 }
 
 std::string TabletPeer::LogPrefix() const {
@@ -937,13 +1111,13 @@ int64_t TabletPeer::LeaderTerm() const {
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
 }
 
-consensus::LeaderStatus TabletPeer::LeaderStatus() const {
+consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
   shared_ptr<consensus::Consensus> consensus;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     consensus = consensus_;
   }
-  return consensus ? consensus->GetLeaderStatus() : consensus::LeaderStatus::NOT_LEADER;
+  return consensus ? consensus->GetLeaderStatus(allow_stale) : consensus::LeaderStatus::NOT_LEADER;
 }
 
 HybridTime TabletPeer::HtLeaseExpiration() const {
@@ -953,7 +1127,7 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
 
 TableType TabletPeer::table_type() {
   // TODO: what if tablet is not set?
-  return tablet()->table_type();
+  return DCHECK_NOTNULL(tablet())->table_type();
 }
 
 void TabletPeer::SetFailed(const Status& error) {

@@ -1,7 +1,9 @@
 ---
-title: Integer & Counter
+title: Integer and counter data types [YCQL]
+headerTitle: Integer and counter data types
+linkTitle: Integer and counter
 summary: Signed integers of different ranges
-description: Integer & Counter Types
+description: There are several different data types for integers of different value ranges. Integers can be set, inserted, incremented, and decremented.
 menu:
   latest:
     parent: api-cassandra
@@ -14,7 +16,8 @@ showAsideToc: true
 ---
 
 ## Synopsis
-There are several different datatypes for integers of different value ranges. Integers can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. We've extend Apache Cassandra to support increment and decrement operators for integer datatypes.
+
+There are several different data types for integers of different value ranges. Integers can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. We've extend Apache Cassandra to support increment and decrement operators for integer data types.
 
 Datatype | Min | Max |
 ---------|-----|-----|
@@ -26,6 +29,7 @@ Datatype | Min | Max |
 `VARINT` | unbounded | unbounded |
 
 ## Syntax
+
 The following keywords are used to specify a column of type integer for different constraints including its value ranges.
 
 ```
@@ -37,11 +41,12 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 ## Semantics
 
 - Columns of type `TINYINT`, `SMALLINT`, `INT`, `INTEGER`, `BIGINT` or `VARINT` can be part of the `PRIMARY KEY`.
-- Values of different integer datatypes are comparable and convertible to one another.
-- Values of integer datatypes are convertible but not comparable to floating point number.
-- Values of floating point datatypes are not convertible to integers.
+- Values of different integer data types are comparable and convertible to one another.
+- Values of integer data types are convertible but not comparable to floating point number.
+- Values of floating point data types are not convertible to integers.
 
-### Counter Datatype
+### Counter data type
+
 `COUNTER` is an alias of `BIGINT` but has additional constraints.
 
 - Columns of type `COUNTER` cannot be part of the`PRIMARY KEY`.
@@ -51,7 +56,7 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 
 ## Examples
 
-### Using integer datatypes
+### Using integer data types
 
 ```sql
 cqlsh:example> CREATE TABLE items(id INT PRIMARY KEY, item_count BIGINT);
@@ -84,7 +89,7 @@ cqlsh:example> SELECT * FROM items;
   1 |          5
 ```
 
-### Using `COUNTER` datatype
+### Using `COUNTER` data type
 
 ```sql
 cqlsh:example> CREATE TABLE item_counters(id INT PRIMARY KEY, item_counter COUNTER);
@@ -106,6 +111,6 @@ cqlsh:example> SELECT * FROM item_counters;
   1 |            1
 ```
 
-## See Also
+## See also
 
-[Data Types](..#datatypes)
+- [Data types](..#data-types)

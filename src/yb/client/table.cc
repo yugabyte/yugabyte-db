@@ -22,12 +22,14 @@
 
 #include "yb/util/backoff_waiter.h"
 
+DEFINE_int32(
+    max_num_tablets_for_table, 5000,
+    "Max number of tablets that can be specified in a CREATE TABLE statement");
+
 namespace yb {
 namespace client {
 
-namespace {
-
-static Status PBToClientTableType(
+Status YBTable::PBToClientTableType(
     TableType table_type_from_pb,
     YBTableType* client_table_type) {
   switch (table_type_from_pb) {
@@ -50,7 +52,23 @@ static Status PBToClientTableType(
     "Invalid table type from master response: $0", table_type_from_pb));
 }
 
-} // namespace
+TableType YBTable::ClientToPBTableType(YBTableType table_type) {
+  switch (table_type) {
+    case YBTableType::YQL_TABLE_TYPE:
+      return TableType::YQL_TABLE_TYPE;
+    case YBTableType::REDIS_TABLE_TYPE:
+      return TableType::REDIS_TABLE_TYPE;
+    case YBTableType::PGSQL_TABLE_TYPE:
+      return TableType::PGSQL_TABLE_TYPE;
+    case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return TableType::TRANSACTION_STATUS_TABLE_TYPE;
+    case YBTableType::UNKNOWN_TABLE_TYPE:
+      break;
+  }
+  FATAL_INVALID_ENUM_VALUE(YBTableType, table_type);
+  // Returns a dummy value to avoid compilation warning.
+  return TableType::DEFAULT_TABLE_TYPE;
+}
 
 YBTable::YBTable(client::YBClient* client, const YBTableInfo& info)
     : client_(client),
@@ -96,9 +114,22 @@ bool YBTable::IsIndex() const {
   return info_.index_info != boost::none;
 }
 
+bool YBTable::IsUniqueIndex() const {
+  return info_.index_info.is_initialized() && info_.index_info->is_unique();
+}
+
 const IndexInfo& YBTable::index_info() const {
-  CHECK(info_.index_info);
-  return *info_.index_info;
+  static IndexInfo kEmptyIndexInfo;
+  if (info_.index_info) {
+    return *info_.index_info;
+  }
+  return kEmptyIndexInfo;
+}
+
+std::string YBTable::ToString() const {
+  return strings::Substitute(
+      "$0 $1 IndexInfo: $2 IndexMap $3", (IsIndex() ? "Index Table" : "Normal Table"), id(),
+      yb::ToString(index_info()), yb::ToString(index_map()));
 }
 
 const PartitionSchema& YBTable::partition_schema() const {
@@ -109,43 +140,51 @@ const std::vector<std::string>& YBTable::GetPartitions() const {
   return partitions_;
 }
 
-//--------------------------------------------------------------------------------------------------
-
-YBqlWriteOp* YBTable::NewQLWrite() {
-  return new YBqlWriteOp(shared_from_this());
+int32_t YBTable::GetPartitionCount() const {
+  return partitions_.size();
 }
 
-YBqlWriteOp* YBTable::NewQLInsert() {
+//--------------------------------------------------------------------------------------------------
+
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite() {
+  return std::unique_ptr<YBqlWriteOp>(new YBqlWriteOp(shared_from_this()));
+}
+
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLInsert() {
   return YBqlWriteOp::NewInsert(shared_from_this());
 }
 
-YBqlWriteOp* YBTable::NewQLUpdate() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLUpdate() {
   return YBqlWriteOp::NewUpdate(shared_from_this());
 }
 
-YBqlWriteOp* YBTable::NewQLDelete() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLDelete() {
   return YBqlWriteOp::NewDelete(shared_from_this());
 }
 
-YBqlReadOp* YBTable::NewQLSelect() {
+std::unique_ptr<YBqlReadOp> YBTable::NewQLSelect() {
   return YBqlReadOp::NewSelect(shared_from_this());
 }
 
-YBqlReadOp* YBTable::NewQLRead() {
-  return new YBqlReadOp(shared_from_this());
+std::unique_ptr<YBqlReadOp> YBTable::NewQLRead() {
+  return std::unique_ptr<YBqlReadOp>(new YBqlReadOp(shared_from_this()));
 }
 
-const std::string& YBTable::FindPartitionStart(
-    const std::string& partition_key, size_t group_by) const {
+size_t YBTable::FindPartitionStartIndex(const std::string& partition_key, size_t group_by) const {
   auto it = std::lower_bound(partitions_.begin(), partitions_.end(), partition_key);
   if (it == partitions_.end() || *it > partition_key) {
     DCHECK(it != partitions_.begin());
     --it;
   }
   if (group_by <= 1) {
-    return *it;
+    return it - partitions_.begin();
   }
-  size_t idx = (it - partitions_.begin()) / group_by * group_by;
+  return (it - partitions_.begin()) / group_by * group_by;
+}
+
+const std::string& YBTable::FindPartitionStart(
+    const std::string& partition_key, size_t group_by) const {
+  size_t idx = FindPartitionStartIndex(partition_key, group_by);
   return partitions_[idx];
 }
 
@@ -187,7 +226,7 @@ Status YBTable::Open() {
                      << s.ToString();
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
                       "Failed to determine new Master");
           continue;
         }
@@ -201,7 +240,7 @@ Status YBTable::Open() {
                      << s.ToString();
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
                       "Failed to determine new Master");
           continue;
         }
@@ -214,7 +253,7 @@ Status YBTable::Open() {
                      << " is no longer the leader master.";
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
                       "Failed to determine new Master");
           continue;
         }
@@ -254,28 +293,32 @@ Status YBTable::Open() {
 
 //--------------------------------------------------------------------------------------------------
 
-YBPgsqlWriteOp* YBTable::NewPgsqlWrite() {
-  return new YBPgsqlWriteOp(shared_from_this());
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlWrite() {
+  return std::unique_ptr<YBPgsqlWriteOp>(new YBPgsqlWriteOp(shared_from_this()));
 }
 
-YBPgsqlWriteOp* YBTable::NewPgsqlInsert() {
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlInsert() {
   return YBPgsqlWriteOp::NewInsert(shared_from_this());
 }
 
-YBPgsqlWriteOp* YBTable::NewPgsqlUpdate() {
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlUpdate() {
   return YBPgsqlWriteOp::NewUpdate(shared_from_this());
 }
 
-YBPgsqlWriteOp* YBTable::NewPgsqlDelete() {
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlDelete() {
   return YBPgsqlWriteOp::NewDelete(shared_from_this());
 }
 
-YBPgsqlReadOp* YBTable::NewPgsqlSelect() {
+std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlTruncateColocated() {
+  return YBPgsqlWriteOp::NewTruncateColocated(shared_from_this());
+}
+
+std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSelect() {
   return YBPgsqlReadOp::NewSelect(shared_from_this());
 }
 
-YBPgsqlReadOp* YBTable::NewPgsqlRead() {
-  return new YBPgsqlReadOp(shared_from_this());
+std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlRead() {
+  return std::unique_ptr<YBPgsqlReadOp>(new YBPgsqlReadOp(shared_from_this()));
 }
 
 } // namespace client

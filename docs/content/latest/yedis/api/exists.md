@@ -15,10 +15,12 @@ showAsideToc: true
 Single-key request only. Requests with multiple keys are not yet supported.
 
 ## Synopsis
+
 <b>`EXISTS key [key ...]`</b><br>
 This command is a predicate to check whether or not the given `key` exists.
 
-## Return Value
+## Return value
+
 Returns the number of existing keys.
 
 ## Examples
@@ -55,5 +57,6 @@ $ EXISTS yuga1 yuga2 not_a_key
 2
 ```
 
-## See Also
+## See also
+
 [`del`](../del/), [`get`](../get/), [`getrange`](../getrange/), [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hset`](../hset/), [`hincrby`](../hincrby/), [`sadd`](../sadd/), [`set`](../set/)

@@ -17,6 +17,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 #include "yb/docdb/value_type.h"
 
@@ -80,7 +81,28 @@ IntentTypeSet AllStrongIntents() {
   return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
 }
 
-IntentTypeSet GetStrongIntentTypeSet(IsolationLevel level, OperationKind operation_kind) {
+IntentTypeSet GetStrongIntentTypeSet(
+    IsolationLevel level,
+    OperationKind operation_kind,
+    RowMarkType row_mark) {
+  if (IsValidRowMarkType(row_mark)) {
+    // TODO: possibly adjust this when issue #2922 is fixed.
+    switch (row_mark) {
+      case RowMarkType::ROW_MARK_EXCLUSIVE: FALLTHROUGH_INTENDED;
+      case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
+        return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
+        break;
+      case RowMarkType::ROW_MARK_SHARE: FALLTHROUGH_INTENDED;
+      case RowMarkType::ROW_MARK_KEYSHARE:
+        return IntentTypeSet({IntentType::kStrongRead});
+        break;
+      default:
+        // We shouldn't get here because other row lock types are disabled at the postgres level.
+        LOG(DFATAL) << "Unsupported row lock of type " << RowMarkType_Name(row_mark);
+        break;
+    }
+  }
+
   switch (level) {
     case IsolationLevel::SNAPSHOT_ISOLATION:
       return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
@@ -119,7 +141,7 @@ CHECKED_STATUS DecodeIntentValue(
   RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kTransactionId));
   INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
       "wrong transaction id");
-  intent_value.remove_prefix(TransactionId::static_size());
+  intent_value.remove_prefix(TransactionId::StaticSize());
 
   RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
   INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");

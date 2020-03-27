@@ -35,7 +35,6 @@
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/file_numbers.h"
-#include "yb/rocksdb/db/skiplist.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
@@ -138,7 +137,7 @@ class MemTable {
   // operations on the same MemTable.
   MemTable* Unref() {
     --refs_;
-    assert(refs_ >= 0);
+    DCHECK_GE(refs_, 0);
     if (refs_ <= 0) {
       return this;
     }
@@ -226,6 +225,8 @@ class MemTable {
   void Update(SequenceNumber seq,
               const Slice& key,
               const Slice& value);
+
+  bool Erase(const Slice& key);
 
   // If prev_value for key exists, attempts to update it inplace.
   // else returns false
@@ -350,14 +351,16 @@ class MemTable {
     }
   }
 
-  UserFrontierPtr GetSmallestFrontierLocked() const {
-    std::lock_guard<SpinMutex> l(frontiers_mutex_);
-    return frontiers_->Smallest().Clone();
-  }
+  UserFrontierPtr GetFrontier(UpdateUserValueType type) const;
 
   const UserFrontiers* Frontiers() const { return frontiers_.get(); }
 
   std::string ToString() const;
+
+  bool FullyErased() const {
+    return num_entries_.load(std::memory_order_acquire) ==
+           num_erased_.load(std::memory_order_acquire);
+  }
 
  private:
 
@@ -377,6 +380,7 @@ class MemTable {
   std::atomic<uint64_t> data_size_;
   std::atomic<uint64_t> num_entries_;
   std::atomic<uint64_t> num_deletes_;
+  std::atomic<uint64_t> num_erased_{0};
 
   // These are used to manage memtable flushes to storage
   bool flush_in_progress_;        // started the flush
@@ -420,6 +424,8 @@ class MemTable {
 
   // Updates flush_state_ using ShouldFlushNow()
   void UpdateFlushState();
+
+  std::vector<char> erase_key_buffer_;
 
   // No copying allowed
   MemTable(const MemTable&) = delete;

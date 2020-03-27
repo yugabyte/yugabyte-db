@@ -53,6 +53,7 @@ import org.yb.tserver.Tserver;
 
 import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Deferred;
+import org.yb.util.Pair;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -330,6 +331,22 @@ public class YBClient implements AutoCloseable {
     int numTries = 0;
     do {
       d = asyncClient.getLoadMoveCompletion();
+      resp = d.join(getDefaultAdminOperationTimeoutMs());
+    } while (resp.hasRetriableError() && numTries++ < MAX_NUM_RETRIES);
+    return resp;
+  }
+
+  /**
+   * Get the tablet load move completion percentage for blacklisted nodes, if any.
+   * @return the response with percent load completed.
+   */
+  public GetLoadMovePercentResponse getLeaderBlacklistCompletion()
+      throws Exception {
+    Deferred<GetLoadMovePercentResponse> d;
+    GetLoadMovePercentResponse resp;
+    int numTries = 0;
+    do {
+      d = asyncClient.getLeaderBlacklistCompletion();
       resp = d.join(getDefaultAdminOperationTimeoutMs());
     } while (resp.hasRetriableError() && numTries++ < MAX_NUM_RETRIES);
     return resp;
@@ -665,6 +682,79 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Enable encryption at rest using the key file specified
+   */
+  public boolean enableEncryptionAtRestInMemory(final String versionId) throws Exception {
+    Deferred<ChangeEncryptionInfoInMemoryResponse> d;
+    d = asyncClient.enableEncryptionAtRestInMemory(versionId);
+    d.join(getDefaultAdminOperationTimeoutMs());
+    return d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
+   * Disable encryption at rest
+   */
+  public boolean disableEncryptionAtRestInMemory() throws Exception {
+    Deferred<ChangeEncryptionInfoInMemoryResponse> d;
+    d = asyncClient.disableEncryptionAtRestInMemory();
+    return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
+  * Enable encryption at rest using the key file specified
+  */
+  public boolean enableEncryptionAtRest(final String file) throws Exception {
+    Deferred<ChangeEncryptionInfoResponse> d;
+    d = asyncClient.enableEncryptionAtRest(file);
+    return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
+   * Disable encryption at rest
+   */
+  public boolean disableEncryptionAtRest() throws Exception {
+    Deferred<ChangeEncryptionInfoResponse> d;
+    d = asyncClient.disableEncryptionAtRest();
+    return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  public Pair<Boolean, String> isEncryptionEnabled() throws Exception {
+    Deferred<IsEncryptionEnabledResponse> d = asyncClient.isEncryptionEnabled();
+    IsEncryptionEnabledResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+    if (resp.getServerError() != null) {
+      throw new RuntimeException("Could not check isEnabledEncryption with error: " +
+                                 resp.getServerError().getStatus().getMessage());
+    }
+    return new Pair(resp.getIsEnabled(), resp.getUniverseKeyId());
+  }
+
+  /**
+  * Add universe keys in memory to a master at hp, with universe keys in format <id -> key>
+  */
+  public void addUniverseKeys(Map<String, byte[]> universeKeys, HostAndPort hp) throws Exception {
+    Deferred<AddUniverseKeysResponse> d = asyncClient.addUniverseKeys(universeKeys, hp);
+    AddUniverseKeysResponse resp = d.join();
+    if (resp.getServerError() != null) {
+      throw new RuntimeException("Could not add universe keys to " + hp.toString() +
+                                 " with error: " + resp.getServerError().getStatus().getMessage());
+    }
+  }
+
+  /**
+   * Check if a master at hp has universe key universeKeyId. Returns true if it does.
+   */
+  public boolean hasUniverseKeyInMemory(String universeKeyId, HostAndPort hp) throws Exception {
+    Deferred<HasUniverseKeyInMemoryResponse> d =
+            asyncClient.hasUniverseKeyInMemory(universeKeyId, hp);
+    HasUniverseKeyInMemoryResponse resp = d.join();
+    if (resp.getServerError() != null) {
+      throw new RuntimeException("Could not add universe keys to " + hp.toString() +
+                                 " with error: " + resp.getServerError().getStatus().getMessage());
+    }
+    return resp.hasKey();
+  }
+
+  /**
   * Ping a certain server to see if it is responding to RPC requests.
   * @param host the hostname or IP of the server
   * @param port the port number of the server
@@ -784,6 +874,20 @@ public class YBClient implements AutoCloseable {
       Map<String, List<List<Integer>>> replicaMap =
           table.getMemberTypeCountsForEachTSType(deadline);
       return replicaMap.equals(replicaMapExpected);
+    }
+  }
+
+  private class MasterHasUniverseKeyInMemoryCondition implements Condition {
+    private String universeKeyId;
+    private HostAndPort hp;
+    public MasterHasUniverseKeyInMemoryCondition(String universeKeyId, HostAndPort hp) {
+      this.universeKeyId = universeKeyId;
+      this.hp = hp;
+    }
+
+    @Override
+    public boolean get() throws Exception {
+      return hasUniverseKeyInMemory(universeKeyId, hp);
     }
   }
 
@@ -917,6 +1021,12 @@ public class YBClient implements AutoCloseable {
     return waitForCondition(replicaMapCondition, timeoutMs);
   }
 
+  public boolean waitForMasterHasUniverseKeyInMemory(
+          final long timeoutMs, String universeKeyId, HostAndPort hp) {
+    Condition universeKeyCondition = new MasterHasUniverseKeyInMemoryCondition(universeKeyId, hp);
+    return waitForCondition(universeKeyCondition, timeoutMs);
+  }
+
   /**
    * Change master server configuration.
    * @return status of the step down via a response.
@@ -969,6 +1079,18 @@ public class YBClient implements AutoCloseable {
   throws Exception {
     Deferred<ListTablesResponse> d = asyncClient.getTablesList(
         nameFilter, excludeSystemTables, namespace);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Create for a given tablet and stream.
+   * @param hp host port of the server.
+   * @param tableId the table id to subscribe to.
+   * @return a deferred object for the response from server.
+   */
+  public CreateCDCStreamResponse createCDCStream(
+          final HostAndPort hp, String tableId) throws Exception{
+    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp, tableId);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1038,17 +1160,25 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Get the list of tablet UUIDs of a table with the given name.
+   * @param table table info.
+   * @return the set of tablet UUIDs of the table.
+   */
+  public Set<String> getTabletUUIDs(final YBTable table) throws Exception {
+    Set<String> ids = new HashSet<>();
+    for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
+      ids.add(new String(tablet.getTabletId()));
+    }
+    return ids;
+  }
+
+  /**
+   * Get the list of tablet UUIDs of a table with the given name.
    * @param keyspace the keyspace name to which the table belongs.
    * @param name the table name
    * @return the set of tablet UUIDs of the table.
    */
   public Set<String> getTabletUUIDs(final String keyspace, final String name) throws Exception {
-    Set<String> ids = new HashSet<>();
-    YBTable table = openTable(keyspace, name);
-    for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
-      ids.add(new String(tablet.getTabletId()));
-    }
-    return ids;
+    return getTabletUUIDs(openTable(keyspace, name));
   }
 
   /**

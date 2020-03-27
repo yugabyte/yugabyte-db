@@ -101,6 +101,8 @@ struct LogOptions {
   // Whether the allocation should happen asynchronously.
   bool async_preallocate_segments;
 
+  uint32_t retention_secs = 0;
+
   // Env for log file operations.
   Env* env;
 
@@ -113,6 +115,11 @@ struct LogEntryMetadata {
   RestartSafeCoarseTimePoint entry_time;
   int64_t offset;
   uint64_t active_segment_sequence_number;
+
+  std::string ToString() const {
+    return Format("{ entry_time: $0 offset: $1 active_segment_sequence_number: $2 }",
+                  entry_time, offset, active_segment_sequence_number);
+  }
 };
 
 // A sequence of segments, ordered by increasing sequence number.
@@ -182,6 +189,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // In case of failure status field of result is not ok.
   ReadEntriesResult ReadEntries();
 
+  // Reads the op ID and time of the first entry in the segment
+  Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> ReadFirstEntryMetadata();
+
   // Rebuilds this segment's footer by scanning its entries.
   // This is an expensive operation as it reads and parses the whole segment
   // so it should be only used in the case of a crash, where the footer is
@@ -238,7 +248,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   }
 
   const int64_t get_header_size() const {
-    return readable_file_->GetHeaderSize();
+    return readable_file_->GetEncryptionHeaderSize();
   }
 
   // Returns the full size of the file, if the segment is closed and has

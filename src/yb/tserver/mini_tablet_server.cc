@@ -35,7 +35,6 @@
 #include <utility>
 #include <functional>
 
-#include <boost/scope_exit.hpp>
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
@@ -61,6 +60,7 @@
 
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
 using std::pair;
@@ -117,7 +117,7 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
 Status MiniTabletServer::Start() {
   CHECK(!started_);
 
-  gscoped_ptr<TabletServer> server(new YB_EDITION_NS_PREFIX TabletServer(opts_));
+  gscoped_ptr<TabletServer> server(new enterprise::TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
 
   server::TEST_SetupConnectivity(server->messenger(), index_);
@@ -127,11 +127,11 @@ Status MiniTabletServer::Start() {
   server_.swap(server);
 
   tunnel_ = std::make_unique<Tunnel>(&server_->messenger()->io_service());
-  BOOST_SCOPE_EXIT(this_) {
-    if (!this_->started_) {
-      this_->tunnel_->Shutdown();
+  auto se = ScopeExit([this] {
+    if (!started_) {
+      tunnel_->Shutdown();
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   std::vector<Endpoint> local;
   RETURN_NOT_OK(opts_.broadcast_addresses[0].ResolveAddresses(&local));
@@ -194,7 +194,7 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
   if (!server_) {
     return Status::OK();
   }
-  return ForAllTablets(this, [mode, flags](TabletPeer* tablet_peer) {
+  return ForAllTablets(this, [mode, flags](TabletPeer* tablet_peer) -> Status {
     if (!tablet_peer->tablet()) {
       return Status::OK();
     }
@@ -207,7 +207,10 @@ Status MiniTabletServer::CompactTablets() {
     return Status::OK();
   }
   return ForAllTablets(this, [](TabletPeer* tablet_peer) {
-    return tablet_peer->tablet()->CompactSync();
+    if (tablet_peer->tablet()) {
+      tablet_peer->tablet()->ForceRocksDBCompactInTest();
+    }
+    return Status::OK();
   });
 }
 

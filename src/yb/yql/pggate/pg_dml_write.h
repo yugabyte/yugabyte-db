@@ -35,8 +35,8 @@ class PgDmlWrite : public PgDml {
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
 
-  // Execute.
-  CHECKED_STATUS Exec();
+  // force_non_bufferable flag indicates this operation should not be buffered.
+  CHECKED_STATUS Exec(bool force_non_bufferable = false);
 
   void SetIsSystemCatalogChange() {
     write_req_->set_is_ysql_catalog_change(true);
@@ -46,6 +46,10 @@ class PgDmlWrite : public PgDml {
     write_req_->set_ysql_catalog_version(catalog_cache_version);
   }
 
+  int32_t GetRowsAffectedCount() {
+    return rows_affected_count_;
+  }
+
  protected:
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session,
@@ -53,7 +57,7 @@ class PgDmlWrite : public PgDml {
              bool is_single_row_txn = false);
 
   // Allocate write request.
-  virtual void AllocWriteRequest() = 0;
+  void AllocWriteRequest();
 
   // Allocate column expression.
   PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
@@ -71,6 +75,11 @@ class PgDmlWrite : public PgDml {
   PgsqlWriteRequestPB *write_req_ = nullptr;
 
   bool is_single_row_txn_ = false; // default.
+
+  int32_t rows_affected_count_ = 0;
+
+ private:
+  virtual std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const = 0;
 };
 
 }  // namespace pggate

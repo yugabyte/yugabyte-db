@@ -1,144 +1,161 @@
 ---
-title: 2. Create Roles
-linkTitle: 2. Create Roles
-description: 2. Create Roles
-headcontent: Creating roles in YCQL
+title: Create roles in YugabyteDB
+linkTitle: Create roles
+description: Create roles in YugabyteDB
+headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
-aliases:
-  - /secure/authorization/create-roles/
 menu:
   latest:
-    identifier: secure-authorization-create-roles
-    parent: secure-authorization
+    identifier: create-roles
+    parent: authorization
     weight: 717
 isTocNested: true
 showAsideToc: true
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/secure/authorization/create-roles" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/secure/authorization/create-roles-ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
 ## 1. Create roles
 
-Create a role with a password. You can do this with the [CREATE ROLE](../../api/ycql/ddl_create_role/) command.
+Create a role with a password. You can do this with the [CREATE ROLE](../../../api/ysql/commands/dcl_create_role/) statement.
 
+As an example, let us create a role `engineering` for an engineering team in an organization.
 
-As an example, let us create a role `engineering` for an engineering team in an organization. Note that we add the `IF NOT EXISTS` clause in case the role already exists.
-
-```sql
-cassandra@cqlsh> CREATE ROLE IF NOT EXISTS engineering;
+```postgresql
+yugabyte=# CREATE ROLE engineering;
 ```
 
 Roles that have `LOGIN` privileges are users. As an example, you can create a user `john` as follows:
 
-```sql
-cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
+```postgresql
+yugabyte=# CREATE ROLE john LOGIN PASSWORD 'PasswdForJohn';
 ```
 
-Read about [how to create users in YugaByte DB](../../authentication/) in the authentication section.
-
+Read about [how to create users in YugabyteDB](../../authentication/ysql-authentication/) in the Authentication section.
 
 ## 2. Grant roles
 
-You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the `GRANT` and the `REVOKE` operations requires the `AUTHORIZE` permission on the role being granted or revoked.
+You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the `GRANT` and the `REVOKE` operations requires the `AUTHORIZE` privilege on the role being granted or revoked.
 
 As an example, you can grant the `engineering` role we created above to the user `john` as follows:
-```sql
-cassandra@cqlsh> GRANT engineering TO john;
+
+```postgresql
+yugabyte=# GRANT engineering TO john;
 ```
 
-Read more about [granting roles](../../api/ycql/ddl_grant_role/).
+Read more about [granting roles](../../../api/ysql/commands/dcl_grant/).
 
+## 3. Create a hierarchy of roles, if needed
 
-## 3. Create a hierarchy of roles if needed
+In YSQL, you can create a hierarchy of roles. The privileges of any role in the hierarchy flows downward.
 
-In YCQL, you can create a hierarchy of roles. The permissions of any role in the hierarchy flows downward.
-
-As an example, let us say that in the above example, we want to create a `developer` role that inherits all the permissions from the `engineering` role. You can achieve this as follows.
+As an example, let us say that in the above example, we want to create a `developer` role that inherits all the privileges from the `engineering` role. You can achieve this as follows.
 
 First, create the `developer` role.
-```sql
-cassandra@cqlsh> CREATE ROLE IF NOT EXISTS developer;
-```
 
+```postgresql
+yugabyte=# CREATE ROLE developer;
+```
 
 Next, `GRANT` the `engineering` role to the `developer` role.
-```sql
-cassandra@cqlsh> GRANT engineering TO developer;
+
+```postgresql
+yugabyte=# GRANT engineering TO developer;
 ```
 
+## 4. List roles
 
+You can list all the roles by running the following statement:
 
-## 3. List roles
-
-You can list all the roles by running the following command:
-```sql
-cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+```postgresql
+yugabyte=# SELECT rolname, rolcanlogin, rolsuper, memberof FROM pg_roles;
 ```
 
 You should see the following output:
+
 ```
- role        | can_login | is_superuser | member_of
--------------+-----------+--------------+-----------------
-        john |      True |        False | ['engineering']
-   developer |     False |        False | ['engineering']
- engineering |     False |        False |                []
-   cassandra |      True |         True |                []
+ rolname     | rolcanlogin | rolsuper | memberof
+-------------+-------------+----------+-----------------
+ john        | t           | f        | {engineering}
+ developer   | f           | f        | {engineering}
+ engineering | f           | f        | {}
+ yugabyte    | t           | t        | {}
 
 (4 rows)
 ```
 
 In the table above, note the following:
 
-* The `cassandra` role is the built-in superuser.
+* The `yugabyte` role is the built-in superuser.
 * The role `john` can login, and hence is a user. Note that `john` is not a superuser.
 * The roles `engineering` and `developer` cannot login.
 * Both `john` and `developer` inherit the role `engineering`.
 
-
 ## 5. Revoke roles
 
-Roles can be revoked using the [REVOKE ROLE](../../api/ycql/ddl_revoke_role/) command.
+Roles can be revoked using the [REVOKE](../../../api/ysql/commands/dcl_revoke/) statement.
 
 In the above example, we can revoke the `engineering` role from the user `john` as follows:
-```sql
-cassandra@cqlsh> REVOKE engineering FROM john;
+
+```postgresql
+yugabyte=# REVOKE engineering FROM john;
 ```
 
 Listing all the roles now shows that `john` no longer inherits from the `engineering` role:
 
-```sql
-cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+```postgresql
+yugabyte=# SELECT rolname, rolcanlogin, rolsuperuser, memberof FROM pg_roles;
 ```
+
 ```
- role        | can_login | is_superuser | member_of
--------------+-----------+--------------+-----------------
-        john |      True |        False |                []
-   developer |     False |        False | ['engineering']
- engineering |     False |        False |                []
-   cassandra |      True |         True |                []
+ rolname     | rolcanlogin | rolsuper | memberof
+-------------+-------------+----------+-----------------
+john         | t           | f        | {}
+developer    | f           | f        | {engineering}
+engineering  | f           | f        | {}
+yugabyte     | t           | t        | {}
 
 (4 rows)
 ```
 
 ## 6. Drop roles
 
-Roles can be dropped with the [DROP ROLE](../../api/ycql/ddl_drop_role/) command.
+Roles can be dropped with the [DROP ROLE](../../../api/ysql/commands/dcl_drop_role/) statement.
 
-In the above example, we can drop the `developer` role with the following command:
+In the above example, we can drop the `developer` role with the following statement:
 
-```sql
-cassandra@cqlsh> DROP ROLE IF EXISTS developer;
+```postgresql
+yugabyte=# DROP ROLE developer;
 ```
 
 The `developer` role would no longer be present upon listing all the roles:
-```sql
-cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
+
+```postgresql
+yugabyte=# SELECT rolname, rolcanlogin, rolsuper, memberof FROM pg_roles;
 ```
 
 ```
- role        | can_login | is_superuser | member_of
--------------+-----------+--------------+-----------
-        john |      True |        False |          []
- engineering |     False |        False |          []
-   cassandra |      True |         True |          []
+ rolname     | rolcanlogin | rolsuper | memberof
+-------------+-------------+----------+-----------
+ john        | t           | f        | {}
+ engineering | f           | f        | {}
+ yugabyte    | t           | t        | {}
 
 (3 rows)
 ```

@@ -306,6 +306,7 @@ initscan(HeapScanDesc scan, ScanKey key, bool keep_startblock)
 	scan->rs_inited = false;
 	scan->rs_ctup.t_data = NULL;
 	ItemPointerSetInvalid(&scan->rs_ctup.t_self);
+	scan->rs_ctup.t_ybctid = (Datum) 0;
 	scan->rs_cbuf = InvalidBuffer;
 	scan->rs_cblock = InvalidBlockNumber;
 
@@ -4769,6 +4770,12 @@ heap_lock_tuple(Relation relation, HeapTuple tuple,
 	tuple->t_data = (HeapTupleHeader) PageGetItem(page, lp);
 	tuple->t_len = ItemIdGetLength(lp);
 	tuple->t_tableOid = RelationGetRelid(relation);
+
+	/*
+	 * This will only be used for non-YB tuples (e.g. Temp tables) so we just
+	 * need to set the ybctid to 0 (NULL) here.
+	 */
+	tuple->t_ybctid = (Datum) 0;
 
 l3:
 	result = HeapTupleSatisfiesUpdate(tuple, cid, *buffer);

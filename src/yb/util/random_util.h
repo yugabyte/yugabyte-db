@@ -60,6 +60,8 @@ std::string RandomHumanReadableString(int len, Random* rnd);
 
 class RandomDeviceSequence {
  public:
+  typedef std::random_device::result_type result_type;
+
   template<class It>
   void generate(It begin, const It& end) {
     std::generate(begin, end, [this] { return device_(); });
@@ -85,6 +87,8 @@ Int RandomUniformInt(Int min, Int max, std::mt19937_64* rng = nullptr) {
   }
   return std::uniform_int_distribution<Int>(min, max)(*rng);
 }
+
+bool RandomUniformBool(std::mt19937_64* rng = nullptr);
 
 template <class Int>
 std::vector<Int> RandomUniformVector(Int min, Int max, uint32_t size,

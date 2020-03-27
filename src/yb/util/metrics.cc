@@ -50,6 +50,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
+#include "yb/util/logging.h"
 
 DEFINE_int32(metrics_retirement_age_ms, 120 * 1000,
              "The minimum number of milliseconds a metric will be kept for after it is "
@@ -60,6 +61,9 @@ TAG_FLAG(metrics_retirement_age_ms, advanced);
 // TODO: changed to empty string and add logic to get this from cluster_uuid in case empty.
 DEFINE_string(metric_node_name, "DEFAULT_NODE_NAME",
               "Value to use as node name for metrics reporting");
+
+DEFINE_bool(expose_metric_histogram_percentiles, true,
+            "Should we expose the percentiles information for metrics histograms.");
 
 // Process/server-wide metrics should go into the 'server' entity.
 // More complex applications will define other entities.
@@ -410,6 +414,15 @@ MetricRegistry::MetricRegistry() {
 MetricRegistry::~MetricRegistry() {
 }
 
+bool MetricRegistry::TabletHasBeenShutdown(const scoped_refptr<MetricEntity> entity) const {
+    if (strcmp(entity->prototype_->name(), "tablet") == 0 && tablets_shutdown_find(entity->id())) {
+      DVLOG(5) << "Do not report metrics for shutdown tablet " << entity->id();
+      return true;
+    }
+
+    return false;
+}
+
 Status MetricRegistry::WriteAsJson(JsonWriter* writer,
                                    const vector<string>& requested_metrics,
                                    const MetricJsonOptions& opts) const {
@@ -421,6 +434,10 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 
   writer->StartArray();
   for (const EntityMap::value_type e : entities) {
+    if (TabletHasBeenShutdown(e.second)) {
+      continue;
+    }
+
     WARN_NOT_OK(e.second->WriteAsJson(writer, requested_metrics, opts),
                 Substitute("Failed to write entity $0 as JSON", e.second->id()));
   }
@@ -444,6 +461,10 @@ CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer) cons
   }
 
   for (const EntityMap::value_type e : entities) {
+    if (TabletHasBeenShutdown(e.second)) {
+      continue;
+    }
+
     WARN_NOT_OK(e.second->WriteForPrometheus(writer),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
@@ -469,6 +490,15 @@ void MetricRegistry::RetireOldMetrics() {
       // Unlike retiring the metrics themselves, we don't wait for any timeout
       // to retire them -- we assume that that timed retention has been satisfied
       // by holding onto the metrics inside the entity.
+
+      // For a tablet that has been shutdown, metrics are being deleted. So do not track
+      // the tablet anymore.
+      if (strcmp(it->second->prototype_->name(), "tablet") == 0) {
+        DVLOG(3) << "T " << it->first << ": "
+          << "Remove from set of tablets that have been shutdown so as to be freed";
+        tablets_shutdown_erase(it->first);
+      }
+
       entities_.erase(it++);
     } else {
       ++it;
@@ -701,10 +731,12 @@ CHECKED_STATUS Counter::WriteForPrometheus(
 /////////////////////////////////////////////////
 
 HistogramPrototype::HistogramPrototype(const MetricPrototype::CtorArgs& args,
-                                       uint64_t max_trackable_value, int num_sig_digits)
+                                       uint64_t max_trackable_value, int num_sig_digits,
+                                       ExportPercentiles export_percentiles)
   : MetricPrototype(args),
     max_trackable_value_(max_trackable_value),
-    num_sig_digits_(num_sig_digits) {
+    num_sig_digits_(num_sig_digits),
+    export_percentiles_(export_percentiles) {
   // Better to crash at definition time that at instantiation time.
   CHECK(HdrHistogram::IsValidHighestTrackableValue(max_trackable_value))
       << Substitute("Invalid max trackable value on histogram $0: $1",
@@ -725,7 +757,8 @@ scoped_refptr<Histogram> HistogramPrototype::Instantiate(
 
 Histogram::Histogram(const HistogramPrototype* proto)
   : Metric(proto),
-    histogram_(new HdrHistogram(proto->max_trackable_value(), proto->num_sig_digits())) {
+    histogram_(new HdrHistogram(proto->max_trackable_value(), proto->num_sig_digits())),
+    export_percentiles_(proto->export_percentiles()) {
 }
 
 void Histogram::Increment(int64_t value) {
@@ -740,7 +773,7 @@ Status Histogram::WriteAsJson(JsonWriter* writer,
                               const MetricJsonOptions& opts) const {
 
   HistogramSnapshotPB snapshot;
-  RETURN_NOT_OK(GetHistogramSnapshotPB(&snapshot, opts));
+  RETURN_NOT_OK(GetAndResetHistogramSnapshotPB(&snapshot, opts));
   writer->Protobuf(snapshot);
   return Status::OK();
 }
@@ -748,6 +781,11 @@ Status Histogram::WriteAsJson(JsonWriter* writer,
 CHECKED_STATUS Histogram::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr) const {
   HdrHistogram snapshot(*histogram_);
+  // HdrHistogram reports percentiles based on all the data points from the
+  // begining of time. We are interested in the percentiles based on just
+  // the "newly-arrived" data. So, we will reset the histogram's percentiles
+  // between each invocation.
+  histogram_->ResetPercentiles();
 
   // Representing the sum and count require suffixed names.
   std::string hist_name = prototype_->name();
@@ -756,31 +794,37 @@ CHECKED_STATUS Histogram::WriteForPrometheus(
         copy_of_attr, hist_name + "_sum", snapshot.TotalSum()));
   RETURN_NOT_OK(writer->WriteSingleEntry(
         copy_of_attr, hist_name + "_count", snapshot.TotalCount()));
-  /*
+
   // Copy the label map to add the quatiles.
-  copy_of_attr["quantile"] = "0.75";
-  RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name, snapshot.ValueAtPercentile(75)));
-  copy_of_attr["quantile"] = "0.95";
-  RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name, snapshot.ValueAtPercentile(95)));
-  copy_of_attr["quantile"] = "0.99";
-  RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name, snapshot.ValueAtPercentile(99)));
-  copy_of_attr["quantile"] = "0.999";
-  RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name, snapshot.ValueAtPercentile(99.9)));
-  copy_of_attr["quantile"] = "0.9999";
-  RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name, snapshot.ValueAtPercentile(99.99)));
-  // TODO: add min/max/mean?
-  */
+  if (export_percentiles_ && FLAGS_expose_metric_histogram_percentiles) {
+    copy_of_attr["quantile"] = "p50";
+    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
+                                           snapshot.ValueAtPercentile(50)));
+    copy_of_attr["quantile"] = "p95";
+    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
+                                           snapshot.ValueAtPercentile(95)));
+    copy_of_attr["quantile"] = "p99";
+    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
+                                           snapshot.ValueAtPercentile(99)));
+    copy_of_attr["quantile"] = "mean";
+    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
+                                           snapshot.MeanValue()));
+    copy_of_attr["quantile"] = "max";
+    RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
+                                           snapshot.MaxValue()));
+  }
   return Status::OK();
 }
 
-Status Histogram::GetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_pb,
-                                         const MetricJsonOptions& opts) const {
+Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_pb,
+                                                 const MetricJsonOptions& opts) const {
   HdrHistogram snapshot(*histogram_);
+  // HdrHistogram reports percentiles based on all the data points from the
+  // begining of time. We are interested in the percentiles based on just
+  // the "newly-arrived" data. So, we will reset the histogram's percentiles
+  // between each invocation.
+  histogram_->ResetPercentiles();
+
   snapshot_pb->set_name(prototype_->name());
   if (opts.include_schema_info) {
     snapshot_pb->set_type(MetricType::Name(prototype_->type()));
@@ -870,6 +914,13 @@ void ScopedLatencyMetric::Finish() {
     auto passed = (MonoTime::Now() - time_started_).ToMicroseconds();
     latency_hist_->Increment(passed);
   }
+}
+
+// Replace specific chars with underscore to pass PrometheusNameRegex().
+void EscapeMetricNameForPrometheus(std::string *id) {
+  std::replace(id->begin(), id->end(), ' ', '_');
+  std::replace(id->begin(), id->end(), '.', '_');
+  std::replace(id->begin(), id->end(), '-', '_');
 }
 
 } // namespace yb

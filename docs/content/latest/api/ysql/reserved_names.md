@@ -1,7 +1,8 @@
 ---
-title: RESERVED NAMES
-linkTitle: Reserved Names
-description: List of reserved names
+title: Reserved names
+linkTitle: Reserved names
+headerTitle: List of reserved names
+description: YSQL reserves the following names for internal usage. Exception will be raised when these names are used even when they are double-quoted.
 summary: List of reserved names
 image: /images/section_icons/api/ysql.png
 menu:

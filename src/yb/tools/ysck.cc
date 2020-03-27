@@ -68,6 +68,16 @@ ChecksumOptions::ChecksumOptions(MonoDelta timeout, int scan_concurrency)
     : timeout(std::move(timeout)),
       scan_concurrency(scan_concurrency) {}
 
+string YsckTable::ToString() const {
+  return Format(
+      "id: $0 name: $1 schema: $2 num_replicas: $3 table_type: $4",
+      id_,
+      name_,
+      schema_,
+      num_replicas_,
+      yb::TableType_Name(table_type_));
+}
+
 YsckCluster::~YsckCluster() {
 }
 

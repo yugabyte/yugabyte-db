@@ -318,38 +318,34 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 										  (Node *) makeInteger(true), -1),
 							  stmt->options);
 
-  /* Validate the storage options from the WITH clause */
-  ListCell *cell;
-  foreach(cell, stmt->options)
-  {
-    DefElem *def = (DefElem*) lfirst(cell);
-    if (strcmp(def->defname, "oids") == 0)
-    {
-      bool oids_val = defGetBoolean(def);
-      if (oids_val)
-      {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                    errmsg("OIDs are not supported for user tables.")));
-      }
-    }
-    else if (strcmp(def->defname, "user_catalog_table") == 0)
-    {
-      bool user_cat_val = defGetBoolean(def);
-      if (user_cat_val)
-      {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                    errmsg("Users cannot create system catalog tables.")));
-      }
-    }
-    else
-    {
-      ereport(WARNING,
-              (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                  errmsg("Storage parameter %s is unsupported, ignoring", def->defname)));
-    }
-  }
+	/* Validate the storage options from the WITH clause */
+	ListCell *cell;
+	foreach(cell, stmt->options)
+	{
+		DefElem *def = (DefElem*) lfirst(cell);
+		if (strcmp(def->defname, "oids") == 0)
+		{
+			bool oids_val = defGetBoolean(def);
+			if (oids_val)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("OIDs are not supported for user tables.")));
+		}
+		else if (strcmp(def->defname, "user_catalog_table") == 0)
+		{
+			bool user_cat_val = defGetBoolean(def);
+			if (user_cat_val)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("Users cannot create system catalog tables.")));
+		}
+		else if (strcmp(def->defname, "colocated") == 0)
+			(void) defGetBoolean(def);
+		else
+			ereport(WARNING,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("Storage parameter %s is unsupported, ignoring", def->defname)));
+	}
 
 	/*
 	 * transformIndexConstraints wants cxt.alist to contain only index
@@ -1988,7 +1984,9 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 	index->relation = cxt->relation;
 	index->accessMethod = constraint->access_method ? constraint->access_method :
-			(IsYugaByteEnabled() ? NULL : DEFAULT_INDEX_TYPE);
+			(IsYugaByteEnabled() && index->relation->relpersistence != RELPERSISTENCE_TEMP
+					? DEFAULT_YB_INDEX_TYPE
+					: DEFAULT_INDEX_TYPE);
 	index->options = constraint->options;
 	index->tableSpace = constraint->indexspace;
 	index->whereClause = constraint->where_clause;
@@ -3061,6 +3059,29 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 			case AT_AddColumnToView:
 				{
 					ColumnDef  *def = castNode(ColumnDef, cmd->def);
+
+					/*
+					 * Report an error for constraint types which YB does not yet support in
+					 * ALTER TABLE ... ADD COLUMN statements.
+					 */
+					ListCell *clist;
+					foreach(clist, def->constraints)
+					{
+						Constraint *constraint = lfirst_node(Constraint, clist);
+
+						switch (constraint->contype)
+						{
+							case CONSTR_IDENTITY:
+							case CONSTR_PRIMARY:
+							case CONSTR_UNIQUE:
+								ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											errmsg("This ALTER TABLE command is not yet supported.")));
+								break;
+
+							default:
+								break;
+						}
+					}
 
 					transformColumnDefinition(&cxt, def);
 

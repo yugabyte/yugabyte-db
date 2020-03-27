@@ -106,6 +106,9 @@ void FileMetaData::UpdateBoundariesExceptKey(const FileBoundaryValuesBase& sourc
   }
 }
 
+Slice FileMetaData::UserFilter() const {
+  return largest.user_frontier ? largest.user_frontier->Filter() : Slice();
+}
 
 std::string FileMetaData::ToString() const {
   return yb::Format("{ number: $0 total_size: $1 base_size: $2 refs: $3 "
@@ -151,11 +154,11 @@ Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
                             FileBoundaryValues<InternalKey>* out) {
   out->key = InternalKey::DecodeFrom(values.key());
   out->seqno = values.seqno();
-  if (values.has_user_frontier()) {
-    out->user_frontier = extractor->CreateFrontier();
-    out->user_frontier->FromPB(values.user_frontier());
-  }
   if (extractor != nullptr) {
+    if (values.has_user_frontier()) {
+      out->user_frontier = extractor->CreateFrontier();
+      out->user_frontier->FromPB(values.user_frontier());
+    }
     for (const auto &user_value : values.user_values()) {
       UserBoundaryValuePtr decoded;
       auto status = extractor->Decode(user_value.tag(), user_value.data(), &decoded);
@@ -166,8 +169,12 @@ Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
         out->user_values.push_back(std::move(decoded));
       }
     }
+  } else if (values.has_user_frontier()) {
+    return STATUS_FORMAT(
+        IllegalState, "Boundary values contains user frontier but extractor is not specified: $0",
+        values);
   }
-  return Status();
+  return Status::OK();
 }
 
 bool VersionEdit::AppendEncodedTo(std::string* dst) const {
@@ -272,13 +279,16 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
   if (pb.has_last_sequence()) {
     last_sequence_ = pb.last_sequence();
   }
-  if (pb.has_obsolete_last_op_id()) {
-    flushed_frontier_ = extractor->CreateFrontier();
-    flushed_frontier_->FromOpIdPBDeprecated(pb.obsolete_last_op_id());
-  }
-  if (pb.has_flushed_frontier()) {
-    flushed_frontier_ = extractor->CreateFrontier();
-    flushed_frontier_->FromPB(pb.flushed_frontier());
+  if (extractor) {
+    // BoundaryValuesExtractor could be not set when running from internal RocksDB tools.
+    if (pb.has_obsolete_last_op_id()) {
+      flushed_frontier_ = extractor->CreateFrontier();
+      flushed_frontier_->FromOpIdPBDeprecated(pb.obsolete_last_op_id());
+    }
+    if (pb.has_flushed_frontier()) {
+      flushed_frontier_ = extractor->CreateFrontier();
+      flushed_frontier_->FromPB(pb.flushed_frontier());
+    }
   }
   if (pb.has_max_column_family()) {
     max_column_family_ = pb.max_column_family();
@@ -300,7 +310,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
                              source.path_id(),
                              source.total_file_size(),
                              source.base_file_size());
-    if (source.has_obsolete_last_op_id()) {
+    if (source.has_obsolete_last_op_id() && extractor) {
       meta.largest.user_frontier = extractor->CreateFrontier();
       meta.largest.user_frontier->FromOpIdPBDeprecated(source.obsolete_last_op_id());
     }
@@ -378,6 +388,11 @@ void VersionEdit::ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificat
   } else {
     UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
   }
+}
+
+std::string FileDescriptor::ToString() const {
+  return yb::Format("{ number: $0 path_id: $1 total_file_size: $2 base_file_size: $3 }",
+                    GetNumber(), GetPathId(), total_file_size, base_file_size);
 }
 
 }  // namespace rocksdb

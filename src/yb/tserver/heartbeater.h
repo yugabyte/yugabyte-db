@@ -38,14 +38,34 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
+#include "yb/master/master_fwd.h"
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {
 namespace tserver {
 
-class TabletServer;
-class TabletServerOptions;
+// Interface data providers to be used for filling data into heartbeat request.
+// Data provider could fill in data into TSHeartbeatRequestPB that will be send by Heartbeater
+// after that.
+class HeartbeatDataProvider {
+ public:
+  explicit HeartbeatDataProvider(TabletServer* server) : server_(*CHECK_NOTNULL(server)) {}
+  virtual ~HeartbeatDataProvider() {}
+
+  // Add data to heartbeat, provider could skip and do nothing if is it too early for example for
+  // periodical provider.
+  // Called on every heartbeat from Heartbeater::Thread::TryHeartbeat.
+  virtual void AddData(master::TSHeartbeatRequestPB* req) = 0;
+
+  const std::string& LogPrefix() const;
+
+  TabletServer& server() { return server_; }
+
+ private:
+  TabletServer& server_;
+};
 
 // Component of the Tablet Server which is responsible for heartbeating to the
 // leader master.
@@ -53,7 +73,12 @@ class TabletServerOptions;
 // TODO: send heartbeats to non-leader masters.
 class Heartbeater {
  public:
-  Heartbeater(const TabletServerOptions& options, TabletServer* server);
+  Heartbeater(
+      const TabletServerOptions& options, TabletServer* server,
+      std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
+  Heartbeater(const Heartbeater& other) = delete;
+  void operator=(const Heartbeater& other) = delete;
+
   CHECKED_STATUS Start();
   CHECKED_STATUS Stop();
 
@@ -68,9 +93,25 @@ class Heartbeater {
  private:
   class Thread;
   gscoped_ptr<Thread> thread_;
-  DISALLOW_COPY_AND_ASSIGN(Heartbeater);
+};
+
+class PeriodicalHeartbeatDataProvider : public HeartbeatDataProvider {
+ public:
+  PeriodicalHeartbeatDataProvider(TabletServer* server, const MonoDelta& period) :
+    HeartbeatDataProvider(server), period_(period) {}
+
+  void AddData(master::TSHeartbeatRequestPB* req) override;
+
+  CoarseTimePoint prev_run_time() const { return prev_run_time_; }
+
+ private:
+  virtual void DoAddData(master::TSHeartbeatRequestPB* req) = 0;
+
+  MonoDelta period_;
+  CoarseTimePoint prev_run_time_;
 };
 
 } // namespace tserver
 } // namespace yb
+
 #endif /* YB_TSERVER_HEARTBEATER_H */

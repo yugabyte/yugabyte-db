@@ -20,7 +20,7 @@ $ mkdir ~/yugabyte && cd ~/yugabyte
 ```
 
 ```sh
-$ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
+$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
 ## Help command
@@ -36,20 +36,20 @@ usage: yb-docker-ctl [-h]
                      {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
                      ...
 
-YugaByte Docker Container Control
+Yugabyte Docker Container Control
 
 positional arguments:
   {create,add_node,status,destroy,stop_node,start_node,stop,start,remove_node}
                         Commands
-    create              Create YugaByte Cluster
-    add_node            Add a new YugaByte Cluster Node
-    status              Check YugaByte Cluster status
-    destroy             Destroy YugaByte Cluster
-    stop_node           Stop a YugaByte Cluster Node
-    start_node          Start a YugaByte Cluster Node
-    stop                Stop YugaByte Cluster so that it can be started later
-    start               Start YugaByte Cluster if one already exists
-    remove_node         Stop a YugaByte Cluster Node
+    create              Create Yugabyte Cluster
+    add_node            Add a new Yugabyte Cluster Node
+    status              Check Yugabyte Cluster status
+    destroy             Destroy Yugabyte Cluster
+    stop_node           Stop a Yugabyte Cluster Node
+    start_node          Start a Yugabyte Cluster Node
+    stop                Stop Yugabyte Cluster so that it can be started later
+    start               Start Yugabyte Cluster if one already exists
+    remove_node         Stop a Yugabyte Cluster Node
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -174,7 +174,7 @@ $ ./yb-docker-ctl destroy
 
 ## Upgrade container image
 
-The command below upgrades the YugaByte DB image to the latest version.
+The command below upgrades the YugabyteDB image to the latest version.
 
 ```sh
 $ docker pull yugabytedb/yugabyte

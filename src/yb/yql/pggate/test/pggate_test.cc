@@ -25,6 +25,13 @@ DECLARE_string(test_leave_files);
 
 namespace yb {
 namespace pggate {
+namespace {
+
+extern "C" void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
+  CHECK(false) << "Not implemented";
+}
+
+} // namespace
 
 PggateTest::PggateTest() {
 }
@@ -35,13 +42,7 @@ PggateTest::~PggateTest() {
 //--------------------------------------------------------------------------------------------------
 // Error handling routines.
 void PggateTest::CheckYBCStatus(YBCStatus status, const char* file_name, int line_number) {
-  if (!status) {
-    return;
-  }
-
-  auto code = static_cast<Status::Code>(status->code);
-  Status s(code, file_name, line_number, status->msg);
-  CHECK_OK(s);
+  CHECK_OK(Status(status, AddRef::kTrue));
 }
 
 void *PggateTestAlloc(size_t bytes) {
@@ -71,12 +72,6 @@ void PggateTest::SetUp() {
 }
 
 void PggateTest::TearDown() {
-  LOG(INFO) << "pg_session_->HasOneRef()=" << pg_session_->HasOneRef();
-  while (!pg_session_->HasOneRef()) {
-    pg_session_->Release();
-  }
-  YBCPgDestroySession(pg_session_);
-
   // Destroy the client before shutting down servers.
   YBCDestroyPgGate();
 
@@ -98,13 +93,15 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   const YBCPgTypeEntity *type_table = nullptr;
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
-  YBCInitPgGate(type_table, count);
+  YBCPgCallbacks callbacks;
+  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
+  YBCInitPgGate(type_table, count, callbacks);
 
   // Don't try to connect to tserver shared memory in pggate tests.
   FLAGS_pggate_ignore_tserver_shm = true;
 
   // Setup session.
-  CHECK_YBC_STATUS(YBCPgCreateSession(nullptr, "", &pg_session_));
+  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* pg_env */, nullptr /* database_name */));
 
   // Setup database
   SetupDB();
@@ -136,18 +133,19 @@ void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
 
 void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
   YBCPgStatement pg_stmt;
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name.c_str(), db_oid,
-                                          0 /* source_database_oid */, 0 /* next_oid */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
+      db_name.c_str(), db_oid, 0 /* source_database_oid */, 0 /* next_oid */, false /* colocated */,
+      &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
 }
 
 void PggateTest::ConnectDB(const string& db_name) {
-  CHECK_YBC_STATUS(YBCPgConnectDatabase(pg_session_, db_name.c_str()));
+  CHECK_YBC_STATUS(YBCPgConnectDatabase(db_name.c_str()));
 }
 
 void PggateTest::CommitTransaction() {
-  CHECK_YBC_STATUS(YBCPgTxnManager_CommitTransaction_Status(YBCGetPgTxnManager()));
+  CHECK_YBC_STATUS(YBCPgCommitTransaction());
 }
 
 // ------------------------------------------------------------------------------------------------

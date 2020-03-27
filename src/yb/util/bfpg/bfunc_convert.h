@@ -33,8 +33,6 @@
 #include <iostream>
 #include <string>
 
-#include "yb/common/ql_value.h"
-
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/inetaddress.h"
@@ -745,7 +743,7 @@ Status ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest float value to the input number.
-    target->set_float_value(static_cast<float>(VERIFY_RESULT(util::CheckedStold(
+    target->set_float_value(static_cast<float>(VERIFY_RESULT(CheckedStold(
         source->varint_value().ToString()))));
   }
   return Status::OK();
@@ -757,7 +755,7 @@ Status ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest double value to the input number.
-    target->set_double_value(VERIFY_RESULT(util::CheckedStold(
+    target->set_double_value(VERIFY_RESULT(CheckedStold(
         source->varint_value().ToString())));
   }
   return Status::OK();

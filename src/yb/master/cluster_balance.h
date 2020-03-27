@@ -84,6 +84,8 @@ class ClusterLoadBalancer {
   // Sets whether to enable or disable the load balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
 
+  bool IsLoadBalancerEnabled() const;
+
   CHECKED_STATUS IsIdle() const;
 
   //
@@ -111,6 +113,9 @@ class ClusterLoadBalancer {
 
   // Get the blacklist information.
   virtual const BlacklistPB& GetServerBlacklist() const;
+
+  // Get the leader blacklist information.
+  virtual const BlacklistPB& GetLeaderBlacklist() const;
 
   // Should skip load-balancing of this table?
   virtual bool SkipLoadBalancing(const TableInfo& table) const;
@@ -266,6 +271,7 @@ class ClusterLoadBalancer {
 
   int get_total_wrong_placement() const;
   int get_total_blacklisted_servers() const;
+  int get_total_leader_blacklisted_servers() const;
 
   // The state of the load in the cluster, as far as this run of the algorithm is concerned.
   std::unique_ptr<ClusterLoadState> state_;

@@ -10,9 +10,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## 1. Are YugaByte DB processes running?
+## 1. Are YugabyteDB processes running?
 
-First, ensure that the expected YugaByte DB processes on the current node.
+First, ensure that the expected YugabyteDB processes on the current node.
 At a minimum, the tserver process needs to be running to be able to connect to this node with a Redis client or application.
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
 Follow the instructions on the [Check Processes](../../nodes/check-processes/) page.
@@ -49,7 +49,7 @@ tserver process.
 ## 3. Can redis-cli connect locally?
 
 Use `redis-cli` to connect to the local node.
-You may need to install `redis-cli`, otherwise you can find it in the YugaByte bin directory). 
+You may need to install `redis-cli`, otherwise you can find it in the Yugabyte bin directory). 
 Try running:
 
 ```sh
@@ -57,5 +57,5 @@ $ ./redis-cli -h <yb-local-address>
 ```
 where `<yb-local-address>` is the address where the YEDIS service is listening (e.g. as returned by `lsof`). For instance, in the example above, it is `localhost` (or, additionally, `127.0.0.2` and `127.0.0.3` for the `yb-ctl` case).
 
-If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where YugaByte DB is running. See also [Cannot access Master or TServer Endpoints](#cannot-access-master-or-tserver-endpoints) below.
-Otherwise, you might need to run `./yb-admin --master_addresses <master-ip-addresses> setup_redis_table"`. You can find the `yb-admin` tool in the YugaByte `bin` directory.
+If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where YugabyteDB is running. See also [Cannot access Master or TServer Endpoints](#cannot-access-master-or-tserver-endpoints) below.
+Otherwise, you might need to run `./yb-admin --master_addresses <master-ip-addresses> setup_redis_table"`. You can find the `yb-admin` tool in the Yugabyte `bin` directory.

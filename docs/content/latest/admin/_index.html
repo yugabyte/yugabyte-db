@@ -1,18 +1,25 @@
 ---
-title: CLIs
+title: CLIs and command line tools for managing YugabyteDB
+headerTitle: CLIs
 linkTitle: CLIs
-description: Command Line Interfaces
+description: Learn about CLIs and other command line tools to manage YugabyteDB.
 image: /images/section_icons/index/admin.png
-headcontent: Admin commands and tools reference.
+headcontent: Command line interfaces (CLIs) and tools reference.
 type: page
 section: REFERENCE
 menu:
   latest:
     identifier: admin
-    weight: 2600
+    weight: 1400
 aliases:
   - admin
 ---
+
+{{< note title="Note" >}}
+
+Information about configuring the [YB-Master](../reference/configuration/yb-master) and [YB-TServer](../reference/configuration/yb-tserver) services is in the [Configuration](../reference/configuration/) section.
+
+{{< /note >}}
 
 
 <div class="row">
@@ -23,7 +30,7 @@ aliases:
         <div class="title">yb-ctl</div>
       </div>
       <div class="body">
-        Command line utility to easily manage Linux and macOS based local clusters.
+        Command line utility to easily create and manage local clusters on macOS or Linux.
       </div>
     </a>
   </div>
@@ -35,7 +42,7 @@ aliases:
         <div class="title">yb-docker-ctl</div>
       </div>
       <div class="body">
-        Command line utility to easily manage Docker based local clusters.
+        Command line utility to easily create and manage Docker-based local clusters.
       </div>
     </a>
   </div>
@@ -47,32 +54,7 @@ aliases:
         <div class="title">docker-compose</div>
       </div>
       <div class="body">
-        Manage Docker based local clusters via docker-compose.
-      </div>
-    </a>
-  </div>
-
-  
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-tserver/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/admin/yb-tserver.png" aria-hidden="true" />
-        <div class="title">yb-tserver</div>
-      </div>
-      <div class="body">
-        Data node that hosts and serves user data.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-master/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/admin/yb-master.png" aria-hidden="true" />
-        <div class="title">yb-master</div>
-      </div>
-      <div class="body">
-        Manages metadata of data stored in yb-tserver and coordinates cluster-wide operations.
+        Create and manage Docker-based local clusters using docker-compose.
       </div>
     </a>
   </div>
@@ -84,7 +66,7 @@ aliases:
         <div class="title">ysqlsh</div>
       </div>
       <div class="body">
-        Command line shell for connecting to YugaByte DB with YSQL.
+        CLI shell for interacting with YugabyteDB using YSQL.
       </div>
     </a>
   </div>
@@ -96,9 +78,58 @@ aliases:
         <div class="title">cqlsh</div>
       </div>
       <div class="body">
-        Command line shell for connecting to YugaByte DB with YCQL.
+        CLI shell for interacting with YugabyteDB using YCQL.
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="yb-admin/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
+        <div class="title">yb-admin</div>
+      </div>
+      <div class="body">
+        CLI for administering YugabyteDB clusters.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="yb-ts-cli/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
+        <div class="title">yb-ts-cli</div>
+      </div>
+      <div class="body">
+        Command line tool for advanced operations on tablet servers.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ysql-dump/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
+        <div class="title">ysql_dump</div>
+      </div>
+      <div class="body">
+        Extract a YugabyteDB database into a SQL script file.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ysql-dumpall/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
+        <div class="title">ysql_dumpall</div>
+      </div>
+      <div class="body">
+        Extract all YugabyteDB databases into a SQL script file.
+      </div>
+    </a>
+  </div>
+
 
 </div>

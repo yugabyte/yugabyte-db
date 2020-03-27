@@ -1,0 +1,74 @@
+# Copyright (c) YugaByte, Inc.
+
+n1-standard-1:
+  numCores: 1
+  memSizeGB: 3.75
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 16
+        volumeType: SSD
+      - volumeSizeGB: 16
+        volumeType: SSD
+n1-standard-8:
+  numCores: 8
+  memSizeGB: 30
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 16
+        volumeType: SSD
+      - volumeSizeGB: 16
+        volumeType: SSD
+n1-standard-16:
+  numCores: 16
+  memSizeGB: 60
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 16
+        volumeType: SSD
+      - volumeSizeGB: 16
+        volumeType: SSD
+n1-standard-32:
+  numCores: 32
+  memSizeGB: 120
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 16
+        volumeType: SSD
+      - volumeSizeGB: 16
+        volumeType: SSD
+n1-highmem-4:
+  numCores: 4
+  memSizeGB: 26
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 16
+        volumeType: SSD
+      - volumeSizeGB: 16
+        volumeType: SSD
+n1-highmem-8:
+  numCores: 8
+  memSizeGB: 52
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 16
+        volumeType: SSD
+      - volumeSizeGB: 16
+        volumeType: SSD
+n1-highmem-16:
+  numCores: 16
+  memSizeGB: 104
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 16
+        volumeType: SSD
+      - volumeSizeGB: 16
+        volumeType: SSD
+n1-highmem-32:
+  numCores: 32
+  memSizeGB: 208
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 16
+        volumeType: SSD
+      - volumeSizeGB: 16
+        volumeType: SSD

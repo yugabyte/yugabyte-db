@@ -10,6 +10,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/decimal.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_value.h"
 
 DECLARE_bool(test_tserver_timeout);
 
@@ -769,21 +770,26 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToJson) {
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
   EXPECT_EQ("[1,2]", to_json_str(row_block->row(0).column(0)));
-
-  // Feature Not Supported: ToJson() does not support UDT & FROZEN.
-  // https://github.com/YugaByte/yugabyte-db/issues/1675
-  CHECK_INVALID_STMT("SELECT tojson(u) FROM test_udt");
-  CHECK_INVALID_STMT("SELECT tojson(f) FROM test_udt");
-  CHECK_INVALID_STMT("SELECT tojson(sf) FROM test_udt");
-  CHECK_INVALID_STMT("SELECT tojson(su) FROM test_udt");
-
-  // Uncomment the following block if UDT & FROZEN are supported correctly.
-/*
   // Apply ToJson() to the UDT column.
   CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt");
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  EXPECT_EQ("{\"v1\":11,\"v2\":22}", to_json_str(row_block->row(0).column(0)));
+  EXPECT_EQ("{\"v1\":3,\"v2\":4}", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the FROZEN<SET> column.
+  CHECK_VALID_STMT("SELECT tojson(f) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[5,6]", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the SET<FROZEN<SET>> column.
+  CHECK_VALID_STMT("SELECT tojson(sf) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[[7,8]]", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the SET<FROZEN<UDT>> column.
+  CHECK_VALID_STMT("SELECT tojson(su) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[{\"v1\":9,\"v2\":0}]", to_json_str(row_block->row(0).column(0)));
 
   CHECK_VALID_STMT("CREATE TABLE test_udt2 (h int PRIMARY KEY, u frozen<udt>)");
   CHECK_VALID_STMT("INSERT INTO test_udt2 (h, u) values (1, {v1:33,v2:44})");
@@ -838,15 +844,26 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToJson) {
   EXPECT_EQ(("{\"{\\\"{\\\\\\\"v1\\\\\\\":11,\\\\\\\"v2\\\\\\\":22}\\\":\\\"text\\\"}\":"
              "[{\"v1\":55,\"v2\":66},{\"v1\":77,\"v2\":88}]}"),
             to_json_str(row_block->row(0).column(0)));
-*/
+
+  // Test UDT with case-sensitive field names and names with spaces.
+  CHECK_VALID_STMT("CREATE TYPE udt7(v1 int, \"V2\" int, \"v  3\" int, \"V  4\" int)");
+  CHECK_VALID_STMT("CREATE TABLE test_udt7 (h int PRIMARY KEY, u udt7)");
+  CHECK_VALID_STMT("INSERT INTO test_udt7 (h, u) values "
+                   "(1, {v1:11,\"V2\":22,\"v  3\":33,\"V  4\":44})");
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt7");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  // Verify that the column names in upper case are double quoted (see the case in Cassandra).
+  EXPECT_EQ("{\"\\\"V  4\\\"\":44,\"\\\"V2\\\"\":22,\"v  3\":33,\"v1\":11}",
+            to_json_str(row_block->row(0).column(0)));
 
   // Feature Not Supported: UDT field types cannot refer to other user-defined types.
   // https://github.com/YugaByte/yugabyte-db/issues/1630
-  CHECK_INVALID_STMT("CREATE TYPE udt7(i1 int, u1 udt)");
-  // CHECK_VALID_STMT("CREATE TABLE test_udt7 (h int PRIMARY KEY, u udt7)");
-  // CHECK_VALID_STMT("INSERT INTO test_udt7 (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
+  CHECK_INVALID_STMT("CREATE TYPE udt8(i1 int, u1 udt)");
+  // CHECK_VALID_STMT("CREATE TABLE test_udt_in_udt (h int PRIMARY KEY, u udt8)");
+  // CHECK_VALID_STMT("INSERT INTO test_udt_in_udt (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
   // Apply ToJson() to the UDT<UDT> column.
-  // CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt7");
+  // CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt_in_udt");
   // row_block = processor->row_block();
   // CHECK_EQ(row_block->row_count(), 1);
   // EXPECT_EQ("{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}",

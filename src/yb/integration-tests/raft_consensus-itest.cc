@@ -34,7 +34,6 @@
 #include <unordered_set>
 
 #include <boost/optional.hpp>
-#include <boost/scope_exit.hpp>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -63,10 +62,12 @@
 #include "yb/integration-tests/ts_itest-base.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 
 #include "yb/server/server_base.pb.h"
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 
@@ -185,8 +186,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
     Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
     QLRowBlock result(schema);
-    Slice data;
-    ASSERT_OK(rpc.GetSidecar(0, &data));
+    Slice data = ASSERT_RESULT(rpc.GetSidecar(0));
     if (!data.empty()) {
       ASSERT_OK(result.Deserialize(QLClient::YQL_CLIENT_CQL, &data));
     }
@@ -480,7 +480,7 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
 
   rpc::MessengerBuilder builder("test builder");
   builder.set_num_reactors(1);
-  std::unique_ptr<rpc::Messenger> messenger = ASSERT_RESULT(builder.Build());
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(ASSERT_RESULT(builder.Build()));
   rpc::ProxyCache proxy_cache(messenger.get());
 
   // Set a decent timeout for allowing the masters to find eachother.
@@ -1607,13 +1607,12 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   // Check that the 'term' metric is correctly exposed.
   {
-    int64_t term_from_metric = -1;
-    ASSERT_OK(cluster_->tablet_server_by_uuid(replica_ts->uuid())->GetInt64Metric(
-                  &METRIC_ENTITY_tablet,
-                  nullptr,
-                  &METRIC_raft_term,
-                  "value",
-                  &term_from_metric));
+    int64_t term_from_metric = ASSERT_RESULT(
+        cluster_->tablet_server_by_uuid(replica_ts->uuid())->GetInt64Metric(
+            &METRIC_ENTITY_tablet,
+            nullptr,
+            &METRIC_raft_term,
+            "value"));
     ASSERT_EQ(term_from_metric, 1);
   }
 
@@ -1659,7 +1658,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_TRUE(resp.has_error()) << resp.DebugString();
   ASSERT_EQ(resp.error().status().message(),
             "New operation's index does not follow the previous op's index. "
-            "Current: { term: 2 index: 6 }. Previous: { term: 2 index: 4 }");
+            "Current: 2.6. Previous: 2.4");
 
   resp.Clear();
   req.clear_ops();
@@ -1673,7 +1672,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_TRUE(resp.has_error()) << resp.DebugString();
   ASSERT_EQ(resp.error().status().message(),
             "New operation's term is not >= than the previous op's term. "
-            "Current: { term: 2 index: 6 }. Previous: { term: 3 index: 5 }");
+            "Current: 2.6. Previous: 3.5");
 
   LOG(INFO) << "Regression test for KUDU-639";
   // If we send a valid request, but the
@@ -2275,13 +2274,13 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   {
     std::atomic<bool> finish(false);
     vector<scoped_refptr<Thread> > threads;
-    BOOST_SCOPE_EXIT(&threads, &finish) {
+    auto se = ScopeExit([&threads, &finish] {
       LOG(INFO) << "Joining writer threads...";
       finish = true;
       for (const scoped_refptr<Thread> &thread : threads) {
         ASSERT_OK(ThreadJoiner(thread.get()).Join());
       }
-    } BOOST_SCOPE_EXIT_END;
+    });
 
     int num_threads = FLAGS_num_client_threads;
     for (int i = 0; i < num_threads; i++) {
@@ -2562,13 +2561,11 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(kMaxWaitTime);
   while (true) {
-    int64_t num_rejections = 0;
-    ASSERT_OK(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
+    int64_t num_rejections = ASSERT_RESULT(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
         &METRIC_ENTITY_tablet,
         nullptr,
         &METRIC_not_leader_rejections,
-        "value",
-        &num_rejections));
+        "value"));
     if (num_rejections >= kMinRejections) {
       break;
     } else if (deadline.ComesBefore(MonoTime::Now())) {

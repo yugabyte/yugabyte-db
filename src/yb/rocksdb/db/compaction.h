@@ -86,9 +86,9 @@ struct FdWithBoundaries {
   FileDescriptor fd;
   LightweightBoundaries smallest; // smallest boundaries in this file
   LightweightBoundaries largest;  // largest boundaries in this file
+  Slice user_filter_data; // Data provided by user that will be passed to iterator replacer.
 
-  explicit FdWithBoundaries(Arena* arena, const FileMetaData& source)
-      : fd(source.fd), smallest(arena, source.smallest), largest(arena, source.largest) {}
+  FdWithBoundaries(Arena* arena, const FileMetaData& source);
 };
 
 // Data structure to store an array of FdWithKeyRange in one level

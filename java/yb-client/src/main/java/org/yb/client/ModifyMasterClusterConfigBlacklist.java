@@ -26,11 +26,22 @@ import org.yb.master.Master;
 public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClusterConfig {
   private List<HostPortPB> modifyHosts;
   private boolean isAdd;
+  private boolean isLeaderBlacklist;
+
   public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> modifyHosts,
       boolean isAdd) {
     super(client);
     this.modifyHosts = modifyHosts;
     this.isAdd = isAdd;
+    this.isLeaderBlacklist = false;
+  }
+
+  public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> modifyHosts,
+      boolean isAdd, boolean isLeaderBlacklist) {
+    super(client);
+    this.modifyHosts = modifyHosts;
+    this.isAdd = isAdd;
+    this.isLeaderBlacklist = isLeaderBlacklist;
   }
 
   @Override
@@ -60,7 +71,11 @@ public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClus
       }
     });
     // Add up the current list.
-    finalHosts.addAll(config.getServerBlacklist().getHostsList());
+    if (isLeaderBlacklist) {
+      finalHosts.addAll(config.getLeaderBlacklist().getHostsList());
+    } else {
+      finalHosts.addAll(config.getServerBlacklist().getHostsList());
+    }
     // Add or remove the given list of servers.
     if (isAdd) {
       finalHosts.addAll(modifyHosts);
@@ -70,7 +85,12 @@ public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClus
     // Change the blacklist in the local config copy.
     Master.BlacklistPB blacklist =
         Master.BlacklistPB.newBuilder().addAllHosts(finalHosts).build();
-    configBuilder.setServerBlacklist(blacklist);
+
+    if (isLeaderBlacklist) {
+      configBuilder.setLeaderBlacklist(blacklist);
+    } else {
+      configBuilder.setServerBlacklist(blacklist);
+    }
     return configBuilder.build();
   }
 }

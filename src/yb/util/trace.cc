@@ -359,6 +359,11 @@ void Trace::AddChildTrace(Trace* child_trace) {
   CHECK(!child_trace->HasOneRef());
 }
 
+size_t Trace::DynamicMemoryUsage() const {
+  auto arena = arena_.load();
+  return arena ? arena->memory_footprint() : 0;
+}
+
 PlainTrace::PlainTrace() {
 }
 

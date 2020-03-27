@@ -1,7 +1,7 @@
 ---
 title: YCQL
 linkTitle: YCQL
-description: YugaByte Cloud Query Language (YCQL)
+description: Yugabyte Cloud Query Language (YCQL)
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent:
@@ -75,7 +75,7 @@ Primitive Type |
 `LIST PERMISSIONS` |
 
 ## DML Statements
-Data manipulation language (DML) statements are used to read from and write to the existing database objects. YugaByte DB implicitly commits any updates by DML statements (similar to how Apache Cassandra behaves).
+Data manipulation language (DML) statements are used to read from and write to the existing database objects. YugabyteDB implicitly commits any updates by DML statements (similar to how Apache Cassandra behaves).
 
 Statement | Description |
 ----------|-------------|

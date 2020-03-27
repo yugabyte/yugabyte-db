@@ -2,7 +2,7 @@
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-redis/).
+- installed YugabyteDB, created a universe and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-redis/).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# app
@@ -25,7 +25,7 @@ using System;
 using System.Collections.Generic;
 using StackExchange.Redis;
 
-namespace YugaByte_CSharp_Demo
+namespace Yugabyte_CSharp_Demo
 {
     class Program
     {
@@ -47,7 +47,7 @@ namespace YugaByte_CSharp_Demo
                         { "127.0.0.1", 6379 },
                     },
                     CommandMap = CommandMap.Create(new HashSet<string>
-                    {   // EXCLUDE commands that are not fully supported on YugaByte side.
+                    {   // EXCLUDE commands that are not fully supported on Yugabyte side.
                         "SUBSCRIBE", "CLUSTER", "TIME", "PING"
                     }, available: false)
                 };
@@ -71,7 +71,7 @@ namespace YugaByte_CSharp_Demo
             }
             catch (RedisConnectionException e)
             {
-                Console.WriteLine("Unable to make a connection to local YugaByte DB. " +
+                Console.WriteLine("Unable to make a connection to local YugabyteDB. " +
                                   "Error:", e.Message);
             }
         }

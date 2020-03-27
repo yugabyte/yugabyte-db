@@ -28,12 +28,13 @@ void PgWrapperTestBase::SetUp() {
   YBMiniClusterTestBase::SetUp();
 
   ExternalMiniClusterOptions opts;
-  opts.start_pgsql_proxy = true;
+  opts.enable_ysql = true;
 
   // TODO Increase the rpc timeout (from 2500) to not time out for long master queries (i.e. for
   // Postgres system tables). Should be removed once the long lock issue is fixed.
+  const int kSingleCallTimeoutMs = NonTsanVsTsan(10000, 30000);
   const string rpc_flag_str =
-      "--retryable_rpc_single_call_timeout_ms=" + std::to_string(NonTsanVsTsan(10000, 30000));
+      "--retryable_rpc_single_call_timeout_ms=" + std::to_string(kSingleCallTimeoutMs);
   opts.extra_master_flags.emplace_back(rpc_flag_str);
 
   if (IsTsan()) {
@@ -45,9 +46,9 @@ void PgWrapperTestBase::SetUp() {
 
   opts.extra_tserver_flags.emplace_back(rpc_flag_str);
 
-  // With yb_num_shards_per_tserver=1 and 3 tservers we'll be creating 3 tablets per table, which
+  // With ysql_num_shards_per_tserver=1 and 3 tservers we'll be creating 3 tablets per table, which
   // is enough for most tests.
-  opts.extra_tserver_flags.emplace_back("--yb_num_shards_per_tserver=1");
+  opts.extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
 
   // Collect old records very aggressively to catch bugs with old readpoints.
   opts.extra_tserver_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
@@ -60,8 +61,6 @@ void PgWrapperTestBase::SetUp() {
 
   opts.extra_master_flags.emplace_back("--client_read_write_timeout_ms=120000");
   opts.extra_master_flags.emplace_back(Format("--memory_limit_hard_bytes=$0", 2_GB));
-
-  opts.extra_master_flags.emplace_back("--use_initial_sys_catalog_snapshot");
 
   UpdateMiniClusterOptions(&opts);
 

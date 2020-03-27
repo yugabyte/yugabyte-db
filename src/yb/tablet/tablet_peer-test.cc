@@ -96,8 +96,6 @@ static Schema GetTestSchema() {
   return Schema({ ColumnSchema("key", INT32) }, 1);
 }
 
-typedef LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
-
 class TabletPeerTest : public YBTabletTest,
                        public ::testing::WithParamInterface<TableType> {
  public:
@@ -109,8 +107,6 @@ class TabletPeerTest : public YBTabletTest,
 
   void SetUp() override {
     YBTabletTest::SetUp();
-
-    table_type_ = YQL_TABLE_TYPE;
 
     ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
     ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
@@ -138,7 +134,7 @@ class TabletPeerTest : public YBTabletTest,
             Bind(
                 &TabletPeerTest::TabletPeerStateChangedCallback,
                 Unretained(this),
-                tablet()->tablet_id())));
+                tablet()->tablet_id()), &metric_registry_));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
@@ -164,7 +160,8 @@ class TabletPeerTest : public YBTabletTest,
     ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
                         tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
                         *tablet()->schema(), tablet()->metadata()->schema_version(),
-                        metric_entity_.get(), append_pool_.get(), &log));
+                        metric_entity_.get(), append_pool_.get(),
+                        tablet()->metadata()->cdc_min_replicated_index(), &log));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
@@ -228,7 +225,7 @@ class TabletPeerTest : public YBTabletTest,
 
     CountDownLatch rpc_latch(1);
     operation_state->set_completion_callback(
-        std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
+        MakeLatchOperationCompletionCallback(&rpc_latch, resp.get()));
 
     tablet_peer->WriteAsync(std::move(operation_state), 1, CoarseTimePoint::max() /* deadline */);
     rpc_latch.Wait();
@@ -266,18 +263,11 @@ class TabletPeerTest : public YBTabletTest,
 
   // Assert that the Log GC() anchor is earlier than the latest OpId in the Log.
   void AssertLogAnchorEarlierThanLogLatest() {
-    int64_t earliest_index = -1;
-    ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&earliest_index));
+    int64_t earliest_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
     auto last_log_opid = tablet_peer_->log_->GetLatestEntryOpId();
-    CHECK_LT(earliest_index, last_log_opid.index)
+    ASSERT_LE(earliest_index, last_log_opid.index)
       << "Expected valid log anchor, got earliest opid: " << earliest_index
       << " (expected any value earlier than last log id: " << last_log_opid << ")";
-  }
-
-  int32_t EarliestNeededIndex() const {
-    auto max_persistent_op_id = tablet_peer_->tablet()->MaxPersistentOpId();
-    EXPECT_OK(max_persistent_op_id);
-    return static_cast<int32_t>(max_persistent_op_id->regular.index);
   }
 
   // We disable automatic log GC. Don't leak those changes.
@@ -293,7 +283,6 @@ class TabletPeerTest : public YBTabletTest,
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> append_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
-  TableType table_type_;
 };
 
 // An operation that waits on the apply_continue latch inside of Apply().
@@ -308,12 +297,12 @@ class DelayedApplyOperation : public WriteOperation {
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }
 
-  Status Apply(int64_t leader_term) override {
+  Status DoReplicated(int64_t leader_term, Status* completion_status) override {
     apply_started_->CountDown();
     LOG(INFO) << "Delaying apply...";
     apply_continue_->Wait();
     LOG(INFO) << "Apply proceeding";
-    return WriteOperation::Apply(leader_term);
+    return WriteOperation::DoReplicated(leader_term, completion_status);
   }
 
  private:
@@ -339,13 +328,12 @@ TEST_P(TabletPeerTest, TestLogAnchorsAndGC) {
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size());
 
-  AssertLogAnchorEarlierThanLogLatest();
+  ASSERT_NO_FATALS(AssertLogAnchorEarlierThanLogLatest());
 
   // Ensure nothing gets deleted.
-  int64_t min_log_index = -1;
-  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
+  int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
-  ASSERT_EQ(0, num_gced) << "earliest needed: " << min_log_index;
+  ASSERT_EQ(2, num_gced) << "Earliest needed: " << min_log_index;
 
   // Flush RocksDB to ensure that we don't have OpId in anchors.
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
@@ -353,9 +341,9 @@ TEST_P(TabletPeerTest, TestLogAnchorsAndGC) {
   // The first two segments should be deleted.
   // The last is anchored due to the commit in the last segment being the last
   // OpId in the log.
-  int32_t earliest_needed = EarliestNeededIndex();
+  int32_t earliest_needed = 0;
   auto total_segments = log->GetLogReader()->num_segments();
-  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
+  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced) << "earliest needed: " << min_log_index;
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -382,10 +370,9 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   // Flush RocksDB so the next mutation goes into a DMS.
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
-  int32_t earliest_needed = EarliestNeededIndex();
+  int32_t earliest_needed = 1;
   auto total_segments = log->GetLogReader()->num_segments();
-  int64_t min_log_index = -1;
-  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
+  int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   // We will only GC 1, and have 1 left because the earliest needed OpId falls
   // back to the latest OpId written to the Log if no anchors are set.
@@ -406,9 +393,9 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Execute a mutation.
   ASSERT_OK(ExecuteDeletesAndRollLogs(2));
-  AssertLogAnchorEarlierThanLogLatest();
+  ASSERT_NO_FATALS(AssertLogAnchorEarlierThanLogLatest());
 
-  total_segments += 2;
+  total_segments += 1;
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments, segments.size());
 
@@ -420,20 +407,20 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
   // Note that this will allow GC of the 2nd insert done above.
-  earliest_needed = EarliestNeededIndex();
-  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
+  earliest_needed = 4;
+  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 
-  earliest_needed = EarliestNeededIndex();
+  earliest_needed = 0;
   total_segments = log->GetLogReader()->num_segments();
   // We should only hang onto one segment due to no anchors.
   // The last log OpId is the commit in the last segment, so it only anchors
   // that segment, not the previous, because it's not the first OpId in the
   // segment.
-  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
+  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));

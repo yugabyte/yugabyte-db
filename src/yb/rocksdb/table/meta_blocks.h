@@ -44,7 +44,6 @@ class BlockHandle;
 class Env;
 class Footer;
 class Logger;
-class RandomAccessFile;
 struct TableProperties;
 class InternalIterator;
 

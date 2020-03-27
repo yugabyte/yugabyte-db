@@ -40,6 +40,7 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/util/thread_local.h"
+#include "yb/rocksdb/util/timeout_error.h"
 #include "yb/rocksdb/utilities/transactions/transaction_db_impl.h"
 
 namespace rocksdb {
@@ -355,14 +356,14 @@ Status TransactionLockMgr::AcquireLocked(LockMap* lock_map,
         lock_info.expiration_time = txn_lock_info.expiration_time;
         // lock_cnt does not change
       } else {
-        result = STATUS(TimedOut, yb::TimeoutError::kLockTimeout);
+        result = STATUS(TimedOut, TimeoutError(TimeoutCode::kLock));
       }
     }
   } else {  // Lock not held.
     // Check lock limit
     if (max_num_locks_ > 0 &&
         lock_map->lock_cnt.load(std::memory_order_acquire) >= max_num_locks_) {
-      result = STATUS(Busy, yb::TimeoutError::kLockLimit);
+      result = STATUS(Busy, TimeoutError(TimeoutCode::kLockLimit));
     } else {
       // acquire lock
       stripe->keys.insert({key, txn_lock_info});
@@ -393,7 +394,7 @@ void TransactionLockMgr::UnLock(TransactionImpl* txn, uint32_t column_family_id,
 
   TransactionID txn_id = txn->GetTxnID();
 
-  stripe->stripe_mutex->Lock();
+  CHECK_OK(stripe->stripe_mutex->Lock());
 
   const auto& iter = stripe->keys.find(key);
   if (iter != stripe->keys.end() && iter->second.txn_id == txn_id) {
@@ -452,7 +453,7 @@ void TransactionLockMgr::UnLock(const TransactionImpl* txn,
       assert(lock_map->lock_map_stripes_.size() > stripe_num);
       LockMapStripe* stripe = lock_map->lock_map_stripes_.at(stripe_num);
 
-      stripe->stripe_mutex->Lock();
+      CHECK_OK(stripe->stripe_mutex->Lock());
 
       for (const std::string* key : stripe_keys) {
         const auto& iter = stripe->keys.find(*key);

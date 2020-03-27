@@ -16,7 +16,7 @@
 #include "yb/server/pgsql_webserver_wrapper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/gutil/map-util.h"
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/util/metrics.h"
 
 DECLARE_string(metric_node_name);
@@ -31,6 +31,7 @@ static int ybpgm_num_entries;
 static int *num_backends;
 yb::MetricEntity::AttributeMap prometheus_attr;
 static void (*pullRpczEntries)();
+static void (*pullYsqlStatementStats)(void *);
 static void (*freeRpczEntries)();
 static rpczEntry **rpczResultPointer;
 
@@ -64,6 +65,56 @@ static void PgMetricsHandler(const Webserver::WebRequest& req, std::stringstream
   writer.EndArray();
   writer.EndObject();
   writer.EndArray();
+}
+
+static void DoWriteStatArrayElemToJson(JsonWriter* writer, YsqlStatementStat* stat) {
+  writer->String("query");
+  writer->String(stat->query);
+
+  writer->String("calls");
+  writer->Int64(stat->calls);
+
+  writer->String("total_time");
+  writer->Double(stat->total_time);
+
+  writer->String("min_time");
+  writer->Double(stat->min_time);
+
+  writer->String("max_time");
+  writer->Double(stat->max_time);
+
+  writer->String("mean_time");
+  writer->Double(stat->mean_time);
+
+  writer->String("stddev_time");
+  // Based on logic in pg_stat_statements_internal().
+  double stddev = (stat->calls > 1) ?
+    (sqrt(stat->sum_var_time / stat->calls)) : 0.0;
+  writer->Double(stddev);
+
+  writer->String("rows");
+  writer->Int64(stat->rows);
+}
+
+static void PgStatStatementsHandler(const Webserver::WebRequest& req, std::stringstream* output) {
+  JsonWriter::Mode json_mode;
+  string arg = FindWithDefault(req.parsed_args, "compact", "false");
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
+              JsonWriter::COMPACT : JsonWriter::PRETTY;
+  JsonWriter writer(output, json_mode);
+
+  writer.StartObject();
+
+  writer.String("statements");
+  if (pullYsqlStatementStats) {
+    writer.StartArray();
+    pullYsqlStatementStats(&writer);
+    writer.EndArray();
+  } else {
+    writer.String("PG Stat Statements module is disabled.");
+  }
+
+  writer.EndObject();
 }
 
 static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* output) {
@@ -157,6 +208,15 @@ static void PgPrometheusMetricsHandler(const Webserver::WebRequest& req,
 }
 
 extern "C" {
+  void WriteStatArrayElemToJson(void* p1, void* p2) {
+    JsonWriter* writer = static_cast<JsonWriter*>(p1);
+    YsqlStatementStat* stat = static_cast<YsqlStatementStat*>(p2);
+
+    writer->StartObject();
+    DoWriteStatArrayElemToJson(writer, stat);
+    writer->EndObject();
+  }
+
   WebserverWrapper *CreateWebserver(char *listen_addresses, int port) {
     yb::WebserverOptions opts;
     opts.bind_interface = listen_addresses;
@@ -171,6 +231,10 @@ extern "C" {
     prometheus_attr["exported_instance"] = metric_node_name;
     prometheus_attr["metric_type"] = "server";
     prometheus_attr["metric_id"] = "yb.ysqlserver";
+  }
+
+  void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *)) {
+    pullYsqlStatementStats = getYsqlStatementStats;
   }
 
   void RegisterRpczEntries(void (*rpczFunction)(), void (*freerpczFunction)(),
@@ -188,6 +252,8 @@ extern "C" {
     webserver->RegisterPathHandler("/prometheus-metrics", "Metrics", PgPrometheusMetricsHandler,
                                    false, false);
     webserver->RegisterPathHandler("/rpcz", "RPCs in progress", PgRpczHandler, false, false);
+    webserver->RegisterPathHandler("/statements", "PG Stat Statements", PgStatStatementsHandler,
+        false, false);
     return ToYBCStatus(webserver->Start());
   }
 };

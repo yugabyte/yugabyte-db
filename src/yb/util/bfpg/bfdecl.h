@@ -113,7 +113,12 @@ class BFDecl {
       case TSOpcode::kCount: FALLTHROUGH_INTENDED;
       case TSOpcode::kMax: FALLTHROUGH_INTENDED;
       case TSOpcode::kMin: FALLTHROUGH_INTENDED;
-      case TSOpcode::kSum:
+      case TSOpcode::kSumInt8: FALLTHROUGH_INTENDED;
+      case TSOpcode::kSumInt16: FALLTHROUGH_INTENDED;
+      case TSOpcode::kSumInt32: FALLTHROUGH_INTENDED;
+      case TSOpcode::kSumInt64: FALLTHROUGH_INTENDED;
+      case TSOpcode::kSumFloat: FALLTHROUGH_INTENDED;
+      case TSOpcode::kSumDouble:
         return true;
       default:
         return false;

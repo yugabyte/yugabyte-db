@@ -42,10 +42,15 @@ import "yb/tserver/tserver.proto";
 import "yb/util/opid.proto";
 
 service CDCService {
-  rpc SetupCDC (SetupCDCRequestPB) returns (SetupCDCResponsePB);
+  rpc CreateCDCStream (CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
+  rpc DeleteCDCStream (DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListTablets (ListTabletsRequestPB) returns (ListTabletsResponsePB);
   rpc GetChanges (GetChangesRequestPB) returns (GetChangesResponsePB);
   rpc GetCheckpoint (GetCheckpointRequestPB) returns (GetCheckpointResponsePB);
+  rpc UpdateCdcReplicatedIndex (UpdateCdcReplicatedIndexRequestPB)
+      returns (UpdateCdcReplicatedIndexResponsePB);
+  rpc BootstrapProducer (BootstrapProducerRequestPB) returns (BootstrapProducerResponsePB);
+  rpc GetLatestEntryOpId (GetLatestEntryOpIdRequestPB) returns (GetLatestEntryOpIdResponsePB);
 }
 
 message CDCErrorPB {
@@ -56,27 +61,16 @@ message CDCErrorPB {
     // RPCs should avoid returning this, since callers will not be
     // able to easily parse the error.
     UNKNOWN_ERROR = 1;
-
-    // Requested tablet cannot be found
     TABLET_NOT_FOUND = 2;
-
-    // Requested table cannot be found
     TABLE_NOT_FOUND = 3;
-
-    // Subscriber UUID not found
     SUBSCRIBER_NOT_FOUND = 4;
-
-    // Checkpoint older than available CDC records
     CHECKPOINT_TOO_OLD = 5;
-
-    // Tablet not running
     TABLET_NOT_RUNNING = 6;
-
-    // Tablet server not the leader of requested tablet
-    NOT_LEADER = 7;
-
-    // Tablet server not running
+    NOT_LEADER = 7; // deprecated. use TABLET_NOT_FOUND
+    LEADER_NOT_READY = 11;
     NOT_RUNNING = 8;
+    INTERNAL_ERROR = 9;
+    INVALID_REQUEST = 10;
   }
 
   // The error code.
@@ -96,31 +90,33 @@ enum CDCRecordType {
 
 enum CDCRecordFormat {
   JSON = 1;
-  WAL = 2; // Used for 2DC
+  WAL = 2; // Used for 2DC.
 }
 
-message SetupCDCRequestPB {
-  // Table to set up CDC on
-  optional master.TableIdentifierPB table = 1;
-  // List of tablet UUIDs to set up CDC on
-  repeated bytes tablets = 2;
-  optional CDCRecordType record_type = 3 [default = CHANGE];
-  optional CDCRecordFormat record_format = 4;
-
-  // Time period for which CDC changes will be retained on producer.
-  // Calling GetChanges() with a checkpoint older than "retention" will result in
-  // CHECKPOINT_TOO_OLD error.
-  optional uint32 retention_sec = 5;
+message CreateCDCStreamRequestPB {
+  // Table to set up CDC on.
+  optional string table_id = 1;
+  optional CDCRecordType record_type = 2 [default = CHANGE];
+  optional CDCRecordFormat record_format = 3 [default = JSON];
 }
 
-message SetupCDCResponsePB {
+message CreateCDCStreamResponsePB {
   optional CDCErrorPB error = 1;
-  optional bytes subscriber_uuid = 2;
+  optional bytes stream_id = 2;
+}
+
+message DeleteCDCStreamRequestPB {
+  repeated bytes stream_id = 1;
+}
+
+message DeleteCDCStreamResponsePB {
+  optional CDCErrorPB error = 1;
 }
 
 message ListTabletsRequestPB {
-  optional master.TableIdentifierPB table = 1;
-  // Whether to list tablets local to this tserver or all tablets in the cluster
+  optional string stream_id = 1;
+  // local_only = true will only list tablets local to the tserver that receives the request.
+  // local_only = false will list  all tablets for the stream.
   optional bool local_only = 2 [default = false];
 }
 
@@ -130,9 +126,13 @@ message ListTabletsResponsePB {
 }
 
 message CDCTabletPB {
+  message ReplicaPB {
+    repeated HostPortPB broadcast_addresses = 1;
+    // Don't use private_rpc_addresses since we're cross-universe
+  }
   optional bytes tablet_id = 1;
-  // Tservers holding data for the tablet
-  repeated HostPortPB tserver = 2;
+  // Tservers holding data for the tablet.
+  repeated ReplicaPB tservers = 2;
 }
 
 message CDCCheckpointPB {
@@ -140,20 +140,19 @@ message CDCCheckpointPB {
 }
 
 message GetChangesRequestPB {
-  optional bytes subscriber_uuid = 1;
-  // Tablet to get the changes for
+  optional bytes stream_id = 1;
+  // Tablet to get the changes for.
   optional bytes tablet_id = 2;
 
-  // Checkpoint to start reading from (exclusive)
-  // Start reading from the first record after this checkpoint
+  // Checkpoint to start reading from (exclusive).
+  // Start reading from the first record after this checkpoint.
   optional CDCCheckpointPB from_checkpoint = 3;
 
-  // Mark the given checkpoint as committed
-  // CDC records before this checkpoint can be purged / compacted
-  optional CDCCheckpointPB commit_checkpoint = 4;
+  // Maximum records to read.
+  optional uint32 max_records = 4;
 
-  // Maximum records to read
-  optional uint32 max_records = 5;
+  // Whether the caller knows the tablet address or needs to use us as a proxy.
+  optional bool serve_as_proxy = 5 [default = true];
 }
 
 message KeyValuePairPB {
@@ -174,8 +173,8 @@ message CDCRecordPB {
 
   // Key-value pairs (column_name : value) of changes / before record / after record
   repeated KeyValuePairPB changes = 4;
-  repeated KeyValuePairPB before = 5;
-  repeated KeyValuePairPB after = 6;
+  repeated KeyValuePairPB before = 5;  // NOT CURRENTLY USED
+  repeated KeyValuePairPB after = 6;   // NOT CURRENTLY USED
 
   optional tserver.TransactionStatePB transaction_state = 7;
 }
@@ -186,20 +185,50 @@ message GetChangesResponsePB {
   optional CDCRecordFormat record_format = 3;
   repeated CDCRecordPB records = 4;
   // Checkpoint that consumers can send back in GetChanges RPC
-  // to mark CDC records until this checkpoint as committed
+  // to mark CDC records until this checkpoint as committed.
   optional CDCCheckpointPB checkpoint = 5;
 
   // In case the tablet is no longer hosted on this tserver, provide the list of tservers holding
-  // data for the tablet
+  // data for the tablet.
   repeated HostPortPB tserver = 6;
 }
 
 message GetCheckpointRequestPB {
-  optional bytes subscriber_uuid = 1;
+  optional bytes stream_id = 1;
   optional bytes tablet_id = 2;
 }
 
 message GetCheckpointResponsePB {
   optional CDCErrorPB error = 1;
   optional CDCCheckpointPB checkpoint = 2;
+}
+
+message UpdateCdcReplicatedIndexRequestPB {
+  // Tablet being updated.
+  optional bytes tablet_id = 1;
+
+  // Minimum replicated index across all the streams for this tablet.
+  optional int64 replicated_index = 2;
+}
+
+message UpdateCdcReplicatedIndexResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message BootstrapProducerRequestPB {
+  repeated string table_ids = 1;
+}
+
+message BootstrapProducerResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated bytes cdc_bootstrap_ids = 2;
+}
+
+message GetLatestEntryOpIdRequestPB {
+  optional bytes tablet_id = 1;
+}
+
+message GetLatestEntryOpIdResponsePB {
+  optional CDCErrorPB error = 1;
+  optional OpIdPB op_id = 2;
 }

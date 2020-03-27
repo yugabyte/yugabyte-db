@@ -17,6 +17,8 @@
 
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/client/table.h"
+
 
 namespace yb {
 namespace ql {
@@ -40,7 +42,7 @@ PTAlterTable::~PTAlterTable() {
 
 CHECKED_STATUS PTAlterTable::Analyze(SemContext *sem_context) {
   // Populate internal table_ variable.
-  bool is_system_ignored;
+  bool is_system_ignored = false;
   RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TABLE));
 
   // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
@@ -85,6 +87,20 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
     if (desc->is_hash() && column->mod_type() != ALTER_RENAME) {
       return sem_context->Error(this, "Can't alter key column", ErrorCode::ALTER_KEY_COLUMN);
     }
+
+    if (column->mod_type() == ALTER_DROP) {
+      const ColumnId column_id(desc->id());
+      for (const auto& index_item : table_->index_map()) {
+        const auto& index = index_item.second;
+        if (index.IsColumnCovered(column_id)) {
+          auto index_table = sem_context->GetTableDesc(index.table_id());
+          return sem_context->Error(this,
+              Format("Can't drop indexed column. Remove '$0' index first and try again",
+                  (index_table ? index_table->name().table_name() : "-unknown-")),
+              ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+        }
+      }
+    }
   }
 
   // Make sure column already doesn't exist with the same name.
@@ -92,7 +108,12 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
     MCString name = *column->new_name();
     const ColumnDesc* desc = sem_context->GetColumnDesc(name);
     if (desc != nullptr) {
-      return sem_context->Error(this, "Duplicate column name", ErrorCode::DUPLICATE_COLUMN);
+      // Expecting the error message matching to the reg-exp: "[Ii]nvalid column name"
+      // for the error correct handling in tools (like Kong).
+      return sem_context->Error(this,
+          Format("Invalid column name because it conflicts with the existing column: $0",
+              name.c_str()),
+          ErrorCode::DUPLICATE_COLUMN);
     }
   }
 

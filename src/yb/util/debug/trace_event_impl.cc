@@ -460,7 +460,7 @@ class TraceLog::OptionalAutoLock {
       lock_->Unlock();
   }
 
-  void EnsureAcquired() EXCLUSIVE_LOCK_FUNCTION() {
+  void EnsureAcquired() ACQUIRE() {
     if (!locked_) {
       lock_->Lock();
       locked_ = true;

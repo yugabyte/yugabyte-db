@@ -18,43 +18,46 @@
 
 #include "yb/util/shared_mem.h"
 
+#include "yb/tserver/tserver_util_fwd.h"
+
 namespace yb {
 namespace tserver {
 
-class TServerSharedMemory {
+class TServerSharedData {
  public:
-  // Creates a new anonymous shared memory segment.
-  TServerSharedMemory();
+  TServerSharedData() {
+    // All atomics stored in shared memory must be lock-free. Non-robust locks
+    // in shared memory can lead to deadlock if a processes crashes, and memory
+    // access violations if the segment is mapped as read-only.
+    // NOTE: this check is NOT sufficient to guarantee that an atomic is safe
+    // for shared memory! Some atomics claim to be lock-free but still require
+    // read-write access for a `load()`.
+    // E.g. for 128 bit objects: https://stackoverflow.com/questions/49816855.
+    LOG_IF(FATAL, !catalog_version_.is_lock_free())
+        << "Shared memory atomics must be lock-free";
+  }
 
-  // Maps an existing shared memory segment pointed at by fd.
-  TServerSharedMemory(int fd, SharedMemorySegment::AccessMode access_mode);
+  void SetEndpoint(const Endpoint& value) {
+    endpoint_ = value;
+  }
 
-  TServerSharedMemory(TServerSharedMemory&& other);
+  const Endpoint& endpoint() const {
+    return endpoint_;
+  }
 
-  TServerSharedMemory(const TServerSharedMemory& other) = delete;
+  void SetYSQLCatalogVersion(uint64_t version) {
+    catalog_version_.store(version, std::memory_order_release);
+  }
 
-  ~TServerSharedMemory();
-
-  // Returns the file descriptor of the shared memory segment.
-  int GetFd() const;
-
-  // Atomically set the ysql shared catalog version.
-  void SetYSQLCatalogVersion(uint64_t version);
-
-  // Atomically load the ysql catalog version.
-  uint64_t GetYSQLCatalogVersion() const;
+  uint64_t ysql_catalog_version() const {
+    return catalog_version_.load(std::memory_order_acquire);
+  }
 
  private:
-  struct Data {
-    std::atomic<uint64_t> catalog_version{0};
-  };
+  // Endpoint that should be used by local processes to access this tserver.
+  Endpoint endpoint_;
 
-  // Size, in bytes, to allocate towards the shared memory segment of the tserver.
-  static constexpr std::size_t kSegmentSize = sizeof(TServerSharedMemory::Data);
-
-  SharedMemorySegment segment_;
-
-  Data* data_;
+  std::atomic<uint64_t> catalog_version_{0};
 };
 
 }  // namespace tserver

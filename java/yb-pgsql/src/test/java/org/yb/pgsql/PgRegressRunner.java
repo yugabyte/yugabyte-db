@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
@@ -22,10 +24,14 @@ import org.yb.minicluster.LogPrinter;
 import org.yb.util.*;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * A wrapper for running the pg_regress utility.
@@ -34,9 +40,20 @@ public class PgRegressRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(PgRegressRunner.class);
 
-  private File pgBinDir;
-  private File pgRegressDir;
-  private File pgRegressExecutable;
+  private static File pgRegressDir =
+                new File(TestUtils.getBuildRootDir(), "postgres_build/src/test/regress");
+  private static File pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
+  private static File pgRegressExecutable = new File(pgRegressDir, "pg_regress");
+
+  public static File getPgRegressDir() {
+    return pgRegressDir;
+  }
+
+  public static File getPgBinDir() {
+    return pgBinDir;
+  }
+
+  private File pgRegressOutputDir;
   private Process pgRegressProc;
   private LogPrinter stdoutLogPrinter, stderrLogPrinter;
   private String pgSchedule;
@@ -51,15 +68,50 @@ public class PgRegressRunner {
 
   private Set<String> failedTests = new ConcurrentSkipListSet<>();
 
-  public PgRegressRunner(String schedule, String pgHost, int pgPort, String pgUser) {
-    pgRegressDir = new File(TestUtils.getBuildRootDir(), "postgres_build/src/test/regress");
-    pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
-    pgRegressExecutable = new File(pgRegressDir, "pg_regress");
+  private long maxRuntimeMillis;
+  private long startTimeMillis;
+
+  public PgRegressRunner(String schedule, String pgHost, int pgPort, String pgUser,
+                         long maxRuntimeMillis) {
+    pgRegressOutputDir = new File(TestUtils.getBaseTmpDir(), "pgregress_output");
+    if (!pgRegressOutputDir.mkdirs()) {
+      throw new RuntimeException("Failed to create directory " + pgRegressOutputDir);
+    }
+    try {
+      for (String name : new String[]{
+          "expected", "output", "sql", "data"}) {
+        FileUtils.copyDirectory(new File(pgRegressDir, name), new File(pgRegressOutputDir, name));
+      }
+      File scheduleInputFile = new File(pgRegressDir, schedule);
+      File scheduleOutputFile = new File(pgRegressOutputDir, schedule);
+
+      // Copy the schedule file, replacing some lines based on the operating system.
+      try (BufferedReader scheduleReader = new BufferedReader(new FileReader(scheduleInputFile));
+           PrintWriter scheduleWriter = new PrintWriter(new FileWriter(scheduleOutputFile))) {
+        String line;
+        while ((line = scheduleReader.readLine()) != null) {
+          line = line.trim();
+          if (line.equals("test: yb_inet") && !TestUtils.IS_LINUX) {
+            // We only support IPv6-specific tests in yb_inet.sql on Linux, not on macOS.
+            line = "test: yb_inet_ipv4only";
+          }
+          LOG.info("Schedule output line: " + line);
+          scheduleWriter.println(line);
+        }
+      }
+    } catch (IOException ex) {
+      LOG.error("Failed to copy pgregress data from " + pgRegressDir + " to " + pgRegressOutputDir);
+      throw new RuntimeException(ex);
+    }
+
+
     this.pgSchedule = schedule;
     this.pgHost = pgHost;
     this.pgPort = pgPort;
     this.pgUser = pgUser;
-    regressionDiffsPath = new File(pgRegressDir, "regression.diffs");
+    this.maxRuntimeMillis = maxRuntimeMillis;
+
+    regressionDiffsPath = new File(pgRegressOutputDir, "regression.diffs");
   }
 
   public void setEnvVars(Map<String, String> envVars) {
@@ -96,9 +148,10 @@ public class PgRegressRunner {
             "--port=" + pgPort,
             "--host=" + pgHost,
             "--user=" + pgUser,
-            "--dbname=postgres",
+            "--dbname=yugabyte",
             "--use-existing",
-            "--schedule=" + pgSchedule);
+            "--schedule=" + new File(pgRegressOutputDir, pgSchedule),
+            "--outputdir=" + pgRegressOutputDir);
     procBuilder.directory(pgRegressDir);
     procBuilder.environment().putAll(extraEnvVars);
 
@@ -117,6 +170,7 @@ public class PgRegressRunner {
     procBuilder.environment().put("YB_PG_REGRESS_RESULTSFILE_POSTPROCESS_CMD",
         postprocessScript.toString());
 
+    startTimeMillis = System.currentTimeMillis();
     pgRegressProc = procBuilder.start();
     pgRegressPid = ProcessUtil.pidOfProcess(pgRegressProc);
     String logPrefix = "pg_regress|pid" + pgRegressPid;
@@ -132,6 +186,7 @@ public class PgRegressRunner {
 
   public void stop() throws InterruptedException, IOException {
     exitCode = pgRegressProc.waitFor();
+    long runtimeMillis = System.currentTimeMillis() - startTimeMillis;
     stdoutLogPrinter.stop();
     stderrLogPrinter.stop();
     if (regressionDiffsPath.exists()) {
@@ -153,8 +208,8 @@ public class PgRegressRunner {
     if (!sortedFailedTests.isEmpty()) {
       LOG.info("Failed tests: " + sortedFailedTests);
       for (String testName : sortedFailedTests) {
-        File expectedFile = new File(new File(pgRegressDir, "expected"), testName + ".out");
-        File resultFile = new File(new File(pgRegressDir, "results"), testName + ".out");
+        File expectedFile = new File(new File(pgRegressOutputDir, "expected"), testName + ".out");
+        File resultFile = new File(new File(pgRegressOutputDir, "results"), testName + ".out");
         if (!expectedFile.exists()) {
           LOG.warn("Expected test output file " + expectedFile + " not found.");
           continue;
@@ -166,6 +221,44 @@ public class PgRegressRunner {
         LOG.warn("Side-by-side diff between expected output and actual output:\n" +
             new SideBySideDiff(expectedFile, resultFile).getSideBySideDiff());
       }
+    }
+
+    if (!ConfForTesting.isCI()) {
+      final Path pgRegressOutputPath = Paths.get(pgRegressOutputDir.toString());
+
+      final Path resultsDirPath = pgRegressOutputPath.resolve("results");
+      Set<String> resultFileNames = Files.find(
+          resultsDirPath,
+          1,  // maxDepth
+          (filePath, fileAttr) -> fileAttr.isRegularFile()
+      ).map(path ->
+          FilenameUtils.removeExtension(resultsDirPath.relativize(path).getFileName().toString())
+      ).collect(Collectors.toSet());
+
+      LOG.info("Copying test result files and generated SQL and expected output " +
+               pgRegressOutputPath + " back to " + getPgRegressDir());
+      final Set<String> copiedFiles = new TreeSet<>();
+      final Set<String> failedFiles = new TreeSet<>();
+      final Set<String> skippedFiles = new TreeSet<>();
+      Files.find(
+          pgRegressOutputPath,
+          Integer.MAX_VALUE,
+          (filePath, fileAttr) -> fileAttr.isRegularFile()
+      ).forEach(pathToCopy -> {
+        String fileName = pathToCopy.toFile().getName();
+        String relPathStr = pgRegressOutputPath.relativize(pathToCopy).toString();
+        if ((fileName.endsWith(".out") || fileName.endsWith(".diffs")) &&
+            !relPathStr.startsWith("expected/")) {
+          File srcFile = pathToCopy.toFile();
+          File destFile = new File(getPgRegressDir(), relPathStr);
+          LOG.info("Copying file " + srcFile + " to " + destFile);
+          try {
+            FileUtils.copyFile(srcFile, destFile);
+          } catch (IOException ex) {
+            LOG.warn("Failed copying file " + srcFile + " to " + destFile, ex);
+          }
+        }
+      });
     }
 
     if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_REGRESS_IGNORE_RESULT")) {
@@ -180,6 +273,14 @@ public class PgRegressRunner {
       throw new AssertionError("Tests failed (but pg_regress exit code is 0, unexpectedly): " +
           sortedFailedTests);
     }
+    if (maxRuntimeMillis != 0 && runtimeMillis > maxRuntimeMillis) {
+      throw new AssertionError("Schedule " + pgSchedule + " exceeded max runtime. " +
+                               "Elapsed time = " + runtimeMillis + " msecs. " +
+                               "Max time = " + maxRuntimeMillis + " msecs.");
+    }
+
+    LOG.info(String.format("Completed schedule: %s. Elapsed time = %d msecs",
+                           pgSchedule, runtimeMillis));
   }
 
 }

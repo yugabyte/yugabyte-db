@@ -50,8 +50,7 @@ SemContext::~SemContext() {
 //--------------------------------------------------------------------------------------------------
 
 Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
-                              MCVector<ColumnDesc>* col_descs,
-                              MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
+                              MCVector<ColumnDesc>* col_descs) {
   const YBSchema& schema = table->schema();
   const int num_columns = schema.num_columns();
   const int num_key_columns = schema.num_key_columns();
@@ -59,9 +58,6 @@ Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
 
   if (col_descs != nullptr) {
     col_descs->reserve(num_columns);
-    if (column_definitions != nullptr) {
-      column_definitions->resize(num_columns);
-    }
     for (int idx = 0; idx < num_columns; idx++) {
       // Find the column descriptor.
       const YBColumnSchema col = schema.Column(idx);
@@ -73,24 +69,12 @@ Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
                               col.is_static(),
                               col.is_counter(),
                               col.type(),
-                              YBColumnSchema::ToInternalDataType(col.type()));
+                              YBColumnSchema::ToInternalDataType(col.type()),
+                              schema.table_properties().use_mangled_column_name());
 
       // Insert the column descriptor, and column definition if requested, to symbol table.
       MCSharedPtr<MCString> col_name = MCMakeShared<MCString>(PSemMem(), col.name().c_str());
       RETURN_NOT_OK(MapSymbol(*col_name, &(*col_descs)[idx]));
-      if (column_definitions != nullptr) {
-        const PTBaseType::SharedPtr datatype =
-            PTBaseType::FromQLType(PSemMem(), (*col_descs)[idx].ql_type());
-        (*column_definitions)[idx] = PTColumnDefinition::MakeShared(PSemMem(),
-                                                                    nullptr /* loc */,
-                                                                    col_name,
-                                                                    datatype,
-                                                                    nullptr /* qualifiers */);
-        if (col.is_static()) {
-          (*column_definitions)[idx]->set_is_static();
-        }
-        RETURN_NOT_OK(MapSymbol(*col_name, (*column_definitions)[idx].get()));
-      }
     }
   }
 
@@ -103,8 +87,7 @@ Status SemContext::LookupTable(const YBTableName& name,
                                const PermissionType permission,
                                shared_ptr<YBTable>* table,
                                bool* is_system,
-                               MCVector<ColumnDesc>* col_descs,
-                               MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
+                               MCVector<ColumnDesc>* col_descs) {
   if (FLAGS_use_cassandra_authentication) {
     RETURN_NOT_OK(CheckHasTablePermission(loc, permission, name.namespace_name(),
                                           name.table_name()));
@@ -122,23 +105,7 @@ Status SemContext::LookupTable(const YBTableName& name,
     return Error(loc, ErrorCode::OBJECT_NOT_FOUND);
   }
 
-  return LoadSchema(*table, col_descs, column_definitions);
-}
-
-Status SemContext::LookupIndex(const TableId& index_id,
-                               const YBLocation& loc,
-                               shared_ptr<YBTable>* index_table,
-                               MCVector<ColumnDesc>* col_descs,
-                               MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
-  VLOG(3) << "Loading table descriptor for " << index_id;
-  *index_table = GetTableDesc(index_id);
-  if (*index_table == nullptr || !(*index_table)->IsIndex() ||
-      // Only looking for CQL Indexes.
-      (*index_table)->table_type() != client::YBTableType::YQL_TABLE_TYPE) {
-    return Error(loc, ErrorCode::OBJECT_NOT_FOUND);
-  }
-
-  return LoadSchema(*index_table, col_descs, column_definitions);
+  return LoadSchema(*table, col_descs);
 }
 
 Status SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
@@ -282,6 +249,11 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
       // Indicate that this column must be read for the statement execution.
       current_dml_stmt_->AddColumnRef(*entry->column_desc_);
     }
+  }
+
+  // Setup the column to which the INDEX column is referencing.
+  if (sem_state_) {
+    sem_state_->add_index_column_ref(entry->column_desc_->id());
   }
 
   return entry->column_desc_;

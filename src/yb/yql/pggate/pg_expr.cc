@@ -48,6 +48,7 @@ const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
   { "count", PgExpr::Opcode::PG_EXPR_COUNT },
   { "max", PgExpr::Opcode::PG_EXPR_MAX },
   { "min", PgExpr::Opcode::PG_EXPR_MIN },
+  { "eval_expr_call", PgExpr::Opcode::PG_EXPR_EVAL_EXPR_CALL }
 };
 
 PgExpr::PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity)
@@ -93,12 +94,64 @@ PgExpr::Opcode PgExpr::NameToOpcode(const char *name) {
   return iter->second;
 }
 
+bfpg::TSOpcode PgExpr::PGOpcodeToTSOpcode(const PgExpr::Opcode opcode) {
+  switch (opcode) {
+    case Opcode::PG_EXPR_COUNT:
+      return bfpg::TSOpcode::kCount;
+
+    case Opcode::PG_EXPR_MAX:
+      return bfpg::TSOpcode::kMax;
+
+    case Opcode::PG_EXPR_MIN:
+      return bfpg::TSOpcode::kMin;
+
+    case Opcode::PG_EXPR_EVAL_EXPR_CALL:
+      return bfpg::TSOpcode::kPgEvalExprCall;
+
+    default:
+      LOG(DFATAL) << "No supported TSOpcode for PG opcode: " << static_cast<int32_t>(opcode);
+      return bfpg::TSOpcode::kNoOp;
+  }
+}
+
+bfpg::TSOpcode PgExpr::OperandTypeToSumTSOpcode(InternalType type) {
+  switch (type) {
+    case InternalType::kInt8Value:
+      return bfpg::TSOpcode::kSumInt8;
+
+    case InternalType::kInt16Value:
+      return bfpg::TSOpcode::kSumInt16;
+
+    case InternalType::kInt32Value:
+      return bfpg::TSOpcode::kSumInt32;
+
+    case InternalType::kInt64Value:
+      return bfpg::TSOpcode::kSumInt64;
+
+    case InternalType::kFloatValue:
+      return bfpg::TSOpcode::kSumFloat;
+
+    case InternalType::kDoubleValue:
+      return bfpg::TSOpcode::kSumDouble;
+
+    default:
+      LOG(DFATAL) << "No supported Sum TSOpcode for operand type: " << static_cast<int32_t>(type);
+      return bfpg::TSOpcode::kNoOp;
+  }
+}
+
 Status PgExpr::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   // For expression that doesn't need to be setup and prepared at construction time.
   return Status::OK();
 }
 
 Status PgExpr::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+  // Expressions that are neither bind_variable nor constant don't need to be updated.
+  // Only values for bind variables and constants need to be updated in the SQL requests.
+  return Status::OK();
+}
+
+Status PgExpr::Eval(PgDml *pg_stmt, QLValuePB *result) {
   // Expressions that are neither bind_variable nor constant don't need to be updated.
   // Only values for bind variables and constants need to be updated in the SQL requests.
   return Status::OK();
@@ -111,12 +164,28 @@ void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int
     return pg_tuple->WriteNull(index, header);
   }
 
-  int64_t text_size;
-  size_t read_size = PgDocData::ReadNumber(yb_cursor, &text_size);
+  // Get data from RPC buffer.
+  int64_t data_size;
+  size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
   yb_cursor->remove_prefix(read_size);
 
-  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(yb_cursor->cdata(), text_size, type_attrs));
-  yb_cursor->remove_prefix(text_size);
+  // Expects data from DocDB matches the following format.
+  // - Right trim spaces for CHAR type. This should be done by DocDB when evaluate SELECTed or
+  //   RETURNed expression. Note that currently, Postgres layer (and not DocDB) evaluate
+  //   expressions, so DocDB doesn't trim for CHAR type.
+  // - NULL terminated string. This should be done by DocDB when serializing.
+  // - Text size == strlen(). When sending data over the network, RPC layer would use the actual
+  //   size of data being serialized including the '\0' character. This is not necessarily be the
+  //   length of a string.
+  // Find strlen() of STRING by right-trimming all '\0' characters.
+  const char* text = yb_cursor->cdata();
+  int64_t text_len = data_size - 1;
+
+  DCHECK(text_len >= 0 && text[text_len] == '\0' && (text_len == 0 || text[text_len - 1] != '\0'))
+    << "Data received from DocDB does not have expected format";
+
+  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
+  yb_cursor->remove_prefix(data_size);
 }
 
 void PgExpr::TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, int index,
@@ -236,121 +305,57 @@ InternalType PgExpr::internal_type() const {
       QLType::Create(static_cast<DataType>(type_entity_->yb_type)));
 }
 
-//--------------------------------------------------------------------------------------------------
-
-PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, type_entity) {
-
+void PgExpr::InitializeTranslateData() {
   switch (type_entity_->yb_type) {
     case YB_YQL_DATA_TYPE_INT8:
-      if (!is_null) {
-        int8_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int8_value(value);
-      }
       translate_data_ = TranslateNumber<int8_t>;
       break;
 
     case YB_YQL_DATA_TYPE_INT16:
-      if (!is_null) {
-        int16_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int16_value(value);
-      }
       translate_data_ = TranslateNumber<int16_t>;
       break;
 
     case YB_YQL_DATA_TYPE_INT32:
-      if (!is_null) {
-        int32_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int32_value(value);
-      }
       translate_data_ = TranslateNumber<int32_t>;
       break;
 
     case YB_YQL_DATA_TYPE_INT64:
-      if (!is_null) {
-        int64_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int64_value(value);
-      }
       translate_data_ = TranslateNumber<int64_t>;
       break;
 
     case YB_YQL_DATA_TYPE_UINT32:
-      if (!is_null) {
-        uint32_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_uint32_value(value);
-      }
       translate_data_ = TranslateNumber<uint32_t>;
       break;
 
+    case YB_YQL_DATA_TYPE_UINT64:
+      translate_data_ = TranslateNumber<uint64_t>;
+      break;
+
     case YB_YQL_DATA_TYPE_STRING:
-      if (!is_null) {
-        char *value;
-        int64_t bytes = type_entity_->datum_fixed_size;
-        type_entity_->datum_to_yb(datum, &value, &bytes);
-        ql_value_.set_string_value(value, bytes);
-      }
       translate_data_ = TranslateText;
       break;
 
     case YB_YQL_DATA_TYPE_BOOL:
-      if (!is_null) {
-        bool value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_bool_value(value);
-      }
       translate_data_ = TranslateNumber<bool>;
       break;
 
     case YB_YQL_DATA_TYPE_FLOAT:
-      if (!is_null) {
-        float value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_float_value(value);
-      }
       translate_data_ = TranslateNumber<float>;
       break;
 
     case YB_YQL_DATA_TYPE_DOUBLE:
-      if (!is_null) {
-        double value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_double_value(value);
-      }
       translate_data_ = TranslateNumber<double>;
       break;
 
     case YB_YQL_DATA_TYPE_BINARY:
-      if (!is_null) {
-        uint8_t *value;
-        int64_t bytes = type_entity_->datum_fixed_size;
-        type_entity_->datum_to_yb(datum, &value, &bytes);
-        ql_value_.set_binary_value(value, bytes);
-      }
       translate_data_ = TranslateBinary;
       break;
 
     case YB_YQL_DATA_TYPE_TIMESTAMP:
-      if (!is_null) {
-        int64_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int64_value(value);
-      }
       translate_data_ = TranslateNumber<int64_t>;
       break;
 
     case YB_YQL_DATA_TYPE_DECIMAL:
-      if (!is_null) {
-        char* plaintext;
-        // Calls YBCDatumToDecimalText in ybctype.c
-        type_entity_->datum_to_yb(datum, &plaintext, nullptr);
-        util::Decimal yb_decimal(plaintext);
-        ql_value_.set_decimal_value(yb_decimal.EncodeToComparable());
-      }
       translate_data_ = TranslateDecimal;
       break;
 
@@ -370,10 +375,147 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
     case YB_YQL_DATA_TYPE_JSONB:
     case YB_YQL_DATA_TYPE_UINT8:
     case YB_YQL_DATA_TYPE_UINT16:
-    case YB_YQL_DATA_TYPE_UINT64:
     default:
       LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
   }
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
+    PgExpr::Opcode opcode)
+    : PgExpr(opcode, type_entity) {
+
+  switch (type_entity_->yb_type) {
+    case YB_YQL_DATA_TYPE_INT8:
+      if (!is_null) {
+        int8_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int8_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_INT16:
+      if (!is_null) {
+        int16_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int16_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_INT32:
+      if (!is_null) {
+        int32_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int32_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_INT64:
+      if (!is_null) {
+        int64_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int64_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_UINT32:
+      if (!is_null) {
+        uint32_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_uint32_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_UINT64:
+      if (!is_null) {
+        uint64_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_uint64_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_STRING:
+      if (!is_null) {
+        char *value;
+        int64_t bytes = type_entity_->datum_fixed_size;
+        type_entity_->datum_to_yb(datum, &value, &bytes);
+        ql_value_.set_string_value(value, bytes);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_BOOL:
+      if (!is_null) {
+        bool value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_bool_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_FLOAT:
+      if (!is_null) {
+        float value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_float_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_DOUBLE:
+      if (!is_null) {
+        double value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_double_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_BINARY:
+      if (!is_null) {
+        uint8_t *value;
+        int64_t bytes = type_entity_->datum_fixed_size;
+        type_entity_->datum_to_yb(datum, &value, &bytes);
+        ql_value_.set_binary_value(value, bytes);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_TIMESTAMP:
+      if (!is_null) {
+        int64_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int64_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_DECIMAL:
+      if (!is_null) {
+        char* plaintext;
+        // Calls YBCDatumToDecimalText in ybctype.c
+        type_entity_->datum_to_yb(datum, &plaintext, nullptr);
+        util::Decimal yb_decimal(plaintext);
+        ql_value_.set_decimal_value(yb_decimal.EncodeToComparable());
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_VARINT:
+    case YB_YQL_DATA_TYPE_INET:
+    case YB_YQL_DATA_TYPE_LIST:
+    case YB_YQL_DATA_TYPE_MAP:
+    case YB_YQL_DATA_TYPE_SET:
+    case YB_YQL_DATA_TYPE_UUID:
+    case YB_YQL_DATA_TYPE_TIMEUUID:
+    case YB_YQL_DATA_TYPE_TUPLE:
+    case YB_YQL_DATA_TYPE_TYPEARGS:
+    case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
+    case YB_YQL_DATA_TYPE_FROZEN:
+    case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
+    case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
+    case YB_YQL_DATA_TYPE_JSONB:
+    case YB_YQL_DATA_TYPE_UINT8:
+    case YB_YQL_DATA_TYPE_UINT16:
+    default:
+      LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
+  }
+
+  InitializeTranslateData();
 }
 
 PgConstant::~PgConstant() {
@@ -449,6 +591,13 @@ Status PgConstant::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   return Status::OK();
 }
 
+Status PgConstant::Eval(PgDml *pg_stmt, QLValuePB *result) {
+  CHECK(pg_stmt != nullptr);
+  CHECK(result != nullptr);
+  *result = ql_value_;
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgColumnRef::PgColumnRef(int attr_num,
@@ -483,81 +632,13 @@ PgColumnRef::PgColumnRef(int attr_num,
       case static_cast<int>(PgSystemAttrNum::kYBTupleId):
         translate_data_ = TranslateYBCtid;
         break;
-      case static_cast<int>(PgSystemAttrNum::kYBBaseTupleId):
+      case static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId):
         translate_data_ = TranslateYBBasectid;
         break;
     }
   } else {
     // Setup regular columns.
-    switch (type_entity_->yb_type) {
-      case YB_YQL_DATA_TYPE_INT8:
-        translate_data_ = TranslateNumber<int8_t>;
-        break;
-
-      case YB_YQL_DATA_TYPE_INT16:
-        translate_data_ = TranslateNumber<int16_t>;
-        break;
-
-      case YB_YQL_DATA_TYPE_INT32:
-        translate_data_ = TranslateNumber<int32_t>;
-        break;
-
-      case YB_YQL_DATA_TYPE_INT64:
-        translate_data_ = TranslateNumber<int64_t>;
-        break;
-
-      case YB_YQL_DATA_TYPE_UINT32:
-        translate_data_ = TranslateNumber<uint32_t>;
-        break;
-
-      case YB_YQL_DATA_TYPE_STRING:
-        translate_data_ = TranslateText;
-        break;
-
-      case YB_YQL_DATA_TYPE_BOOL:
-        translate_data_ = TranslateNumber<bool>;
-        break;
-
-      case YB_YQL_DATA_TYPE_FLOAT:
-        translate_data_ = TranslateNumber<float>;
-        break;
-
-      case YB_YQL_DATA_TYPE_DOUBLE:
-        translate_data_ = TranslateNumber<double>;
-        break;
-
-      case YB_YQL_DATA_TYPE_BINARY:
-        translate_data_ = TranslateBinary;
-        break;
-
-      case YB_YQL_DATA_TYPE_TIMESTAMP:
-        translate_data_ = TranslateNumber<int64_t>;
-        break;
-
-      case YB_YQL_DATA_TYPE_DECIMAL:
-        translate_data_ = TranslateDecimal;
-        break;
-
-      case YB_YQL_DATA_TYPE_VARINT:
-      case YB_YQL_DATA_TYPE_INET:
-      case YB_YQL_DATA_TYPE_LIST:
-      case YB_YQL_DATA_TYPE_MAP:
-      case YB_YQL_DATA_TYPE_SET:
-      case YB_YQL_DATA_TYPE_UUID:
-      case YB_YQL_DATA_TYPE_TIMEUUID:
-      case YB_YQL_DATA_TYPE_TUPLE:
-      case YB_YQL_DATA_TYPE_TYPEARGS:
-      case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
-      case YB_YQL_DATA_TYPE_FROZEN:
-      case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
-      case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
-      case YB_YQL_DATA_TYPE_JSONB:
-      case YB_YQL_DATA_TYPE_UINT8:
-      case YB_YQL_DATA_TYPE_UINT16:
-      case YB_YQL_DATA_TYPE_UINT64:
-      default:
-        LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
-    }
+    InitializeTranslateData();
   }
 }
 
@@ -574,6 +655,7 @@ Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 
 PgOperator::PgOperator(const char *opname, const YBCPgTypeEntity *type_entity)
   : PgExpr(opname, type_entity), opname_(opname) {
+  InitializeTranslateData();
 }
 
 PgOperator::~PgOperator() {
@@ -583,20 +665,22 @@ void PgOperator::AppendArg(PgExpr *arg) {
   args_.push_back(arg);
 }
 
-//--------------------------------------------------------------------------------------------------
-namespace {
-#define POSTGRESQL_BYTEAOID 17
-};
-
-PgGenerateRowId::PgGenerateRowId() :
-    PgExpr(Opcode::PG_EXPR_GENERATE_ROWID, YBCPgFindTypeEntity(POSTGRESQL_BYTEAOID)) {
-}
-
-PgGenerateRowId::~PgGenerateRowId() {
-}
-
-Status PgGenerateRowId::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
-  expr_pb->mutable_value()->set_binary_value(pg_stmt->pg_session()->GenerateNewRowid());
+Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+  PgsqlBCallPB *tscall = expr_pb->mutable_tscall();
+  bfpg::TSOpcode tsopcode;
+  if (opcode_ == Opcode::PG_EXPR_SUM) {
+    // SUM is special case as it has input type of the operand column but output
+    // type of a larger similar type (e.g. INT64 for integers).
+    tsopcode = OperandTypeToSumTSOpcode(args_.front()->internal_type());
+  } else {
+    tsopcode = PGOpcodeToTSOpcode(opcode_);
+  }
+  tscall->set_opcode(static_cast<int32_t>(tsopcode));
+  for (const auto& arg : args_) {
+    PgsqlExpressionPB *op = tscall->add_operands();
+    RETURN_NOT_OK(arg->PrepareForRead(pg_stmt, op));
+    RETURN_NOT_OK(arg->Eval(pg_stmt, op));
+  }
   return Status::OK();
 }
 

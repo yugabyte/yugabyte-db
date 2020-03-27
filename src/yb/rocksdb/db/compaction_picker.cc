@@ -1400,7 +1400,9 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
     unsigned int ratio = ioptions_.compaction_options_universal.size_ratio;
 
     c = PickCompactionUniversalReadAmp(
-        cf_name, mutable_cf_options, vstorage, score, ratio, UINT_MAX, sorted_runs, log_buffer);
+        cf_name, mutable_cf_options, vstorage, score, ratio, UINT_MAX,
+        ioptions_.compaction_options_universal.always_include_size_threshold,
+        sorted_runs, log_buffer);
     if (c) {
       LOG_TO_BUFFER(log_buffer, "[%s] Universal: compacting for size ratio\n",
                   cf_name.c_str());
@@ -1428,8 +1430,9 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
         static_cast<unsigned int>(sorted_runs.size()) -
           mutable_cf_options.level0_file_num_compaction_trigger;
         if ((c = PickCompactionUniversalReadAmp(
-                     cf_name, mutable_cf_options, vstorage, score, UINT_MAX,
-                     num_files, sorted_runs, log_buffer)) != nullptr) {
+                     cf_name, mutable_cf_options, vstorage, score, UINT_MAX, num_files,
+                     ioptions_.compaction_options_universal.always_include_size_threshold,
+                     sorted_runs, log_buffer)) != nullptr) {
           LOG_TO_BUFFER(log_buffer,
                         "[%s] Universal: compacting for file num -- %u\n",
                         cf_name.c_str(), num_files);
@@ -1532,7 +1535,7 @@ uint32_t UniversalCompactionPicker::GetPathId(
 std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalReadAmp(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, double score, unsigned int ratio,
-    unsigned int max_number_of_files_to_compact,
+    unsigned int max_number_of_files_to_compact, size_t always_include_size_threshold,
     const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer) {
   unsigned int min_merge_width =
     ioptions_.compaction_options_universal.min_merge_width;
@@ -1594,29 +1597,31 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
       if (succeeding_sr->being_compacted) {
         break;
       }
-      // Pick files if the total/last candidate file size (increased by the
-      // specified ratio) is still larger than the next candidate file.
-      // candidate_size is the total size of files picked so far with the
-      // default kCompactionStopStyleTotalSize; with
-      // kCompactionStopStyleSimilarSize, it's simply the size of the last
-      // picked file.
+      // Pick files if the total/last candidate file size (increased by the specified ratio) is
+      // still larger than the next candidate file or if the next candidate file has size no more
+      // than always_include_size_threshold.
+      // candidate_size is the total size of files picked so far with the default
+      // kCompactionStopStyleTotalSize;
+      // with kCompactionStopStyleSimilarSize, it's simply the size of the last picked file.
+      const bool is_include_by_threshold = succeeding_sr->size <= always_include_size_threshold;
       double sz = candidate_size * (100.0 + ratio) / 100.0;
-      if (sz < static_cast<double>(succeeding_sr->size)) {
+      if (sz < static_cast<double>(succeeding_sr->size) && !is_include_by_threshold) {
         break;
       }
-      if (ioptions_.compaction_options_universal.stop_style ==
-          kCompactionStopStyleSimilarSize) {
-        // Similar-size stopping rule: also check the last picked file isn't
-        // far larger than the next candidate file.
-        sz = (succeeding_sr->size * (100.0 + ratio)) / 100.0;
-        if (sz < static_cast<double>(candidate_size)) {
-          // If the small file we've encountered begins a run of similar-size
-          // files, we'll pick them up on a future iteration of the outer
-          // loop. If it's some lonely straggler, it'll eventually get picked
-          // by the last-resort read amp strategy which disregards size ratios.
-          break;
+      if (ioptions_.compaction_options_universal.stop_style == kCompactionStopStyleSimilarSize) {
+        if (!is_include_by_threshold) {
+          // Similar-size stopping rule: also check the last picked file isn't
+          // far larger than the next candidate file.
+          sz = (succeeding_sr->size * (100.0 + ratio)) / 100.0;
+          if (sz < static_cast<double>(candidate_size)) {
+            // If the small file we've encountered begins a run of similar-size
+            // files, we'll pick them up on a future iteration of the outer
+            // loop. If it's some lonely straggler, it'll eventually get picked
+            // by the last-resort read amp strategy which disregards size ratios.
+            break;
+          }
+          candidate_size = succeeding_sr->compensated_file_size;
         }
-        candidate_size = succeeding_sr->compensated_file_size;
       } else {  // default kCompactionStopStyleTotalSize
         candidate_size += succeeding_sr->compensated_file_size;
       }

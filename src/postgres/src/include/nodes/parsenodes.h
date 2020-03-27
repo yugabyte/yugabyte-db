@@ -2034,6 +2034,8 @@ typedef struct CreateStmt
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
 	bool		if_not_exists;	/* just do nothing if it already exists? */
+
+	struct OptSplit *split_options; /* SPLIT statement options */
 } CreateStmt;
 
 /* ----------
@@ -2155,6 +2157,32 @@ typedef struct Constraint
 	List	   *yb_index_params;	/* IndexElem nodes of UNIQUE or PRIMARY KEY
 									 * constraint */
 } Constraint;
+
+/* ----------
+ * YugaByte split parameters in CreateStmt
+ *
+ * In YugaByte, tables are split into a certain number of tablets.
+ * This normally happens automatically behind the scenes, but there is
+ * a SPLIT extension that allows the user to specify the number of tablets
+ * (in the case of a HASH-partitioned table) or explicit split points
+ * (in the case of a range-partitioned table).
+ * ----------
+ */
+
+typedef enum
+{
+	NUM_TABLETS = 0,
+	SPLIT_POINTS = 1
+} yb_split_type;
+
+typedef struct OptSplit
+{
+	NodeTag type;
+
+	yb_split_type split_type;
+	int num_tablets;
+	List *split_points;
+} OptSplit;
 
 /* ----------------------
  *		Create/Drop Table Space Statements

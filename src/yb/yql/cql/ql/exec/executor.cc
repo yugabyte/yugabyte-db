@@ -13,13 +13,14 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <yb/yql/cql/ql/util/errcodes.h>
+#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/rejection_score_source.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
@@ -27,10 +28,13 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/rpc/thread_pool.h"
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
+#include "yb/util/random_util.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
@@ -197,6 +201,34 @@ Status Executor::PreExecTreeNode(PTInsertStmt *tnode) {
   }
 }
 
+shared_ptr<client::YBTable> Executor::GetTableFromStatement(const TreeNode *tnode) const {
+  if (tnode != nullptr) {
+    switch (tnode->opcode()) {
+      case TreeNodeOpcode::kPTAlterTable:
+        return static_cast<const PTAlterTable *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTSelectStmt:
+        return static_cast<const PTSelectStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTInsertStmt:
+        return static_cast<const PTInsertStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTDeleteStmt:
+        return static_cast<const PTDeleteStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTUpdateStmt:
+        return static_cast<const PTUpdateStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTExplainStmt:
+        return GetTableFromStatement(static_cast<const PTExplainStmt *>(tnode)->stmt().get());
+
+      default: break;
+    }
+  }
+
+  return nullptr;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecTreeNode(const TreeNode *tnode) {
@@ -324,8 +356,7 @@ Status Executor::ExecPTNode(const PTGrantRevokeRole* tnode) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsInvalidArgument()) {
       error_code = ErrorCode::INVALID_REQUEST;
-    }
-    if (s.IsNotFound()) {
+    } else if (s.IsNotFound()) {
       error_code = ErrorCode::ROLE_NOT_FOUND;
     }
     // TODO (Bristy) : Set result_ properly.
@@ -366,6 +397,8 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
       error_code = ErrorCode::DUPLICATE_TYPE;
     } else if (s.IsNotFound()) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;
+    } else if (s.IsInvalidArgument()) {
+      error_code = ErrorCode::INVALID_TYPE_DEFINITION;
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TYPE) {
@@ -392,44 +425,72 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   Status s;
   YBSchema schema;
   YBSchemaBuilder b;
+  shared_ptr<YBTableCreator> table_creator(ql_env_->NewTableCreator());
+  // Table properties is kept in the metadata of the IndexTable.
+  TableProperties table_properties;
+  // IndexInfo is kept in the metadata of the Table that is being indexed.
+  IndexInfoPB *index_info = nullptr;
 
-  const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
-  for (const auto& column : hash_columns) {
+  // When creating an index, we construct IndexInfo and associated it with the data-table. Later,
+  // when operating on the data-table, we can decide if updating the index-tables are needed.
+  if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
+
+    index_info = table_creator->mutable_index_info();
+    index_info->set_indexed_table_id(index_node->indexed_table_id());
+    index_info->set_is_local(index_node->is_local());
+    index_info->set_is_unique(index_node->is_unique());
+    index_info->set_hash_column_count(tnode->hash_columns().size());
+    index_info->set_range_column_count(tnode->primary_columns().size());
+    index_info->set_use_mangled_column_name(true);
+
+    // List key columns of data-table being indexed.
+    for (const auto& col_desc : index_node->column_descs()) {
+      if (col_desc.is_hash()) {
+        index_info->add_indexed_hash_column_ids(col_desc.id());
+      } else if (col_desc.is_primary()) {
+        index_info->add_indexed_range_column_ids(col_desc.id());
+      }
+    }
+  }
+
+  for (const auto& column : tnode->hash_columns()) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
+    b.AddColumn(column->coldef_name().c_str())
+      ->Type(column->ql_type())
+      ->HashPrimaryKey()
+      ->Order(column->order());
+    RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
+  }
 
-    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
-                                ->HashPrimaryKey()
-                                ->Order(column->order());
-    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
+  for (const auto& column : tnode->primary_columns()) {
+    b.AddColumn(column->coldef_name().c_str())
+      ->Type(column->ql_type())
+      ->PrimaryKey()
+      ->Order(column->order())
+      ->SetSortingType(column->sorting_type());
+    RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
-  const MCList<PTColumnDefinition *>& primary_columns = tnode->primary_columns();
-  for (const auto& column : primary_columns) {
-    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
-                                ->PrimaryKey()
-                                ->Order(column->order())
-                                ->SetSortingType(column->sorting_type());
-    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
-  }
-  const MCList<PTColumnDefinition *>& columns = tnode->columns();
-  for (const auto& column : columns) {
+
+  for (const auto& column : tnode->columns()) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
-    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
-                                ->Nullable()
-                                ->Order(column->order());
+    YBColumnSpec *column_spec = b.AddColumn(column->coldef_name().c_str())
+                                  ->Type(column->ql_type())
+                                  ->Nullable()
+                                  ->Order(column->order());
     if (column->is_static()) {
       column_spec->StaticColumn();
     }
     if (column->is_counter()) {
       column_spec->Counter();
     }
-    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
+    RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
 
-  TableProperties table_properties;
   s = tnode->ToTableProperties(&table_properties);
   if (!s.ok()) {
     return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
@@ -442,17 +503,26 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   // Create table.
-  shared_ptr<YBTableCreator> table_creator(ql_env_->NewTableCreator());
   table_creator->table_name(table_name)
       .table_type(YBTableType::YQL_TABLE_TYPE)
       .creator_role_name(ql_env_->CurrentRoleName())
       .schema(&schema);
+
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
     table_creator->indexed_table_id(index_node->indexed_table_id());
     table_creator->is_local_index(index_node->is_local());
     table_creator->is_unique_index(index_node->is_unique());
   }
+
+  // Clean-up table cache BEFORE op (the cache is used by other processor threads).
+  ql_env_->RemoveCachedTableDesc(table_name);
+  if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    const YBTableName indexed_table_name =
+        static_cast<const PTCreateIndex*>(tnode)->indexed_table_name();
+    ql_env_->RemoveCachedTableDesc(indexed_table_name);
+  }
+
   s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -473,15 +543,33 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     return exec_context_->Error(tnode->table_name(), s, error_code);
   }
 
+  // Clean-up table cache AFTER op (the cache is used by other processor threads).
+  ql_env_->RemoveCachedTableDesc(table_name);
+
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const YBTableName indexed_table_name =
         static_cast<const PTCreateIndex*>(tnode)->indexed_table_name();
+    // Clean-up table cache AFTER op (the cache is used by other processor threads).
+    ql_env_->RemoveCachedTableDesc(indexed_table_name);
+
     result_ = std::make_shared<SchemaChangeResult>(
         "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
-    ql_env_->RemoveCachedTableDesc(indexed_table_name);
   } else {
     result_ = std::make_shared<SchemaChangeResult>(
         "CREATED", "TABLE", table_name.namespace_name(), table_name.table_name());
+  }
+  return Status::OK();
+}
+
+Status Executor::AddColumnToIndexInfo(IndexInfoPB *index_info, const PTColumnDefinition *column) {
+  // Associate index-column with data-column.
+  if (index_info) {
+    // Note that column_id is assigned by master server, so we don't have it yet. When processing
+    // create index request, server will update IndexInfo with proper column_id.
+    auto *col = index_info->add_columns();
+    col->set_column_name(column->coldef_name().c_str());
+    col->set_indexed_column_id(column->indexed_ref());
+    RETURN_NOT_OK(PTExprToPB(column->colexpr(), col->mutable_colexpr()));
   }
   return Status::OK();
 }
@@ -522,6 +610,9 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
     table_alterer->SetTableProperties(table_properties);
   }
 
+  // Clean-up table cache BEFORE op (the cache is used by other processor threads).
+  ql_env_->RemoveCachedTableDesc(table_name);
+
   Status s = table_alterer->Alter();
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(tnode, s, ErrorCode::EXEC_ERROR);
@@ -529,6 +620,8 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
 
   result_ = std::make_shared<SchemaChangeResult>(
       "UPDATED", "TABLE", table_name.namespace_name(), table_name.table_name());
+
+  // Clean-up table cache AFTER op (the cache is used by other processor threads).
   ql_env_->RemoveCachedTableDesc(table_name);
   return Status::OK();
 }
@@ -543,10 +636,15 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_TABLE: {
       // Drop the table.
       const YBTableName table_name = tnode->yb_table_name();
+      // Clean-up table cache BEFORE op (the cache is used by other processor threads).
+      ql_env_->RemoveCachedTableDesc(table_name);
+
       s = ql_env_->DeleteTable(table_name);
       error_not_found = ErrorCode::OBJECT_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.namespace_name(), table_name.table_name());
+
+      // Clean-up table cache AFTER op (the cache is used by other processor threads).
       ql_env_->RemoveCachedTableDesc(table_name);
       break;
     }
@@ -554,11 +652,17 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_INDEX: {
       // Drop the index.
       const YBTableName table_name = tnode->yb_table_name();
+      // Clean-up table cache BEFORE op (the cache is used by other processor threads).
+      ql_env_->RemoveCachedTableDesc(table_name);
+
       YBTableName indexed_table_name;
       s = ql_env_->DeleteIndexTable(table_name, &indexed_table_name);
       error_not_found = ErrorCode::OBJECT_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
+
+      // Clean-up table cache AFTER op (the cache is used by other processor threads).
+      ql_env_->RemoveCachedTableDesc(table_name);
       ql_env_->RemoveCachedTableDesc(indexed_table_name);
       break;
     }
@@ -608,6 +712,8 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       error_code = error_not_found;
     } else if (s.IsNotAuthorized()) {
       error_code = ErrorCode::UNAUTHORIZED;
+    } else if(s.IsQLError()) {
+      error_code = ErrorCode::INVALID_REQUEST;
     }
 
     return exec_context_->Error(tnode->name(), s, error_code);
@@ -678,6 +784,16 @@ Status Executor::GetOffsetOrLimit(
 Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context) {
   const shared_ptr<client::YBTable>& table = tnode->table();
   if (table == nullptr) {
+    // If this is a request for 'system.peers_v2' table make sure that we send the appropriate error
+    // so that the client driver can query the proper peers table i.e. 'system.peers' based on the
+    // error.
+    if (tnode->is_system() &&
+        tnode->table_name().table_name() == "peers_v2" &&
+        tnode->table_name().namespace_name() == "system") {
+      string error_msg = "Unknown keyspace/cf pair (system.peers_v2)";
+      return exec_context_->Error(tnode, error_msg, ErrorCode::SERVER_ERROR);
+    }
+
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
     // result.
     return tnode->is_system() ? Status::OK()
@@ -760,6 +876,14 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   Status s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+  }
+
+  // Set the IF clause.
+  if (tnode->if_clause() != nullptr) {
+    s = PTExprToPB(tnode->if_clause(), select_op->mutable_request()->mutable_if_expr());
+    if (PREDICT_FALSE(!s.ok())) {
+      return exec_context_->Error(tnode->if_clause(), s, ErrorCode::INVALID_ARGUMENTS);
+    }
   }
 
   // Specify distinct columns or non.
@@ -1024,7 +1148,13 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
   } else {
     s = ColumnArgsToPB(tnode, req);
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+      // Note: INVALID_ARGUMENTS is retryable error code (due to mapping into STALE_METADATA),
+      //       INVALID_REQUEST - non-retryable.
+      ErrorCode error_code =
+          s.code() == Status::kNotSupported || s.code() == Status::kRuntimeError ?
+          ErrorCode::INVALID_REQUEST : ErrorCode::INVALID_ARGUMENTS;
+
+      return exec_context_->Error(tnode, s, error_code);
     }
   }
 
@@ -1260,7 +1390,7 @@ void RightPad(const int length, string *s) {
 Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
   TreeNode::SharedPtr subStmt = tnode->stmt();
   PTDmlStmt *dmlStmt = down_cast<PTDmlStmt *>(subStmt.get());
-  const YBTableName explainTable("Explain");
+  const YBTableName explainTable(YQL_DATABASE_CQL, "Explain");
   ColumnSchema explainColumn("QUERY PLAN", STRING);
   auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
       std::initializer_list<ColumnSchema>{explainColumn});
@@ -1379,8 +1509,12 @@ void Executor::FlushAsync() {
   }
   for (ExecContext& exec_context : exec_contexts_) {
     if (exec_context.HasTransaction()) {
-      if (exec_context.transactional_session()->CountBufferedOperations() > 0) {
-        flush_sessions.push_back({exec_context.transactional_session(), &exec_context});
+      auto transactional_session = exec_context.transactional_session();
+      if (transactional_session->CountBufferedOperations() > 0) {
+        // In case or retry we should ignore values that could be written by previous attempts
+        // of retried operation.
+        transactional_session->SetInTxnLimit(transactional_session->read_point()->Now());
+        flush_sessions.push_back({transactional_session, &exec_context});
       } else if (!exec_context.HasPendingOperations()) {
         commit_contexts.push_back(&exec_context);
       }
@@ -1400,9 +1534,13 @@ void Executor::FlushAsync() {
         CommitDone(s, exec_context);
       });
   }
+  // Use the same score on each tablet. So probability of rejecting write should be related
+  // to used capacity.
+  auto rejection_score_source = std::make_shared<client::RejectionScoreSource>();
   for (const auto& pair : flush_sessions) {
     auto session = pair.first;
     auto exec_context = pair.second;
+    session->SetRejectionScoreSource(rejection_score_source);
     TRACE("Flush Async");
     session->FlushAsync([this, exec_context](const Status& s) {
         FlushAsyncDone(s, exec_context);
@@ -1930,9 +2068,18 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
   }
 
   // Create the write operation for each index and populate it using the original operation.
+  // CQL does not allow the primary key to be updated, so PK-only index rows will be either
+  // deleted when the row in the main table is deleted, or it will be inserted into the index
+  // when a row is inserted into the main table or updated (for a non-pk column).
   for (const auto& index_table : tnode->pk_only_indexes()) {
     const IndexInfo* index =
         VERIFY_RESULT(tnode->table()->index_map().FindIndex(index_table->id()));
+    const bool index_ready_to_accept = (is_upsert ? index->AllowWrites() : index->AllowDelete());
+    if (!index_ready_to_accept) {
+      // We are in the process of backfilling the index. It should not be updated with a
+      // write/delete yet. The backfill stage will update the index for such entries.
+      continue;
+    }
     YBqlWriteOpPtr index_op(is_upsert ? index_table->NewQLInsert() : index_table->NewQLDelete());
     index_op->set_writes_primary_row(true);
     QLWriteRequestPB *index_req = index_op->mutable_request();
@@ -2039,9 +2186,26 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
     if (errcode == ErrorCode::TABLET_NOT_FOUND         ||
         errcode == ErrorCode::WRONG_METADATA_VERSION   ||
         errcode == ErrorCode::INVALID_TABLE_DEFINITION ||
+        errcode == ErrorCode::INVALID_TYPE_DEFINITION  ||
         errcode == ErrorCode::INVALID_ARGUMENTS        ||
         errcode == ErrorCode::OBJECT_NOT_FOUND         ||
         errcode == ErrorCode::TYPE_NOT_FOUND) {
+
+      if (errcode == ErrorCode::INVALID_ARGUMENTS) {
+        // Check the table schema is up-to-date.
+        const shared_ptr<client::YBTable> table = GetTableFromStatement(parse_tree.root().get());
+        if (table) {
+          const uint32_t current_schema_ver = table->schema().version();
+          uint32_t updated_schema_ver = 0;
+          const Status s_get_schema = ql_env_->GetUpToDateTableSchemaVersion(
+              table->name(), &updated_schema_ver);
+
+          if (s_get_schema.ok() && updated_schema_ver == current_schema_ver) {
+            return s; // Do not retry via STALE_METADATA code if the table schema is up-to-date.
+          }
+        }
+      }
+
       parse_tree.ClearAnalyzedTableCache(ql_env_);
       parse_tree.ClearAnalyzedUDTypeCache(ql_env_);
       parse_tree.set_stale();

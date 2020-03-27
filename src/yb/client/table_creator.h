@@ -47,6 +47,10 @@ class YBTableCreator {
   // will calculate this value (num_shards_per_tserver * num_of_tservers).
   YBTableCreator& num_tablets(int32_t count);
 
+  // Whether this table should be colocated. Will be ignored by catalog manager if the database is
+  // not colocated.
+  YBTableCreator& colocated(const bool colocated);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -83,11 +87,25 @@ class YBTableCreator {
   // For index table: sets the indexed table id of this index.
   YBTableCreator& indexed_table_id(const std::string& id);
 
+  // For index table: uses the old style request without index_info.
+  YBTableCreator& TEST_use_old_style_create_request();
+
   // For index table: sets whether this is a local index.
   YBTableCreator& is_local_index(bool is_local_index);
 
   // For index table: sets whether this is a unique index.
   YBTableCreator& is_unique_index(bool is_unique_index);
+
+  // For index table: indicates whether this index has mangled column name.
+  // - Older index supports only ColumnRef, and its name is identical with colum name.
+  // - Newer index supports expressions including ColumnRef, and its name is a mangled name of
+  //   the expression. For example, ColumnRef name = "$C_" + escape_column_name.
+  YBTableCreator& use_mangled_column_name(bool value);
+
+  // Return index_info for caller to fill index information.
+  IndexInfoPB* mutable_index_info() {
+    return &index_info_;
+  }
 
   // Set the timeout for the operation. This includes any waiting
   // after the create has been submitted (i.e if the create is slow
@@ -109,6 +127,9 @@ class YBTableCreator {
   // or a misuse of the builder; in the latter case, only the last error is
   // returned.
   CHECKED_STATUS Create();
+
+  Result<int> NumTabletsForUserTable();
+
  private:
   friend class YBClient;
 
@@ -139,14 +160,16 @@ class YBTableCreator {
   master::ReplicationInfoPB replication_info_;
   bool has_replication_info_ = false;
 
-  std::string indexed_table_id_;
+  // When creating index, proxy server construct index_info_, and master server will write it to
+  // the data-table being indexed.
+  IndexInfoPB index_info_;
 
-  bool is_local_index_ = false;
-  bool is_unique_index_ = false;
+  bool TEST_use_old_style_create_request_ = false;
 
   MonoDelta timeout_;
-
   bool wait_ = true;
+
+  bool colocated_ = true;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

@@ -1,2 +1,4 @@
+Sitemap: https://docs.yugabyte.com/sitemap.xml
 User-agent: *
-Disallow: /v1.0/
+Disallow: /latest/api/ysql/syntax_resources/
+Allow: /latest/api/ysql/syntax_resources/grammar_diagrams/

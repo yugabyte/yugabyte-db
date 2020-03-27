@@ -18,7 +18,7 @@ $ mkdir ~/yugabyte && cd ~/yugabyte
 ```
 
 ```sh
-$ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
+$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
 ## Help command
@@ -32,16 +32,16 @@ $ ./yb-docker-ctl -h
 ```
 usage: yb-docker-ctl [-h] {create,status,destroy,add_node,remove_node} ...
 
-YugaByte Docker Container Control
+Yugabyte Docker Container Control
 
 positional arguments:
   {create,status,destroy,add_node,remove_node}
                         Commands
-    create              Create YugaByte Cluster
-    status              Check YugaByte Cluster status
-    destroy             Destroy YugaByte Cluster
-    add_node            Add a new YugaByte Cluster Node
-    remove_node         Stop a YugaByte Cluster Node
+    create              Create Yugabyte Cluster
+    status              Check Yugabyte Cluster status
+    destroy             Destroy Yugabyte Cluster
+    add_node            Add a new Yugabyte Cluster Node
+    remove_node         Stop a Yugabyte Cluster Node
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -160,7 +160,7 @@ $ ./yb-docker-ctl destroy
 
 ## Upgrade container image
 
-Upgrade the YugaByte DB image to the latest version.
+Upgrade the YugabyteDB image to the latest version.
 ```sh
 $ docker pull yugabytedb/yugabyte
 ```

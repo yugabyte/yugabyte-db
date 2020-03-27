@@ -1,7 +1,9 @@
 ---
-title: TEXT
+title: TEXT data type [YCQL]
 summary: String of Unicode characters
-description: TEXT Type
+headerTitle: TEXT type
+linkTitle: TEXT
+description: Use the TEXT data type to specify data of a string of Unicode characters.
 menu:
   latest:
     parent: api-cassandra
@@ -14,9 +16,11 @@ showAsideToc: true
 ---
 
 ## Synopsis
-`TEXT` datatype is used to specify data of a string of unicode characters.
+
+Use the `TEXT` data type to specify data of a string of Unicode characters.
 
 ## Syntax
+
 ```
 type_specification ::= TEXT | VARCHAR
 
@@ -31,7 +35,7 @@ Where
 ## Semantics
 
 - Columns of type `TEXT` or `VARCHAR` can be part of the `PRIMARY KEY`.
-- Implicitly, value of type `TEXT` datatype are neither convertible nor comparable to non-text datatypes.
+- Implicitly, value of type `TEXT` data type are neither convertible nor comparable to non-text data types.
 - The length of `TEXT` string is virtually unlimited.
 
 ## Examples
@@ -63,6 +67,6 @@ cqlsh:example> SELECT * FROM users;
       john |  John Doe
 ```
 
-## See Also
+## See also
 
-[Data Types](..#datatypes)
+- [Data types](..#data-types)

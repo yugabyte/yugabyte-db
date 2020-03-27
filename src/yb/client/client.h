@@ -60,6 +60,7 @@
 #endif
 #include "yb/client/permissions.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/client/namespace_alterer.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
@@ -97,6 +98,12 @@ class TabletServerServiceProxy;
 }
 
 namespace client {
+namespace internal {
+class ClientMasterRpc;
+class CreateCDCStreamRpc;
+class DeleteCDCStreamRpc;
+class GetCDCStreamRpc;
+}
 
 // This needs to be called by a client app before performing any operations that could result in
 // logging.
@@ -159,6 +166,9 @@ class YBClientBuilder {
 
   // Add an RPC address of a master. At least one master is required.
   YBClientBuilder& add_master_server_addr(const std::string& addr);
+
+  // Don't override master addresses with external information from FLAGS_flagfile.
+  YBClientBuilder& skip_master_flagfile(bool should_skip = true);
 
   // The default timeout used for administrative operations (e.g. CreateTable,
   // AlterTable, ...). Optional.
@@ -248,8 +258,7 @@ class YBClient {
  public:
   ~YBClient();
 
-  // Creates a YBTableCreator; it is the caller's responsibility to free it.
-  YBTableCreator* NewTableCreator();
+  std::unique_ptr<YBTableCreator> NewTableCreator();
 
   // set 'create_in_progress' to true if a CreateTable operation is in-progress.
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
@@ -275,9 +284,18 @@ class YBClient {
                                   YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
 
-  // Creates a YBTableAlterer; it is the caller's responsibility to free it.
-  YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
-  YBTableAlterer* NewTableAlterer(const string id);
+  // Flush or compact the specified table.
+  // TODO(jason): it would be nice to have this take a list of table_ids.
+  CHECKED_STATUS FlushTable(const std::string& table_id,
+                            int timeout_secs,
+                            bool is_compaction);
+  // TODO(jason): it would be nice to have this take a list of table_names.
+  CHECKED_STATUS FlushTable(const YBTableName& table_name,
+                            int timeout_secs,
+                            bool is_compaction);
+
+  std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
+  std::unique_ptr<YBTableAlterer> NewTableAlterer(const string id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   CHECKED_STATUS IsAlterTableInProgress(const YBTableName& table_name,
@@ -287,6 +305,10 @@ class YBClient {
   CHECKED_STATUS GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema);
+  Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
+
+  CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
+                                    StatusCallback callback);
 
   // Namespace related methods.
 
@@ -298,7 +320,8 @@ class YBClient {
                                  const std::string& creator_role_name = "",
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
-                                 const boost::optional<uint32_t>& next_pg_oid = boost::none);
+                                 const boost::optional<uint32_t>& next_pg_oid = boost::none,
+                                 bool colocated = false);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -318,6 +341,9 @@ class YBClient {
                                  const boost::optional<YQLDatabase>& database_type = boost::none,
                                  const std::string& namespace_id = "");
 
+  YBNamespaceAlterer* NewNamespaceAlterer(const string& namespace_name,
+                                          const std::string& namespace_id);
+
   // For Postgres: reserve oids for a Postgres database.
   CHECKED_STATUS ReservePgsqlOids(const std::string& namespace_id,
                                   uint32_t next_oid, uint32_t count,
@@ -333,15 +359,14 @@ class YBClient {
                                        const char* resource_name,
                                        const char* namespace_name,
                                        const std::string& role_name);
-  // List all namespace names and optionally namespace ids.
-  // 'namespaces' is appended to only on success.
-  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespace_names,
-                                std::vector<std::string>* namespace_ids = nullptr) {
-    return ListNamespaces(boost::none, namespace_names, namespace_ids);
+
+  // List all namespace identifiers.
+  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces() {
+    return ListNamespaces(boost::none);
   }
-  CHECKED_STATUS ListNamespaces(const boost::optional<YQLDatabase>& database_type,
-                                std::vector<std::string>* namespace_names,
-                                std::vector<std::string>* namespace_ids = nullptr);
+
+  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces(
+      const boost::optional<YQLDatabase>& database_type);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
@@ -400,10 +425,40 @@ class YBClient {
                            const std::string &type_name,
                            std::shared_ptr<QLType> *ql_type);
 
+  // CDC Stream related methods.
+
+  // Create a new CDC stream.
+  Result<CDCStreamId> CreateCDCStream(const TableId& table_id,
+                                      const std::unordered_map<std::string, std::string>& options);
+
+  void CreateCDCStream(const TableId& table_id,
+                       const std::unordered_map<std::string, std::string>& options,
+                       CreateCDCStreamCallback callback);
+
+  // Delete multiple CDC streams.
+  CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams);
+
+  // Delete a CDC stream.
+  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
+
+  void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
+
+  // Retrieve a CDC stream.
+  CHECKED_STATUS GetCDCStream(const CDCStreamId &stream_id,
+                              TableId* table_id,
+                              std::unordered_map<std::string, std::string>* options);
+
+  void GetCDCStream(const CDCStreamId& stream_id,
+                    std::shared_ptr<TableId> table_id,
+                    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+                    StdStatusCallback callback);
+
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
-  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false);
+  // If use_cache is set to true, we return old value.
+  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
+      bool use_cache = false);
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
@@ -434,6 +489,11 @@ class YBClient {
                             std::vector<master::TabletLocationsPB>* locations = nullptr,
                             bool update_tablets_cache = false);
 
+
+  Status GetTabletsFromTableId(
+      const std::string& table_id, const int32_t max_tablets,
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
+
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
@@ -449,6 +509,8 @@ class YBClient {
   // Check if the table given by 'table_name' exists.
   // Result value is set only on success.
   Result<bool> TableExists(const YBTableName& table_name);
+
+  Result<bool> IsLoadBalanced(uint32_t num_servers);
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
@@ -474,6 +536,7 @@ class YBClient {
   // from its own master address list.
   CHECKED_STATUS AddMasterToClient(const HostPort& add);
   CHECKED_STATUS RemoveMasterFromClient(const HostPort& remove);
+  CHECKED_STATUS SetMasterAddresses(const std::string& addrs);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {
@@ -489,6 +552,13 @@ class YBClient {
   };
 
   bool IsMultiMaster() const;
+
+  // Get the number of tablets to be created for a new user table.
+  // This will be based on --num_shards_per_tserver or --ysql_num_shards_per_tserver
+  // and number of tservers.
+  Result<int> NumTabletsForUserTable(TableType table_type);
+
+  void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 
   const MonoDelta& default_admin_operation_timeout() const;
   const MonoDelta& default_rpc_timeout() const;
@@ -537,9 +607,13 @@ class YBClient {
   // Id of this client instance.
   const ClientId& id() const;
 
+  const CloudInfoPB& cloud_info() const;
+
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
+
+  void Shutdown();
 
  private:
   class Data;
@@ -548,6 +622,7 @@ class YBClient {
   friend class YBNoOp;
   friend class YBTable;
   friend class YBTableAlterer;
+  friend class YBNamespaceAlterer;
   friend class YBTableCreator;
   friend class internal::Batcher;
   friend class internal::GetTableSchemaRpc;
@@ -557,16 +632,21 @@ class YBClient {
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
   friend class internal::TabletInvoker;
+  friend class internal::ClientMasterRpc;
+  friend class internal::CreateCDCStreamRpc;
+  friend class internal::DeleteCDCStreamRpc;
+  friend class internal::GetCDCStreamRpc;
   friend class PlacementInfoTest;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
-  FRIEND_TEST(ClientTest, TestReplicatedTabletWritesWithLeaderElection);
+  FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
   FRIEND_TEST(ClientTest, TestScanTimeout);
   FRIEND_TEST(ClientTest, TestWriteWithDeadMaster);
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
+  FRIEND_TEST(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued);
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
       const YBTable* table);
@@ -576,6 +656,8 @@ class YBClient {
   ThreadPool* callback_threadpool();
 
   std::unique_ptr<Data> data_;
+
+  int tserver_count_cached_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };

@@ -86,7 +86,7 @@ Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
 
     if (cache_only) {
       result = STATUS(TryAgain,
-                      "Transaction ould not check for conflicts as the MemTable does not "
+                      "Transaction could not check for conflicts as the MemTable does not "
                       "countain a long enough history to check write at SequenceNumber: ",
                       ToString(key_seq));
     }

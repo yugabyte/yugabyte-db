@@ -25,7 +25,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 
-DEFINE_int32(retryable_request_timeout_secs, 300,
+DEFINE_int32(retryable_request_timeout_secs, 120,
              "Amount of time to keep write request in index, to prevent duplicate writes.");
 
 // We use this limit to prevent request range from infinite grow, because it will block log
@@ -227,7 +227,8 @@ class RetryableRequests::Impl {
 
     if (data.request_id() < client_retryable_requests.min_running_request_id) {
       round->NotifyReplicationFinished(
-          STATUS(Expired, "Request id is below than min running"), round->bound_term());
+          STATUS(Expired, "Request id is below than min running"), round->bound_term(),
+          nullptr /* applied_op_ids */);
       return false;
     }
 
@@ -235,7 +236,8 @@ class RetryableRequests::Impl {
     auto it = replicated_indexed_by_last_id.lower_bound(data.request_id());
     if (it != replicated_indexed_by_last_id.end() && it->first_id <= data.request_id()) {
       round->NotifyReplicationFinished(
-          STATUS(AlreadyPresent, "Duplicate request"), round->bound_term());
+          STATUS(AlreadyPresent, "Duplicate request"), round->bound_term(),
+          nullptr /* applied_op_ids */);
       return false;
     }
 
@@ -318,7 +320,8 @@ class RetryableRequests::Impl {
     static Status duplicate_write_status = STATUS(AlreadyPresent, "Duplicate request");
     auto status_for_duplicate = status.ok() ? duplicate_write_status : status;
     for (const auto& duplicate : running_it->duplicate_rounds) {
-      duplicate->NotifyReplicationFinished(status_for_duplicate, leader_term);
+      duplicate->NotifyReplicationFinished(status_for_duplicate, leader_term,
+                                           nullptr /* applied_op_ids */);
     }
     auto entry_time = running_it->time;
     running_indexed_by_request_id.erase(running_it);

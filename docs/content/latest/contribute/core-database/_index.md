@@ -1,14 +1,16 @@
 ---
-title: Contributing to the Core Database
-linkTitle: Core Database
-description: Contributing to the Core Database
+title: Contribute to the core database
+headerTitle: Contribute to the core database
+linkTitle: Core database
+description: Contribute to the core database
 image: /images/section_icons/index/quick_start.png
-headcontent: How to contribute code to the core database?
+headcontent: How to contribute code to the core database
 type: page
 section: CONTRIBUTOR GUIDES
 menu:
   latest:
-    identifier: contribute-db-core
+    identifier: core-database
+    parent: contribute
     weight: 2910
 ---
 
@@ -17,7 +19,7 @@ menu:
     <a class="section-link icon-offset" href="checklist/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Checklist</div>
+        <div class="title">Contributing checklist</div>
       </div>
       <div class="body">
         Checklist to review before starting your contribution.
@@ -26,7 +28,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="build-from-src/">
+    <a class="section-link icon-offset" href="build-from-src-macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Build from source</div>

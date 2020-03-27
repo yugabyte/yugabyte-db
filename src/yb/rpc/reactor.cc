@@ -43,8 +43,6 @@
 #include <mutex>
 #include <string>
 
-#include <boost/scope_exit.hpp>
-
 #include <ev++.h>
 
 #include <glog/logging.h>
@@ -62,11 +60,12 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
-#include "yb/util/status.h"
 #include "yb/util/net/socket.h"
 
 using namespace std::literals;
@@ -83,12 +82,13 @@ namespace {
 static const char* kShutdownMessage = "Shutdown connection";
 
 const Status& AbortedError() {
-  static Status result = STATUS(Aborted, kShutdownMessage, "", ESHUTDOWN);
+  static Status result = STATUS(Aborted, kShutdownMessage, "" /* msg2 */, Errno(ESHUTDOWN));
   return result;
 }
 
 const Status& ServiceUnavailableError() {
-  static Status result = STATUS(ServiceUnavailable, kShutdownMessage, "", ESHUTDOWN);
+  static Status result = STATUS(
+      ServiceUnavailable, kShutdownMessage, "" /* msg2 */, Errno(ESHUTDOWN));
   return result;
 }
 
@@ -289,7 +289,7 @@ void Reactor::QueueEventOnAllConnections(
 
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                 DumpRunningRpcsResponsePB* resp) {
-  return RunOnReactorThread([&req, resp](Reactor* reactor) {
+  return RunOnReactorThread([&req, resp](Reactor* reactor) -> Status {
     for (const ConnectionPtr& conn : reactor->server_conns_) {
       RETURN_NOT_OK(conn->DumpPB(req, resp->add_inbound_connections()));
     }
@@ -343,9 +343,9 @@ void Reactor::CheckReadyToStop() {
 void Reactor::AsyncHandler(ev::async &watcher, int revents) {
   DCHECK(IsCurrentThread());
 
-  BOOST_SCOPE_EXIT(&async_handler_tasks_) {
+  auto se = ScopeExit([this] {
     async_handler_tasks_.clear();
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   if (PREDICT_FALSE(DrainTaskQueueAndCheckIfClosing())) {
     ShutdownInternal();
@@ -447,7 +447,7 @@ void Reactor::ScanIdleConnections() {
     if (connection_delta > connection_keepalive_time_) {
       conn->Shutdown(STATUS_FORMAT(
           NetworkError, "Connection timed out after $0", ToSeconds(connection_delta)));
-      VLOG_WITH_PREFIX(1)
+      LOG_WITH_PREFIX(INFO)
           << "Timing out connection " << conn->ToString() << " - it has been idle for "
           << ToSeconds(connection_delta) << "s (delta: " << ToSeconds(connection_delta)
           << ", current time: " << ToSeconds(cur_time_.time_since_epoch())
@@ -535,7 +535,8 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
 
   // Create a new socket and start connecting to the remote.
   auto sock = VERIFY_RESULT(CreateClientSocket(conn_id.remote()));
-  if (!messenger_->test_outbound_ip_base_.is_unspecified()) {
+  if (messenger_->has_outbound_ip_base_.load(std::memory_order_acquire) &&
+      !messenger_->test_outbound_ip_base_.is_unspecified()) {
     auto address_bytes(messenger_->test_outbound_ip_base_.to_v4().to_bytes());
     // Use different addresses for public/private endpoints.
     // Private addresses are even, and public are odd.

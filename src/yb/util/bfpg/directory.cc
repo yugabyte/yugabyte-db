@@ -102,14 +102,12 @@ const vector<BFDecl> kBFDirectory = {
   { "ServerOperator", "count", INT64, {ANYTYPE}, TSOpcode::kCount },
 
   // Cassandra behavior: SUM() has exactly the same datatype as the input argument's type.
-  { "ServerOperator", "sum", INT8, {INT8}, TSOpcode::kSum },
-  { "ServerOperator", "sum", INT16, {INT16}, TSOpcode::kSum },
-  { "ServerOperator", "sum", INT32, {INT32}, TSOpcode::kSum },
-  { "ServerOperator", "sum", INT64, {INT64}, TSOpcode::kSum },
-  { "ServerOperator", "sum", FLOAT, {FLOAT}, TSOpcode::kSum },
-  { "ServerOperator", "sum", DOUBLE, {DOUBLE}, TSOpcode::kSum },
-  { "ServerOperator", "sum", VARINT, {VARINT}, TSOpcode::kSum, false },
-  { "ServerOperator", "sum", DECIMAL, {DECIMAL}, TSOpcode::kSum, false },
+  { "ServerOperator", "sum", INT64, {INT8}, TSOpcode::kSumInt8 },
+  { "ServerOperator", "sum", INT64, {INT16}, TSOpcode::kSumInt16 },
+  { "ServerOperator", "sum", INT64, {INT32}, TSOpcode::kSumInt32 },
+  { "ServerOperator", "sum", INT64, {INT64}, TSOpcode::kSumInt64 },
+  { "ServerOperator", "sum", FLOAT, {FLOAT}, TSOpcode::kSumFloat },
+  { "ServerOperator", "sum", DOUBLE, {DOUBLE}, TSOpcode::kSumDouble },
 
   // Cassandra behavior: AVG() has exactly the same datatype as the input argument's type.
   { "ServerOperator", "avg", INT8, {INT8}, TSOpcode::kAvg, false },

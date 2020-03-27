@@ -187,6 +187,11 @@ message WriteRequestPB {
   optional fixed64 client_id2 = 15;
   optional int64 request_id = 16;
   optional int64 min_running_request_id = 17;
+  optional double rejection_score = 18;
+
+  optional fixed64 external_hybrid_time = 19;
+
+  optional uint64 batch_idx = 20;
 }
 
 message WriteResponsePB {
@@ -283,7 +288,11 @@ message ReadRequestPB {
 
   optional string proxy_uuid = 11;
 
-  optional bool may_have_metadata = 12;
+  optional bool DEPRECATED_may_have_metadata = 12;
+
+  optional double rejection_score = 13;
+
+  optional uint64 batch_idx = 14;
 }
 
 message ReadResponsePB {
@@ -319,8 +328,17 @@ message TransactionStatePB {
   // Not used is other cases.
   repeated bytes tablets = 3;
 
+  // Relevant only in SEALED state.
+  // Number of batches that should be replicated at appropriate tablet to interpret transaction as
+  // committed.
+  repeated int64 tablet_batches = 5;
+
   // Relevant only in APPLYING state.
   optional fixed64 commit_hybrid_time = 4;
+
+  // Relevant only in CLEANUP and APPLYING status, true when we perform request
+  // for a transaction that was previously sealed.
+  optional bool sealed = 6;
 }
 
 // Truncate tablet request.

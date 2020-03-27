@@ -13,8 +13,12 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <chrono>
+
 #include "yb/yql/pggate/test/pggate_test.h"
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
+
+using namespace std::chrono_literals;
 
 namespace yb {
 namespace pggate {
@@ -31,10 +35,11 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // Create table in the connected database.
   int col_count = 0;
-  CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
+  CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, &pg_stmt));
+                                       false /* add_primary_key */, true /* colocated */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "company_id", ++col_count,
                                              DataType::INT64, false, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "empid", ++col_count,
@@ -53,7 +58,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, tab_oid,
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
                                   false /* is_single_row_txn */, &pg_stmt));
 
   // Allocate constant expressions.
@@ -83,8 +88,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_job));
   CHECK_EQ(attr_num, col_count);
 
-  const int insert_row_count = 7;
-  for (int i = 0; i < insert_row_count; i++) {
+  const int kInsertRowCount = 7;
+  for (int i = 0; i < kInsertRowCount; i++) {
     // Insert the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
     CommitTransaction();
@@ -105,8 +110,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
+                                  NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -174,8 +179,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
+                                  NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -197,10 +202,11 @@ TEST_F(PggateTestCatalog, TestDml) {
   // Fetching rows and check their contents.
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
-  for (int i = 0; i < insert_row_count; i++) {
+  for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
     YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
-    CHECK(has_data) << "Not all inserted rows are fetch";
+    CHECK(has_data) << "Not all inserted rows have been fetched: only "
+                    << i << " rows fetched out of " << kInsertRowCount;
 
     // Print result
     LOG(INFO) << "ROW " << i << ": "
@@ -232,7 +238,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // UPDATE ----------------------------------------------------------------------------------------
   // Allocate new update.
-  CHECK_YBC_STATUS(YBCPgNewUpdate(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewUpdate(kDefaultDatabaseOid, tab_oid,
+                                  false /* is_single_row_txn */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -259,8 +266,10 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_EQ(attr_num, col_count);
 
   // UPDATE all of odd rows.
-  const int update_row_count = (insert_row_count + 1)/ 2;
-  for (int i = 0; i < update_row_count; i++) {
+  const int kOddEmpIdRowCount = (kInsertRowCount + 1) / 2;
+  LOG(INFO) << "Updating " << kOddEmpIdRowCount << " rows with odd empid values";
+  for (int i = 0; i < kOddEmpIdRowCount; i++) {
+    LOG(INFO) << "Updating row with empid=" << seed;
     // Update the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecUpdate(pg_stmt));
     CommitTransaction();
@@ -281,8 +290,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
+                                  NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -301,9 +310,9 @@ TEST_F(PggateTestCatalog, TestDml) {
   // Execute select statement.
   CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
-  // Fetching rows and check their contents.
+  // Fetching rows and checking their contents.
   select_row_count = 0;
-  for (int i = 0; i < insert_row_count; i++) {
+  for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
     YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data);
     if (!has_data) {
@@ -354,7 +363,7 @@ TEST_F(PggateTestCatalog, TestDml) {
       CHECK_EQ(selected_job_name, expected_job_name);
     }
   }
-  CHECK_EQ(select_row_count, insert_row_count) << "Unexpected row count";
+  CHECK_EQ(select_row_count, kInsertRowCount) << "Unexpected row count";
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
@@ -371,17 +380,18 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // Create sys catalog table in default database.
   LOG(INFO) << "Create database with source database";
-  CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
+  CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, &pg_stmt));
+                                       false /* add_primary_key */, true /* colocated */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "key", 1, DataType::INT32, false, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "value", 2, DataType::INT32, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, tab_oid,
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
                                   false /* is_single_row_txn */, &pg_stmt));
 
   YBCPgExpr expr_key;
@@ -391,8 +401,8 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_key));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 2, expr_value));
 
-  const int insert_row_count = 7;
-  for (int i = 0; i < insert_row_count; i++) {
+  const int kInsertRowCount = 7;
+  for (int i = 0; i < kInsertRowCount; i++) {
     // Insert the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
     CommitTransaction();
@@ -405,8 +415,9 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // COPYDB ----------------------------------------------------------------------------------------
   LOG(INFO) << "Create another database from default database";
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, copy_db_name, copy_db_oid,
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(copy_db_name, copy_db_oid,
                                           kDefaultDatabaseOid, kInvalidOid /* next_oid */,
+                                          false /* colocated */,
                                           &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
@@ -414,8 +425,8 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_oid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(copy_db_oid, tab_oid,
+                                  NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -430,10 +441,10 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   // Fetching rows and check their contents.
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(2 * sizeof(uint64_t)));
   bool *isnulls = static_cast<bool*>(YBCPAlloc(2 * sizeof(bool)));
-  for (int i = 0; i < insert_row_count; i++) {
+  for (int i = 0; i < kInsertRowCount; i++) {
     bool has_data = false;
     YBCPgDmlFetch(pg_stmt, 2, values, isnulls, nullptr, &has_data);
-    CHECK(has_data) << "Not all inserted rows are fetch";
+    CHECK(has_data) << "Not all inserted rows have been fetched";
 
     // Print result
     LOG(INFO) << "ROW " << i << ": key = " << values[0] << ", value = " << values[1];
@@ -456,9 +467,9 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
   const YBCPgOid db_oid = 101;
   YBCPgStatement pg_stmt;
 
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name, db_oid,
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(db_name, db_oid,
                                           kInvalidOid /* source_database_oid */,
-                                          100 /* next_oid */, &pg_stmt));
+                                          100 /* next_oid */, false /* colocated */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
@@ -469,7 +480,7 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
   LOG(INFO) << "Reserve oids";
   YBCPgOid begin_oid = 0;
   YBCPgOid end_oid = 0;
-  CHECK_YBC_STATUS(YBCPgReserveOids(pg_session_, db_oid, 50 /* next_oid */, 100 /* count */,
+  CHECK_YBC_STATUS(YBCPgReserveOids(db_oid, 50 /* next_oid */, 100 /* count */,
                                     &begin_oid, &end_oid));
   EXPECT_EQ(begin_oid, 100);
   EXPECT_EQ(end_oid, 200);

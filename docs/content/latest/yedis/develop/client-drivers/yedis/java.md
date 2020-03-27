@@ -1,7 +1,21 @@
+---
+title: Build a YugabyteDB application using Java and YEDIS
+headerTitle: Build an application using Java
+linkTitle: Java
+description: Use Java to build a YugabyteDB application that interacts with YEDIS
+aliases:
+ - /latest/yedis/develop/client-drivers/java
+menu:
+  latest:
+    identifier: client-drivers-yedis-java
+    parent: develop-yedis
+isTocNested: true
+showAsideToc: true
+---
 
 ## Maven
 
-To build your Java application using YugaByte DB's version of the Jedis driver, add the following Maven dependency to your application:
+To build your Java application using the YugabyteDB version of the Jedis driver, add the following Maven dependency to your application:
 
 ```xml
 <dependency>
@@ -11,22 +25,23 @@ To build your Java application using YugaByte DB's version of the Jedis driver, 
 </dependency>
 ```
 
-## Working Example
+## Working example
 
-### Pre-requisites
+### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-redis/).
-- installed JDK version 1.8+ and maven 3.3+
+- installed YugabyteDB, created a universe and are able to interact with it using the Redis shell. If not, please follow these steps in [Quick start](../../../quick-start/).
+- JDK version 1.8 or later
+- Maven 3.3 or later
 
-### Creating the maven build file
+### Create the Maven build file
 
-Create a maven build file `pom.xml` and add the following content into it.
+Create a Maven build file `pom.xml` and add the following content into it.
 
-```mvn
+```xml
 <?xml version="1.0"?>
-<!-- Copyright (c) YugaByte, Inc. -->
+<!-- Copyright (c) Yugabyte, Inc. -->
 <project
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
   xmlns="http://maven.apache.org/POM/4.0.0"
@@ -73,9 +88,9 @@ Create a maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-### Writing a HelloWorld Redis app
+### Write a HelloWorld Java application
 
-Create the appropriate directory structure as expected by maven.
+Create the appropriate directory structure as expected by Maven.
 
 ```sh
 $ mkdir -p src/main/java/com/yugabyte/sample/apps
@@ -83,7 +98,7 @@ $ mkdir -p src/main/java/com/yugabyte/sample/apps
 
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBRedisHelloWorld.java`.
 
-```sh
+```java
 package com.yugabyte.sample.apps;
 
 import java.util.HashMap;
@@ -121,15 +136,15 @@ public class YBRedisHelloWorld {
 }
 ```
 
-### Building and running the app
+### Build and run the application
 
-To build the application, just run the following command.
+To build the application, run the following command.
 
 ```sh
 $ mvn package
 ```
 
-To run the program, do the following.
+To start the application, run the following command.
 
 ```sh
 % java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBRedisHelloWorld

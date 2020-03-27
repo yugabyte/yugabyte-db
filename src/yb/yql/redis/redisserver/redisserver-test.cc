@@ -42,6 +42,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/value_changer.h"
 
+#include "yb/master/flush_manager.h"
+
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
 DECLARE_uint64(redis_max_read_buffer_size);
@@ -298,6 +300,31 @@ class TestRedisService : public RedisTableTestBase {
   void SyncClient() { client().Commit(); }
 
   void VerifyCallbacks();
+
+  Status FlushRedisTable() {
+    // Flush the table
+    master::FlushTablesRequestPB req;
+    req.set_is_compaction(false);
+    table_name().SetIntoTableIdentifierPB(req.add_tables());
+    master::FlushTablesResponsePB resp;
+    RETURN_NOT_OK(mini_cluster()->leader_mini_master()->master()->flush_manager()->
+                  FlushTables(&req, &resp));
+
+    master::IsFlushTablesDoneRequestPB wait_req;
+    // Wait for table creation.
+    wait_req.set_flush_request_id(resp.flush_request_id());
+
+    for (int k = 0; k < 20; ++k) {
+      master::IsFlushTablesDoneResponsePB wait_resp;
+      RETURN_NOT_OK(mini_cluster()->leader_mini_master()->master()->flush_manager()->
+                    IsFlushTablesDone(&wait_req, &wait_resp));
+      if (wait_resp.done()) {
+        return Status::OK();
+      }
+      SleepFor(MonoDelta::FromSeconds(1));
+    }
+    return STATUS(IllegalState, "Could not flush redis table.");
+  }
 
   int server_port() { return redis_server_port_; }
 
@@ -5218,6 +5245,18 @@ TEST_F(TestRedisService, KeysTimeout) {
   SyncClient();
   FLAGS_test_tserver_timeout = false;
   DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"z_key"});
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, KeysWithFlush) {
+  for (int i = 0; i < 2; i++) {
+    DoRedisTestOk(__LINE__, {"SET", Format("k$0", i), Format("v$0", i)});
+    SyncClient();
+    ASSERT_OK(FlushRedisTable());
+  }
+
+  DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"k0", "k1"});
   SyncClient();
   VerifyCallbacks();
 }

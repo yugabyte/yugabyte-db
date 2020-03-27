@@ -57,6 +57,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -71,6 +72,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_test_util.h"
 #include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -186,7 +188,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
  protected:
-
   static const string kKeyspaceName;
   static const YBTableName kTableName;
   static const YBTableName kTable2Name;
@@ -344,7 +345,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
                    TableHandle* table) {
     auto num_replicas = FLAGS_replication_factor;
     // The implementation allows table name without a keyspace.
-    YBTableName table_name(table_name_orig.has_namespace() ?
+    YBTableName table_name(table_name_orig.namespace_type(), table_name_orig.has_namespace() ?
         table_name_orig.namespace_name() : kKeyspaceName, table_name_orig.table_name());
 
     bool added_replicas = false;
@@ -425,8 +426,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
 
 const string ClientTest::kKeyspaceName("my_keyspace");
-const YBTableName ClientTest::kTableName(kKeyspaceName, "client-testtb");
-const YBTableName ClientTest::kTable2Name(kKeyspaceName, "client-testtb2");
+const YBTableName ClientTest::kTableName(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb");
+const YBTableName ClientTest::kTable2Name(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb2");
 
 namespace {
 
@@ -477,13 +478,13 @@ TEST_F(ClientTest, TestListTables) {
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
     return n1.ToString() < n2.ToString();
   });
-  ASSERT_EQ(2 + master::kNumSystemTables, tables.size());
-  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << ToString(tables);
-  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << ToString(tables);
+  ASSERT_EQ(2 + master::kNumSystemTablesWithTxn, tables.size());
+  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << AsString(tables);
+  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << AsString(tables);
   tables.clear();
   ASSERT_OK(client_->ListTables(&tables, "testtb2"));
   ASSERT_EQ(1, tables.size());
-  ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << ToString(tables);
+  ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << AsString(tables);
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
@@ -507,7 +508,8 @@ TEST_F(ClientTest, TestListTabletServers) {
 
 TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
-  Status s = client_->OpenTable(YBTableName(kKeyspaceName, "xxx-does-not-exist"), &t);
+  Status s = client_->OpenTable(
+      YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "xxx-does-not-exist"), &t);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(false), "Not found: The object does not exist");
 }
@@ -519,8 +521,8 @@ TEST_F(ClientTest, TestMasterDown) {
   cluster_->mini_master()->Shutdown();
   shared_ptr<YBTable> t;
   client_->data_->default_admin_operation_timeout_ = MonoDelta::FromSeconds(1);
-  Status s = client_->OpenTable(YBTableName(kKeyspaceName, "other-tablet"), &t);
-  ASSERT_TRUE(s.IsNetworkError());
+  Status s = client_->OpenTable(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "other-tablet"), &t);
+  ASSERT_TRUE(s.IsTimedOut());
 }
 
 // TODO scan with predicates is not supported.
@@ -574,7 +576,7 @@ void CheckCounts(const TableHandle& table, const std::vector<int>& expected) {
 TEST_F(ClientTest, TestScanMultiTablet) {
   // 5 tablets, each with 10 rows worth of space.
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(YBTableName("TestScanMultiTablet"), 5, &table));
+  ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "TestScanMultiTablet"), 5, &table));
 
   // Insert rows with keys 12, 13, 15, 17, 22, 23, 25, 27...47 into each
   // tablet, except the first which is empty.
@@ -680,7 +682,7 @@ TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
 
 TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(YBTableName("blacklist"), kNumTablets, &table));
+  ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "blacklist"), kNumTablets, &table));
   InsertTestRows(table, 1, 0);
 
   // Look up the tablet and its replicas into the metadata cache.
@@ -753,7 +755,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
 
 TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(YBTableName("split-table"),
+  ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "split-table"),
                                kNumTablets,
                                &table));
 
@@ -822,7 +824,6 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     EXPECT_EQ(all_rows[0], rows.front());
     EXPECT_EQ(all_rows[14], rows.back());
   }
-
 }
 
 static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
@@ -1049,7 +1050,8 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
   switch (which) {
     case DEAD_MASTER:
       // Only one master, so no retry for finding the new leader master.
-      ASSERT_TRUE(error->status().IsNetworkError());
+      ASSERT_TRUE(error->status().IsTimedOut());
+      ASSERT_STR_CONTAINS(error->status().ToString(false), "Network error");
       break;
     case DEAD_TSERVER:
       ASSERT_TRUE(error->status().IsTimedOut());
@@ -1108,7 +1110,6 @@ TEST_F(ClientTest, TestApplyToSessionWithoutFlushing_OpsBuffered) {
 // that we get an error on Apply() rather than sending a too-large
 // RPC to the server.
 TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
-
   // Applying a bunch of small rows without a flush should result
   // in an error.
   {
@@ -1203,7 +1204,7 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
 TEST_F(ClientTest, TestWriteWithBadSchema) {
   // Remove the 'int_val' column.
   // Now the schema on the client is "old"
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("int_val")->Alter());
 
   // Try to do a write with the bad schema.
@@ -1217,7 +1218,7 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
 TEST_F(ClientTest, TestBasicAlterOperations) {
   // test that having no steps throws an error
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(), "No alter steps provided");
@@ -1225,7 +1226,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   // test that remove key should throws an error
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     Status s = table_alterer
       ->DropColumn("key")
       ->Alter();
@@ -1235,7 +1236,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   // test that renaming to an already-existing name throws an error
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->AlterColumn("int_val")->RenameTo("string_val");
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsAlreadyPresent());
@@ -1245,11 +1246,16 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   // Need a tablet peer for the next set of tests.
   string tablet_id = GetFirstTabletId(client_table_.get());
   std::shared_ptr<TabletPeer> tablet_peer;
-  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(
-      tablet_id, &tablet_peer));
+
+  for (auto& ts : cluster_->mini_tablet_servers()) {
+    ASSERT_TRUE(ts->server()->tablet_manager()->LookupTablet(tablet_id, &tablet_peer));
+    if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+      break;
+    }
+  }
 
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->DropColumn("int_val")
       ->AddColumn("new_col")->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
@@ -1257,8 +1263,8 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   }
 
   {
-    const YBTableName kRenamedTableName(kKeyspaceName, "RenamedTable");
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    const YBTableName kRenamedTableName(YQL_DATABASE_CQL, kKeyspaceName, "RenamedTable");
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
               ->Alter());
@@ -1323,10 +1329,78 @@ TEST_F(ClientTest, TestGetTableSchema) {
   ASSERT_TRUE(schema_.Equals(schema));
 
   // Verify that a get schema request for a missing table throws not found
-  Status s = client_->GetTableSchema(YBTableName(kKeyspaceName, "MissingTableName"), &schema,
-                                     &partition_schema);
+  Status s = client_->GetTableSchema(
+      YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "MissingTableName"), &schema, &partition_schema);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+}
+
+TEST_F(ClientTest, TestGetTableSchemaByIdAsync) {
+  Synchronizer sync;
+  auto table_info = std::make_shared<YBTableInfo>();
+  ASSERT_OK(client_->GetTableSchemaById(
+      client_table_.table()->id(), table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_TRUE(schema_.Equals(table_info->schema));
+}
+
+TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
+  // Verify that a get schema request for a missing table throws not found.
+  Synchronizer sync;
+  auto table_info = std::make_shared<YBTableInfo>();
+  ASSERT_OK(client_->GetTableSchemaById("MissingTableId", table_info, sync.AsStatusCallback()));
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+}
+
+void CreateCDCStreamCallbackSuccess(Synchronizer* sync, const Result<CDCStreamId>& stream) {
+  ASSERT_TRUE(stream.ok());
+  ASSERT_FALSE(stream->empty());
+  sync->StatusCB(Status::OK());
+}
+
+void CreateCDCStreamCallbackFailure(Synchronizer* sync, const Result<CDCStreamId>& stream) {
+  ASSERT_FALSE(stream.ok());
+  sync->StatusCB(stream.status());
+}
+
+TEST_F(ClientTest, TestCreateCDCStreamAsync) {
+  Synchronizer sync;
+  std::unordered_map<std::string, std::string> options;
+  client_->CreateCDCStream(
+      client_table_.table()->id(), options,
+      std::bind(&CreateCDCStreamCallbackSuccess, &sync, std::placeholders::_1));
+  ASSERT_OK(sync.Wait());
+}
+
+TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
+  Synchronizer sync;
+  std::unordered_map<std::string, std::string> options;
+  client_->CreateCDCStream(
+      "MissingTableId", options,
+      std::bind(&CreateCDCStreamCallbackFailure, &sync, std::placeholders::_1));
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
+}
+
+TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
+  std::unordered_map<std::string, std::string> options;
+  auto result = client_->CreateCDCStream(client_table_.table()->id(), options);
+  ASSERT_TRUE(result.ok());
+
+  // Delete the created CDC stream.
+  Synchronizer sync;
+  client_->DeleteCDCStream(*result, sync.AsStatusCallback());
+  ASSERT_OK(sync.Wait());
+}
+
+TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
+  // Try to delete a non-existent CDC stream.
+  Synchronizer sync;
+  client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
 }
 
 TEST_F(ClientTest, TestStaleLocations) {
@@ -1378,7 +1452,7 @@ TEST_F(ClientTest, TestStaleLocations) {
 // in this file. However, some things like alter table are not yet
 // working on replicated tables - see KUDU-304
 TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
-  const YBTableName kReplicatedTable("replicated");
+  const YBTableName kReplicatedTable(YQL_DATABASE_CQL, "replicated");
   const int kNumRowsToWrite = 100;
 
   TableHandle table;
@@ -1400,7 +1474,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
 }
 
 TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
-  const YBTableName kReplicatedTable("replicated_failover_on_reads");
+  const YBTableName kReplicatedTable(YQL_DATABASE_CQL, "replicated_failover_on_reads");
   const int kNumRowsToWrite = 100;
   const int kNumTries = 100;
 
@@ -1442,8 +1516,9 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
 // a new client afterwards.
 // TODO Remove the leader promotion part when we have automated
 // leader election.
-TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
-  const YBTableName kReplicatedTable("replicated_failover_on_writes");
+TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
+  const YBTableName kReplicatedTable(YQL_DATABASE_CQL, kKeyspaceName,
+     "replicated_failover_on_writes");
   const int kNumRowsToWrite = 100;
 
   TableHandle table;
@@ -1478,8 +1553,8 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   // Since we waited before, hopefully all replicas will be up to date
   // and we can just promote another replica.
-  auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
-
+  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(CreateMessenger("client")));
   int new_leader_idx = -1;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
@@ -1527,6 +1602,18 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   ASSERT_EQ(2 * kNumRowsToWrite, CountRowsFromClient(table,
                                                      YBConsistencyLevel::CONSISTENT_PREFIX,
                                                      kNoBound, kNoBound));
+
+  // Test altering the table metadata and ensure that meta operations are resilient as well.
+  {
+    std::shared_ptr<TabletPeer> tablet_peer;
+    ASSERT_TRUE(new_leader->server()->tablet_manager()->LookupTablet(remote_tablet->tablet_id(),
+        &tablet_peer));
+    auto old_version = tablet_peer->tablet()->metadata()->schema_version();
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
+    table_alterer->AddColumn("new_col")->Type(INT32);
+    ASSERT_OK(table_alterer->Alter());
+    ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->schema_version());
+  }
 }
 
 namespace {
@@ -1792,7 +1879,7 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
 }
 
 TEST_F(ClientTest, TestCreateDuplicateTable) {
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_TRUE(table_creator->table_name(kTableName)
               .schema(&schema_)
               .Create().IsAlreadyPresent());
@@ -1814,8 +1901,8 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
       .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
       .Build());
 
-  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .Create();
   ASSERT_TRUE(s.IsInvalidArgument());
@@ -1826,8 +1913,8 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   FLAGS_max_create_tablets_per_ts = 1;
   auto many_tablets = FLAGS_replication_factor + 1;
 
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .num_tablets(many_tablets)
       .Create();
@@ -1841,8 +1928,8 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
 
 // TODO(bogdan): Disabled until ENG-2687
 TEST_F(ClientTest, DISABLED_TestCreateTableWithTooManyReplicas) {
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)
       .num_tablets(2)
       .Create();
@@ -1897,7 +1984,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
 TEST_F(ClientTest, TestReadFromFollower) {
   // Create table and write some rows.
-  const YBTableName kReadFromFollowerTable("TestReadFromFollower");
+  const YBTableName kReadFromFollowerTable(YQL_DATABASE_CQL, "TestReadFromFollower");
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(kReadFromFollowerTable, 1, &table));
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
@@ -1919,7 +2006,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
   }
   ASSERT_EQ(cluster_->num_tablet_servers() - 1, followers.size());
 
-  auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
+  auto client_messenger =
+      CreateAutoShutdownMessengerHolder(ASSERT_RESULT(CreateMessenger("client")));
   rpc::ProxyCache proxy_cache(client_messenger.get());
   for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.
@@ -1956,9 +2044,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
       EXPECT_EQ(QLResponsePB_QLStatus_YQL_STATUS_OK, ql_resp.status());
       EXPECT_TRUE(ql_resp.has_rows_data_sidecar());
 
-      Slice rows_data;
       EXPECT_TRUE(controller.finished());
-      EXPECT_OK(controller.GetSidecar(ql_resp.rows_data_sidecar(), &rows_data));
+      Slice rows_data = EXPECT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
       yb::ql::RowsResult rowsResult(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
       row_block = rowsResult.GetRowBlock();
       return FLAGS_test_scan_num_rows == row_block->row_count();
@@ -1996,16 +2083,17 @@ TEST_F(ClientTest, Capability) {
 }
 
 TEST_F(ClientTest, TestCreateTableWithRangePartition) {
-  gscoped_ptr <YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   const std::string kPgsqlKeyspaceID = "1234";
   const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
   const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";
   const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
   const size_t kColIdx = 1;
   const int64_t kKeyValue = 48238;
-  auto pgsql_table_name = YBTableName(kPgsqlKeyspaceID, kPgsqlKeyspaceName, kPgsqlTableName);
+  auto pgsql_table_name = YBTableName(
+      YQL_DATABASE_PGSQL, kPgsqlKeyspaceID, kPgsqlKeyspaceName, kPgsqlTableName);
 
-  auto yql_table_name = YBTableName(kKeyspaceName, "yqlrangepartitionedtable");
+  auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
 
   YBSchemaBuilder schemaBuilder;
   schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
@@ -2062,5 +2150,65 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
   EXPECT_OK(session->Apply(write_op));
 }
+
+// TODO(jason): enable the test in clang when we use clang version at least 9 (otherwise, there is a
+// compilation error: P0428R2).
+#if !defined(__clang__)
+TEST_F(ClientTest, FlushTable) {
+  const tablet::Tablet* tablet;
+  constexpr int kTimeoutSecs = 30;
+  int current_row = 0;
+
+  {
+    std::shared_ptr<TabletPeer> tablet_peer;
+    string tablet_id = GetFirstTabletId(client_table2_.get());
+    for (auto& ts : cluster_->mini_tablet_servers()) {
+      ASSERT_TRUE(ts->server()->tablet_manager()->LookupTablet(tablet_id, &tablet_peer));
+      if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+        break;
+      }
+    }
+    tablet = tablet_peer->tablet();
+  }
+
+  auto test_good_flush_and_compact = ([&]<class T>(T table_id_or_name) {
+    int initial_num_sst_files = tablet->GetCurrentVersionNumSSTFiles();
+
+    // Test flush table.
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 1);
+
+    // Insert and flush more rows.
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+
+    // Test compact table.
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 3);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), 1);
+  });
+
+  test_good_flush_and_compact(client_table2_.table()->id());
+  test_good_flush_and_compact(client_table2_.table()->name());
+
+  auto test_bad_flush_and_compact = ([&]<class T>(T table_id_or_name) {
+    // Test flush table.
+    ASSERT_NOK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    // Test compact table.
+    ASSERT_NOK(client_->FlushTable(table_id_or_name, kTimeoutSecs, true /* is_compaction */));
+  });
+
+  test_bad_flush_and_compact("bad table id");
+  test_bad_flush_and_compact(YBTableName(
+      YQLDatabase::YQL_DATABASE_CQL,
+      "bad namespace name",
+      "bad table name"));
+}
+#endif  // !defined(__clang__)
+
 }  // namespace client
 }  // namespace yb

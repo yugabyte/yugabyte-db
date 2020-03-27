@@ -92,7 +92,8 @@ ImmutableCFOptions::ImmutableCFOptions(const Options& options)
       listeners(options.listeners),
       row_cache(options.row_cache),
       mem_tracker(options.mem_tracker),
-      block_based_table_mem_tracker(options.block_based_table_mem_tracker) {}
+      block_based_table_mem_tracker(options.block_based_table_mem_tracker),
+      iterator_replacer(options.iterator_replacer) {}
 
 ColumnFamilyOptions::ColumnFamilyOptions()
     : comparator(BytewiseComparator()),
@@ -260,7 +261,7 @@ DBOptions::DBOptions()
       table_cache_numshardbits(4),
       WAL_ttl_seconds(0),
       WAL_size_limit_MB(0),
-      manifest_preallocation_size(4 * 1024 * 1024),
+      manifest_preallocation_size(64 * 1024),
       allow_os_buffer(true),
       allow_mmap_reads(false),
       allow_mmap_writes(false),
@@ -509,6 +510,9 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
       compaction_pri);
   RHEADER(log, " Options.compaction_options_universal.size_ratio: %u",
       compaction_options_universal.size_ratio);
+  RHEADER(log, "Options.compaction_options_universal."
+          "always_include_size_threshold: %" ROCKSDB_PRIszt,
+          compaction_options_universal.always_include_size_threshold);
   RHEADER(log, "Options.compaction_options_universal.min_merge_width: %u",
       compaction_options_universal.min_merge_width);
   RHEADER(log, "Options.compaction_options_universal.max_merge_width: %u",
@@ -716,6 +720,12 @@ ReadOptions::ReadOptions(bool cksum, bool cache)
       query_id(rocksdb::kDefaultQueryId) {
   XFUNC_TEST("", "managed_options", managed_options, xf_manage_options,
              reinterpret_cast<ReadOptions*>(this));
+}
+
+std::atomic<int64_t> flush_tick_(1);
+
+int64_t FlushTick() {
+  return flush_tick_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 }  // namespace rocksdb

@@ -17,7 +17,6 @@
 #define YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
 
 #include "yb/common/schema.h"
-#include "yb/common/ql_value.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/primitive_value.h"
 

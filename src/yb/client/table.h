@@ -21,6 +21,8 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 
+DECLARE_int32(max_num_tablets_for_table);
+
 namespace yb {
 namespace client {
 
@@ -41,6 +43,7 @@ struct YBTableInfo {
   PartitionSchema partition_schema;
   IndexMap index_map;
   boost::optional<IndexInfo> index_info;
+  YBTableType table_type;
 };
 
 // A YBTable represents a table on a particular cluster. It holds the current
@@ -54,6 +57,9 @@ struct YBTableInfo {
 class YBTable : public std::enable_shared_from_this<YBTable> {
  public:
   ~YBTable();
+
+  static Status PBToClientTableType(TableType table_type_from_pb, YBTableType* client_table_type);
+  static TableType ClientToPBTableType(YBTableType table_type);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -74,41 +80,48 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   const std::vector<std::string>& GetPartitions() const;
 
+  int32_t GetPartitionCount() const;
+
   // Indexes available on the table.
   const IndexMap& index_map() const;
 
   // Is this an index?
   bool IsIndex() const;
 
+  bool IsUniqueIndex() const;
+
   // For index table: information about this index.
   const IndexInfo& index_info() const;
 
+  std::string ToString() const;
   //------------------------------------------------------------------------------------------------
   // CQL support
   // Create a new QL operation for this table.
-  YBqlWriteOp* NewQLWrite();
-  YBqlWriteOp* NewQLInsert();
-  YBqlWriteOp* NewQLUpdate();
-  YBqlWriteOp* NewQLDelete();
+  std::unique_ptr<YBqlWriteOp> NewQLWrite();
+  std::unique_ptr<YBqlWriteOp> NewQLInsert();
+  std::unique_ptr<YBqlWriteOp> NewQLUpdate();
+  std::unique_ptr<YBqlWriteOp> NewQLDelete();
 
-  YBqlReadOp* NewQLRead();
-  YBqlReadOp* NewQLSelect();
+  std::unique_ptr<YBqlReadOp> NewQLRead();
+  std::unique_ptr<YBqlReadOp> NewQLSelect();
 
   // Finds partition start for specified partition_key.
   // Partitions could be groupped by group_by bunches, in this case start of such bunch is returned.
+  size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
   const std::string& FindPartitionStart(
       const std::string& partition_key, size_t group_by = 1) const;
 
   //------------------------------------------------------------------------------------------------
   // Postgres support
   // Create a new QL operation for this table.
-  YBPgsqlWriteOp* NewPgsqlWrite();
-  YBPgsqlWriteOp* NewPgsqlInsert();
-  YBPgsqlWriteOp* NewPgsqlUpdate();
-  YBPgsqlWriteOp* NewPgsqlDelete();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlWrite();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlInsert();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlUpdate();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlDelete();
+  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlTruncateColocated();
 
-  YBPgsqlReadOp* NewPgsqlRead();
-  YBPgsqlReadOp* NewPgsqlSelect();
+  std::unique_ptr<YBPgsqlReadOp> NewPgsqlRead();
+  std::unique_ptr<YBPgsqlReadOp> NewPgsqlSelect();
 
  private:
   friend class YBClient;

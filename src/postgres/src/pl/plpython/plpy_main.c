@@ -316,7 +316,7 @@ plpython_inline_handler(PG_FUNCTION_ARGS)
 	MemSet(&flinfo, 0, sizeof(flinfo));
 	fake_fcinfo.flinfo = &flinfo;
 	flinfo.fn_oid = InvalidOid;
-	flinfo.fn_mcxt = CurrentMemoryContext;
+	flinfo.fn_mcxt = GetCurrentMemoryContext();
 
 	MemSet(&proc, 0, sizeof(PLyProcedure));
 	proc.mcxt = AllocSetContextCreate(TopMemoryContext,

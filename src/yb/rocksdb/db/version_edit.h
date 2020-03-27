@@ -73,14 +73,6 @@ struct FileDescriptor {
         total_file_size(_total_file_size),
         base_file_size(_base_file_size) {}
 
-  FileDescriptor& operator=(const FileDescriptor& fd) {
-    table_reader = fd.table_reader;
-    packed_number_and_path_id = fd.packed_number_and_path_id;
-    total_file_size = fd.total_file_size;
-    base_file_size = fd.base_file_size;
-    return *this;
-  }
-
   uint64_t GetNumber() const {
     return packed_number_and_path_id & kFileNumberMask;
   }
@@ -90,6 +82,8 @@ struct FileDescriptor {
   }
   uint64_t GetTotalFileSize() const { return total_file_size; }
   uint64_t GetBaseFileSize() const { return base_file_size; }
+
+  std::string ToString() const;
 };
 
 YB_DEFINE_ENUM(UpdateBoundariesType, (kAll)(kSmallest)(kLargest));
@@ -135,6 +129,8 @@ struct FileMetaData {
   void UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source, UpdateBoundariesType type);
 
   bool Unref(TableCache* table_cache);
+
+  Slice UserFilter() const; // Extracts user filter from largest boundary value if present.
 
   std::string ToString() const;
 };

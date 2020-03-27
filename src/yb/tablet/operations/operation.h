@@ -69,11 +69,6 @@ class Operation {
     TRACE_TXNS = 1
   };
 
-  enum OperationResult {
-    COMMITTED,
-    ABORTED
-  };
-
   Operation(std::unique_ptr<OperationState> state,
             OperationType operation_type);
 
@@ -101,16 +96,13 @@ class Operation {
   // The OpId is provided for debuggability purposes.
   void Start();
 
-  // Executes the Apply() phase of the transaction, the actual actions of this phase depend on the
-  // transaction type, but usually this is the method where data-structures are changed.
-  virtual CHECKED_STATUS Apply(int64_t leader_term) = 0;
+  // Applies replicated operation, the actual actions of this phase depend on the
+  // operation type, but usually this is the method where data-structures are changed.
+  // Also it should notify callback if necessary.
+  CHECKED_STATUS Replicated(int64_t leader_term);
 
-  // Executed after the transaction has been applied and the commit message has been appended to the
-  // log (though it might not be durable yet), or if the transaction was aborted.  Implementations
-  // are expected to perform cleanup on this method, the driver will reply to the client after this
-  // method call returns.  'result' will be either COMMITTED or ABORTED, letting implementations
-  // know what was the final status of the transaction.
-  virtual void Finish(OperationResult result) {}
+  // Abort operation. Release resources and notify callbacks.
+  void Aborted(const Status& status);
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
@@ -120,6 +112,14 @@ class Operation {
   virtual ~Operation() {}
 
  private:
+  // Actual implementation of Replicated.
+  // complete_status could be used to change completion status, i.e. callback will be invoked
+  // with this status.
+  virtual CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) = 0;
+
+  // Actual implementation of Aborted, should return status that should be passed to callback.
+  virtual CHECKED_STATUS DoAborted(const Status& status) = 0;
+
   virtual void DoStart() = 0;
 
   // A private version of this transaction's transaction state so that we can use base
@@ -155,6 +155,10 @@ class OperationState {
     return tablet_;
   }
 
+  void SetTablet(Tablet* tablet) {
+    tablet_ = tablet;
+  }
+
   void set_completion_callback(std::unique_ptr<OperationCompletionCallback> completion_clbk) {
     completion_clbk_ = std::move(completion_clbk);
   }
@@ -170,9 +174,6 @@ class OperationState {
   T* AddArrayToAutoReleasePool(T* t) {
     return pool_.AddArray(t);
   }
-
-  // Return the arena associated with this transaction.  NOTE: this is not a thread-safe arena!
-  Arena* arena();
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
@@ -222,7 +223,7 @@ class OperationState {
   explicit OperationState(Tablet* tablet);
 
   // The tablet peer that is coordinating this transaction.
-  Tablet* const tablet_;
+  Tablet* tablet_;
 
   // Optional callback to be called once the transaction completes.
   std::unique_ptr<OperationCompletionCallback> completion_clbk_;
@@ -234,8 +235,6 @@ class OperationState {
 
   // The clock error when hybrid_time_ was read.
   uint64_t hybrid_time_error_ = 0;
-
-  boost::optional<Arena> arena_;
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
   consensus::OpId op_id_;
@@ -290,13 +289,13 @@ class OperationCompletionCallback {
 // transactions, sync.  This is templated to accept any response PB that has a TabletServerError
 // 'error' field and to set the error before performing the latch countdown.  The callback does
 // *not* take ownership of either latch or response.
-template<class ResponsePB>
+template<class LatchPtr, class ResponsePBPtr>
 class LatchOperationCompletionCallback : public OperationCompletionCallback {
  public:
-  explicit LatchOperationCompletionCallback(CountDownLatch* latch,
-                                            ResponsePB* response)
-    : latch_(DCHECK_NOTNULL(latch)),
-      response_(DCHECK_NOTNULL(response)) {
+  explicit LatchOperationCompletionCallback(LatchPtr latch,
+                                            ResponsePBPtr response)
+    : latch_(std::move(latch)),
+      response_(std::move(response)) {
   }
 
   virtual void OperationCompleted() override {
@@ -307,9 +306,17 @@ class LatchOperationCompletionCallback : public OperationCompletionCallback {
   }
 
  private:
-  CountDownLatch* latch_;
-  ResponsePB* response_;
+  LatchPtr latch_;
+  ResponsePBPtr response_;
 };
+
+template<class LatchPtr, class ResponsePBPtr>
+std::unique_ptr<LatchOperationCompletionCallback<LatchPtr, ResponsePBPtr>>
+    MakeLatchOperationCompletionCallback(
+        LatchPtr latch, ResponsePBPtr response) {
+  return std::make_unique<LatchOperationCompletionCallback<LatchPtr, ResponsePBPtr>>(
+      std::move(latch), std::move(response));
+}
 
 class SynchronizerOperationCompletionCallback : public OperationCompletionCallback {
  public:

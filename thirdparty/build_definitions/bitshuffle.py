@@ -27,7 +27,8 @@ class BitShuffleDependency(Dependency):
 
     def build(self, builder):
         log_prefix = builder.log_prefix(self)
-        compile_command = [builder.cc_wrapper, '-std=c99', '-I{}/include'.format(builder.prefix),
+        compile_command = [builder.get_c_compiler(), '-std=c99',
+                           '-I{}/include'.format(builder.prefix),
                            '-O3', '-DNDEBUG', '-fPIC', '-c',
                            'src/bitshuffle_core.c', 'src/bitshuffle.c',
                            'src/iochain.c']

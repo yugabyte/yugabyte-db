@@ -23,7 +23,7 @@ from build_definitions import *
 class CassandraCppDriverDependency(Dependency):
     def __init__(self):
         super(CassandraCppDriverDependency, self).__init__(
-                'cassandra-cpp-driver', '2.9.0-yb-4',
+                'cassandra-cpp-driver', '2.9.0-yb-6',
                 'https://github.com/YugaByte/cassandra-cpp-driver/archive/{0}.tar.gz',
                 BUILD_GROUP_INSTRUMENTED)
         self.copy_sources = False
@@ -34,9 +34,8 @@ class CassandraCppDriverDependency(Dependency):
         cxx_flags = []
         if not is_mac():
             cxx_flags = builder.compiler_flags + builder.cxx_flags + builder.ld_flags
-            implicit_fallthrough_flag = '-Wno-error=implicit-fallthrough'
-            if builder.check_cxx_compiler_flag(implicit_fallthrough_flag):
-                cxx_flags.append(implicit_fallthrough_flag)
+            builder.add_checked_flag(cxx_flags, '-Wno-error=implicit-fallthrough')
+            builder.add_checked_flag(cxx_flags, '-Wno-error=class-memaccess')
 
         builder.build_with_cmake(
                 self,

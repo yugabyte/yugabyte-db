@@ -17,8 +17,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H
-#define ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H
+#ifndef YB_ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H
+#define YB_ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H
 
 #ifndef ROCKSDB_LITE
 
@@ -32,7 +32,6 @@ namespace rocksdb {
 struct EnvOptions;
 
 using std::unique_ptr;
-class RandomAccessFile;
 class WritableFile;
 class Table;
 class TableBuilder;
@@ -79,4 +78,4 @@ class AdaptiveTableFactory : public TableFactory {
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
 
-#endif  // ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H
+#endif  // YB_ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H

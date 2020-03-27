@@ -1,4 +1,4 @@
-/* Copyright (c) YugaByte, Inc. */
+/* Copyright (c) Yugabyte, Inc. */
 
 @import "./_colors.scss";
 @import "./mixins.scss";
@@ -49,9 +49,9 @@
     }
 
     h1 {
-      font-family: Montserrat, sans-serif;
+      font-family: 'Rubik', sans-serif;
       font-size: 48px;
-      font-weight: 600;
+      font-weight: 500;
       color: $YB_DARK_MILD;
       margin-bottom: 10px;
       
@@ -118,6 +118,7 @@
         }
         .head-content {
           margin-left: 185px;
+          margin-top: 25px;
         }
 
         @media only screen and (max-width: 767px) {
@@ -145,8 +146,8 @@
 
   .contents-title {
     margin: 10px 0 10px;
-    font-family: Montserrat, sans-serif;
-    font-weight: 600;
+    font-family: 'Rubik', sans-serif;
+    font-weight: 500;
     color: #C0C3D3;
     font-size: 16px;
     letter-spacing: -.02em;
@@ -164,10 +165,14 @@
       }
       a.section-link {
         padding: 25px 32px 30px;
-        height: 215px;
         display: flex;
         flex-direction: column;
         position: relative;
+        background-color: #ffffff;
+        border: none !important;
+        height: 180px;
+        color: $YB_DARK;
+
         @include transition(0.125s);
 
         @media only screen and (min-width:768px) and (max-width:1024px) {
@@ -195,19 +200,12 @@
           display: block;
           position: absolute;
           @include transition(0.15s);
-        }
-
-        &, &:hover {
-          background-color: #ffffff;
-          border: none !important;
-          height: 180px;
-          color: $YB_DARK;
-        }
+        }        
 
         &:hover {
           @include transition(0.3s);
           transform: scale(1.03, 1.03);
-          z-index: 1000;
+          z-index: 2000;
           &:before {
             color: rgba($YB_DARK_BLUE, 0.7);
             padding-right: 37px;
@@ -251,8 +249,8 @@
 
           .title {
             margin-left: 78px;
-            font-family: Montserrat, "Open Sans", sans-serif;
-            font-weight: 600;
+            font-family: 'Rubik', sans-serif;
+            font-weight: 500;
             font-size: 24px;
             line-height: 1.5;
             letter-spacing: -.02em;
@@ -309,6 +307,11 @@
       }
     }
   }
+}
+
+dd {
+  margin-inline-start: 40px;
+  margin-bottom: .5em;
 }
 
 .video-wrapper {

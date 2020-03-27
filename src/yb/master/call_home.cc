@@ -25,6 +25,9 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
+
+#include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/version_info.h"
 
 static const char* kLowLevel = "low";
@@ -253,6 +256,10 @@ class TablesCollector : public CollectorBase {
     req.set_exclude_system_tables(true);
     ListTablesResponsePB resp;
     auto status = master()->catalog_manager()->ListTables(&req, &resp);
+    if (!status.ok()) {
+      LOG(INFO) << "Error getting number of tables";
+      return;
+    }
     if (collection_level == CollectionLevel::LOW) {
       json_ = Substitute("\"tables\":$0", resp.tables_size());
     } else {

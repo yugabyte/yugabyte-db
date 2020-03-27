@@ -27,40 +27,10 @@ namespace yb {
 const std::string kTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 
-namespace {
-
-// Makes transaction id from its binary representation.
-// If check_exact_size is true, checks that slice contains only TransactionId.
-Result<TransactionId> DoDecodeTransactionId(const Slice &slice, const bool check_exact_size) {
-  if (check_exact_size ? slice.size() != TransactionId::static_size()
-                       : slice.size() < TransactionId::static_size()) {
-    return STATUS_FORMAT(
-        Corruption, "Invalid length of binary data with transaction id '$0': $1 (expected $2$3)",
-        slice.ToDebugHexString(), slice.size(), check_exact_size ? "" : "at least ",
-        TransactionId::static_size());
-  }
-  TransactionId id;
-  memcpy(id.data, slice.data(), TransactionId::static_size());
-  return id;
-}
-
-} // namespace
-
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
     : status(status_), status_time(status_time_) {
   DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
       << "Status: " << status << ", status_time: " << status_time;
-}
-
-Result<TransactionId> FullyDecodeTransactionId(const Slice& slice) {
-  return DoDecodeTransactionId(slice, true);
-}
-
-Result<TransactionId> DecodeTransactionId(Slice* slice) {
-  Result<TransactionId> id = DoDecodeTransactionId(*slice, false);
-  RETURN_NOT_OK(id);
-  slice->remove_prefix(TransactionId::static_size());
-  return id;
 }
 
 Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadataPB& source) {
@@ -72,19 +42,25 @@ Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadat
     result.isolation = source.isolation();
     result.status_tablet = source.status_tablet();
     result.priority = source.priority();
-    result.DEPRECATED_start_time = HybridTime(source.deprecated_start_hybrid_time());
+    result.start_time = HybridTime(source.start_hybrid_time());
   }
   return result;
 }
 
 void TransactionMetadata::ToPB(TransactionMetadataPB* dest) const {
-  dest->set_transaction_id(transaction_id.data, transaction_id.size());
   if (isolation != IsolationLevel::NON_TRANSACTIONAL) {
-    dest->set_isolation(isolation);
-    dest->set_status_tablet(status_tablet);
-    dest->set_priority(priority);
-    dest->set_deprecated_start_hybrid_time(DEPRECATED_start_time.ToUint64());
+    ForceToPB(dest);
+  } else {
+    dest->set_transaction_id(transaction_id.data(), transaction_id.size());
   }
+}
+
+void TransactionMetadata::ForceToPB(TransactionMetadataPB* dest) const {
+  dest->set_transaction_id(transaction_id.data(), transaction_id.size());
+  dest->set_isolation(isolation);
+  dest->set_status_tablet(status_tablet);
+  dest->set_priority(priority);
+  dest->set_start_hybrid_time(start_time.ToUint64());
 }
 
 bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
@@ -92,7 +68,7 @@ bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) 
          lhs.isolation == rhs.isolation &&
          lhs.status_tablet == rhs.status_tablet &&
          lhs.priority == rhs.priority &&
-         lhs.DEPRECATED_start_time == rhs.DEPRECATED_start_time;
+         lhs.start_time == rhs.start_time;
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
@@ -109,7 +85,7 @@ CoarseTimePoint TransactionRpcDeadline() {
 }
 
 bool TransactionOperationContext::transactional() const {
-  return !transaction_id.is_nil();
+  return !transaction_id.IsNil();
 }
 
 } // namespace yb

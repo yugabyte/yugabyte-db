@@ -62,6 +62,14 @@ Status MasterTabletServer::GetTabletStatus(const tserver::GetTabletStatusRequest
   return Status::OK();
 }
 
+bool MasterTabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) const {
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  if (!GetTabletPeer(tablet_id, &tablet_peer).ok()) {
+    return false;
+  }
+  return tablet_peer->LeaderStatus(allow_stale) == consensus::LeaderStatus::LEADER_AND_READY;
+}
+
 const NodeInstancePB& MasterTabletServer::NodeInstance() const {
   return master_->catalog_manager()->NodeInstance();
 }

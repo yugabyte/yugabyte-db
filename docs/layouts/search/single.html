@@ -1,12 +1,12 @@
 {{ partial "head" . }}
 
 {{ if (eq (trim .Site.Params.provider " " | lower) "github") | and (isset .Site.Params "repo_url") }}
-	{{ $repo_id := replace .Site.Params.repo_url "https://github.com/" ""}}
-	{{ .Scratch.Set "repo_id" $repo_id }}
+  {{ $repo_id := replace .Site.Params.repo_url "https://github.com/" ""}}
+  {{ .Scratch.Set "repo_id" $repo_id }}
 {{ end }}
 
 <div class="backdrop">
-	<div class="backdrop-paper"></div>
+  <div class="backdrop-paper"></div>
 </div>
 
 <input class="toggle" type="checkbox" id="toggle-drawer">
@@ -25,7 +25,7 @@
 			<div class="wrapper">
 				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
 
-				<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}</h1>
+				<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Page.Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}</h1>
 
 				{{ .TableOfContents }}
 				{{ .Content }}
@@ -46,5 +46,12 @@
 	</main>
 </div>
 
-{{ partial "footer_content" . }}
+{{ partial "footer" . }}
 {{ partial "footer_js" . }}
+
+<script>
+	const pageConfig = {
+		isTocNested: {{ .Params.isTocNested }},
+		showAsideToc: {{ .Params.showAsideToc }}
+	}
+</script>

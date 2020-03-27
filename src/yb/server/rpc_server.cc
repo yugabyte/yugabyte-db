@@ -82,7 +82,9 @@ RpcServer::RpcServer(const std::string& name, RpcServerOptions opts,
     : name_(name),
       server_state_(UNINITIALIZED),
       options_(std::move(opts)),
-      connection_context_factory_(std::move(connection_context_factory)) {}
+      connection_context_factory_(std::move(connection_context_factory)) {
+        LOG(INFO) << "yb::server::RpcServer created at " << this;
+      }
 
 RpcServer::~RpcServer() {
   Shutdown();

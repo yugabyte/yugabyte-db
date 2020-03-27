@@ -14,9 +14,12 @@
 #include "yb/rpc/tcp_stream.h"
 
 #include "yb/rpc/outbound_data.h"
+#include "yb/rpc/rpc_util.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/string_util.h"
 
 using namespace std::literals;
@@ -90,7 +93,7 @@ Status TcpStream::DoStart(ev::loop_ref* loop, bool connect) {
   int events = ev::READ | (!connected_ ? ev::WRITE : 0);
   io_.start(socket_.GetFd(), events);
 
-  DVLOG_WITH_PREFIX(4) << "Starting, listen events: " << events << ", fd: " << socket_.GetFd();
+  DVLOG_WITH_PREFIX(3) << "Starting, listen events: " << events << ", fd: " << socket_.GetFd();
 
   is_epoll_registered_ = true;
 
@@ -178,7 +181,12 @@ TcpStream::FillIovResult TcpStream::FillIov(iovec* out) {
 }
 
 Status TcpStream::DoWrite() {
+  DVLOG_WITH_PREFIX(5) << "sending_.size(): " << sending_.size();
   if (!connected_ || waiting_write_ready_ || !is_epoll_registered_) {
+    DVLOG_WITH_PREFIX(5)
+        << "connected_: " << connected_
+        << " waiting_write_ready_: " << waiting_write_ready_
+        << " is_epoll_registered_: " << is_epoll_registered_;
     return Status::OK();
   }
 
@@ -187,7 +195,6 @@ Status TcpStream::DoWrite() {
     iovec iov[kMaxIov];
     auto fill_result = FillIov(iov);
 
-    context_->UpdateLastWrite();
     if (!fill_result.only_heartbeats) {
       context_->UpdateLastActivity();
     }
@@ -197,7 +204,7 @@ Status TcpStream::DoWrite() {
         ? socket_.Writev(iov, fill_result.len, &written)
         : Status::OK();
     DVLOG_WITH_PREFIX(4) << "Queued writes " << queued_bytes_to_send_ << " bytes. written "
-                         << written << " . Status " << status << " sending_ .size() "
+                         << written << " . Status " << status << ", sending_.size(): "
                          << sending_.size();
 
     if (PREDICT_FALSE(!status.ok())) {
@@ -205,9 +212,12 @@ Status TcpStream::DoWrite() {
         YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 50) << "Send failed: " << status;
         return status;
       } else {
+        VLOG_WITH_PREFIX(3) << "Send temporary failed: " << status;
         return Status::OK();
       }
     }
+
+    context_->UpdateLastWrite();
 
     send_position_ += written;
     while (!sending_.empty()) {
@@ -239,8 +249,8 @@ void TcpStream::PopSending() {
 }
 
 void TcpStream::Handler(ev::io& watcher, int revents) {  // NOLINT
-  DVLOG_WITH_PREFIX(3) << "Handler(revents=" << revents << ")";
-  auto status = Status::OK();
+  DVLOG_WITH_PREFIX(4) << "Handler(revents=" << revents << ")";
+  Status status = Status::OK();
   if (revents & ev::ERROR) {
     status = STATUS(NetworkError, ToString() + ": Handler encountered an error");
     VLOG_WITH_PREFIX(3) << status;
@@ -248,6 +258,9 @@ void TcpStream::Handler(ev::io& watcher, int revents) {  // NOLINT
 
   if (status.ok() && (revents & ev::READ)) {
     status = ReadHandler();
+    if (!status.ok()) {
+      VLOG_WITH_PREFIX(3) << "ReadHandler() returned error: " << status;
+    }
   }
 
   if (status.ok() && (revents & ev::WRITE)) {
@@ -257,6 +270,9 @@ void TcpStream::Handler(ev::io& watcher, int revents) {  // NOLINT
       context_->Connected();
     }
     status = WriteHandler(just_connected);
+    if (!status.ok()) {
+      VLOG_WITH_PREFIX(3) << "WriteHandler() returned error: " << status;
+    }
   }
 
   if (status.ok()) {
@@ -286,7 +302,7 @@ Status TcpStream::ReadHandler() {
   for (;;) {
     auto received = Receive();
     if (PREDICT_FALSE(!received.ok())) {
-      if (received.status().error_code() == ESHUTDOWN) {
+      if (Errno(received.status()) == ESHUTDOWN) {
         VLOG_WITH_PREFIX(1) << "Shut down by remote end.";
       } else {
         YB_LOG_WITH_PREFIX_EVERY_N(INFO, 50) << " Recv failed: " << received;
@@ -312,6 +328,7 @@ Status TcpStream::ReadHandler() {
 Result<bool> TcpStream::Receive() {
   auto iov = ReadBuffer().PrepareAppend();
   if (!iov.ok()) {
+    VLOG_WITH_PREFIX(3) << "ReadBuffer().PrepareAppend() error: " << iov.status();
     if (iov.status().IsBusy()) {
       read_buffer_full_ = true;
       return false;
@@ -320,8 +337,27 @@ Result<bool> TcpStream::Receive() {
   }
   read_buffer_full_ = false;
 
+  if (inbound_bytes_to_skip_ > 0) {
+    auto global_skip_buffer = GetGlobalSkipBuffer();
+    do {
+      VLOG_WITH_PREFIX(3) << "inbound_bytes_to_skip_: " << inbound_bytes_to_skip_;
+      auto nread = socket_.Recv(
+          global_skip_buffer.mutable_data(),
+          std::min(global_skip_buffer.size(), inbound_bytes_to_skip_));
+      if (!nread.ok()) {
+        VLOG_WITH_PREFIX(3) << "socket_.Recv() error: " << nread.status();
+        if (Socket::IsTemporarySocketError(nread.status())) {
+          return false;
+        }
+        return nread.status();
+      }
+      inbound_bytes_to_skip_ -= *nread;
+    } while (inbound_bytes_to_skip_ > 0);
+  }
+
   auto nread = socket_.Recvv(iov.get_ptr());
   if (!nread.ok()) {
+    DVLOG_WITH_PREFIX(3) << "socket_.Recvv() error: " << nread.status();
     if (Socket::IsTemporarySocketError(nread.status())) {
       return false;
     }
@@ -352,8 +388,12 @@ Result<bool> TcpStream::TryProcessReceived() {
 
   auto result = VERIFY_RESULT(context_->ProcessReceived(
       read_buffer.AppendedVecs(), ReadBufferFull(read_buffer.Full())));
+  DVLOG_WITH_PREFIX(5) << "context_->ProcessReceived result: " << AsString(result);
 
   read_buffer.Consume(result.consumed, result.buffer);
+  LOG_IF(DFATAL, inbound_bytes_to_skip_ != 0)
+      << "Expected inbound_bytes_to_skip_ to be 0 instead of " << inbound_bytes_to_skip_;
+  inbound_bytes_to_skip_ = result.bytes_to_skip;
   return true;
 }
 
@@ -406,10 +446,12 @@ size_t TcpStream::Send(OutboundDataPtr data) {
   // transferred.
   size_t result = data_blocks_sent_ + sending_.size();
 
+  DVLOG_WITH_PREFIX(6) << "TcpStream::Send queueing: " << AsString(*data);
   // Serialize the actual bytes to be put on the wire.
   sending_.emplace_back(std::move(data), mem_tracker_);
   queued_bytes_to_send_ += sending_.back().bytes_size();
-  DVLOG_WITH_PREFIX(3) << "Added data queued_bytes_to_send_: " << queued_bytes_to_send_;
+  DVLOG_WITH_PREFIX(4) << "Queued data, sending_.size(): " << sending_.size()
+                       << ", queued_bytes_to_send_: " << queued_bytes_to_send_;
 
   return result;
 }
@@ -465,14 +507,18 @@ StreamFactoryPtr TcpStream::Factory() {
   return std::make_shared<TcpStreamFactory>();
 }
 
-TcpStream::SendingData::SendingData(OutboundDataPtr data_, const MemTrackerPtr& mem_tracker)
+TcpStreamSendingData::TcpStreamSendingData(OutboundDataPtr data_, const MemTrackerPtr& mem_tracker)
     : data(std::move(data_)) {
   data->Serialize(&bytes);
   if (mem_tracker) {
-    consumption = ScopedTrackedConsumption(mem_tracker, bytes_size());
+    size_t memory_used = sizeof(*this);
+    memory_used += DynamicMemoryUsageOf(data);
+    // We don't need to account `bytes` dynamic memory usage, because it stores RefCntBuffer
+    // instance in internal memory and RefCntBuffer instance is referring to the same dynamic memory
+    // as `data`.
+    consumption = ScopedTrackedConsumption(mem_tracker, memory_used);
   }
 }
-
 
 } // namespace rpc
 } // namespace yb

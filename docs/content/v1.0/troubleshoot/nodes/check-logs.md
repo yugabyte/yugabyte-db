@@ -8,15 +8,15 @@ menu:
     weight: 844
 ---
 
-## YugaByte DB base folder
+## YugabyteDB base folder
 
 The logs for each node are found in the yugabyte base directory which may depend on the details of your deployment:
 
 - When using the `yb-ctl` the default locations for each node is `/tmp/yugabyte-local-cluster/node-<node_nr>/`. 
 For instance, for 3 nodes (default) `yb-ctl` will generate three folders `node-1`, `node-2` and `node-3`.
-- For a multi-node cluster the location where YugaByte disks are set up (e.g. `/home/centos/` or `/mnt/`) for each node.
+- For a multi-node cluster the location where Yugabyte disks are set up (e.g. `/home/centos/` or `/mnt/`) for each node.
 
-We will refer to the YugaByte base folder as `<yugabyte-base-folder>` below.
+We will refer to the Yugabyte base folder as `<yugabyte-base-folder>` below.
 
 ## Master logs
 

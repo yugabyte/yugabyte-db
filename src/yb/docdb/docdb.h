@@ -28,6 +28,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_path.h"
@@ -114,8 +115,9 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
-    IsolationLevel isolation_level,
-    OperationKind operation_kind,
+    const IsolationLevel isolation_level,
+    const OperationKind operation_kind,
+    const RowMarkType row_mark_type,
     bool transactional_table,
     CoarseTimePoint deadline,
     PartialRangeKeyIntents partial_range_key_intents,
@@ -137,12 +139,15 @@ CHECKED_STATUS ExecuteDocWriteOperation(
     KeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
-    HybridTime* restart_read_ht);
+    HybridTime* restart_read_ht,
+    const std::string& table_name);
 
 void PrepareNonTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch);
+
+YB_STRONGLY_TYPED_BOOL(LastKey);
 
 // Enumerates intents corresponding to provided key value pairs.
 // For each key it generates a strong intent and for each parent of each it generates a weak one.
@@ -150,6 +155,8 @@ void PrepareNonTransactionWriteBatch(
 // intent_kind - kind of intent weak or strong
 // value_slice - value of intent
 // key - pointer to key in format of SubDocKey (no ht)
+// last_key - whether it is last strong key in enumeration
+
 // TODO(dtxn) don't expose this method outside of DocDB if TransactionConflictResolver is moved
 // inside DocDB.
 // Note: From https://stackoverflow.com/a/17278470/461529:
@@ -158,7 +165,8 @@ void PrepareNonTransactionWriteBatch(
 // from it triggers heap allocation."
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
-typedef boost::function<Status(IntentStrength, Slice, KeyBytes*)> EnumerateIntentsCallback;
+typedef boost::function<
+    Status(IntentStrength, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
 
 CHECKED_STATUS EnumerateIntents(
     const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
@@ -166,8 +174,11 @@ CHECKED_STATUS EnumerateIntents(
 
 CHECKED_STATUS EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents);
+    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
+    LastKey last_key = LastKey::kFalse);
 
+// replicated_batches_state format does not matter at this point, because it is just
+// appended to appropriate value.
 void PrepareTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
@@ -175,6 +186,7 @@ void PrepareTransactionWriteBatch(
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
     PartialRangeKeyIntents partial_range_key_intents,
+    const Slice& replicated_batches_state,
     IntraTxnWriteId* write_id);
 
 CHECKED_STATUS PrepareApplyIntentsBatch(
@@ -252,21 +264,6 @@ class SubDocKeyBound : public SubDocKey {
   const bool is_lower_bound_;
 };
 
-YB_DEFINE_ENUM(BoundType,
-    (kInvalid)
-    (kExclusiveLower)
-    (kInclusiveLower)
-    (kExclusiveUpper)
-    (kInclusiveUpper));
-
-inline BoundType LowerBound(bool exclusive) {
-  return exclusive ? BoundType::kExclusiveLower : BoundType::kInclusiveLower;
-}
-
-inline BoundType UpperBound(bool exclusive) {
-  return exclusive ? BoundType::kExclusiveUpper : BoundType::kInclusiveUpper;
-}
-
 class SliceKeyBound {
  public:
   SliceKeyBound() {}
@@ -341,12 +338,16 @@ class IndexBound {
 // Pass data to GetSubDocument function.
 struct GetSubDocumentData {
   GetSubDocumentData(
-    const Slice& subdoc_key, SubDocument* result_,
-    bool* doc_found_ = nullptr, MonoDelta default_ttl = Value::kMaxTtl)
+    const Slice& subdoc_key,
+    SubDocument* result_,
+    bool* doc_found_ = nullptr,
+    MonoDelta default_ttl = Value::kMaxTtl,
+    DocHybridTime* table_tombstone_time_ = nullptr)
       : subdocument_key(subdoc_key),
         result(result_),
         doc_found(doc_found_),
-        exp(default_ttl) {}
+        exp(default_ttl),
+        table_tombstone_time(table_tombstone_time_) {}
 
   Slice subdocument_key;
   SubDocument* result;
@@ -372,6 +373,9 @@ struct GetSubDocumentData {
   bool count_only = false;
   // Stores the count of records found, if count_only option is set.
   mutable size_t record_count = 0;
+  // Hybrid time of latest table tombstone.  Used by colocated tables to compare with the write
+  // times of records belonging to the table.
+  DocHybridTime* table_tombstone_time;
 
   GetSubDocumentData Adjusted(
       const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
@@ -388,10 +392,10 @@ struct GetSubDocumentData {
   }
 
   std::string ToString() const {
-    return Format("{ subdocument_key: $0 ttl: $1 write_time: $2 return_type_only: $3 "
-                      "low_subkey: $4 high_subkey: $5 }",
+    return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 return_type_only: $3 "
+                      "low_subkey: $4 high_subkey: $5 table_tombstone_time: $6 }",
                   SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
-                  exp.write_ht, return_type_only, *low_subkey, *high_subkey);
+                  exp.write_ht, return_type_only, *low_subkey, *high_subkey, *table_tombstone_time);
   }
 };
 
@@ -463,8 +467,7 @@ yb::Status GetTtl(const Slice& encoded_subdoc_key,
                   bool* doc_found,
                   Expiration* exp);
 
-YB_STRONGLY_TYPED_BOOL(IncludeBinary);
-YB_DEFINE_ENUM(StorageDbType, (kRegular)(kIntents));
+using DocDbDumpLineFilter = boost::function<bool(const std::string&)>;
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,
@@ -473,13 +476,17 @@ void DocDBDebugDump(
     rocksdb::DB* rocksdb,
     std::ostream& out,
     StorageDbType db_type,
-    IncludeBinary include_binary = IncludeBinary::kFalse);
+    IncludeBinary include_binary = IncludeBinary::kFalse,
+    const DocDbDumpLineFilter& filter = DocDbDumpLineFilter());
 
 std::string DocDBDebugDumpToStr(
     rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular,
-    IncludeBinary include_binary = IncludeBinary::kFalse);
+    IncludeBinary include_binary = IncludeBinary::kFalse,
+    const DocDbDumpLineFilter& filter = DocDbDumpLineFilter());
 
-std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary = IncludeBinary::kFalse);
+std::string DocDBDebugDumpToStr(
+    DocDB docdb, IncludeBinary include_binary = IncludeBinary::kFalse,
+    const DocDbDumpLineFilter& line_filter = DocDbDumpLineFilter());
 
 template <class T>
 void DocDBDebugDumpToContainer(

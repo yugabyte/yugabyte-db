@@ -60,7 +60,7 @@ message QLPagingStatePB {
   // number of rows in the SELECT's LIMIT clause across fetches.
   optional uint64 total_num_rows_read = 4;
 
-  // For selects with IN condition on the hash columns there are mutiple partitions that need to be
+  // For selects with IN condition on the hash columns there are multiple partitions that need to be
   // queried, one for each combination of allowed values for the hash columns.
   // This holds the index of the next partition and is used to resume the read from the right place.
   optional uint64 next_partition_index = 5;
@@ -149,6 +149,9 @@ message QLWriteRequestPB {
 
   // Whether to return a status row reporting applied status and execution errors (if any).
   optional bool returns_status = 18 [default = false];
+
+  // Does this request correspond to backfilling an index table?
+  optional bool is_backfilling = 19 [default = false];
 }
 
 //-------------------------------------- Read request ----------------------------------------
@@ -186,6 +189,9 @@ message QLReadRequestPB {
 
   // Where clause condition
   optional QLExpressionPB where_expr = 6;
+
+  // If clause condition
+  optional QLExpressionPB if_expr = 21;
 
   // TODO(neil) Currently, we need only the datatypes of the rsrow descriptor. However, when we
   // optimize our execution pipeline to bypass QL layer, we might need to send the name as part

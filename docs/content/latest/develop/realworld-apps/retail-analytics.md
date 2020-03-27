@@ -1,7 +1,8 @@
 ---
-title: Retail Analytics
+title: Retail analytics sample application using YugabyteDB YSQL
+headerTitle: Retail analytics sample application
 linkTitle: Retail Analytics
-description: Retail Analytics
+description: Run a retail analytics sample application on YugabyteDB and explore YSQL.
 aliases:
   - /develop/realworld-apps/retail-analytics/
 menu:
@@ -13,22 +14,22 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## 1. Start Local Cluster with YSQL API Enabled
+## 1. Start local cluster
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test the YSQL API as [documented](../../../quick-start/explore-ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
+Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test the YSQL API as [documented](../../../quick-start/explore-ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 
-## 2. Load Data
+## 2. Load data
 
-### Download the Sample Schema
+### Download the sample schema
 
 ```sh
-$ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
-### Download the Sample Data
+### Download the sample data
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+$ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
 
 ```sh
@@ -43,7 +44,7 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
-### Connect to YugaByte DB using ysqlsh
+### Connect to YugabyteDB using ysqlsh
 
 ```sh
 $ ./bin/ysqlsh
@@ -53,57 +54,57 @@ $ ./bin/ysqlsh
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=#
+yugabyte=#
 ```
 
-### Create a Database
+### Create a database
 
 You can do this as shown below.
 
-```sql
-postgres=> CREATE DATABASE yb_demo;
+```postgresql
+yugabyte=# CREATE DATABASE yb_demo;
 ```
 
-```sql
-postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
+```postgresql
+yugabyte=# GRANT ALL ON DATABASE yb_demo to yugabyte;
 ```
 
-```sql
-postgres=> \c yb_demo;
+```postgresql
+yugabyte=# \c yb_demo;
 ```
 
-### Load Data
+### Load data
 
-First create the 4 tables necessary to store the data.
+First create the four tables necessary to store the data.
 
-```sql
-postgres=> \i 'schema.sql';
+```postgresql
+yugabyte=# \i 'schema.sql';
 ```
 
 Now load the data into the tables.
 
-```sql
-postgres=> \i 'data/products.sql'
+```postgresql
+yugabyte=# \i 'data/products.sql'
 ```
 
-```sql
-postgres=> \i 'data/users.sql'
+```postgresql
+yugabyte=# \i 'data/users.sql'
 ```
 
-```sql
-postgres=> \i 'data/orders.sql'
+```postgresql
+yugabyte=# \i 'data/orders.sql'
 ```
 
-```sql
-postgres=> \i 'data/reviews.sql'
+```postgresql
+yugabyte=# \i 'data/reviews.sql'
 ```
 
-## 3. Run Queries
+## 3. Run queries
 
 ### How are users signing up for my site?
 
-```sql
-yb_demo=> SELECT DISTINCT(source) FROM users;
+```postgresql
+yb_demo=# SELECT DISTINCT(source) FROM users;
 ```
 
 ```
@@ -119,8 +120,8 @@ source
 
 ### What is the most effective channel for user signups?
 
-```sql
-yb_demo=> SELECT source, count(*) AS num_user_signups
+```postgresql
+yb_demo=# SELECT source, count(*) AS num_user_signups
           FROM users
           GROUP BY source
           ORDER BY num_user_signups DESC;
@@ -139,8 +140,8 @@ source     | num_user_signups
 
 ### What are the most effective channels for product sales by revenue?
 
-```sql
-yb_demo=> SELECT source, ROUND(SUM(orders.total)) AS total_sales
+```postgresql
+yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
           FROM users, orders WHERE users.id=orders.user_id
           GROUP BY source
           ORDER BY total_sales DESC;
@@ -159,8 +160,8 @@ source     | total_sales
 
 ### What is the min, max and average price of products in the store?
 
-```sql
-yb_demo=> SELECT MIN(price), MAX(price), AVG(price) FROM products;
+```postgresql
+yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
 
 ```
@@ -174,8 +175,8 @@ min               |       max        |       avg
 
 You can do this as shown below.
 
-```sql
-yb_demo=> CREATE VIEW channel AS
+```postgresql
+yb_demo=# CREATE VIEW channel AS
             (SELECT source, ROUND(SUM(orders.total)) AS total_sales
              FROM users, orders
              WHERE users.id=orders.user_id
@@ -185,8 +186,8 @@ yb_demo=> CREATE VIEW channel AS
 
 Now that the view is created, we can see it in our list of relations.
 
-```sql
-yb_demo=> \d
+```postgresql
+yb_demo=# \d
 ```
 
 ```
@@ -201,8 +202,8 @@ List of relations
 (5 rows)
 ```
 
-```sql
-yb_demo=> SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
+```postgresql
+yb_demo=# SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
           FROM channel WHERE source='Facebook';
 ```
 

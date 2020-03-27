@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`ZREM key member [member...]`</b><br>
 This command removes the `members` specified in the sorted set at `key` and returns the number of `members` removed.
 `Members` specified that do not exist in key are ignored. If `key` does not exist, 0 is returned.
@@ -59,6 +60,6 @@ $ ZCARD z_key
 (integer) 0
 ```
 
-## See Also
+## See also
 
 [`zadd`](../zadd/), [`zcard`](../zcard/), [`zrange`](../zrange/), [`zrangebyscore`](../zrangebyscore/), [`zrevrange`](../zrevrange)

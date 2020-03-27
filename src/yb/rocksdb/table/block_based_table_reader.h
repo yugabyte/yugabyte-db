@@ -51,7 +51,6 @@ class FullFilterBlockReader;
 class Footer;
 class InternalKeyComparator;
 class Iterator;
-class RandomAccessFile;
 class TableCache;
 class TableReader;
 class WritableFile;

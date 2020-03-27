@@ -1,8 +1,8 @@
 ---
-title: UUID Datatypes
-linktitle: UUID
-summary: UUID Datatypes
-description: UUID Datatypes
+title: UUID data types
+linkTitle: UUID
+summary: UUID data types
+description: UUID data types
 menu:
   latest:
     identifier: api-ysql-datatypes-uuid
@@ -14,7 +14,8 @@ showAsideToc: true
 ---
 
 ## Synopsis
-UUID datatype represents Universally Unique Identifiers. A UUID is a sequence of 32 hexadecimal digits separated by hyphens (8 digits - 4 digits - 4 digits - 4 digits - 12 digits) representing the 128 bits.
+
+The `UUID` data type represents Universally Unique Identifiers (UUIDs). A UUID is a sequence of 32 hexadecimal digits separated by hyphens (8 digits - 4 digits - 4 digits - 4 digits - 12 digits) representing the 128 bits.
 
 ## Description
 
@@ -22,7 +23,7 @@ UUID datatype represents Universally Unique Identifiers. A UUID is a sequence of
 type_specification ::= UUID
 ```
 
-## Examples:
+## Examples
 
 ```
 ffffffff-ffff-ffff-ffff-ffffffffffff

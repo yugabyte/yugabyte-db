@@ -30,16 +30,18 @@
 // under the License.
 //
 
-#include <boost/assign/list_of.hpp>
-#include <gtest/gtest.h>
-#include <rapidjson/document.h>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include <boost/assign/list_of.hpp>
+#include <gtest/gtest.h>
+#include <rapidjson/document.h>
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/util/hdr_histogram.h"
+#include "yb/util/histogram.pb.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
@@ -179,6 +181,52 @@ TEST_F(MetricsTest, SimpleHistogramTest) {
   ASSERT_EQ(2, hist->histogram_->TotalCount());
   ASSERT_EQ(6, hist->histogram_->TotalSum());
   // TODO: Test coverage needs to be improved a lot.
+}
+
+TEST_F(MetricsTest, ResetHistogramTest) {
+  scoped_refptr<Histogram> hist = METRIC_test_hist.Instantiate(entity_);
+  for (int i = 1; i <= 100; i++) {
+    hist->Increment(i);
+  }
+  EXPECT_EQ(5050, hist->histogram_->TotalSum());
+  EXPECT_EQ(100, hist->histogram_->TotalCount());
+  EXPECT_EQ(5050, hist->histogram_->CurrentSum());
+  EXPECT_EQ(100, hist->histogram_->CurrentCount());
+
+  EXPECT_EQ(1, hist->histogram_->MinValue());
+  EXPECT_EQ(50.5, hist->histogram_->MeanValue());
+  EXPECT_EQ(100, hist->histogram_->MaxValue());
+  EXPECT_EQ(10, hist->histogram_->ValueAtPercentile(10));
+  EXPECT_EQ(25, hist->histogram_->ValueAtPercentile(25));
+  EXPECT_EQ(50, hist->histogram_->ValueAtPercentile(50));
+  EXPECT_EQ(75, hist->histogram_->ValueAtPercentile(75));
+  EXPECT_EQ(99, hist->histogram_->ValueAtPercentile(99));
+  EXPECT_EQ(100, hist->histogram_->ValueAtPercentile(99.9));
+  EXPECT_EQ(100, hist->histogram_->ValueAtPercentile(100));
+
+  hist->histogram_->DumpHumanReadable(&LOG(INFO));
+  // Test that the Histogram's percentiles are reset.
+  HistogramSnapshotPB snapshot_pb;
+  MetricJsonOptions options;
+  options.include_raw_histograms = true;
+  ASSERT_OK(hist->GetAndResetHistogramSnapshotPB(&snapshot_pb, options));
+  hist->histogram_->DumpHumanReadable(&LOG(INFO));
+
+  EXPECT_EQ(5050, hist->histogram_->TotalSum());
+  EXPECT_EQ(100, hist->histogram_->TotalCount());
+  EXPECT_EQ(0, hist->histogram_->CurrentSum());
+  EXPECT_EQ(0, hist->histogram_->CurrentCount());
+
+  EXPECT_EQ(0, hist->histogram_->MinValue());
+  EXPECT_EQ(0, hist->histogram_->MeanValue());
+  EXPECT_EQ(0, hist->histogram_->MaxValue());
+  EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(10));
+  EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(25));
+  EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(50));
+  EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(75));
+  EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(99));
+  EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(99.9));
+  EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(100));
 }
 
 TEST_F(MetricsTest, JsonPrintTest) {

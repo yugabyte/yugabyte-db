@@ -19,7 +19,8 @@ showAsideToc: true
 
 A client can issue the `LISTDB` command through the redis-cli.
 
-## Return Value
+## Return value
+
 Returns an array of string values, with the yedis database names. 
 
 ## Examples
@@ -84,7 +85,8 @@ $ LISTDB
 2) "second"
 ```
 
-## See Also
+## See also
+
 [`createdb`](../createdb/)
 [`listdb`](../listdb/)
 [`deletedb`](../deletedb/)

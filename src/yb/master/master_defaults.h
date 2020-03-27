@@ -49,6 +49,17 @@ static const char* const kSystemSchemaPartitionsTableName = "partitions";
 static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
 
+static const char* const kCdcStateTableName = "cdc_state";
+static const char* const kCdcTabletId = "tablet_id";
+constexpr size_t kCdcTabletIdIdx = 0;
+static const char* const kCdcStreamId = "stream_id";
+constexpr size_t kCdcStreamIdIdx = 1;
+static const char* const kCdcCheckpoint  = "checkpoint";
+constexpr size_t kCdcCheckpointIdx = 2;
+static const char* const kCdcData = "data";
+static const char* const kCdcLastReplicationTime = "last_replication_time";
+constexpr size_t kCdcLastReplicationTimeIdx = 4;
+
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
 static const char* const kSystemAuthResourceRolePermissionsIndexTableName =
@@ -62,6 +73,8 @@ static constexpr int kNumSystemNamespaces = 3;
 // Needs to be updated each time we add a new system table. Currently, this is only used for unit
 // tests which don't have access to the master object (for ex: unit tests which use ExternalMaster).
 static constexpr int kNumSystemTables = 17;
+// The same, including the transaction status table.
+static constexpr int kNumSystemTablesWithTxn = kNumSystemTables + 1;
 
 constexpr uint16_t kMasterDefaultPort = 7100;
 constexpr uint16_t kMasterDefaultWebPort = 7000;

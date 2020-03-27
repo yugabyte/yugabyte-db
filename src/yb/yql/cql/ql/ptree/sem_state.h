@@ -29,6 +29,8 @@ namespace yb {
 namespace ql {
 
 class WhereExprState;
+class IfExprState;
+class PTColumnDefinition;
 
 //--------------------------------------------------------------------------------------------------
 // This class represents the state variables for the analyzing process of one tree node. This
@@ -76,6 +78,12 @@ class SemState {
   }
   WhereExprState *where_state() const { return where_state_; }
 
+  // Update state variable for if clause.
+  void SetIfState(IfExprState *if_state) {
+    if_state_ = if_state;
+  }
+  IfExprState *if_state() const { return if_state_; }
+
   // Update the expr states.
   void SetExprState(const std::shared_ptr<QLType>& ql_type,
                     InternalType internal_type,
@@ -87,6 +95,9 @@ class SemState {
 
   // Set the current state using previous state's values.
   void CopyPreviousWhereState();
+
+  // Set the current state using previous state's values.
+  void CopyPreviousIfState();
 
   // Access function for expression states.
   const std::shared_ptr<QLType>& expected_ql_type() const { return expected_ql_type_; }
@@ -106,6 +117,9 @@ class SemState {
 
   bool processing_assignee() const { return processing_assignee_; }
   void set_processing_assignee(bool value) { processing_assignee_ = value; }
+
+  void set_selecting_from_index(bool val) { selecting_from_index_ = val; }
+  bool selecting_from_index() const { return selecting_from_index_; }
 
   void set_processing_column_definition(bool val) { processing_column_definition_ = val; }
   bool processing_column_definition() const { return processing_column_definition_; }
@@ -127,6 +141,13 @@ class SemState {
     allowing_column_refs_ = val;
   }
 
+  void set_processing_index_column(PTColumnDefinition *index_column) {
+    index_column_ = index_column;
+  }
+  void add_index_column_ref(int32_t col_id);
+
+  bool is_uncovered_index_select() const;
+
  private:
   // Context that owns this SemState.
   SemContext *sem_context_;
@@ -143,6 +164,12 @@ class SemState {
 
   // State variables for where expression.
   WhereExprState *where_state_ = nullptr;
+
+  // State variables for if expression.
+  IfExprState *if_state_ = nullptr;
+
+  // Predicate for selecting data from an index instead of a user table.
+  bool selecting_from_index_ = false;
 
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;
@@ -165,6 +192,8 @@ class SemState {
   // State variable for allowing column references.
   bool allowing_column_refs_ = false;
 
+  // State variable for processing index column.
+  PTColumnDefinition *index_column_ = nullptr;
 };
 
 }  // namespace ql

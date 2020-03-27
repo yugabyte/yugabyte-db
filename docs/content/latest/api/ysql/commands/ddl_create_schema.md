@@ -1,8 +1,9 @@
 ---
-title: CREATE SCHEMA
+title: CREATE SCHEMA statement [YSQL]
+headerTitle: CREATE SCHEMA
 linkTitle: CREATE SCHEMA
 summary: Create schema
-description: CREATE SCHEMA
+description: Use the CREATE SCHEMA statement to create a new schema in the current database.
 menu:
   latest:
     identifier: api-ysql-commands-create-schema
@@ -14,31 +15,83 @@ showAsideToc: true
 ---
 
 ## Synopsis
-`CREATE SCHEMA` inserts a new schema definition to the current database. Schema name must be unique.
+
+Use the `CREATE SCHEMA` statement to create a new schema in the current database.
+A schema is essentially a namespace: it contains named objects (tables, data types, functions, and operators) whose names can duplicate those of other objects existing in other schemas.
+Named objects in a schema can be accessed by using the schema name as prefix or by setting the schema name in the search path.
 
 ## Syntax
 
-### Diagrams
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="700" height="64" viewbox="0 0 700 64"><path class="connector" d="M0 36h5m67 0h10m71 0h30m30 0h10m45 0h10m61 0h20m-191 0q5 0 5 5v8q0 5 5 5h166q5 0 5-5v-8q0-5 5-5m5 0h10m110 0h50m-5 0q-5 0-5-5v-16q0-5 5-5h136q5 0 5 5v16q0 5-5 5m-5 0h40m-201 0q5 0 5 5v8q0 5 5 5h176q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="20" width="67" height="24" rx="7"/><text class="text" x="15" y="36">CREATE</text><rect class="literal" x="82" y="20" width="71" height="24" rx="7"/><text class="text" x="92" y="36">SCHEMA</text><rect class="literal" x="183" y="20" width="30" height="24" rx="7"/><text class="text" x="193" y="36">IF</text><rect class="literal" x="223" y="20" width="45" height="24" rx="7"/><text class="text" x="233" y="36">NOT</text><rect class="literal" x="278" y="20" width="61" height="24" rx="7"/><text class="text" x="288" y="36">EXISTS</text><a xlink:href="../../grammar_diagrams#schema-name"><rect class="rule" x="369" y="20" width="110" height="24"/><text class="text" x="379" y="36">schema_name</text></a><a xlink:href="../../grammar_diagrams#schema-element"><rect class="rule" x="529" y="20" width="126" height="24"/><text class="text" x="539" y="36">schema_element</text></a></svg>
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-### Grammar
-```
-create_schema ::= CREATE SCHEMA [ IF NOT EXISTS ] schema_name [ schema_element [...] ]
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/create_schema_name,create_schema_role,schema_element,role_specification.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/create_schema_name,create_schema_role,schema_element,role_specification.diagram.md" /%}}
+  </div>
+</div>
 
 Where
-- `schema_name` specifies the schema to be created.
 
-- `schema_element` is a SQL statement that `CREATE` a database object to be created within the schema.
+- `schema_name` is the name of the schema being created. If no schema_name is specified, the `role_name` is used.
 
-## Semantics
+- `role_name` is the role who will own the new schema. If omitted, it defaults to the user executing the command. To create a schema owned by another role, you must be a direct or indirect member of that role, or be a superuser.
 
-- `AUTHORIZATION` clause is not yet supported.
-- Only `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, `CREATE TRIGGER`, and `GRANT` can be used to create objects within `CREATE SCHEMA` statement. Other database objects must be created in separate commands after the schema is created.
+- `schema_element` is a YSQL statement defining an object to be created within the schema.
+Currently, only [`CREATE TABLE`](../ddl_create_table), [`CREATE VIEW`](../ddl_create_view), [`CREATE INDEX`](../ddl_create_index), [`CREATE SEQUENCE`](../ddl_create_sequence), [`CREATE TRIGGER`](../ddl_create_trigger) and [`GRANT`](../dcl_grant) are supported as clauses within `CREATE SCHEMA`.
+Other kinds of objects may be created in separate commands after the schema is created.
 
-## See Also
-[`CREATE TABLE`](../ddl_create_table)
-[`CREATE VIEW`](../ddl_create_view)
-[`CREATE INDEX`](../ddl_create_index)
-[`CREATE SEQUENCE`](../ddl_create_seq)
-[Other YSQL Statements](..)
+## Examples
+
+- Create a new schema.
+
+```postgresql
+yugabyte=# CREATE SCHEMA IF NOT EXIST branch;
+```
+
+- Create a schema for a user.
+
+```postgresql
+yugabyte=# CREATE ROLE John;
+yugabyte=# CREATE SCHEMA AUTHORIZATION john;
+```
+
+- Create a schema that will be owned by another role.
+
+```postgresql
+yugabyte=# CREATE SCHEMA branch AUTHORIZATION john;
+```
+
+- Create a schema and an object within that schema.
+
+```postgresql
+yugabyte=# CREATE SCHEMA branch
+               CREATE TABLE dept(
+                   dept_id INT NOT NULL,
+                   dept_name TEXT NOT NULL,
+                   PRIMARY KEY (dept_id)
+               );
+```
+
+## See also
+
+- [`CREATE TABLE`](../ddl_create_table)
+- [`CREATE VIEW`](../ddl_create_view)
+- [`CREATE INDEX`](../ddl_create_index)
+- [`CREATE SEQUENCE`](../ddl_create_sequence)
+- [`GRANT`](../dcl_grant)

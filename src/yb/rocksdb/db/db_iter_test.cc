@@ -357,8 +357,8 @@ TEST_F(DBIteratorTest, DBIteratorPrevNext) {
         7, options.max_sequential_skip_in_iterations, 0,
         ro.iterate_upper_bound));
 
-    SetPerfLevel(kEnableCount);
-    ASSERT_TRUE(GetPerfLevel() == kEnableCount);
+    SetPerfLevel(PerfLevel::kEnableCount);
+    ASSERT_TRUE(GetPerfLevel() == PerfLevel::kEnableCount);
 
     perf_context.Reset();
     db_iter->SeekToLast();
@@ -367,7 +367,7 @@ TEST_F(DBIteratorTest, DBIteratorPrevNext) {
     ASSERT_EQ(static_cast<int>(perf_context.internal_key_skipped_count), 1);
     ASSERT_EQ(db_iter->key().ToString(), "b");
 
-    SetPerfLevel(kDisable);
+    SetPerfLevel(PerfLevel::kDisable);
   }
   // Test to check the SeekToLast() with the iterate_upper_bound set
   // (Checking the value of the key which has sequence ids greater than
@@ -480,8 +480,8 @@ TEST_F(DBIteratorTest, DBIteratorPrevNext) {
         7, options.max_sequential_skip_in_iterations, 0,
         ro.iterate_upper_bound));
 
-    SetPerfLevel(kEnableCount);
-    ASSERT_TRUE(GetPerfLevel() == kEnableCount);
+    SetPerfLevel(PerfLevel::kEnableCount);
+    ASSERT_TRUE(GetPerfLevel() == PerfLevel::kEnableCount);
 
     perf_context.Reset();
     db_iter->SeekToLast();
@@ -490,7 +490,7 @@ TEST_F(DBIteratorTest, DBIteratorPrevNext) {
     ASSERT_EQ(static_cast<int>(perf_context.internal_delete_skipped_count), 0);
     ASSERT_EQ(db_iter->key().ToString(), "b");
 
-    SetPerfLevel(kDisable);
+    SetPerfLevel(PerfLevel::kDisable);
   }
 
   {

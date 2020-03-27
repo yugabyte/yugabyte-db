@@ -857,8 +857,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		attnums = CopyGetAttnums(tupDesc, rel, stmt->attlist);
 		foreach(cur, attnums)
 		{
-			int			attno = lfirst_int(cur) -
-			FirstLowInvalidHeapAttributeNumber;
+			int attno = lfirst_int(cur) - YBGetFirstLowInvalidAttributeNumber(rel);
 
 			if (is_from)
 				rte->insertedCols = bms_add_member(rte->insertedCols, attno);
@@ -1033,7 +1032,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
  * This is exported so that external users of the COPY API can sanity-check
  * a list of options.  In that usage, cstate should be passed as NULL
  * (since external users don't know sizeof(CopyStateData)) and the collected
- * data is just leaked until CurrentMemoryContext is reset.
+ * data is just leaked until GetCurrentMemoryContext() is reset.
  *
  * Note that additional checking, such as whether column names listed in FORCE
  * QUOTE actually exist, has to be applied later.  This just checks for
@@ -1420,7 +1419,7 @@ BeginCopy(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
+	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 
@@ -2012,7 +2011,7 @@ CopyTo(CopyState cstate)
 	 * datatype output routines, and should be faster than retail pfree's
 	 * anyway.  (We don't need a whole econtext as CopyFrom does.)
 	 */
-	cstate->rowcontext = AllocSetContextCreate(CurrentMemoryContext,
+	cstate->rowcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 											   "COPY TO",
 											   ALLOCSET_DEFAULT_SIZES);
 
@@ -2336,16 +2335,19 @@ CopyFrom(CopyState cstate)
 	ModifyTableState *mtstate;
 	ExprContext *econtext;
 	TupleTableSlot *myslot;
-	MemoryContext oldcontext = CurrentMemoryContext;
+	MemoryContext oldcontext = GetCurrentMemoryContext();
 
 	ErrorContextCallback errcallback;
 	CommandId	mycid = GetCurrentCommandId(true);
 	int			hi_options = 0; /* start with default heap_insert options */
 	BulkInsertState bistate;
 	uint64		processed = 0;
+	bool		useMultiInsert;
+	bool		useYBMultiInsert;
 	bool		useHeapMultiInsert;
 	int			nBufferedTuples = 0;
 	int			prev_leaf_part_index = -1;
+	bool		useNonTxnInsert;
 
 #define MAX_BUFFERED_TUPLES 1000
 	HeapTuple  *bufferedTuples = NULL;	/* initialize to silence warning */
@@ -2592,15 +2594,35 @@ CopyFrom(CopyState cstate)
 		  resultRelInfo->ri_TrigDesc->trig_insert_instead_row)) ||
 		resultRelInfo->ri_FdwRoutine != NULL ||
 		cstate->partition_tuple_routing != NULL ||
-		cstate->volatile_defexprs ||
-		IsYBRelation(resultRelInfo->ri_RelationDesc))
+		cstate->volatile_defexprs)
 	{
-		useHeapMultiInsert = false;
+		useMultiInsert = false;
 	}
 	else
-    {
-		useHeapMultiInsert = true;
+	{
+		useMultiInsert = true;
+	}
+
+	useYBMultiInsert = useMultiInsert && IsYBRelation(resultRelInfo->ri_RelationDesc);
+	useHeapMultiInsert = useMultiInsert && !IsYBRelation(resultRelInfo->ri_RelationDesc);
+	if (useHeapMultiInsert)
+	{
 		bufferedTuples = palloc(MAX_BUFFERED_TUPLES * sizeof(HeapTuple));
+	}
+
+	/*
+	 * Only use non-txn insert if it's explicitly enabled, the relation meets criteria for
+	 * multi insert (e.g. no triggers), and the relation does not have secondary indices.
+	 */
+	if (YBIsNonTxnCopyEnabled() &&
+		useYBMultiInsert &&
+		!YBCRelInfoHasSecondaryIndices(resultRelInfo))
+	{
+		useNonTxnInsert = true;
+	}
+	else
+	{
+		useNonTxnInsert = false;
 	}
 
 	/*
@@ -2622,6 +2644,15 @@ CopyFrom(CopyState cstate)
 	errcallback.arg = (void *) cstate;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
+
+	/* Warn if non-txn COPY enabled and relation does not meet non-txn criteria. */
+	if (YBIsNonTxnCopyEnabled() && !useNonTxnInsert)
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("non-transactional COPY is not supported on this relation; "
+						"using transactional COPY instead"),
+				 errhint("Non-transactional COPY is not supported on relations with "
+						 "secondary indices or triggers.")));
 
 	for (;;)
 	{
@@ -2790,7 +2821,7 @@ CopyFrom(CopyState cstate)
 				 */
 				if (resultRelInfo->ri_FdwRoutine == NULL &&
 					resultRelInfo->ri_RelationDesc->rd_att->constr)
-					ExecConstraints(resultRelInfo, slot, estate);
+					ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
 				/*
 				 * Also check the tuple against the partition constraint, if
@@ -2836,7 +2867,14 @@ CopyFrom(CopyState cstate)
 					/* OK, store the tuple and create index entries for it */
 					if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 					{
-						YBCExecuteInsert(cstate->rel, tupDesc, tuple);
+						if (useNonTxnInsert)
+						{
+							YBCExecuteNonTxnInsert(cstate->rel, tupDesc, tuple);
+						}
+						else
+						{
+							YBCExecuteInsert(cstate->rel, tupDesc, tuple);
+						}
 					}
 					else if (resultRelInfo->ri_FdwRoutine != NULL)
 					{
@@ -2887,7 +2925,7 @@ CopyFrom(CopyState cstate)
 			processed++;
 		}
 
-next_tuple:
+	next_tuple:
 		/* Restore the saved ResultRelInfo */
 		if (saved_resultRelInfo)
 		{
@@ -3584,7 +3622,7 @@ NextCopyFrom(CopyState cstate, ExprContext *econtext,
 		 * per-tuple memory context in it.
 		 */
 		Assert(econtext != NULL);
-		Assert(CurrentMemoryContext == econtext->ecxt_per_tuple_memory);
+		Assert(GetCurrentMemoryContext() == econtext->ecxt_per_tuple_memory);
 
 		values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
 										 &nulls[defmap[i]]);

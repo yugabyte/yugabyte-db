@@ -1,0 +1,34 @@
+{
+  "universe": {
+      "import": "disabled",
+      "create": "disabled",
+      "backup": "hidden"
+  },
+  "config": {
+    "infra": "disabled",
+    "backup": "disabled"
+  },
+  "main": {
+    "dropdown": "hidden"
+  },
+  "menu": {
+    "config": "disabled",
+    "sidebar": "hidden"
+  },
+  "universes": {
+    "details": {
+      "overview": {
+        "upgradeSoftware": "hidden",
+        "editGFlags": "hidden",
+        "readReplica": "hidden",
+        "editUniverse": "hidden",
+        "manageEncryption": "hidden",
+        "deleteUniverse": "hidden"
+      },
+      "pageActions": "hidden",
+      "universeStatus": "hidden"
+    },
+    "proxyIp": "hidden",
+    "tableActions": "disabled"
+  }
+}

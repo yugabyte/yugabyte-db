@@ -14,16 +14,18 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`PEXPIREAT key ttl-as-timestamp`</b><br>
 PEXPIREAT has the same effect as EXPIREAT, but the Unix timestamp at which the key will expire is specified in milliseconds instead of seconds.
 
-## Return Value
+## Return value
+
 Returns integer reply, specifically 1 if the timeout was set and 0 if key does not exist.
 
 ## Examples
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```
@@ -46,5 +48,6 @@ $ PTTL yugakey
 (integer) 18674452994
 ```
 
-## See Also
+## See also
+
 [`expireat`](../expireat/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/) 

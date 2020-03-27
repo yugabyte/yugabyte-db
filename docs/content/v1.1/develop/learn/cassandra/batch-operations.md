@@ -66,7 +66,7 @@ An `IN` operator allows specifying multiple keys to the `WHERE` clause and does 
 
 Consider a table which has a hash column `h` and a clustering column `r`.
 
-- Query a set of values of `h` - this operation will perform the lookups for the various hash keys and return the response. The read queries are batched at a tablet level and executed in parallel. This query will be more efficient that performing each lookup from the application.
+- Query a set of values of `h` - this operation will perform the lookups for the various hash keys and return the response. The read queries are batched at a tablet level and executed in parallel. This query will be more efficient than performing each lookup from the application.
 
 ```sql
 > SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
@@ -87,7 +87,7 @@ Consider a table which has a hash column `h` and a clustering column `r`.
 
 ## Sample Java Application
 
-You can find a working example of using transactions with YugaByte in our [sample applications](../../../quick-start/run-sample-apps/). This application writes batched key-value pairs with a configurable number of keys per batch. There are multiple readers and writers running in parallel performing these batch writes.
+You can find a working example of using transactions with Yugabyte in our [sample applications](../../../quick-start/run-sample-apps/). This application writes batched key-value pairs with a configurable number of keys per batch. There are multiple readers and writers running in parallel performing these batch writes.
 
 Here is how you can try out this sample application.
 
@@ -109,4 +109,4 @@ Usage:
 ```
 
 
-Browse the [Java source code for the batch application](https://github.com/YugaByte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraBatchKeyValue.java) to see how everything fits together.
+Browse the [Java source code for the batch application](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraBatchKeyValue.java) to see how everything fits together.

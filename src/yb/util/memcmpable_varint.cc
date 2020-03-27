@@ -262,13 +262,13 @@ int PutVarint64ToBuf(uint8_t* buf, size_t bufsize, uint64_t value) {
 }
 
 void PutMemcmpableVarint64(std::string *dst, uint64_t value) {
-  uint8_t buf[9];
+  uint8_t buf[16];
   int used = PutVarint64ToBuf(buf, sizeof(buf), value);
   dst->append(yb::util::to_char_ptr(buf), used);
 }
 
 void PutMemcmpableVarint64(faststring *dst, uint64_t value) {
-  uint8_t buf[9];
+  uint8_t buf[16];
   int used = PutVarint64ToBuf(buf, sizeof(buf), value);
   dst->append(buf, used);
 }

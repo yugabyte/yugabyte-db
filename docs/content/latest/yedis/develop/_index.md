@@ -1,7 +1,7 @@
 ---
 title: Develop
 linkTitle: Develop
-description: Develop Apps on YEDIS
+description: Develop applications on YEDIS
 headcontent: 
 image: /images/section_icons/index/develop.png
 aliases:
@@ -15,16 +15,16 @@ menu:
 ---
 
 <div class="row">
- 
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="client-drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
         <div class="articles">6 articles</div>
-        <div class="title">Client Drivers</div>
+        <div class="title">Client drivers</div>
       </div>
       <div class="body">
-        Develop apps using the appropriate client drivers in the language of your choice.
+        Develop applications using the appropriate client drivers in the language of your choice.
       </div>
     </a>
   </div>

@@ -629,6 +629,8 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options);
   }
 
+  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+
   // CompactFiles() inputs a list of files specified by file numbers and
   // compacts them to the specified level. Note that the behavior is different
   // from CompactRange() in that CompactFiles() performs the compaction job
@@ -789,15 +791,23 @@ class DB {
   // path relative to the db directory. eg. 000001.sst, /archive/000003.log
   virtual Status DeleteFile(std::string name) = 0;
 
-  // Returns the total combined size of all the SST Files in the rocksdb instance.
-  virtual uint64_t GetTotalSSTFileSize() { return 0; }
-  virtual uint64_t GetUncompressedSSTFileSize() { return 0; }
+  // Returns the total combined size of all the SST Files for the current version in the rocksdb
+  // instance.
+  virtual uint64_t GetCurrentVersionSstFilesSize() { return 0; }
+  virtual uint64_t GetCurrentVersionSstFilesUncompressedSize() { return 0; }
 
-  // Returns the combined size of all the SST Files data blocks in the rocksdb instance.
-  virtual uint64_t GetDataSSTFileSize() { return 0; }
+  // Returns total number of SST Files.
+  virtual uint64_t GetCurrentVersionNumSSTFiles() { return 0; }
 
-  // Returns a list of all table files with their level, start key
-  // and end key
+  // Returns the combined size of all the SST Files data blocks for the current version in the
+  // rocksdb instance.
+  virtual uint64_t GetCurrentVersionDataSstFilesSize() { return 0; }
+
+  // Returns number of memtables not flushed in default column family memtable list.
+  virtual int GetCfdImmNumNotFlushed() { return 0; }
+
+  // Returns a list of all table files for the current version with their level, start key and end
+  // key.
   virtual void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* /*metadata*/) {}
 
   std::vector<LiveFileMetaData> GetLiveFilesMetaData() {
@@ -816,7 +826,9 @@ class DB {
 
   virtual FlushAbility GetFlushAbility() { return FlushAbility::kHasNewData; }
 
-  virtual UserFrontierPtr GetMutableMemTableSmallestFrontier() { return nullptr; }
+  virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
+
+  virtual void ListenFilesChanged(std::function<void()> listener) {}
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have

@@ -32,11 +32,12 @@ namespace pggate {
 // Postgres object identifier (OID).
 typedef uint32_t PgOid;
 static constexpr PgOid kPgInvalidOid = 0;
+static constexpr PgOid kPgByteArrayOid = 17;
 
 // A struct to identify a Postgres object by oid and the database oid it belongs to.
 struct PgObjectId {
-  PgOid database_oid;
-  PgOid object_oid;
+  PgOid database_oid = kPgInvalidOid;
+  PgOid object_oid = kPgInvalidOid;
 
   PgObjectId(const PgOid database_oid, const PgOid object_oid)
       : database_oid(database_oid), object_oid(object_oid) {}

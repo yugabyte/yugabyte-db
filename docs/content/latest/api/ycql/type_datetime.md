@@ -1,7 +1,8 @@
 ---
-title: Date & Time Types
-summary: DATE, TIME and TIMESTAMP
-description: Date & Time Types
+title: Date and time data types (DATE, TIME, and TIMESTAMP) [YCQL]
+summary: DATE, TIME, and TIMESTAMP
+linkTitle: DATE, TIME, and TIMESTAMP
+description: Use the date and time data types (DATE, TIME, and TIMESTAMP) to specify data of date and time at a time zone.
 menu:
   latest:
     parent: api-cassandra
@@ -17,9 +18,10 @@ showAsideToc: true
 
 ## Synopsis
 
-Datetime datatypes are used to specify data of date and time at a timezone, `DATE` for a specific day, `TIME` for time of day, and `TIMESTAMP` for the combination of both date and time.
+Use datetime data types to specify data of date and time at a time zone, `DATE` for a specific day, `TIME` for time of day, and `TIMESTAMP` for the combination of both date and time.
 
 ## Syntax
+
 ```
 type_specification ::= TIMESTAMP | DATE | TIME
 
@@ -36,8 +38,8 @@ Where
 ## Semantics
 
 - Columns of type `DATE`, `TIME` and `TIMESTAMP` can be part of the `PRIMARY KEY`.
-- Implicitly, value of type datetime type are neither convertible nor comparable to other datatypes.
-- Values of integer and text datatypes with the correct format (given above) are convertible to datetime types.
+- Implicitly, value of type datetime type are neither convertible nor comparable to other data types.
+- Values of integer and text data types with the correct format (given above) are convertible to datetime types.
 - Supported timestamp range is from year `1900` to year `9999`.
 - If not specified, the default value for hour, minute, second, and millisecond components is `0`.
 - If not specified, the default timezone is UTC.
@@ -183,6 +185,7 @@ cqlsh:example> SELECT * FROM sensor_data;
 '1992-6-4 UTC-04:30'
  ```
 
-## See Also
-[Date and Time Functions](../function_datetime)
-[Data Types](..#datatypes)
+## See also
+
+- [Date and time functions](../function_datetime)
+- [Data types](..#data-types)

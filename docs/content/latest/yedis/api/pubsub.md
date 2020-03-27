@@ -14,7 +14,8 @@ showAsideToc: true
 ---
 
 ## Synopsis
-PUBSUB command is useful to view the state of the Pub/Sub system in YugaByte. These commands only provide information regarding the specific YEDIS
+
+PUBSUB command is useful to view the state of the Pub/Sub system in Yugabyte. These commands only provide information regarding the specific YEDIS
 server that is queried. 3 subcommands are supported:
 <br>
 ### <b>`PUBSUB channels [pattern]`</b><br>
@@ -27,7 +28,8 @@ Returns the number of subscribers for the specified channels (not counting the c
 ### <b>`PUBSUB NUMPAT`</b><br>
 Returns the number of patterns that are subscribed to on the YEDIS server that is queried.
 
-## See Also
+## See also
+
 [`pubsub`](../pubsub/), 
 [`publish`](../publish/), 
 [`subscribe`](../subscribe/), 

@@ -158,7 +158,7 @@ class TnodeContext {
   // for each hash column (starting from first 'IN') as we iteratively query each partition.
   // e.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6".
   //  hash_values_options_ = [[2, 3], [4, 5], [6]]
-  //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [4,5,6]).
+  //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [3,5,6]).
   //  current_partition_index_ starts from 0 unless set in the paging state.
   boost::optional<std::vector<std::vector<QLExpressionPB>>> hash_values_options_;
   uint64_t partitions_count_ = 0;

@@ -46,7 +46,6 @@ class RWFile;
 class Slice;
 class WritableFile;
 
-struct RandomAccessFileOptions;
 struct RWFileOptions;
 struct WritableFileOptions;
 
@@ -76,11 +75,6 @@ class FileFactory {
   //
   // The returned file may be concurrently accessed by multiple threads.
   virtual CHECKED_STATUS NewRandomAccessFile(const std::string& fname,
-                                             std::unique_ptr<RandomAccessFile>* result) = 0;
-
-  // Like the previous NewRandomAccessFile, but allows options to be specified.
-  virtual CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                                             const std::string& fname,
                                              std::unique_ptr<RandomAccessFile>* result) = 0;
 
   // Create an object that writes to a new file with the specified
@@ -144,12 +138,6 @@ class FileFactoryWrapper : public FileFactory {
     return target_->NewRandomAccessFile(fname, result);
   }
 
-  // Like the previous NewRandomAccessFile, but allows options to be specified.
-  CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                                     const std::string& fname,
-                                     std::unique_ptr<RandomAccessFile>* result) override {
-    return target_->NewRandomAccessFile(opts, fname, result);
-  }
   CHECKED_STATUS NewWritableFile(const std::string& fname,
                                  std::unique_ptr<WritableFile>* result) override {
     return target_->NewWritableFile(fname, result);
@@ -234,11 +222,6 @@ class Env {
   //
   // The returned file may be concurrently accessed by multiple threads.
   virtual CHECKED_STATUS NewRandomAccessFile(const std::string& fname,
-                                             std::unique_ptr<RandomAccessFile>* result) = 0;
-
-  // Like the previous NewRandomAccessFile, but allows options to be specified.
-  virtual CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                                             const std::string& fname,
                                              std::unique_ptr<RandomAccessFile>* result) = 0;
 
   // Create an object that writes to a new file with the specified
@@ -391,6 +374,10 @@ class Env {
   // useful for computing deltas of time.
   virtual uint64_t NowMicros() = 0;
 
+  // Returns the number of nano-seconds since some fixed point in time. Only
+  // useful for computing deltas of time in one run.
+  virtual uint64_t NowNanos() = 0;
+
   // Sleep/delay the thread for the perscribed number of micro-seconds.
   virtual void SleepForMicroseconds(int micros) = 0;
 
@@ -469,49 +456,13 @@ class Env {
 
   // Get the total amount of RAM installed on this machine.
   virtual CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) = 0;
+
+  // Get free space available on the path's filesystem.
+  virtual Result<uint64_t> GetFreeSpaceBytes(const std::string& path) = 0;
  private:
   // No copying allowed
   Env(const Env&);
   void operator=(const Env&);
-};
-
-// A file abstraction for randomly reading the contents of a file.
-class RandomAccessFile {
- public:
-  RandomAccessFile() { }
-  virtual ~RandomAccessFile();
-
-  // Read up to "n" bytes from the file starting at "offset".
-  // "scratch[0..n-1]" may be written by this routine.  Sets "*result"
-  // to the data that was read (including if fewer than "n" bytes were
-  // successfully read).  May set "*result" to point at data in
-  // "scratch[0..n-1]", so "scratch[0..n-1]" must be live when
-  // "*result" is used.  If an error was encountered, returns a non-OK
-  // status.
-  //
-  // Safe for concurrent use by multiple threads.
-  virtual CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result,
-                      uint8_t *scratch) const = 0;
-
-  // Returns the size of the file
-  virtual Result<uint64_t> Size() const = 0;
-
-  virtual Result<uint64_t> INode() const = 0;
-
-  // Returns the filename provided when the RandomAccessFile was constructed.
-  virtual const std::string& filename() const = 0;
-
-  // Returns the approximate memory usage of this RandomAccessFile including
-  // the object itself.
-  virtual size_t memory_footprint() const = 0;
-
-  virtual uint64_t GetHeaderSize() const {
-    return 0;
-  }
-
-  virtual bool IsEncrypted() const {
-    return false;
-  }
 };
 
 // Creation-time options for WritableFile
@@ -528,11 +479,6 @@ struct WritableFileOptions {
     : sync_on_close(false),
       o_direct(false),
       mode(Env::CREATE_IF_NON_EXISTING_TRUNCATE) { }
-};
-
-// Options specified when a file is opened for random access.
-struct RandomAccessFileOptions {
-  RandomAccessFileOptions() {}
 };
 
 // A file abstraction for sequential writing.  The implementation
@@ -610,25 +556,6 @@ class WritableFileWrapper : public WritableFile {
 
  private:
   std::unique_ptr<WritableFile> target_;
-};
-
-class RandomAccessFileWrapper : public RandomAccessFile {
- public:
-  explicit RandomAccessFileWrapper(std::unique_ptr<RandomAccessFile> t) : target_(std::move(t)) { }
-  virtual ~RandomAccessFileWrapper() { }
-
-  // Return the target to which this RandomAccessFile forwards all calls.
-  RandomAccessFile* target() const { return target_.get(); }
-
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t *scratch) const override {
-    return target_->Read(offset, n, result, scratch);
-  }
-  Result<uint64_t> Size() const override { return target_->Size(); }
-  Result<uint64_t> INode() const override { return target_->INode(); }
-  const std::string& filename() const override { return target_->filename(); }
-  size_t memory_footprint() const override { return target_->memory_footprint(); }
- private:
-  std::unique_ptr<RandomAccessFile> target_;
 };
 
 // Creation-time options for RWFile
@@ -762,11 +689,6 @@ class EnvWrapper : public Env {
                                      std::unique_ptr<RandomAccessFile>* r) override {
     return target_->NewRandomAccessFile(f, r);
   }
-  CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                                     const std::string& f,
-                                     std::unique_ptr<RandomAccessFile>* r) override {
-    return target_->NewRandomAccessFile(opts, f, r);
-  }
   CHECKED_STATUS NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r) override {
     return target_->NewWritableFile(f, r);
   }
@@ -830,6 +752,9 @@ class EnvWrapper : public Env {
   uint64_t NowMicros() override {
     return target_->NowMicros();
   }
+  uint64_t NowNanos() override {
+    return target_->NowNanos();
+  }
   void SleepForMicroseconds(int micros) override {
     target_->SleepForMicroseconds(micros);
   }
@@ -855,6 +780,9 @@ class EnvWrapper : public Env {
   }
   CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) override {
     return target_->GetTotalRAMBytes(ram);
+  }
+  Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
+    return target_->GetFreeSpaceBytes(path);
   }
  private:
   Env* target_;

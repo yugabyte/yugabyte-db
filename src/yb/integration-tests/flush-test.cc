@@ -17,12 +17,16 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/memory_monitor.h"
 #include "yb/rocksdb/util/testutil.h"
+
 #include "yb/tablet/tablet.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 using namespace std::literals;
 
@@ -166,17 +170,6 @@ class FlushITest : public YBTest {
     return table_name;
   }
 
-  int NumTotalRunningCompactions() {
-    int compactions = 0;
-    for (auto& peer : cluster_->GetTabletPeers(0)) {
-      auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->TEST_db());
-      if (db) {
-        compactions += db->TEST_NumTotalRunningCompactions();
-      }
-    }
-    return compactions;
-  }
-
   int NumRunningFlushes() {
     int compactions = 0;
     for (auto& peer : cluster_->GetTabletPeers(0)) {
@@ -198,8 +191,9 @@ class FlushITest : public YBTest {
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
     AssertLoggedWaitFor(
-        [this] { return NumTotalRunningCompactions() == 0 && NumRunningFlushes() == 0; }, 60s,
-        "Waiting until compactions and flushes are done ...", kWaitDelay);
+        [this] {
+          return NumTotalRunningCompactions(cluster_.get()) == 0 && NumRunningFlushes() == 0;
+        }, 60s, "Waiting until compactions and flushes are done ...", kWaitDelay);
   }
 
   void AddTabletsWithNonEmptyMemTable(std::unordered_map<TabletId, int>* tablets, int order) {
@@ -265,6 +259,7 @@ void FlushITest::TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_res
   // granularity.
   FLAGS_memstore_size_mb = kServerLimitMB / 5;
   std::unordered_map<TabletId, int> inactive_tablets_to_flush;
+
   // Write to tables until compaction started and until we occupy 50% of kServerLimitMB by
   // memtables.
   int tables = 1; // First empty table is created by test setup.

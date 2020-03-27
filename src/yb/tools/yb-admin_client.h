@@ -60,6 +60,11 @@ class YBClient;
 
 namespace tools {
 
+struct TypedNamespaceName {
+  YQLDatabase db_type;
+  std::string name;
+};
+
 class ClusterAdminClient {
  public:
   enum PeerMode {
@@ -96,10 +101,10 @@ class ClusterAdminClient {
       int16 peer_port,
       bool use_hostport);
 
-  CHECKED_STATUS DumpMasterState();
+  CHECKED_STATUS DumpMasterState(bool to_console);
 
   // List all the tables.
-  CHECKED_STATUS ListTables();
+  CHECKED_STATUS ListTables(bool include_db_type);
 
   // List all tablets of this table
   CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets);
@@ -109,6 +114,21 @@ class ClusterAdminClient {
 
   // Delete a single table by name.
   CHECKED_STATUS DeleteTable(const client::YBTableName& table_name);
+
+  // Delete a single table by ID.
+  CHECKED_STATUS DeleteTableById(const TableId& table_id);
+
+  // Delete a single index by name.
+  CHECKED_STATUS DeleteIndex(const client::YBTableName& table_name);
+
+  // Delete a single index by ID.
+  CHECKED_STATUS DeleteIndexById(const TableId& table_id);
+
+  // Delete a single namespace by name.
+  CHECKED_STATUS DeleteNamespace(const TypedNamespaceName& name);
+
+  // Delete a single namespace by ID.
+  CHECKED_STATUS DeleteNamespaceById(const NamespaceId& namespace_id);
 
   // List all tablet servers known to master
   CHECKED_STATUS ListAllTabletServers();
@@ -126,6 +146,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS GetLoadMoveCompletion();
 
+  CHECKED_STATUS GetLeaderBlacklistCompletion();
+
   CHECKED_STATUS GetIsLoadBalancerIdle();
 
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
@@ -138,11 +160,35 @@ class ClusterAdminClient {
                             int timeout_secs,
                             bool is_compaction);
 
-  CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos, int replication_factor);
+  CHECKED_STATUS FlushTableById(const TableId &table_id,
+                                int timeout_secs,
+                                bool is_compaction);
+
+  CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos,
+                                     int replication_factor,
+                                     const std::string& optional_uuid);
+
+  CHECKED_STATUS AddReadReplicaPlacementInfo(const std::string& placement_info,
+                                             int replication_factor,
+                                             const std::string& optional_uuid);
+
+  CHECKED_STATUS ModifyReadReplicaPlacementInfo(const std::string& placement_uuid,
+                                                const std::string& placement_info,
+                                                int replication_factor);
+
+  CHECKED_STATUS DeleteReadReplicaPlacementInfo();
 
   CHECKED_STATUS GetUniverseConfig();
 
-  CHECKED_STATUS ChangeBlacklist(const std::vector<HostPort>& servers, bool add);
+  CHECKED_STATUS ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
+      bool blacklist_leader);
+
+  Result<const master::NamespaceIdentifierPB&> GetNamespaceInfo(YQLDatabase db_type,
+                                                                const std::string& namespace_name);
+
+  CHECKED_STATUS LeaderStepDownWithNewLeader(
+      const std::string& tablet_id,
+      const std::string& dest_ts_uuid);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -169,9 +215,14 @@ class ClusterAdminClient {
   // Look up the RPC address of the server with the specified UUID from the Master.
   Result<HostPort> GetFirstRpcAddressForTS(const std::string& uuid);
 
+  // Step down the leader of this tablet.
+  // If leader_uuid is empty, look it up with the master.
+  // If leader_uuid is not empty, must provide a leader_proxy.
+  // If new_leader_uuid is not empty, it is used as a suggestion for the StepDown operation.
   CHECKED_STATUS LeaderStepDown(
       const PeerId& leader_uuid,
-      const std::string& tablet_id,
+      const TabletId& tablet_id,
+      const PeerId& new_leader_uuid,
       std::unique_ptr<consensus::ConsensusServiceProxy>* leader_proxy);
 
   CHECKED_STATUS StartElection(const std::string& tablet_id);
@@ -192,6 +243,13 @@ class ClusterAdminClient {
   bool initted_ = false;
 
  private:
+  CHECKED_STATUS FillPlacementInfo(
+      master::PlacementInfoPB* placement_info_pb, const std::string& placement_str);
+
+  Result<int> GetReadReplicaConfigFromPlacementUuid(
+      master::ReplicationInfoPB* replication_info, const std::string& placement_uuid);
+
+
   Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
 
   // Perform RPC call without checking Response structure for error
@@ -207,12 +265,20 @@ class ClusterAdminClient {
       Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
       Object* obj, const Request& req, const char* error_message = nullptr);
 
+ private:
+  using NamespaceMap = std::unordered_map<NamespaceId, master::NamespaceIdentifierPB>;
+  Result<const NamespaceMap&> GetNamespaceMap();
+
+  NamespaceMap namespace_map_;
+
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
 
 static constexpr const char* kColumnSep = " \t";
 
 std::string RightPadToUuidWidth(const std::string &s);
+
+Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name);
 
 }  // namespace tools
 }  // namespace yb

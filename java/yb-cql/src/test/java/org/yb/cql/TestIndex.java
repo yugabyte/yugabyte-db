@@ -61,7 +61,8 @@ public class TestIndex extends BaseCQLTest {
     session.execute("create index i on test_index (h, r2, r1) include (c);");
 
     session.execute("insert into test_index (h, r1, r2, c) values (1, 2, 3, 4);");
-    session.execute("insert into i (h, r2, r1, c) values (1, 3, 2, 4);");
+    session.execute("insert into i (\"C$_h\", \"C$_r2\", \"C$_r1\", \"C$_c\")" +
+                    " values (1, 3, 2, 4);");
     assertQuery("select * from test_index;", "Row[1, 2, 3, 4]");
     assertQuery("select * from i;", "Row[1, 2, 3, 4]");
   }
@@ -268,6 +269,40 @@ public class TestIndex extends BaseCQLTest {
                                DEFAULT_TEST_KEYSPACE, "test_drop_cascade", "i2").one());
   }
 
+  @Test
+  public void testRecreateTable() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+    session.execute("create keyspace test_ks;");
+    session.execute("use test_ks;");
+
+    // By default the driver will execute commands on different TSes.
+    // Each CQL Server in TS has local Table info cache.
+    // The following test simulates a 'cache miss', when a TS cache has invalid info about
+    // a recreated table - with old-deleted table ID. In such case TS tryes to attach
+    // the index 'i3' to the deleted table - it must fail and the cache must be refreshed.
+
+    // Create test table.
+    session.execute("create table test_drop (h1 int primary key, " + // TS-1
+                    "c1 int, c2 int, c3 int, c4 int, c5 int) " +
+                    "with transactions = {'enabled' : true};");
+    // Create test indexes.
+    session.execute("create index i1 on test_drop (c1);");           // TS-2
+    session.execute("create index i2 on test_drop (c2);");           // TS-3
+    session.execute("select * from test_drop;");                     // TS-1
+    // Drop test table.
+    session.execute("drop table test_drop;");                        // TS-2
+    // Create test table again.
+    session.execute("create table test_drop (h1 int primary key, " + // TS-3
+                    "c1 int, a2 int, a3 int, a4 int, a5 int) " +
+                    "with transactions = {'enabled' : true};");
+    // Create index.
+    session.execute("create index i3 on test_drop (c1);");           // TS-1
+    session.execute("drop table test_drop;");                        // TS-2
+    session.execute("drop keyspace test_ks;");                       // TS-3
+
+    LOG.info("End test: " + getCurrentTestMethodName());
+  }
+
   private void assertIndexOptions(String table, String index, String target, String include)
       throws Exception {
     Row row = session.execute("select options, transactions, is_unique " +
@@ -313,12 +348,15 @@ public class TestIndex extends BaseCQLTest {
     return rows;
   }
 
-  private void assertIndexUpdate(Map<String, String> columnMap, String query) throws Exception {
+  private void assertIndexUpdate(Map<String, String> tableColumnMap,
+                                 Map<String, String> indexColumnMap,
+                                 String query) throws Exception {
     session.execute(query);
-    for (Map.Entry<String, String> entry : columnMap.entrySet()) {
+    for (Map.Entry<String, String> entry : tableColumnMap.entrySet()) {
+      String iValue = indexColumnMap.get(entry.getKey());
       assertEquals("Index " + entry.getKey() + " after " + query,
                    queryTable("test_update", entry.getValue()),
-                   queryTable(entry.getKey(), entry.getValue()));
+                   queryTable(entry.getKey(), iValue));
     }
   }
 
@@ -333,7 +371,7 @@ public class TestIndex extends BaseCQLTest {
     createIndex("create index i4 on test_update (c1)", strongConsistency);
     createIndex("create index i5 on test_update (c2) include (c1)", strongConsistency);
 
-    Map<String, String> columnMap = new HashMap<String, String>() {{
+    Map<String, String> tableColumnMap = new HashMap<String, String>() {{
         put("i1", "h1, h2, r1, r2");
         put("i2", "r1, r2, h1, h2, c2");
         put("i3", "r2, r1, h1, h2, c1, c2");
@@ -341,61 +379,69 @@ public class TestIndex extends BaseCQLTest {
         put("i5", "c2, h1, h2, r1, r2, c1");
       }};
 
+    Map<String, String> indexColumnMap = new HashMap<String, String>() {{
+        put("i1", "\"C$_h1\", \"C$_h2\", \"C$_r1\", \"C$_r2\"");
+        put("i2", "\"C$_r1\", \"C$_r2\", \"C$_h1\", \"C$_h2\", \"C$_c2\"");
+        put("i3", "\"C$_r2\", \"C$_r1\", \"C$_h1\", \"C$_h2\", \"C$_c1\", \"C$_c2\"");
+        put("i4", "\"C$_c1\", \"C$_h1\", \"C$_h2\", \"C$_r1\", \"C$_r2\"");
+        put("i5", "\"C$_c2\", \"C$_h1\", \"C$_h2\", \"C$_r1\", \"C$_r2\", \"C$_c1\"");
+      }};
+
     // test_update: Row[1, a, 2, b, 3]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "insert into test_update (h1, h2, r1, r2, c1) values (1, 'a', 2, 'b', 3);");
 
     // test_update: Row[1, a, 2, b, 3, c]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "update test_update set c2 = 'c' " +
                       "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
 
     // test_update: Row[1, a, 2, b, 4, d]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "update test_update set c1 = 4, c2 = 'd' " +
                       "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
 
     // test_update: Row[1, a, 2, b, 4, e]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "update test_update set c2 = 'e' " +
                       "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
 
     // test_update: Row[1, a, 2, b, 4, e]
     //              Row[1, a, 12, bb, 6]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "insert into test_update (h1, h2, r1, r2, c1) values (1, 'a', 12, 'bb', 6);");
 
     // test_update: Row[1, a, 12, bb, 6]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "delete from test_update " +
                       "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
 
     // test_update: empty
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "delete from test_update where h1 = 1 and h2 = 'a';");
 
     // test_update: Row[11, aa, 22, bb, 3]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "update test_update set c1 = 3 " +
                       "where h1 = 11 and h2 = 'aa' and r1 = 22 and r2 = 'bb';");
 
     // test_update: empty
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "update test_update set c1 = null " +
                       "where h1 = 11 and h2 = 'aa' and r1 = 22 and r2 = 'bb';");
 
     // test_update: Row[11, aa, 222, bbb, 3, c]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "update test_update set c1 = 3, c2 = 'c' " +
                       "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
 
     // test_update: empty
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "delete c1, c2 from test_update " +
                       "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
 
     // test_update: Row[1, a, 2, b]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "insert into test_update (h1, h2, r1, r2) values (1, 'a', 2, 'b');");
     assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
                 "Row[1, a, 2, b, NULL]");
@@ -403,7 +449,7 @@ public class TestIndex extends BaseCQLTest {
                 "Row[1, a, 2, b, NULL, NULL]");
 
     // test_update: Row[1, a, 2, b, 4]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "update test_update set c1 = 4 " +
                       "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
     assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
@@ -414,7 +460,7 @@ public class TestIndex extends BaseCQLTest {
                 "Row[1, a, 2, b, 4, NULL]");
 
     // test_update: Row[1, a, 2, b, 4, c]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "update test_update set c2 = 'c' " +
                       "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
     assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = 4;",
@@ -425,7 +471,7 @@ public class TestIndex extends BaseCQLTest {
                 "Row[1, a, 2, b, 4, c]");
 
     // test_update: Row[1, a, 2, b]
-    assertIndexUpdate(columnMap,
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
                       "delete c1, c2 from test_update " +
                       "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
     assertQuery("select h1, h2, r1, r2, c1 from test_update where c1 = null;",
@@ -479,7 +525,7 @@ public class TestIndex extends BaseCQLTest {
 
     // Verify the rows in the index are identical to the indexed table.
     assertEquals(queryTable("test_batch", "k, v"),
-                 queryTable("test_batch_by_v", "k, v"));
+                 queryTable("test_batch_by_v", "\"C$_k\", \"C$_v\""));
 
     // Verify that all the rows can be read.
     statement = session.prepare("select k from test_batch where v = ?;");
@@ -915,6 +961,82 @@ public class TestIndex extends BaseCQLTest {
     // Test select with aggregate functions.
     assertQuery("select sum(r), min(v2), max(v2), sum(v2) from test_misc where v1 = 2 and v2 > 30;",
                 new HashSet<String>(Arrays.asList("Row[6, 33, 333, 588]")));
+
+    // Create test table for LIST and index and populate with rows.
+    session.execute("create table test_list (h int, r int, v int, l list<int>, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_list (v);");
+
+    session.execute("insert into test_list (h, r, v, l) values (1, 1, 1, [1, 2]);");
+    session.execute("insert into test_list (h, r, v, l) values (2, 2, 2, [3, 4]);");
+
+    assertQuery("select * from test_list;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, 1, [1, 2]]",
+                                                  "Row[2, 2, 2, [3, 4]]")));
+
+    assertQuery("select * from test_list where v = 1 and l[0] = 1;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, 1, [1, 2]]")));
+
+    // Create test table for MAP and index and populate with rows.
+    session.execute("create table test_map (h int, r int, v int, m map<int, int>, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_map (v);");
+
+    session.execute("insert into test_map (h, r, v, m) values (1, 1, 1, {1:2});");
+    session.execute("insert into test_map (h, r, v, m) values (2, 2, 2, {3:4});");
+
+    assertQuery("select * from test_map;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, {1=2}]",
+                                              "Row[2, 2, 2, {3=4}]")));
+
+    assertQuery("select * from test_map where v = 1 and m[1] = 2;",
+                new HashSet<String>(Arrays.asList("Row[1, 1, 1, {1=2}]")));
+
+    // Create test table for SET and index and populate with rows.
+    session.execute("create table test_set (h int, r int, v int, s set<int>, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_set (v);");
+
+    session.execute("insert into test_set (h, r, v, s) values (1, 1, 1, {});");
+    session.execute("insert into test_set (h, r, v, s) values (2, 2, 2, {3,4});");
+
+    assertQuery("select * from test_set;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, NULL]",
+                                              "Row[2, 2, 2, [3, 4]]")));
+
+    assertQuery("select * from test_set where v = 1 and s = NULL;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, NULL]")));
+
+    // Create test table for JSONB and index and populate with rows.
+    session.execute("create table test_json (h int, r int, v int, j jsonb, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_json (v);");
+
+    session.execute("insert into test_json (h, r, v, j) values (1, 1, 1, '{\"a\":1}');");
+    session.execute("insert into test_json (h, r, v, j) values (2, 2, 2, '{\"a\":2}');");
+
+    assertQuery("select * from test_json;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, {\"a\":1}]",
+                                              "Row[2, 2, 2, {\"a\":2}]")));
+
+    assertQuery("select * from test_json where v = 1 and j->>'a' = '1';",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, {\"a\":1}]")));
+
+    // Create test table for UDT and index and populate with rows.
+    session.execute("create type udt(v1 int, v2 int);");
+    session.execute("create table test_udt (h int, r int, v int, u udt, " +
+            "PRIMARY KEY (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index on test_udt (v);");
+
+    session.execute("insert into test_udt (h, r, v, u) values (1, 1, 1, NULL);");
+    session.execute("insert into test_udt (h, r, v, u) values (2, 2, 2, {v1:2,v2:2});");
+
+    assertQuery("select * from test_udt;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, NULL]",
+                                              "Row[2, 2, 2, {v1:2,v2:2}]")));
+
+    assertQuery("select * from test_udt where v = 1 and u = NULL;",
+            new HashSet<String>(Arrays.asList("Row[1, 1, 1, NULL]")));
   }
 
   @Test
@@ -1016,7 +1138,7 @@ public class TestIndex extends BaseCQLTest {
       rowAsc += String.format("Row[%s, %s, %d]", a, b, cAsc);
     }
 
-    // INSERT dummy rows that shouldn't be filtered out by the query.
+    // INSERT dummy rows that should be filtered out by the query.
     b = "dummy";
     cDesc = 100;
     for (int i = 0; i < rowCount; i++) {
@@ -1030,5 +1152,73 @@ public class TestIndex extends BaseCQLTest {
     assertQuery("SELECT * FROM test_order WHERE b = 'index_hash';", rowDesc);
     assertQuery("SELECT * FROM test_order WHERE b = 'index_hash' ORDER BY c DESC;", rowDesc);
     assertQuery("SELECT * FROM test_order WHERE b = 'index_hash' ORDER BY c ASC;", rowAsc);
+  }
+
+  @Test
+  public void testCreateIndexWithNonTransactionalTable() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    // Create transactional test table and index.
+    session.execute("create table test_tr_tbl (h1 int primary key, c1 int) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index on test_tr_tbl(c1);");
+    session.execute("create index idx2 on test_tr_tbl(c1) with " +
+                    "transactions = {'enabled' : true};");
+
+    runInvalidStmt("create index on test_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : false};");
+    runInvalidStmt("create index on test_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : true, 'consistency_level' : 'user_enforced'};");
+    runInvalidStmt("create index on test_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+    runInvalidStmt("create index on test_tr_tbl(c1) with " +
+                   "transactions = {'consistency_level' : 'user_enforced'};");
+
+    // Create non-transactional test tables and indexes.
+    session.execute("create table test_non_tr_tbl (h1 int primary key, c1 int) " +
+                    "with transactions = {'enabled' : false};");
+
+    runInvalidStmt("create index on test_non_tr_tbl(c1);");
+    runInvalidStmt("create index on test_non_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : true};");
+    runInvalidStmt("create index on test_non_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : false};");
+    runInvalidStmt("create index on test_non_tr_tbl(c1) with " +
+                   "transactions = {'enabled' : true, 'consistency_level' : 'user_enforced'};");
+    runInvalidStmt("create index on test_non_tr_tbl(c1) with " +
+                   "transactions = {'consistency_level' : 'user_enforced'};");
+
+    // Test weak index.
+    session.execute("create index test_non_tr_tbl_idx on test_non_tr_tbl(c1) with " +
+                    "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+    assertQuery("select options, transactions from system_schema.indexes where " +
+                "index_name = 'test_non_tr_tbl_idx';",
+                "Row[{target=c1, h1}, {enabled=false, consistency_level=user_enforced}]");
+
+    session.execute("create table test_reg_tbl (h1 int primary key, c1 int);");
+
+    runInvalidStmt("create index on test_reg_tbl(c1);");
+    runInvalidStmt("create index on test_reg_tbl(c1) with " +
+                   "transactions = {'enabled' : true};");
+    runInvalidStmt("create index on test_reg_tbl(c1) with " +
+                   "transactions = {'enabled' : false};");
+    runInvalidStmt("create index on test_reg_tbl(c1) with " +
+                   "transactions = {'enabled' : true, 'consistency_level' : 'user_enforced'};");
+    runInvalidStmt("create index on test_reg_tbl(c1) with " +
+                   "transactions = {'consistency_level' : 'user_enforced'};");
+
+    // Test weak index.
+    session.execute("create index test_reg_tbl_idx on test_reg_tbl(c1) with " +
+                    "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+    assertQuery("select options, transactions from system_schema.indexes where " +
+                "index_name = 'test_reg_tbl_idx';",
+                "Row[{target=c1, h1}, {enabled=false, consistency_level=user_enforced}]");
+
+    // Drop test tables.
+    session.execute("drop table test_tr_tbl;");
+    session.execute("drop table test_non_tr_tbl;");
+    session.execute("drop table test_reg_tbl;");
+
+    LOG.info("End test: " + getCurrentTestMethodName());
   }
 }

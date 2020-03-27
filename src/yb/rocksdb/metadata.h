@@ -116,6 +116,9 @@ class UserFrontier {
   // only decrease them. Fields that are not set in rhs are not checked.
   virtual bool IsUpdateValid(const UserFrontier& rhs, UpdateUserValueType type) const = 0;
 
+  // Should return value that will be passed to iterator replacer.
+  virtual Slice Filter() const = 0;
+
   // Returns true if this frontier dominates another frontier, i.e. if we update this frontier
   // with the values from the other one in the direction specified by update_type, nothing will
   // change. This is used to check invariants.
@@ -283,9 +286,10 @@ struct LiveFileMetaData : SstFileMetaData {
   std::string ToString() const {
     return yb::Format("{ total_size: $0 base_size: $1 uncompressed_size: $2 name: \"$3\" "
                       "db_path: \"$4\" imported: $5 being_compacted: $6 column_family_name: $7 "
-                      "level: $8 smallest: $9 largest: $10 }",
+                      "level: $8 ",
                       total_size, base_size, uncompressed_size, name, db_path, imported,
-                      being_compacted, column_family_name, level, smallest, largest);
+                      being_compacted, column_family_name, level) +
+           yb::Format("smallest: $0 largest: $1 }", smallest, largest);
   }
 };
 

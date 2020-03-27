@@ -18,6 +18,7 @@ squeasel-*
 installed/
 installed-deps/
 installed-deps-tsan/
+installed_llvm7/
 install_manifest.txt
 .build-hash
 google-styleguide*

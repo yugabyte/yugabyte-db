@@ -100,15 +100,7 @@ class SemContext : public ProcessContext {
                              const PermissionType permission_type,
                              std::shared_ptr<client::YBTable>* table,
                              bool* is_system,
-                             MCVector<ColumnDesc>* col_descs = nullptr,
-                             MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
-
-  // Load index schema into symbol table.
-  CHECKED_STATUS LookupIndex(const TableId& index_id,
-                             const YBLocation& loc,
-                             std::shared_ptr<client::YBTable>* index_table,
-                             MCVector<ColumnDesc>* col_descs = nullptr,
-                             MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
+                             MCVector<ColumnDesc>* col_descs = nullptr);
 
   //------------------------------------------------------------------------------------------------
   // Access functions to current processing table and column.
@@ -214,6 +206,16 @@ class SemContext : public ProcessContext {
   WhereExprState *where_state() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->where_state();
+  }
+
+  IfExprState *if_state() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->if_state();
+  }
+
+  bool selecting_from_index() const {
+    DCHECK(sem_state_) << "State variable is not set";
+    return sem_state_->selecting_from_index();
   }
 
   bool processing_column_definition() const {
@@ -325,8 +327,7 @@ class SemContext : public ProcessContext {
 
  private:
   CHECKED_STATUS LoadSchema(const std::shared_ptr<client::YBTable>& table,
-                            MCVector<ColumnDesc>* col_descs = nullptr,
-                            MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
+                            MCVector<ColumnDesc>* col_descs = nullptr);
 
   // Find symbol.
   const SymbolEntry *SeekSymbol(const MCString& name) const;

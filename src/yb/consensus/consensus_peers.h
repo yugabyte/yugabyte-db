@@ -160,15 +160,12 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Requests to this peer (which may end up doing IO to read non-cached log entries) are assembled
   // on 'raft_pool_token'.  Response handling may also involve IO related to log-entry lookups
   // and is also done on 'thread_pool'.
-  static Result<PeerPtr> NewRemotePeer(
-      const RaftPeerPB& peer_pb,
-      const std::string& tablet_id,
-      const std::string& leader_uuid,
-      PeerMessageQueue* queue,
-      ThreadPoolToken* raft_pool_token,
-      PeerProxyPtr proxy,
-      Consensus* consensus,
-      rpc::Messenger* messenger);
+  template <class... Args>
+  static Result<PeerPtr> NewRemotePeer(Args&&... args) {
+    auto new_peer = std::make_shared<Peer>(std::forward<Args>(args)...);
+    RETURN_NOT_OK(new_peer->Init());
+    return Result<PeerPtr>(std::move(new_peer));
+  }
 
   uint64_t failed_attempts() {
     std::lock_guard<simple_spinlock> l(peer_lock_);

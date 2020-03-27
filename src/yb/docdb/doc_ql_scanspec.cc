@@ -11,8 +11,11 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+
+#include "yb/common/ql_value.h"
+
+#include "yb/docdb/doc_expr.h"
 #include "yb/rocksdb/db/compaction.h"
 
 using std::vector;
@@ -24,7 +27,7 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
                              const DocKey& doc_key,
                              const rocksdb::QueryId query_id,
                              const bool is_forward_scan)
-    : QLScanSpec(nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
+    : QLScanSpec(nullptr, nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
       range_bounds_(nullptr),
       schema_(schema),
       hashed_components_(nullptr),
@@ -38,11 +41,12 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
                              const boost::optional<int32_t> max_hash_code,
                              const std::vector<PrimitiveValue>& hashed_components,
                              const QLConditionPB* condition,
+                             const QLConditionPB* if_condition,
                              const rocksdb::QueryId query_id,
                              const bool is_forward_scan,
                              const bool include_static_columns,
                              const DocKey& start_doc_key)
-    : QLScanSpec(condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
+    : QLScanSpec(condition, if_condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
       range_bounds_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
       hash_code_(hash_code),
@@ -226,34 +230,54 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
     return std::move(result);
   }
 
-  // If start doc_key is set, that is the lower bound for the scan range.
-  if (lower_bound && !start_doc_key_.empty()) {
-    if (range_bounds_ != nullptr &&
+  // Otherwise, if we do not have a paging state (start_doc_key) just use the lower/upper bounds.
+  if (start_doc_key_.empty()) {
+    if (lower_bound) {
+      // For lower-bound key, if static columns should be included in the scan, the lower-bound key
+      // should be the hash key with no range components in order to include the static columns.
+      if (!include_static_columns_) {
+        return lower_doc_key_;
+      }
+
+      KeyBytes result = lower_doc_key_;
+
+      // For lower-bound key, if static columns should be included in the scan, the lower-bound key
+      // should be the hash key with no range components in order to include the static columns.
+      RETURN_NOT_OK(ClearRangeComponents(&result, AllowSpecial::kTrue));
+
+      return result;
+    } else {
+      return upper_doc_key_;
+    }
+  }
+
+  // If we have a start_doc_key, we need to use it as a starting point (lower bound for forward
+  // scan, upper bound for reverse scan).
+  if (range_bounds_ != nullptr &&
         !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
       return STATUS_FORMAT(
           Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
           start_doc_key_, lower_doc_key_, upper_doc_key_);
-    }
-    return start_doc_key_;
   }
 
+  // Paging state + forward scan.
+  if (is_forward_scan_) {
+    return lower_bound ? start_doc_key_ : upper_doc_key_;
+  }
+
+  // Paging state + reverse scan.
+  // For reverse scans static columns should be read by a separate iterator.
+  DCHECK(!include_static_columns_);
   if (lower_bound) {
-    // For lower-bound key, if static columns should be included in the scan, the lower-bound key
-    // should be the hash key with no range components in order to include the static columns.
-    if (!include_static_columns_) {
-      return lower_doc_key_;
-    }
-
-    KeyBytes result = lower_doc_key_;
-
-    // For lower-bound key, if static columns should be included in the scan, the lower-bound key
-    // should be the hash key with no range components in order to include the static columns.
-    RETURN_NOT_OK(ClearRangeComponents(&result, AllowSpecial::kTrue));
-
-    return result;
-  } else {
-    return upper_doc_key_;
+    return lower_doc_key_;
   }
+
+  // If using start_doc_key_ as upper bound append +inf as extra component to ensure it includes
+  // the target start_doc_key itself (dockey + suffix < dockey + kHighest).
+  // For lower bound, this is true already, because dockey + suffix is > dockey.
+  KeyBytes result = start_doc_key_;
+  result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+  return result;
 }
 
 rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);

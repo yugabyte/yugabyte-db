@@ -36,7 +36,6 @@ enum class CollectionLevel {
   MEDIUM,
   HIGH
 };
-
 enum class ServerType {
   ALL,
   MASTER,

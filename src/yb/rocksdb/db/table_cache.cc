@@ -270,15 +270,15 @@ Status TableCache::GetTableReaderForIterator(
 }
 
 InternalIterator* TableCache::NewIterator(
-    const ReadOptions& options, TableReaderWithHandle* trwh, bool for_compaction,
-    Arena* arena, bool skip_filters) {
+    const ReadOptions& options, TableReaderWithHandle* trwh, const Slice& filter,
+    bool for_compaction, Arena* arena, bool skip_filters) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
-  return DoNewIterator(options, trwh, for_compaction, arena, skip_filters);
+  return DoNewIterator(options, trwh, filter, for_compaction, arena, skip_filters);
 }
 
 InternalIterator* TableCache::DoNewIterator(
-    const ReadOptions& options, TableReaderWithHandle* trwh, bool for_compaction,
-    Arena* arena, bool skip_filters) {
+    const ReadOptions& options, TableReaderWithHandle* trwh, const Slice& filter,
+    bool for_compaction, Arena* arena, bool skip_filters) {
   RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
 
   InternalIterator* result =
@@ -295,6 +295,10 @@ InternalIterator* TableCache::DoNewIterator(
     trwh->table_reader->SetupForCompaction();
   }
 
+  if (ioptions_.iterator_replacer) {
+    result = (*ioptions_.iterator_replacer)(result, arena, filter);
+  }
+
   trwh->Release();
 
   return result;
@@ -302,7 +306,7 @@ InternalIterator* TableCache::DoNewIterator(
 
 InternalIterator* TableCache::NewIterator(
     const ReadOptions& options, const EnvOptions& env_options,
-    const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd,
+    const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd, const Slice& filter,
     TableReader** table_reader_ptr, HistogramImpl* file_read_hist,
     bool for_compaction, Arena* arena, bool skip_filters) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
@@ -322,7 +326,8 @@ InternalIterator* TableCache::NewIterator(
     *table_reader_ptr = trwh.table_reader;
   }
 
-  InternalIterator* result = DoNewIterator(options, &trwh, for_compaction, arena, skip_filters);
+  InternalIterator* result = DoNewIterator(
+      options, &trwh, filter, for_compaction, arena, skip_filters);
 
   return result;
 }
@@ -404,8 +409,8 @@ Status TableCache::Get(const ReadOptions& options,
     size_t charge =
         row_cache_key.Size() + row_cache_entry->size() + sizeof(std::string);
     void* row_ptr = new std::string(std::move(*row_cache_entry));
-    ioptions_.row_cache->Insert(row_cache_key.GetKey(), options.query_id, row_ptr, charge,
-                                &DeleteEntry<std::string>);
+    s = ioptions_.row_cache->Insert(row_cache_key.GetKey(), options.query_id, row_ptr, charge,
+                                    &DeleteEntry<std::string>);
   }
 #endif  // ROCKSDB_LITE
 

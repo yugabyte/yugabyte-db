@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 
 """
 Build a dependency graph of sources, object files, libraries, and binaries.  Compute the set of
@@ -64,7 +64,7 @@ PROTO_OUTPUT_FILE_NAME_RE = re.compile(r'^([a-zA-Z_0-9-]+)[.]pb[.](h|cc)$')
 
 # Ignore some special-case CMake targets that do not have a one-to-one match with executables or
 # libraries.
-IGNORED_CMAKE_TARGETS = ['gen_version_info', 'latest_symlink', 'gen_proto', 'postgres']
+IGNORED_CMAKE_TARGETS = ['gen_version_info', 'latest_symlink', 'postgres']
 
 LIST_DEPS_CMD = 'deps'
 LIST_REVERSE_DEPS_CMD = 'rev-deps'
@@ -85,6 +85,21 @@ HOME_DIR = os.path.realpath(os.path.expanduser('~'))
 # This will match any node type (node types being sources/libraries/tests/etc.)
 NODE_TYPE_ANY = 'any'
 
+# As of August 2019, there is nothing in the "bin", "managed" and "www" directories that
+# is being used by tests.
+# If that changes, this needs to be updated. Note that the "bin" directory here is the
+# yugabyte/bin directory in the source tree, not the "bin" directory under the build
+# directory, so it only has scripts and not yb-master / yb-tserver binaries.
+DIRECTORIES_DONT_AFFECT_TESTS = [
+    'architecture',
+    'bin',
+    'cloud',
+    'community',
+    'docs',
+    'managed',
+    'sample',
+    'www',
+]
 CATEGORY_DOES_NOT_AFFECT_TESTS = 'does_not_affect_tests'
 
 # File changes in any category other than these will cause all tests to be re-run.  Even though
@@ -394,9 +409,7 @@ class Configuration:
         if not self.file_regex and args.file_name_glob:
             self.file_regex = fnmatch.translate('*/' + args.file_name_glob)
 
-        self.src_dir_paths = [self.src_dir_path]
-        if os.environ.get('YB_EDITION') != 'community' and os.path.exists(self.ent_src_dir_path):
-            self.src_dir_paths.append(self.ent_src_dir_path)
+        self.src_dir_paths = [self.src_dir_path, self.ent_src_dir_path]
 
         for dir_path in self.src_dir_paths:
             if not os.path.isdir(dir_path):
@@ -412,16 +425,16 @@ class CMakeDepGraph:
     def __init__(self, build_root):
         self.build_root = build_root
         self.cmake_targets = None
+        self.cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
         self.cmake_deps = None
         self._load()
 
     def _load(self):
-        cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
         logging.info("Loading dependencies between CMake targets from '{}'".format(
-            cmake_deps_path))
+            self.cmake_deps_path))
         self.cmake_deps = {}
         self.cmake_targets = set()
-        with open(cmake_deps_path) as cmake_deps_file:
+        with open(self.cmake_deps_path) as cmake_deps_file:
             for line in cmake_deps_file:
                 line = line.strip()
                 if not line:
@@ -445,7 +458,7 @@ class CMakeDepGraph:
             adding_targets = [cmake_target] + list(cmake_target_deps)
             self.cmake_targets.update(set(adding_targets))
         logging.info("Found {} CMake targets in '{}'".format(
-            len(self.cmake_targets), cmake_deps_path))
+            len(self.cmake_targets), self.cmake_deps_path))
 
     def _get_cmake_dep_set_of(self, target):
         """
@@ -453,7 +466,7 @@ class CMakeDepGraph:
         this set modifies this CMake dependency graph.
         """
         deps = self.cmake_deps.get(target)
-        if not deps:
+        if deps is None:
             deps = set()
             self.cmake_deps[target] = deps
             self.cmake_targets.add(target)
@@ -754,7 +767,8 @@ class DependencyGraphBuilder:
 
     def build(self):
         compile_commands_path = os.path.join(self.conf.build_root, 'compile_commands.json')
-        if not os.path.exists(compile_commands_path):
+        cmake_deps_path = os.path.join(self.conf.build_root, 'yb_cmake_deps.txt')
+        if not os.path.exists(compile_commands_path) or not os.path.exists(cmake_deps_path):
 
             # This is mostly useful during testing. We don't want to generate the list of compile
             # commands by default because it takes a while, so only generate it on demand.
@@ -958,10 +972,7 @@ class DependencyGraph:
         """
         Add dependencies of .pb.{h,cc} files on the corresponding .proto file. We do that by
         finding .proto and .pb.{h,cc} nodes in the graph independently and matching them
-        based on their path relative to the source root, regardless of whether the .proto file
-        is present within the Community Edition C/C++ source directory (src) or Enterprise Edition
-        source directory (ent/src), because these two are folded into the same directory hierarchy
-        in the build directory.
+        based on their path relative to the source root.
 
         Additionally, we are inferring dependencies between binaries (protobuf libs or in some
         cases other libraries or even tests) that use a .pb.cc file on the CMake target that
@@ -1066,6 +1077,8 @@ class DependencyGraph:
         corresponding protobuf library target.
         """
 
+        logging.info("Validating dependencies on protobuf-generated headers")
+
         # TODO: only do this during graph generation.
         self._add_proto_generation_deps()
         self._check_for_circular_dependencies()
@@ -1082,6 +1095,9 @@ class DependencyGraph:
         #
         # However, we also need to get the CMake target name corresponding to the binary
         # containing the .cc.o file.
+
+        proto_dep_errors = []
+
         for node in self.get_nodes():
             if not node.path.endswith('.pb.cc.o'):
                 continue
@@ -1103,12 +1119,18 @@ class DependencyGraph:
                         recursive_cmake_deps = self.get_cmake_dep_graph().get_recursive_cmake_deps(
                             binary_cmake_target)
                         if proto_gen_target not in recursive_cmake_deps:
-                            raise RuntimeError(
+                            proto_dep_errors.append(
                                 "CMake target %s does not depend directly or indirectly on target "
                                 "%s but uses the header file %s. Recursive cmake deps of %s: %s" %
                                 (binary_cmake_target, proto_gen_target, pb_h_path,
                                  binary_cmake_target, recursive_cmake_deps)
                             )
+        if proto_dep_errors:
+            for error_msg in proto_dep_errors:
+                logging.error("Protobuf dependency error: %s", error_msg)
+            raise RuntimeError(
+                "Found targets that use protobuf-generated header files but do not declare the "
+                "dependency explicitly. See the log messages above.")
 
 
 class DependencyGraphTest(unittest.TestCase):
@@ -1210,11 +1232,7 @@ def get_file_category(rel_path):
     """
     basename = os.path.basename(rel_path)
 
-    if rel_path.startswith('bin/'):
-        # As of December 2017, there is nothing in the "bin" directory that is being used by tests.
-        # If that changes, this needs to be updated. Note that the "bin" directory here is the
-        # yugabyte/bin directory in the source tree, not the "bin" directory under the build
-        # directory, so it only has scripts and not yb-master / yb-tserver binaries.
+    if rel_path.split(os.sep)[0] in DIRECTORIES_DONT_AFFECT_TESTS:
         return CATEGORY_DOES_NOT_AFFECT_TESTS
 
     if rel_path == 'yb_build.sh':

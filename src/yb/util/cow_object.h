@@ -83,6 +83,7 @@ class CowObject {
   // changes made to the mutable copy.
   void AbortMutation() {
     dirty_state_.reset();
+    is_dirty_ = false;
     lock_.WriteUnlock();
   }
 
@@ -94,6 +95,7 @@ class CowObject {
     CHECK(dirty_state_);
     std::swap(state_, *dirty_state_);
     dirty_state_.reset();
+    is_dirty_ = false;
     lock_.CommitUnlock();
   }
 
@@ -112,6 +114,7 @@ class CowObject {
   // Should only be called by a thread who previously called StartMutation().
   State* mutable_dirty() {
     DCHECK(lock_.HasWriteLock());
+    is_dirty_ = true;
     return DCHECK_NOTNULL(dirty_state_.get());
   }
 
@@ -119,11 +122,19 @@ class CowObject {
     return *DCHECK_NOTNULL(dirty_state_.get());
   }
 
+  bool is_dirty() const {
+    DCHECK(lock_.HasReaders() || lock_.HasWriteLock());
+    return is_dirty_;
+  }
+
  private:
   mutable RWCLock lock_;
 
   State state_;
   gscoped_ptr<State> dirty_state_;
+
+  // Set only when mutable_dirty() method is called. Unset whenever dirty_state_ is reset().
+  bool is_dirty_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(CowObject);
 };
@@ -225,6 +236,10 @@ class CowLock {
 
   bool is_write_locked() const {
     return mode_ == WRITE;
+  }
+
+  bool is_dirty() const {
+    return cow_->is_dirty();
   }
 
   // Drop the lock. If the lock is held in WRITE mode, and the

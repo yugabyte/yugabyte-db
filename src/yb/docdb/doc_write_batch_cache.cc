@@ -32,7 +32,7 @@ using std::string;
 using std::tuple;
 using std::vector;
 
-using yb::util::FormatBytesAsStr;
+using yb::FormatBytesAsStr;
 
 namespace yb {
 namespace docdb {

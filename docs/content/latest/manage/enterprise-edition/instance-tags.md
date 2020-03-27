@@ -1,7 +1,8 @@
 ---
-title: Create/Edit Instance Tags
-linkTitle: Create/Edit Instance Tags
-description: Create/Edit Instance Tags
+title: Create and edit instance tags using YugaWare
+headerTitle: Create and edit instance tags
+linkTitle: Create and edit instance tags
+description: Create and edit instance tags using YugaWare
 aliases:
   - /manage/enterprise-edition/instance-tags/
 menu:
@@ -13,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On AWS they referred to as
+The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On AWS, they referred to as
 [instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). We provide a way to create and edit these from the
 YugaWare universe dashboard.
 
@@ -21,14 +22,16 @@ YugaWare universe dashboard.
 We provide this option to set instance tags for AWS cloud provider only currently.
 {{< /note >}}
 
-## 1. Create Instance Tags
+## 1. Create instance tags
+
 During the universe creation step, with an AWS cloud provider, YugaWare will provide the option to input the instance tags as a map of keys/values as shown below.
 
-![Create Instance Tags](/images/ee/inst-tags-1.png)
+![Create instance tags](/images/ee/inst-tags-1.png)
 
-User can provide these key/values in any order.
+User can provide these key-values in any order.
 
-### Templated Tags
+### Templated tags
+
 `Name` is the only key that can have `templated` tags, so it can be made of different parts filled in at run-time to determine node and instance names.
 
 - The parts of the template should be enclosed between `${` and `}`.
@@ -48,11 +51,11 @@ in the correct availability zone and search for instances that have `test-tags` 
 `yb-server-type` and `launched-by` are internally reserved key names.
 {{< /note >}}
 
-## 2. Edit Instance Tags
+## 2. Edit instance tags
 
 The map of instance tags can be changed using the edit universe operation. One can modify, insert or delete existing instance tags as shown below:
 
-![Edit Instance Tags](/images/ee/inst-tags-2.png)
+![Edit instance tags](/images/ee/inst-tags-2.png)
 
 These are changes, compared to the input during the create universe:
 

@@ -62,7 +62,7 @@ namespace docdb {
     /* Null must be lower than the other primitive types so that it compares as smaller than */ \
     /* them. It is used for frozen CQL user-defined types (which can contain null elements) on */ \
     /* ASC columns. */ \
-    ((kNull, '$')) /* ASCII code 36 */ \
+    ((kNullLow, '$')) /* ASCII code 36 */ \
     /* Counter to check cardinality. */ \
     ((kCounter, '%')) /* ASCII code 37 */ \
     /* Forward and reverse mappings for sorted sets. */ \
@@ -75,6 +75,7 @@ namespace docdb {
     ((kRedisSortedSet, ',')) /* ASCII code 44 */ \
     ((kInetaddress, '-'))  /* ASCII code 45 */ \
     ((kInetaddressDescending, '.'))  /* ASCII code 46 */ \
+    ((kPgTableOid, '0')) /* ASCII code 48 */ \
     ((kJsonb, '2')) /* ASCII code 50 */ \
     ((kFrozen, '<')) /* ASCII code 60 */ \
     ((kFrozenDescending, '>')) /* ASCII code 62 */ \
@@ -94,6 +95,7 @@ namespace docdb {
     ((kUInt32, 'O'))  /* ASCII code 78 */ \
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
+    ((kUInt64, 'U')) /* ASCII code 85 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     \
@@ -111,9 +113,13 @@ namespace docdb {
     ((kUInt32Descending, 'g'))  /* ASCII code 103 */ \
     ((kTrueDescending, 'h'))  /* ASCII code 104 */ \
     ((kFalseDescending, 'i'))  /* ASCII code 105 */ \
+    ((kUInt64Descending, 'j')) /* ASCII code 106 */ \
     \
     /* Flag type for merge record flags */ \
     ((kMergeFlags, 'k')) /* ASCII code 107 */ \
+    /* Indicator for whether an intent is for a row lock. */ \
+    ((kRowLock, 'l'))  /* ASCII code 108 */ \
+    ((kBitSet, 'm')) /* ASCII code 109 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \
     /* TTL value in milliseconds, optionally present at the start of a value. */ \
@@ -128,7 +134,7 @@ namespace docdb {
     /* Null desc must be higher than the other descending primitive types so that it compares */ \
     /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
     /* null elements) on DESC columns. */ \
-    ((kNullDescending, '|')) /* ASCII code 124 */ \
+    ((kNullHigh, '|')) /* ASCII code 124 */ \
     \
     /* This is only needed when used as the end marker for a frozen value on a DESC column. */ \
     ((kGroupEndDescending, '}')) /* ASCII code 125 -- we pick the highest value below kHighest. */ \
@@ -189,8 +195,8 @@ typedef EnumBitSet<IntentType> IntentTypeSet;
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
 
-constexpr ValueType kMinPrimitiveValueType = ValueType::kNull;
-constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullDescending;
+constexpr ValueType kMinPrimitiveValueType = ValueType::kNullLow;
+constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullHigh;
 
 // kArray is handled slightly differently and hence we only have
 // kObject, kRedisTS, kRedisSet, and kRedisList.

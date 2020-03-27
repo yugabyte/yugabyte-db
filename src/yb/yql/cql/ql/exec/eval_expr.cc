@@ -15,6 +15,8 @@
 
 #include <string>
 
+#include "yb/common/ql_value.h"
+
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/util/logging.h"
 #include "yb/client/callbacks.h"
@@ -29,6 +31,14 @@ namespace ql {
 Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb) {
   if (expr == nullptr)
     return Status::OK();
+
+  // When selecting from INDEX table, expression's value might be stored in a column.
+  const ColumnDesc *index_desc = expr->index_desc();
+  if (index_desc) {
+    expr_pb->set_column_id(index_desc->id());
+    return Status::OK();
+  }
+
   switch (expr->expr_op()) {
     case ExprOperator::kNoOp:
       return Status::OK();
@@ -87,7 +97,12 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
+  if (!bind_pt->name()) {
+    return STATUS(NotSupported, "Undefined bind variable name, please contact the support");
+  }
+
   QLValue ql_bind;
+  DCHECK_NOTNULL(bind_pt->name().get());
   RETURN_NOT_OK(exec_context_->params().GetBindVariable(bind_pt->name()->c_str(),
                                                         bind_pt->pos(),
                                                         bind_pt->ql_type(),

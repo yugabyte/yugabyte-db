@@ -22,7 +22,7 @@ from build_definitions import *
 class LibEvDependency(Dependency):
     def __init__(self):
         super(LibEvDependency, self).__init__(
-                'libev', '4.20', 'http://dist.schmorp.de/libev/Attic/libev-{0}.tar.gz',
+                'libev', '4.27', 'http://dist.schmorp.de/libev/Attic/libev-{0}.tar.gz',
                 BUILD_GROUP_COMMON)
         self.copy_sources = True
 

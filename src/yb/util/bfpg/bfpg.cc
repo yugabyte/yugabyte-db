@@ -18,6 +18,8 @@
 #include <functional>
 #include <unordered_map>
 
+#include "yb/common/ql_type.h"
+
 #include "yb/util/bfpg/directory.h"
 
 using std::function;
@@ -35,7 +37,12 @@ bool IsAggregateOpcode(TSOpcode op) {
   case TSOpcode::kCount: FALLTHROUGH_INTENDED;
   case TSOpcode::kMax: FALLTHROUGH_INTENDED;
   case TSOpcode::kMin: FALLTHROUGH_INTENDED;
-  case TSOpcode::kSum:
+  case TSOpcode::kSumInt8: FALLTHROUGH_INTENDED;
+  case TSOpcode::kSumInt16: FALLTHROUGH_INTENDED;
+  case TSOpcode::kSumInt32: FALLTHROUGH_INTENDED;
+  case TSOpcode::kSumInt64: FALLTHROUGH_INTENDED;
+  case TSOpcode::kSumFloat: FALLTHROUGH_INTENDED;
+  case TSOpcode::kSumDouble:
     return true;
   default:
     return false;

@@ -14,16 +14,18 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`PEXPIRE key timeout`</b><br>
 This command works exactly like EXPIRE but the time to live of the key is specified in milliseconds instead of seconds.
 
-## Return Value
+## Return value
+
 Returns integer reply, specifically 1 if the timeout was set and 0 if key does not exist.
 
 ## Examples
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```
@@ -46,5 +48,6 @@ $ PTTL yugakey
 (integer) 9995
 ```
 
-## See Also
+## See also
+
 [`expire`](../expire/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/)

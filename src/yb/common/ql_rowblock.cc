@@ -17,6 +17,8 @@
 
 #include "yb/util/bfql/directory.h"
 #include "yb/util/bfql/bfql.h"
+
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 namespace yb {
@@ -41,13 +43,13 @@ QLRow::~QLRow() {
 
 void QLRow::Serialize(const QLClient client, faststring* buffer) const {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    values_.at(col_idx).Serialize(column_type(col_idx), client, buffer);
+    values_[col_idx].Serialize(column_type(col_idx), client, buffer);
   }
 }
 
 Status QLRow::Deserialize(const QLClient client, Slice* data) {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    RETURN_NOT_OK(values_.at(col_idx).Deserialize(column_type(col_idx), client, data));
+    RETURN_NOT_OK(values_[col_idx].Deserialize(column_type(col_idx), client, data));
   }
   return Status::OK();
 }
@@ -58,7 +60,7 @@ string QLRow::ToString() const {
     if (col_idx > 0) {
       s+= ", ";
     }
-    s += values_.at(col_idx).ToString();
+    s += values_[col_idx].ToString();
   }
   s += " }";
   return s;
@@ -74,6 +76,22 @@ QLRow& QLRow::operator=(QLRow&& other) {
   this->~QLRow();
   new(this) QLRow(other);
   return *this;
+}
+
+const QLValue& QLRow::column(const size_t col_idx) const {
+  return values_[col_idx];
+}
+
+QLValue* QLRow::mutable_column(const size_t col_idx) {
+  return &values_[col_idx];
+}
+
+void QLRow::SetColumnValues(const std::vector<QLValue>& column_values) {
+  values_ = column_values;
+}
+
+void QLRow::SetColumn(size_t col_idx, QLValuePB value) {
+  values_[col_idx] = std::move(value);
 }
 
 //-------------------------------------- QL row block --------------------------------------

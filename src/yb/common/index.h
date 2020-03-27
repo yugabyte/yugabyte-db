@@ -32,7 +32,9 @@ class IndexInfo {
   // Index column mapping.
   struct IndexColumn {
     ColumnId column_id;         // Column id in the index table.
+    std::string column_name;    // Column name in the index table - colexpr.MangledName().
     ColumnId indexed_column_id; // Corresponding column id in indexed table.
+    QLExpressionPB colexpr;     // Index expression.
 
     explicit IndexColumn(const IndexInfoPB::IndexColumnPB& pb);
     IndexColumn() {}
@@ -73,6 +75,43 @@ class IndexInfo {
   // Is column covered by this index? (Note: indexed columns are always covered)
   bool IsColumnCovered(ColumnId column_id) const;
 
+  // Check if this INDEX contain the column being referenced by the given selected expression.
+  // - If found, return the location of the column (columns_[loc]).
+  // - Otherwise, return -1.
+  int32_t IsExprCovered(const std::string& expr_content) const;
+
+  // Are read operations allowed to use the index? Reads are not allowed until
+  // the index backfill is successfully completed.
+  bool AllowReads() const { return index_permissions_ == INDEX_PERM_READ_WRITE_AND_DELETE; }
+
+  // Should write operations to the index be allowed to update it.
+  bool AllowWrites() const {
+    return index_permissions_ >= INDEX_PERM_WRITE_AND_DELETE &&
+           index_permissions_ <= INDEX_PERM_READ_WRITE_AND_DELETE;
+  }
+
+  // Should delete operations to the index be allowed to update it.
+  bool AllowDelete() const {
+    return index_permissions_ >= INDEX_PERM_DELETE_ONLY &&
+           index_permissions_ <= INDEX_PERM_READ_WRITE_AND_DELETE;
+  }
+
+  // Is the index being backfilled.
+  bool Backfilling() const { return index_permissions_ == INDEX_PERM_DO_BACKFILL; }
+
+  std::string ToString() const {
+    IndexInfoPB pb;
+    ToPB(&pb);
+    return yb::ToString(pb);
+  }
+
+  // Same as "IsExprCovered" but only search the key columns.
+  int32_t FindKeyIndex(const std::string& key_name) const;
+
+  bool use_mangled_column_name() const {
+    return use_mangled_column_name_;
+  }
+
  private:
   const TableId table_id_;            // Index table id.
   const TableId indexed_table_id_;    // Indexed table id.
@@ -84,9 +123,13 @@ class IndexInfo {
   const size_t range_column_count_ = 0;    // Number of range columns in the index.
   const std::vector<ColumnId> indexed_hash_column_ids_;  // Hash column ids in the indexed table.
   const std::vector<ColumnId> indexed_range_column_ids_; // Range column ids in the indexed table.
+  const IndexPermissions index_permissions_ = INDEX_PERM_READ_WRITE_AND_DELETE;
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId> covered_column_ids_;
+
+  // Newer INDEX use mangled column name instead of ID.
+  bool use_mangled_column_name_ = false;
 };
 
 // A map to look up an index by its index table id.

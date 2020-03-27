@@ -28,6 +28,8 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
@@ -35,6 +37,7 @@
 #include "yb/yql/redis/redisserver/redis_client.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -237,6 +240,7 @@ string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
 
 // Creates a human-readable string with hex characters to be used as a value in our test. This is
 // deterministic based on key_index.
+DISABLE_UBSAN
 string MultiThreadedAction::GetValueByIndex(int64_t key_index) {
   string value;
   int64_t x = key_index;

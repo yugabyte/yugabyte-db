@@ -71,14 +71,13 @@ class TruncateOperation : public Operation {
 
   CHECKED_STATUS Prepare() override { return Status::OK(); }
 
-  // Executes an Apply for the truncate transaction.
-  CHECKED_STATUS Apply(int64_t leader_term) override;
-
   std::string ToString() const override;
 
  private:
   // Starts the TruncateOperation by assigning it a timestamp.
   void DoStart() override;
+  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+  CHECKED_STATUS DoAborted(const Status& status) override;
 
   DISALLOW_COPY_AND_ASSIGN(TruncateOperation);
 };

@@ -20,7 +20,10 @@
 #include <math.h>
 
 #include "access/sysattr.h"
+#include "access/htup_details.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_constraint.h"
+#include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/extensible.h"
@@ -41,7 +44,10 @@
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
 #include "partitioning/partprune.h"
+#include "utils/selfuncs.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
+#include "utils/rel.h"
 
 #include "pg_yb_utils.h"
 #include "optimizer/ybcplan.h"
@@ -110,6 +116,10 @@ static SetOp *create_setop_plan(PlannerInfo *root, SetOpPath *best_path,
 static RecursiveUnion *create_recursiveunion_plan(PlannerInfo *root, RecursiveUnionPath *best_path);
 static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 					 int flags);
+static bool yb_single_row_update_or_delete_path(PlannerInfo *root, ModifyTablePath *path,
+												List **result_tlist, List **modify_tlist,
+												bool *no_index_update,
+												bool *no_row_trigger);
 static ModifyTable *create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path);
 static Limit *create_limit_plan(PlannerInfo *root, LimitPath *best_path,
 				  int flags);
@@ -346,12 +356,6 @@ create_plan(PlannerInfo *root, Path *best_path)
 	 * re-used later
 	 */
 	root->plan_params = NIL;
-
-	/* Run any YugaByte-specific logic on this plan */
-	if (IsYugaByteEnabled())
-	{
-		ybcAnalyzePlan(plan);
-	}
 
 	return plan;
 }
@@ -2367,6 +2371,516 @@ create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 	return plan;
 }
 
+static TargetEntry *make_dummy_tle(AttrNumber attr_num, bool is_null)
+{
+	TargetEntry *dummy_tle;
+
+	dummy_tle = makeNode(TargetEntry);
+	dummy_tle->resno = attr_num;
+	dummy_tle->expr = (Expr *) makeConst(INT4OID /* consttype */,
+	                                    -1 /* consttypmod */,
+	                                    InvalidOid /* constcollid */,
+	                                    sizeof(int32) /* constlen */,
+	                                    (Datum) 0 /* constvalue */,
+	                                    is_null /* constisnull */,
+	                                    true /* constbyval */);
+
+	return dummy_tle;
+}
+
+static bool has_applicable_indexes(Relation relation, CmdType operation, Bitmapset *updated_attrs)
+{
+	if (!relation->rd_rel->relhasindex)
+		return false;
+
+	bool	 has_indices = false;
+	List	 *indexlist = RelationGetIndexList(relation);
+	ListCell *lc = NULL;
+
+	foreach(lc, indexlist)
+	{
+		if (lfirst_oid(lc) == relation->rd_pkindex)
+			continue;
+		has_indices = true;
+		break;
+	}
+	list_free(indexlist);
+
+	/*
+	 * Generally we can return here, but for updates on tables with indexes
+	 * we check if any referenced columns are actually modified (below).
+	 */
+	if (!has_indices || operation != CMD_UPDATE)
+	{
+		return has_indices;
+	}
+
+	/* All columns indexed or included into an index */
+	Bitmapset *indexed_attrs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_HOT);
+	/* All columns used in an index expression */
+	Bitmapset *indexed_col_proj = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_PROJ);
+
+	/* If update touches any index-referenced columns we need to update the index*/
+	return bms_overlap(updated_attrs, indexed_attrs) || bms_overlap(updated_attrs, indexed_col_proj);
+}
+
+static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attrs)
+{
+	TriggerDesc *trigdesc = rel->trigdesc;
+	if (trigdesc == NULL)
+		return false;
+
+	Trigger *trig = trigdesc->triggers;
+	HeapTuple tp = NULL;
+	AttrNumber conkey[INDEX_MAX_KEYS];
+	AttrNumber confkey[INDEX_MAX_KEYS];
+	int numfks = 0;
+	int relid = RelationGetRelid(rel);
+	AttrNumber attr_offset = YBGetFirstLowInvalidAttributeNumber(rel);
+
+	/* If there no triggers we are done. */
+	if (!YBRelHasOldRowTriggers(rel, operation))
+	{
+		return false;
+	}
+
+	/* We only (safely) skip triggers for UPDATEs */
+	if (operation != CMD_UPDATE)
+	{
+		return true;
+	}
+
+	for (int i = 0; i < trigdesc->numtriggers; i++)
+	{
+		if (trig->tgconstraint == 0)
+		{
+			return true;
+		}
+		tp = SearchSysCache1(CONSTROID, ObjectIdGetDatum(trig->tgconstraint));
+		if (HeapTupleIsValid(tp))
+		{
+			Form_pg_constraint contup = (Form_pg_constraint) GETSTRUCT(tp);
+
+			if (contup->contype != CONSTRAINT_FOREIGN)
+			{
+				ReleaseSysCache(tp);
+				return true;
+			}
+			DeconstructFkConstraintRow(tp, &numfks, conkey, confkey, NULL, NULL, NULL);
+
+			Assert(relid == contup->conrelid || relid == contup->confrelid);
+			bool con_is_base_rel = relid == contup->conrelid;
+
+			for (int j = 0; j < numfks; j++)
+			{
+				if ((con_is_base_rel && bms_is_member(conkey[j] - attr_offset, updated_attrs)) ||
+				    (!con_is_base_rel && bms_is_member(confkey[j] - attr_offset, updated_attrs)))
+				{
+					ReleaseSysCache(tp);
+					return true;
+				}
+			}
+		}
+		else
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("cache lookup failed for constraint oid %d", trig->tgconstraint)));
+		}
+
+		ReleaseSysCache(tp);
+		trig++;
+	}
+	// If we checked all triggers and they are all foreign key constraints
+	// on non-updated attributes then it is safe skip triggers.
+	return false;
+}
+
+/*
+ * Returns whether a path can support a YB single row modify. This will be
+ * non-transactional if execution time criteria are met, otherwise it just
+ * avoids an unnecessary scan.
+ *
+ * This is currently used for UPDATE/DELETE to determine whether to substitute
+ * the index scan with a direct result node containing the primary key values
+ * and any UPDATE SET values.
+ *
+ * This also populates the tlist with the final target list for the result plan
+ * (including primary key, SET (for UPDATE), and unspecified column values), and
+ * populates update_attrs with the attribute numbers of the columns specified
+ * in the UPDATE clause.
+ */
+static bool
+yb_single_row_update_or_delete_path(PlannerInfo *root,
+									ModifyTablePath *path,
+									List **result_tlist,
+									List **modify_tlist,
+									bool *no_index_update,
+									bool *no_row_trigger)
+{
+	RelOptInfo *relInfo;
+	Oid relid;
+	Relation relation;
+	Path *subpath;
+	PlannerInfo *subroot;
+	IndexPath *index_path;
+	Bitmapset *primary_key_attrs = NULL;
+	ListCell *values;
+	ListCell *subpath_tlist_values;
+	List *subpath_tlist = NIL;
+	TargetEntry **indexquals = NULL;
+	int attr_num;
+	AttrNumber attr_offset;
+
+	*result_tlist = NIL;
+	Bitmapset *update_attrs = NULL;
+
+	/* For update, SET clause attrs whose RHS value to be evaluated by DocDB */
+	Bitmapset *pushdown_update_attrs = NULL;
+
+	/* Verify YB is enabled. */
+	if (!IsYugaByteEnabled())
+		return false;
+
+	/*
+	 * Only UPDATE/DELETE are supported in this particular path. Single row INSERT
+	 * is handled through a separate mechanism.
+	 */
+	if (path->operation != CMD_UPDATE && path->operation != CMD_DELETE)
+		return false;
+
+	/*
+	 * Multi-relation implies multi-shard.
+	 * Note that simple_rel_array is one-based, so size of two implies one entry.
+	 */
+	if (list_length(path->resultRelations) != 1 || root->simple_rel_array_size != 2)
+		return false;
+
+	/* ON CONFLICT clause is not supported here yet. */
+	if (path->onconflict)
+		return false;
+
+	/* Only allow one source. */
+	if (list_length(path->subpaths) != 1)
+		return false;
+
+	/* Only allow at most one returning list. */
+	if (list_length(path->returningLists) > 1)
+		return false;
+
+	/* Extract the relation. Must be first entry since we only have one relation (one-based). */
+	relInfo = root->simple_rel_array[1];
+	relid = root->simple_rte_array[1]->relid;
+
+	/* Verify we're a YB relation. */
+	if (!IsYBRelationById(relid))
+		return false;
+
+	/* Ensure we close the relation before returning. */
+	relation = RelationIdGetRelation(relid);
+	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
+
+	/*
+	 * Cannot allow check constraints for single-row update as we will need
+	 * to ensure we read all columns they reference to check them correctly.
+	 */
+	TupleDesc tupDesc = RelationGetDescr(relation);
+	if (path->operation == CMD_UPDATE &&
+	    tupDesc->constr &&
+	    tupDesc->constr->num_check > 0)
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	subroot = linitial_node(PlannerInfo, path->subroots);
+	subpath = (Path *) linitial(path->subpaths);
+	index_path = (IndexPath *) subpath;
+
+	if (path->operation == CMD_UPDATE)
+	{
+		ProjectionPath *projection_path;
+
+		/*
+		 * UPDATE contains projection for SET values on top of index scan.
+		 */
+		if (!IsA(subpath, ProjectionPath))
+		{
+			RelationClose(relation);
+			return false;
+		}
+		projection_path = (ProjectionPath *) subpath;
+
+		/*
+		 * The index path is the subpath of the projection for UPDATE, whereas for DELETE
+		 * the index path is the direct subpath of the ModifyTablePath.
+		 */
+		index_path = (IndexPath *) projection_path->subpath;
+
+		/*
+		 * Iterate through projection_path tlist, identify true user write columns from unspecified
+		 * columns. If true user write expression is not a supported single row write expression
+		 * then return false.
+		 */
+		foreach(values, build_path_tlist(subroot, subpath))
+		{
+			TargetEntry *tle;
+
+			tle = lfirst_node(TargetEntry, values);
+
+			/* Ignore unspecified columns. */
+			if (IsA(tle->expr, Var))
+			{
+				Var *var = castNode(Var, tle->expr);
+				/*
+				 * Column set to itself (unset) or ybctid pseudo-column
+				 * (added for YB scan in rewrite handler).
+				 */
+				if (var->varattno == InvalidAttrNumber ||
+				    var->varattno == tle->resno ||
+				    (var->varattno == YBTupleIdAttributeNumber &&
+				        var->varcollid == InvalidOid))
+				{
+					continue;
+				}
+			}
+
+			/* Verify expression is supported. */
+			bool needs_pushdown = false;
+			if (!YBCIsSupportedSingleRowModifyAssignExpr(tle->expr, tle->resno, &needs_pushdown))
+			{
+				RelationClose(relation);
+				return false;
+			}
+
+			if (needs_pushdown)
+			{
+				pushdown_update_attrs = bms_add_member(pushdown_update_attrs, tle->resno);
+			}
+
+			subpath_tlist = lappend(subpath_tlist, tle);
+			update_attrs = bms_add_member(update_attrs, tle->resno - attr_offset);
+		}
+	}
+
+	/*
+	 * Cannot support before row triggers for single-row update/delete, as the
+	 * old row will need to be passed to the trigger, requiring the scan.
+	 */
+	*no_row_trigger = !has_applicable_triggers(relation, path->operation, update_attrs);
+	if (!*no_row_trigger)
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Cannot allow secondary indices for single-row update/delete, as we will
+	 * need to retrieve the row to get the old secondary index values to
+	 * update/delete from the index, requiring the scan.
+	 */
+	*no_index_update = !has_applicable_indexes(relation, path->operation, update_attrs);
+	if (!*no_index_update)
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/* Close the relation now in case we return early. */
+	RelationClose(relation);
+	relation = NULL;
+
+	/* Ensure the subpath is an index path. */
+	if (!IsA(index_path, IndexPath))
+	{
+		return false;
+	}
+
+	/* Verify no non-primary-key filters are specified. */
+	foreach(values, index_path->indexinfo->indrestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, values);
+
+		if (!list_member_ptr(index_path->indexquals, rinfo))
+		{
+			return false;
+		}
+	}
+
+	/* Check that all WHERE clause conditions use equality operator. */
+	List	   *qinfos = NIL;
+	ListCell   *lc = NULL;
+	qinfos = deconstruct_indexquals(index_path);
+	foreach(lc, qinfos)
+	{
+		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
+		RestrictInfo *rinfo = qinfo->rinfo;
+		Expr	   *clause = rinfo->clause;
+		Oid			clause_op;
+		int			op_strategy;
+
+		if (!IsA(clause, OpExpr))
+			return false;
+
+		clause_op = qinfo->clause_op;
+		if (!OidIsValid(clause_op))
+			return false;
+
+		op_strategy = get_op_opfamily_strategy(clause_op, index_path->indexinfo->opfamily[qinfo->indexcol]);
+		Assert(op_strategy != 0);  /* not a member of opfamily?? */
+		/* Only pushdown equal operators. */
+		if (op_strategy != BTEqualStrategyNumber)
+		{
+			return false;
+		}
+	}
+
+	/* Allocate indexquals array to order quals by main table not index attr nums. */
+	indexquals = (TargetEntry **) palloc0(relInfo->max_attr * sizeof(TargetEntry *));
+
+	/*
+	 * Add WHERE clauses from index scan quals to list, verify they are supported write exprs.
+	 * i.e. after fix_indexqual_references:
+	 * - LHS must be a (key) column
+	 * - RHS must be a "stable" expression (evaluate to constant)
+	 */
+	foreach(values, fix_indexqual_references(subroot, index_path))
+	{
+		Expr *clause;
+		Expr *expr;
+		Var *var;
+		TargetEntry *tle;
+
+		clause = (Expr *) lfirst(values);
+
+		/* Make sure we're an operator expression. */
+		if (!IsA(clause, OpExpr))
+			return false;
+
+		expr = (Expr *) get_rightop(clause);
+		var = castNode(Var, get_leftop(clause));
+
+		/* Verify expression is supported. */
+		if (!YBCIsSupportedSingleRowModifyWhereExpr(expr))
+		{
+			return false;
+		}
+
+		/*
+		 * If const expression has a different type than the column (var), wrap in a relabel
+		 * expression with the proper type so it is coerced at execution time.
+		 */
+		if (IsA(expr, Const) && castNode(Const, expr)->consttype != var->vartype)
+		{
+			expr = (Expr *) makeRelabelType(expr,
+											var->vartype,
+											-1,
+											get_typcollation(var->vartype),
+											COERCE_IMPLICIT_CAST);
+		}
+
+		tle = makeNode(TargetEntry);
+		tle->expr = expr;
+		/*
+		 * Get the attribute number in base relation (varoattno), not attribute number
+		 * in index relation (varattno).
+		 */
+		tle->resno = var->varoattno;
+		tle->resorigcol = 0;
+		indexquals[tle->resno - 1] = tle;
+		primary_key_attrs = bms_add_member(primary_key_attrs, tle->resno);
+	}
+
+	/* Verify RETURNING columns are either primary key columns or UPDATE's SET columns. */
+	if (list_length(path->returningLists) > 0)
+	{
+		foreach(values, linitial(path->returningLists))
+		{
+			TargetEntry *tle;
+
+			tle = lfirst_node(TargetEntry, values);
+			if (!bms_is_member(tle->resorigcol - attr_offset, update_attrs) &&
+				!bms_is_member(tle->resorigcol, primary_key_attrs))
+				return false;
+		}
+	}
+
+	/*
+	 * Verify all YB primary keys are specified in the WHERE clause.
+	 */
+	if (!YBCAllPrimaryKeysProvided(relid, primary_key_attrs))
+	{
+		return false;
+	}
+
+	/*
+	 * At this point all checks passed so construct the final target lists.
+	 * This will use the following vars prepared above:
+	 *  - indexquals array which has the targets for all primary key columns.
+	 *  - subpath_tlist which has all SET clause targets (for UPDATEs only).
+	 * It will set the following (return) args:
+	 *  - result_tlist will have both the pkey and select targets and add
+	 *    dummy/null targets for all unset attrs to match PG/YSQL expectation.
+	 *  - modify_tlist for UPDATEs with pushed-down expression only, we put
+	 *    the target expressions there to keep regular PG/YSQL execution from
+	 *    trying to evaluate them (which would fail because they still have
+	 *    scan variables).
+	 * Note: Previous checks ensure all pkey columns are set and that there is
+	 * no overlap between primary key targets and SET targets (if any).
+	 */
+	subpath_tlist_values = list_head(subpath_tlist);
+
+	for (attr_num = 1; attr_num <= relInfo->max_attr; ++attr_num)
+	{
+		TargetEntry *subpath_tlist_tle = NULL;
+
+		if (subpath_tlist_values)
+			subpath_tlist_tle = lfirst_node(TargetEntry, subpath_tlist_values);
+
+		if (indexquals[attr_num - 1] != NULL)
+		{
+			/* Use the primary-key indexquals value. */
+			*result_tlist = lappend(*result_tlist, indexquals[attr_num - 1]);
+		}
+		else if (subpath_tlist_values && subpath_tlist_tle->resno == attr_num)
+		{
+			if (bms_is_member(subpath_tlist_tle->resno, pushdown_update_attrs))
+			{
+				/*
+				 * If the expr needs pushdown bypass query-layer evaluation.
+				 * We set a dummy tle in the result tlist since it needs to
+				 * contain values for all rel columns (see below).
+				 * However, we substitute the correct expression during
+				 * execution (in ybcModifyTable.c).
+				 */
+				TargetEntry* tle = make_dummy_tle(attr_num, /* is_null = */ false);
+				*result_tlist = lappend(*result_tlist, tle);
+				*modify_tlist = lappend(*modify_tlist, subpath_tlist_tle);
+			}
+			else
+			{
+			  /* Use the SET value from the projection target list. */
+			  *result_tlist = lappend(*result_tlist, subpath_tlist_tle);
+			}
+
+			subpath_tlist_values = lnext(subpath_tlist_values);
+		}
+		else
+		{
+			/*
+			 * It is necessary to include the unspecified columns in the final Result target
+			 * list as it is expected to contain all rel columns, even those that are not
+			 * directly used in the statement, however we substitute in NULL const values so
+			 * all expressions are still valid single row write expressions.
+			 */
+			TargetEntry* tle = make_dummy_tle(attr_num, /* is_null = */ true);
+			*result_tlist = lappend(*result_tlist, tle);
+		}
+	}
+
+	return true;
+}
+
 /*
  * create_modifytable_plan
  *	  Create a ModifyTable plan for 'best_path'.
@@ -2377,35 +2891,58 @@ static ModifyTable *
 create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 {
 	ModifyTable *plan;
-	List	   *subplans = NIL;
-	ListCell   *subpaths,
-			   *subroots;
+	List	    *subplans = NIL;
+	ListCell    *subpaths,
+	            *subroots;
 
-	/* Build the plan for each input path */
-	forboth(subpaths, best_path->subpaths,
-			subroots, best_path->subroots)
+	List        *result_tlist = NIL;
+	List        *modify_tlist = NIL;
+	bool        no_index_update = false;
+	bool        no_row_trigger = false;
+
+	/*
+	 * If we are a single row UPDATE/DELETE in a YB relation, add Result subplan
+	 * instead of IndexScan. It is necessary to avoid the scan since we will be
+	 * running outside of a transaction and thus cannot rely on the results from a
+	 * separately executed operation.
+	 */
+	if (yb_single_row_update_or_delete_path(root, best_path, &result_tlist,
+	                                        &modify_tlist, &no_index_update,
+	                                        &no_row_trigger))
 	{
-		Path	   *subpath = (Path *) lfirst(subpaths);
-		PlannerInfo *subroot = (PlannerInfo *) lfirst(subroots);
-		Plan	   *subplan;
-
-		/*
-		 * In an inherited UPDATE/DELETE, reference the per-child modified
-		 * subroot while creating Plans from Paths for the child rel.  This is
-		 * a kluge, but otherwise it's too hard to ensure that Plan creation
-		 * functions (particularly in FDWs) don't depend on the contents of
-		 * "root" matching what they saw at Path creation time.  The main
-		 * downside is that creation functions for Plans that might appear
-		 * below a ModifyTable cannot expect to modify the contents of "root"
-		 * and have it "stick" for subsequent processing such as setrefs.c.
-		 * That's not great, but it seems better than the alternative.
-		 */
-		subplan = create_plan_recurse(subroot, subpath, CP_EXACT_TLIST);
-
-		/* Transfer resname/resjunk labeling, too, to keep executor happy */
-		apply_tlist_labeling(subplan->targetlist, subroot->processed_tlist);
+		Plan *subplan = (Plan *) make_result(result_tlist, NULL, NULL);
+		copy_generic_path_info(subplan, linitial(best_path->subpaths));
 
 		subplans = lappend(subplans, subplan);
+	}
+	else
+	{
+		/* Build the plan for each input path */
+		forboth(subpaths, best_path->subpaths,
+				subroots, best_path->subroots)
+		{
+			Path	   *subpath = (Path *) lfirst(subpaths);
+			PlannerInfo *subroot = (PlannerInfo *) lfirst(subroots);
+			Plan	   *subplan;
+
+			/*
+			 * In an inherited UPDATE/DELETE, reference the per-child modified
+			 * subroot while creating Plans from Paths for the child rel.  This is
+			 * a kluge, but otherwise it's too hard to ensure that Plan creation
+			 * functions (particularly in FDWs) don't depend on the contents of
+			 * "root" matching what they saw at Path creation time.  The main
+			 * downside is that creation functions for Plans that might appear
+			 * below a ModifyTable cannot expect to modify the contents of "root"
+			 * and have it "stick" for subsequent processing such as setrefs.c.
+			 * That's not great, but it seems better than the alternative.
+			 */
+			subplan = create_plan_recurse(subroot, subpath, CP_EXACT_TLIST);
+
+			/* Transfer resname/resjunk labeling, too, to keep executor happy */
+			apply_tlist_labeling(subplan->targetlist, subroot->processed_tlist);
+
+			subplans = lappend(subplans, subplan);
+		}
 	}
 
 	plan = make_modifytable(root,
@@ -2422,6 +2959,10 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->rowMarks,
 							best_path->onconflict,
 							best_path->epqParam);
+
+	plan->ybPushdownTlist = modify_tlist;
+	plan->no_index_update = no_index_update;
+	plan->no_row_trigger = no_row_trigger;
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
@@ -6487,6 +7028,10 @@ make_modifytable(PlannerInfo *root,
 	node->fdwPrivLists = fdw_private_list;
 	node->fdwDirectModifyPlans = direct_modify_plans;
 
+	/* These are set separately only if needed. */
+	node->ybPushdownTlist = NULL;
+	node->no_index_update = false;
+	node->no_row_trigger = false;
 	return node;
 }
 

@@ -1,7 +1,7 @@
 ---
 title: YEDIS API
 linkTitle: YEDIS
-description: YugaByte DIctionary Service (YEDIS)
+description: Yugabyte DIctionary Service (YEDIS)
 summary: Reference for Redis-compatible YEDIS API
 image: /images/section_icons/api/yedis.png
 headcontent: 
@@ -15,10 +15,10 @@ showAsideToc: true
 ---
 
 ## Introduction
-YEDIS API is a transactional (single-key ACID) key-value API that is compatible with the Redis commands library. A Redis client can connect, send request, and receive result from YugaByte DB.
+YEDIS API is a transactional (single-key ACID) key-value API that is compatible with the Redis commands library. A Redis client can connect, send request, and receive result from YugabyteDB.
 
 ## Data Types
-The following datatypes can be read and written via the YEDIS API. All data are on-disk persistent in YugaByte DB.<br>
+The following datatypes can be read and written via the YEDIS API. All data are on-disk persistent in YugabyteDB.<br>
 
 Data Type | Development Status |
 ---------|-------------|
@@ -27,10 +27,10 @@ Hash | Supported |
 Set | Supported |
 Sorted set | Supported |
 List | Not yet supported |
-Time series | New datatype in YugaByte! |
+Time series | New datatype in Yugabyte! |
 
 ## Commands
-Redis-cli or any Redis applications can access YugaByte DB using the YEDIS API. The following Redis commands are accepted.
+Redis-cli or any Redis applications can access YugabyteDB using the YEDIS API. The following Redis commands are accepted.
 
 Command | Description |
 --------|-------------|

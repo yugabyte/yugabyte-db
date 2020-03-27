@@ -25,12 +25,11 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 class ReleaseUtil(object):
     """Packages a YugaByte package with the appropriate file naming schema."""
-    def __init__(self, repository, build_type, edition, distribution_path, force, commit,
-                 build_root):
+    def __init__(self, repository, build_type, distribution_path, force, commit, build_root,
+                 package_name):
         self.repo = repository
         self.build_type = build_type
         self.build_path = os.path.join(self.repo, 'build')
-        self.edition = edition
         self.distribution_path = distribution_path
         self.force = force
         self.commit = commit or ReleaseUtil.get_head_commit_hash()
@@ -42,7 +41,7 @@ class ReleaseUtil(object):
             'Unable to read {0} file'.format(RELEASE_VERSION_FILE)
 
         with open(os.path.join(self.repo, RELEASE_MANIFEST_NAME)) as f:
-            self.release_manifest = json.load(f)
+            self.release_manifest = json.load(f)[package_name]
         assert self.release_manifest is not None, \
             'Unable to read {0} file'.format(RELEASE_MANIFEST_NAME)
         self.build_root = build_root
@@ -56,8 +55,7 @@ class ReleaseUtil(object):
         return self.release_manifest
 
     def get_seed_executable_patterns(self):
-        return self.release_manifest['bin'] + [
-            os.path.join(self.build_root, 'postgres', 'bin', '*')]
+        return self.release_manifest['bin']
 
     def expand_value(self, old_value):
         """
@@ -166,8 +164,8 @@ class ReleaseUtil(object):
         if system == "linux":
             system = platform.linux_distribution(full_distribution_name=False)[0].lower()
 
-        release_file_name = "yugabyte-{}-{}-{}-{}.tar.gz".format(
-            self.edition, release_name, system, platform.machine().lower())
+        release_file_name = "yugabyte-{}-{}-{}.tar.gz".format(
+            release_name, system, platform.machine().lower())
         return os.path.join(self.build_path, release_file_name)
 
     def generate_release(self):

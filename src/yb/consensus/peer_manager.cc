@@ -80,8 +80,8 @@ void PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
 
     VLOG(1) << GetLogPrefix() << "Adding remote peer. Peer: " << peer_pb.ShortDebugString();
     auto remote_peer = Peer::NewRemotePeer(
-        peer_pb, tablet_id_, local_uuid_, queue_, raft_pool_token_,
-        peer_proxy_factory_->NewProxy(peer_pb), consensus_, peer_proxy_factory_->messenger());
+        peer_pb, tablet_id_, local_uuid_, peer_proxy_factory_->NewProxy(peer_pb), queue_,
+        raft_pool_token_, consensus_, peer_proxy_factory_->messenger());
     if (!remote_peer.ok()) {
       LOG(WARNING) << "Failed to create remote peer for " << peer_pb.ShortDebugString() << ": "
                    << remote_peer.status();

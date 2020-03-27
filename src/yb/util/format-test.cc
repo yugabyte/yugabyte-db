@@ -145,6 +145,17 @@ TEST(FormatTest, String) {
   }
 }
 
+// strings::Substitute ignores actual size of array.
+// That is why CheckPlain helper can't be used to check Format with array argument without '\0'.
+TEST(FormatTest, Array) {
+  union {
+    char data[10] = "head-tail";
+    char head[4];
+  } sub_array_accesor;
+  ASSERT_EQ("This should be head only",
+            Format("This should be $0 only", sub_array_accesor.head));
+}
+
 TEST(FormatTest, Collections) {
   for (const auto& format : kFormats) {
     CheckCollection<std::vector<int>>(format, {1, 2, 3});

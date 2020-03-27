@@ -17,7 +17,7 @@ $ ./bin/yb-ctl --rf 3 create
 Download the sample app jar.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
 Run the `SqlInserts` sample key-value app against the local universe by typing the following command.
@@ -30,7 +30,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
 ```
 
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](https://github.com/YugaByte/yb-sample-apps).
+The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
 
 ```
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 
@@ -51,7 +51,7 @@ Remove a node from the universe.
 $ ./bin/yb-ctl remove_node 3
 ```
 
-Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugaByte DB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
+Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugabyteDB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 3rd node dead](/images/ce/pgsql-fault-tolerance-1-node-dead.png)
 

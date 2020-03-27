@@ -73,7 +73,9 @@
 #include "access/sysattr.h"
 #include "catalog/pg_database.h"
 #include "executor/ybcModifyTable.h"
+#include "parser/parsetree.h"
 #include "pg_yb_utils.h"
+#include "optimizer/ybcplan.h"
 
 static bool ExecOnConflictUpdate(ModifyTableState *mtstate,
 					 ResultRelInfo *resultRelInfo,
@@ -422,7 +424,7 @@ ExecInsert(ModifyTableState *mtstate,
 		 * Check the constraints of the tuple.
 		 */
 		if (resultRelationDesc->rd_att->constr)
-			ExecConstraints(resultRelInfo, slot, estate);
+			ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
 		/*
 		 * Also check the tuple against the partition constraint, if there is
@@ -498,7 +500,10 @@ ExecInsert(ModifyTableState *mtstate,
 					 * snapshot at higher isolation levels.
 					 */
 					Assert(onconflict == ONCONFLICT_NOTHING);
-					ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
+					if (!IsYBRelation(resultRelationDesc)) {
+						// YugaByte does not use Postgres transaction control code.
+						ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
+					}
 					InstrCountTuples2(&mtstate->ps, 1);
 					result = NULL;
 					goto conflict_resolved;
@@ -774,7 +779,15 @@ ExecDelete(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		YBCExecuteDelete(resultRelationDesc, planSlot);
+		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate, mtstate);
+		if (!row_found)
+		{
+			/*
+			 * No row was found. This is possible if it's a single row txn
+			 * and there is no row to delete (since we do not first do a scan).
+			 */
+			return NULL;
+		}
 
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
 		{
@@ -952,7 +965,15 @@ ldelete:;
 		}
 		else if (IsYBRelation(resultRelationDesc))
 		{
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			if (mtstate->yb_mt_is_single_row_update_or_delete)
+			{
+				slot = planSlot;
+			}
+			else
+			{
+				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			}
+
 			delbuffer = InvalidBuffer;
 		}
 		else
@@ -1103,17 +1124,35 @@ ExecUpdate(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		YBCExecuteUpdate(resultRelationDesc, planSlot, tuple);
+		if (resultRelInfo->ri_WithCheckOptions != NIL)
+			ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo, slot, estate);
 
 		/*
-		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
-		 * For ON CONFLICT DO UPDATE, the INSERT returning clause is setup
-		 * differently, so junkFilter is not needed.
+		 * Check the constraints of the tuple.
 		 */
-		if (resultRelInfo->ri_projectReturning && resultRelInfo->ri_junkFilter)
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+		if (resultRelationDesc->rd_att->constr)
+			ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
-		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+
+		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
+									  estate->es_range_table);
+
+		bool row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate, rte->updatedCols);
+
+		if (!row_found)
+		{
+			/*
+			 * No row was found. This is possible if it's a single row txn
+			 * and there is no row to update (since we do not first do a scan).
+			 */
+			return NULL;
+		}
+
+		/*
+		 * Update indexes if needed.
+		 */
+		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
+		    !((ModifyTable *)mtstate->ps.plan)->no_index_update)
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 
@@ -1305,7 +1344,7 @@ lreplace:;
 		 * have it validate all remaining checks.
 		 */
 		if (resultRelationDesc->rd_att->constr)
-			ExecConstraints(resultRelInfo, slot, estate);
+			ExecConstraints(resultRelInfo, slot, estate, mtstate);
 
 		/*
 		 * replace the heap tuple
@@ -1421,13 +1460,15 @@ lreplace:;
 	if (canSetTag)
 		(estate->es_processed)++;
 
-	/* AFTER ROW UPDATE Triggers */
-	ExecARUpdateTriggers(estate, resultRelInfo, tupleid, oldtuple, tuple,
-						 recheckIndexes,
-						 mtstate->operation == CMD_INSERT ?
-						 mtstate->mt_oc_transition_capture :
-						 mtstate->mt_transition_capture);
-
+	if (!((ModifyTable *)mtstate->ps.plan)->no_row_trigger)
+	{
+		/* AFTER ROW UPDATE Triggers */
+		ExecARUpdateTriggers(estate, resultRelInfo, tupleid, oldtuple, tuple,
+							recheckIndexes,
+							mtstate->operation == CMD_INSERT ?
+							mtstate->mt_oc_transition_capture :
+							mtstate->mt_transition_capture);
+	}
 	list_free(recheckIndexes);
 
 	/*
@@ -1442,9 +1483,20 @@ lreplace:;
 	if (resultRelInfo->ri_WithCheckOptions != NIL)
 		ExecWithCheckOptions(WCO_VIEW_CHECK, resultRelInfo, slot, estate);
 
+
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
+	{
+		/*
+		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
+		 * For ON CONFLICT DO UPDATE, the INSERT returning clause is setup
+		 * differently, so junkFilter is not needed.
+		 */
+		if (IsYBRelation(resultRelationDesc) && resultRelInfo->ri_junkFilter)
+			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+
 		return ExecProcessReturning(resultRelInfo, slot, planSlot);
+	}
 
 	return NULL;
 }
@@ -1493,9 +1545,14 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	 * However, YugaByte writes the conflict tuple including its "ybctid" to execution state "estate"
 	 * and then frees the slot when done.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYBBackedRelation(relation)) {
 		/* Not using heap buffer for YugaByte */
 		buffer = InvalidBuffer;
+
+		/* Ensure the heap tuple is initialized to invalid too. */
+		ItemPointerSetInvalid(&(tuple.t_self));
+		tuple.t_ybctid = (Datum) 0;
+
 		goto yb_skip_transaction_control_check;
 	}
 
@@ -2219,13 +2276,6 @@ ExecModifyTable(PlanState *pstate)
 		EvalPlanQualSetSlot(&node->mt_epqstate, planSlot);
 		slot = planSlot;
 
-		if (IsYugaByteEnabled() && resultRelInfo->ri_RelationDesc->trigdesc &&
-		    !IsolationIsSerializable())
-		{
-			YBRaiseNotSupported("Operation only supported in SERIALIZABLE"
-			                    "isolation level", 1199);
-		}
-
 		tupleid = NULL;
 		oldtuple = NULL;
 		if (junkfilter != NULL)
@@ -2427,6 +2477,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	mtstate->mt_plans = (PlanState **) palloc0(sizeof(PlanState *) * nplans);
 	mtstate->resultRelInfo = estate->es_result_relations + node->resultRelIndex;
+	mtstate->yb_mt_is_single_row_update_or_delete = YBCIsSingleRowUpdateOrDelete(node);
 
 	/* If modifying a partitioned table, initialize the root table info */
 	if (node->rootResultRelIndex >= 0)
@@ -2479,7 +2530,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * execution also needs to process primary key index.
 		 */
 		if ((IsYBRelation(resultRelInfo->ri_RelationDesc) ?
-				 (YBCRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc) ||
+				 (YBRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc) ||
 					node->onConflictAction != ONCONFLICT_NONE) :
 				 (resultRelInfo->ri_RelationDesc->rd_rel->relhasindex &&
 					operation != CMD_DELETE)) &&
@@ -2780,7 +2831,12 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 				break;
 			case CMD_UPDATE:
 			case CMD_DELETE:
-				junk_filter_needed = true;
+				/*
+				 * If it's a YB single row UPDATE/DELETE we do not perform an
+				 * initial scan to populate the ybctid, so there is no junk
+				 * attribute to extract.
+				 */
+				junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
 				break;
 			default:
 				elog(ERROR, "unknown operation");

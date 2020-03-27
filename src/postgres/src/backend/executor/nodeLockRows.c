@@ -60,6 +60,28 @@ ExecLockRows(PlanState *pstate)
 lnext:
 	slot = ExecProcNode(outerPlan);
 
+	int n_yb_relations = 0;
+	int n_relations = 0;
+	foreach(lc, node->lr_arowMarks)
+	{
+		ExecAuxRowMark *aerm = (ExecAuxRowMark *) lfirst(lc);
+		ExecRowMark *erm = aerm->rowmark;
+		if (IsYBBackedRelation(erm->relation))
+		{
+			n_yb_relations++;
+		}
+		n_relations++;
+	}
+
+	if (n_yb_relations == n_relations)
+		return slot;
+
+	if (n_yb_relations > 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Mixing Yugabyte relations and not Yugabyte relations with "
+						"row locks is not supported")));
+
 	if (TupIsNull(slot))
 		return NULL;
 

@@ -60,7 +60,7 @@ RedisLists::RedisLists(const std::string& db_path,
 
   // If destructive, destroy the DB before re-opening it.
   if (destructive) {
-    DestroyDB(db_name_, Options());
+    CHECK_OK(DestroyDB(db_name_, Options()));
   }
 
   // Now open and deal with the db
@@ -81,8 +81,7 @@ RedisLists::RedisLists(const std::string& db_path,
 //   : throws RedisListException
 int RedisLists::Length(const std::string& key) {
   // Extract the string data representing the list.
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Return the length
   RedisListIterator it(data);
@@ -95,8 +94,7 @@ int RedisLists::Length(const std::string& key) {
 bool RedisLists::Index(const std::string& key, int32_t index,
                        std::string* result) {
   // Extract the string data representing the list.
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Handle REDIS negative indices (from the end); fast iff Length() takes O(1)
   if (index < 0) {
@@ -133,8 +131,7 @@ bool RedisLists::Index(const std::string& key, int32_t index,
 std::vector<std::string> RedisLists::Range(const std::string& key,
                                            int32_t first, int32_t last) {
   // Extract the string data representing the list.
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Handle negative bounds (-1 means last element, etc.)
   int listLen = Length(key);
@@ -172,8 +169,7 @@ std::vector<std::string> RedisLists::Range(const std::string& key,
 // Print the (list: key) out to stdout. For debugging mostly. Public for now.
 void RedisLists::Print(const std::string& key) {
   // Extract the string data representing the list.
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Iterate through the list and print the items
   Slice elem;
@@ -213,12 +209,20 @@ int RedisLists::InsertAfter(const std::string& key, const std::string& pivot,
   return Insert(key, pivot, value, true);
 }
 
+std::string RedisLists::Get(const std::string& key) {
+  std::string data;
+  auto get_status = db_->Get(get_option_, key, &data);
+  if (!get_status.ok() && !get_status.IsNotFound()) {
+    CHECK_OK(get_status);
+  }
+  return data;
+}
+
 // Prepend value onto beginning of (list: key)
 //   : throws RedisListException
 int RedisLists::PushLeft(const std::string& key, const std::string& value) {
   // Get the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Construct the result
   RedisListIterator it(data);
@@ -226,7 +230,7 @@ int RedisLists::PushLeft(const std::string& key, const std::string& value) {
   it.InsertElement(value);
 
   // Push the data back to the db and return the length
-  db_->Put(put_option_, key, it.WriteResult());
+  CHECK_OK(db_->Put(put_option_, key, it.WriteResult()));
   return it.Length();
 }
 
@@ -235,8 +239,7 @@ int RedisLists::PushLeft(const std::string& key, const std::string& value) {
 //   : throws RedisListException
 int RedisLists::PushRight(const std::string& key, const std::string& value) {
   // Get the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Create an iterator to the data and seek to the end.
   RedisListIterator it(data);
@@ -249,7 +252,7 @@ int RedisLists::PushRight(const std::string& key, const std::string& value) {
   it.InsertElement(value);
 
   // Push it back to the db, and return length
-  db_->Put(put_option_, key, it.WriteResult());
+  CHECK_OK(db_->Put(put_option_, key, it.WriteResult()));
   return it.Length();
 }
 
@@ -258,8 +261,7 @@ int RedisLists::PushRight(const std::string& key, const std::string& value) {
 bool RedisLists::Set(const std::string& key, int32_t index,
                      const std::string& value) {
   // Get the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Handle negative index for REDIS (meaning -index from end of list)
   if (index < 0) {
@@ -300,8 +302,7 @@ bool RedisLists::Set(const std::string& key, int32_t index,
 //   : throws RedisListException
 bool RedisLists::Trim(const std::string& key, int32_t start, int32_t stop) {
   // Get the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Handle negative indices in REDIS
   int listLen = Length(key);
@@ -344,8 +345,7 @@ bool RedisLists::Trim(const std::string& key, int32_t start, int32_t stop) {
 //   : throws RedisListException
 bool RedisLists::PopLeft(const std::string& key, std::string* result) {
   // Get the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Point to first element in the list (if it exists), and get its value/size
   RedisListIterator it(data);
@@ -356,7 +356,7 @@ bool RedisLists::PopLeft(const std::string& key, std::string* result) {
     it.Skip();                      // DROP the first item and move to next
 
     // Update the db
-    db_->Put(put_option_, key, it.WriteResult());
+    CHECK_OK(db_->Put(put_option_, key, it.WriteResult()));
 
     // Return the value
     if (result != NULL) {
@@ -373,8 +373,7 @@ bool RedisLists::PopLeft(const std::string& key, std::string* result) {
 //   : throws RedisListException
 bool RedisLists::PopRight(const std::string& key, std::string* result) {
   // Extract the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Construct an iterator to the data and move to last element
   RedisListIterator it(data);
@@ -396,7 +395,7 @@ bool RedisLists::PopRight(const std::string& key, std::string* result) {
     it.Skip();                  // Skip the element
 
     // Write the result to the database
-    db_->Put(put_option_, key, it.WriteResult());
+    CHECK_OK(db_->Put(put_option_, key, it.WriteResult()));
 
     // Return the value
     if (result != NULL) {
@@ -432,8 +431,7 @@ int RedisLists::RemoveFirst(const std::string& key, int32_t num,
   assert(num >= 0);
 
   // Extract the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Traverse the list, appending all but the desired occurrences of value
   int numSkipped = 0;         // Keep track of the number of times value is seen
@@ -454,7 +452,7 @@ int RedisLists::RemoveFirst(const std::string& key, int32_t num,
   }
 
   // Put the result back to the database
-  db_->Put(put_option_, key, it.WriteResult());
+  CHECK_OK(db_->Put(put_option_, key, it.WriteResult()));
 
   // Return the number of elements removed
   return numSkipped;
@@ -470,8 +468,7 @@ int RedisLists::RemoveLast(const std::string& key, int32_t num,
   assert(num >= 0);
 
   // Extract the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Temporary variable to hold the "current element" in the blocks below
   Slice elem;
@@ -513,7 +510,7 @@ int RedisLists::RemoveLast(const std::string& key, int32_t num,
   }
 
   // Put the result back to the database
-  db_->Put(put_option_, key, it.WriteResult());
+  CHECK_OK(db_->Put(put_option_, key, it.WriteResult()));
 
   // Return the number of elements removed
   return totalOccs - numKept;
@@ -527,8 +524,7 @@ int RedisLists::RemoveLast(const std::string& key, int32_t num,
 int RedisLists::Insert(const std::string& key, const std::string& pivot,
                        const std::string& value, bool insert_after) {
   // Get the original list data
-  std::string data;
-  db_->Get(get_option_, key, &data);
+  std::string data = Get(key);
 
   // Construct an iterator to the data and reserve enough space for result.
   RedisListIterator it(data);
@@ -555,7 +551,7 @@ int RedisLists::Insert(const std::string& key, const std::string& pivot,
 
   // Put the data (string) into the database
   if (found) {
-    db_->Put(put_option_, key, it.WriteResult());
+    CHECK_OK(db_->Put(put_option_, key, it.WriteResult()));
   }
 
   // Returns the new (possibly unchanged) length of the list

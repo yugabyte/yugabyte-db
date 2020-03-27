@@ -22,6 +22,11 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -39,7 +44,7 @@ public class TestPgSequences extends BasePgSQLTest {
       statement.execute("DROP SEQUENCE s1 CASCADE");
       statement.execute("DROP SEQUENCE s2 CASCADE");
     } catch (Exception e) {
-      // Ignore it.
+      LOG.info("Exception while dropping sequences s1 and s2", e);
     }
   }
 
@@ -694,6 +699,57 @@ public class TestPgSequences extends BasePgSQLTest {
             rs.getLong("max_value")));
         assertEquals(serialTypeMaxValue.longValue(), rs.getLong("max_value"));
         statement.execute("DROP TABLE t");
+      }
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Test fix for https://github.com/YugaByte/yugabyte-db/issues/1783.
+  //------------------------------------------------------------------------------------------------
+  @Test
+  public void testConcurrentInsertsWithSerialType() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE accounts(user_id SERIAL, username VARCHAR (50), " +
+          "PRIMARY KEY(user_id, username))");
+    }
+    final int NUM_THREADS = 4;
+    final int NUM_INSERTS_PER_THREAD = 100;
+    ExecutorService ecs = Executors.newFixedThreadPool(NUM_THREADS);
+    List<Future<?>> futures = new ArrayList<>();
+    final AtomicBoolean hadErrors = new AtomicBoolean();
+    for (int i = 1; i <= NUM_THREADS; ++i) {
+      final int threadIndex = i;
+      Future<?> future = ecs.submit(() -> {
+        try (Statement statement = connection.createStatement()) {
+          for (int j = 0; j < NUM_INSERTS_PER_THREAD; ++j) {
+            statement.execute(String.format("INSERT INTO accounts(username) VALUES ('user_%d_%d')",
+                threadIndex, j));
+            LOG.info(String.format("Inserted username user_%d_%d", threadIndex, j));
+          }
+        } catch (Exception e) {
+          fail(e.getMessage());
+        }
+      });
+      futures.add(future);
+    }
+    for (Future<?> future : futures) {
+      future.get();
+    }
+    ecs.shutdown();
+    ecs.awaitTermination(30, TimeUnit.SECONDS);
+    try (Statement statement = connection.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT count(*) FROM accounts");
+      assertTrue(rs.next());
+      assertEquals(NUM_THREADS * NUM_INSERTS_PER_THREAD, rs.getLong("count"));
+
+      rs = statement.executeQuery("SELECT max(user_id) FROM accounts");
+      assertTrue(rs.next());
+      assertEquals(NUM_THREADS * NUM_INSERTS_PER_THREAD, rs.getLong("max"));
+
+      rs = statement.executeQuery("SELECT user_id, username FROM accounts ORDER BY user_id");
+      for (int i = 1; i <= NUM_THREADS * NUM_INSERTS_PER_THREAD; ++i) {
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("user_id"));
       }
     }
   }

@@ -22,10 +22,9 @@ QLTypesVTable::QLTypesVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemSchemaTypesTableName, master, CreateSchema()) {
 }
 
-Status QLTypesVTable::RetrieveData(const QLReadRequestPB& request,
-                                    std::unique_ptr<QLRowBlock>* vtable) const {
-
-  vtable->reset(new QLRowBlock(schema_));
+Result<std::shared_ptr<QLRowBlock>> QLTypesVTable::RetrieveData(
+    const QLReadRequestPB& request) const {
+  auto vtable = std::make_shared<QLRowBlock>(schema_);
   std::vector<scoped_refptr<UDTypeInfo> > types;
   master_->catalog_manager()->GetAllUDTypes(&types);
 
@@ -37,7 +36,7 @@ Status QLTypesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
 
     // Create appropriate row for the table;
-    QLRow& row = (*vtable)->Extend();
+    QLRow& row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, nsInfo->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTypeName, type->name(), &row));
 
@@ -63,7 +62,7 @@ Status QLTypesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kFieldTypes, field_types, &row));
   }
 
-  return Status::OK();
+  return vtable;
 }
 
 Schema QLTypesVTable::CreateSchema() const {

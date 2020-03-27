@@ -66,6 +66,8 @@ public class TestUtils {
       "/tmp/ybtest-" + System.getProperty("user.name") + "-" + startTimeMillis + "-" +
           new Random().nextInt(Integer.MAX_VALUE);
 
+  private static boolean isJenkins = System.getProperty("user.name").equals("jenkins");
+
   private static final AtomicBoolean defaultTestTmpDirCleanupHookRegistered = new AtomicBoolean();
 
   // The amount of time to wait for in addition to the ttl specified.
@@ -144,7 +146,8 @@ public class TestUtils {
     // Try to find the YB directory root by navigating upward from either the source code location,
     // or, if that does not work, from the current directory.
     for (String initialPath : new String[] { pathToCode, currentDir }) {
-      ybRootDir = findGitRepoContaining(initialPath);
+      // Cache the root dir so that we don't have to find it every time.
+      ybRootDir = findYbSrcRootContaining(initialPath);
       if (ybRootDir != null) {
         return ybRootDir;
       }
@@ -153,11 +156,11 @@ public class TestUtils {
         "Unable to find build dir! myUrl=" + myUrl + ", currentDir=" + currentDir);
   }
 
-  private static String findGitRepoContaining(String initialPath) {
+  private static String findYbSrcRootContaining(String initialPath) {
     File currentPath = new File(initialPath);
     while (currentPath != null) {
-      if (new File(currentPath, ".git").exists()) {
-        // Cache the root dir so that we don't have to find it every time.
+      if (new File(currentPath, "yb_build.sh").exists() &&
+          new File(currentPath, "build-support").exists()) {
         return currentPath.getAbsolutePath();
       }
       currentPath = currentPath.getParentFile();
@@ -512,6 +515,10 @@ public class TestUtils {
       joinedList.addAll(b);
     }
     return joinedList;
+  }
+
+  public static boolean isJenkins() {
+    return isJenkins;
   }
 
 }

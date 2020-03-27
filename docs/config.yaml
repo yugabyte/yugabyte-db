@@ -1,0 +1,50 @@
+---
+baseurl: https://docs.yugabyte.com
+languageCode: en-us
+title: YugabyteDB Docs
+metadataformat: yaml
+canonifyurls: false
+googleAnalytics: UA-104956980-3
+pygmentsCodefences: true
+pygmentsStyle: "pygments"
+enableGitInfo: true
+
+
+params:
+  author: Team Yugabyte
+  description: 'YugabyteDB, the transactional, high-performance database for building internet-scale, globally-distributed apps.'
+  copyright: 'Yugabyte, Inc.'
+  block_indexing: false
+  version: Beta
+  logo: /images/og-image.jpg
+  favicon: /images/favicon.ico
+  permalink: '#'
+  custom_css: []
+  custom_js: []
+  highlight_css: css/highlight/hemisu.css
+  palette:
+    primary: orange
+    accent: amber
+  font:
+    text: Inter
+    code: Inconsolata
+  algolia:
+    index: docs
+    appID: 4LBMOWH4F9
+    apiKey: 76cc3c40acc9719f5cd0d45bc07e2aeb
+  bigpicture:
+    projectId: 1064
+social: {}
+menu:
+  main:
+    - name: Introduction
+      identifier: intro
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  tableOfContents:
+    startLevel: 2
+    endLevel: 3
+    ordered: false
+---

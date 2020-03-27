@@ -17,7 +17,6 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/read_hybrid_time.h"
-#include "yb/util/trilean.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_key.h"
@@ -61,6 +60,12 @@ class TransactionStatusCache {
   ReadHybridTime read_time_;
   CoarseTimePoint deadline_;
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
+};
+
+struct FetchKeyResult {
+  Slice key;
+  DocHybridTime write_time;
+  bool same_transaction;
 };
 
 // Provides a way to iterate over DocDB (sub)keys with respect to committed intents transparently
@@ -138,7 +143,7 @@ class IntentAwareIterator {
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
-  Result<Slice> FetchKey(DocHybridTime* doc_ht = nullptr);
+  Result<FetchKeyResult> FetchKey();
 
   bool valid();
   Slice value();
@@ -164,6 +169,14 @@ class IntentAwareIterator {
       DocHybridTime* max_overwrite_time,
       Slice* result_value = nullptr);
 
+  // Finds the oldest record for a particular key that is larger than the
+  // specified min_hybrid_time, returns the overwrite time.
+  // This record may not be a full record, but instead a merge record (e.g. a
+  // TTL row).
+  // Returns HybridTime::kInvalid if no such record was found.
+  Result<HybridTime> FindOldestRecord(const Slice& key_without_ht,
+                                      HybridTime min_hybrid_time);
+
   void SetUpperbound(const Slice& upperbound) {
     upperbound_ = upperbound;
   }
@@ -178,6 +191,9 @@ class IntentAwareIterator {
   void SeekToLatestDocKeyInternal();
   // Seek to latest subdoc key among regular and intent iterator.
   void SeekToLatestSubDocKeyInternal();
+
+  // Choose latest subkey among regular and intent iterators.
+  Slice LatestSubDocKey();
 
   // Skips regular entries with hybrid time after read limit.
   // If `is_forward` is `false` and `iter_` is positioned to the earliest record for the current
@@ -226,18 +242,19 @@ class IntentAwareIterator {
 
   void UpdateResolvedIntentSubDocKeyEncoded();
 
-  Status FindLatestIntentRecord(
-    const Slice& key_without_ht,
-    DocHybridTime* max_overwrite_time,
-    bool* found_later_intent_result);
-
-  Status FindLatestRegularRecord(
-    const Slice& key_without_ht,
-    DocHybridTime* max_overwrite_time,
-    bool* found_later_regular_result);
+  // Seeks to the appropriate intent-prefix and returns the associated
+  // DocHybridTime.
+  Result<DocHybridTime> FindMatchingIntentRecordDocHybridTime(
+      const Slice& key_without_ht);
+  // Returns the DocHybridTime associated with the current regular record
+  // pointed to, if it matches the key that is passed as the argument.
+  // If the current record does not match the passed key, invalid hybrid time
+  // is returned.
+  Result<DocHybridTime> GetMatchingRegularRecordDocHybridTime(
+      const Slice& key_without_ht);
 
   // Whether current entry is regular key-value pair.
-  bool IsEntryRegular();
+  bool IsEntryRegular(bool descending = false);
 
   // Set the exclusive upperbound of the intent iterator to the current SubDocKey of the regular
   // iterator. This is necessary to avoid RocksDB iterator from scanning over the deleted intents
@@ -250,7 +267,23 @@ class IntentAwareIterator {
 
   void SeekIntentIterIfNeeded();
 
+  // Does initial steps for prev doc key/sub doc key seek.
+  // Returns true if prepare succeed.
+  bool PreparePrev(const Slice& key);
+
   bool SatisfyBounds(const Slice& slice);
+
+  bool ResolvedIntentFromSameTransaction() const {
+    return intent_dht_from_same_txn_ != DocHybridTime::kMin;
+  }
+
+  DocHybridTime GetIntentDocHybridTime() const {
+    return ResolvedIntentFromSameTransaction() ? intent_dht_from_same_txn_
+                                               : resolved_intent_txn_dht_;
+  }
+
+  // Returns true if iterator currently points to some record.
+  bool HasCurrentEntry();
 
   const ReadHybridTime read_time_;
   const string encoded_read_time_local_limit_;

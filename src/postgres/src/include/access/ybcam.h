@@ -37,25 +37,50 @@
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
 
+/*
+ * SCAN PLAN - Two structures.
+ * - "struct YbScanPlanData" contains variables that are used during preparing statement.
+ * - "struct YbScanDescData" contains variables that are used thru out the life of the statement.
+ *
+ * YugaByte ScanPlan has two different lists.
+ *   Binding list:
+ *   - This list is used to receive the user-given data for key columns (WHERE clause).
+ *   - "sk_attno" is the INDEX's attnum for the key columns that are used to query data.
+ *     In YugaByte, primary index attnum is the same as column attnum in the UserTable.
+ *   - "bind_desc" is the description of the index columns (count, types, ...).
+ *   - The bind lists don't need to be included in the description as they are only needed
+ *     during setup.
+ *   Target list:
+ *   - This list identifies the user-wanted data to be fetched from the database.
+ *   - "target_desc" contains the description of the target columns (count, types, ...).
+ *   - The target fields are used for double-checking key values after selecting data
+ *     from database. It should be removed once we no longer need to double-check the key values.
+ */
 typedef struct YbScanDescData
 {
 #define YB_MAX_SCAN_KEYS (INDEX_MAX_KEYS * 2) /* A pair of lower/upper bounds per column max */
 
-	int     nkeys;
-	ScanKey key;
-
-	/* Attribut numbers and tuple descriptor for the scan keys / target columns */
-	AttrNumber sk_attno[YB_MAX_SCAN_KEYS];
-	TupleDesc  tupdesc;
-
 	/* The handle for the internal YB Select statement. */
-	YBCPgStatement  handle;
-	ResourceOwner   stmt_owner;
-	bool			is_exec_done;
+	YBCPgStatement handle;
+	ResourceOwner stmt_owner;
+	bool is_exec_done;
 
 	Relation index;
 
-	/* Kept execution control to pass it to PgGate.
+	int nkeys;
+	ScanKey key;
+
+	TupleDesc target_desc;
+	AttrNumber target_key_attnums[YB_MAX_SCAN_KEYS];
+
+	/* Oid of the table being scanned */
+	Oid tableOid;
+
+	/* Kept query-plan control to pass it to PgGate during preparation */
+	YBCPgPrepareParameters prepare_params;
+
+	/*
+	 * Kept execution control to pass it to PgGate.
 	 * - When YBC-index-scan layer is called by Postgres IndexScan functions, it will read the
 	 *   "yb_exec_params" from Postgres IndexScan and kept the info in this attribute.
 	 *
@@ -94,24 +119,20 @@ extern HeapTuple ybc_heap_getnext(HeapScanDesc scanDesc);
 extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 
 /*
- * Access to YB-stored index (mirroring API from indexam.c)
- * We will do a YugaByte scan instead of a heap scan.
- * When the index is the primary key, the base table is scanned instead.
+ * The ybc_idx API is used to process the following SELECT.
+ *   SELECT data FROM heapRelation WHERE rowid IN
+ *     ( SELECT rowid FROM indexRelation WHERE key = given_value )
  */
-extern void ybc_pkey_beginscan(Relation relation,
-							   Relation index,
-							   IndexScanDesc scan_desc,
-							   int nkeys,
-							   ScanKey key);
-extern HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc, bool is_forward_scan);
-extern void ybc_pkey_endscan(IndexScanDesc scan_desc);
+YbScanDesc ybcBeginScan(Relation relation,
+                        Relation index,
+                        bool xs_want_itup,
+                        int nkeys,
+                        ScanKey key);
 
-extern void ybc_index_beginscan(Relation index,
-								IndexScanDesc scan_desc,
-								int nkeys,
-								ScanKey key);
-extern IndexTuple ybc_index_getnext(IndexScanDesc scan_desc, bool is_forward_scan);
-extern void ybc_index_endscan(IndexScanDesc scan_desc);
+HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
+IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
+
+void ybcEndScan(YbScanDesc ybScan);
 
 /* Number of rows assumed for a YB table if no size estimates exist */
 #define YBC_DEFAULT_NUM_ROWS  1000

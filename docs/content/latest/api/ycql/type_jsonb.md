@@ -1,7 +1,9 @@
 ---
-title: JSONB
-summary: JSONB types
-description: JSONB
+title: JSONB data type [YCQL]
+headerTitle: JSONB
+linkTitle: JSONB
+summary: JSONB type
+description: Use the JSONB data type to efficiently model json data. This data type makes it easy to model JSON data which does not have a set schema and might change often.
 menu:
   latest:
     parent: api-cassandra
@@ -14,19 +16,21 @@ showAsideToc: true
 ---
 
 ## Synopsis
-`JSONB` datatype is used to efficiently model json data. This datatype makes it easy to model
-json data which does not have a set schema and might change often. This datatype is similar to
-the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/9.4/static/datatype-json.html). 
-The json document is serialized into a format which is easy for search and retrieval. 
-This is achieved by storing all the json keys in sorted order, which allows for efficient binary 
-search of keys. Similarly arrays are stored such that random access for a particular array index 
+
+Use the `JSONB` data type to efficiently model JSON data. This data type makes it easy to model
+JSON data which does not have a set schema and might change often. This data type is similar to
+the [JSONB data type in PostgreSQL](https://www.postgresql.org/docs/9.4/static/datatype-json.html).
+The JSON document is serialized into a format which is easy for search and retrieval.
+This is achieved by storing all the JSON keys in sorted order, which allows for efficient binary
+search of keys. Similarly, arrays are stored such that random access for a particular array index
 into the serialized json document is possible.
 
-Currently, updates to some attributes of a JSONB column require a full read-modify-write operation. 
-Note that there are plans to enhance the JSONB datatype to support efficient incremental updates in 
+Currently, updates to some attributes of a JSONB column require a full read-modify-write operation.
+Note that there are plans to enhance the JSONB data type to support efficient incremental updates in
 a future version.
 
 ## Syntax
+
 ```
 type_specification ::= { JSONB }
 ```
@@ -34,14 +38,14 @@ type_specification ::= { JSONB }
 ## Semantics
 
 - Columns of type `JSONB` cannot be part of the `PRIMARY KEY`.
-- Implicitly, values of type `JSONB` are not convertible to other datatypes. `JSONB` types can be
-  compared to `TEXT/VARCHAR` datatype as long it represents valid json.
-- Values of text datatypes with correct format are convertible to `JSONB`.
+- Implicitly, values of type `JSONB` are not convertible to other data types. `JSONB` types can be
+  compared to `TEXT/VARCHAR` data type as long it represents valid json.
+- Values of text data types with correct format are convertible to `JSONB`.
 - `JSONB` value format supports text literals which are valid json.
 
-## Operators and Functions
+## Operators and functions
 
-We currently support two operators which can be applied to the `JSONB` datatype. The `->` operator 
+We currently support two operators which can be applied to the `JSONB` data type. The `->` operator 
 returns a result of type `JSONB` and further json operations can be applied to the result. The `->>` 
 operator converts `JSONB` to its string representation and returns the same. As a result, we can't
 apply further `JSONB` operators to the result of the `->>` operator. These operators can either have
@@ -233,6 +237,7 @@ cqlsh> SELECT * FROM store.books WHERE id = 6;
 
 Note that JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. We do not support upsert on non-leaf properties.
 
-## See Also
-[`Explore Json Documents`](../../../explore/transactional/json-documents)
-[Data Types](..#datatypes)
+## See also
+
+- [`Explore JSON documents`](../../../explore/transactional/json-documents)
+- [Data types](..#data-types)

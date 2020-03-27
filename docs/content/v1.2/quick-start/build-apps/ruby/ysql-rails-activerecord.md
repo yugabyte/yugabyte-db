@@ -39,12 +39,12 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
 
 ## Clone the orm-examples repo
 
 ```sh
-$ git clone https://github.com/YugaByte/orm-examples.git
+$ git clone https://github.com/yugabyte/orm-examples.git
 ```
 ```sh
 bundle install
@@ -56,7 +56,7 @@ This repository has a Ruby on Rails example that implements a simple REST API se
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repo](https://github.com/YugaByte/orm-examples/tree/master/ruby/ror). There are a number of options that can be customized in the properties file located at `config/database.yml`. 
+The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror). There are a number of options that can be customized in the properties file located at `config/database.yml`. 
 
 ## Build & run the app
 
@@ -235,4 +235,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/YugaByte/orm-examples/tree/master/ruby/ror) repo.
+As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror) repo.

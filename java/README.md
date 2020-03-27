@@ -16,9 +16,9 @@ Asynchronous Native Java Client for YB
 System Requirements
 ------------------------------------------------------------
 
-- Java 7
+- Java 8
 - Maven 3
-- protobuf 2.6.1 (it needs to be the exact version)
+- protobuf 3.5.1
 
 
 Building the Client

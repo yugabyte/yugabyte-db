@@ -18,6 +18,9 @@
 
 #include <memory>
 
+#include "yb/common/common.pb.h"
+
+#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -31,31 +34,25 @@ struct PGResultClear {
   void operator()(PGresult* result) const;
 };
 
-typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
 typedef std::unique_ptr<PGresult, PGResultClear> PGResultPtr;
-
-CHECKED_STATUS Execute(PGconn* conn, const std::string& command);
-
-Result<PGResultPtr> Fetch(PGconn* conn, const std::string& command);
-
-// Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
-Result<PGResultPtr> FetchMatrix(PGconn* conn, const std::string& command, int rows, int columns);
 
 Result<int32_t> GetInt32(PGresult* result, int row, int column);
 
 Result<int64_t> GetInt64(PGresult* result, int row, int column);
 
+Result<double> GetDouble(PGresult* result, int row, int column);
+
 Result<std::string> GetString(PGresult* result, int row, int column);
 
-Result<int32_t> GetValueImpl(PGresult* result, int row, int column, int32_t*) {
+inline Result<int32_t> GetValueImpl(PGresult* result, int row, int column, int32_t*) {
   return GetInt32(result, row, column);
 }
 
-Result<int64_t> GetValueImpl(PGresult* result, int row, int column, int64_t*) {
+inline Result<int64_t> GetValueImpl(PGresult* result, int row, int column, int64_t*) {
   return GetInt64(result, row, column);
 }
 
-Result<std::string> GetValueImpl(PGresult* result, int row, int column, std::string*) {
+inline Result<std::string> GetValueImpl(PGresult* result, int row, int column, std::string*) {
   return GetString(result, row, column);
 }
 
@@ -65,11 +62,71 @@ Result<T> GetValue(PGresult* result, int row, int column) {
   return GetValueImpl(result, row, column, static_cast<T*>(nullptr));
 }
 
-template <class T>
-Result<T> FetchValue(PGconn* conn, const std::string& command) {
-  auto res = VERIFY_RESULT(FetchMatrix(conn, command, 1, 1));
-  return GetValue<T>(res.get(), 0, 0);
-}
+Result<std::string> AsString(PGresult* result, int row, int column);
+void LogResult(PGresult* result);
+
+class PGConn {
+ public:
+  ~PGConn();
+
+  PGConn(PGConn&& rhs);
+  PGConn& operator=(PGConn&& rhs);
+
+  static Result<PGConn> Connect(const HostPort& host_port, const std::string& db_name = "");
+
+  CHECKED_STATUS Execute(const std::string& command);
+
+  template <class... Args>
+  CHECKED_STATUS ExecuteFormat(const std::string& format, Args&&... args) {
+    return Execute(Format(format, std::forward<Args>(args)...));
+  }
+
+  Result<PGResultPtr> Fetch(const std::string& command);
+
+  template <class... Args>
+  Result<PGResultPtr> FetchFormat(const std::string& format, Args&&... args) {
+    return Fetch(Format(format, std::forward<Args>(args)...));
+  }
+
+  // Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
+  Result<PGResultPtr> FetchMatrix(const std::string& command, int rows, int columns);
+
+  template <class T>
+  Result<T> FetchValue(const std::string& command) {
+    auto res = VERIFY_RESULT(FetchMatrix(command, 1, 1));
+    return GetValue<T>(res.get(), 0, 0);
+  }
+
+  CHECKED_STATUS StartTransaction(IsolationLevel isolation_level);
+  CHECKED_STATUS CommitTransaction();
+  CHECKED_STATUS RollbackTransaction();
+
+  CHECKED_STATUS CopyBegin(const std::string& command);
+  Result<PGResultPtr> CopyEnd();
+
+  void CopyStartRow(int16_t columns);
+
+  void CopyPutInt16(int16_t value);
+  void CopyPutInt32(int32_t value);
+  void CopyPutInt64(int64_t value);
+  void CopyPut(const char* value, size_t len);
+
+  void CopyPutString(const std::string& value) {
+    CopyPut(value.c_str(), value.length());
+  }
+
+ private:
+  typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
+  struct CopyData;
+
+  explicit PGConn(PGConnPtr ptr);
+
+  bool CopyEnsureBuffer(size_t len);
+  bool CopyFlushBuffer();
+
+  PGConnPtr impl_;
+  std::unique_ptr<CopyData> copy_data_;
+};
 
 } // namespace pgwrapper
 } // namespace yb

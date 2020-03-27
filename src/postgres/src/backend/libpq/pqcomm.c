@@ -96,6 +96,10 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
+#include "access/xact.h"
+#include "libpq/yb_pqcomm_extensions.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 /*
  * Cope with the various platform-specific ways to spell TCP keepalive socket
  * options.  This doesn't cover Windows, which as usual does its own thing.
@@ -127,17 +131,18 @@ static List *sock_paths = NIL;
 /*
  * Buffers for low-level I/O.
  *
- * The receive buffer is fixed size. Send buffer is usually 8k, but can be
+ * The receive buffer is fixed size.
+ * Send buffer is controlled by ysql_output_buffer_size pggate gflag, but can be
  * enlarged by pq_putmessage_noblock() if the message doesn't fit otherwise.
  */
 
-#define PQ_SEND_BUFFER_SIZE 8192
 #define PQ_RECV_BUFFER_SIZE 8192
 
 static char *PqSendBuffer;
 static int	PqSendBufferSize;	/* Size send buffer */
 static int	PqSendPointer;		/* Next index to store a byte in PqSendBuffer */
 static int	PqSendStart;		/* Next index to send a byte in PqSendBuffer */
+static int	PqSendYbSavedBufPos;/* Value of PqSendPointer to restore during statement restart */
 
 static char PqRecvBuffer[PQ_RECV_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */
@@ -194,9 +199,10 @@ void
 pq_init(void)
 {
 	/* initialize state variables */
-	PqSendBufferSize = PQ_SEND_BUFFER_SIZE;
+	PqSendBufferSize = YBCGetOutputBufferSize();
 	PqSendBuffer = MemoryContextAlloc(TopMemoryContext, PqSendBufferSize);
 	PqSendPointer = PqSendStart = PqRecvPointer = PqRecvLength = 0;
+	PqSendYbSavedBufPos = 0;
 	PqCommBusy = false;
 	PqCommReadingMsg = false;
 	DoingCopyOut = false;
@@ -300,6 +306,29 @@ socket_close(int code, Datum arg)
 		 */
 		MyProcPort->sock = PGINVALID_SOCKET;
 	}
+}
+
+
+
+/*
+ * yb_pqcomm_extensions.h
+ */
+
+/* Save current output buffer position, allowing for rollback if needed. */
+void
+YBSaveOutputBufferPosition(void)
+{
+	PqSendYbSavedBufPos = PqSendPointer;
+}
+
+/*
+ * Rollback output buffer to a previously saved position, discarding everything added after it.
+ * Should ONLY be called after YBSaveOutputBufferPosition.
+ */
+void
+YBRestoreOutputBufferPosition(void)
+{
+	PqSendPointer = PqSendYbSavedBufPos;
 }
 
 
@@ -774,6 +803,8 @@ StreamConnection(pgsocket server_fd, Port *port)
 		}
 
 #ifdef WIN32
+
+		#define PQ_SEND_BUFFER_SIZE 8192
 
 		/*
 		 * This is a Win32 socket optimization.  The OS send buffer should be
@@ -1421,6 +1452,8 @@ socket_flush(void)
 static int
 internal_flush(void)
 {
+	YBMarkDataSent();
+
 	static int	last_reported_send_errno = 0;
 
 	char	   *bufptr = PqSendBuffer + PqSendStart;
@@ -1471,6 +1504,7 @@ internal_flush(void)
 			 * the connection.
 			 */
 			PqSendStart = PqSendPointer = 0;
+			PqSendYbSavedBufPos = 0;
 			ClientConnectionLost = 1;
 			InterruptPending = 1;
 			return EOF;
@@ -1482,6 +1516,7 @@ internal_flush(void)
 	}
 
 	PqSendStart = PqSendPointer = 0;
+	PqSendYbSavedBufPos = 0;
 	return 0;
 }
 

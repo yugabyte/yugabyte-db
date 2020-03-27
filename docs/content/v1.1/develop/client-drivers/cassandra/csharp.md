@@ -2,7 +2,7 @@
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
 - installed Visual Studio
 
 ## Writing a HelloWorld C# app
@@ -13,9 +13,7 @@ To install the driver in your Visual Studio project
 <ol>
   <li>Open your Project Solution View.</li>
   <li>Right-click on Packages and click Add Packages.</li>
-  ![Add Package](/images/develop/client-drivers/csharp/visual-studio-add-package.png)
   <li>Search for CassandraCSharpDriver and click Add Package.</li>
-  ![Search Package](/images/develop/client-drivers/csharp/visual-studio-search-cassandra-package.png)
 </ol>
 
 
@@ -26,7 +24,7 @@ using System;
 using System.Linq;
 using Cassandra;
 
-namespace YugaByte_CSharp_Demo
+namespace Yugabyte_CSharp_Demo
 {
     class Program
     {
@@ -68,7 +66,7 @@ namespace YugaByte_CSharp_Demo
             }
             catch (Cassandra.NoHostAvailableException)
             {
-                Console.WriteLine("Make sure YugaByteDB is running locally!.");
+                Console.WriteLine("Make sure YugabyteDB is running locally!.");
             }
             catch (Cassandra.InvalidQueryException ie)
             {

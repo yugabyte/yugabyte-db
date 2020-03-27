@@ -52,14 +52,13 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/value.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_value.h"
 
 #include "yb/util/status.h"
 
 namespace yb {
 
 // the types used internally and sent over the wire to the tserver
-typedef QLValue::InternalType InternalType;
+typedef QLValuePB::ValueCase InternalType;
 
 class ColumnSchema;
 class YBPartialRow;
@@ -101,6 +100,8 @@ class YBColumnSchema {
         return InternalType::kInt64Value;
       case UINT32:
         return InternalType::kUint32Value;
+      case UINT64:
+        return InternalType::kUint64Value;
       case FLOAT:
         return InternalType::kFloatValue;
       case DOUBLE:
@@ -146,8 +147,7 @@ class YBColumnSchema {
 
       case TYPEARGS: FALLTHROUGH_INTENDED;
       case UINT8: FALLTHROUGH_INTENDED;
-      case UINT16: FALLTHROUGH_INTENDED;
-      case UINT64:
+      case UINT16:
         break;
     }
     LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
@@ -166,9 +166,7 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
-                 const ColumnSchema::QLJsonOperations& json_ops =
-                     ColumnSchema::QLJsonOperations());
+                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -187,7 +185,6 @@ class YBColumnSchema {
   bool is_counter() const;
   int32_t order() const;
   ColumnSchema::SortingType sorting_type() const;
-  const ColumnSchema::QLJsonOperations& json_ops() const;
 
  private:
   friend class YBColumnSpec;
@@ -353,6 +350,8 @@ class YBSchema {
 
   bool Equals(const YBSchema& other) const;
 
+  Result<bool> Equals(const SchemaPB& pb_schema) const;
+
   const TableProperties& table_properties() const;
 
   YBColumnSchema Column(size_t idx) const;
@@ -395,6 +394,8 @@ class YBSchema {
   int FindColumn(const GStringPiece& name) const {
     return schema_->find_column(name);
   }
+
+  string ToString() const;
 
  private:
   friend YBSchema YBSchemaFromSchema(const Schema& schema);

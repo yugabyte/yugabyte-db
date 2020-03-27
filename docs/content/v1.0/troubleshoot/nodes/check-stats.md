@@ -32,8 +32,8 @@ Disk: /dev/sda2       208G  5.1G  203G   3% /
 Generally, common tools like `top` or `iostat` may be useful.
 
 ### Auditd
-If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugaByte which can significantly affect performance. 
-You can try temporarily disabling `audit` by running (on each YugaByte node):
+If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used Yugabyte which can significantly affect performance. 
+You can try temporarily disabling `audit` by running (on each Yugabyte node):
 
 ```sh
 $ auditctl -e 0
@@ -47,9 +47,9 @@ To re-enable it afterwards run:
 $ auditctl -e 1
 ```
 
-## YugaByte processes state
+## Yugabyte processes state
 
-YugaByte DB provides web endpoints where the current state of each process is aggregated. 
+YugabyteDB provides web endpoints where the current state of each process is aggregated. 
 This includes logs, gflags as well as memory, disk, and network usage metrics.
 Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
 
@@ -60,4 +60,4 @@ Additionally, it provides dedicated metrics endpoints for CQL and, respectively,
 | Redis Metrics | `<node-ip>:11000/metrics` |
 | CQL Metrics | `<node-ip>:12000/metrics` |
 
-_Note that, when running `yb-ctl` locally with default settings, it will create three local ips `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugaByte DB node._
+_Note that, when running `yb-ctl` locally with default settings, it will create three local ips `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node._

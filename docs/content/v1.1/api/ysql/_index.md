@@ -1,7 +1,7 @@
 ---
 title: YSQL (Beta)
 linkTitle: YSQL (Beta)
-description: YugaByte Structured Query Language (YSQL) [Beta]
+description: Yugabyte Structured Query Language (YSQL) [Beta]
 summary: Reference for PostgreSQL-compatible YSQL API
 image: /images/section_icons/api/ysql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
@@ -23,8 +23,8 @@ YSQL is a distributed SQL API compatible with PostgreSQL. It supports the follow
 - Primitive user-defined datatypes.
 
 ## Example
-The following example illustrates how to use `psql` to connect to YugaByte DB's PostgreSQL API.
-It assumes you have [installed YugaByte](../../quick-start/install/) and started a [PostgreSQL-enabled cluster](../../quick-start/test-postgresql/).
+The following example illustrates how to use `psql` to connect to YugabyteDB's PostgreSQL API.
+It assumes you have [installed Yugabyte](../../quick-start/install/) and started a [PostgreSQL-enabled cluster](../../quick-start/test-postgresql/).
 
 ```sh
 $ bin/psql -p 5433 -U postgres
@@ -73,7 +73,7 @@ Statement | Description |
 [`REVOKE`](permissions) | Revoke permissions |
 
 ## DML Statements
-Data manipulation language (DML) statements read from and write to the existing database objects. Currently, YugaByte DB implicitly commits any updates by DML statements.
+Data manipulation language (DML) statements read from and write to the existing database objects. Currently, YugabyteDB implicitly commits any updates by DML statements.
 
 Statement | Description |
 ----------|-------------|

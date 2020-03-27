@@ -22,8 +22,6 @@
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
-#include "yb/common/ql_value.h"
-
 #include "yb/util/monotime.h"
 
 namespace yb {

@@ -13,12 +13,16 @@
 
 #include "yb/master/yql_vtable_iterator.h"
 
+#include "yb/common/ql_value.h"
+
 namespace yb {
 namespace master {
 
-YQLVTableIterator::YQLVTableIterator(std::unique_ptr<QLRowBlock> vtable)
-    : vtable_(std::move(vtable)),
-      vtable_index_(0) {
+YQLVTableIterator::YQLVTableIterator(
+    std::shared_ptr<QLRowBlock> vtable,
+    const google::protobuf::RepeatedPtrField<QLExpressionPB>& hashed_column_values)
+    : vtable_(std::move(vtable)), hashed_column_values_(hashed_column_values) {
+  Advance(false /* increment */);
 }
 
 Status YQLVTableIterator::DoNextRow(const Schema& projection, QLTableRow* table_row) {
@@ -32,13 +36,13 @@ Status YQLVTableIterator::DoNextRow(const Schema& projection, QLTableRow* table_
     table_row->AllocColumn(row.schema().column_id(i),
                            down_cast<const QLValue&>(row.column(i)));
   }
-  vtable_index_++;
+  Advance(true /* increment */);
   return Status::OK();
 }
 
 void YQLVTableIterator::SkipRow() {
   if (vtable_index_ < vtable_->row_count()) {
-    vtable_index_++;
+    Advance(true /* increment */);
   }
 }
 
@@ -52,6 +56,31 @@ std::string YQLVTableIterator::ToString() const {
 
 const Schema& YQLVTableIterator::schema() const {
   return vtable_->schema();
+}
+
+// Advances iterator to next valid row, filtering columns using hashed_column_values_.
+void YQLVTableIterator::Advance(bool increment) {
+  if (increment) {
+    ++vtable_index_;
+  }
+  size_t num_hashed_columns = hashed_column_values_.size();
+  if (num_hashed_columns == 0) {
+    return;
+  }
+  while (vtable_index_ < vtable_->row_count()) {
+    auto& row = vtable_->row(vtable_index_);
+    bool bad = false;
+    for (size_t idx = 0; idx != num_hashed_columns; ++idx) {
+      if (hashed_column_values_[idx].value() != row.column(idx)) {
+        bad = true;
+        break;
+      }
+    }
+    if (!bad) {
+      break;
+    }
+    ++vtable_index_;
+  }
 }
 
 YQLVTableIterator::~YQLVTableIterator() {

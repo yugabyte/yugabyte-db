@@ -13,6 +13,9 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/docdb/doc_expr.h"
 #include "yb/rocksdb/db/compaction.h"
 
@@ -84,6 +87,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const DocKey& start_doc_key,
                                    bool is_forward_scan)
     : PgsqlScanSpec(YQL_CLIENT_PGSQL, nullptr),
+      schema_(schema),
       query_id_(query_id),
       hashed_components_(nullptr),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
@@ -100,12 +104,15 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const rocksdb::QueryId query_id,
                                    const std::vector<PrimitiveValue>& hashed_components,
+                                   const PgsqlConditionPB* condition,
                                    const boost::optional<int32_t> hash_code,
                                    const boost::optional<int32_t> max_hash_code,
                                    const PgsqlExpressionPB *where_expr,
                                    const DocKey& start_doc_key,
                                    bool is_forward_scan)
     : PgsqlScanSpec(YQL_CLIENT_PGSQL, where_expr),
+      range_bounds_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
+      schema_(schema),
       query_id_(query_id),
       hashed_components_(&hashed_components),
       hash_code_(hash_code),
@@ -118,11 +125,91 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
     // Should never get here until WHERE clause is supported.
     LOG(FATAL) << "DEVELOPERS: Add support for condition (where clause)";
   }
+
+  // If the hash key is fixed and we have range columns with IN condition, try to construct the
+  // exact list of range options to scan for.
+  if (!hashed_components_->empty() && schema_.num_range_key_columns() > 0 &&
+      range_bounds_ && range_bounds_->has_in_range_options()) {
+    DCHECK(condition);
+    range_options_ =
+        std::make_shared<std::vector<std::vector<PrimitiveValue>>>(schema_.num_range_key_columns());
+    InitRangeOptions(*condition);
+
+    // Range options are only valid if all range columns are set (i.e. have one or more options).
+    for (int i = 0; i < schema_.num_range_key_columns(); i++) {
+      if ((*range_options_)[i].empty()) {
+        range_options_ = nullptr;
+        break;
+      }
+    }
+  }
+}
+
+void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
+  size_t num_hash_cols = schema_.num_hash_key_columns();
+  switch (condition.op()) {
+    case QLOperator::QL_OP_AND:
+      for (const auto& operand : condition.operands()) {
+        DCHECK(operand.has_condition());
+        InitRangeOptions(operand.condition());
+      }
+      break;
+
+    case QLOperator::QL_OP_EQUAL:
+    case QLOperator::QL_OP_IN: {
+      DCHECK_EQ(condition.operands_size(), 2);
+      // Skip any condition where LHS is not a column (e.g. subscript columns: 'map[k] = v')
+      if (condition.operands(0).expr_case() != PgsqlExpressionPB::kColumnId) {
+        return;
+      }
+
+      // Skip any RHS expressions that are not evaluated yet.
+      if (condition.operands(1).expr_case() != PgsqlExpressionPB::kValue) {
+        return;
+      }
+
+      int col_idx = schema_.find_column_by_id(ColumnId(condition.operands(0).column_id()));
+
+      // Skip any non-range columns.
+      if (!schema_.is_range_column(col_idx)) {
+        return;
+      }
+
+      ColumnSchema::SortingType sortingType = schema_.column(col_idx).sorting_type();
+
+      if (condition.op() == QL_OP_EQUAL) {
+        auto pv = PrimitiveValue::FromQLValuePB(condition.operands(1).value(), sortingType);
+        (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+      } else { // QL_OP_IN
+        DCHECK_EQ(condition.op(), QL_OP_IN);
+        DCHECK(condition.operands(1).value().has_list_value());
+        const auto &options = condition.operands(1).value().list_value();
+        int opt_size = options.elems_size();
+        (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
+
+        // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
+        bool is_reverse_order = is_forward_scan_ ^ (sortingType == ColumnSchema::kAscending ||
+            sortingType == ColumnSchema::kAscendingNullsLast);
+        for (int i = 0; i < opt_size; i++) {
+          int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
+          const auto &elem = options.elems(elem_idx);
+          auto pv = PrimitiveValue::FromQLValuePB(elem, sortingType);
+          (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+        }
+      }
+
+      break;
+    }
+
+    default:
+      // We don't support any other operators at this level.
+      break;
+  }
 }
 
 KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound) const {
   KeyBytes result;
-  auto encoder = DocKeyEncoder(&result).CotableId(schema.cotable_id());
+  auto encoder = DocKeyEncoder(&result).Schema(schema);
 
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
@@ -155,6 +242,22 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
 
 std::vector<PrimitiveValue> DocPgsqlScanSpec::range_components(const bool lower_bound) const {
   std::vector<PrimitiveValue> result;
+
+  if (range_bounds_ != nullptr) {
+    const std::vector<QLValuePB> range_values = range_bounds_->range_values(lower_bound);
+    result.reserve(range_values.size());
+    size_t column_idx = schema_.num_hash_key_columns();
+    for (const auto& value : range_values) {
+      const auto& column = schema_.column(column_idx);
+      if (IsNull(value)) {
+        result.emplace_back(lower_bound ? ValueType::kLowest : ValueType::kHighest);
+      } else {
+        result.emplace_back(PrimitiveValue::FromQLValuePB(value, column.sorting_type()));
+      }
+      column_idx++;
+    }
+  }
+
   if (!lower_bound) {
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey
@@ -175,10 +278,23 @@ Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
     return STATUS_FORMAT(Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
                          start_doc_key_, lower_doc_key_, upper_doc_key_);
   }
+
+  // Paging state + forward scan.
   if (is_forward_scan_) {
     return lower_bound ? start_doc_key_ : upper_doc_key_;
   }
-  return lower_bound ? lower_doc_key_ : start_doc_key_;
+
+  // Paging state + reverse scan.
+  if (lower_bound) {
+    return lower_doc_key_;
+  }
+
+  // If using start_doc_key_ as upper bound append +inf as extra component to ensure it includes
+  // the target start_doc_key itself (dockey + suffix < dockey + kHighest).
+  // For lower bound, this is true already, because dockey + suffix is > dockey.
+  KeyBytes result = start_doc_key_;
+  result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+  return result;
 }
 
 std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() const {

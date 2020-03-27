@@ -35,6 +35,8 @@
 # Require cmake that includes FindICU module (https://cmake.org/cmake/help/v3.7/release/3.7.html)
 cmake_minimum_required(VERSION 3.7.0)
 
+project(YugabyteDB)
+
 # =================================================================================================
 # Functions
 # =================================================================================================
@@ -115,7 +117,7 @@ function(DETECT_BREW)
       message("Custom Homebrew installation found at ${CUSTOM_HOMEBREW_DIR}")
       set(USING_CUSTOM_HOMEBREW TRUE)
     else()
-      message("Not using custom Homebrew: no valid Homebewr installation found at "
+      message("Not using custom Homebrew: no valid Homebrew installation found at "
               "${CUSTOM_HOMEBREW_DIR}")
     endif()
   else()
@@ -155,7 +157,7 @@ function(INIT_COMPILER_TYPE)
   get_filename_component(BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
 
   if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
-    # TODO: deduplicate this. Also might want to detect edition based on dir name, etc.
+    # TODO: deduplicate this.
     string(REGEX MATCH "^.*-zapcc-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
     if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
       set(ENV{YB_COMPILER_TYPE} "zapcc")
@@ -209,6 +211,7 @@ function(VALIDATE_COMPILER_TYPE)
   endif()
 
   if (NOT "${COMPILER_FAMILY}" STREQUAL "gcc" AND
+      NOT "${COMPILER_FAMILY}" STREQUAL "gcc8" AND
       NOT "${COMPILER_FAMILY}" STREQUAL "clang")
     message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY} (expected 'gcc' or 'clang').")
   endif()
@@ -219,7 +222,7 @@ function(VALIDATE_COMPILER_TYPE)
   endif()
 
   set(IS_GCC FALSE PARENT_SCOPE)
-  if ("${COMPILER_FAMILY}" STREQUAL "gcc")
+  if ("${COMPILER_FAMILY}" STREQUAL "gcc" OR "${COMPILER_FAMILY}" STREQUAL "gcc8")
     set(IS_GCC TRUE PARENT_SCOPE)
   endif()
 endfunction()
@@ -230,7 +233,9 @@ endfunction()
 # CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
 # These flags apply to both YB and RocksDB parts of the codebase.
 function(ADD_LINKER_FLAGS FLAGS)
-  message("Adding to linker flags: ${FLAGS}")
+  if ($ENV{YB_VERBOSE})
+    message("Adding to linker flags: ${FLAGS}")
+  endif()
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
@@ -262,9 +267,13 @@ endfunction()
 #     hard to debug crashes.
 
 function(ADD_CXX_FLAGS FLAGS)
-  message("Adding C++ flags: ${FLAGS}")
+  if ($ENV{YB_VERBOSE})
+    message("Adding C++ flags: ${FLAGS}")
+  endif()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
+
+DETECT_BREW()
 
 ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
@@ -277,40 +286,17 @@ endif()
 ADD_CXX_FLAGS("-DROCKSDB_PLATFORM_POSIX -DROCKSDB_USING_THREAD_STATUS=0")
 ADD_CXX_FLAGS("-DBOOST_ERROR_CODE_HEADER_ONLY")
 
-# This duplicates part of the logic from common-build-env.sh so that we can run from CLion where
-# cmake is invoked directly.
-function(DETECT_EDITION)
-  set(YB_ENTERPRISE_ROOT "${YB_SRC_ROOT}/ent")
-  set(YB_ENTERPRISE_ROOT "${YB_ENTERPRISE_ROOT}" PARENT_SCOPE)
-  if ("$ENV{YB_EDITION}" STREQUAL "")
-    if (IS_DIRECTORY "${YB_ENTERPRISE_ROOT}")
-      set(ENV{YB_EDITION} "enterprise")
-    else()
-      set(ENV{YB_EDITION} "community")
-    endif()
-  endif()
-  set(YB_EDITION "$ENV{YB_EDITION}")
-  set(YB_EDITION "${YB_EDITION}" PARENT_SCOPE)
-  if ("${YB_EDITION}" STREQUAL "enterprise" AND NOT IS_DIRECTORY "${YB_ENTERPRISE_ROOT}")
-    message(FATAL_ERROR "YB_EDITION is '${YB_EDITION}' but the directory '${YB_ENTERPRISE_ROOT}'"
-                           " does not exist.")
-  endif()
-  message("YB_EDITION: ${YB_EDITION}")
-endfunction()
-
 function(YB_INCLUDE_EXTENSIONS)
-  if ("${YB_EDITION}" STREQUAL "enterprise")
-    file(RELATIVE_PATH CUR_REL_LIST_FILE "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
-    get_filename_component(CUR_REL_LIST_NAME_NO_EXT "${CUR_REL_LIST_FILE}" NAME_WE)
-    get_filename_component(CUR_REL_LIST_DIR "${CUR_REL_LIST_FILE}" DIRECTORY)
+  file(RELATIVE_PATH CUR_REL_LIST_FILE "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
+  get_filename_component(CUR_REL_LIST_NAME_NO_EXT "${CUR_REL_LIST_FILE}" NAME_WE)
+  get_filename_component(CUR_REL_LIST_DIR "${CUR_REL_LIST_FILE}" DIRECTORY)
 
-    set(YB_MATCHING_ENTERPRISE_DIR "${YB_ENTERPRISE_ROOT}/${CUR_REL_LIST_DIR}" PARENT_SCOPE)
-    set(YB_MATCHING_ENTERPRISE_DIR "${YB_ENTERPRISE_ROOT}/${CUR_REL_LIST_DIR}")
+  set(YB_MATCHING_ENTERPRISE_DIR "${YB_SRC_ROOT}/ent/${CUR_REL_LIST_DIR}" PARENT_SCOPE)
+  set(YB_MATCHING_ENTERPRISE_DIR "${YB_SRC_ROOT}/ent/${CUR_REL_LIST_DIR}")
 
-    set(INCLUDED_PATH "${YB_MATCHING_ENTERPRISE_DIR}/${CUR_REL_LIST_NAME_NO_EXT}-include.txt")
-    message("Including '${INCLUDED_PATH}' into '${CMAKE_CURRENT_LIST_FILE}'")
-    include("${INCLUDED_PATH}")
-  endif()
+  set(INCLUDED_PATH "${YB_MATCHING_ENTERPRISE_DIR}/${CUR_REL_LIST_NAME_NO_EXT}-include.txt")
+  message("Including '${INCLUDED_PATH}' into '${CMAKE_CURRENT_LIST_FILE}'")
+  include("${INCLUDED_PATH}")
 endfunction()
 
 set(YB_NUM_TESTS "0" CACHE INTERNAL "Number of tests" FORCE)
@@ -471,11 +457,6 @@ endif()
 set(YB_SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 message("YB_SRC_ROOT: ${YB_SRC_ROOT}")
 
-DETECT_EDITION()
-if ("$YB_EDITION" STREQUAL "")
-  message(FATAL_ERROR "YB_EDITION not defined after calling DETECT_EDITION()")
-endif()
-
 set(YB_THIRDPARTY_DIR "$ENV{YB_THIRDPARTY_DIR}")
 if("${YB_THIRDPARTY_DIR}" STREQUAL "")
   set(YB_THIRDPARTY_DIR "${YB_SRC_ROOT}/thirdparty")
@@ -536,7 +517,7 @@ if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
 endif()
 
 add_custom_target(dummy_target ALL
-  cat /dev/null
+  COMMAND cat /dev/null
   COMMENT "Dummy target for dependency resolution testing")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
@@ -563,8 +544,13 @@ elseif (YB_USE_ASAN)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "asan")
 elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "clang") # Cannot use IS_CLANG before building 3rd party
   set(THIRDPARTY_INSTRUMENTATION_TYPE "clang_uninstrumented")
-else()
+elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc8")
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "gcc8_uninstrumented")
+  ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}/gcc/8")
+elseif ("$ENV{YB_COMPILER_TYPE}" STREQUAL "gcc")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
+else()
+  message(FATAL_ERROR "Not handled compiler family: ${COMPILER_FAMILY}.")
 endif()
 
 # Make sure thirdparty stuff is up-to-date.
@@ -594,7 +580,7 @@ endif()
 # Build type (debug, release, fastdebug, etc.)
 # -------------------------------------------------------------------------------------------------
 
-# If no build build type is specified, default to debug builds
+# If no build type is specified, default to debug builds
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif(NOT CMAKE_BUILD_TYPE)
@@ -693,7 +679,6 @@ if(IS_CLANG)
   # The actual static analysis is turned on using the --analyze flag.
 endif()
 
-DETECT_BREW()
 if(USING_LINUXBREW AND IS_CLANG)
   # We only need these when building using clang. If we use Linuxbrew's gcc, it should set the
   # equivalent of these options automatically.
@@ -727,16 +712,6 @@ elseif(NOT "${USING_SANITIZERS}")
 else()
   message("Not specifying linker flags to not allow any undefined symbols: this is ASAN/TSAN")
 endif()
-
-# Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], any
-# generated code (which always uses clang) must be built against the old ABI.
-# (Note: we are not using any LLVM codegen in YugaByte as of 08/2016).
-# There's no recourse for using both ABIs in the same process; gcc's advice [2]
-# is to build everything against the old ABI.
-#
-# 1. https://llvm.org/bugs/show_bug.cgi?id=23529
-# 2. https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html
-ADD_CXX_FLAGS(-D_GLIBCXX_USE_CXX11_ABI=0)
 
 # We don't want to use any stubs; that's exclusively for builds using our
 # exported client headers).
@@ -790,7 +765,7 @@ endif()
 message("Configured for ${CMAKE_BUILD_TYPE} build "
         "(set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_DEBUG}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_DEBUG}")
   if(NOT APPLE AND EXISTS "/usr/bin/ld.gold")
     if ("$ENV{YB_NO_LD_GOLD}")
       message("YB_NO_LD_GOLD is defined, not using ld.gold")
@@ -805,15 +780,15 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
     endif()
   endif()
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_FASTDEBUG}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_FASTDEBUG}")
   # We specify RocksDB debug level that corresponds to the -O1 optimization level, the same as
   # the rest of YB code in the "fastdebug" mode (used for ASAN/TSAN).
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_RELEASE}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_RELEASE}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_PROFILE_GEN}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_PROFILE_GEN}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_PROFILE_BUILD}")
+  ADD_CXX_FLAGS("${CXX_FLAGS_PROFILE_BUILD}")
 else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
@@ -847,7 +822,7 @@ if (IS_CLANG)
   else()
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
-elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
+elseif("${COMPILER_FAMILY}" STREQUAL "gcc" OR "${COMPILER_FAMILY}" STREQUAL "gcc8")
   # Blacklist gcc versions known to generate broken optimized code.
   #
   # See KUDU-1030 for more details.
@@ -942,11 +917,10 @@ if (${YB_USE_UBSAN})
   set(CXX_NO_SANITIZE_FLAG "alignment")
   if(NOT APPLE)
     set(CXX_NO_SANITIZE_FLAG "${CXX_NO_SANITIZE_FLAG},vptr")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
+    ADD_CXX_FLAGS("-fsanitize=undefined")
   endif()
-  set(CMAKE_CXX_FLAGS
-    "${CMAKE_CXX_FLAGS} -fno-sanitize-recover=all -fno-sanitize=${CXX_NO_SANITIZE_FLAG}")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize-recover=float-cast-overflow")
+  ADD_CXX_FLAGS("-fno-sanitize-recover=all -fno-sanitize=${CXX_NO_SANITIZE_FLAG}")
+  ADD_CXX_FLAGS("-fsanitize-recover=float-cast-overflow")
 endif ()
 
 if ("${YB_USE_UBSAN}" OR "${YB_USE_ASAN}" OR "${YB_USE_TSAN}")
@@ -974,7 +948,7 @@ if ("${YB_GENERATE_COVERAGE}")
     # This should be fixed in llvm 3.4 with http://llvm.org/viewvc/llvm-project?view=revision&revision=184666
     message(SEND_ERROR "Cannot currently generate coverage with clang")
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -DCOVERAGE_BUILD")
+  ADD_CXX_FLAGS("--coverage -DCOVERAGE_BUILD")
 
   # For coverage to work properly, we need to use static linkage. Otherwise,
   # __gcov_flush() doesn't properly flush coverage from every module.
@@ -1076,17 +1050,9 @@ file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
-# Generated sources always have higher priority than even enterprise code.
+# Generated sources always have higher priority than even the "ent" directory include files.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
-
-if ("${YB_EDITION}" STREQUAL "enterprise")
-  # Enterprise sources have higher priority than community code.
-  include_directories(ent/src)
-  ADD_CXX_FLAGS(-DYB_EDITION_NS_PREFIX=enterprise::)
-else()
-  ADD_CXX_FLAGS(-DYB_EDITION_NS_PREFIX=)
-endif()
-
+include_directories(ent/src)
 include_directories(src)
 
 ############################################################
@@ -1253,6 +1219,7 @@ function(ADD_YB_TEST REL_TEST_NAME)
     PROPERTIES
     TEST_BINARY_PATH "${TEST_PATH}"
   )
+  set_target_properties(${TEST_BINARY_NAME} PROPERTIES COMPILE_FLAGS "-DDISABLE_STATUS_NODISCARD")
 
   if(ARGN)
     set_tests_properties(${TEST_NAME} PROPERTIES ${ARGN})
@@ -1759,14 +1726,24 @@ set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 if ("${COMPILER_FAMILY}" STREQUAL "gcc" AND
     ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 7.0)
   # Used with GCC 7.
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -faligned-new")
+  ADD_CXX_FLAGS("-faligned-new")
 endif()
 
+string (REPLACE "-Werror=non-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
+string (REPLACE "-Werror=reorder" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 
-# TODO: switch to C++17.
+
+message("CMAKE_C_FLAGS ${CMAKE_C_FLAGS}")
+
 set(CMAKE_CXX_STANDARD 14)
+
+if ("${COMPILER_FAMILY}" STREQUAL "gcc8")
+  # Remove after switching to C++17
+  ADD_CXX_FLAGS("-Wno-aligned-new")
+endif()
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (USING_LINUXBREW)
@@ -1781,6 +1758,10 @@ elseif(APPLE)
 endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
+
+# -------------------------------------------------------------------------------------------------
+# Subdirectories
+# -------------------------------------------------------------------------------------------------
 
 add_subdirectory(src/yb/rocksdb)
 add_subdirectory(src/yb/gutil)
@@ -1807,9 +1788,11 @@ add_subdirectory(src/yb/cdc)
 # PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
 add_subdirectory(src/postgres)
 
-if ("${YB_EDITION}" STREQUAL "enterprise")
-  include("${YB_ENTERPRISE_ROOT}/CMakeLists.txt")
-endif()
+include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
+
+# ------------------------------------------------------------------------------------------------
+# Utilities for collecting the dependency graph
+# ------------------------------------------------------------------------------------------------
 
 # We could not accumulate multiple lines in YB_ALL_DEPS due to a CMake bug with cache variables,
 # but we can write multiple lines in the output file.

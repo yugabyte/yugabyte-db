@@ -21,6 +21,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/intent_aware_iterator.h"
 
 namespace yb {
 
@@ -125,6 +126,10 @@ class QLWriteOperation :
                                    std::unique_ptr<QLRowBlock>* rowblock);
 
   Result<bool> DuplicateUniqueIndexValue(const DocOperationApplyData& data);
+  Result<bool> DuplicateUniqueIndexValue(
+      const DocOperationApplyData& data, yb::docdb::Direction direction);
+  Result<bool> DuplicateUniqueIndexValue(
+      const DocOperationApplyData& data, ReadHybridTime read_time);
 
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);
@@ -176,6 +181,13 @@ class QLWriteOperation :
   bool liveness_column_exists_ = false;
 };
 
+CHECKED_STATUS PrepareIndexWriteAndCheckIfIndexKeyChanged(QLExprExecutor* expr_executor,
+                                                          const QLTableRow &existing_row,
+                                                          const QLTableRow &new_row,
+                                                          const IndexInfo *index,
+                                                          QLWriteRequestPB* index_request,
+                                                          bool* has_index_key_changed = nullptr);
+
 class QLReadOperation : public DocExprExecutor {
  public:
   QLReadOperation(
@@ -191,7 +203,9 @@ class QLReadOperation : public DocExprExecutor {
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
 
-  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row, QLResultSet *result_set);
+  CHECKED_STATUS PopulateResultSet(const std::unique_ptr<common::QLScanSpec>& spec,
+                                   const QLTableRow& table_row,
+                                   QLResultSet *result_set);
 
   CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
   CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);

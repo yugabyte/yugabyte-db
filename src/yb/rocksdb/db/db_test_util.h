@@ -75,6 +75,14 @@
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+namespace yb {
+namespace enterprise {
+
+class UniverseKeyManager;
+
+} // namespace enterprise
+} // namespace yb
+
 namespace rocksdb {
 
 uint64_t TestGetTickerCount(const Options& options, Tickers ticker_type) {
@@ -403,19 +411,18 @@ class SpecialEnv : public EnvWrapper {
   Status NewRandomAccessFile(const std::string& f,
                              unique_ptr<RandomAccessFile>* r,
                              const EnvOptions& soptions) override {
-    class CountingFile : public RandomAccessFile {
+    class CountingFile : public yb::RandomAccessFileWrapper {
      public:
-      CountingFile(unique_ptr<RandomAccessFile>&& target,
+      CountingFile(std::unique_ptr<RandomAccessFile>&& target,
                    anon::AtomicCounter* counter)
-          : target_(std::move(target)), counter_(counter) {}
-      virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                          char* scratch) const override {
+          : RandomAccessFileWrapper(std::move(target)), counter_(counter) {}
+
+      Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
         counter_->Increment();
-        return target_->Read(offset, n, result, scratch);
+        return RandomAccessFileWrapper::Read(offset, n, result, scratch);
       }
 
      private:
-      unique_ptr<RandomAccessFile> target_;
       anon::AtomicCounter* counter_;
     };
 
@@ -429,20 +436,18 @@ class SpecialEnv : public EnvWrapper {
 
   Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
                            const EnvOptions& soptions) override {
-    class CountingFile : public SequentialFile {
+    class CountingFile : public yb::SequentialFileWrapper {
      public:
-      CountingFile(unique_ptr<SequentialFile>&& target,
+      CountingFile(std::unique_ptr<SequentialFile>&& target,
                    anon::AtomicCounter* counter)
-          : target_(std::move(target)), counter_(counter) {}
+          : yb::SequentialFileWrapper(std::move(target)), counter_(counter) {}
+
       Status Read(size_t n, Slice* result, uint8_t* scratch) override {
         counter_->Increment();
-        return target_->Read(n, result, scratch);
+        return SequentialFileWrapper::Read(n, result, scratch);
       }
-      Status Skip(uint64_t n) override { return target_->Skip(n); }
-      const std::string& filename() const override { return target_->filename(); }
 
      private:
-      unique_ptr<SequentialFile> target_;
       anon::AtomicCounter* counter_;
     };
 
@@ -594,6 +599,13 @@ class DBTestBase : public testing::Test {
 
   Options last_options_;
 
+  // For encryption
+  std::unique_ptr<yb::enterprise::UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<rocksdb::Env> encrypted_env_;
+
+  static const std::string kKeyId;
+  static const std::string kKeyFile;
+
   // Skip some options, as they may not be applicable to a specific test.
   // To add more skip constants, use values 4, 8, 16, etc.
   enum OptionSkip {
@@ -609,9 +621,11 @@ class DBTestBase : public testing::Test {
     kSkipMmapReads = 256,
   };
 
-  explicit DBTestBase(const std::string path);
+  explicit DBTestBase(const std::string path, bool encryption_enabled = false);
 
   ~DBTestBase();
+
+  void CreateEncryptedEnv();
 
   static std::string Key(int i) {
     char buf[100];

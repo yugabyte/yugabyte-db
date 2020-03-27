@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 @import "./colors.scss";
 
@@ -137,6 +137,13 @@ body {
     }
   }
 
+  @media screen and (max-width: 350px) {
+    .container-fluid, .container {
+      padding-left: 15px;
+      padding-right: 15px;
+    }
+  }
+
   img.scrolled {
     display: none !important;
   }
@@ -168,6 +175,11 @@ body {
 
     @media screen and (min-width: 992px) {
       display: none;
+    }
+
+    @media screen and (max-width: 320px) {
+      flex-grow: unset;
+      margin: unset;
     }
     .search-container {
       margin-right: 5px;
@@ -291,7 +303,7 @@ body {
         margin: 35px 16px 5px;
         font-size: 16px;
         font-weight: 500;
-        font-family: Montserrat, sans-serif;
+        font-family: 'Rubik', sans-serif;
         color: $YB_VIOLET;
 
         a {
@@ -313,7 +325,7 @@ body {
       display: inline-block;
       padding: 6px 8px 8px;
       margin-bottom: -4px;
-      font-family: "Open Sans", sans-serif;
+      font-family: "Inter", sans-serif;
       font-weight: 300;
       font-size: 15px;
       color: #e4e8ec !important;
@@ -345,7 +357,7 @@ body {
       display: inline-block;
       padding: 0 8px;
       line-height: 75px;
-      font-family: "Open Sans", sans-serif;
+      font-family: "Inter", sans-serif;
       font-weight: 400;
       font-size: 15px;
       margin-bottom: 0;
@@ -450,6 +462,17 @@ body {
       align-items: center;
     }
 
+    .navbar-misc.mobile {
+      padding: 15px 30px 0 30px;
+      text-align: left;
+      display: none;
+
+      div {
+        margin-top: 15px;
+        font-size: 20px;
+      }
+    }
+
     .navbar-link-btn {
       border: 1px solid #cbcdd0;
       color: #202951;
@@ -475,6 +498,12 @@ body {
       margin-left: 5px;
     }
 
+    @media screen and (max-width: 1100px) {
+      .social-link-text {
+        display: none;
+      }
+    }
+
     @media screen and (max-width: 991px) {
       background-color: #fff;
       flex-direction: column;
@@ -498,7 +527,11 @@ body {
         }
       }
       .navbar-misc {
-        justify-content: center;
+        display: none;
+      }
+
+      .navbar-misc.mobile {
+        display: block;
       }
     }
     @media screen and (max-width: 659px) {

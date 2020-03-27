@@ -1,7 +1,8 @@
 ---
-title: Diagnostics Reporting
-linkTitle: Diagnostics Reporting
-description: Diagnostics Reporting
+title: Diagnostics reporting
+headerTitle: Diagnostics reporting
+linkTitle: Diagnostics reporting
+description: Diagnostics reporting
 aliases:
   - /manage/diagnostics-reporting/
 menu:
@@ -13,11 +14,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries report cluster diagnostics to YugaByte's diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in YugaByte DB as well as any personally identifiable information regarding the user is never collected or reported.
+The [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to Yugabyte's diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in YugabyteDB as well as any personally identifiable information regarding the user is never collected or reported.
 
 ## Data collected
 
-The data collected depends on the collection level set. See the [section](#configuration-flags) below on how to change the collection level.
+The data collected depends on the collection level set. See [Configuration options](#configuration-options) below on how to change the collection level.
 
 ### Collection level: low
 
@@ -42,7 +43,6 @@ Everything we collect for level “low” plus:
 Performance metrics
 RPC metrics
 ```
-
 
 ### Collection level: high
 Same as `medium` level. In other words, no extra information is collected for this level. It will be used in the future to collect additional dianostics information such as error logs.
@@ -107,9 +107,9 @@ Same as `medium` level. In other words, no extra information is collected for th
 }
 ```
 
-## Configuration flags
+## Configuration options
 
-You can add the following flags while starting the [yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries to configure the diagnostics reporting behavior of YugaByte DB.
+You can add the following configuration options, or flags, while starting the [YB-Mster](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes to configure the diagnostics reporting behavior of YugabyteDB.
 
 Flag | Default | Description
 ----------------------|---------|------------------------

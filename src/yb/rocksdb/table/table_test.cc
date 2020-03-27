@@ -315,7 +315,7 @@ class TableConstructor: public Constructor {
       EXPECT_TRUE(builder->status().ok());
     }
     Status s = builder->Finish();
-    file_writer_->Flush();
+    RETURN_NOT_OK(file_writer_->Flush());
     EXPECT_TRUE(s.ok()) << s.ToString();
 
     EXPECT_EQ(GetSink()->contents().size(), builder->TotalFileSize());
@@ -1669,7 +1669,7 @@ TEST_F(BlockBasedTableTest, BlockCacheDisabledTest) {
                            GetContext::kNotFound, Slice(), nullptr, nullptr,
                            nullptr, nullptr);
     // a hack that just to trigger BlockBasedTable::GetFilter.
-    reader->Get(ReadOptions(), "non-exist-key", &get_context);
+    ASSERT_OK(reader->Get(ReadOptions(), "non-exist-key", &get_context));
     BlockCachePropertiesSnapshot props(options.statistics.get());
     props.AssertIndexBlockStat(0, 0);
     props.AssertFilterBlockStat(0, 0);
@@ -1774,7 +1774,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   options.statistics = CreateDBStatistics();
   options.table_factory.reset(new BlockBasedTableFactory(table_options));
   const ImmutableCFOptions ioptions2(options);
-  c.Reopen(ioptions2);
+  ASSERT_OK(c.Reopen(ioptions2));
   {
     BlockCachePropertiesSnapshot props(options.statistics.get());
     props.AssertEqual(0,  // index block miss
@@ -2051,7 +2051,7 @@ TEST_F(PlainTableTest, BasicPlainTableProperties) {
     builder->Add(key, value);
   }
   ASSERT_OK(builder->Finish());
-  file_writer->Flush();
+  ASSERT_OK(file_writer->Flush());
 
   test::StringSink* ss =
     static_cast<test::StringSink*>(file_writer->writable_file());
@@ -2311,7 +2311,7 @@ TEST_F(HarnessTest, FooterTests) {
     footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
-    decoded_footer.DecodeFrom(&encoded_slice);
+    ASSERT_OK(decoded_footer.DecodeFrom(&encoded_slice));
     ASSERT_EQ(decoded_footer.table_magic_number(), kBlockBasedTableMagicNumber);
     ASSERT_EQ(decoded_footer.checksum(), kCRC32c);
     ASSERT_EQ(decoded_footer.metaindex_handle().offset(), meta_index.offset());
@@ -2331,7 +2331,7 @@ TEST_F(HarnessTest, FooterTests) {
     footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
-    decoded_footer.DecodeFrom(&encoded_slice);
+    ASSERT_OK(decoded_footer.DecodeFrom(&encoded_slice));
     ASSERT_EQ(decoded_footer.table_magic_number(), kBlockBasedTableMagicNumber);
     ASSERT_EQ(decoded_footer.checksum(), kxxHash);
     ASSERT_EQ(decoded_footer.metaindex_handle().offset(), meta_index.offset());
@@ -2352,7 +2352,7 @@ TEST_F(HarnessTest, FooterTests) {
     footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
-    decoded_footer.DecodeFrom(&encoded_slice);
+    ASSERT_OK(decoded_footer.DecodeFrom(&encoded_slice));
     ASSERT_EQ(decoded_footer.table_magic_number(), kPlainTableMagicNumber);
     ASSERT_EQ(decoded_footer.checksum(), kCRC32c);
     ASSERT_EQ(decoded_footer.metaindex_handle().offset(), meta_index.offset());
@@ -2372,7 +2372,7 @@ TEST_F(HarnessTest, FooterTests) {
     footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
-    decoded_footer.DecodeFrom(&encoded_slice);
+    ASSERT_OK(decoded_footer.DecodeFrom(&encoded_slice));
     ASSERT_EQ(decoded_footer.table_magic_number(), kPlainTableMagicNumber);
     ASSERT_EQ(decoded_footer.checksum(), kxxHash);
     ASSERT_EQ(decoded_footer.metaindex_handle().offset(), meta_index.offset());
@@ -2392,7 +2392,7 @@ TEST_F(HarnessTest, FooterTests) {
     footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
-    decoded_footer.DecodeFrom(&encoded_slice);
+    ASSERT_OK(decoded_footer.DecodeFrom(&encoded_slice));
     ASSERT_EQ(decoded_footer.table_magic_number(), kBlockBasedTableMagicNumber);
     ASSERT_EQ(decoded_footer.checksum(), kCRC32c);
     ASSERT_EQ(decoded_footer.metaindex_handle().offset(), meta_index.offset());
@@ -2534,7 +2534,7 @@ TEST_F(PrefixTest, PrefixAndWholeKeyTest) {
 
     const std::string kDBPath = test::TmpDir() + "/prefix_test";
     options.table_factory.reset(NewBlockBasedTableFactory(bbto));
-    DestroyDB(kDBPath, options);
+    ASSERT_OK(DestroyDB(kDBPath, options));
     rocksdb::DB* db;
     ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
 
@@ -2543,12 +2543,12 @@ TEST_F(PrefixTest, PrefixAndWholeKeyTest) {
       std::string prefix = "[" + std::to_string(i) + "]";
       for (int j = 0; j < 10; j++) {
         std::string key = prefix + std::to_string(j);
-        db->Put(rocksdb::WriteOptions(), key, "1");
+        ASSERT_OK(db->Put(rocksdb::WriteOptions(), key, "1"));
       }
     }
 
     // Trigger compaction.
-    db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+    ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     delete db;
     // In the second round, turn whole_key_filtering off and expect
     // rocksdb still works.

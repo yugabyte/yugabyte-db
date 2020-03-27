@@ -1,0 +1,6 @@
+# src/test/regress/yb_non_txn_copy_schedule
+#
+####################################################################################################
+# This test schedule runs on a cluster with the non-transactional COPY gflag enabled.
+####################################################################################################
+test: yb_non_txn_copy

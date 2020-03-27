@@ -1,8 +1,8 @@
 ---
-title: Binary Datatypes
-linktitle: Binary
-summary: Binary Datatypes
-description: Binary Datatypes
+title: Binary data types
+linkTitle: Binary
+summary: Binary data types
+description: Binary data types
 menu:
   latest:
     identifier: api-ysql-datatypes-binary
@@ -14,13 +14,15 @@ showAsideToc: true
 ---
 
 ## Synopsis
-BYTEA datatype represents binary string of bytes (octets). Binary string allows 0's and non-printable bytes.
 
-DataType | Description |
----------|-------------|
+Use the `BYTEA` data type to represent binary string of bytes (octets). Binary strings allow zeros (`0`) and non-printable bytes.
+
+Data type | Description |
+----------|-------------|
 BYTEA | Variable length binary string |
 
 ## Description
+
 - `BYTEA` is used to declare a binary entity.
 
 ```
@@ -32,4 +34,3 @@ type_specification ::= BYTEA
 ```
 SELECT E'\\001'::bytea
 ```
-

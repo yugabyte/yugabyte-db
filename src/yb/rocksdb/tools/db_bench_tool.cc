@@ -904,23 +904,21 @@ class ReportFileOpEnv : public EnvWrapper {
   Status NewRandomAccessFile(const std::string& f,
                              unique_ptr<RandomAccessFile>* r,
                              const EnvOptions& soptions) override {
-    class CountingFile : public RandomAccessFile {
-     private:
-      unique_ptr<RandomAccessFile> target_;
-      ReportFileOpCounters* counters_;
-
+    class CountingFile : public yb::RandomAccessFileWrapper {
      public:
-      CountingFile(unique_ptr<RandomAccessFile>&& target,
+      CountingFile(std::unique_ptr<RandomAccessFile>&& target,
                    ReportFileOpCounters* counters)
-          : target_(std::move(target)), counters_(counters) {}
-      virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                          char* scratch) const override {
+          : RandomAccessFileWrapper(std::move(target)), counters_(counters) {}
+
+      Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
         counters_->read_counter_.fetch_add(1, std::memory_order_relaxed);
-        Status rv = target_->Read(offset, n, result, scratch);
-        counters_->bytes_read_.fetch_add(result->size(),
-                                         std::memory_order_relaxed);
+        Status rv = RandomAccessFileWrapper::Read(offset, n, result, scratch);
+        counters_->bytes_read_.fetch_add(result->size(), std::memory_order_relaxed);
         return rv;
       }
+
+     private:
+      ReportFileOpCounters* counters_;
     };
 
     Status s = target()->NewRandomAccessFile(f, r, soptions);
@@ -1292,14 +1290,14 @@ class Stats {
 
   void PrintThreadStatus() {
     std::vector<ThreadStatus> thread_list;
-    FLAGS_env->GetThreadList(&thread_list);
+    CHECK_OK(FLAGS_env->GetThreadList(&thread_list));
 
     fprintf(stderr, "\n%18s %10s %12s %20s %13s %45s %12s %s\n",
         "ThreadID", "ThreadType", "cfName", "Operation",
         "ElapsedTime", "Stage", "State", "OperationProperties");
 
     int64_t current_time = 0;
-    Env::Default()->GetCurrentTime(&current_time);
+    CHECK_OK(Env::Default()->GetCurrentTime(&current_time));
     for (auto ts : thread_list) {
       fprintf(stderr, "%18" PRIu64 " %10s %12s %20s %13s %45s %12s",
           ts.thread_id,
@@ -1815,10 +1813,10 @@ class Benchmark {
     }
 
     std::vector<std::string> files;
-    FLAGS_env->GetChildren(FLAGS_db, &files);
+    FLAGS_env->GetChildrenWarnNotOk(FLAGS_db, &files);
     for (size_t i = 0; i < files.size(); i++) {
       if (Slice(files[i]).starts_with("heap-")) {
-        FLAGS_env->DeleteFile(FLAGS_db + "/" + files[i]);
+        CHECK_OK(FLAGS_env->DeleteFile(FLAGS_db + "/" + files[i]));
       }
     }
     if (!FLAGS_use_existing_db) {
@@ -1826,7 +1824,7 @@ class Benchmark {
       if (!FLAGS_wal_dir.empty()) {
         options.wal_dir = FLAGS_wal_dir;
       }
-      DestroyDB(FLAGS_db, options);
+      CHECK_OK(DestroyDB(FLAGS_db, options));
     }
   }
 
@@ -2070,11 +2068,11 @@ class Benchmark {
         } else {
           if (db_.db != nullptr) {
             db_.DeleteDBs();
-            DestroyDB(FLAGS_db, open_options_);
+            CHECK_OK(DestroyDB(FLAGS_db, open_options_));
           }
           for (size_t i = 0; i < multi_dbs_.size(); i++) {
             delete multi_dbs_[i].db;
-            DestroyDB(GetDbNameForMultiple(FLAGS_db, i), open_options_);
+            CHECK_OK(DestroyDB(GetDbNameForMultiple(FLAGS_db, i), open_options_));
           }
           multi_dbs_.clear();
         }
@@ -4057,7 +4055,7 @@ class Benchmark {
 
   void Compact(ThreadState* thread) {
     DB* db = SelectDB(thread);
-    db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+    CHECK_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
   }
 
   void PrintStats(const char* key) {
@@ -4135,7 +4133,7 @@ int db_bench_tool(int argc, char** argv) {
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db.empty()) {
     std::string default_db_path;
-    rocksdb::Env::Default()->GetTestDirectory(&default_db_path);
+    CHECK_OK(rocksdb::Env::Default()->GetTestDirectory(&default_db_path));
     default_db_path += "/dbbench";
     FLAGS_db = default_db_path;
   }

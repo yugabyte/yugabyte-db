@@ -33,7 +33,9 @@
 #include <iostream>
 #include <string>
 
-#include "yb/common/ql_value.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/common/ql_type.h"
+
 #include "yb/gutil/endian.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
@@ -60,7 +62,7 @@ static constexpr size_t kHexBase = 16;
 template<typename SetResult, typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType target_datatype,
                                 RTypePtr target) {
-  DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  DataType source_datatype = InternalToDataType(source->type());
   if (!QLType::IsExplicitlyConvertible(target_datatype, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
                              QLType::ToCQLString(source_datatype),
@@ -68,25 +70,25 @@ CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType 
   }
 
   switch(source->type()) {
-    case QLValue::InternalType::kInt8Value:
+    case InternalType::kInt8Value:
       RETURN_NOT_OK(set_result(source->int8_value(), target));
       break;
-    case QLValue::InternalType::kInt16Value:
+    case InternalType::kInt16Value:
       RETURN_NOT_OK(set_result(source->int16_value(), target));
       break;
-    case QLValue::InternalType::kInt32Value:
+    case InternalType::kInt32Value:
       RETURN_NOT_OK(set_result(source->int32_value(), target));
       break;
-    case QLValue::InternalType::kInt64Value:
+    case InternalType::kInt64Value:
       RETURN_NOT_OK(set_result(source->int64_value(), target));
       break;
-    case QLValue::InternalType::kFloatValue:
+    case InternalType::kFloatValue:
       RETURN_NOT_OK(set_result(source->float_value(), target));
       break;
-    case QLValue::InternalType::kDoubleValue:
+    case InternalType::kDoubleValue:
       RETURN_NOT_OK(set_result(source->double_value(), target));
       break;
-    case QLValue::InternalType::kDecimalValue: {
+    case InternalType::kDecimalValue: {
         util::Decimal d;
         RETURN_NOT_OK(d.DecodeFromComparable(source->decimal_value()));
 
@@ -113,7 +115,7 @@ CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType 
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
-  DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  DataType source_datatype = InternalToDataType(source->type());
   if (!QLType::IsExplicitlyConvertible(DataType::STRING, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
                              QLType::ToCQLString(source_datatype),
@@ -121,55 +123,55 @@ CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
   }
 
   switch(source->type()) {
-    case QLValue::InternalType::kInt8Value:
+    case InternalType::kInt8Value:
       target->set_string_value(std::to_string(source->int8_value()));
       break;
-    case QLValue::InternalType::kInt16Value:
+    case InternalType::kInt16Value:
       target->set_string_value(std::to_string(source->int16_value()));
       break;
-    case QLValue::InternalType::kInt32Value:
+    case InternalType::kInt32Value:
       target->set_string_value(std::to_string(source->int32_value()));
       break;
-    case QLValue::InternalType::kInt64Value:
+    case InternalType::kInt64Value:
       target->set_string_value(std::to_string(source->int64_value()));
       break;
-    case QLValue::InternalType::kFloatValue:
+    case InternalType::kFloatValue:
       target->set_string_value(std::to_string(source->float_value()));
       break;
-    case QLValue::InternalType::kDoubleValue:
+    case InternalType::kDoubleValue:
       target->set_string_value(std::to_string(source->double_value()));
       break;
-    case QLValue::InternalType::kStringValue:
+    case InternalType::kStringValue:
       target->set_string_value(source->string_value());
       break;
-    case QLValue::InternalType::kBoolValue:
+    case InternalType::kBoolValue:
       target->set_string_value(source->bool_value() ? "true" : "false");
       break;
-    case QLValue::InternalType::kTimestampValue:
+    case InternalType::kTimestampValue:
       target->set_string_value(DateTime::TimestampToString(source->timestamp_value()));
       break;
-    case QLValue::InternalType::kDateValue:
+    case InternalType::kDateValue:
       target->set_string_value(VERIFY_RESULT(DateTime::DateToString(source->date_value())));
       break;
-    case QLValue::InternalType::kTimeValue:
+    case InternalType::kTimeValue:
       target->set_string_value(VERIFY_RESULT(DateTime::TimeToString(source->time_value())));
       break;
-    case QLValue::InternalType::kUuidValue:
+    case InternalType::kUuidValue:
       target->set_string_value(source->uuid_value().ToString());
       break;
-    case QLValue::InternalType::kTimeuuidValue:
+    case InternalType::kTimeuuidValue:
       target->set_string_value(source->timeuuid_value().ToString());
       break;
-    case QLValue::InternalType::kBinaryValue:
+    case InternalType::kBinaryValue:
       target->set_string_value("0x" + b2a_hex(source->binary_value()));
       break;
-    case QLValue::InternalType::kInetaddressValue: {
+    case InternalType::kInetaddressValue: {
         string strval;
         RETURN_NOT_OK(source->inetaddress_value().ToString(&strval));
         target->set_string_value(strval);
       }
       break;
-    case QLValue::InternalType::kDecimalValue: {
+    case InternalType::kDecimalValue: {
         util::Decimal d;
         RETURN_NOT_OK(d.DecodeFromComparable(source->decimal_value()));
         target->set_string_value(d.ToString());
@@ -185,7 +187,7 @@ CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
-  DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  DataType source_datatype = InternalToDataType(source->type());
   if (!QLType::IsExplicitlyConvertible(DataType::TIMESTAMP, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
                              QLType::ToCQLString(source_datatype),
@@ -193,7 +195,7 @@ CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
   }
 
   switch(source->type()) {
-    case QLValue::InternalType::kTimeuuidValue: {
+    case InternalType::kTimeuuidValue: {
       Uuid time_uuid = source->timeuuid_value();
       int64_t unix_timestamp;
       RETURN_NOT_OK(time_uuid.ToUnixTimestamp(&unix_timestamp));
@@ -203,7 +205,7 @@ CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
                                              DateTime::kInternalPrecision)));
       break;
     }
-    case QLValue::InternalType::kDateValue:
+    case InternalType::kDateValue:
       target->set_timestamp_value(DateTime::DateToTimestamp(source->date_value()));
       break;
     default:
@@ -216,7 +218,7 @@ CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS SetDateResult(PTypePtr source, RTypePtr target) {
-  DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  DataType source_datatype = InternalToDataType(source->type());
   if (!QLType::IsExplicitlyConvertible(DataType::DATE, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
                              QLType::ToCQLString(source_datatype),
@@ -224,10 +226,10 @@ CHECKED_STATUS SetDateResult(PTypePtr source, RTypePtr target) {
   }
 
   switch(source->type()) {
-    case QLValue::InternalType::kTimestampValue:
+    case InternalType::kTimestampValue:
       target->set_date_value(VERIFY_RESULT(DateTime::DateFromTimestamp(source->timestamp_value())));
       break;
-    case QLValue::InternalType::kTimeuuidValue: {
+    case InternalType::kTimeuuidValue: {
       Uuid time_uuid = source->timeuuid_value();
       int64_t unix_timestamp;
       RETURN_NOT_OK(time_uuid.ToUnixTimestamp(&unix_timestamp));
@@ -247,8 +249,7 @@ CHECKED_STATUS StringToNumeric(const string& str_val, RTypePtr target, StrToNum 
                                SetTarget setTarget) {
   auto result = strToNum(str_val);
   RETURN_NOT_OK(result);
-  setTarget(*result, target);
-  return Status::OK();
+  return setTarget(*result, target);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1214,7 +1215,7 @@ CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest float value to the input number.
-    target->set_float_value(static_cast<float>(VERIFY_RESULT(util::CheckedStold(
+    target->set_float_value(static_cast<float>(VERIFY_RESULT(CheckedStold(
         source->varint_value().ToString()))));
   }
   return Status::OK();
@@ -1226,7 +1227,7 @@ CHECKED_STATUS ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest double value to the input number.
-    target->set_double_value(VERIFY_RESULT(util::CheckedStold(
+    target->set_double_value(VERIFY_RESULT(CheckedStold(
         source->varint_value().ToString())));
   }
   return Status::OK();
@@ -1309,7 +1310,7 @@ CHECKED_STATUS ConvertToNumeric(PTypePtr source, RTypePtr target, const DataType
     target->SetNull();
     return Status::OK();
   }
-  if (source->type() == QLValue::InternalType::kStringValue) {
+  if (source->type() == InternalType::kStringValue) {
     return StringToNumeric<RTypePtr>(source->string_value(), target, strToNum, toNumeric);
   } else {
     return SetNumericResult(toNumeric, source, data_type, target);
@@ -1318,31 +1319,31 @@ CHECKED_STATUS ConvertToNumeric(PTypePtr source, RTypePtr target, const DataType
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToI32(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::INT32, util::CheckedStoi,
+  return ConvertToNumeric(source, target, DataType::INT32, CheckedStoi,
                           ToInt32<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToI16(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::INT16, util::CheckedStoi,
+  return ConvertToNumeric(source, target, DataType::INT16, CheckedStoi,
                           ToInt16<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToI64(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::INT64, util::CheckedStoll,
+  return ConvertToNumeric(source, target, DataType::INT64, CheckedStoll,
                           ToInt64<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToDouble(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::DOUBLE, util::CheckedStold,
+  return ConvertToNumeric(source, target, DataType::DOUBLE, CheckedStold,
                           ToDouble<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToFloat(PTypePtr source, RTypePtr target) {
-  return ConvertToNumeric(source, target, DataType::FLOAT, util::CheckedStold,
+  return ConvertToNumeric(source, target, DataType::FLOAT, CheckedStold,
                           ToFloat<RTypePtr>);
 }
 
@@ -1355,7 +1356,7 @@ CHECKED_STATUS ConvertToDecimal(PTypePtr source, RTypePtr target) {
     return Status::OK();
   }
 
-  const DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  const DataType source_datatype = InternalToDataType(source->type());
   if (!QLType::IsExplicitlyConvertible(DataType::DECIMAL, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
                              QLType::ToCQLString(source_datatype),
@@ -1367,38 +1368,38 @@ CHECKED_STATUS ConvertToDecimal(PTypePtr source, RTypePtr target) {
   ConvertDecimalVia convert = ConvertDecimalVia::kUnknown;
 
   switch(source->type()) {
-    case QLValue::InternalType::kStringValue:
+    case InternalType::kStringValue:
       convert = ConvertDecimalVia::kString;
       break;
-    case QLValue::InternalType::kVarintValue:
+    case InternalType::kVarintValue:
       convert = ConvertDecimalVia::kVarint;
       break;
-    case QLValue::InternalType::kDecimalValue:
+    case InternalType::kDecimalValue:
       convert = ConvertDecimalVia::kDecimal;
       break;
 
-    case QLValue::InternalType::kInt8Value:
+    case InternalType::kInt8Value:
       int_num = source->int8_value();
       convert = ConvertDecimalVia::kInt64;
       break;
-    case QLValue::InternalType::kInt16Value:
+    case InternalType::kInt16Value:
       int_num = source->int16_value();
       convert = ConvertDecimalVia::kInt64;
       break;
-    case QLValue::InternalType::kInt32Value:
+    case InternalType::kInt32Value:
       int_num = source->int32_value();
       convert = ConvertDecimalVia::kInt64;
       break;
-    case QLValue::InternalType::kInt64Value:
+    case InternalType::kInt64Value:
       int_num = source->int64_value();
       convert = ConvertDecimalVia::kInt64;
       break;
 
-    case QLValue::InternalType::kFloatValue:
+    case InternalType::kFloatValue:
       double_num = source->float_value();
       convert = ConvertDecimalVia::kDouble;
       break;
-    case QLValue::InternalType::kDoubleValue:
+    case InternalType::kDoubleValue:
       double_num = source->double_value();
       convert = ConvertDecimalVia::kDouble;
       break;
@@ -1410,19 +1411,19 @@ CHECKED_STATUS ConvertToDecimal(PTypePtr source, RTypePtr target) {
   util::Decimal d;
   switch(convert) {
     case ConvertDecimalVia::kString:
-      DSCHECK_EQ(source->type(), QLValue::InternalType::kStringValue,
+      DSCHECK_EQ(source->type(), InternalType::kStringValue,
           InvalidArgument, strings::Substitute("Invalid source type: ",
                                                QLType::ToCQLString(source_datatype)));
       RETURN_NOT_OK(d.FromString(source->string_value()));
       break;
     case ConvertDecimalVia::kVarint:
-      DSCHECK_EQ(source->type(), QLValue::InternalType::kVarintValue,
+      DSCHECK_EQ(source->type(), InternalType::kVarintValue,
           InvalidArgument, strings::Substitute("Invalid source type: ",
                                                QLType::ToCQLString(source_datatype)));
       RETURN_NOT_OK(d.FromVarInt(source->varint_value()));
       break;
     case ConvertDecimalVia::kDecimal:
-      DSCHECK_EQ(source->type(), QLValue::InternalType::kDecimalValue,
+      DSCHECK_EQ(source->type(), InternalType::kDecimalValue,
           InvalidArgument, strings::Substitute("Invalid source type: ",
                                                QLType::ToCQLString(source_datatype)));
       RETURN_NOT_OK(d.DecodeFromComparable(source->decimal_value()));

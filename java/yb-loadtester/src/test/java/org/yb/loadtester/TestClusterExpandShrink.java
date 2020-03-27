@@ -36,4 +36,26 @@ public class TestClusterExpandShrink extends TestClusterBase {
 
     verifyClusterHealth();
   }
+
+  @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 20 minutes.
+  public void testClusterExpandAndShrinkWithKillMasterLeader() throws Exception {
+    // Wait for load tester to generate traffic.
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
+
+    // Now perform a tserver expand and shrink.
+    performTServerExpandShrink(/* fullMove */ false, /* killMasterLeader */ true);
+
+    verifyClusterHealth();
+  }
+
+  @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 20 minutes.
+  public void testClusterExpandWithLongRBS() throws Exception {
+    // Wait for load tester to generate traffic.
+    loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
+
+    // Now perform a tserver expand and check load balancer remains non-idle for a while.
+    performTServerExpandWithLongRBS();
+
+    verifyClusterHealth(NUM_TABLET_SERVERS + 1);
+  }
 }

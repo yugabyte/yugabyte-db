@@ -159,8 +159,8 @@ TEST_F(ThreadTest, TestThreadRestrictions_Waiting) {
   // Disallow waiting - blocking on a latch should crash the process.
   ASSERT_DEATH({
       ThreadRestrictions::SetWaitAllowed(false);
-      CountDownLatch l(0);
-      l.Wait();
+      CountDownLatch l(1);
+      l.WaitFor(std::chrono::seconds(1s));
     },
     "Waiting is not allowed to be used on this thread");
 }

@@ -50,6 +50,7 @@
 #include <string>
 
 #include <glog/logging.h>
+#include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/atomicops.h"
@@ -75,9 +76,7 @@
   static yb::logging_internal::LogThrottler LOG_THROTTLER;  \
   int num_suppressed = 0; \
   if (LOG_THROTTLER.ShouldLog(n_secs, &num_suppressed)) \
-    google::LogMessage( \
-      __FILE__, __LINE__, google::GLOG_ ## severity, num_suppressed, \
-      &google::LogMessage::SendToLog).stream()
+    BOOST_PP_CAT(GOOGLE_LOG_, severity)(num_suppressed).stream()
 
 #define YB_LOG_WITH_PREFIX_EVERY_N_SECS(severity, n_secs) \
     YB_LOG_EVERY_N_SECS(severity, n_secs) << LogPrefix()
@@ -147,9 +146,8 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 
 // The direct user-facing macros.
 #define YB_LOG_EVERY_N(severity, n) \
-  GOOGLE_GLOG_COMPILE_ASSERT(google::GLOG_ ## severity < \
-                             google::NUM_SEVERITIES, \
-                             INVALID_REQUESTED_LOG_SEVERITY); \
+  static_assert(google::GLOG_ ## severity < google::NUM_SEVERITIES, \
+                "Invalid requested log severity"); \
   YB_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToLog)
 
 #define YB_LOG_WITH_PREFIX_EVERY_N(severity, n) YB_LOG_EVERY_N(severity, n) << LogPrefix()

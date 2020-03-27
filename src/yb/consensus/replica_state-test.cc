@@ -72,7 +72,8 @@ class RaftConsensusStateTest : public YBTest {
                                         config_, kMinimumTerm, &cmeta));
     state_.reset(new ReplicaState(ConsensusOptions(), fs_manager_.uuid(), std::move(cmeta),
                                   operation_factory_.get(), nullptr /* safe_op_id_waiter */,
-                                  nullptr /* retryable_requests */));
+                                  nullptr /* retryable_requests */,
+                                  [](const OpIds&) {} /* applied_ops_tracker */));
 
     // Start up the ReplicaState.
     ReplicaState::UniqueLock lock;

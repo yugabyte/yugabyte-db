@@ -17,14 +17,23 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/ql_storage_interface.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/trace.h"
 
 DECLARE_bool(trace_docdb_calls);
+DECLARE_int64(retryable_rpc_single_call_timeout_ms);
+
+DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
+              "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
+
+DEFINE_test_flag(int32, TEST_slowdown_pgsql_aggregate_read_ms, 0,
+                 "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 namespace yb {
 namespace docdb {
@@ -58,12 +67,10 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
 
   // Init DocDB key using either ybctid or partition and range values.
   if (request_.has_ybctid_column_value()) {
-    CHECK(request_.ybctid_column_value().has_value() &&
-          request_.ybctid_column_value().value().has_binary_value())
-        << "ERROR: Unexpected value for ybctid column";
-
+    const string& ybctid = request_.ybctid_column_value().value().binary_value();
+    SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
     doc_key_.emplace(schema_);
-    RETURN_NOT_OK(doc_key_->DecodeFrom(request_.ybctid_column_value().value().binary_value()));
+    RETURN_NOT_OK(doc_key_->DecodeFrom(ybctid));
   } else {
     vector<PrimitiveValue> hashed_components;
     vector<PrimitiveValue> range_components;
@@ -91,48 +98,52 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
   switch (request_.stmt_type()) {
     case PgsqlWriteRequestPB::PGSQL_INSERT:
-      return ApplyInsert(data);
+      return ApplyInsert(data, IsUpsert::kFalse);
 
     case PgsqlWriteRequestPB::PGSQL_UPDATE:
       return ApplyUpdate(data);
 
     case PgsqlWriteRequestPB::PGSQL_DELETE:
       return ApplyDelete(data);
+
+    case PgsqlWriteRequestPB::PGSQL_UPSERT:
+      return ApplyInsert(data, IsUpsert::kTrue);
+
+    case PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED:
+      return ApplyTruncateColocated(data);
   }
   return Status::OK();
 }
 
-Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
+Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
   QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
-  RETURN_NOT_OK(ReadColumns(data, table_row));
-  if (!table_row->IsEmpty()) {
-    // Primary key or unique index value found.
-    response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
-    response_->set_error_message("Duplicate key found in primary key or unique index");
-    return Status::OK();
+  if (!is_upsert) {
+    RETURN_NOT_OK(ReadColumns(data, table_row));
+    if (!table_row->IsEmpty()) {
+      VLOG(4) << "Duplicate row: " << table_row->ToString();
+      // Primary key or unique index value found.
+      response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+      response_->set_error_message("Duplicate key found in primary key or unique index");
+      return Status::OK();
+    }
   }
 
-  const MonoDelta ttl = Value::kMaxTtl;
-  const UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp;
+  // Add the liveness column.
+  static const PrimitiveValue kLivenessColumnId =
+      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn);
 
-  // Add the appropriate liveness column.
-  if (encoded_doc_key_) {
-    const DocPath sub_path(encoded_doc_key_.as_slice(),
-                           PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
-    const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
-    RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-        sub_path, value, data.read_time, data.deadline, request_.stmt_id()));
-  }
+  RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+      DocPath(encoded_doc_key_.as_slice(), kLivenessColumnId),
+      Value(PrimitiveValue()),
+      data.read_time, data.deadline, request_.stmt_id()));
 
   for (const auto& column_value : request_.column_values()) {
     // Get the column.
     if (!column_value.has_column_id()) {
-      return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                           column_value.DebugString());
+      return STATUS(InternalError, "column id missing", column_value.DebugString());
     }
     const ColumnId column_id(column_value.column_id());
-    auto column = schema_.column_by_id(column_id);
-    RETURN_NOT_OK(column);
+    const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
 
     // Check column-write operator.
     CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
@@ -142,12 +153,12 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
     QLValue expr_result;
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
     const SubDocument sub_doc =
-        SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+        SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
 
     // Inserting into specified column.
     DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id(), ttl, user_timestamp));
+        sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
   }
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
@@ -159,6 +170,12 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
+  if (table_row->IsEmpty()) {
+    // Row not found.
+    response_->set_skipped(true);
+    return Status::OK();
+  }
+
   // skipped is set to false if this operation produces some data to write.
   bool skipped = true;
 
@@ -166,37 +183,32 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     for (const auto& column_value : request_.column_new_values()) {
       // Get the column.
       if (!column_value.has_column_id()) {
-        return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                             column_value.DebugString());
+        return STATUS(InternalError, "column id missing", column_value.DebugString());
       }
       const ColumnId column_id(column_value.column_id());
-      auto column = schema_.column_by_id(column_id);
-      RETURN_NOT_OK(column);
+      const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
 
       // Check column-write operator.
-      CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
-        << "Illegal write instruction";
+      SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert ||
+             GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall,
+             InternalError,
+             "Unsupported DocDB Expression");
 
       // Evaluate column value.
       QLValue expr_result;
-      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
-
-      // Compare with existing value.
-      QLValue old_value;
-      RETURN_NOT_OK(EvalColumnRef(column_value.column_id(), table_row, &old_value));
+      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result, &schema_));
 
       // Inserting into specified column.
-      if (expr_result != old_value) {
-        const SubDocument sub_doc =
-          SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
-        DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
-        RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-            sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
-        skipped = false;
-      }
+      const SubDocument sub_doc =
+          SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
+
+      DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
+      RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+          sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+      skipped = false;
     }
   } else {
-    // This UPDATE is calling PGGATE directly without going thru PosgreSQL layer.
+    // This UPDATE is calling PGGATE directly without going thru PostgreSQL layer.
     // Keep it here as we might need it.
 
     // Very limited support for where expressions. Only used for updates to the sequences data
@@ -212,12 +224,10 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       for (const auto &column_value : request_.column_new_values()) {
         // Get the column.
         if (!column_value.has_column_id()) {
-          return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                               column_value.DebugString());
+          return STATUS(InternalError, "column id missing", column_value.DebugString());
         }
         const ColumnId column_id(column_value.column_id());
-        auto column = schema_.column_by_id(column_id);
-        RETURN_NOT_OK(column);
+        const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
 
         // Check column-write operator.
         CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
@@ -228,7 +238,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
 
         const SubDocument sub_doc =
-            SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+            SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
 
         // Inserting into specified column.
         DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
@@ -245,6 +255,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   if (skipped) {
     response_->set_skipped(true);
   }
+  response_->set_rows_affected_count(1);
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -252,6 +263,11 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
+  if (table_row->IsEmpty()) {
+    // Row not found.
+    response_->set_skipped(true);
+    return Status::OK();
+  }
 
   // TODO(neil) Add support for WHERE clause.
   CHECK(request_.column_values_size() == 0) << "WHERE clause condition is not yet fully supported";
@@ -262,6 +278,14 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
 
+  response_->set_rows_affected_count(1);
+  response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  return Status::OK();
+}
+
+Status PgsqlWriteOperation::ApplyTruncateColocated(const DocOperationApplyData& data) {
+  RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(DocPath(
+      encoded_doc_key_.as_slice()), data.read_time, data.deadline));
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -297,10 +321,12 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-        // Strip cotable id from the serialized DocKey before returning it as ybctid.
+        // Strip cotable id / pgtable id from the serialized DocKey before returning it as ybctid.
         Slice tuple_id = encoded_doc_key_.as_slice();
         if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
           tuple_id.remove_prefix(1 + kUuidSize);
+        } else if (tuple_id.starts_with(ValueTypeAsChar::kPgTableOid)) {
+          tuple_id.remove_prefix(1 + sizeof(PgTableOid));
         }
         rsrow->rscol(rscol_index)->set_binary_value(tuple_id.data(), tuple_id.size());
       } else {
@@ -312,8 +338,9 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
   return Status::OK();
 }
 
-Status PgsqlWriteOperation::GetDocPaths(
-    GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
+Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
+                                        DocPathsToLock *paths,
+                                        IsolationLevel *level) const {
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
   // isolation so that they will serialize but do not conflict with one another.
@@ -325,11 +352,13 @@ Status PgsqlWriteOperation::GetDocPaths(
 
   if (mode == GetDocPathsMode::kIntents) {
     const google::protobuf::RepeatedPtrField<PgsqlColumnValuePB>* column_values = nullptr;
-    if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT) {
+    if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
+        request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
       column_values = &request_.column_values();
     } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
       column_values = &request_.column_new_values();
     }
+
     if (column_values != nullptr && !column_values->empty()) {
       KeyBytes buffer;
       for (const auto& column_value : *column_values) {
@@ -364,6 +393,17 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                    HybridTime *restart_read_ht) {
   VLOG(4) << "Read, read time: " << read_time << ", txn: " << txn_op_context_;
 
+  // Fetching data.
+  if (request_.batch_arguments_size() > 0) {
+    RETURN_NOT_OK(ExecuteBatch(ql_storage, deadline, read_time, schema, resultset,
+                               restart_read_ht));
+    if (FLAGS_trace_docdb_calls) {
+      TRACE("Fetched $0 rows.", resultset->rsrow_count());
+    }
+    *restart_read_ht = table_iter_->RestartReadHt();
+    return Status::OK();
+  }
+
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
     if (request_.limit() == 0) {
@@ -391,8 +431,8 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
     RETURN_NOT_OK(ql_storage.GetIterator(index_request, index_projection, *index_schema,
                                          txn_op_context_, deadline, read_time, &index_iter_));
     iter = index_iter_.get();
-    const size_t idx = index_schema->find_column("ybbasectid");
-    SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybbasectid not found in index schema");
+    const size_t idx = index_schema->find_column("ybidxbasectid");
+    SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
     ybbasectid_id = index_schema->column_id(idx);
   } else {
     iter = table_iter_.get();
@@ -402,10 +442,17 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
     TRACE("Initialized iterator");
   }
 
+  // Set scan start time.
+  bool scan_time_exceeded = false;
+  const int64 scan_time_limit =
+    FLAGS_retryable_rpc_single_call_timeout_ms * FLAGS_ysql_scan_timeout_multiplier;
+  const MonoTime start_time = MonoTime::Now();
+
   // Fetching data.
   int match_count = 0;
   QLTableRow::SharedPtr row = std::make_shared<QLTableRow>();
-  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext())) {
+  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
+         !scan_time_exceeded) {
 
     row->Clear();
 
@@ -441,10 +488,21 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
         RETURN_NOT_OK(PopulateResultSet(row, resultset));
       }
     }
+
+    // Check every row_count_limit matches whether we've exceeded our scan time.
+    if (match_count % row_count_limit == 0) {
+      const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
+      scan_time_exceeded = elapsed_time.ToMilliseconds() > scan_time_limit;
+    }
   }
 
   if (request_.is_aggregate() && match_count > 0) {
     RETURN_NOT_OK(PopulateAggregate(row, resultset));
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms > 0) && request_.is_aggregate()) {
+    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_pgsql_aggregate_read_ms);
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms));
   }
 
   if (FLAGS_trace_docdb_calls) {
@@ -452,13 +510,47 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   }
   *restart_read_ht = iter->RestartReadHt();
 
-  return SetPagingStateIfNecessary(iter, resultset, row_count_limit);
+  return SetPagingStateIfNecessary(iter, resultset, row_count_limit, scan_time_exceeded);
+}
+
+Status PgsqlReadOperation::ExecuteBatch(const common::YQLStorageIf& ql_storage,
+                                        CoarseTimePoint deadline,
+                                        const ReadHybridTime& read_time,
+                                        const Schema& schema,
+                                        PgsqlResultSet *resultset,
+                                        HybridTime *restart_read_ht) {
+  Schema projection;
+  RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+
+  QLTableRow::SharedPtr row = std::make_shared<QLTableRow>();
+  int row_count = 0;
+  for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
+    // Get the row.
+    RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
+                                         deadline, read_time, batch_argument.ybctid().value(),
+                                         &table_iter_));
+    row->Clear();
+
+    SCHECK(VERIFY_RESULT(table_iter_->HasNext()), Corruption,
+           "Given ybctid is not associated with any row in table");
+    RETURN_NOT_OK(table_iter_->NextRow(projection, row.get()));
+
+    // Populate result set.
+    RETURN_NOT_OK(PopulateResultSet(row, resultset));
+    row_count++;
+  }
+
+  // Set status for this batch.
+  response_.set_batch_arg_count(row_count);
+
+  return Status::OK();
 }
 
 Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
                                                      const PgsqlResultSet* resultset,
-                                                     const size_t row_count_limit) {
-  if (resultset->rsrow_count() >= row_count_limit && !request_.is_aggregate()) {
+                                                     const size_t row_count_limit,
+                                                     const bool scan_time_exceeded) {
+  if (resultset->rsrow_count() >= row_count_limit || scan_time_exceeded) {
     SubDocKey next_row_key;
     RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
     // When the "limit" number of rows are returned and we are asked to return the paging state,
@@ -530,17 +622,18 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB
     // Empty components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    pair->set_key(std::string(1, ValueTypeAsChar::kGroupEnd));
+    DocKey doc_key(schema);
+    pair->set_key(doc_key.Encode().data());
   } else {
     std::vector<PrimitiveValue> hashed_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
         request_.partition_column_values(), schema, 0 /* start_idx */, &hashed_components));
 
-    DocKey doc_key(request_.hash_code(), hashed_components);
+    DocKey doc_key(schema, request_.hash_code(), hashed_components);
     pair->set_key(doc_key.Encode().data());
   }
 
-  pair->set_value(std::string(1, ValueTypeAsChar::kNull));
+  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
   return Status::OK();
 }
 

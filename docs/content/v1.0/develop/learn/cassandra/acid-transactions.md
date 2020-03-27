@@ -76,7 +76,7 @@ ResultSet resultSet = client.execute(txn1);
 
 ## Sample Java Application
 
-You can find a working example of using transactions with YugaByte in our [sample applications](../../../quick-start/run-sample-apps/). This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
+You can find a working example of using transactions with Yugabyte in our [sample applications](../../../quick-start/run-sample-apps/). This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
 
 Here is how you can try out this sample application.
 
@@ -96,11 +96,11 @@ Usage:
 ```
 
 
-Browse the [Java source code for the batch application](https://github.com/YugaByte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraTransactionalKeyValue.java) to see how everything fits together.
+Browse the [Java source code for the batch application](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraTransactionalKeyValue.java) to see how everything fits together.
 
 ## Note on Linearizability
 
-By default, the original Cassandra Java driver and the YugaByte DB Cassandra Java driver use `com.datastax.driver.core.policies.DefaultRetryPolicy`
+By default, the original Cassandra Java driver and the YugabyteDB Cassandra Java driver use `com.datastax.driver.core.policies.DefaultRetryPolicy`
 which can retry requests upon timeout on client side.
 
 Automatic retries can break linearizability of operations from the client point of view.

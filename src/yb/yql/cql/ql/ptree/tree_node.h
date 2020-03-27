@@ -27,6 +27,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/status.h"
 #include "yb/util/memory/mc_types.h"
+#include "yb/common/ql_name.h"
 
 namespace yb {
 namespace ql {

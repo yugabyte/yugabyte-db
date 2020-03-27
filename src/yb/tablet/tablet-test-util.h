@@ -89,7 +89,7 @@ class YBTabletTest : public YBTest {
 
   void AlterSchema(const Schema& schema);
 
-  const std::shared_ptr<TabletClass>& tablet() const {
+  const TabletPtr& tablet() const {
     return harness_->tablet();
   }
 

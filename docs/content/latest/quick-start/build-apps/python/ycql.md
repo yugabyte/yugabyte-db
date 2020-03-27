@@ -1,7 +1,8 @@
 ---
-title: Build a Python App
-linkTitle: Build a Python App
-description: Build a Python App
+title: Use Python to build a YugabyteDB application
+headerTitle: Build a Python app
+linkTitle: Build a Python app
+description: Use Python and YCQL to build a YugabyteDB application.
 menu:
   latest:
     parent: build-apps
@@ -49,7 +50,7 @@ $ pip install yb-cassandra-driver
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../quick-start/test-cassandra/).
 
 
 ### Writing the python code

@@ -37,7 +37,7 @@ class SpatialDBTest : public testing::Test {
  public:
   SpatialDBTest() {
     dbname_ = test::TmpDir() + "/spatial_db_test";
-    DestroyDB(dbname_, Options());
+    CHECK_OK(DestroyDB(dbname_, Options()));
   }
 
   void AssertCursorResults(BoundingBox<double> bbox, const std::string& index,
@@ -184,7 +184,7 @@ TEST_F(SpatialDBTest, SimpleTest) {
   // iter 0 -- not read only
   // iter 1 -- read only
   for (int iter = 0; iter < 2; ++iter) {
-    DestroyDB(dbname_, Options());
+    ASSERT_OK(DestroyDB(dbname_, Options()));
     ASSERT_OK(SpatialDB::Create(
         SpatialDBOptions(), dbname_,
         {SpatialIndexOptions("index", BoundingBox<double>(0, 0, 128, 128),
@@ -279,9 +279,9 @@ TEST_F(SpatialDBTest, RandomizedTest) {
   }
 
   // parallel
-  db_->Compact(2);
+  ASSERT_OK(db_->Compact(2));
   // serial
-  db_->Compact(1);
+  ASSERT_OK(db_->Compact(1));
 
   for (int i = 0; i < 1000; ++i) {
     BoundingBox<int> int_bbox = RandomBoundingBox(128, &rnd, 10);

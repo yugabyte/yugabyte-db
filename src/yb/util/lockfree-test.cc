@@ -298,7 +298,8 @@ class QueuePerformanceHelper {
     std::vector<std::thread> threads;
     threads.reserve(workers_);
 
-    CountDownLatch latch(workers_);
+    CountDownLatch start_latch(workers_);
+    CountDownLatch finish_latch(workers_);
 
     enum class Role {
       kReader,
@@ -308,10 +309,10 @@ class QueuePerformanceHelper {
 
     for (int i = 0; i != workers_; ++i) {
       Role role = mixed_mode_ ? Role::kBoth : (i & 1 ? Role::kReader : Role::kWriter);
-      threads.emplace_back([queue, &latch, &pushes, &pops, role] {
+      threads.emplace_back([queue, &start_latch, &finish_latch, &pushes, &pops, role] {
         CDSAttacher attacher;
-        latch.CountDown();
-        latch.Wait();
+        start_latch.CountDown();
+        start_latch.Wait();
         bool push_done = false;
         bool pop_done = false;
         int commands_left = 0;
@@ -361,21 +362,37 @@ class QueuePerformanceHelper {
             }
           }
         }
+        finish_latch.CountDown();
       });
     }
 
-    latch.Wait();
+    start_latch.Wait();
     auto start = MonoTime::Now();
+
+    bool wait_result = finish_latch.WaitUntil(start + 10s);
+    auto stop = MonoTime::Now();
+    auto passed = stop - start;
+
+    if (!wait_result) {
+      pushes.fetch_add(kEntries, std::memory_order_acq_rel);
+      pops.fetch_add(kEntries, std::memory_order_acq_rel);
+      // Cleanup queue, since some of implementations could hang on queue overflow.
+      while (!finish_latch.WaitFor(10ms)) {
+        typename T::value_type entry;
+        while (queue->pop(entry)) {}
+      }
+    }
 
     for (auto& thread : threads) {
       thread.join();
     }
 
-    auto stop = MonoTime::Now();
-    auto passed = stop - start;
-
     if (!name.empty()) {
-      LOG(INFO) << name << ": " << passed;
+      if (wait_result) {
+        LOG(INFO) << name << ": " << passed;
+      } else {
+        LOG(INFO) << name << ": TIMED OUT";
+      }
     }
   }
 

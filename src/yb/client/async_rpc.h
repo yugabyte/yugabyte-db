@@ -51,6 +51,7 @@ struct AsyncRpcData {
   RemoteTablet* tablet = nullptr;
   bool allow_local_calls_in_curr_thread = false;
   bool need_consistent_read = false;
+  HybridTime write_time_for_backfill_ = HybridTime::kInvalid;
   InFlightOps ops;
 };
 
@@ -86,7 +87,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
  protected:
   void Finished(const Status& status) override;
 
-  void SendRpcToTserver() override;
+  void SendRpcToTserver(int attempt_num) override;
 
   virtual void CallRemoteMethod() = 0;
 
@@ -131,7 +132,7 @@ class AsyncRpcBase : public AsyncRpc {
  protected:
   // Returns `true` if caller should continue processing response, `false` otherwise.
   bool CommonResponseCheck(const Status& status);
-  void SendRpcToTserver() override;
+  void SendRpcToTserver(int attempt_num) override;
 
  protected: // TODO replace with private
   const tserver::TabletServerErrorPB* response_error() const override {
@@ -155,7 +156,6 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
   virtual ~WriteRpc();
 
  private:
-  void Finished(const Status& status) override;
   void SwapRequestsAndResponses(bool skip_responses);
   void CallRemoteMethod() override;
   void ProcessResponseFromTserver(const Status& status) override;
@@ -169,7 +169,6 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
   virtual ~ReadRpc();
 
  private:
-  void Finished(const Status& status) override;
   void SwapRequestsAndResponses(bool skip_responses);
   void CallRemoteMethod() override;
   void ProcessResponseFromTserver(const Status& status) override;

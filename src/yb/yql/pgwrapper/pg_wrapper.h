@@ -45,9 +45,16 @@ struct PgProcessConf {
   uint16_t pg_port = kDefaultPort;
   std::string listen_addresses = "0.0.0.0";
   std::string master_addresses;
+  std::string certs_dir;
+  std::string certs_for_client_dir;
+  std::string cert_base_name;
+  bool enable_tls = false;
 
   // File descriptor of the local tserver's shared memory.
   int tserver_shm_fd = -1;
+
+  // If this is true, we will not log to the file, even if the log file is specified.
+  bool force_disable_log_file = false;
 };
 
 // Invokes a PostgreSQL child process once. Also allows invoking initdb. Not thread-safe.
@@ -59,6 +66,8 @@ class PgWrapper {
   CHECKED_STATUS PreflightCheck();
 
   CHECKED_STATUS Start();
+
+  void Kill();
 
   // Calls initdb if the data directory does not exist. This is intended to use during tablet server
   // initialization.

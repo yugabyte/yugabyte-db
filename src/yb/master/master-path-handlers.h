@@ -77,10 +77,12 @@ class MasterPathHandlers {
  private:
   enum TableType {
     kUserTable,
-    kIndexTable,
+    kUserIndex,
     kSystemTable,
-    kNumTypes
+    kNumTypes,
   };
+
+  const string kSystemPlatformNamespace = "system_platform";
 
   struct TabletCounts {
     uint32_t user_tablet_leaders = 0;
@@ -112,7 +114,7 @@ class MasterPathHandlers {
   // Map of tserver UUID -> TabletCounts
   typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
 
-  const string table_type_[3] = {"User", "Index", "System"};
+  const string table_type_[kNumTypes] = {"User", "Index", "System"};
 
   const string kNoPlacementUUID = "NONE";
 
@@ -146,7 +148,7 @@ class MasterPathHandlers {
                            std::stringstream* output);
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             std::stringstream* output,
-                            bool skip_system_tables = false);
+                            bool only_user_tables = false);
   void HandleTablePage(const Webserver::WebRequest& req,
                        std::stringstream* output);
   void HandleTasksPage(const Webserver::WebRequest& req,
@@ -158,6 +160,7 @@ class MasterPathHandlers {
   void HandleGetTserverStatus(const Webserver::WebRequest& req,
                           std::stringstream* output);
   void HandleGetClusterConfig(const Webserver::WebRequest& req, std::stringstream* output);
+  void HandleHealthCheck(const Webserver::WebRequest& req, std::stringstream* output);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);

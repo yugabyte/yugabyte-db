@@ -172,7 +172,9 @@ function(PROTOBUF_GENERATE_CPP SRCS HDRS TGTS)
       VERBATIM )
 
     GET_PROTOBUF_GENERATION_TARGET_NAME("${PROTO_REL_TO_YB_SRC_ROOT}" TGT_NAME)
-    message("Adding protobuf target: ${TGT_NAME}")
+    if ($ENV{YB_VERBOSE})
+      message("Adding protobuf target: ${TGT_NAME}")
+    endif()
     add_custom_target(${TGT_NAME}
       DEPENDS "${PROTO_CC_OUT}" "${PROTO_H_OUT}" protoc-gen-insertions)
     add_dependencies(gen_proto ${TGT_NAME})

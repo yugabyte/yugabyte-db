@@ -161,7 +161,7 @@ ReadableLogSegment::ReadableLogSegment(
       readable_file_(std::move(readable_file)),
       is_initialized_(false),
       footer_was_rebuilt_(false) {
-  env_util::OpenFileForRandom(Env::Default(), path_, &readable_file_checkpoint_);
+  CHECK_OK(env_util::OpenFileForRandom(Env::Default(), path_, &readable_file_checkpoint_));
 }
 
 Status ReadableLogSegment::Init(const LogSegmentHeaderPB& header,
@@ -563,6 +563,94 @@ ReadEntriesResult ReadableLogSegment::ReadEntries() {
   return result;
 }
 
+Result<std::pair<OpId, RestartSafeCoarseTimePoint>> ReadableLogSegment::ReadFirstEntryMetadata() {
+  TRACE_EVENT1("log", "ReadableLogSegment::ReadFirstOpId",
+               "path", path_);
+
+  int64_t offset = first_entry_offset();
+  int64_t readable_to_offset = readable_to_offset_.Load();
+  VLOG(1) << "Reading first entry from "
+          << path_ << ": offset=" << offset << " file_size="
+          << file_size() << " readable_to_offset=" << readable_to_offset;
+
+  // If we have a footer we only read up to it. If we don't we likely crashed
+  // and always read to the end.
+  int64_t read_up_to = (footer_.IsInitialized() && !footer_was_rebuilt_) ?
+      file_size() - footer_.ByteSize() - kLogSegmentFooterMagicAndFooterLength :
+      readable_to_offset;
+
+  const int64_t this_batch_offset = offset;
+  std::vector<int64_t> recent_offsets(offset, -1);
+
+  LogEntryBatchPB current_batch;
+
+  // Read and validate the entry header first.
+  Status s;
+  faststring tmp_buf;
+  if (offset + kEntryHeaderSize < read_up_to) {
+    s = ReadEntryHeaderAndBatch(&offset, &tmp_buf, &current_batch);
+  } else {
+    s = STATUS(Corruption, Substitute("Truncated log entry at offset $0", offset));
+  }
+
+  if (PREDICT_FALSE(!s.ok())) {
+    if (!s.IsCorruption()) {
+      // IO errors should always propagate back
+      return s.CloneAndPrepend(Substitute("Error reading from log $0", path_));
+    }
+
+    LogEntries entries_empty;
+    Status cstatus = MakeCorruptionStatus(
+        0, this_batch_offset, &recent_offsets, entries_empty, s);
+
+    // If we have a valid footer in the segment, then the segment was correctly
+    // closed, and we shouldn't see any corruption anywhere (including the last
+    // batch).
+    if (HasFooter() && !footer_was_rebuilt_) {
+      LOG(WARNING) << "Found a corruption in a closed log segment: " << cstatus;
+      return cstatus;
+    }
+
+    // If we read a corrupt entry, but we don't have a footer, then it's
+    // possible that we crashed in the middle of writing an entry.
+    // In this case, we scan forward to see if there are any more valid looking
+    // entries after this one in the file. If there are, it's really a corruption.
+    // if not, we just WARN it, since it's OK for the last entry to be partially
+    // written.
+    bool has_valid_entries;
+    auto status = ScanForValidEntryHeaders(offset, &has_valid_entries);
+    if (!status.ok()) {
+      cstatus = s.CloneAndPrepend("Scanning forward for valid entries");
+    }
+
+    if (has_valid_entries) {
+      return cstatus;
+    }
+
+    LOG(INFO) << "Ignoring log segment corruption in " << path_ << " because "
+              << "there are no log entries following the corrupted one. "
+              << "The server probably crashed in the middle of writing an entry "
+              << "to the write-ahead log or downloaded an active log via remote bootstrap. "
+              << "Error detail: " << cstatus;
+  }
+
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Read Log entry batch: " << current_batch.DebugString();
+  }
+
+  if (!current_batch.has_committed_op_id()) {
+    return STATUS(NotFound, "Missing committed op ID in batch");
+  }
+  if (!current_batch.has_mono_time()) {
+    return STATUS(NotFound, "Missing mono time in batch");
+  }
+
+  yb::OpId op_id = yb::OpId::FromPB(current_batch.committed_op_id());
+  RestartSafeCoarseTimePoint time =
+          RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time());
+  return std::make_pair(op_id, time);
+}
+
 Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries) {
   TRACE_EVENT1("log", "ReadableLogSegment::ScanForValidEntryHeaders",
                "path", path_);
@@ -582,8 +670,9 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
     Slice chunk;
     // If encryption is enabled, need to use checkpoint file to read pre-allocated file since
     // we want to preserve all 0s.
-    RETURN_NOT_OK(ReadFully(readable_file_checkpoint().get(),
-                            offset + readable_file()->GetHeaderSize(), rem, &chunk, &buf[0]));
+    RETURN_NOT_OK(ReadFully(
+        readable_file_checkpoint().get(), offset + readable_file()->GetEncryptionHeaderSize(), rem,
+        &chunk, &buf[0]));
 
     // Optimization for the case where a chunk is all zeros -- this is common in the
     // case of pre-allocated files. This avoids a lot of redundant CRC calculation.

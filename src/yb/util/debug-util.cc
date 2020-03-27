@@ -607,7 +607,7 @@ Status ListThreads(std::vector<pid_t> *tids) {
 #if defined(__linux__)
   DIR *dir = opendir("/proc/self/task/");
   if (dir == NULL) {
-    return STATUS(IOError, "failed to open task dir", ErrnoToString(errno), errno);
+    return STATUS(IOError, "failed to open task dir", Errno(errno));
   }
   struct dirent *d;
   while ((d = readdir(dir)) != NULL) {

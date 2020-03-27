@@ -1,12 +1,13 @@
 ---
-title: SET CONSTRAINTS
+title: SET CONSTRAINTS statement [YSQL]
+headerTitle: SET CONSTRAINTS
 linkTitle: SET CONSTRAINTS
 summary: SET CONSTRAINTS
-description: SET CONSTRAINTS
+description: Use the `SET CONSTRAINTS` statement to set the timing of constraint checking within the current transaction.
 menu:
   latest:
     identifier: api-ysql-commands-set-constraints
-    parent: api-ysql-commands-set-constraints
+    parent: api-ysql-commands
 aliases:
   - /latest/api/ysql/commands/cmd_set_constraints
 isTocNested: true
@@ -15,22 +16,62 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET CONSTRAINTS` command checks timing for current transaction.
+Use the `SET CONSTRAINTS` statement to set the timing of constraint checking within the current transaction.
 
 ## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="448" height="92" viewbox="0 0 448 92"><path class="connector" d="M0 21h5m43 0h10m104 0h30m40 0h75m-130 0q5 0 5 5v48q0 5 5 5h25m-5 0q-5 0-5-5v-19q0-5 5-5h20m24 0h21q5 0 5 5v19q0 5-5 5m-5 0h25q5 0 5-5v-48q0-5 5-5m5 0h30m85 0h21m-121 0q5 0 5 5v19q0 5 5 5h5m86 0h5q5 0 5-5v-19q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="43" height="24" rx="7"/><text class="text" x="15" y="21">SET</text><rect class="literal" x="58" y="5" width="104" height="24" rx="7"/><text class="text" x="68" y="21">CONSTRAINTS</text><rect class="literal" x="192" y="5" width="40" height="24" rx="7"/><text class="text" x="202" y="21">ALL</text><rect class="literal" x="227" y="34" width="24" height="24" rx="7"/><text class="text" x="237" y="50">,</text><a xlink:href="../../grammar_diagrams#name"><rect class="rule" x="212" y="63" width="55" height="24"/><text class="text" x="222" y="79">name</text></a><rect class="literal" x="337" y="5" width="85" height="24" rx="7"/><text class="text" x="347" y="21">DEFERRED</text><rect class="literal" x="337" y="34" width="86" height="24" rx="7"/><text class="text" x="347" y="50">IMMEDIATE</text></svg>
-
-### Grammar
-```
-set_constraints ::= SET CONSTRAINTS { ALL | name [, ...] } { DEFERRED | IMMEDIATE }
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/set_constraints.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/set_constraints.diagram.md" /%}}
+  </div>
+</div>
 
 ## Semantics
 
-- Attributes in `SET CONSTRAINTS` does not apply to `NOT NULL` and `CHECK` constraints.
+Attributes in the `SET CONSTRAINTS` statement comply with the behavior defined in the SQL standard, except that it does not apply to `NOT NULL` and `CHECK` constraints.
 
-## See Also
-[Other YSQL Statements](..)
+### *set_constraints*
+
+```
+SET CONSTRAINTS { ALL | *name [ , ... ] } { DEFERRED | IMMEDIATE }
+```
+
+### ALL
+
+Change the mode of all deferrable constraints.
+
+### *name*
+
+Specify one or a list of constraint names.
+
+### DEFERRED
+
+Set constraints to not be checked until transaction commit.
+
+Uniqueness and exclusion constraints are checked immediately, unless marked `DEFERRABLE`.
+
+### IMMEDIATE
+
+Set constraints to take effect retroactively.
+
+See also
+
+- [`ALTER TABLE`](../ddl_alter_table)

@@ -36,11 +36,18 @@ namespace rpc {
 struct ProcessDataResult {
   size_t consumed;
   Slice buffer;
+  size_t bytes_to_skip = 0;
+
+  std::string ToString() const {
+    return Format(
+        "{ consumed: $0 buffer.size(): $1 bytes_to_skip: $2 }", consumed, buffer.size(),
+        bytes_to_skip);
+  }
 };
 
 class StreamReadBuffer {
  public:
-  // Returns true we could read from this buffer. It is NOT always !Empty().
+  // Returns whether we could read appended data from this buffer. It is NOT always !Empty().
   virtual bool ReadyToRead() = 0;
 
   // Returns true if this buffer is empty.
@@ -49,20 +56,20 @@ class StreamReadBuffer {
   // Resets buffer and release allocated memory.
   virtual void Reset() = 0;
 
-  // Returns true if this buffer is full and we cannot anymore read in to it.
+  // Returns true if this buffer is full and we cannot anymore append into it.
   virtual bool Full() = 0;
 
-  // Ensures there is some space to read into. Depending on currently used size.
-  // Returns iov's that could be used for receiving data into to this buffer.
+  // Ensures there is some space to append into. Depending on currently used size.
+  // Returns iov's that could be used for appending data into to this buffer.
   virtual Result<IoVecs> PrepareAppend() = 0;
 
-  // Extends amount of received data by len.
+  // Extends amount of appended data by len.
   virtual void DataAppended(size_t len) = 0;
 
   // Returns currently appended data.
   virtual IoVecs AppendedVecs() = 0;
 
-  // Consumes count bytes of received data. If prepend is not empty, then all future reads should
+  // Consumes count bytes of appended data. If prepend is not empty, then all future reads should
   // write data to prepend, until it is filled. I.e. unfilled part of prepend will be the first
   // entry of vector returned by PrepareAppend.
   virtual void Consume(size_t count, const Slice& prepend) = 0;
@@ -80,7 +87,10 @@ class StreamContext {
   virtual void UpdateLastWrite() = 0;
   virtual void Transferred(const OutboundDataPtr& data, const Status& status) = 0;
   virtual void Destroy(const Status& status) = 0;
+
+  // Called by underlying stream when stream has been connected (Stream::IsConnected() became true).
   virtual void Connected() = 0;
+
   virtual Result<ProcessDataResult> ProcessReceived(
       const IoVecs& data, ReadBufferFull read_buffer_full) = 0;
   virtual StreamReadBuffer& ReadBuffer() = 0;

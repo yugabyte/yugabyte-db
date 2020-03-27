@@ -14,14 +14,18 @@
 #ifndef YB_DOCDB_DOC_WRITE_BATCH_H
 #define YB_DOCDB_DOC_WRITE_BATCH_H
 
+#include "yb/util/enums.h"
+
+#include "yb/common/read_hybrid_time.h"
+
+#include "yb/rocksdb/cache.h"
+
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch_cache.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
-#include "yb/rocksdb/cache.h"
-#include "yb/util/enums.h"
-#include "yb/common/read_hybrid_time.h"
-#include "yb/docdb/intent_aware_iterator.h"
 
 namespace rocksdb {
 class DB;
@@ -237,7 +241,7 @@ class DocWriteBatch {
 
   DocDB doc_db_;
 
-  const InitMarkerBehavior init_marker_behavior_;
+  InitMarkerBehavior init_marker_behavior_;
   std::atomic<int64_t>* monotonic_counter_;
   std::vector<std::pair<std::string, std::string>> put_batch_;
 
@@ -246,6 +250,12 @@ class DocWriteBatch {
   bool subdoc_exists_ = true;
   DocWriteBatchCache::Entry current_entry_;
 };
+
+// Converts a RocksDB WriteBatch to a string.
+Result<std::string> WriteBatchToString(
+    const rocksdb::WriteBatch& write_batch,
+    StorageDbType storage_db_type,
+    BinaryOutputFormat binary_output_format);
 
 }  // namespace docdb
 }  // namespace yb

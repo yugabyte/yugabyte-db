@@ -16,7 +16,8 @@
 
 #include <rapidjson/document.h>
 
-#include "yb/common/ql_value.h"
+#include "yb/common/common_fwd.h"
+
 #include "yb/util/status.h"
 
 namespace yb {

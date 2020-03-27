@@ -57,6 +57,15 @@ struct TabletReplica {
   tablet::RaftGroupStatePB state;
   consensus::RaftPeerPB::Role role;
   consensus::RaftPeerPB::MemberType member_type;
+  MonoTime time_updated;
+
+  TabletReplica() : time_updated(MonoTime::Now()) {}
+
+  void UpdateFrom(const TabletReplica& source);
+
+  bool IsStale() const;
+
+  bool IsStarting() const;
 
   std::string ToString() const;
 };
@@ -128,7 +137,7 @@ class MetadataCowWrapper {
 };
 
 // The data related to a tablet which is persisted on disk.
-// This portion of TableInfo is managed via CowObject.
+// This portion of TabletInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
 struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::TABLET> {
   bool is_running() const {
@@ -138,6 +147,10 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
   bool is_deleted() const {
     return pb.state() == SysTabletsEntryPB::REPLACED ||
            pb.state() == SysTabletsEntryPB::DELETED;
+  }
+
+  bool is_colocated() const {
+    return pb.colocated();
   }
 
   // Helper to set the state of the tablet with a custom message.
@@ -183,10 +196,10 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // configuration whose tablet servers have ever heartbeated to this Master.
   void SetReplicaLocations(ReplicaMap replica_locations);
   void GetReplicaLocations(ReplicaMap* replica_locations) const;
+  Result<TSDescriptor*> GetLeader() const;
 
-  // Adds the given replica to the replica_locations_ map.
-  // Returns true iff the replica was inserted.
-  bool AddToReplicaLocations(const TabletReplica& replica);
+  // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
+  void UpdateReplicaLocations(const TabletReplica& replica);
 
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
@@ -195,6 +208,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the last reported schema version.
   bool set_reported_schema_version(uint32_t version);
   uint32_t reported_schema_version() const;
+
+  bool colocated() const;
 
   // No synchronization needed.
   std::string ToString() const override;
@@ -212,7 +227,12 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
                                      LeaderStepDownFailureTimes* dest);
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
+
+  class LeaderChangeReporter;
+  friend class LeaderChangeReporter;
+
   ~TabletInfo();
+  TSDescriptor* GetLeaderUnlocked() const;
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
@@ -237,9 +257,6 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
 
-typedef scoped_refptr<TabletInfo> TabletInfoPtr;
-typedef std::vector<TabletInfoPtr> TabletInfos;
-
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
@@ -251,6 +268,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
 
   bool is_deleted() const {
     return pb.state() == SysTablesEntryPB::DELETED;
+  }
+
+  bool is_deleting() const {
+    return pb.state() == SysTablesEntryPB::DELETING;
   }
 
   bool is_running() const {
@@ -275,6 +296,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
     return pb.schema();
   }
 
+  SchemaPB* mutable_schema() {
+    return pb.mutable_schema();
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
@@ -296,10 +321,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_running() const;
 
   std::string ToString() const override;
+  std::string ToStringWithState() const;
 
   const NamespaceId namespace_id() const;
 
   const CHECKED_STATUS GetSchema(Schema* schema) const;
+
+  bool colocated() const;
 
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const override { return table_id_; }
@@ -331,13 +359,31 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
 
+  // Get all tablets of the table.
   void GetAllTablets(TabletInfos *ret) const;
+
+  // Get the tablet of the table.  The table must be colocated.
+  TabletInfoPtr GetColocatedTablet() const;
 
   // Get info of the specified index.
   IndexInfo GetIndexInfo(const TableId& index_id) const;
 
+  // Returns true if all tablets of the table are deleted.
+  bool AreAllTabletsDeleted() const;
+
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
+
+  // Returns true if the table is backfilling an index.
+  bool IsBackfilling() const {
+    std::shared_lock<decltype(lock_)> l(lock_);
+    return is_backfilling_;
+  }
+
+  void SetIsBackfilling(bool flag) {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    is_backfilling_ = flag;
+  }
 
   // Returns true if an "Alter" operation is in-progress.
   bool IsAlterInProgress(uint32_t version) const;
@@ -381,6 +427,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // If closing, requests to AddTask will be promptly aborted.
   bool closing_ = false;
+
+  // In memory state set during backfill to prevent multiple backfill jobs.
+  bool is_backfilling_ = false;
 
   // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
@@ -432,6 +481,10 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEn
   YQLDatabase database_type() const {
     return pb.database_type();
   }
+
+  bool colocated() const {
+    return pb.colocated();
+  }
 };
 
 // The information about a namespace.
@@ -448,6 +501,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   const NamespaceName& name() const;
 
   YQLDatabase database_type() const;
+
+  bool colocated() const;
 
   std::string ToString() const override;
 
@@ -602,6 +657,25 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
 
   DISALLOW_COPY_AND_ASSIGN(SysConfigInfo);
 };
+
+// Convenience typedefs.
+typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
+typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
+typedef std::pair<NamespaceId, TableName> TableNameKey;
+typedef std::unordered_map<
+    TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
+
+typedef std::unordered_map<UDTypeId, scoped_refptr<UDTypeInfo>> UDTypeInfoMap;
+typedef std::pair<NamespaceId, UDTypeName> UDTypeNameKey;
+typedef std::unordered_map<
+    UDTypeNameKey, scoped_refptr<UDTypeInfo>, boost::hash<UDTypeNameKey>> UDTypeInfoByNameMap;
+
+template <class Info>
+void FillInfoEntry(const Info& info, SysRowEntry* entry) {
+  entry->set_id(info.id());
+  entry->set_type(info.metadata().state().type());
+  entry->set_data(info.metadata().state().pb.SerializeAsString());
+}
 
 }  // namespace master
 }  // namespace yb

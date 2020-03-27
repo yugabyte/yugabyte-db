@@ -108,4 +108,8 @@ std::mt19937_64& ThreadLocalRandom() {
   return *result;
 }
 
+bool RandomUniformBool(std::mt19937_64* rng) {
+  return RandomUniformInt(0, 1, rng) != 0;
+}
+
 } // namespace yb

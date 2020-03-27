@@ -242,10 +242,12 @@ public class TestJson extends BaseCQLTest {
             "SELECT c2->'a'->'q' FROM test_json WHERE c2->'a1'->5->'k3' = 'true'").one()
             .getString(0));
 
+    // JSON expression is now named as its content instead of "expr".
+    // If users actually rely on "expr", we have to change it back.
     assertEquals("{\"p\":4294967295,\"r\":-2147483648,\"s\":2147483647}",
         session.execute(
             "SELECT c2->'a'->'q' FROM test_json WHERE c2->'a1'->5->'k3' = 'true'").one()
-            .getJson("expr"));
+            .getJson("c2->'a'->'q'"));
 
     // Test select with invalid operators, which should result in empty rows.
     verifyEmptyRows(session.execute("SELECT c2->'b'->'c' FROM test_json WHERE c1 = 1"), 1);

@@ -32,6 +32,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.fail;
 
 @RunWith(value=YBTestRunner.class)
 public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
@@ -166,6 +167,10 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   private void grantPermissionOnAllKeyspaces(String permission, String role) throws Exception {
     grantPermission(permission, ALL_KEYSPACES, "", role);
+  }
+
+  private void revokePermissionOnAllKeyspaces(String permission, String role) throws Exception {
+    revokePermission(permission, ALL_KEYSPACES, "", role);
   }
 
   private void grantPermissionOnAllRoles(String permission, String role) throws Exception {
@@ -983,104 +988,104 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   private void testGrantRevokeRoleWithoutPermissionOnRecipientRole(String stmtType)
       throws Exception {
-    String granted_role = String.format("%s_role_without_permissions_on_recipient", stmtType);
-    testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
+    String grantedRole = String.format("%s_role_without_permissions_on_recipient", stmtType);
+    testCreateRoleHelperWithSession(grantedRole, password, false, false, false, s);
 
-    // Grant AUTHORIZE on granted_role.
-    grantPermission(AUTHORIZE, ROLE, granted_role, username);
+    // Grant AUTHORIZE on grantedRole.
+    grantPermission(AUTHORIZE, ROLE, grantedRole, username);
 
     thrown.expect(UnauthorizedException.class);
     if (stmtType.equals(GRANT)) {
-      s2.execute(String.format("GRANT %s TO %s", granted_role, anotherUsername));
+      s2.execute(String.format("GRANT %s TO %s", grantedRole, anotherUsername));
     } else {
-      s2.execute(String.format("REVOKE %s FROM %s", granted_role, anotherUsername));
+      s2.execute(String.format("REVOKE %s FROM %s", grantedRole, anotherUsername));
     }
   }
 
   private void testGrantRevokeRoleWithoutPermissionOnGrantedRole(String stmtType) throws Exception {
-    String recipient_role = String.format("%s_without_permissions_on_granted", stmtType);
-    testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
+    String recipientRole = String.format("%s_without_permissions_on_granted", stmtType);
+    testCreateRoleHelperWithSession(recipientRole, password, false, false, false, s);
 
-    // Grant AUTHORIZE on recipient_role */
-    grantPermission(AUTHORIZE, ROLE, recipient_role, username);
+    // Grant AUTHORIZE on recipientRole */
+    grantPermission(AUTHORIZE, ROLE, recipientRole, username);
 
     thrown.expect(UnauthorizedException.class);
     if (stmtType.equals(GRANT)) {
-      s2.execute(String.format("GRANT %s TO %s", anotherUsername, recipient_role));
+      s2.execute(String.format("GRANT %s TO %s", anotherUsername, recipientRole));
     } else {
-      s2.execute(String.format("REVOKE %s FROM %s", anotherUsername, recipient_role));
+      s2.execute(String.format("REVOKE %s FROM %s", anotherUsername, recipientRole));
     }
   }
 
   private void testGrantRevokeRoleWithWrongPermissionsOnGrantedAndRecipientRoles(String stmtType)
       throws Exception {
-    String recipient_role = String.format("%s_recipient_role_wrong_permissions", stmtType);
-    String granted_role = String.format("%s_granted_role_wrong_permissions", stmtType);
-    testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
-    testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
+    String recipientRole = String.format("%s_recipient_role_wrong_permissions", stmtType);
+    String grantedRole = String.format("%s_granted_role_wrong_permissions", stmtType);
+    testCreateRoleHelperWithSession(recipientRole, password, false, false, false, s);
+    testCreateRoleHelperWithSession(grantedRole, password, false, false, false, s);
 
     grantAllPermissionsExcept(Arrays.asList(AUTHORIZE, CREATE, DESCRIBE, MODIFY, SELECT),
-        ROLE, granted_role, username);
+        ROLE, grantedRole, username);
     grantAllPermissionsExcept(Arrays.asList(AUTHORIZE, CREATE, DESCRIBE, MODIFY, SELECT),
-        ROLE, recipient_role, username);
+        ROLE, recipientRole, username);
 
     thrown.expect(UnauthorizedException.class);
     if (stmtType.equals(GRANT)) {
-      s2.execute(String.format("GRANT %s TO %s", granted_role, recipient_role));
+      s2.execute(String.format("GRANT %s TO %s", grantedRole, recipientRole));
     } else {
-      s2.execute(String.format("revoke %s FROM %s", granted_role, recipient_role));
+      s2.execute(String.format("revoke %s FROM %s", grantedRole, recipientRole));
     }
   }
 
   private void testGrantRevokeRoleWithWrongPermissionsOnAllRoles(String stmtType) throws Exception {
-    String recipient_role = String.format("%s_recipient_role_wrong_permissions_on_roles", stmtType);
-    String granted_role = String.format("%s_granted_role_wrong_permissions_on_roles", stmtType);
-    testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
-    testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
+    String recipientRole = String.format("%s_recipient_role_wrong_permissions_on_roles", stmtType);
+    String grantedRole = String.format("%s_granted_role_wrong_permissions_on_roles", stmtType);
+    testCreateRoleHelperWithSession(recipientRole, password, false, false, false, s);
+    testCreateRoleHelperWithSession(grantedRole, password, false, false, false, s);
 
     grantAllPermissionsExcept(Arrays.asList(AUTHORIZE, MODIFY, SELECT), ALL_ROLES, "", username);
 
     thrown.expect(UnauthorizedException.class);
     if (stmtType.equals(GRANT)) {
-      s2.execute(String.format("GRANT %s TO %s", granted_role, recipient_role));
+      s2.execute(String.format("GRANT %s TO %s", grantedRole, recipientRole));
     } else {
-      s2.execute(String.format("REVOKE %s FROM %s", granted_role, recipient_role));
+      s2.execute(String.format("REVOKE %s FROM %s", grantedRole, recipientRole));
     }
   }
 
   private void testGrantRevokeRoleWithPermissionOnGrantedAndRecipientRoles(String stmtType)
       throws Exception {
-    String recipient_role = String.format("%s_recipient_role_full_permissions", stmtType);
-    String granted_role = String.format("%s_granted_role_full_permissions", stmtType);
-    testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
-    testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
+    String recipientRole = String.format("%s_recipient_role_full_permissions", stmtType);
+    String grantedRole = String.format("%s_granted_role_full_permissions", stmtType);
+    testCreateRoleHelperWithSession(recipientRole, password, false, false, false, s);
+    testCreateRoleHelperWithSession(grantedRole, password, false, false, false, s);
 
-    grantPermission(AUTHORIZE, ROLE, granted_role, username);
-    grantPermission(AUTHORIZE, ROLE, recipient_role, username);
+    grantPermission(AUTHORIZE, ROLE, grantedRole, username);
+    grantPermission(AUTHORIZE, ROLE, recipientRole, username);
 
     if (stmtType.equals(GRANT)) {
-      s2.execute(String.format("GRANT %s TO %s", granted_role, recipient_role));
+      s2.execute(String.format("GRANT %s TO %s", grantedRole, recipientRole));
     } else {
       // Grant the role first using cassandra role.
-      s.execute(String.format("GRANT %s TO %s", granted_role, recipient_role));
-      s2.execute(String.format("REVOKE %s FROM %s", granted_role, recipient_role));
+      s.execute(String.format("GRANT %s TO %s", grantedRole, recipientRole));
+      s2.execute(String.format("REVOKE %s FROM %s", grantedRole, recipientRole));
     }
   }
 
   private void testGrantRevokeRoleWithPermissionOnAllRoles(String stmtType) throws Exception {
-    String recipient_role = String.format("%s_recipient_role_full_permissions_on_roles", stmtType);
-    String granted_role = String.format("%s_granted_role_full_permissions_on_roles", stmtType);
-    testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
-    testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
+    String recipientRole = String.format("%s_recipient_role_full_permissions_on_roles", stmtType);
+    String grantedRole = String.format("%s_granted_role_full_permissions_on_roles", stmtType);
+    testCreateRoleHelperWithSession(recipientRole, password, false, false, false, s);
+    testCreateRoleHelperWithSession(grantedRole, password, false, false, false, s);
 
     grantPermissionOnAllRoles(AUTHORIZE, username);
 
     if (stmtType.equals(GRANT)) {
-      s2.execute(String.format("GRANT %s TO %s", granted_role, recipient_role));
+      s2.execute(String.format("GRANT %s TO %s", grantedRole, recipientRole));
     } else {
       // Grant the role first using cassandra role.
-      s.execute(String.format("GRANT %s TO %s", granted_role, recipient_role));
-      s2.execute(String.format("REVOKE %s FROM %s", granted_role, recipient_role));
+      s.execute(String.format("GRANT %s TO %s", grantedRole, recipientRole));
+      s2.execute(String.format("REVOKE %s FROM %s", grantedRole, recipientRole));
     }
   }
 
@@ -1485,8 +1490,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     grantPermissionOnAllKeyspaces(CREATE, username);
 
     // Prepare and execute statement.
-    String create_keyspace_stmt = "CREATE KEYSPACE prepared_keyspace";
-    PreparedStatement stmt = s2.prepare(create_keyspace_stmt);
+    String createKeyspaceStmt = "CREATE KEYSPACE prepared_keyspace";
+    PreparedStatement stmt = s2.prepare(createKeyspaceStmt);
     s2.execute(stmt.bind());
 
     revokePermission(CREATE, ALL_KEYSPACES, "", username);
@@ -1501,9 +1506,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     s2.execute("USE " + keyspace);
     // Prepare and execute statement.
-    String create_table_stmt = String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h))",
+    String createTableStmt = String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h))",
         keyspace, "prepared_table");
-    PreparedStatement stmt = s2.prepare(create_table_stmt);
+    PreparedStatement stmt = s2.prepare(createTableStmt);
     s2.execute(stmt.bind());
 
     revokePermission(CREATE, KEYSPACE, keyspace, username);
@@ -1518,8 +1523,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     grantPermission(ALTER, TABLE, table, username);
 
     // Prepare and execute statement.
-    String alter_table_stmt = String.format("ALTER TABLE %s.%s ADD v2 int", keyspace, table);
-    PreparedStatement stmt = s2.prepare(alter_table_stmt);
+    String alterTableStmt = String.format("ALTER TABLE %s.%s ADD v2 int", keyspace, table);
+    PreparedStatement stmt = s2.prepare(alterTableStmt);
     s2.execute(stmt.bind());
 
     revokePermission(ALTER, TABLE, table, username);
@@ -1534,8 +1539,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     grantPermission(MODIFY, TABLE, table, username);
 
     // Prepare and excecute statement.
-    String truncate_stmt = String.format("TRUNCATE %s.%s", keyspace, table);
-    PreparedStatement stmt = s2.prepare(truncate_stmt);
+    String truncateStmt = String.format("TRUNCATE %s.%s", keyspace, table);
+    PreparedStatement stmt = s2.prepare(truncateStmt);
     s2.execute(stmt.bind());
 
     revokePermission(MODIFY, TABLE, table, username);
@@ -1552,8 +1557,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     createTableAndVerify(s, keyspace, table);
 
     // Prepare and execute statement.
-    String insert_stmt = String.format("INSERT INTO %s.%s (h, v) VALUES (?, ?)", keyspace, table);
-    PreparedStatement stmt = s3.prepare(insert_stmt);
+    String insertStmt = String.format("INSERT INTO %s.%s (h, v) VALUES (?, ?)", keyspace, table);
+    PreparedStatement stmt = s3.prepare(insertStmt);
 
     ResultSet rs = s3.execute(stmt.bind(3, 5));
 
@@ -1571,8 +1576,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     grantPermission(MODIFY, TABLE, table, username);
 
     // Prepare and execute statement.
-    String insert_stmt = String.format("INSERT INTO %s.%s (h, v) VALUES (?, ?)", keyspace, table);
-    PreparedStatement stmt = s2.prepare(insert_stmt);
+    String insertStmt = String.format("INSERT INTO %s.%s (h, v) VALUES (?, ?)", keyspace, table);
+    PreparedStatement stmt = s2.prepare(insertStmt);
 
     ResultSet rs = s2.execute(stmt.bind(3, 5));
 
@@ -1590,8 +1595,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     grantPermission(SELECT, TABLE, table, username);
 
     // Prepare and execute statement.
-    String select_stmt = String.format("SELECT * FROM %s.%s", keyspace, table);
-    PreparedStatement stmt = s2.prepare(select_stmt);
+    String selectStmt = String.format("SELECT * FROM %s.%s", keyspace, table);
+    PreparedStatement stmt = s2.prepare(selectStmt);
 
     ResultSet rs = s2.execute(stmt.bind());
     List<Row> rows = rs.all();
@@ -1612,8 +1617,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     grantPermission(MODIFY, TABLE, table, username);
 
     // Prepare and execute statement.
-    String update_stmt = String.format("UPDATE %s.%s set v = 1 WHERE h = ?", keyspace, table);
-    PreparedStatement stmt = s2.prepare(update_stmt);
+    String updateStmt = String.format("UPDATE %s.%s set v = 1 WHERE h = ?", keyspace, table);
+    PreparedStatement stmt = s2.prepare(updateStmt);
 
     s2.execute(stmt.bind(VALUE));
 
@@ -1630,8 +1635,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     grantPermission(MODIFY, TABLE, table, username);
 
     // Prepare and execute statement.
-    String delete_stmt = String.format("DELETE FROM %s.%s WHERE h = ?", keyspace, table);
-    PreparedStatement stmt = s2.prepare(delete_stmt);
+    String deleteStmt = String.format("DELETE FROM %s.%s WHERE h = ?", keyspace, table);
+    PreparedStatement stmt = s2.prepare(deleteStmt);
     s2.execute(stmt.bind(VALUE));
 
     revokePermission(MODIFY, TABLE, table, username);
@@ -1642,47 +1647,47 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   private void testPreparedGrantRevokeRoleStatementWithAuthorizePermission(String stmtType)
       throws Exception {
-    String recipient_role = String.format("%s_recipient_%s", username, stmtType);
-    String granted_role = String.format("%s_granted_%s", username, stmtType);
-    testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
-    testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
+    String recipientRole = String.format("%s_recipient_%s", username, stmtType);
+    String grantedRole = String.format("%s_granted_%s", username, stmtType);
+    testCreateRoleHelperWithSession(recipientRole, password, false, false, false, s);
+    testCreateRoleHelperWithSession(grantedRole, password, false, false, false, s);
 
-    grantPermission(AUTHORIZE, ROLE, granted_role, username);
-    grantPermission(AUTHORIZE, ROLE, recipient_role, username);
+    grantPermission(AUTHORIZE, ROLE, grantedRole, username);
+    grantPermission(AUTHORIZE, ROLE, recipientRole, username);
 
     String stmt;
     if (stmtType.equals(GRANT)) {
-      stmt = String.format("GRANT %s TO %s", granted_role, recipient_role);
+      stmt = String.format("GRANT %s TO %s", grantedRole, recipientRole);
     } else {
       // Grant the role first using cassandra role.
-      s.execute(String.format("GRANT %s TO %s", granted_role, recipient_role));
+      s.execute(String.format("GRANT %s TO %s", grantedRole, recipientRole));
 
-      stmt = String.format("REVOKE %s FROM %s", granted_role, recipient_role);
+      stmt = String.format("REVOKE %s FROM %s", grantedRole, recipientRole);
     }
     PreparedStatement preparedStatement = s2.prepare(stmt);
-    revokePermission(AUTHORIZE, ROLE, granted_role, username);
+    revokePermission(AUTHORIZE, ROLE, grantedRole, username);
     thrown.expect(UnauthorizedException.class);
     s2.execute(preparedStatement.bind());
   }
 
   private void testPreparedGrantRevokeRoleStatementWithSuperuserRole(String stmtType)
       throws Exception {
-    String recipient_role = String.format("recipient_%s_%s_test", username, stmtType);
-    String granted_role = String.format("granted_%s_%s_test", username, stmtType);
-    testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
-    testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
+    String recipientRole = String.format("recipient_%s_%s_test", username, stmtType);
+    String grantedRole = String.format("granted_%s_%s_test", username, stmtType);
+    testCreateRoleHelperWithSession(recipientRole, password, false, false, false, s);
+    testCreateRoleHelperWithSession(grantedRole, password, false, false, false, s);
 
     testCreateRoleHelperWithSession(anotherUsername, password, true, true, false, s);
     Session s3 = getSession(anotherUsername, password);
 
     String stmt;
     if (stmtType.equals(GRANT)) {
-      stmt = String.format("GRANT %s TO %s", granted_role, recipient_role);
+      stmt = String.format("GRANT %s TO %s", grantedRole, recipientRole);
     } else {
       // Grant the role first using cassandra role.
-      s.execute(String.format("GRANT %s TO %s", granted_role, recipient_role));
+      s.execute(String.format("GRANT %s TO %s", grantedRole, recipientRole));
 
-      stmt = String.format("REVOKE %s FROM %s", granted_role, recipient_role);
+      stmt = String.format("REVOKE %s FROM %s", grantedRole, recipientRole);
     }
     PreparedStatement preparedStatement = s3.prepare(stmt);
 
@@ -1717,9 +1722,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testPreparedGrantPermissionOnKeyspaceWithAuthorizePermission() throws Exception {
     grantPermission(AUTHORIZE, KEYSPACE, keyspace, username);
 
-    String grant_permission_stmt = String.format("GRANT CREATE ON KEYSPACE %s to %s",
+    String grantPermissionStmt = String.format("GRANT CREATE ON KEYSPACE %s to %s",
         keyspace, username);
-    PreparedStatement stmt = s2.prepare(grant_permission_stmt);
+    PreparedStatement stmt = s2.prepare(grantPermissionStmt);
     s2.execute(stmt.bind());
 
     revokePermission(AUTHORIZE, KEYSPACE, keyspace, username);
@@ -1733,9 +1738,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     createTableAndVerify(s, keyspace, table);
     grantPermission(AUTHORIZE, TABLE, table, username);
 
-    String grant_permission_stmt = String.format("GRANT MODIFY ON TABLE %s.%s to %s",
+    String grantPermissionStmt = String.format("GRANT MODIFY ON TABLE %s.%s to %s",
         keyspace, table, username);
-    PreparedStatement stmt = s2.prepare(grant_permission_stmt);
+    PreparedStatement stmt = s2.prepare(grantPermissionStmt);
     s2.execute(stmt.bind());
 
     revokePermission(AUTHORIZE, TABLE, table, username);
@@ -1749,9 +1754,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     grantPermission(AUTHORIZE, ROLE, anotherUsername, username);
 
-    String grant_permission_stmt = String.format("GRANT DROP ON ROLE %s to %s",
+    String grantPermissionStmt = String.format("GRANT DROP ON ROLE %s to %s",
         anotherUsername, username);
-    PreparedStatement stmt = s2.prepare(grant_permission_stmt);
+    PreparedStatement stmt = s2.prepare(grantPermissionStmt);
     s2.execute(stmt.bind());
 
     revokePermission(AUTHORIZE, ROLE, anotherUsername, username);
@@ -1764,8 +1769,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testPreparedGrantPermissionOnAllKeyspaesWithAuthorizePermission() throws Exception {
     grantPermissionOnAllKeyspaces(AUTHORIZE, username);
 
-    String grant_permission_stmt = String.format("GRANT SELECT ON ALL KEYSPACES TO %s", username);
-    PreparedStatement stmt = s2.prepare(grant_permission_stmt);
+    String grantPermissionStmt = String.format("GRANT SELECT ON ALL KEYSPACES TO %s", username);
+    PreparedStatement stmt = s2.prepare(grantPermissionStmt);
     s2.execute(stmt.bind());
 
     revokePermission(AUTHORIZE, ALL_KEYSPACES, "", username);
@@ -1777,8 +1782,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testPreparedGrantPermissionOnAllRolesWithAuthorizePermission() throws Exception {
     grantPermissionOnAllRoles(AUTHORIZE, username);
 
-    String grant_permission_stmt = String.format("GRANT DROP ON ALL ROLES TO %s", username);
-    PreparedStatement stmt = s2.prepare(grant_permission_stmt);
+    String grantPermissionStmt = String.format("GRANT DROP ON ALL ROLES TO %s", username);
+    PreparedStatement stmt = s2.prepare(grantPermissionStmt);
     s2.execute(stmt.bind());
 
     revokePermission(AUTHORIZE, ALL_ROLES, "", username);
@@ -1791,8 +1796,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     testCreateRoleHelperWithSession(anotherUsername, password, false, false, false, s);
     grantPermission(DROP, ROLE, anotherUsername, username);
 
-    String drop_stmt = String.format("DROP ROLE %s", anotherUsername);
-    PreparedStatement stmt = s2.prepare(drop_stmt);
+    String dropStmt = String.format("DROP ROLE %s", anotherUsername);
+    PreparedStatement stmt = s2.prepare(dropStmt);
     s2.execute(stmt.bind());
 
     // Create it again.
@@ -1812,8 +1817,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     // keyspace.
     grantPermissionOnAllKeyspaces(DROP, username);
 
-    String drop_stmt = String.format("DROP KEYSPACE %s", newKeyspace);
-    PreparedStatement stmt = s2.prepare(drop_stmt);
+    String dropStmt = String.format("DROP KEYSPACE %s", newKeyspace);
+    PreparedStatement stmt = s2.prepare(dropStmt);
     s2.execute(stmt.bind());
 
     revokePermission(DROP, ALL_KEYSPACES, "", username);
@@ -1828,8 +1833,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     grantPermission(DROP, TABLE, String.format("%s.%s", keyspace, table), username);
 
-    String drop_stmt = String.format("DROP TABLE %s.%s", keyspace, table);
-    PreparedStatement stmt = s2.prepare(drop_stmt);
+    String dropStmt = String.format("DROP TABLE %s.%s", keyspace, table);
+    PreparedStatement stmt = s2.prepare(dropStmt);
     s2.execute(stmt.bind());
 
     createTableAndVerify(s, keyspace, table);
@@ -2161,6 +2166,31 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     checkConnectivity(true, anotherUsername, newPassword, false);
   }
 
+
+  // Test for https://github.com/yugabyte/yugabyte-db/issues/2505.
+  @Test
+  public void testAlterOwnSuperuserStatusFails() throws Exception {
+    thrown.expect(UnauthorizedException.class);
+    thrown.expectMessage("Unauthorized. You aren't allowed to alter your own superuser status or " +
+            "that of a role granted to you");
+    s.execute("ALTER ROLE cassandra WITH SUPERUSER = false");
+  }
+
+  // Test for https://github.com/yugabyte/yugabyte-db/issues/2505.
+  @Test
+  public void testAlterSuperuserStatusOfGrantedRoleFails() throws Exception {
+    testCreateRoleHelperWithSession("parent", "", false, true, false, s);
+    testCreateRoleHelperWithSession("grandparent", "", false, true, false, s);
+
+    s.execute("GRANT grandparent TO parent");
+    s.execute("GRANT parent TO cassandra");
+
+    thrown.expect(UnauthorizedException.class);
+    thrown.expectMessage("Unauthorized. You aren't allowed to alter your own superuser status or " +
+            "that of a role granted to you");
+    s.execute("ALTER ROLE grandparent WITH SUPERUSER = false");
+  }
+
   @Test
   public void testNotEmptyResourcesInSytemAuthRolePermissionsTable() throws Exception {
     testCreateRoleHelperWithSession(anotherUsername, "", false, false, false, s);
@@ -2179,6 +2209,91 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
         "WHERE role = 'cassandra' and resource = '%s';", canonicalResource);
     List<Row> rows = s.execute(stmt).all();
     assert(rows.isEmpty());
+  }
+
+  @Test
+  public void testInheritedPermissions() throws Exception {
+    String level0 = "level0";
+    String level1 = "level1";
+    String level2 = "level2";
+    String level3_0 = "level3_0";
+    String level3_1 = "level3_1";
+
+    testCreateRoleHelperWithSession(level0, password, /* canLogin */ true,
+            /* isSuperuser */false, /*verifyConnectivity */ false, /* session */ s);
+    testCreateRoleHelperWithSession(level1, "", false, false, false, s);
+    testCreateRoleHelperWithSession(level2, "", false, false, false, s);
+    testCreateRoleHelperWithSession(level3_0, "", false, false, false, s);
+    testCreateRoleHelperWithSession(level3_1, "", false, false, false, s);
+
+    s.execute(String.format("GRANT %s TO %s", level3_0, level2));
+    s.execute(String.format("GRANT %s TO %s", level3_1, level2));
+    s.execute(String.format("GRANT %s TO %s", level2, level1));
+    s.execute(String.format("GRANT %s TO %s", level1, level0));
+
+    s.execute(String.format("GRANT CREATE ON ALL KEYSPACES TO %s", level3_0));
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify that level0 can create a keyspace since it has inherited that permissions from
+    // level3_0.
+    Session level0Session = getSession(level0, password);
+    level0Session.execute("CREATE KEYSPACE somekeyspace");
+
+
+    // Grant CREATE ON ALL ROLES to level3_1 and verify that level0 role can create a role.
+    s.execute(String.format("GRANT CREATE ON ALL ROLES TO %s", level3_1));
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    level0Session.execute("CREATE ROLE somerole");
+
+    s.execute(String.format("GRANT DROP ON ALL KEYSPACES TO %s", level3_1));
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify again that level0 can create a keyspace since it is now inheriting two different
+    // permissions on ALL KEYSPACES from two different roles.
+    level0Session.execute("CREATE KEYSPACE somekeyspace2");
+  }
+
+  // This test a fix for https://github.com/yugabyte/yugabyte-db/issues/4062.
+  // The issue is that when different permissions are inherited from roles granted to another role,
+  // it's possible that they might replace the permissions granted directly.
+  // For example:
+  // If role 'eng' has permission SELECT on table 'releases', and role 'john' has permission
+  // MODIFY on the same table, and role 'eng' is granted to 'john', it's possible (depending on
+  // the order the permissions are received) that permission SELECT will replace permission
+  // MODIFY on table 'releases'.
+  @Test
+  public void testInheritedPermissionsDoNotOverrideGrantedPermissions() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+
+    testCreateRoleHelperWithSession("employees", password, /* canLogin */ true,
+        /* isSuperuser */false, /*verifyConnectivity */ false, /* session */ s);
+    testCreateRoleHelperWithSession("eng", password, /* canLogin */ true,
+        /* isSuperuser */false, /*verifyConnectivity */ false, /* session */ s);
+
+    s.execute(String.format("GRANT employees TO eng"));
+    s.execute(String.format("GRANT SELECT ON %s.%s TO eng", keyspace, table));
+
+    testCreateRoleHelperWithSession("john", password, true, false, false, s);
+
+    s.execute(String.format("GRANT eng TO john"));
+    s.execute(String.format("GRANT MODIFY ON %s.%s TO john", keyspace, table));
+
+
+    Session johnSession = getSession("john", password);
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify that user 'john' can insert a record in the table.
+    insertRow(johnSession, keyspace, table);
+    johnSession.execute(String.format("SELECT * FROM %s.%s", keyspace, table));
   }
 
   public void testGrantAllGrantsCorrectPermissions() throws Exception {
@@ -2280,11 +2395,11 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     grantPermission(CREATE, KEYSPACE, keyspace, username);
 
-    String create_index_stmt = String.format("CREATE INDEX order_by_v on %s.%s (v)",
+    String createIndexStmt = String.format("CREATE INDEX order_by_v on %s.%s (v)",
         keyspace, table);
 
     thrown.expect(UnauthorizedException.class);
-    s2.execute(create_index_stmt);
+    s2.execute(createIndexStmt);
   }
 
   @Test
@@ -2294,10 +2409,10 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     s.execute("USE " + keyspace);
     grantPermission(ALTER, TABLE, table, username);
 
-    String create_index_stmt = String.format("CREATE INDEX order_by_v on %s.%s (v)",
+    String createIndexStmt = String.format("CREATE INDEX order_by_v on %s.%s (v)",
         keyspace, table);
 
-    s2.execute(create_index_stmt);
+    s2.execute(createIndexStmt);
   }
 
   @Test
@@ -2307,21 +2422,21 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     s.execute("USE " + keyspace);
     grantPermission(DROP, TABLE, table, username);
 
-    String index_name = "drop_test_order_by_v_2";
+    String indexName = "drop_test_order_by_v_2";
 
-    String create_index_stmt = String.format("CREATE INDEX %s on %s.%s (v)",
-        index_name, keyspace, table);
+    String createIndexStmt = String.format("CREATE INDEX %s on %s.%s (v)",
+        indexName, keyspace, table);
 
-    s.execute(create_index_stmt);
+    s.execute(createIndexStmt);
 
     Thread.sleep(1000);
 
-    String drop_index_stmt = String.format("DROP INDEX %s.%s", keyspace, index_name);
+    String dropIndexStmt = String.format("DROP INDEX %s.%s", keyspace, indexName);
     thrown.expect(UnauthorizedException.class);
     thrown.expectMessage(String.format(
         "User %s has no ALTER permission on <table %s.%s> or any of its parents",
         username, keyspace, table));
-    s2.execute(drop_index_stmt);
+    s2.execute(dropIndexStmt);
   }
 
   @Test
@@ -2331,14 +2446,182 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     s.execute("USE " + keyspace);
     grantPermission(ALTER, TABLE, table, username);
 
-    String index_name = "drop_test_order_by_v_3";
+    String indexName = "drop_test_order_by_v_3";
 
-    String create_index_stmt = String.format("CREATE INDEX %s on %s.%s (v)",
-        index_name, keyspace, table);
+    String createIndexStmt = String.format("CREATE INDEX %s on %s.%s (v)",
+        indexName, keyspace, table);
 
-    s.execute(create_index_stmt);
+    s.execute(createIndexStmt);
 
-    String drop_index_stmt = String.format("DROP INDEX %s.%s", keyspace, index_name);
-    s2.execute(drop_index_stmt);
+    String dropIndexStmt = String.format("DROP INDEX %s.%s", keyspace, indexName);
+    s2.execute(dropIndexStmt);
+  }
+
+  @Test
+  public void testDropTypeWithAllKeyspacesPermission() throws Exception {
+    String typeName = "test_type";
+    String typeName2 = typeName + "_2";
+
+    LOG.info("Begin test");
+    grantPermissionOnAllKeyspaces(CREATE, username);
+
+    s2.execute(String.format("CREATE KEYSPACE %s", anotherKeyspace));
+    s2.execute(String.format("CREATE TYPE %s.%s (id TEXT)", anotherKeyspace, typeName));
+    // Type owner must be able to drop own type.
+    s2.execute(String.format("DROP TYPE %s.%s", anotherKeyspace, typeName));
+
+    s2.execute("USE " + anotherKeyspace);
+    s2.execute(String.format("CREATE TYPE %s (id INT)", typeName2));
+    s2.execute(String.format("DROP TYPE %s", typeName2));
+
+    LOG.info("End test");
+  }
+
+  @Test
+  public void testCreateTypeWithKeyspacePermission() throws Exception {
+    String typeName = "test_type";
+    String typeName2 = typeName + "_2";
+
+    LOG.info("Begin test");
+    s.execute(String.format("CREATE KEYSPACE %s", anotherKeyspace));
+
+    try {
+      s2.execute(String.format("CREATE TYPE %s.%s (id TEXT)", anotherKeyspace, typeName));
+      fail("CREATE TYPE works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+    s2.execute("USE " + anotherKeyspace);
+    try {
+      s2.execute(String.format("CREATE TYPE %s (id INT)", typeName2));
+      fail("CREATE TYPE works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+
+    grantPermission(CREATE, KEYSPACE, anotherKeyspace, username);
+    s2.execute(String.format("CREATE TYPE %s.%s (id TEXT)", anotherKeyspace, typeName));
+    s2.execute(String.format("CREATE TYPE %s (id INT)", typeName2));
+
+    try {
+      s2.execute(String.format("DROP TYPE %s.%s", anotherKeyspace, typeName));
+      fail("DROP TYPE works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+    try {
+      s2.execute(String.format("DROP TYPE %s", typeName2));
+      fail("DROP TYPE works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+
+    grantPermission(DROP, KEYSPACE, anotherKeyspace, username);
+    s2.execute(String.format("DROP TYPE %s.%s", anotherKeyspace, typeName));
+    s2.execute(String.format("DROP TYPE %s", typeName2));
+
+    LOG.info("End test");
+  }
+
+  private void internalTestPreparedCreateDropType(String resourceType,
+                                                  String resource) throws Exception {
+    String typeName = "test_type";
+    String typeName2 = typeName + "_2";
+    s.execute(String.format("CREATE KEYSPACE %s", anotherKeyspace));
+
+    LOG.info("Begin test");
+
+    // Prepare and execute statements.
+    String createTypeStmt = String.format("CREATE TYPE %s.%s (id TEXT)", anotherKeyspace, typeName);
+    grantPermission(CREATE, resourceType, resource, username);
+    PreparedStatement prepCreateStmt = s2.prepare(createTypeStmt);
+    revokePermission(CREATE, resourceType, resource, username);
+    try {
+      s2.execute(prepCreateStmt.bind());
+      fail("Prepared CREATE TYPE works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+
+    grantPermission(CREATE, resourceType, resource, username);
+    s2.execute(prepCreateStmt.bind());
+
+    String dropTypeStmt = String.format("DROP TYPE %s.%s", anotherKeyspace, typeName);
+    grantPermission(DROP, resourceType, resource, username);
+    PreparedStatement prepDropStmt = s2.prepare(dropTypeStmt);
+    revokePermission(DROP, resourceType, resource, username);
+    try {
+      s2.execute(prepDropStmt.bind());
+      fail("Prepared DROP TYPE works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+
+    grantPermission(DROP, resourceType, resource, username);
+    s2.execute(prepDropStmt.bind());
+
+    s2.execute("USE " + anotherKeyspace);
+
+    // Prepare and execute statements.
+    String createTypeStmt2 = String.format("CREATE TYPE %s (id TEXT)", typeName2);
+    PreparedStatement prepCreateStmt2 = s2.prepare(createTypeStmt2);
+    revokePermission(CREATE, resourceType, resource, username);
+    try {
+      s2.execute(prepCreateStmt2.bind());
+      fail("Prepared CREATE TYPE works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+
+    grantPermission(CREATE, resourceType, resource, username);
+    s2.execute(prepCreateStmt2.bind());
+
+    String dropTypeStmt2 = String.format("DROP TYPE %s", typeName2);
+    PreparedStatement prepDropStmt2 = s2.prepare(dropTypeStmt2);
+    revokePermission(DROP, resourceType, resource, username);
+    try {
+      s2.execute(prepDropStmt2.bind());
+      fail("Prepared DROP TYPE works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+
+    grantPermission(DROP, resourceType, resource, username);
+    s2.execute(prepDropStmt2.bind());
+
+    LOG.info("End test");
+  }
+
+  @Test
+  public void testPreparedCreateDropTypeWithAllKeyspacesPermission() throws Exception {
+    // Test prepared statements with ALL_KEYSPACES permissions.
+    internalTestPreparedCreateDropType(ALL_KEYSPACES, "");
+  }
+
+  @Test
+  public void testPreparedCreateDropTypeWithKeyspacePermission() throws Exception {
+    // Test prepared statements with used keyspace permissions.
+    internalTestPreparedCreateDropType(KEYSPACE, anotherKeyspace);
+  }
+
+  @Test
+  public void testExplain() throws Exception {
+    LOG.info("Begin test");
+
+    s.execute(String.format("CREATE TABLE %s.%s (auth_id text, PRIMARY KEY(auth_id))",
+                            keyspace, table));
+    String explainStmt = String.format("EXPLAIN SELECT * FROM %s.%s WHERE auth_id=''",
+                                       keyspace, table);
+    try {
+      s2.execute(explainStmt);
+      fail("EXPLAIN SELECT works without permissions");
+    } catch (com.datastax.driver.core.exceptions.UnauthorizedException e) {
+      LOG.info("Expected exception:", e);
+    }
+
+    grantPermission(SELECT, TABLE, keyspace + '.' + table, username);
+    s2.execute(explainStmt);
+
+    LOG.info("End test");
   }
 }

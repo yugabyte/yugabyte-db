@@ -79,6 +79,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+#include "yb/server/pgsql_webserver_wrapper.h"
 
 PG_MODULE_MAGIC;
 
@@ -453,6 +454,51 @@ _PG_fini(void)
 	ProcessUtility_hook = prev_ProcessUtility;
 }
 
+static void 
+getYsqlStatementStats(void *cb_arg)
+{
+	HASH_SEQ_STATUS hash_seq;
+	char	   *qbuffer = NULL;
+	Size		qbuffer_size = 0;
+	pgssEntry  *entry;
+  YsqlStatementStat tmp;
+
+	qbuffer = qtext_load_file(&qbuffer_size);
+	if (qbuffer == NULL)
+		return;
+
+	LWLockAcquire(pgss->lock, LW_SHARED);
+
+	hash_seq_init(&hash_seq, pgss_hash);
+	while ((entry = hash_seq_search(&hash_seq)) != NULL)
+	{
+    // some entries have 0 calls and strange query text - ignore them
+    if (!entry->counters.calls)
+      continue;
+
+    char *qry = qtext_fetch(entry->query_offset, entry->query_len, qbuffer, qbuffer_size);
+    if (qry != NULL)
+    {
+      tmp.query        = qry;
+      tmp.calls        = entry->counters.calls;
+
+      tmp.total_time   = entry->counters.total_time;
+      tmp.min_time     = entry->counters.min_time;
+      tmp.max_time     = entry->counters.max_time;
+      tmp.mean_time    = entry->counters.mean_time;
+      tmp.sum_var_time = entry->counters.sum_var_time;
+
+      tmp.rows         = entry->counters.rows;
+
+      WriteStatArrayElemToJson(cb_arg, &tmp);
+    }
+	}
+
+	LWLockRelease(pgss->lock);
+
+	free(qbuffer);
+}
+
 /*
  * shmem_startup hook: allocate or attach to shared memory,
  * then load any pre-existing statistics from file.
@@ -475,6 +521,8 @@ pgss_shmem_startup(void)
 
 	if (prev_shmem_startup_hook)
 		prev_shmem_startup_hook();
+
+  RegisterGetYsqlStatStatements(&getYsqlStatementStats);
 
 	/* reset in case this is a restart within the postmaster */
 	pgss = NULL;

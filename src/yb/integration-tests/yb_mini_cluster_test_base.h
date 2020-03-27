@@ -53,7 +53,7 @@ template <class T>
 class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
  public:
   // Create a new YB session
-  client::YBSessionPtr NewSession();
+  virtual client::YBSessionPtr NewSession();
 
  protected:
   virtual CHECKED_STATUS CreateClient();

@@ -64,6 +64,24 @@ message PgsqlExpressionPB {
   }
 }
 
+// This message defines an argument in a batch request from PgGate to DocDB. Instead of sending
+// many requests of different arguments, a batch request would send one request that contains
+// an array of independent arguments. DocDB will iterate the array to execute.
+//     DML_request(arg) [n] ---> DML_request ( PgsqlBatchArgument args[n] )
+message PgsqlBatchArgumentPB {
+  // The order number of this argument in a batch.
+  // Currently, this is only used for debugging, but it might be needed in the future.
+  optional int64 order = 1;
+
+  // This attribute is used when fetching by rowid (ybctid). PgGate fetches "base_ctid" from
+  // SecondaryIndex and use it to select Targets from UserTable.
+  //   SELECT <Targets> FROM <UserTable>
+  //     WHERE ybctid IN (SELECT base_ybctid FROM <SecondaryIndex> WHERE <key_condition>)
+  optional PgsqlExpressionPB ybctid = 2;
+
+  // Will add arguments for hash, range, and regular columns in a batch execution when needed.
+}
+
 //--------------------------------------------------------------------------------------------------
 // Column messages.
 //--------------------------------------------------------------------------------------------------
@@ -93,7 +111,7 @@ message PgsqlRSRowDescPB {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Data Writting Instructions - INSERT, UPDATE, and DELETE.
+// Data Writing Instructions - INSERT, UPDATE, DELETE, colocated TRUNCATE.
 //--------------------------------------------------------------------------------------------------
 
 // Instruction.
@@ -103,6 +121,8 @@ message PgsqlWriteRequestPB {
     PGSQL_INSERT = 1;
     PGSQL_UPDATE = 2;
     PGSQL_DELETE = 3;
+    PGSQL_UPSERT = 4;
+    PGSQL_TRUNCATE_COLOCATED = 5;
   }
 
   // Client info
@@ -122,7 +142,8 @@ message PgsqlWriteRequestPB {
   // Row Identifiers provides information for the row that the server INSERTs, DELETEs, or UPDATEs.
   // - hash_code, if provided, helps locating the row. It is used by the proxy to find tablet server
   //   and by DocDB to find a set of matching rows.
-  // - partition_column_values are for partition columns.
+  // - partition_column_values are for partition columns,
+  //   e.g. for h1 = 1 AND h2 = 2 partition_column_values would be [1, 2].
   // - range_column_values are for range columns.
   // - column_values are for non-primary columns. They are used to further identify the row to be
   //   inserted, deleted, or updated.
@@ -133,6 +154,7 @@ message PgsqlWriteRequestPB {
   repeated PgsqlExpressionPB partition_column_values = 7;
   repeated PgsqlExpressionPB range_column_values = 8;
   optional PgsqlExpressionPB ybctid_column_value = 9;
+
   // Not used with UPDATEs. Use column_new_values to UPDATE a value.
   repeated PgsqlColumnValuePB column_values = 10;
 
@@ -203,7 +225,7 @@ message PgsqlPagingStatePB {
   // number of rows in the SELECT's LIMIT clause across fetches.
   optional uint64 total_num_rows_read = 4;
 
-  // For selects with IN condition on the hash columns there are mutiple partitions that need to be
+  // For selects with IN condition on the hash columns there are multiple partitions that need to be
   // queried, one for each combination of allowed values for the hash columns.
   // This holds the index of the next partition and is used to resume the read from the right place.
   optional uint64 next_partition_index = 5;
@@ -225,23 +247,38 @@ message PgsqlReadRequestPB {
   optional uint32 schema_version = 3; // required
 
   //------------------------------------------------------------------------------------------------
-  // Primary key.
-  // - Hash code is used to locate efficiently a group of data values of the same hash code.
-  //   First, it is used to find tablet server.
-  //   Then, it is used again by DocDB to narrow the search within a tablet.
-  // - Partition columns are used to compute the hash code.
-  // - Range columns combining with partition columns are used for indexing.
+  // Execution Input Arguments - To be bound with constant values.
+
+  // Hash Code: A hash code is used to locate efficiently a group of data of the same hash code.
+  // - First, it is used to find tablet server.
+  // - Then, it is used again by DocDB to narrow the search within a tablet.
+  // - In general, hash_code should be set by PgGate, but for some reasons, when the field
+  // "ybctid_column_value" is used, hash_code is set by "common" lib.
   optional uint32 hash_code = 4;
+  optional PgsqlExpressionPB ybctid_column_value = 20;
+
+  // Primary key.
+  // - Partition columns are used to compute the hash code,
+  //   e.g. for h1 = 1 AND h2 = 2 partition_column_values would be [1, 2].
+  // - Range columns combining with partition columns are used for indexing.
   repeated PgsqlExpressionPB partition_column_values = 5;
   repeated PgsqlExpressionPB range_column_values = 18;
-  optional PgsqlExpressionPB ybctid_column_value = 20;
 
   // For select using local secondary index: this request selects the ybbasectids to fetch the rows
   // in place of the primary key above.
   optional PgsqlReadRequestPB index_request = 21;
 
+  // Where clause condition
+  optional PgsqlExpressionPB where_expr = 8;
+
+  // Conditions for range columns.
+  optional PgsqlExpressionPB condition_expr = 22;
+
+  // If this attribute is present, this request is a batch request.
+  repeated PgsqlBatchArgumentPB batch_arguments = 24;
+
   //------------------------------------------------------------------------------------------------
-  // Tuple descriptor.
+  // Output Argument Specification (Tuple descriptor).
   //
   // For now, we sent rsrow descriptor from proxy to tablet server for every request. RSRow is just
   // a selected row. We call it rsrow to distinguish a selected row from a row of a table in the
@@ -250,10 +287,7 @@ message PgsqlReadRequestPB {
   repeated PgsqlExpressionPB targets = 7; // required.
 
   //------------------------------------------------------------------------------------------------
-  // Where clause condition
-  optional PgsqlExpressionPB where_expr = 8;
-
-  //------------------------------------------------------------------------------------------------
+  // Database Arguments - To be read from the DataBase.
   // Listing of all columns that this operation is referencing. TServers will need to read these
   // columns when processing this read request.
   optional PgsqlColumnRefsPB column_refs = 9;
@@ -285,6 +319,9 @@ message PgsqlReadRequestPB {
 
   // The version of the ysql system catalog this query was prepared against.
   optional uint64 ysql_catalog_version = 16;
+
+  // Row mark as used by postgres for row locking.
+  optional RowMarkType row_mark_type = 23;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -303,12 +340,14 @@ message PgsqlResponsePB {
     PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
   }
 
-  // Status and error message
+  // TODO: AppStatusPB can consolidate status + error_message + pg_error_code
+  // Internal Status information
   optional RequestStatus status = 1 [ default = PGSQL_STATUS_OK ]; // required
 
   // True if this operation was not actually applied, for instance update to the same value.
   optional bool skipped = 6;
 
+  // User readable error message associated with Internal & External Status
   optional string error_message = 2;
 
   // Sidecar of rows data returned
@@ -316,4 +355,30 @@ message PgsqlResponsePB {
 
   // Paging state for continuing the read in the next QLReadRequestPB fetch.
   optional PgsqlPagingStatePB paging_state = 5;
+
+  // When client sends a request that has a batch of many arguments, server might process only a
+  // subset of the arguments. Attribute "batch_arg_count" is to indicate how many arguments have
+  // been processed by server.
+  //
+  // NOTE: This variable could have been inside "paging state", but due to rolling upgrade I have
+  // to place it here, separated from paging status for singular request.
+  optional int64 batch_arg_count = 10 [ default = 1 ];
+
+  // Number of rows affected by the operation. Currently only used for update and delete.
+  optional int32 rows_affected_count = 7;
+
+  //
+  // External statuses.
+  //
+  // If you add more of those, make sure they are correctly picked up, e.g.
+  // by PgDocReadOp::ReceiveResponse and PgDocOp::HandleResponseStatus
+  //
+
+  // PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
+  // See https://www.postgresql.org/docs/11/errcodes-appendix.html
+  optional uint64 pg_error_code = 8;
+
+  // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
+  // of Status::ErrorData(TransactionErrorTag::kCategory)
+  optional uint32 txn_error_code = 9;
 }

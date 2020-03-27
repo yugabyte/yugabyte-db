@@ -116,6 +116,7 @@ class Executor : public QLExprExecutor {
 
   // Create a table (including index table for CREATE INDEX).
   CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
+  CHECKED_STATUS AddColumnToIndexInfo(IndexInfoPB *index_info, const PTColumnDefinition *column);
 
   // Alter a table.
   CHECKED_STATUS ExecPTNode(const PTAlterTable *tnode);
@@ -203,6 +204,8 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS ProcessOpStatus(const PTDmlStmt* stmt,
                                  const client::YBqlOpPtr& op,
                                  ExecContext* exec_context);
+
+  std::shared_ptr<client::YBTable> GetTableFromStatement(const TreeNode *tnode) const;
 
   // Process status of FlushAsyncDone.
   using OpErrors = std::unordered_map<const client::YBqlOp*, Status>;
@@ -355,9 +358,6 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS WhereSubColOpToPB(QLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
   CHECKED_STATUS WhereJsonColOpToPB(QLConditionPB *condition, const JsonColumnOp& jsoncol_op);
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
-
-  //------------------------------------------------------------------------------------------------
-  CHECKED_STATUS ColumnOpsToSchema(const PTColumnDefinition *col, client::YBColumnSpec *col_spec);
 
   //------------------------------------------------------------------------------------------------
   // Add a read/write operation for the current statement and apply it. For write operation, check

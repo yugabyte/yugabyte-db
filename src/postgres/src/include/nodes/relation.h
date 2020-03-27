@@ -775,7 +775,8 @@ typedef struct IndexOptInfo
 
 	/* index descriptor information */
 	int			ncolumns;		/* number of columns in index */
-	int			nkeycolumns;	/* number of key columns in index */
+	int			nkeycolumns;	/* number of (hash & range) key columns in index */
+	int			nhashcolumns;	/* number of hash key columns in index */
 	int		   *indexkeys;		/* column numbers of index's attributes both
 								 * key and included columns, or 0 */
 	Oid		   *indexcollations;	/* OIDs of collations of index columns */

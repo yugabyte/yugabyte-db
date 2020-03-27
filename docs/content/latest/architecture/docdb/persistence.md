@@ -1,7 +1,8 @@
 ---
-title: Persistence
+title: Persistence in YugabyteDB
+headerTitle: Persistence
 linkTitle: Persistence
-description: Persistence on top of RocksDB
+description: Learn how YugabyteDB manages persistence using DocDB, based on RocksDB.
 aliases:
   - /latest/architecture/docdb/persistence/
   - /latest/architecture/concepts/persistence/
@@ -15,7 +16,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Once data is replicated via Raft across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.
+Once data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.
 
 ## Storage Model
 
@@ -25,11 +26,11 @@ This storage layer is a persistent **key to object/document** store. The storage
 
 The keys and the corresponding document values are described below.
 
-### DocDB Key
+### DocDB key
 
-The **keys** in DocDB document model are compound keys consisting of 1 or more **hash organized components**, followed by 0 or more **ordered (range) components**. These components are stored in their data type specific sort order; both ascending and descending sort order is supported for each ordered component of the key.
+The **keys** in DocDB document model are compound keys consisting of one or more **hash organized components**, followed by zero or more **ordered (range) components**. These components are stored in their data type specific sort order; both ascending and descending sort order is supported for each ordered component of the key.
 
-### DocDB Value
+### DocDB value
 
 The **values** in DocDB document data model can be:
 
@@ -40,7 +41,7 @@ This model allows multiple levels of nesting, and corresponds to a JSON-like for
 structures like lists, sorted sets etc. are implemented using DocDB’s object type with special key
 encodings. In DocDB, [hybrid timestamps](../../transactions/distributed-txns/) of each update are recorded carefully, so that it is possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
 
-#### Encoding Documents
+#### Encoding documents
 
 The documents are stored using a key-value store based on RocksDB, which is typeless. The documents
 are converted to multiple key-value pairs along with timestamps. Because documents are spread across
@@ -65,7 +66,7 @@ just (type, value) pairs, which can be encoded to and decoded from strings. When
 values in keys, we use a binary-comparable encoding for the value, so that sort order of the
 encoding is the same as the sort order of the value.
 
-#### Updates and Deletes
+#### Updates and deletes
 
 Assume that the example document above was written at time T10 entirely. Internally the above
 example’s document is stored using 5 RocksDB key value pairs:
@@ -86,9 +87,9 @@ space.
 
 For YSQL (and YCQL) tables, every row is a document in DocDB.
 
-### Primary Key Columns
+### Primary key columns
 
-The document key contains the full primary key with column values in organized in the following order:
+The document key contains the full primary key with column values organized in the following order:
 
 * A 16-bit hash of the hash column values is stored first
 * The partition (hash) column(s) are stored next
@@ -96,13 +97,13 @@ The document key contains the full primary key with column values in organized i
 
 Each data type supported in YSQL (or YCQL) is represented by a unique byte. The type prefix is also present in the primary key’s hash or range components
 
-### Non-Primary Key Columns
+### Non-Primary key columns
 
 The non-primary key columns correspond to subdocuments within the document. The subdocument key corresponds to the column ID. There’s a unique byte for each data type we support in YSQL (or YCQL). The values are prefixed with the corresponding byte. If a column is a non-primitive type (such as a map or set), the corresponding subdocument is an Object.
 
 We use a binary-comparable encoding to translate the value for each YCQL type to strings that go to the KV-Store.
 
-### Data Expiry in YCQL
+### Data expiration in YCQL
 
 In YCQL there are two types of TTL, the table TTL and column level TTL. The column TTLs are stored
 with the value using the same encoding as Redis. The Table TTL is not stored in DocDB (it is stored
@@ -114,7 +115,7 @@ this difference (and row level TTLs) using a "liveness column", a special system
 the user. It is added for inserts, but not updates: making sure the row is present even if all
 non-primary key columns are deleted only in the case of inserts.
 
-## YCQL - Collection Type Example
+## YCQL - Collection type example
 
 Consider the following YCQL table schema:
 
@@ -126,7 +127,7 @@ CREATE TABLE msgs (user_id text,
       PRIMARY KEY ((user_id), msg_id));
 ```
 
-### Insert a Row
+### Insert a row
 
 ```
 T1: INSERT INTO msgs (user_id, msg_id, msg, msg_props)
@@ -142,7 +143,7 @@ The entries in DocDB at this point will look like the following:
 (hash1, 'user1', 10), msg_props_column_id, 'subject', T1 -> 'hello'
 ```
 
-### Update Subset of Columns
+### Update subset of columns
 
 ```sql
 T2: UPDATE msgs
@@ -161,7 +162,7 @@ The entries in DocDB at this point will look like the following:
 </code>
 </pre>
 
-### Update Entire Row
+### Update entire row
 
 ```sql
 T3: INSERT INTO msgs (user_id, msg_id, msg, msg_props)
@@ -182,9 +183,10 @@ The entries in DocDB at this point will look like the following:
 (hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</b></code>
 </pre>
 
-### Delete a Row
+### Delete a row
 
-Delete a single column from a row
+Delete a single column from a row.
+
 ```sql
 T4: DELETE msg_props       
       FROM msgs
@@ -235,11 +237,11 @@ T5: DELETE FROM msgs    // Delete entire row corresponding to msg_id 10
 (hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</code>
 </pre>
 
-## YCQL - Time-To-Live (TTL) Example
+## YCQL - Time-To-Live (TTL) example
 
 **Table Level TTL**: YCQL allows the TTL property to be specified at the table level. In this case, we do not store the TTL on a per KV basis in RocksDB; but the TTL is implicitly enforced on reads as well as during compactions (to reclaim space).
 
-**Row and Column Level TTL**: YCQL allows the TTL property to be specified at the level of each INSERT/UPDATE operation. In such cases, the TTL is stored as part of the RocksDB value.
+**Row and column level TTL**: YCQL allows the TTL property to be specified at the level of each INSERT/UPDATE operation. In such cases, the TTL is stored as part of the RocksDB value.
 
 Below, we will look at how the row-level TTL is achieved in detail.
 
@@ -251,7 +253,7 @@ Below, we will look at how the row-level TTL is achieved in detail.
 </code>
 </pre>
 
-### Insert Row With TTL
+### Insert row with TTL
 
 <pre>
 <code>
@@ -266,7 +268,7 @@ T1: INSERT INTO page_views (page_id, views)
 </code>
 </pre>
 
-### Update Row With TTL
+### Update row with TTL
 
 <pre>
 <code>
@@ -282,7 +284,6 @@ T2: UPDATE page_views
 <b>(hash1, 'abc.com'), category_column_id, T2 -> (TTL = 3600) 'news'</b></code>
 </pre>
 
-
 ## Mapping YEDIS data to DocDB
 
 Redis is a schemaless data store. There is only one primitive type (string) and some collection
@@ -295,7 +296,7 @@ can have a TTL, which is stored in the RocksDB-value.
 
 ![redis_docdb_overview](/images/architecture/redis_docdb_overview.png)
 
-### Redis Example
+### Redis example
 
 | Timestamp | Command                                   | New Key-Value pairs added in RocksDB                                                                            |
 |:---------:|:-----------------------------------------:|:---------------------------------------------------------------------------------------------------------------:|
@@ -326,4 +327,3 @@ reading, as shown below:
 ```
 
 Using an iterator, it is easy to reconstruct the hash and set contents efficiently.
-

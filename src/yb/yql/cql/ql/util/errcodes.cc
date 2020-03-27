@@ -88,6 +88,7 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   { ErrorCode::INVALID_COUNTING_EXPR, "Counters can only be incremented or decremented" },
   { ErrorCode::DUPLICATE_TYPE, "Duplicate Type" },
   { ErrorCode::DUPLICATE_TYPE_FIELD, "Duplicate Type Field" },
+  { ErrorCode::ALTER_KEY_COLUMN, "Alter key column" },
   { ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA, "Incompatible Copartition Schema" },
   { ErrorCode::INVALID_ROLE_DEFINITION, "Invalid Role Definition" },
   { ErrorCode::DUPLICATE_ROLE, "Duplicate Role"},
@@ -112,10 +113,12 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   { ErrorCode::RESOURCE_NOT_FOUND, "Resource Not Found"},
   { ErrorCode::INVALID_REQUEST, "Invalid Request"},
   { ErrorCode::PERMISSION_NOT_FOUND, "Permission Not Found"},
+  { ErrorCode::CONDITION_NOT_SATISFIED, "Condition Not Satisfied"},
 };
 
 ErrorCode GetErrorCode(const Status& s) {
-  return s.IsQLError() ? static_cast<ErrorCode>(s.error_code()) : ErrorCode::FAILURE;
+  QLError ql_error(s);
+  return ql_error != ErrorCode::SUCCESS ? ql_error.value() : ErrorCode::FAILURE;
 }
 
 const char *ErrorText(const ErrorCode error_code) {
@@ -128,7 +131,7 @@ const char *ErrorText(const ErrorCode error_code) {
 }
 
 Status ErrorStatus(const ErrorCode code, const std::string& mesg) {
-  return STATUS(QLError, ErrorText(code), mesg, to_underlying(code));
+  return STATUS(QLError, ErrorText(code), mesg, QLError(code));
 }
 
 std::string FormatForComparisonFailureMessage(ErrorCode op, ErrorCode) {
@@ -152,6 +155,11 @@ ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status) {
   }
   FATAL_INVALID_ENUM_VALUE(QLResponsePB::QLStatus, status);
 }
+
+static const std::string kQLErrorCategoryName = "ql error";
+
+static StatusCategoryRegisterer ql_error_category_registerer(
+    StatusCategoryDescription::Make<QLErrorTag>(&kQLErrorCategoryName));
 
 }  // namespace ql
 }  // namespace yb

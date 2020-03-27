@@ -49,6 +49,7 @@ class StepDownUnderLoadTest : public YBTableTestBase {
  public:
   bool use_external_mini_cluster() override { return true; }
   int num_tablets() override { return 1; }
+  bool enable_ysql() override { return false; }
 };
 
 TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {

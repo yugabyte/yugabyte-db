@@ -32,6 +32,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.yb.AssertionWrappers;
 import org.yb.client.BaseYBClientTest;
 import org.yb.client.TestUtils;
@@ -51,6 +52,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -207,6 +209,16 @@ public class MiniYBCluster implements AutoCloseable {
     }
   }
 
+  private static void addFlagsFromEnv(List<String> dest, String envVarName) {
+    final String extraFlagsFromEnv = System.getenv(envVarName);
+    if (extraFlagsFromEnv != null) {
+      // TODO: this has an issue with handling quoted arguments with embedded spaces.
+      for (String flag : extraFlagsFromEnv.split("\\s+")) {
+        dest.add(flag);
+      }
+    }
+  }
+
   /** Common flags for both master and tserver processes */
   private List<String> getCommonDaemonFlags() {
     final List<String> commonFlags = Lists.newArrayList(
@@ -214,13 +226,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--logtostderr",
         "--logbuflevel=-1",
         "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
-    final String extraFlagsFromEnv = System.getenv("YB_EXTRA_DAEMON_FLAGS");
-    if (extraFlagsFromEnv != null) {
-      // TODO: this has an issue with handling quoted arguments with embedded spaces.
-      for (String flag : extraFlagsFromEnv.split("\\s+")) {
-        commonFlags.add(flag);
-      }
-    }
+    addFlagsFromEnv(commonFlags, "YB_EXTRA_DAEMON_FLAGS");
     if (testClassName != null) {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
@@ -242,9 +248,16 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     commonFlags.add("--yb_num_shards_per_tserver=" + numShardsPerTserver);
+    commonFlags.add("--ysql_num_shards_per_tserver=" + numShardsPerTserver);
 
     if (replicationFactor > 0) {
       commonFlags.add("--replication_factor=" + replicationFactor);
+    }
+
+    if (startPgSqlProxy) {
+      commonFlags.add("--enable_ysql=true");
+    } else {
+      commonFlags.add("--enable_ysql=false");
     }
 
     return commonFlags;
@@ -542,12 +555,13 @@ public class MiniYBCluster implements AutoCloseable {
         "--cql_proxy_webserver_port=" + cqlWebPort,
         "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
-        "--callhome_enabled=false");
+        "--callhome_enabled=false",
+        "--process_info_dir=" + getProcessInfoDir());
+    addFlagsFromEnv(tsCmdLine, "YB_EXTRA_TSERVER_FLAGS");
 
     if (startPgSqlProxy) {
       tsCmdLine.addAll(Lists.newArrayList(
-          "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + postgresPort,
-          "--start_pgsql_proxy"
+          "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + postgresPort
       ));
       if (pgTransactionsEnabled) {
         tsCmdLine.add("--pg_transactions_enabled");
@@ -595,8 +609,9 @@ public class MiniYBCluster implements AutoCloseable {
       "--catalog_manager_bg_task_wait_ms=" + CATALOG_MANAGER_BG_TASK_WAIT_MS,
       "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
       "--webserver_port=" + masterWebPort,
-      "--callhome_enabled=false");
-    masterCmdLine.addAll(getCommonDaemonFlags());
+      "--callhome_enabled=false",
+      "--process_info_dir=" + getProcessInfoDir());
+    addFlagsFromEnv(masterCmdLine, "YB_EXTRA_MASTER_FLAGS");
     return masterCmdLine;
   }
 
@@ -870,6 +885,7 @@ public class MiniYBCluster implements AutoCloseable {
       return;
     }
     assert(cqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), CQL_PORT)));
+    // TODO: bug, we're using the multiple Hostnames with different ports for testing
     assertTrue(
         redisContactPoints.removeIf((InetSocketAddress addr) ->
             addr.getHostName().equals(hostPort.getHostText())));
@@ -935,6 +951,9 @@ public class MiniYBCluster implements AutoCloseable {
   public void shutdown() throws Exception {
     LOG.info("Shutting down mini cluster");
     shutdownDaemons();
+    String processInfoDir = getProcessInfoDir();
+    processCoreFiles(processInfoDir);
+    pathsToDelete.add(processInfoDir);
     for (String path : pathsToDelete) {
       try {
         File f = new File(path);
@@ -949,6 +968,28 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
     LOG.info("Mini cluster shutdown finished");
+  }
+
+  private void processCoreFiles(String folder) {
+    File[] files = (new File(folder)).listFiles();
+    for (File file : files == null ? new File[]{} : files) {
+      String fileName = file.getAbsolutePath();
+      try {
+        String exeFile = new String(Files.readAllBytes(Paths.get(fileName)));
+        int pid = Integer.parseInt(file.getName());
+        CoreFileUtil.processCoreFile(
+            pid, exeFile, exeFile, null /* coreFileDir */,
+            CoreFileUtil.CoreFileMatchMode.EXACT_PID);
+      } catch (Exception e) {
+        LOG.warn("Failed to analyze PID from '{}' file", fileName, e);
+      }
+    }
+  }
+
+  private String getProcessInfoDir() {
+    Path path = Paths.get(TestUtils.getBaseTmpDir()).resolve("process_info");
+    path.toFile().mkdirs();
+    return path.toAbsolutePath().toString();
   }
 
   private void shutdownDaemons() throws Exception {

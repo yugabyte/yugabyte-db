@@ -13,20 +13,20 @@ showAsideToc: true
 
 
 ## Logical Architecture
-YugaByte DB is comprised of 2 logical layers, **YQL** and **DocDB**. 
+YugabyteDB is comprised of 2 logical layers, **YQL** and **DocDB**. 
 
 - [YQL](../yql/) is the upper layer that has the API specific aspects - for example, the server-side implementation of the YEDIS/YCQL/YSQL APIs, and the corresponding query/command compilation and run-time (data type representations, built-in operations and more).
 
 
 - [DocDB](../docdb/), a distributed document store, is a highly available, distributed system with [strong write consistency](../docdb/replication/#strong-write-consistency), [tunable read consistency](../docdb/replication/#tunable-read-consistency), and [an advanced log-structured row/document-oriented storage](../docdb/persistence/). It includes several optimizations for handling ever-growing datasets efficiently. 
 
-![YugaByte DB Logical Architecture](/images/architecture/yb-arch-new.png)
+![YugabyteDB Logical Architecture](/images/architecture/yb-arch-new.png)
 
-In terms of the traditional [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugaByte DB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugaByte is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugaByte DB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugaByte DB is an insignificant contributor to its downtime, then users are correct to not worry about it.
+In terms of the traditional [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugabyteDB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of Yugabyte is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugabyteDB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugabyteDB is an insignificant contributor to its downtime, then users are correct to not worry about it.
 
 ## Universe
 
-A YugaByte DB universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
+A YugabyteDB universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
 
 The universe can be deployed in a variety of configurations depending on business requirements, and latency considerations. Some examples:
 
@@ -34,35 +34,35 @@ The universe can be deployed in a variety of configurations depending on busines
 - Multiple AZs in a region
 - Multiple regions (with synchronous and asynchronous replication choices)
 
-A YugaByte DB *universe* can consist of one or more keyspaces (a.k.a databases in other databases such as MySQL or Postgres). A keyspace is essentially a namespace and can contain one or more tables. YugaByte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. YugaByte automatically handles failures (e.g., node, process, AZ or region failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
+A YugabyteDB *universe* can consist of one or more keyspaces (a.k.a databases in other databases such as MySQL or Postgres). A keyspace is essentially a namespace and can contain one or more tables. Yugabyte automatically shards, replicates and load-balances these tables across the nodes in the universe, while respecting user-intent such as cross-AZ or region placement requirements, desired replication factor, and so on. Yugabyte automatically handles failures (e.g., node, process, AZ or region failures), and re-distributes and re-replicates data back to desired levels across the remaining available nodes while still respecting any data placement requirements.
 
 
 ## Cluster
 
-A YugaByte Universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing strong (synchronous) replication of the user data or are in a timeline consistent (asynchronous) replication mode. The set of nodes that are performing strong replication are referred to as the Primary cluster and other groups are called Read Replica clusters. There is always one primary cluster in a universe and there can be zero or more read replica clusters in that universe. More information is [here](../replication/#read-only-replicas).
+A Yugabyte Universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing strong (synchronous) replication of the user data or are in a timeline consistent (asynchronous) replication mode. The set of nodes that are performing strong replication are referred to as the Primary cluster and other groups are called Read Replica clusters. There is always one primary cluster in a universe and there can be zero or more read replica clusters in that universe. More information is [here](../replication/#read-only-replicas).
 
 Note: In most of the docs, the term `cluster` and `universe` are used interchangeably.
 
 ## Processes
 
-A YugaByte DB universe comprises of two sets of processes, YB-TServer and YB-Master. These serve different purposes.
+A YugabyteDB universe comprises of two sets of processes, YB-TServer and YB-Master. These serve different purposes.
 
-- The YB-TServer (aka the YugaByte Tablet Server) processes are responsible for hosting/serving user data (e.g, tables).
+- The YB-TServer (aka the Yugabyte Tablet Server) processes are responsible for hosting/serving user data (e.g, tables).
 
-- The YB-Master (aka the YugaByte Master Server) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.
+- The YB-Master (aka the Yugabyte Master Server) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.
 
 
-YugaByte DB is architected to not have any single point of failure. The YB-TServer as well YB-Master processes use [Raft](https://raft.github.io/), a distributed consensus algorithm, for replicating changes to user data or system metadata respectively across a set of nodes.
+YugabyteDB is architected to not have any single point of failure. The YB-TServer as well YB-Master processes use [Raft](https://raft.github.io/), a distributed consensus algorithm, for replicating changes to user data or system metadata respectively across a set of nodes.
 
 High Availability (HA) of the YB-Master’s functionalities and of the user-tables served by the YB-TServers is achieved by the failure-detection and new-leader election mechanisms that are built into the Raft implementation.
 
-Below is an illustration of a simple 4-node YugaByte universe:
+Below is an illustration of a simple 4-node Yugabyte universe:
 
 ![4 node cluster](/images/architecture/4_node_cluster.png)
 
 ## YB-TServer
 
-The YB-TServer (short for YugaByte Tablet Server) is the process that does the actual IO for end
+The YB-TServer (short for Yugabyte Tablet Server) is the process that does the actual IO for end
 user requests. Recall from the previous section that data for a table is split/sharded into tablets.
 Each tablet is composed of one or more tablet-peers depending on the replication factor. And each
 YB-TServer hosts one or more tablet-peers.
@@ -70,7 +70,7 @@ YB-TServer hosts one or more tablet-peers.
 Note: We will refer to the “tablet-peers hosted by a YB-TServer” simply as the “tablets hosted by a
 YB-TServer”.
 
-Below is a pictorial illustration of this in the case of a 4 node YugaByte universe, with one table
+Below is a pictorial illustration of this in the case of a 4 node Yugabyte universe, with one table
 that has 16 tablets and a replication factor of 3.
 
 ![tserver_overview](/images/architecture/tserver_overview.png)

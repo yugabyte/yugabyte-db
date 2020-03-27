@@ -36,7 +36,8 @@ YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock)
     : client_(client),
       read_point_(clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr),
       error_collector_(new ErrorCollector()),
-      timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)) {
+      timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)),
+      hybrid_time_for_write_(HybridTime::kInvalid) {
   const auto metric_entity = client_->metric_entity();
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
@@ -59,6 +60,10 @@ bool YBSession::IsRestartRequired() {
   return rp && rp->IsRestartRequired();
 }
 
+void YBSession::DeferReadPoint() {
+  read_point_->Defer();
+}
+
 void YBSession::SetTransaction(YBTransactionPtr transaction) {
   transaction_ = std::move(transaction);
   internal::BatcherPtr old_batcher;
@@ -67,6 +72,13 @@ void YBSession::SetTransaction(YBTransactionPtr transaction) {
     LOG_IF(DFATAL, old_batcher->HasPendingOperations()) << "SetTransaction with non empty batcher";
     old_batcher->Abort(STATUS(Aborted, "Transaction changed"));
   }
+}
+
+void YBSession::SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source) {
+  if (batcher_) {
+    batcher_->SetRejectionScoreSource(rejection_score_source);
+  }
+  rejection_score_source_ = std::move(rejection_score_source);
 }
 
 YBSession::~YBSession() {
@@ -161,14 +173,24 @@ void YBSession::set_allow_local_calls_in_curr_thread(bool flag) {
 }
 
 void YBSession::SetInTxnLimit(HybridTime value) {
-  auto *rp = DCHECK_NOTNULL(read_point());
+  auto* rp = read_point();
+  LOG_IF(DFATAL, rp == nullptr)
+      << __FUNCTION__ << "(" << value << ") called on YBSession " << this
+      << " but read point is null";
   if (rp) {
-    read_point()->SetInTxnLimit(value);
+    rp->SetInTxnLimit(value);
   }
 }
 
 ConsistentReadPoint* YBSession::read_point() {
   return transaction_ ? &transaction_->read_point() : read_point_.get();
+}
+
+void YBSession::WriteWithHybridTime(HybridTime ht) {
+  hybrid_time_for_write_ = ht;
+  if (batcher_) {
+    batcher_->WriteWithHybridTime(hybrid_time_for_write_);
+  }
 }
 
 internal::Batcher& YBSession::Batcher() {
@@ -178,6 +200,10 @@ internal::Batcher& YBSession::Batcher() {
         force_consistent_read_));
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);
+    }
+    batcher_->SetRejectionScoreSource(rejection_score_source_);
+    if (hybrid_time_for_write_.is_valid()) {
+      batcher_->WriteWithHybridTime(hybrid_time_for_write_);
     }
   }
   return *batcher_;

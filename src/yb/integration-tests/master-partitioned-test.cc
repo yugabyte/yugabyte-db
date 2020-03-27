@@ -32,8 +32,10 @@
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/atomic.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/util/shared_lock.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
@@ -131,7 +133,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void DoTearDown() override {
     client_.reset();
-    FLAGS_slowdown_master_async_rpc_tasks_by_ms = 0;
+    SetAtomicFlag(0, &FLAGS_slowdown_master_async_rpc_tasks_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(1000));
     cluster_->Shutdown();
   }
@@ -198,8 +200,8 @@ void MasterPartitionedTest::CheckLeaderMasterIsResponsive(int master_idx) {
 
 void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_tablets) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
-                                                YQLDatabase::YQL_DATABASE_REDIS));
-  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+                                                table_name.namespace_type()));
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   master::ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(3);
   ASSERT_OK(table_creator->table_name(table_name)
@@ -225,7 +227,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
   SleepFor(MonoDelta::FromMilliseconds(4000));
   ASSERT_OK(cluster_->WaitForTabletServerCount(num_tservers_));
 
-  YBTableName table_name("my_keyspace", "test_table");
+  YBTableName table_name(YQL_DATABASE_REDIS, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateTable(table_name, FLAGS_num_test_tablets));
   LOG(INFO) << "Created table successfully!";
 

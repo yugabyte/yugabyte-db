@@ -1,6 +1,8 @@
 ---
-title: COMMIT
-description: COMMIT
+title: COMMIT statement [YSQL]
+headerTitle: COMMIT
+linkTitle: COMMIT
+description: Use the COMMIT statement to commit the current transaction.
 summary: COMMIT
 menu:
   latest:
@@ -14,61 +16,84 @@ showAsideToc: true
 
 ## Synopsis
 
-`COMMIT` command commits the current transaction. All changes made by the transaction become visible to others and are guaranteed to be durable if a crash occurs.
+Use the `COMMIT` statement to commit the current transaction. All changes made by the transaction become visible to others and are guaranteed to be durable if a crash occurs.
 
-## Grammar
+## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="231" height="68" viewbox="0 0 231 68"><path class="connector" d="M0 21h5m67 0h30m104 0h20m-134 24q0 5 5 5h5m55 0h54q5 0 5-5m-129-24q5 0 5 5v32q0 5 5 5h114q5 0 5-5v-32q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="67" height="24" rx="7"/><text class="text" x="15" y="21">COMMIT</text><rect class="literal" x="102" y="5" width="104" height="24" rx="7"/><text class="text" x="112" y="21">TRANSACTION</text><rect class="literal" x="102" y="34" width="55" height="24" rx="7"/><text class="text" x="112" y="50">WORK</text></svg>
-
-### Syntax
-
-```
-commit_transaction ::= COMMIT [ TRANSACTION | WORK ] ;
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/commit.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/commit.diagram.md" /%}}
+  </div>
+</div>
 
 ## Semantics
 
-Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
+### *commit*
 
-Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+```
+COMMIT [ TRANSACTION | WORK ]
+```
+
+### WORK
+
+Add optional keyword — has no effect.
+
+### TRANSACTION
+
+Add optional keyword — has no effect.
 
 ## Examples
 
 Create a sample table.
 
-```sql
-postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
+```postgresql
+CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
-
 
 Begin a transaction and insert some rows.
 
-```sql
-postgres=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
+```postgresql
+BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
 ```
 
-```sql
-postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (1, 3.0, 4, 'b');
+```postgresql
+INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (1, 3.0, 4, 'b');
 ```
 
 Start a new shell  with `ysqlsh` and begin another transaction to insert some more rows.
 
-```sql
-postgres=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
+```postgresql
+yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
 ```
 
-```sql
-postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (2, 2.0, 3, 'a'), (2, 3.0, 4, 'b');
+```postgresql
+INSERT INTO sample(k1, k2, v1, v2) VALUES (2, 2.0, 3, 'a'), (2, 3.0, 4, 'b');
 ```
 
 In each shell, check the only the rows from the current transaction are visible.
 
 1st shell.
 
-```sql
-postgres=# SELECT * FROM sample; -- run in first shell
+```postgresql
+yugabyte=# SELECT * FROM sample; -- run in first shell
 ```
 
 ```
@@ -80,8 +105,8 @@ postgres=# SELECT * FROM sample; -- run in first shell
 ```
 2nd shell
 
-```sql
-postgres=# SELECT * FROM sample; -- run in second shell
+```postgresql
+yugabyte=# SELECT * FROM sample; -- run in second shell
 ```
 
 ```
@@ -94,20 +119,20 @@ postgres=# SELECT * FROM sample; -- run in second shell
 
 Commit the first transaction and abort the second one.
 
-```sql
-postgres=# COMMIT TRANSACTION; -- run in first shell.
+```postgresql
+COMMIT TRANSACTION; -- run in first shell.
 ```
 
 Abort the current transaction (from the first shell).
 
-```sql
-postgres=# ABORT TRANSACTION; -- run second shell.
+```postgresql
+ABORT TRANSACTION; -- run second shell.
 ```
 
 In each shell check that only the rows from the committed transaction are visible.
 
-```sql
-postgres=# SELECT * FROM sample; -- run in first shell.
+```postgresql
+yugabyte=# SELECT * FROM sample; -- run in first shell.
 ```
 
 ```
@@ -118,8 +143,8 @@ postgres=# SELECT * FROM sample; -- run in first shell.
 (2 rows)
 ```
 
-```sql
-postgres=# SELECT * FROM sample; -- run in second shell.
+```postgresql
+yugabyte=# SELECT * FROM sample; -- run in second shell.
 ```
 
 ```
@@ -130,8 +155,7 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 (2 rows)
 ```
 
-## See Also
+## See also
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`BEGIN`](../txn_begin)
+- [`ROLLBACK`](../txn_rollback)

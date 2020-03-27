@@ -41,8 +41,8 @@
 //
 // Buffer routines will copy to and from buffers without causing
 // a bus error when the architecture requires differnt byte alignments
-#ifndef UTIL_ENDIAN_ENDIAN_H_
-#define UTIL_ENDIAN_ENDIAN_H_
+#ifndef YB_GUTIL_ENDIAN_H
+#define YB_GUTIL_ENDIAN_H
 
 #include <assert.h>
 
@@ -56,7 +56,7 @@ inline uint64 gbswap_64(uint64 host_int) {
   if (__builtin_constant_p(host_int)) {
     return __bswap_constant_64(host_int);
   } else {
-    register uint64 result;
+    uint64 result;
     __asm__("bswap %0" : "=r" (result) : "0" (host_int));
     return result;
   }
@@ -179,7 +179,7 @@ class LittleEndian {
   // The caller needs to guarantee that 1 <= len <= 8.
   static uint64 Load64VariableLength(const void * const p, int len) {
     assert(len >= 1 && len <= 8);
-    const char * const buf = static_cast<const char * const>(p);
+    const char * const buf = static_cast<const char *>(p);
     uint64 val = 0;
     --len;
     do {
@@ -369,4 +369,69 @@ class BigEndian {
 // Network byte order is big-endian
 typedef BigEndian NetworkByteOrder;
 
-#endif  // UTIL_ENDIAN_ENDIAN_H_
+namespace yb {
+namespace internal {
+
+template <size_t size, class Endian>
+struct EndianHelper;
+
+template <class Endian>
+struct EndianHelper<8, Endian> {
+  static uint64_t Load(const void* p) {
+    return Endian::Load64(p);
+  }
+
+  static void Store(void* p, uint64_t v) {
+    Endian::Store64(p, v);
+  }
+};
+
+template <class Endian>
+struct EndianHelper<4, Endian> {
+  static uint32_t Load(const void* p) {
+    return Endian::Load32(p);
+  }
+
+  static void Store(void* p, uint32_t v) {
+    Endian::Store32(p, v);
+  }
+};
+
+template <class Endian>
+struct EndianHelper<2, Endian> {
+  static uint16_t Load(const void* p) {
+    return Endian::Load16(p);
+  }
+
+  static void Store(void* p, uint16_t v) {
+    Endian::Store16(p, v);
+  }
+};
+
+template <class Endian>
+struct EndianHelper<1, Endian> {
+  static uint8_t Load(const void* p) {
+    return *reinterpret_cast<const uint8_t *>(p);
+  }
+
+  static void Store(void* p, uint8_t v) {
+    *reinterpret_cast<uint8_t *>(p) = v;
+  }
+};
+
+} // namespace internal
+
+template <class T, class Endian>
+T Load(const void* p) {
+  return static_cast<T>(internal::EndianHelper<sizeof(T), Endian>::Load(p));
+}
+
+template <class T, class Endian>
+void Store(void *p, T v) {
+  typedef typename std::make_unsigned<T>::type UnsignedT;
+  internal::EndianHelper<sizeof(T), Endian>::Store(p, static_cast<UnsignedT>(v));
+}
+
+} // namespace yb
+
+#endif  // YB_GUTIL_ENDIAN_H

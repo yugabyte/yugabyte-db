@@ -18,9 +18,11 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
-DEFINE_int32(timestamp_history_retention_interval_sec, 10,
-             "The time interval in seconds to retain DocDB history for. This should be "
-             "supplemented with read point tracking.");
+DEFINE_int32(timestamp_history_retention_interval_sec, 120,
+             "The time interval in seconds to retain DocDB history for. Point-in-time reads at a "
+             "hybrid time further than this in the past might not be allowed after a compaction. "
+             "Set this to be higher than the expected maximum duration of any single transaction "
+             "in your application.");
 
 namespace yb {
 namespace tablet {
@@ -48,11 +50,10 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  return {
-    history_cutoff,
-    std::move(deleted_before_history_cutoff),
-    TableTTL(tablet_->metadata()->schema())
-  };
+  return {history_cutoff, std::move(deleted_before_history_cutoff),
+          TableTTL(tablet_->metadata()->schema()),
+          docdb::ShouldRetainDeleteMarkersInMajorCompaction(
+              tablet_->ShouldRetainDeleteMarkersInMajorCompaction())};
 }
 
 }  // namespace tablet

@@ -1,14 +1,15 @@
 ---
-title: Testing the source code
-linkTitle: Running the Tests
-description: Running the Tests
+title: Run the tests
+headerTitle: Run the tests
+linkTitle: Run the tests
+description: Run the tests
 image: /images/section_icons/index/quick_start.png
-headcontent: Running the tests.
+headcontent: Run the tests.
 type: page
 menu:
   latest:
-    identifier: contribute-db-core-test
-    parent: contribute-db-core
+    identifier: run-unit-tests
+    parent: core-database
     weight: 2913
 isTocNested: true
 showAsideToc: true
@@ -20,23 +21,23 @@ showAsideToc: true
 
 To run all the C++ tests you can use following command:
 
-```bash
+```sh
 ./yb_build.sh release --ctest
 ```
 
-If you omit release argument, it will run java tests against debug YugaByte DB build.
+If you omit release argument, it will run java tests against debug YugabyteDB build.
 
 ### Run specific tests
 
 To run a specific test, for example the `util_monotime-test` test, you can run the following command:
 
-```bash
+```sh
 ./yb_build.sh release --cxx-test util_monotime-test
 ```
 
 To run a specific sub-test, for example the `TestMonoTime.TestCondition` sub-test in `util_monotime-test`, you can run the following command:
 
-```bash
+```sh
 ./yb_build.sh release --cxx-test util_monotime-test --gtest_filter TestMonoTime.TestCondition
 ```
 
@@ -46,24 +47,23 @@ To run a specific sub-test, for example the `TestMonoTime.TestCondition` sub-tes
 
 Given that you've already built C++ and Java code you can run Java tests using following command:
 
-```bash
+```sh
 ./yb_build.sh release --scb --sj --java-tests
 ```
 
-If you omit release argument, it will run java tests against debug YugaByte build, so you should then either build debug binaries with `./yb_build.sh` or omit `--scb` and then it will build debug binaries automatically.
-
+If you omit release argument, it will run java tests against debug YugabyteDB build, so you should then either build debug binaries with `./yb_build.sh` or omit `--scb` and then it will build debug binaries automatically.
 
 ### Run specific tests
 
 To run specific test:
 
-```bash
+```sh
 ./yb_build.sh release --scb --sj --java-test org.yb.client.TestYBClient
 ```
 
 To run a specific Java sub-test within a test file use the # syntax, for example:
 
-```bash
+```sh
 ./yb_build.sh release --scb --sj --java-test org.yb.client.TestYBClient#testClientCreateDestroy
 ```
 
@@ -71,7 +71,7 @@ To run a specific Java sub-test within a test file use the # syntax, for example
 
 You can find Java tests output in corresponding directory (you might need to change yb-client to respective Java tests module):
 
-```bash
+```sh
 $ ls -1 java/yb-client/target/surefire-reports/
 TEST-org.yb.client.TestYBClient.xml
 org.yb.client.TestYBClient-output.txt
@@ -86,4 +86,3 @@ org.yb.client.TestYBClient.txt
 {{< note title="Note" >}}
 The YB logs are contained in the output file now.
 {{< /note >}}
-

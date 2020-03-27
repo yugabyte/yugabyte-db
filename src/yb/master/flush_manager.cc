@@ -45,16 +45,15 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
   scoped_refptr<TableInfo> table;
 
   for (const TableIdentifierPB& table_id_pb : req->tables()) {
-    MasterErrorPB::Code error = MasterErrorPB::UNKNOWN_ERROR;
-
-    const Result<TabletInfos> res_tablets = catalog_manager_->GetTabletsOrSetupError(
-        table_id_pb, &error, &table);
-    if (!res_tablets.ok()) {
-      return SetupError(resp->mutable_error(), error, res_tablets.status());
+    auto table_description = catalog_manager_->DescribeTable(table_id_pb);
+    if (!table_description.ok()) {
+      return SetupError(resp->mutable_error(), table_description.status());
     }
 
+    table = table_description->table_info;
+
     // Prepare per Tablet Server tablet lists.
-    for (const scoped_refptr<TabletInfo> tablet : *res_tablets) {
+    for (const scoped_refptr<TabletInfo>& tablet : table_description->tablet_infos) {
       TRACE("Locking tablet");
       auto l = tablet->LockForRead();
 

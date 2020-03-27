@@ -97,7 +97,7 @@ std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
   ci->set_placement_region(default_region);
   ci->set_placement_zone(az);
 
-  std::shared_ptr<TSDescriptor> ts(new YB_EDITION_NS_PREFIX TSDescriptor(node.permanent_uuid()));
+  std::shared_ptr<TSDescriptor> ts(new enterprise::TSDescriptor(node.permanent_uuid()));
   CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
   return ts;
 }
@@ -107,6 +107,7 @@ class TestLoadBalancerBase {
  public:
   TestLoadBalancerBase(ClusterLoadBalancerMockedClass* cb, const string& table_id)
       : cb_(cb), blacklist_(cb->blacklist_),
+        leader_blacklist_(cb->leader_blacklist_),
         ts_descs_(cb->ts_descs_),
         affinitized_zones_(cb->affinitized_zones_),
         tablet_map_(cb->tablet_map_),
@@ -179,6 +180,10 @@ class TestLoadBalancerBase {
 
     PrepareTestState(ts_descs_multi_az);
     TestLeaderOverReplication();
+
+    gflags::SetCommandLineOption("leader_balance_threshold", "0");
+    PrepareTestState(ts_descs_multi_az);
+    TestLeaderBlacklist();
   }
 
  protected:
@@ -193,6 +198,63 @@ class TestLoadBalancerBase {
   Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
     return cb_->HandleLeaderMoves(out_tablet_id, out_from_ts, out_to_ts);
+  }
+
+  void TestLeaderBlacklist() {
+    LOG(INFO) << "Testing moving overloaded leaders";
+    // Move leaders of tablet i to ts i%3.
+    int i = 0;
+    for (const auto tablet : tablets_) {
+      MoveTabletLeader(tablet.get(), ts_descs_[i%3]);
+      i++;
+    }
+    LOG(INFO) << "Leader distribution: 2 1 1";
+
+    ASSERT_OK(AnalyzeTablets());
+
+    // Leader blacklist ts2
+    leader_blacklist_.add_hosts()->set_host(ts_descs_[2]->permanent_uuid());
+    LOG(INFO) << "Leader distribution: 2 1 1. Leader Blacklist: ts2";
+
+    ResetState();
+    ASSERT_OK(AnalyzeTablets());
+
+    string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
+        expected_from_ts, expected_to_ts;
+
+    // With ts2 leader blacklisted, the leader on ts2 should be moved to ts1.
+    expected_from_ts = ts_descs_[2]->permanent_uuid();
+    expected_to_ts = ts_descs_[1]->permanent_uuid();
+    TestMoveLeader(&tablet_id_1, expected_from_ts, expected_to_ts);
+    ASSERT_EQ(tablet_id_1, tablets_[2].get()->id());
+    ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
+
+    // Move 1 leader to ts1.
+    MoveTabletLeader(tablets_[2].get(), ts_descs_[1]);
+    LOG(INFO) << "Leader distribution: 2 2 0";
+
+    // Clear leader blacklist.
+    leader_blacklist_.Clear();
+    cb_->state_->leader_blacklisted_servers_.clear();
+    LOG(INFO) << "Leader distribution: 2 2 0. Leader Blacklist cleared.";
+
+    // ResetState();
+    ASSERT_OK(AnalyzeTablets());
+
+    // With ts2 no more leader blacklisted, a leader on ts0 or ts1 should be moved to ts2.
+    expected_from_ts = "";
+    expected_to_ts = ts_descs_[2]->permanent_uuid();
+    TestMoveLeader(&placeholder, expected_from_ts, expected_to_ts);
+    ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
+
+    // Move 1 leader to ts2.
+    for (const auto tablet : tablets_) {
+      if (tablet.get()->id() == placeholder) {
+        MoveTabletLeader(tablet.get(), ts_descs_[2]);
+        break;
+      }
+    }
+    LOG(INFO) << "Leader distribution: 2 1 1 -OR- 1 2 1";
   }
 
   void TestWithBlacklist() {
@@ -780,8 +842,10 @@ class TestLoadBalancerBase {
     ResetState();
     replication_info_.Clear();
     blacklist_.Clear();
+    leader_blacklist_.Clear();
     tablet_map_.clear();
-    ts_descs_.clear();
+    TSDescriptorVector old_ts_descs;
+    old_ts_descs.swap(ts_descs_);
     affinitized_zones_.clear();
 
     // Set TS desc.
@@ -901,6 +965,7 @@ class TestLoadBalancerBase {
   int total_num_tablets_;
   vector<scoped_refptr<TabletInfo>> tablets_;
   BlacklistPB& blacklist_;
+  BlacklistPB& leader_blacklist_;
   TableId cur_table_uuid_;
   TSDescriptorVector& ts_descs_;
   AffinitizedZonesSet& affinitized_zones_;

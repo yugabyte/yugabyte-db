@@ -55,6 +55,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/server/default-path-handlers.h"
@@ -66,6 +67,8 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/shared_lock.h"
+#include "yb/client/async_initializer.h"
 
 DEFINE_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
@@ -80,7 +83,6 @@ using std::vector;
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
-using yb::tserver::YB_EDITION_NS_PREFIX RemoteBootstrapServiceImpl;
 using strings::Substitute;
 
 DEFINE_int32(master_tserver_svc_num_threads, 10,
@@ -125,7 +127,7 @@ Master::Master(const MasterOptions& opts)
         "Master", opts, "yb.master", server::CreateMemTrackerForServer()),
     state_(kStopped),
     ts_manager_(new TSManager()),
-    catalog_manager_(new YB_EDITION_NS_PREFIX CatalogManager(this)),
+    catalog_manager_(new enterprise::CatalogManager(this)),
     path_handlers_(new MasterPathHandlers(this)),
     flush_manager_(new FlushManager(this, catalog_manager())),
     opts_(opts),
@@ -137,6 +139,10 @@ Master::Master(const MasterOptions& opts)
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),
       mem_tracker()));
+
+  LOG(INFO) << "yb::master::Master created at " << this;
+  LOG(INFO) << "yb::master::TSManager created at " << ts_manager_.get();
+  LOG(INFO) << "yb::master::CatalogManager created at " << catalog_manager_.get();
 }
 
 Master::~Master() {
@@ -158,6 +164,17 @@ Status Master::Init() {
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
+
+  async_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
+      "master_client", 0 /* num_reactors */,
+      // TODO: use the correct flag
+      60, // FLAGS_tserver_yb_client_default_timeout_ms / 1000,
+      "" /* tserver_uuid */,
+      &options(),
+      metric_entity(),
+      mem_tracker(),
+      messenger());
+  async_client_init_->Start();
 
   state_ = kInitialized;
   return Status::OK();
@@ -187,7 +204,8 @@ Status Master::RegisterServices() {
                                                      rpc::ServicePriority::kHigh));
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service(
-      new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
+      new tserver::RemoteBootstrapServiceImpl(
+          fs_manager_.get(), catalog_manager_.get(), metric_entity()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
   return Status::OK();
@@ -385,7 +403,7 @@ Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   RemovedMasterUpdateResponsePB resp;
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms));
-  proxy.RemovedMasterUpdate(req, &resp, &controller);
+  RETURN_NOT_OK(proxy.RemovedMasterUpdate(req, &resp, &controller));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }

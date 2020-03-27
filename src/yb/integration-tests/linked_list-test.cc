@@ -59,6 +59,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
@@ -95,6 +96,8 @@ DEFINE_bool(stress_flush_compact, false,
 DEFINE_bool(stress_wal_gc, false,
             "Set WAL segment size small so that logs will be GCed during the test");
 DECLARE_int32(replication_factor);
+
+METRIC_DECLARE_entity(tablet);
 
 namespace yb {
 
@@ -532,9 +535,10 @@ std::vector<int64_t> LinkedListTester::GenerateSplitInts() {
 }
 
 Status LinkedListTester::CreateLinkedListTable() {
-  RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name_.namespace_name()));
+  RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name_.namespace_name(),
+                                                    table_name_.namespace_type()));
 
-  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   RETURN_NOT_OK_PREPEND(table_creator->table_name(table_name_)
                         .schema(&schema_)
                         .num_tablets(CalcNumTablets(num_replicas_))

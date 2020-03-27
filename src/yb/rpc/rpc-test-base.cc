@@ -17,9 +17,16 @@
 
 #include <thread>
 
+#include "yb/rpc/yb_rpc.h"
+
+#include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
 using namespace std::chrono_literals;
+
+DEFINE_test_flag(
+    bool, TEST_pause_calculator_echo_request, false,
+    "Pause calculator echo request execution until flag is set back to false.");
 
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
@@ -56,10 +63,9 @@ namespace {
 constexpr size_t kQueueLength = 1000;
 
 Slice GetSidecarPointer(const RpcController& controller, int idx, int expected_size) {
-  Slice sidecar;
-  CHECK_OK(controller.GetSidecar(idx, &sidecar));
+  Slice sidecar = CHECK_RESULT(controller.GetSidecar(idx));
   CHECK_EQ(expected_size, sidecar.size());
-  return Slice(sidecar.data(), expected_size);
+  return sidecar;
 }
 
 MessengerBuilder CreateMessengerBuilder(const std::string& name,
@@ -238,6 +244,7 @@ class CalculatorService: public CalculatorServiceIf {
   }
 
   void Echo(const EchoRequestPB* req, EchoResponsePB* resp, RpcContext context) override {
+    TEST_PAUSE_IF_FLAG(TEST_pause_calculator_echo_request);
     resp->set_data(req->data());
     context.RespondSuccess();
   }
@@ -483,6 +490,11 @@ CHECKED_STATUS RpcTestBase::StartFakeServer(Socket* listen_sock, HostPort* liste
 std::unique_ptr<Messenger> RpcTestBase::CreateMessenger(
     const string &name, const MessengerOptions& options) {
   return yb::rpc::CreateMessenger(name, metric_entity_, options);
+}
+
+AutoShutdownMessengerHolder RpcTestBase::CreateAutoShutdownMessengerHolder(
+    const string &name, const MessengerOptions& options) {
+  return rpc::CreateAutoShutdownMessengerHolder(CreateMessenger(name, options));
 }
 
 MessengerBuilder RpcTestBase::CreateMessengerBuilder(const string &name,

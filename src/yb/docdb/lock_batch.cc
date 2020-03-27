@@ -16,6 +16,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace docdb {
@@ -26,7 +27,8 @@ LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_
   if (!empty() && !lock_manager->Lock(&data_.key_to_type, deadline)) {
     data_.shared_lock_manager = nullptr;
     data_.key_to_type.clear();
-    data_.status = STATUS_FORMAT(TimedOut, "Failed to obtain locks until deadline: $0", deadline);
+    data_.status = STATUS_FORMAT(
+        TryAgain, "Failed to obtain locks until deadline: $0", deadline);
   }
 }
 

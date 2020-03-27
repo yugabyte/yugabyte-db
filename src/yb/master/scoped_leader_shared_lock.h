@@ -39,6 +39,7 @@
 #include "yb/util/status.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace master {

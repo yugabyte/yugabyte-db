@@ -77,9 +77,16 @@ Status PTListNode::AnalyzeStatementBlock(SemContext *sem_context) {
                                   "Transactions are not enabled in the table",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
-      if (dml->if_clause() != nullptr) {
+      if (dml->if_clause() != nullptr && !dml->else_error()) {
         return sem_context->Error(dml,
-                                  "Conditional DML not supported in a statement batch yet",
+                                  "Execution of conditional DML statement in transaction block "
+                                  "without ELSE ERROR is not supported yet",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
+      }
+      if (dml->returns_status()) {
+        return sem_context->Error(dml,
+                                  "Execution of statement in transaction block "
+                                  "with RETURNS STATUS AS ROW is not supported yet",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
     }

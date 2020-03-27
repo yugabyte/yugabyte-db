@@ -42,6 +42,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/log.h"
@@ -215,7 +216,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const RaftPeerPB& local_peer_pb,
     const scoped_refptr<MetricEntity>& metric_entity,
     const scoped_refptr<server::Clock>& clock,
-    ReplicaOperationFactory* operation_factory,
+    ConsensusContext* consensus_context,
     rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<log::Log>& log,
@@ -225,19 +226,21 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     TableType table_type,
     ThreadPool* raft_pool,
     RetryableRequests* retryable_requests) {
-  gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(
-      messenger, proxy_cache, local_peer_pb.cloud_info()));
+  auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
+      messenger, proxy_cache, local_peer_pb.cloud_info());
 
   // The message queue that keeps track of which operations need to be replicated
   // where.
-  gscoped_ptr<PeerMessageQueue> queue(
-      new PeerMessageQueue(metric_entity,
-                           log,
-                           server_mem_tracker,
-                           local_peer_pb,
-                           options.tablet_id,
-                           clock,
-                           raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL)));
+  auto queue = std::make_unique<PeerMessageQueue>(
+      metric_entity,
+      log,
+      server_mem_tracker,
+      parent_mem_tracker,
+      local_peer_pb,
+      options.tablet_id,
+      clock,
+      consensus_context,
+      raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL));
 
   DCHECK(local_peer_pb.has_permanent_uuid());
   const string& peer_uuid = local_peer_pb.permanent_uuid();
@@ -251,25 +254,25 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
 
   // A manager for the set of peers that actually send the operations both remotely
   // and to the local wal.
-  gscoped_ptr<PeerManager> peer_manager(
-    new PeerManager(options.tablet_id,
-                    peer_uuid,
-                    rpc_factory.get(),
-                    queue.get(),
-                    raft_pool_token.get(),
-                    log));
+  auto peer_manager = std::make_unique<PeerManager>(
+      options.tablet_id,
+      peer_uuid,
+      rpc_factory.get(),
+      queue.get(),
+      raft_pool_token.get(),
+      log);
 
   return std::make_shared<RaftConsensus>(
       options,
       std::move(cmeta),
-      rpc_factory.Pass(),
-      queue.Pass(),
-      peer_manager.Pass(),
+      std::move(rpc_factory),
+      std::move(queue),
+      std::move(peer_manager),
       std::move(raft_pool_token),
       metric_entity,
       peer_uuid,
       clock,
-      operation_factory,
+      consensus_context,
       log,
       parent_mem_tracker,
       mark_dirty_clbk,
@@ -279,12 +282,13 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
 
 RaftConsensus::RaftConsensus(
     const ConsensusOptions& options, std::unique_ptr<ConsensusMetadata> cmeta,
-    gscoped_ptr<PeerProxyFactory> proxy_factory,
-    gscoped_ptr<PeerMessageQueue> queue, gscoped_ptr<PeerManager> peer_manager,
-    unique_ptr<ThreadPoolToken> raft_pool_token,
+    std::unique_ptr<PeerProxyFactory> proxy_factory,
+    std::unique_ptr<PeerMessageQueue> queue,
+    std::unique_ptr<PeerManager> peer_manager,
+    std::unique_ptr<ThreadPoolToken> raft_pool_token,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
-    ReplicaOperationFactory* operation_factory, const scoped_refptr<log::Log>& log,
+    ConsensusContext* consensus_context, const scoped_refptr<log::Log>& log,
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
@@ -292,9 +296,9 @@ RaftConsensus::RaftConsensus(
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
-      peer_proxy_factory_(proxy_factory.Pass()),
-      peer_manager_(peer_manager.Pass()),
-      queue_(queue.Pass()),
+      peer_proxy_factory_(std::move(proxy_factory)),
+      peer_manager_(std::move(peer_manager)),
+      queue_(std::move(queue)),
       rng_(GetRandomSeed32()),
       withhold_votes_until_(MonoTime::Min()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
@@ -314,12 +318,14 @@ RaftConsensus::RaftConsensus(
         MonoDelta::FromSeconds(FLAGS_follower_reject_update_consensus_requests_seconds);
   }
 
-  state_.reset(new ReplicaState(options,
-                                peer_uuid,
-                                std::move(cmeta),
-                                DCHECK_NOTNULL(operation_factory),
-                                this,
-                                retryable_requests));
+  state_ = std::make_unique<ReplicaState>(
+      options,
+      peer_uuid,
+      std::move(cmeta),
+      DCHECK_NOTNULL(consensus_context),
+      this,
+      retryable_requests,
+      std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
 }
@@ -837,7 +843,6 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   // Don't vote for anyone if we're a leader.
   withhold_votes_until_ = MonoTime::Max();
 
-  state_->SetLeaderNoOpCommittedUnlocked(false);
   queue_->RegisterObserver(this);
 
   // Refresh queue and peers before initiating NO_OP.
@@ -1005,6 +1010,11 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   return Status::OK();
 }
 
+void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
+    uint64_t majority_replicated_num_sst_files) {
+  majority_num_sst_files_.store(majority_replicated_num_sst_files, std::memory_order_release);
+}
+
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data,
     OpId* committed_op_id) {
@@ -1035,13 +1045,14 @@ void RaftConsensus::UpdateMajorityReplicated(
   leader_lease_wait_cond_.notify_all();
 
   VLOG_WITH_PREFIX(1) << "Marking majority replicated up to "
-      << majority_replicated_data.op_id.ShortDebugString();
+      << majority_replicated_data.ToString();
   TRACE("Marking majority replicated up to $0", majority_replicated_data.op_id.ShortDebugString());
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
-  if (majority_replicated_listener_ && state_->GetLeaderStateUnlocked().ok()) {
-    majority_replicated_listener_();
+  auto leader_state = state_->GetLeaderStateUnlocked();
+  if (leader_state.ok() && leader_state.status == LeaderStatus::LEADER_AND_READY) {
+    state_->context()->MajorityReplicated();
   }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Substitute("Unable to mark committed up to $0: $1",
@@ -1051,6 +1062,8 @@ void RaftConsensus::UpdateMajorityReplicated(
     LOG_WITH_PREFIX(WARNING) << msg;
     return;
   }
+
+  majority_num_sst_files_.store(majority_replicated_data.num_sst_files, std::memory_order_release);
 
   if (committed_index_changed &&
       state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
@@ -1179,23 +1192,6 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   RETURN_NOT_OK(ExecuteHook(PRE_UPDATE));
   response->set_responder_uuid(state_->GetPeerUuid());
 
-  double capacity_pct;
-  if (parent_mem_tracker_->AnySoftLimitExceeded(&capacity_pct)) {
-    follower_memory_pressure_rejections_->Increment();
-    string msg = StringPrintf(
-        "Soft memory limit exceeded (at %.2f%% of capacity)",
-        capacity_pct);
-    if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting consensus request: " << msg
-                                    << THROTTLE_MSG;
-    } else {
-      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
-                                 << THROTTLE_MSG;
-    }
-    YB_LOG_EVERY_N_SECS(INFO, 600) << "Mem trackers:\n" << DumpMemTrackers();
-    return STATUS(ServiceUnavailable, msg);
-  }
-
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request->ShortDebugString();
 
   UpdateReplicaResult result;
@@ -1264,8 +1260,7 @@ Status RaftConsensus::StartReplicaOperationUnlocked(
   VLOG_WITH_PREFIX(1) << "Starting operation: " << msg->id().ShortDebugString();
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
   ConsensusRound* round_ptr = round.get();
-  RETURN_NOT_OK(
-      state_->replica_operation_factory()->StartReplicaOperation(round, propagated_safe_time));
+  RETURN_NOT_OK(state_->context()->StartReplicaOperation(round, propagated_safe_time));
   return state_->AddPendingOperation(round_ptr);
 }
 
@@ -1713,7 +1708,7 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
   if (request.has_propagated_safe_time()) {
     propagated_safe_time = HybridTime(request.propagated_safe_time());
     if (deduped_req.messages.empty()) {
-      state_->replica_operation_factory()->SetPropagatedSafeTime(propagated_safe_time);
+      state_->context()->SetPropagatedSafeTime(propagated_safe_time);
     }
   }
 
@@ -2272,7 +2267,10 @@ void RaftConsensus::Shutdown() {
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_token_->Shutdown();
-  DisableFailureDetector();
+  // We might not have run Start yet, so make sure we have a FD.
+  if (failure_detector_) {
+    DisableFailureDetector();
+  }
 
   CHECK_OK(ExecuteHook(POST_SHUTDOWN));
 
@@ -2514,8 +2512,8 @@ RaftPeerPB::Role RaftConsensus::role() const {
   return GetRoleUnlocked();
 }
 
-LeaderState RaftConsensus::GetLeaderState() const {
-  return state_->GetLeaderState();
+LeaderState RaftConsensus::GetLeaderState(bool allow_stale) const {
+  return state_->GetLeaderState(allow_stale);
 }
 
 std::string RaftConsensus::LogPrefix() {
@@ -2786,6 +2784,7 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
   state_->UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
       result.old_leader_lease, result.old_leader_ht_lease);
 
+  state_->SetLeaderNoOpCommittedUnlocked(false);
   // Convert role to LEADER.
   SetLeaderUuidUnlocked(state_->GetPeerUuid());
 
@@ -2798,17 +2797,14 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
   }
 }
 
-Status RaftConsensus::GetLastOpId(OpIdType type, OpId* id) {
-  SCHECK_NE(id, nullptr, InvalidArgument, "id should not be nullptr");
+yb::OpId RaftConsensus::GetLastReceivedOpId() {
   auto lock = state_->LockForRead();
-  if (type == RECEIVED_OPID) {
-    state_->GetLastReceivedOpIdUnlocked().ToPB(id);
-  } else if (type == COMMITTED_OPID) {
-    state_->GetCommittedOpIdUnlocked().ToPB(id);
-  } else {
-    return STATUS(InvalidArgument, "Unsupported OpIdType", OpIdType_Name(type));
-  }
-  return Status::OK();
+  return state_->GetLastReceivedOpIdUnlocked();
+}
+
+yb::OpId RaftConsensus::GetLastCommittedOpId() {
+  auto lock = state_->LockForRead();
+  return state_->GetCommittedOpIdUnlocked();
 }
 
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
@@ -2846,6 +2842,9 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
         LOG(WARNING) << "Could not clear pending state : " << s.ToString();
       }
     }
+  } else if (IsChangeConfigOperation(op_type)) {
+    // Notify the TabletPeer owner object.
+    state_->context()->ChangeConfigReplicated(state_->GetCommittedConfigUnlocked());
   }
 
   client_cb(status);
@@ -2940,8 +2939,13 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
-Status RaftConsensus::ReadReplicatedMessages(const OpId& from, ReplicateMsgs* msgs) {
-  return queue_->ReadReplicatedMessages(from, msgs);
+Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(const yb::OpId& from,
+  int64_t* last_replicated_opid_index) {
+  return queue_->ReadReplicatedMessagesForCDC(from, last_replicated_opid_index);
+}
+
+void RaftConsensus::UpdateCDCConsumerOpId(const yb::OpId& op_id) {
+  return queue_->UpdateCDCConsumerOpId(op_id);
 }
 
 void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg,
@@ -2958,20 +2962,24 @@ yb::OpId RaftConsensus::WaitForSafeOpIdToApply(const yb::OpId& op_id) {
   return log_->WaitForSafeOpIdToApply(op_id);
 }
 
-void RaftConsensus::SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider) {
-  queue_->SetPropagatedSafeTimeProvider(std::move(provider));
-}
-
-void RaftConsensus::SetMajorityReplicatedListener(std::function<void()> updater) {
-  majority_replicated_listener_ = std::move(updater);
-}
-
 yb::OpId RaftConsensus::MinRetryableRequestOpId() {
   return state_->MinRetryableRequestOpId();
 }
 
+size_t RaftConsensus::LogCacheSize() {
+  return queue_->LogCacheSize();
+}
+
+size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
+  return queue_->EvictLogCache(bytes_to_evict);
+}
+
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
   return state_->TEST_CountRetryableRequests();
+}
+
+void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {
+  queue_->TrackOperationsMemory({op_id});
 }
 
 }  // namespace consensus

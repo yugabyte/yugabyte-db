@@ -32,8 +32,8 @@
 
 #include "yb/client/meta_cache.h"
 
-#include <mutex>
 #include <shared_mutex>
+#include <mutex>
 
 #include <glog/logging.h>
 
@@ -54,6 +54,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/shared_lock.h"
 
 using std::string;
 using std::map;
@@ -128,7 +129,7 @@ RemoteTabletServer::RemoteTabletServer(const string& uuid,
 
 Status RemoteTabletServer::InitProxy(YBClient* client) {
   {
-    std::shared_lock<rw_spinlock> lock(mutex_);
+    SharedLock<rw_spinlock> lock(mutex_);
 
     if (proxy_) {
       // Already have a proxy created.
@@ -159,6 +160,7 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
   CHECK(!hostport.host().empty());
   ScopedDnsTracker dns_tracker(dns_resolve_histogram_.get());
   proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), hostport));
+  proxy_endpoint_ = hostport;
 
   return Status::OK();
 }
@@ -186,14 +188,29 @@ const CloudInfoPB& RemoteTabletServer::cloud_info() const {
   return cloud_info_pb_;
 }
 
+const google::protobuf::RepeatedPtrField<HostPortPB>&
+    RemoteTabletServer::public_rpc_hostports() const {
+  return public_rpc_hostports_;
+}
+
+const google::protobuf::RepeatedPtrField<HostPortPB>&
+    RemoteTabletServer::private_rpc_hostports() const {
+  return private_rpc_hostports_;
+}
+
 shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {
-  std::shared_lock<rw_spinlock> lock(mutex_);
+  SharedLock<rw_spinlock> lock(mutex_);
   return proxy_;
+}
+
+::yb::HostPort RemoteTabletServer::ProxyEndpoint() const {
+  std::shared_lock<rw_spinlock> lock(mutex_);
+  return proxy_endpoint_;
 }
 
 string RemoteTabletServer::ToString() const {
   string ret = "{ uuid: " + uuid_;
-  std::shared_lock<rw_spinlock> lock(mutex_);
+  SharedLock<rw_spinlock> lock(mutex_);
   if (!private_rpc_hostports_.empty()) {
     ret += Format(" private: $0", private_rpc_hostports_);
   }
@@ -205,7 +222,7 @@ string RemoteTabletServer::ToString() const {
 }
 
 bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& hosts) const {
-  std::shared_lock<rw_spinlock> lock(mutex_);
+  SharedLock<rw_spinlock> lock(mutex_);
   for (const auto& hp : private_rpc_hostports_) {
     if (hosts.count(hp.host())) {
       return true;
@@ -220,7 +237,7 @@ bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& host
 }
 
 bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
-  std::shared_lock<rw_spinlock> lock(mutex_);
+  SharedLock<rw_spinlock> lock(mutex_);
   return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
 }
 
@@ -261,7 +278,7 @@ void RemoteTablet::MarkStale() {
 }
 
 bool RemoteTablet::stale() const {
-  std::shared_lock<rw_spinlock> lock(mutex_);
+  SharedLock<rw_spinlock> lock(mutex_);
   return stale_;
 }
 
@@ -281,7 +298,7 @@ bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& statu
 
 int RemoteTablet::GetNumFailedReplicas() const {
   int failed = 0;
-  std::shared_lock<rw_spinlock> lock(mutex_);
+  SharedLock<rw_spinlock> lock(mutex_);
   for (const RemoteReplica& rep : replicas_) {
     if (rep.Failed()) {
       failed++;
@@ -291,7 +308,7 @@ int RemoteTablet::GetNumFailedReplicas() const {
 }
 
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
-  std::shared_lock<rw_spinlock> lock(mutex_);
+  SharedLock<rw_spinlock> lock(mutex_);
   for (const RemoteReplica& replica : replicas_) {
     if (!replica.Failed() && replica.role == RaftPeerPB::LEADER) {
       return replica.ts;
@@ -304,56 +321,97 @@ bool RemoteTablet::HasLeader() const {
   return LeaderTServer() != nullptr;
 }
 
-void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) {
+void RemoteTablet::GetRemoteTabletServers(
+    std::vector<RemoteTabletServer*>* servers, IncludeFailedReplicas include_failed_replicas) {
   DCHECK(servers->empty());
-  std::shared_lock<rw_spinlock> lock(mutex_);
-  for (RemoteReplica& replica : replicas_) {
-    if (replica.Failed()) {
-      switch (replica.state) {
-        case RaftGroupStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::RUNNING:
-          // These are non-terminal states that may retry. Check and update failed local replica's
-          // current state. For remote replica, just wait for some time before retrying.
-          if (replica.ts->IsLocal()) {
-            tserver::GetTabletStatusRequestPB req;
-            tserver::GetTabletStatusResponsePB resp;
-            req.set_tablet_id(tablet_id_);
-            const Status status =
-                CHECK_NOTNULL(replica.ts->local_tserver())->GetTabletStatus(&req, &resp);
-            if (!status.ok() || resp.has_error()) {
-              LOG_WITH_PREFIX(ERROR)
-                  << "Received error from GetTabletStatus: "
-                  << (!status.ok() ? status : StatusFromPB(resp.error().status()));
-              continue;
-            }
-
-            DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
-            VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
-                                << tablet::RaftGroupStatePB_Name(resp.tablet_status().state())
-                                << " for replica " << replica.ts->ToString();
-            replica.state = resp.tablet_status().state();
-            if (replica.state != tablet::RaftGroupStatePB::RUNNING) {
-              continue;
-            }
-          } else if ((MonoTime::Now() - replica.last_failed_time) <
-                     FLAGS_retry_failed_replica_ms * 1ms) {
-            continue;
-          }
-          break;
-        case RaftGroupStatePB::FAILED: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::QUIESCING: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::SHUTDOWN:
-          // These are terminal states, so we won't retry.
+  struct ReplicaUpdate {
+    RemoteReplica* replica;
+    tablet::RaftGroupStatePB new_state;
+    bool clear_failed;
+  };
+  std::vector<ReplicaUpdate> replica_updates;
+  {
+    SharedLock<rw_spinlock> lock(mutex_);
+    for (RemoteReplica& replica : replicas_) {
+      if (replica.Failed()) {
+        if (include_failed_replicas) {
+          servers->push_back(replica.ts);
           continue;
-      }
+        }
+        ReplicaUpdate replica_update = {&replica, RaftGroupStatePB::UNKNOWN, false};
+        VLOG_WITH_PREFIX(4)
+            << "Replica " << replica.ts->ToString()
+            << " failed, state: " << RaftGroupStatePB_Name(replica.state)
+            << ", is local: " << replica.ts->IsLocal()
+            << ", time since failure: " << (MonoTime::Now() - replica.last_failed_time);
+        switch (replica.state) {
+          case RaftGroupStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::RUNNING:
+            // These are non-terminal states that may retry. Check and update failed local replica's
+            // current state. For remote replica, just wait for some time before retrying.
+            if (replica.ts->IsLocal()) {
+              tserver::GetTabletStatusRequestPB req;
+              tserver::GetTabletStatusResponsePB resp;
+              req.set_tablet_id(tablet_id_);
+              const Status status =
+                  CHECK_NOTNULL(replica.ts->local_tserver())->GetTabletStatus(&req, &resp);
+              if (!status.ok() || resp.has_error()) {
+                LOG_WITH_PREFIX(ERROR)
+                    << "Received error from GetTabletStatus: "
+                    << (!status.ok() ? status : StatusFromPB(resp.error().status()));
+                continue;
+              }
 
-      VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica.ts->ToString()
-                          << " from failed to not failed";
-      replica.ClearFailed();
+              DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
+              VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
+                                  << tablet::RaftGroupStatePB_Name(resp.tablet_status().state())
+                                  << " for replica " << replica.ts->ToString();
+              replica_update.new_state = resp.tablet_status().state();
+              if (replica_update.new_state != tablet::RaftGroupStatePB::RUNNING) {
+                if (replica_update.new_state != replica.state) {
+                  // Cannot update replica here directly because holding only shared lock on mutex.
+                  replica_updates.push_back(replica_update); // Update only state
+                }
+                continue;
+              }
+              if (!replica.ts->local_tserver()->LeaderAndReady(
+                      tablet_id_, /* allow_stale */ true)) {
+                // Should continue here because otherwise failed state will be cleared.
+                continue;
+              }
+            } else if ((MonoTime::Now() - replica.last_failed_time) <
+                       FLAGS_retry_failed_replica_ms * 1ms) {
+              continue;
+            }
+            break;
+          case RaftGroupStatePB::FAILED: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::QUIESCING: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::SHUTDOWN:
+            // These are terminal states, so we won't retry.
+            continue;
+        }
+
+        VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica.ts->ToString()
+                            << " from failed to not failed";
+        replica_update.clear_failed = true;
+        // Cannot update replica here directly because holding only shared lock on mutex.
+        replica_updates.push_back(replica_update);
+      }
+      servers->push_back(replica.ts);
     }
-    servers->push_back(replica.ts);
+  }
+  if (!replica_updates.empty()) {
+    std::lock_guard<rw_spinlock> lock(mutex_);
+    for (const auto& update : replica_updates) {
+      if (update.new_state != RaftGroupStatePB::UNKNOWN) {
+        update.replica->state = update.new_state;
+      }
+      if (update.clear_failed) {
+        update.replica->ClearFailed();
+      }
+    }
   }
 }
 
@@ -389,7 +447,7 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
 }
 
 std::string RemoteTablet::ReplicasAsString() const {
-  std::shared_lock<rw_spinlock> lock(mutex_);
+  SharedLock<rw_spinlock> lock(mutex_);
   return ReplicasAsStringUnlocked();
 }
 
@@ -475,6 +533,10 @@ class LookupRpc : public Rpc {
   void DoFinished(const Status& status, const Response& resp,
                   const std::string* partition_group_start);
 
+  std::string LogPrefix() const {
+    return yb::ToString(this) + ": ";
+  }
+
  private:
   virtual void DoSendRpc() = 0;
 
@@ -527,16 +589,13 @@ void LookupRpc::SendRpc() {
     Finished(STATUS(TimedOut, "timed out after deadline expired"));
     return;
   }
-  auto rpc_deadline = now + meta_cache_->client_->default_rpc_timeout();
-  mutable_retrier()->mutable_controller()->set_deadline(
-      std::min(rpc_deadline, retrier().deadline()));
+  mutable_retrier()->PrepareController(MonoDelta());
 
   DoSendRpc();
 }
 
 void LookupRpc::ResetMasterLeaderAndRetry() {
   client()->data_->SetMasterServerProxyAsync(
-      client(),
       retrier().deadline(),
       false /* skip_resolution */,
       Bind(&LookupRpc::NewLeaderMasterDeterminedCb,
@@ -548,7 +607,7 @@ void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
     mutable_retrier()->mutable_controller()->Reset();
     SendRpc();
   } else {
-    LOG(WARNING) << "Failed to determine new Master: " << status.ToString();
+    LOG_WITH_PREFIX(WARNING) << "Failed to determine new Master: " << status;
     ScheduleRetry(status);
   }
 }
@@ -556,9 +615,13 @@ void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
 template <class Response>
 void LookupRpc::DoFinished(
     const Status& status, const Response& resp, const std::string* partition_group_start) {
-  if (resp.has_error()) {
-    LOG(INFO) << "Got resp error " << resp.error().code() << ", code=" << status.CodeAsString();
+  if (status.ok() && resp.has_error()) {
+    LOG_WITH_PREFIX(INFO)
+        << "Failed, got resp error " << master::MasterErrorPB::Code_Name(resp.error().code());
+  } else if (!status.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Failed: " << status;
   }
+
   // Prefer early failures over controller failures.
   Status new_status = status;
   if (new_status.ok() &&
@@ -568,24 +631,24 @@ void LookupRpc::DoFinished(
 
   // Prefer controller failures over response failures.
   if (new_status.ok() && resp.has_error()) {
+    new_status = StatusFromPB(resp.error().status());
     if (resp.error().code() == master::MasterErrorPB::NOT_THE_LEADER ||
         resp.error().code() == master::MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
       if (client()->IsMultiMaster()) {
         YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
         ResetMasterLeaderAndRetry();
-        return;
+      } else {
+        ScheduleRetry(new_status);
       }
+      return;
     }
-    new_status = StatusFromPB(resp.error().status());
   }
 
   if (new_status.IsTimedOut()) {
     if (CoarseMonoClock::Now() < retrier().deadline()) {
-      if (client()->IsMultiMaster()) {
-        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
-        ResetMasterLeaderAndRetry();
-        return;
-      }
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
+      ResetMasterLeaderAndRetry();
+      return;
     } else {
       // Operation deadline expired during this latest RPC.
       new_status = new_status.CloneAndPrepend("timed out after deadline expired");
@@ -593,12 +656,10 @@ void LookupRpc::DoFinished(
   }
 
   if (new_status.IsNetworkError() || new_status.IsRemoteError()) {
-    if (client()->IsMultiMaster()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Encountered a error from the Master: "
-           << new_status << ", retrying...";
-      ResetMasterLeaderAndRetry();
-      return;
-    }
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << "Encountered a error from the Master: "
+         << new_status << ", retrying...";
+    ResetMasterLeaderAndRetry();
+    return;
   }
 
   // Prefer response failures over no tablets found.
@@ -612,8 +673,8 @@ void LookupRpc::DoFinished(
     Notify(Status::OK(),
            meta_cache_->ProcessTabletLocations(resp.tablet_locations(), partition_group_start));
   } else {
+    LOG_WITH_PREFIX(WARNING) << new_status;
     new_status = new_status.CloneAndPrepend(Substitute("$0 failed", ToString()));
-    LOG(WARNING) << new_status.ToString();
     Notify(new_status);
   }
 }
@@ -647,6 +708,11 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
                     remote->partition().partition_key_start());
           DCHECK_EQ(loc.partition().partition_key_end(),
                     remote->partition().partition_key_end());
+
+          // For colocated tables, RemoteTablet already exists because it was processed
+          // in a previous iteration of the for loop (for loc.table_ids()).
+          // We need to add this tablet to the current table's tablets_by_key map.
+          tablets_by_key[remote->partition().partition_key_start()] = remote;
 
           VLOG(3) << "Refreshing tablet " << tablet_id << ": " << loc.ShortDebugString();
         } else {
@@ -775,7 +841,7 @@ class LookupByIdRpc : public LookupRpc {
         tablet_id_(std::move(tablet_id)) {}
 
   std::string ToString() const override {
-    return Format("LookupByIdRpc($0, $1)", tablet_id_, num_attempts());
+    return Format("LookupByIdRpc(tablet: $0, num_attempts: $1)", tablet_id_, num_attempts());
   }
 
   void DoSendRpc() override {
@@ -910,12 +976,13 @@ RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(const YBTable* tabl
   return nullptr;
 }
 
+// We disable thread safety analysis in this function due to manual conditional locking.
 template <class Lock>
 bool MetaCache::FastLookupTabletByKeyUnlocked(
     const YBTable* table,
     const std::string& partition_start,
     const LookupTabletCallback& callback,
-    Lock* lock) {
+    Lock* lock) NO_THREAD_SAFETY_ANALYSIS {
   // Fast path: lookup in the cache.
   auto result = LookupTabletByKeyFastPathUnlocked(table, partition_start);
   if (result && result->HasLeader()) {
@@ -928,10 +995,11 @@ bool MetaCache::FastLookupTabletByKeyUnlocked(
   return false;
 }
 
+// We disable thread safety analysis in this function due to manual conditional locking.
 void MetaCache::LookupTabletByKey(const YBTable* table,
                                   const string& partition_key,
                                   CoarseTimePoint deadline,
-                                  LookupTabletCallback callback) {
+                                  LookupTabletCallback callback) NO_THREAD_SAFETY_ANALYSIS {
   const auto& partition_start = table->FindPartitionStart(partition_key);
 
   rpc::Rpcs::Handle rpc;
@@ -965,7 +1033,7 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
 }
 
 RemoteTabletPtr MetaCache::LookupTabletByIdFastPath(const TabletId& tablet_id) {
-  std::shared_lock<decltype(mutex_)> l(mutex_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   auto it = tablets_by_id_.find(tablet_id);
   if (it != tablets_by_id_.end()) {
     return it->second;
@@ -995,7 +1063,7 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
                              const Status& status) {
   LOG(INFO) << "Marking tablet server " << ts->ToString() << " as failed.";
-  std::shared_lock<decltype(mutex_)> lock(mutex_);
+  SharedLock<decltype(mutex_)> lock(mutex_);
 
   Status ts_status = status.CloneAndPrepend("TS failed");
 

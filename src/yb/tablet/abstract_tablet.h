@@ -124,6 +124,9 @@ class AbstractTablet {
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionOperationContextOpt& txn_op_context,
                                         PgsqlReadRequestResult* result);
+
+  virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
+
  private:
   virtual HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const = 0;

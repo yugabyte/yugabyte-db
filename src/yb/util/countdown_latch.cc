@@ -17,60 +17,78 @@
 
 namespace yb {
 
-CountDownLatch::CountDownLatch(int count)
+CountDownLatch::CountDownLatch(uint64_t count)
   : cond_(&lock_),
     count_(count) {
 }
 
+CountDownLatch::~CountDownLatch() {
+  // Lock mutex to synchronize deletion.
+  // All locks of this mutex are short, so we don't wait.
+  MutexLock lock(lock_);
+}
+
 void CountDownLatch::CountDown(uint64_t amount) {
   MutexLock lock(lock_);
-  if (count_ == 0) {
+  auto existing_value = count_.load(std::memory_order_relaxed);
+  if (existing_value == 0) {
     return;
   }
 
-  if (amount >= count_) {
-    count_ = 0;
-  } else {
-    count_ -= amount;
-  }
-
-  if (count_ == 0) {
+  if (amount >= existing_value) {
+    count_.store(0, std::memory_order_release);
     // Latch has triggered.
     cond_.Broadcast();
+  } else {
+    count_.store(existing_value - amount, std::memory_order_release);
   }
 }
 
 void CountDownLatch::Wait() const {
+  if (count_.load(std::memory_order_acquire) == 0) {
+    return;
+  }
   ThreadRestrictions::AssertWaitAllowed();
   MutexLock lock(lock_);
-  while (count_ > 0) {
+  while (count_.load(std::memory_order_relaxed) > 0) {
     cond_.Wait();
   }
 }
 
-bool CountDownLatch::WaitFor(const MonoDelta& delta) const {
+bool CountDownLatch::WaitUntil(CoarseTimePoint when) const {
+  return WaitUntil(ToSteady(when));
+}
+
+bool CountDownLatch::WaitUntil(MonoTime deadline) const {
+  if (count_.load(std::memory_order_acquire) == 0) {
+    return true;
+  }
   ThreadRestrictions::AssertWaitAllowed();
   MutexLock lock(lock_);
-  while (count_ > 0) {
-    if (!cond_.TimedWait(delta)) {
+  while (count_.load(std::memory_order_relaxed) > 0) {
+    if (!cond_.WaitUntil(deadline)) {
       return false;
     }
   }
   return true;
 }
 
+bool CountDownLatch::WaitFor(MonoDelta delta) const {
+  return WaitUntil(MonoTime::Now() + delta);
+}
+
 void CountDownLatch::Reset(uint64_t count) {
   MutexLock lock(lock_);
-  count_ = count;
-  if (count_ == 0) {
-    // Awake any waiters if we reset to 0.
-    cond_.Broadcast();
+  count_.store(count, std::memory_order_release);
+  if (count != 0) {
+    return;
   }
+  // Awake any waiters if we reset to 0.
+  cond_.Broadcast();
 }
 
 uint64_t CountDownLatch::count() const {
-  MutexLock lock(lock_);
-  return count_;
+  return count_.load(std::memory_order_acquire);
 }
 
 } // namespace yb

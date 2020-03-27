@@ -15,12 +15,16 @@
 
 #include "yb/util/crypt.h"
 
-#include "yb/master/permissions_manager.h"
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/master_util.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/master/catalog_manager-internal.h"
+
+#include "yb/util/shared_lock.h"
 
 using std::shared_ptr;
 
@@ -373,11 +377,7 @@ Status PermissionsManager::AlterRole(
   // If the role we are trying to alter is a SUPERUSER, and the request is trying to alter the
   // SUPERUSER field for that role, the role requesting the alter operation must be a SUPERUSER
   // too.
-  // TODO(hector): Once "ENG-2663 Support for REVOKE PERMISSIONS and REVOKE ROLE commands" gets
-  // committed, we need to enhance this codepath to also check that current_role is not trying to
-  // alter the SUPERUSER field of any of the roles granted to it either directly or indirectly
-  // through inheritance.
-  if (l->mutable_data()->pb.is_superuser() && req->has_superuser()) {
+  if (req->has_superuser()) {
     auto current_role = FindPtrOrNull(roles_map_, req->current_role());
     if (current_role == nullptr) {
       s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
@@ -385,6 +385,18 @@ Status PermissionsManager::AlterRole(
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
 
+    // Fix for https://github.com/yugabyte/yugabyte-db/issues/2505.
+    // A role cannot modify its own superuser status, nor the superuser status of any role granted
+    // to it directly or through inheritance. This check should happen before the next check that
+    // verifies that the role requesting the modification is a superuser.
+    if (l->data().pb.role() == req->current_role() ||
+        IsMemberOf(l->data().pb.role(), req->current_role())) {
+      s = STATUS(NotAuthorized,
+          "You aren't allowed to alter your own superuser status or that of a role granted to you");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    }
+
+    // Don't allow a non-superuser role to modify the superuser status of another role.
     auto clr = current_role->LockForRead();
     if (!clr->data().pb.is_superuser()) {
       s = STATUS(NotAuthorized, "Only superusers are allowed to alter superuser status");
@@ -656,18 +668,20 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
     auto granted_roles = e.second;
     granted_roles.insert(role_name);
     auto* role_permissions = response->add_role_permissions();
+    role_permissions->set_role(role_name);
+
+    // No permissions on ALL ROLES and ALL KEYSPACES by default.
+    role_permissions->set_all_keyspaces_permissions(0);
+    role_permissions->set_all_roles_permissions(0);
+
     for (const auto& granted_role : granted_roles) {
       const auto& role_info = roles_map_[granted_role];
       auto l = role_info->LockForRead();
       const auto& pb = l->data().pb;
-      role_permissions->set_role(role_name);
 
-      // No permissions on ALL ROLES and ALL KEYSPACES by default.
-      role_permissions->set_all_keyspaces_permissions(0);
-      role_permissions->set_all_roles_permissions(0);
+      Permissions all_roles_permissions_bitset(role_permissions->all_roles_permissions());
+      Permissions all_keyspaces_permissions_bitset(role_permissions->all_keyspaces_permissions());
 
-      Permissions all_roles_permissions_bitset;
-      Permissions all_keyspaces_permissions_bitset;
       for (const auto& resource : pb.resources()) {
         Permissions resource_permissions_bitset;
 
@@ -692,7 +706,14 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
       }
 
       role_permissions->set_all_keyspaces_permissions(all_keyspaces_permissions_bitset.to_ullong());
+      VLOG(2) << "Setting all_keyspaces_permissions to "
+              << role_permissions->all_keyspaces_permissions()
+              << " for role " << role_name;
+
       role_permissions->set_all_roles_permissions(all_roles_permissions_bitset.to_ullong());
+      VLOG(2) << "Setting all_roles_permissions to "
+              << role_permissions->all_roles_permissions()
+              << " for role " << role_name;
 
       // TODO: since this gets checked first when enforcing permissions, there is no point in
       // populating the rest of the permissions. Furthermore, we should remove any specific
@@ -792,13 +813,15 @@ Status PermissionsManager::GrantRevokePermission(
     // We can't match Apache Cassandra's error because when a namespace is not provided, the error
     // is detected by the semantic analysis in PTQualifiedName::AnalyzeName.
     DCHECK(req->has_namespace_());
-    ns = FindPtrOrNull(catalog_manager_->namespace_names_map_, req->namespace_().name());
+    const auto& namespace_info = req->namespace_();
+    ns = FindPtrOrNull(catalog_manager_->namespace_names_mapper_[GetDatabaseType(namespace_info)],
+                       namespace_info.name());
 
     if (req->resource_type() == ResourceType::KEYSPACE) {
       if (ns == nullptr) {
         // Matches Apache Cassandra's error.
-        s = STATUS_SUBSTITUTE(NotFound, "Resource <keyspace $0> doesn't exist",
-                              req->namespace_().name());
+        s = STATUS_SUBSTITUTE(
+            NotFound, "Resource <keyspace $0> doesn't exist", namespace_info.name());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
       }
     } else {
@@ -807,8 +830,9 @@ Status PermissionsManager::GrantRevokePermission(
       }
       if (table == nullptr) {
         // Matches Apache Cassandra's error.
-        s = STATUS_SUBSTITUTE(NotFound, "Resource <object '$0.$1'> doesn't exist",
-            req->namespace_().name(), req->resource_name());
+        s = STATUS_SUBSTITUTE(
+            NotFound, "Resource <object '$0.$1'> doesn't exist",
+            namespace_info.name(), req->resource_name());
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
       }
     }
@@ -930,7 +954,7 @@ Status PermissionsManager::GrantRevokePermission(
 
 void PermissionsManager::GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles) {
   roles->clear();
-  boost::shared_lock<decltype(catalog_manager_->lock_)> l(catalog_manager_->lock_);
+  SharedLock<decltype(catalog_manager_->lock_)> l(catalog_manager_->lock_);
   for (const RoleInfoMap::value_type& e : roles_map_) {
     roles->push_back(e.second);
   }

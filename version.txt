@@ -1,1 +1,1 @@
-1.3.0.0-b0
+managed/version.txt

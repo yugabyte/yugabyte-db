@@ -15,7 +15,10 @@
 
 #include <boost/functional/hash/hash.hpp>
 
+#include "yb/common/redis_constants_common.h"
+
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 
 namespace yb {
@@ -28,37 +31,61 @@ using std::string;
 void YBTableName::SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const {
   SetIntoNamespaceIdentifierPB(id->mutable_namespace_());
   id->set_table_name(table_name());
+  if (!table_id_.empty()) {
+    id->set_table_id(table_id_);
+  } else {
+    id->clear_table_id();
+  }
 }
 
 void YBTableName::GetFromTableIdentifierPB(const master::TableIdentifierPB& id) {
   GetFromNamespaceIdentifierPB(id.namespace_());
   table_name_ = id.table_name();
-}
-
-void YBTableName::SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const {
-  id->set_name(resolved_namespace_name());
-  if (!namespace_id_.empty()) {
-    id->set_id(namespace_id_);
+  if (id.has_table_id()) {
+    table_id_ = id.table_id();
   } else {
-    id->clear_id();
+    table_id_.clear();
   }
 }
 
+void YBTableName::SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const {
+  if (namespace_type_ != YQL_DATABASE_UNKNOWN) {
+    id->set_database_type(namespace_type_);
+  }
+  if (!namespace_id_.empty()) {
+    id->set_id(namespace_id_);
+    if (!has_namespace()) {
+      return;
+    }
+  } else {
+    id->clear_id();
+  }
+  id->set_name(resolved_namespace_name());
+}
+
 void YBTableName::GetFromNamespaceIdentifierPB(const master::NamespaceIdentifierPB& id) {
+  namespace_type_ = id.has_database_type() ? id.database_type() : YQL_DATABASE_UNKNOWN;
   namespace_name_ = id.name();
   if (id.has_id()) {
     namespace_id_ = id.id();
   } else {
     namespace_id_.clear();
   }
+  check_db_type();
 }
 
-bool YBTableName::IsSystemNamespace(const std::string& namespace_name) {
-  return (namespace_name == master::kSystemNamespaceName            ||
-          namespace_name == master::kSystemAuthNamespaceName        ||
-          namespace_name == master::kSystemDistributedNamespaceName ||
-          namespace_name == master::kSystemSchemaNamespaceName      ||
-          namespace_name == master::kSystemTracesNamespaceName);
+bool YBTableName::is_system() const {
+  return master::IsSystemNamespace(resolved_namespace_name());
+}
+
+void YBTableName::check_db_type() {
+  if (namespace_name_ == common::kRedisKeyspaceName) {
+    namespace_type_ = YQL_DATABASE_REDIS;
+  }
+}
+
+bool YBTableName::is_redis_table() const {
+  return is_redis_namespace() && (table_name_.find(common::kRedisTableName) == 0);
 }
 
 size_t hash_value(const YBTableName& table_name) {

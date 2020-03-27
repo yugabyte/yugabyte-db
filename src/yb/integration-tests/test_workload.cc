@@ -38,6 +38,8 @@
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/transaction_pool.h"
+#include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/schema.h"
@@ -46,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/master/master_util.h"
 #include "yb/util/env.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random.h"
@@ -69,7 +72,8 @@ using client::YBTableType;
 using client::YBTableName;
 using std::shared_ptr;
 
-const YBTableName TestWorkloadOptions::kDefaultTableName("my_keyspace", "test-workload");
+const YBTableName TestWorkloadOptions::kDefaultTableName(
+    YQL_DATABASE_CQL, "my_keyspace", "test-workload");
 
 class TestWorkload::State {
  public:
@@ -90,6 +94,10 @@ class TestWorkload::State {
     threads_.clear();
   }
 
+  void set_transaction_pool(client::TransactionPool* pool) {
+    transaction_pool_ = pool;
+  }
+
   int64_t rows_inserted() const {
     return rows_inserted_.load(std::memory_order_acquire);
   }
@@ -98,11 +106,19 @@ class TestWorkload::State {
     return batches_completed_.load(std::memory_order_acquire);
   }
 
+  client::YBClient& client() const {
+    return *client_;
+  }
+
  private:
+  CHECKED_STATUS Flush(client::YBSession* session, const TestWorkloadOptions& options);
+  Result<client::YBTransactionPtr> MayBeStartNewTransaction(
+      client::YBSession* session, const TestWorkloadOptions& options);
   void WriteThread(const TestWorkloadOptions& options);
 
   MiniClusterBase* cluster_;
   std::unique_ptr<client::YBClient> client_;
+  client::TransactionPool* transaction_pool_;
   CountDownLatch start_latch_{0};
   std::atomic<bool> should_run_{false};
   std::atomic<int64_t> pathological_one_row_counter_{0};
@@ -127,6 +143,16 @@ TestWorkload::TestWorkload(TestWorkload&& rhs)
 void TestWorkload::operator=(TestWorkload&& rhs) {
   options_ = rhs.options_;
   state_ = std::move(rhs.state_);
+}
+
+Result<client::YBTransactionPtr> TestWorkload::State::MayBeStartNewTransaction(
+    client::YBSession* session, const TestWorkloadOptions& options) {
+  client::YBTransactionPtr txn;
+  if (options.is_transactional()) {
+    txn = VERIFY_RESULT(transaction_pool_->TakeAndInit(options.isolation_level));
+    session->SetTransaction(txn);
+  }
+  return txn;
 }
 
 void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
@@ -168,6 +194,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
 
   bool inserting_one_row = false;
   while (should_run_.load(std::memory_order_acquire)) {
+    auto txn = CHECK_RESULT(MayBeStartNewTransaction(session.get(), options));
     std::vector<client::YBqlOpPtr> ops;
     for (int i = 0; i < options.write_batch_size; i++) {
       if (options.pathological_one_row_enabled) {
@@ -202,6 +229,9 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
     }
 
     Status s = session->Flush();
+    if (txn) {
+      CHECK_OK(txn->CommitFuture().get());
+    }
 
     int inserted;
     inserted = 0;
@@ -229,11 +259,20 @@ void TestWorkload::Setup(YBTableType table_type) {
   state_->Setup(table_type, options_);
 }
 
+void TestWorkload::set_transactional(
+    IsolationLevel isolation_level, client::TransactionPool* pool) {
+  options_.isolation_level = isolation_level;
+  state_->set_transaction_pool(pool);
+}
+
+
 void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOptions& options) {
   client::YBClientBuilder client_builder;
   client_builder.default_rpc_timeout(options.default_rpc_timeout);
   client_ = CHECK_RESULT(cluster_->CreateClient(&client_builder));
-  CHECK_OK(client_->CreateNamespaceIfNotExists(options.table_name.namespace_name()));
+  CHECK_OK(client_->CreateNamespaceIfNotExists(
+      options.table_name.namespace_name(),
+      master::GetDatabaseTypeForTable(client::YBTable::ClientToPBTableType(table_type))));
 
   // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.
@@ -248,7 +287,9 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   CHECK_OK(table_exists);
 
   if (!table_exists.get()) {
-    YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
+    auto schema = GetSimpleTestSchema();
+    schema.SetTransactional(options.is_transactional());
+    YBSchema client_schema(YBSchemaFromSchema(schema));
 
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(options.table_name)
@@ -311,5 +352,10 @@ int64_t TestWorkload::rows_inserted() const {
 int64_t TestWorkload::batches_completed() const {
   return state_->batches_completed();
 }
+
+client::YBClient& TestWorkload::client() const {
+  return state_->client();
+}
+
 
 }  // namespace yb

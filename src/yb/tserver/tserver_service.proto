@@ -57,7 +57,12 @@ service TabletServerService {
 
   rpc ImportData(ImportDataRequestPB) returns (ImportDataResponsePB);
   rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB);
+  // Returns transaction status at coordinator, i.e. PENDING, ABORTED, COMMITTED etc.
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
+  // Returns transaction status at participant, i.e. number of replicated batches or whether it was
+  // aborted.
+  rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
+      returns (GetTransactionStatusAtParticipantResponsePB);
   rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
   rpc Truncate(TruncateRequestPB) returns (TruncateResponsePB);
   rpc GetTabletStatus(GetTabletStatusRequestPB) returns (GetTabletStatusResponsePB);
@@ -66,6 +71,9 @@ service TabletServerService {
   rpc Publish(PublishRequestPB) returns (PublishResponsePB);
 
   rpc IsTabletServerReady(IsTabletServerReadyRequestPB) returns (IsTabletServerReadyResponsePB);
+
+  // Takes precreated transaction from this tserver.
+  rpc TakeTransaction(TakeTransactionRequestPB) returns (TakeTransactionResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -103,6 +111,10 @@ message ListTabletsForTabletServerResponsePB {
     optional bytes tablet_id = 2;
     optional bool is_leader = 3;
     optional tablet.RaftGroupStatePB state = 4;
+    optional uint64 num_sst_files = 5;
+    optional uint64 num_log_segments = 6;
+    optional uint64 num_memtables_intents = 7;
+    optional uint64 num_memtables_regular = 8;
   }
 
   repeated Entry entries = 1;
@@ -134,7 +146,7 @@ message UpdateTransactionResponsePB {
 
 message GetTransactionStatusRequestPB {
   optional bytes tablet_id = 1;
-  optional bytes transaction_id = 2;
+  repeated bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
 }
 
@@ -142,11 +154,29 @@ message GetTransactionStatusResponsePB {
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
 
-  optional TransactionStatus status = 2;
+  repeated TransactionStatus status = 2;
   // For description of status_hybrid_time see comment in TransactionStatusResult.
-  optional fixed64 status_hybrid_time = 3;
+  repeated fixed64 status_hybrid_time = 3;
 
   optional fixed64 propagated_hybrid_time = 4;
+
+  repeated int64 num_replicated_batches = 5;
+}
+
+message GetTransactionStatusAtParticipantRequestPB {
+  optional bytes tablet_id = 1;
+  optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+  optional int64 required_num_replicated_batches = 4;
+}
+
+message GetTransactionStatusAtParticipantResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  optional int64 num_replicated_batches = 3;
+  optional fixed64 status_hybrid_time = 4;
+  optional bool aborted = 5;
 }
 
 message AbortTransactionRequestPB {
@@ -164,4 +194,11 @@ message AbortTransactionResponsePB {
   optional fixed64 status_hybrid_time = 3;
 
   optional fixed64 propagated_hybrid_time = 4;
+}
+
+message TakeTransactionRequestPB {
+}
+
+message TakeTransactionResponsePB {
+  optional TransactionMetadataPB metadata = 1;
 }

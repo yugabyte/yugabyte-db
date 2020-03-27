@@ -162,7 +162,7 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
 
     VLOG(4) << "After performing a seek: IsValid=" << rocksdb_iter.Valid();
     if (VLOG_IS_ON(4) && rocksdb_iter.Valid()) {
-      VLOG(4) << "Next key: " << FormatRocksDBSliceAsStr(rocksdb_iter.key());
+      VLOG(4) << "Next key: " << FormatSliceAsStr(rocksdb_iter.key());
       SubDocKey tmp_subdoc_key;
       CHECK_OK(tmp_subdoc_key.FullyDecodeFrom(rocksdb_iter.key()));
       VLOG(4) << "Parsed as SubDocKey: " << tmp_subdoc_key.ToString();

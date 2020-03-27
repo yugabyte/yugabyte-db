@@ -1,7 +1,7 @@
 ---
-title: Build a Ruby App
-linkTitle: Build a Ruby App
-description: Build a Ruby App
+title: Build a Ruby application
+linkTitle: Build a Ruby application
+description: Build a Ruby application
 menu:
   latest:
     parent: build-apps
@@ -34,18 +34,18 @@ showAsideToc: true
   </li>
 </ul>
 
-
 ## Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
 
-## Clone the orm-examples repo
+## Clone the orm-examples repository
 
 ```sh
-$ git clone https://github.com/YugaByte/orm-examples.git
+$ git clone https://github.com/yugabyte/orm-examples.git
 ```
+
 ```sh
 bundle install
 ```
@@ -56,9 +56,9 @@ This repository has a Ruby on Rails example that implements a simple REST API se
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repo](https://github.com/YugaByte/orm-examples/tree/master/ruby/ror). There are a number of options that can be customized in the properties file located at `config/database.yml`. 
+The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror). There are a number of options that can be customized in the properties file located at `config/database.yml`.
 
-## Build & run the app
+## Build and run the application
 
 ```sh
 $ cd ./ruby/ror
@@ -68,24 +68,28 @@ $ cd ./ruby/ror
 $ ./bin/bundle install
 ```
 
-## Send requests to the app
+## Send requests to the application
 
 Create 2 users.
+
 ```sh
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
+
 ```sh
 $ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
 Create 2 products.
+
 ```sh
 $ curl \
   --data '{ "productName": "Notebook", "description": "200 page notebook", "price": 7.50 }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
+
 ```sh
 $ curl \
   --data '{ "productName": "Pencil", "description": "Mechanical pencil", "price": 2.50 }' \
@@ -93,11 +97,13 @@ $ curl \
 ```
 
 Create 2 orders.
+
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
+
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
@@ -109,39 +115,44 @@ $ curl \
 ### Using the YSQL shell
 
 ```sh
-$ ./bin/ysqlsh 
+$ ./bin/ysqlsh
 ```
+
 ```
 ysqlsh (11.2)
 Type "help" for help.
 
-postgres=#
+yugabyte=#
 ```
-```sql
-postgres=> SELECT count(*) FROM users;
+
+```postgresql
+yugabyte=# SELECT count(*) FROM users;
 ```
+
 ```
- count 
+ count
 -------
      2
 (1 row)
 ```
 
-```sql
-postgres=> SELECT count(*) FROM products;
+```postgresql
+yugabyte=# SELECT count(*) FROM products;
 ```
+
 ```
- count 
+ count
 -------
      2
 (1 row)
 ```
 
-```sql
-postgres=> SELECT count(*) FROM orders;
+```postgresql
+yugabyte=# SELECT count(*) FROM orders;
 ```
+
 ```
- count 
+ count
 -------
      2
 (1 row)
@@ -152,6 +163,7 @@ postgres=> SELECT count(*) FROM orders;
 ```sh
 $ curl http://localhost:8080/users
 ```
+
 ```
 {
   "content": [
@@ -172,10 +184,10 @@ $ curl http://localhost:8080/users
 }  
 ```
 
-
 ```sh
 $ curl http://localhost:8080/products
 ```
+
 ```
 {
   "content": [
@@ -199,6 +211,7 @@ $ curl http://localhost:8080/products
 ```sh
 $ curl http://localhost:8080/orders
 ```
+
 ```
 {
   "content": [
@@ -235,4 +248,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/YugaByte/orm-examples/tree/master/ruby/ror) repo.
+As highlighted earlier, the source for the above application can be found in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror).

@@ -20,7 +20,7 @@ using std::atomic_ullong;
 #include <stdatomic.h>
 #endif
 
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,11 +49,27 @@ typedef struct rpczEntry {
     char *port;
 } rpczEntry;
 
+typedef struct YsqlStatementStat {
+  char   *query;
+
+  // Prefix of Counters in pg_stat_statements.c.
+
+  int64  calls;        /* # of times executed */
+  double total_time;   /* total execution time, in msec */
+  double min_time;     /* minimum execution time in msec */
+  double max_time;     /* maximum execution time in msec */
+  double mean_time;    /* mean execution time in msec */
+  double sum_var_time; /* sum of variances in execution time in msec */
+  int64  rows;         /* total # of retrieved or affected rows */
+} YsqlStatementStat;
+
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
 void RegisterRpczEntries(void (*rpczFunction)(), void (*freerpczFunction)(), int *num_backends_ptr,
                          rpczEntry **rpczEntriesPointer);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
+void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
+void WriteStatArrayElemToJson(void* p1, void* p2);
 
 #ifdef __cplusplus
 }  // extern "C"

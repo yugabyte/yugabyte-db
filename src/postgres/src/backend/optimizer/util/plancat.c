@@ -243,6 +243,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->rel = rel;
 			info->ncolumns = ncolumns = index->indnatts;
 			info->nkeycolumns = nkeycolumns = index->indnkeyatts;
+			info->nhashcolumns = 0;
 
 			info->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
 			info->indexcollations = (Oid *) palloc(sizeof(Oid) * nkeycolumns);
@@ -300,13 +301,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 				}
 			}
-			else if (amroutine->amcanorder && !IsYBRelation(relation))
+			else if (amroutine->amcanorder)
 			{
-				/*
-				 * TODO: enable ordering for YugaByte relations after DocDB supports
-				 * null-last.
-				 */
-
 				/*
 				 * Otherwise, identify the corresponding btree opfamilies by
 				 * trying to map this index's "<" operators into btree.  Since
@@ -333,26 +329,15 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					Oid			btopcintype;
 					int16		btstrategy;
 
-					/*
-					 * If there is a hash column in the key, the key is not
-					 * end-to-end sorted.
-					 *
-					 * TODO: instead of treating the whole index as unordered,
-					 * we can try to examine the WHERE and JOIN predicates and
-					 * make use of the ordering of other range columns if the
-					 * predicate condition picks a specific hash column value.
-					 *
-					 */
 					if (IsYBRelation(relation) && (opt & INDOPTION_HASH) != 0)
 					{
-						info->sortopfamily = NULL;
-						info->reverse_sort = NULL;
-						info->nulls_first = NULL;
-						break;
+						info->nhashcolumns++;
+						info->reverse_sort[i] = false;
+						info->nulls_first[i] = false;
+					} else {
+						info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
+						info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 					}
-
-					info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
-					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 
 					ltopr = get_opfamily_member(info->opfamily[i],
 												info->opcintype[i],
@@ -2053,7 +2038,7 @@ find_partition_scheme(PlannerInfo *root, Relation relation)
 		palloc(sizeof(FmgrInfo) * partnatts);
 	for (i = 0; i < partnatts; i++)
 		fmgr_info_copy(&part_scheme->partsupfunc[i], &partkey->partsupfunc[i],
-					   CurrentMemoryContext);
+					   GetCurrentMemoryContext());
 
 	/* Add the partitioning scheme to PlannerInfo. */
 	root->part_schemes = lappend(root->part_schemes, part_scheme);

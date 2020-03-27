@@ -1,7 +1,9 @@
 ---
-title: Simple Value
+title: Simple expressions [YCQL]
+headerTitle: Simple expressions
+linkTitle: Simple expressions
 summary: Columns, constants, and null.
-description: Simple Expressions
+description: A simple expression can be a column, constant, or NULL.
 menu:
   latest:
     parent: api-cassandra
@@ -13,27 +15,29 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Simple expression can be either a column, a constant, or NULL.
+A simple expression can be a column, a constant, or NULL.
 
-## Column Expression
+## Column expression
+
 A column expression refers to a column in a table by using its name, which can be either a fully qualified name or a simple name.  
+
 ```
 column_expression ::= [keyspace_name.][table_name.][column_name]
 ```
 
-## Constant Expression
+## Constant expression
 
-A constant expression represents a simple value by using literals.  
+A constant expression represents a simple value by using literals.
+
 ```
 constant_expression ::= string | number
 ```
 
 ## NULL
 
-When an expression, typically a column, does not have a value, it is represented as NULL.  
+When an expression, typically a column, does not have a value, it is represented as NULL.
+
 ```
 null_expression ::= NULL
 ```
 
-## See Also
-[All Expressions](..#expressions)

@@ -58,6 +58,23 @@ struct SafeTimeWithSource {
   std::string ToString() const;
 };
 
+struct FixedHybridTimeLease {
+  HybridTime time;
+  HybridTime lease = HybridTime::kMax;
+
+  bool empty() const {
+    return lease.GetPhysicalValueMicros() >= kMaxHybridTimePhysicalMicros;
+  }
+
+  std::string ToString() const {
+    return Format("{ time: $0 lease: $1 }", time, lease);
+  }
+};
+
+inline std::ostream& operator<<(std::ostream& out, const FixedHybridTimeLease& ht_lease) {
+  return out << ht_lease.ToString();
+}
+
 // MvccManager is used to track operations.
 // When new operation is initiated its time should be added using AddPending.
 // When operation is replicated or aborted, MvccManager is notified using Replicated or Aborted
@@ -69,6 +86,10 @@ class MvccManager {
   // `prefix` is used for logging.
   explicit MvccManager(std::string prefix, server::ClockPtr clock);
 
+  // Set special RF==1 mode flag to handle safe time requests correctly in case
+  // there are no heartbeats to update internal propagated_safe_time_ correctly.
+  void SetLeaderOnlyMode(bool leader_only);
+
   // Sets time of last replicated operation, used after bootstrap.
   void SetLastReplicated(HybridTime ht);
 
@@ -79,7 +100,7 @@ class MvccManager {
   // majority-replicated watermark callback from Raft. If we have some read requests that were
   // initiated when this server was a follower and are waiting for the safe time to advance past
   // a certain point, they can also get unblocked by this update of propagated_safe_time.
-  void UpdatePropagatedSafeTimeOnLeader(HybridTime ht_lease);
+  void UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& ht_lease);
 
   // Adds time of new tracked operation.
   // `ht` is in-out parameter.
@@ -114,9 +135,9 @@ class MvccManager {
   // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
   // because of timeout.
   HybridTime SafeTime(
-      HybridTime min_allowed, CoarseTimePoint deadline, HybridTime ht_lease) const;
+      HybridTime min_allowed, CoarseTimePoint deadline, const FixedHybridTimeLease& ht_lease) const;
 
-  HybridTime SafeTime(HybridTime ht_lease) const {
+  HybridTime SafeTime(const FixedHybridTimeLease& ht_lease) const {
     return SafeTime(HybridTime::kMin /* min_allowed */, CoarseTimePoint::max() /* deadline */,
                     ht_lease);
   }
@@ -129,7 +150,7 @@ class MvccManager {
  private:
   HybridTime DoGetSafeTime(HybridTime min_allowed,
                            CoarseTimePoint deadline,
-                           HybridTime ht_lease,
+                           const FixedHybridTimeLease& ht_lease,
                            std::unique_lock<std::mutex>* lock) const;
 
   const std::string& LogPrefix() const { return prefix_; }
@@ -153,6 +174,8 @@ class MvccManager {
   // leader, this is a safe time that gets updated every time the majority-replicated watermarks
   // change.
   HybridTime propagated_safe_time_ = HybridTime::kMin;
+  // Special flag for RF==1 mode when propagated_safe_time_ can be not up-to-date.
+  bool leader_only_mode_ = false;
 
   // Because different calls that have current hybrid time leader lease as an argument can come to
   // us out of order, we might see an older value of hybrid time leader lease expiration after a

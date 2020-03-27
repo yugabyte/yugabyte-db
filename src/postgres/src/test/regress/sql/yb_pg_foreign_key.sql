@@ -1,10 +1,8 @@
 --
 -- FOREIGN KEY
 --
-
--- TODO - YB only supports foreign keys in serializable isolation currently.
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
+-- TODO: Run this test with REPEATABLE READ isolation level:                                                                                                                                                            --       https://github.com/yugabyte/yugabyte-db/issues/2604
+--
 -- MATCH FULL
 --
 -- First test, check and cascade
@@ -434,16 +432,14 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE (ptest1 int PRIMARY KEY);
 CREATE TABLE FKTABLE_FAIL1 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest2) REFERENCES PKTABLE);
 CREATE TABLE FKTABLE_FAIL2 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(ptest2));
-
-DROP TABLE FKTABLE_FAIL1;
-DROP TABLE FKTABLE_FAIL2;
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL2';
 DROP TABLE PKTABLE;
 
 -- Test for referencing column number smaller than referenced constraint
 CREATE TABLE PKTABLE (ptest1 int, ptest2 int, UNIQUE(ptest1, ptest2));
 CREATE TABLE FKTABLE_FAIL1 (ftest1 int REFERENCES pktable(ptest1));
-
-DROP TABLE FKTABLE_FAIL1;
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
 DROP TABLE PKTABLE;
 
 --
@@ -454,13 +450,9 @@ CREATE TABLE PKTABLE (ptest1 int PRIMARY KEY);
 INSERT INTO PKTABLE VALUES(42);
 -- This next should fail, because int=inet does not exist
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This should also fail for the same reason, but here we
 -- give the column name
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable(ptest1));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
 CREATE TABLE FKTABLE (ftest1 int8 REFERENCES pktable);
@@ -474,8 +466,6 @@ DROP TABLE FKTABLE;
 -- not an implicit coercion (or use numeric=numeric, but that's not part
 -- of the integer opfamily)
 CREATE TABLE FKTABLE (ftest1 numeric REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
 -- numeric, and we allow promotion on the FK side
@@ -495,24 +485,14 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, PRIMARY KEY(ptest1, ptest2));
 -- This should fail, because we just chose really odd types
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- Again, so should this...
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest1, ptest2));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This fails because we mixed up the column ordering
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- As does this...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest1, ptest2));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- And again..
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest2, ptest1));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This works...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest2, ptest1));
 DROP TABLE FKTABLE;
@@ -533,22 +513,16 @@ DROP TABLE PKTABLE;
 -- This shouldn't (mixed up columns)
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest3,
 ptest4) REFERENCES pktable(ptest2, ptest1));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- Nor should this... (same reason, we have 4,3 referencing 1,2 which mismatches types
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable(ptest1, ptest2));
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- Not this one either... Same as the last one except we didn't defined the columns being referenced.
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable);
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 
 -- TODO: YugaByte does not yet support table inheritance.
--- Leaving the first failing statement uncommented so that this test 
--- will fail when the feature is implemented (the full test should 
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
 -- be uncommented then).
 
 --
@@ -657,8 +631,8 @@ drop table pktable_base;
 --
 
 -- TODO YB does not yet support deferrable foreign key constraints.
--- Leaving the first failing statement uncommented so that this test 
--- will fail when the feature is implemented (the full test should 
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
 -- be uncommented then).
 
 -- deferrable, explicitly deferred
@@ -845,11 +819,7 @@ FOREIGN KEY (x1,x2,x3) REFERENCES pktable(id2,id3,id1);
 ALTER TABLE fktable ADD CONSTRAINT fk_241_132
 FOREIGN KEY (x2,x4,x1) REFERENCES pktable(id1,id3,id2);
 
--- TODO YB cannot drop multiple tables in one stmt.
-DROP TABLE fktable;
-DROP TABLE pktable;
-
-
+DROP TABLE pktable, fktable;
 
 -- test a tricky case: we can elide firing the FK check trigger during
 -- an UPDATE if the UPDATE did not change the foreign key
@@ -859,8 +829,8 @@ DROP TABLE pktable;
 -- cause the on-INSERT RI trigger not to be fired.
 
 -- TODO YugaByte does not support deferrable constraints yet.
--- Leaving the first failing statement uncommented so that this test 
--- will fail when the feature is implemented (the full test should 
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
 -- be uncommented then).
 
 CREATE TEMP TABLE pktable (
@@ -1056,10 +1026,7 @@ update pp set f1=f1+1;
 insert into cc values(13);
 update pp set f1=f1+1;
 update pp set f1=f1+1; -- fail
-
--- TODO YB cannot drop multiple tables in one stmt.
-drop table cc;
-drop table pp;
+drop table pp, cc;
 
 create temp table pp (f1 int primary key);
 create temp table cc (f1 int references pp on update restrict);
@@ -1068,9 +1035,7 @@ insert into pp values(11);
 update pp set f1=f1+1;
 insert into cc values(13);
 update pp set f1=f1+1; -- fail
--- TODO YB cannot drop multiple tables in one stmt.
-drop table cc;
-drop table pp;
+drop table pp, cc;
 
 --
 -- Test interaction of foreign-key optimization with rules (bug #14219)
@@ -1079,6 +1044,7 @@ create temp table t1 (a integer primary key, b text);
 create temp table t2 (a integer primary key, b integer references t1);
 create rule r1 as on delete to t1 do delete from t2 where t2.b = old.a;
 
+-- TODO(jason): fix expected output when issue #2220 is closed or closing.
 explain (costs off) delete from t1 where a = 1;
 delete from t1 where a = 1;
 
@@ -1090,10 +1056,7 @@ insert into pktable2 values (1, 2, 3, 4, 5);
 insert into fktable2 values (4, 5);
 delete from pktable2;
 update pktable2 set d = 5;
-
--- TODO YB cannot drop multiple tables in one stmt.
-drop table fktable2;
-drop table pktable2;
+drop table pktable2, fktable2;
 
 -- TODO YugaByte does not support deferrable constraints yet.
 /*
@@ -1139,8 +1102,8 @@ drop table pktable2, fktable2;
 --
 
 -- TODO YugaByte does not support partitioned tables yet.
--- Leaving the first failing statement uncommented so that this test 
--- will fail when the feature is implemented (the full test should 
+-- Leaving the first failing statement uncommented so that this test
+-- will fail when the feature is implemented (the full test should
 -- be uncommented then).
 
 -- partitioned table in the referenced side are not allowed
@@ -1432,3 +1395,5 @@ alter table fkpart2.fk_part_1_1 drop constraint my_fkey;	-- doesn't exist
 drop schema fkpart0, fkpart1, fkpart2 cascade;
 \set VERBOSITY default
 */
+-- TODO(jason): remove when issue #1721 is closed or closing.
+DISCARD TEMP;

@@ -56,7 +56,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#ifndef YB_ROCKSDB_DB_INLINESKIPLIST_H
+#define YB_ROCKSDB_DB_INLINESKIPLIST_H
+
 #pragma once
+
 #include <assert.h>
 #include <stdlib.h>
 #include <atomic>
@@ -94,6 +99,10 @@ class InlineSkipList {
 
   // Like Insert, but external synchronization is not required.
   void InsertConcurrently(const char* key);
+
+  bool Erase(const char* key, Comparator cmp) {
+    return false;
+  }
 
   // Returns true iff an entry that compares equal to key is in the list.
   bool Contains(const char* key) const;
@@ -226,8 +235,8 @@ struct InlineSkipList<Comparator>::Node {
   // Stores the height of the node in the memory location normally used for
   // next_[0].  This is used for passing data from AllocateKey to Insert.
   void StashHeight(const int height) {
-    assert(sizeof(int) <= sizeof(next_[0]));
-    memcpy(&next_[0], &height, sizeof(int));
+    static_assert(sizeof(int) <= sizeof(next_[0]), "Too small height holder");
+    memcpy(static_cast<void*>(&next_[0]), &height, sizeof(int));
   }
 
   // Retrieves the value passed to StashHeight.  Undefined after a call
@@ -670,3 +679,5 @@ bool InlineSkipList<Comparator>::Contains(const char* key) const {
 }
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_DB_INLINESKIPLIST_H

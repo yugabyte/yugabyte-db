@@ -23,14 +23,13 @@
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 
 namespace yb {
 namespace ql {
-
-class PTColumnDefinition;
 
 //--------------------------------------------------------------------------------------------------
 // Constraints.
@@ -207,13 +206,8 @@ class PTCreateTable : public TreeNode {
                                   PTColumnDefinition *column,
                                   bool check_duplicate = false);
 
-  CHECKED_STATUS AppendColumnIfNotPresent(SemContext *sem_context,
-                                          PTColumnDefinition *column);
-
-  static CHECKED_STATUS CheckType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
-
   virtual CHECKED_STATUS CheckPrimaryType(SemContext *sem_context,
-                                          const PTBaseType::SharedPtr& datatype) const;
+                                          const PTColumnDefinition *column) const;
 
   // Table name.
   const PTQualifiedName::SharedPtr& table_name() const {
@@ -228,6 +222,9 @@ class PTCreateTable : public TreeNode {
   }
 
   virtual CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
+
+  static bool ColumnExists(const MCList<PTColumnDefinition *>& columns,
+                           const PTColumnDefinition* column);
 
  protected:
   PTQualifiedName::SharedPtr relation_;

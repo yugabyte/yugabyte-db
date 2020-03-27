@@ -1,7 +1,8 @@
 ---
-title: Health Checking and Alerts
-linkTitle: Health Checking and Alerts
-description: Health Checking and Alerts
+title: Health checking and alerts using YugaWare
+headerTitle: Health checking and alerts
+linkTitle: Health checking and alerts
+description: Use YugaWare for health checking and alerts
 aliases:
   - /manage/enterprise-edition/cluster-health/
   - /manage/cluster-health/
@@ -29,9 +30,9 @@ You should see something like the following:
 Under the `Alerting Controls` section, there are two fields that you can edit:
 
 - A text input for a CSV of custom email addresses to send alerts to.
-- A toggle to switch on/off sending the same alerts back to the YugaByte support team.
+- A toggle to switch on/off sending the same alerts back to the Yugabyte support team.
 
-Either setting at least one email address or enabling sending to YugaByte will turn the feature on and subsequently begin to track the health of your universes. Currently, this has two modes of operation:
+Either setting at least one email address or enabling sending to Yugabyte will turn the feature on and subsequently begin to track the health of your universes. Currently, this has two modes of operation:
 
 - Every 5 minutes, the background checker will run over every universe and perform a set of checks for each individual node. If any of the checks fails, the Health tab of the universe will highlight the errors and an email will be sent out to all the configured email addresses.
 - Every 12 hours, whether or not there are errors, a status email is sent out to ensure that the checking is actually taking place and you are not just getting a false sense of security!
@@ -48,8 +49,8 @@ As you can see, the checks run every 5 minutes, across every node. Currently we 
 
 - Uptime of both the `yb-master` and `yb-tserver` processes, which could indicate a node or process restart.
 - Disk utilization on the various partitions configured on your nodes to ensure the database does not run out of storage.
-- Presence of any internal google logging `FATAL` files, indicating some previous serious failure of YugaByte.
-- Presence of any core files, indicating some previous serious failure of YugaByte.
+- Presence of any internal google logging `FATAL` files, indicating some previous serious failure of Yugabyte.
+- Presence of any core files, indicating some previous serious failure of Yugabyte.
 - Total number of open file descriptors, which if too great, might end up causing problems in normal operation.
 - Connectivity with either `cqlsh` or `redis-cli`, which could indicate either network connectivity issues in your deployment or server-side issues processing requests.
 

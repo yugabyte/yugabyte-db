@@ -30,7 +30,6 @@
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/perf_context.h"
-#include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/random.h"
 
@@ -493,8 +492,8 @@ TEST_F(DBPropertiesTest, NumImmutableMemTable) {
 
     std::string big_value(1000000 * 2, 'x');
     std::string num;
-    SetPerfLevel(kEnableTime);
-    ASSERT_TRUE(GetPerfLevel() == kEnableTime);
+    SetPerfLevel(PerfLevel::kEnableTime);
+    ASSERT_TRUE(GetPerfLevel() == PerfLevel::kEnableTime);
 
     ASSERT_OK(dbfull()->Put(writeOpt, handles_[1], "k1", big_value));
     ASSERT_TRUE(dbfull()->GetProperty(handles_[1],
@@ -591,8 +590,8 @@ TEST_F(DBPropertiesTest, NumImmutableMemTable) {
         handles_[1], "rocksdb.estimate-num-keys", &int_num));
     ASSERT_EQ(int_num, base_total_size + 1);
 
-    SetPerfLevel(kDisable);
-    ASSERT_TRUE(GetPerfLevel() == kDisable);
+    SetPerfLevel(PerfLevel::kDisable);
+    ASSERT_TRUE(GetPerfLevel() == PerfLevel::kDisable);
   } while (ChangeCompactOptions());
 }
 
@@ -624,7 +623,7 @@ TEST_F(DBPropertiesTest, GetProperty) {
   std::string big_value(1000000 * 2, 'x');
   std::string num;
   uint64_t int_num;
-  SetPerfLevel(kEnableTime);
+  SetPerfLevel(PerfLevel::kEnableTime);
 
   ASSERT_TRUE(
       dbfull()->GetIntProperty("rocksdb.estimate-table-readers-mem", &int_num));
@@ -1159,7 +1158,7 @@ TEST_F(DBPropertiesTest, TablePropertiesNeedCompactTest) {
   dbfull()->TEST_WaitForCompact();
 
   {
-    SetPerfLevel(kEnableCount);
+    SetPerfLevel(PerfLevel::kEnableCount);
     perf_context.Reset();
     int c = 0;
     std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
@@ -1170,7 +1169,7 @@ TEST_F(DBPropertiesTest, TablePropertiesNeedCompactTest) {
     ASSERT_EQ(c, 0);
     ASSERT_LT(perf_context.internal_delete_skipped_count, 30u);
     ASSERT_LT(perf_context.internal_key_skipped_count, 30u);
-    SetPerfLevel(kDisable);
+    SetPerfLevel(PerfLevel::kDisable);
   }
 }
 
@@ -1214,7 +1213,7 @@ TEST_F(DBPropertiesTest, NeedCompactHintPersistentTest) {
   dbfull()->TEST_WaitForCompact();
   ASSERT_EQ(NumTableFilesAtLevel(0), 0);
   {
-    SetPerfLevel(kEnableCount);
+    SetPerfLevel(PerfLevel::kEnableCount);
     perf_context.Reset();
     int c = 0;
     std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
@@ -1225,7 +1224,7 @@ TEST_F(DBPropertiesTest, NeedCompactHintPersistentTest) {
     ASSERT_EQ(perf_context.internal_delete_skipped_count, 0);
     // We iterate every key twice. Is it a bug?
     ASSERT_LE(perf_context.internal_key_skipped_count, 2);
-    SetPerfLevel(kDisable);
+    SetPerfLevel(PerfLevel::kDisable);
   }
 }
 #endif  // ROCKSDB_LITE

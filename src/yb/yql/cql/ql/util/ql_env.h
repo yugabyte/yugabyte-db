@@ -56,9 +56,10 @@ class QLEnv {
   //------------------------------------------------------------------------------------------------
   // Table related methods.
 
-  virtual client::YBTableCreator* NewTableCreator();
+  virtual std::unique_ptr<client::YBTableCreator> NewTableCreator();
 
-  virtual client::YBTableAlterer* NewTableAlterer(const client::YBTableName& table_name);
+  virtual std::unique_ptr<client::YBTableAlterer> NewTableAlterer(
+      const client::YBTableName& table_name);
 
   virtual CHECKED_STATUS TruncateTable(const std::string& table_id);
 
@@ -66,6 +67,9 @@ class QLEnv {
 
   virtual CHECKED_STATUS DeleteIndexTable(const client::YBTableName& name,
                                           client::YBTableName* indexed_table_name);
+
+  virtual CHECKED_STATUS GetUpToDateTableSchemaVersion(const client::YBTableName& table_name,
+                                                       uint32_t* ver);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
                                                         bool* cache_used);

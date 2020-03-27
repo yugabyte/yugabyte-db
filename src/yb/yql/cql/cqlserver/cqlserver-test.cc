@@ -26,6 +26,8 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(cql_server_always_send_events);
+
 namespace yb {
 namespace cqlserver {
 
@@ -40,6 +42,8 @@ class TestCQLService : public YBTableTestBase {
   void SetUp() override;
   void TearDown() override;
 
+  void TestSchemaChangeEvent();
+
  protected:
   void SendRequestAndExpectTimeout(const string& cmd);
 
@@ -48,7 +52,7 @@ class TestCQLService : public YBTableTestBase {
   int server_port() { return cql_server_port_; }
  private:
   Status SendRequestAndGetResponse(
-      const string& cmd, int expected_resp_length, int timeout_in_millis = 1000);
+      const string& cmd, int expected_resp_length, int timeout_in_millis = 60000);
 
   Socket client_sock_;
   unique_ptr<boost::asio::io_service> io_;
@@ -83,7 +87,7 @@ void TestCQLService::SetUp() {
   opts.SetMasterAddresses(master_addresses);
 
   io_.reset(new boost::asio::io_service());
-  server_.reset(new CQLServer(opts, io_.get(), nullptr, client::LocalTabletFilter()));
+  server_.reset(new CQLServer(opts, io_.get(), nullptr));
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";
@@ -117,6 +121,17 @@ Status TestCQLService::SendRequestAndGetResponse(
     return STATUS(
         IOError, Substitute("Received $1 bytes instead of $2", bytes_read, expected_resp_length));
   }
+
+  // Try to read 1 more byte - the read must fail (no more data in the socket).
+  bytes_read = 0;
+  deadline = MonoTime::Now();
+  deadline.AddDelta(MonoDelta::FromMilliseconds(200));
+  Status s = client_sock_.BlockingRecv(&resp_[expected_resp_length], 1, &bytes_read, deadline);
+  EXPECT_EQ(0, bytes_read) << "In the read socket unexpected extra byte: 0x" << std::hex <<
+      static_cast<int>(resp_[expected_resp_length]) <<
+      " (0x84 usually means additional unexpected CQL message)";
+  EXPECT_TRUE(s.IsTimedOut());
+
   return Status::OK();
 }
 
@@ -249,6 +264,144 @@ TEST_F(TestCQLService, TestCQLServerEventConst) {
   ASSERT_EQ(0, memcmp(buffer, ptr, kSize));
   data->Transferred(STATUS(NetworkError, "Dummy"), nullptr);
   ASSERT_EQ(0, memcmp(buffer, ptr, kSize));
+}
+
+void TestCQLService::TestSchemaChangeEvent() {
+  LOG(INFO) << "Test CQL SCHEMA_CHANGE event with gflag cql_server_always_send_events = " <<
+      FLAGS_cql_server_always_send_events;
+
+  // Send STARTUP request using version V4.
+  SendRequestAndExpectResponse(
+      BINARY_STRING("\x04\x00\x00\x00\x01" "\x00\x00\x00\x16"
+                    "\x00\x01" "\x00\x0b" "CQL_VERSION"
+                               "\x00\x05" "3.0.0"),
+      BINARY_STRING("\x84\x00\x00\x00\x02" "\x00\x00\x00\x00"));
+
+  // Send CREATE KEYSPACE IF NOT EXISTS "kong"
+  //      WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1}
+  // Expecting only one CQL message as the result: CQL RESULT (opcode=8).
+  string expected_response =
+      BINARY_STRING("\x84\x00\x00\x00\x08" "\x00\x00\x00\x1d" "\x00\x00\x00\x05"
+                                "\x00\x07" "CREATED"
+                                "\x00\x08" "KEYSPACE"
+                                "\x00\x04" "kong");
+  if (FLAGS_cql_server_always_send_events) {
+    // Expecting 2 CQL messages as the result: CQL RESULT (opcode=8) + CQL EVENT (opcode=0x0c).
+    expected_response +=
+        BINARY_STRING("\x84\x00\xff\xff\x0c" "\x00\x00\x00\x28"
+                                  "\x00\x0d" "SCHEMA_CHANGE"
+                                  "\x00\x07" "CREATED"
+                                  "\x00\x08" "KEYSPACE"
+                                  "\x00\x04" "kong");
+  }
+
+  SendRequestAndExpectResponse(
+      BINARY_STRING("\x04\x00\x00\x00\x07" "\x00\x00\x00\x99"
+                    "\x00\x00"  "\x00\x8c" "      CREATE KEYSPACE IF NOT EXISTS \"kong\""
+                                    "\x0a" "      WITH REPLICATION =         {'class': "
+                                           "'SimpleStrategy', 'replication_factor': 1}"
+                                    "\x0a" "      "
+                                    "\x0a" "    "
+                                "\x00\x01" "\x14\x00\x00\x03\xe8\x00\x08"),
+      expected_response);
+
+  // Send USE "kong"
+  SendRequestAndExpectResponse(
+      BINARY_STRING("\x04\x00\x00\x00\x07" "\x00\x00\x00\x11"
+                    "\x00\x00"  "\x00\x0a" "USE \"kong\""
+                    "\x00\x01\x00"),
+      BINARY_STRING("\x84\x00\x00\x00\x08" "\x00\x00\x00\x0a" "\x00\x00\x00\x03"
+                                "\x00\x04" "kong"));
+
+  // Send CREATE TABLE IF NOT EXISTS schema_meta(
+  //          key text, subsystem text, last_executed text, executed set<text>,
+  //          pending set<text>, PRIMARY KEY (key, subsystem))
+  // Expecting only one CQL message as the result: CQL RESULT (opcode=8).
+  expected_response =
+      BINARY_STRING("\x84\x00\x00\x00\x08" "\x00\x00\x00\x27" "\x00\x00\x00\x05"
+                                "\x00\x07" "CREATED"
+                                "\x00\x05" "TABLE"
+                                "\x00\x04" "kong"
+                                "\x00\x0b" "schema_meta");
+  if (FLAGS_cql_server_always_send_events) {
+    // Expecting 2 CQL messages as the result: CQL RESULT (opcode=8) + CQL EVENT (opcode=0x0c).
+    expected_response +=
+      BINARY_STRING("\x84\x00\xff\xff\x0c" "\x00\x00\x00\x32"
+                                "\x00\x0d" "SCHEMA_CHANGE"
+                                "\x00\x07" "CREATED"
+                                "\x00\x05" "TABLE"
+                                "\x00\x04" "kong"
+                                "\x00\x0b" "schema_meta");
+  }
+
+  SendRequestAndExpectResponse(
+      BINARY_STRING("\x04\x00\x00\x00\x07" "\x00\x00\x01\x0d"
+                    "\x00\x00"  "\x01\x00" "      CREATE TABLE IF NOT EXISTS schema_meta("
+                                    "\x0a" "        key             text,"
+                                    "\x0a" "        subsystem       text,"
+                                    "\x0a" "        last_executed   text,"
+                                    "\x0a" "        executed        set<text>,"
+                                    "\x0a" "        pending         set<text>,"
+                                    "\x0a"
+                                    "\x0a" "        PRIMARY KEY (key, subsystem)"
+                                    "\x0a" "      )"
+                                    "\x0a" "    "
+                                "\x00\x01" "\x14\x00\x00\x03\xe8\x00\x08"),
+      expected_response);
+
+  // Send REGISTER request to subscribe for the events: TOPOLOGY_CHANGE, STATUS_CHANGE,
+  //                                                    SCHEMA_CHANGE
+  SendRequestAndExpectResponse(
+      BINARY_STRING("\x04\x00\x00\x00\x0b" "\x00\x00\x00\x31"
+                    "\x00\x03"  "\x00\x0f" "TOPOLOGY_CHANGE"
+                                "\x00\x0d" "STATUS_CHANGE"
+                                "\x00\x0d" "SCHEMA_CHANGE"),
+      BINARY_STRING("\x84\x00\x00\x00\x02" "\x00\x00\x00\x00"));
+
+  // Send CREATE TABLE IF NOT EXISTS schema_meta2(
+  //          key text, subsystem text, last_executed text, executed set<text>,
+  //          pending set<text>, PRIMARY KEY (key, subsystem))
+  SendRequestAndExpectResponse(
+      BINARY_STRING("\x04\x00\x00\x00\x07" "\x00\x00\x01\x0d"
+                    "\x00\x00"  "\x01\x00" "      CREATE TABLE IF NOT EXISTS schema_meta2("
+                                    "\x0a" "        key             text,"
+                                    "\x0a" "        subsystem       text,"
+                                    "\x0a" "        last_executed   text,"
+                                    "\x0a" "        executed        set<text>,"
+                                    "\x0a" "        pending         set<text>,"
+                                    "\x0a"
+                                    "\x0a" "        PRIMARY KEY (key, subsystem)"
+                                    "\x0a" "      )"
+                                    "\x0a" "   "
+                                "\x00\x01" "\x14\x00\x00\x03\xe8\x00\x08"),
+      // Expecting 2 CQL messages as the result: CQL RESULT (opcode=8) + CQL EVENT (opcode=0x0c).
+      BINARY_STRING("\x84\x00\x00\x00\x08" "\x00\x00\x00\x28" "\x00\x00\x00\x05"
+                                "\x00\x07" "CREATED"
+                                "\x00\x05" "TABLE"
+                                "\x00\x04" "kong"
+                                "\x00\x0c" "schema_meta2"
+                    "\x84\x00\xff\xff\x0c" "\x00\x00\x00\x33"
+                                "\x00\x0d" "SCHEMA_CHANGE"
+                                "\x00\x07" "CREATED"
+                                "\x00\x05" "TABLE"
+                                "\x00\x04" "kong"
+                                "\x00\x0c" "schema_meta2"));
+}
+
+TEST_F(TestCQLService, SchemaChangeEvent) {
+  TestSchemaChangeEvent();
+}
+
+class TestCQLServiceWithGFlag : public TestCQLService {
+ public:
+  void SetUp() override {
+    FLAGS_cql_server_always_send_events = true;
+    TestCQLService::SetUp();
+  }
+};
+
+TEST_F(TestCQLServiceWithGFlag, SchemaChangeEventWithGFlag) {
+  TestSchemaChangeEvent();
 }
 
 }  // namespace cqlserver

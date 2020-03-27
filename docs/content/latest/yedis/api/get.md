@@ -14,13 +14,15 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`GET key`</b><br>
 This command fetches the value that is associated with the given `key`.
 
 <li>If the `key` does not exist, null is returned.</li>
 <li>If the `key` is associated with a non-string value, an error is raised.</li>
 
-## Return Value
+## Return value
+
 Returns string value of the given `key`.
 
 ## Examples
@@ -34,7 +36,7 @@ $ GET yugakey
 ```
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```
@@ -46,9 +48,10 @@ $ GET yugakey
 ```
 
 ```
-"YugaByte"
+"Yugabyte"
 ```
 
 
-## See Also
+## See also
+
 [`append`](../append/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

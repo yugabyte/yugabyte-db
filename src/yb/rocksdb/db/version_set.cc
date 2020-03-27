@@ -336,6 +336,14 @@ SstFileMetaData::BoundaryValues ConvertBoundaryValues(const FileMetaData::Bounda
 
 VersionStorageInfo::~VersionStorageInfo() { delete[] files_; }
 
+uint64_t VersionStorageInfo::NumFiles() const {
+  uint64_t result = 0;
+  for (int level = num_non_empty_levels_; level-- > 0;) {
+    result += files_[level].size();
+  }
+  return result;
+}
+
 Version::~Version() {
   assert(refs_ == 0);
 
@@ -521,7 +529,7 @@ class LevelFileIteratorState : public TwoLevelIteratorState {
       const FileDescriptor* fd =
           reinterpret_cast<const FileDescriptor*>(meta_handle.data());
       return table_cache_->NewIterator(
-          read_options_, env_options_, icomparator_, *fd,
+          read_options_, env_options_, icomparator_, *fd, Slice() /* filter */,
           nullptr /* don't need reference to table*/, file_read_hist_,
           for_compaction_, nullptr /* arena */, skip_filters_);
     }
@@ -813,7 +821,8 @@ void Version::AddIterators(const ReadOptions& read_options,
       if (s.ok()) {
         if (!read_options.table_aware_file_filter ||
             read_options.table_aware_file_filter->Filter(trwh.table_reader)) {
-          file_iter = cfd_->table_cache()->NewIterator(read_options, &trwh, false, arena);
+          file_iter = cfd_->table_cache()->NewIterator(
+              read_options, &trwh, storage_info_.LevelFiles(0)[i]->UserFilter(), false, arena);
         } else {
           file_iter = nullptr;
         }
@@ -2381,7 +2390,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         "Deleting manifest %" PRIu64 " current manifest %" PRIu64 "\n",
         manifest_file_number_, pending_manifest_file_number_);
       descriptor_log_.reset();
-      env_->DeleteFile(
+      env_->CleanupFile(
           DescriptorFileName(dbname_, pending_manifest_file_number_));
     }
   }
@@ -2453,9 +2462,10 @@ struct LogReporter : public log::Reader::Reporter {
 
 class ManifestReader {
  public:
-  ManifestReader(Env* env, const EnvOptions& env_options, BoundaryValuesExtractor* extractor,
-                 const std::string& dbname)
-      : env_(env), env_options_(env_options), extractor_(extractor), dbname_(dbname) {}
+  ManifestReader(Env* env, Env* checkpoint_env, const EnvOptions& env_options,
+                 BoundaryValuesExtractor* extractor, const std::string& dbname)
+      : env_(env), checkpoint_env_(checkpoint_env), env_options_(env_options),
+        extractor_(extractor), dbname_(dbname) {}
 
   Status OpenManifest() {
     auto status = ReadManifestFilename();
@@ -2478,7 +2488,7 @@ class ManifestReader {
       }
       manifest_file_reader.reset(new SequentialFileReader(std::move(manifest_file)));
     }
-    status = env_->GetFileSize(manifest_filename_, &current_manifest_file_size_);
+    status = checkpoint_env_->GetFileSize(manifest_filename_, &current_manifest_file_size_);
     if (!status.ok()) {
       return status;
     }
@@ -2523,7 +2533,12 @@ class ManifestReader {
     return Status::OK();
   }
 
+  // In plaintext cluster, this is a default env, but in encrypted cluster, this encrypts on write
+  // and decrypts on read.
   Env* const env_;
+  // Default env used to checkpoint files. In encrypted cluster, we don't want to decrypt
+  // checkpointed files, so using the default env preserves file encryption.
+  Env* const checkpoint_env_;
   const EnvOptions& env_options_;
   BoundaryValuesExtractor* extractor_;
   std::string dbname_;
@@ -2579,8 +2594,8 @@ Status VersionSet::Recover(
   uint64_t current_manifest_file_size;
   std::string current_manifest_filename;
   {
-    ManifestReader manifest_reader(env_, env_options_, db_options_->boundary_extractor.get(),
-                                   dbname_);
+    ManifestReader manifest_reader(env_, db_options_->get_checkpoint_env(), env_options_,
+                                   db_options_->boundary_extractor.get(), dbname_);
     auto status = manifest_reader.OpenManifest();
     if (!status.ok()) {
       return status;
@@ -2818,8 +2833,8 @@ Status VersionSet::Recover(
 Status VersionSet::Import(const std::string& source_dir,
                           SequenceNumber seqno,
                           VersionEdit* edit) {
-  ManifestReader manifest_reader(env_, env_options_, db_options_->boundary_extractor.get(),
-                                 source_dir);
+  ManifestReader manifest_reader(env_, db_options_->get_checkpoint_env(), env_options_,
+                                 db_options_->boundary_extractor.get(), source_dir);
   auto status = manifest_reader.OpenManifest();
   if (!status.ok()) {
     return status;
@@ -3464,7 +3479,7 @@ uint64_t VersionSet::ApproximateSize(Version* v, const FdWithBoundaries& f, cons
     // approximate offset of "key" within the table.
     TableReader* table_reader_ptr;
     InternalIterator* iter = v->cfd_->table_cache()->NewIterator(
-        ReadOptions(), env_options_, v->cfd_->internal_comparator(), f.fd,
+        ReadOptions(), env_options_, v->cfd_->internal_comparator(), f.fd, Slice() /* filter */,
         &table_reader_ptr);
     if (table_reader_ptr != nullptr) {
       result = table_reader_ptr->ApproximateOffsetOf(key);
@@ -3535,8 +3550,8 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
         for (size_t i = 0; i < flevel->num_files; i++) {
           list[num++] = cfd->table_cache()->NewIterator(
               read_options, env_options_compactions_,
-              cfd->internal_comparator(), flevel->files[i].fd, nullptr,
-              nullptr, /* no per level latency histogram*/
+              cfd->internal_comparator(), flevel->files[i].fd, flevel->files[i].user_filter_data,
+              nullptr, nullptr /* no per level latency histogram*/,
               true /* for compaction */);
         }
       } else {

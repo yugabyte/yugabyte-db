@@ -34,27 +34,31 @@
 #include <iostream>
 
 #include <boost/optional/optional.hpp>
+#include "yb/tserver/tserver_error.h"
 #include <glog/logging.h>
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 
-#include "yb/gutil/strings/substitute.h"
-#include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
+
+#include "yb/consensus/log_util.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/master/call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
+#include "yb/server/skewed_clock.h"
+#include "yb/server/secure.h"
 #include "yb/tserver/factory.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/consensus/log_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/size_literals.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::placeholders;
 
@@ -94,8 +98,15 @@ DECLARE_int32(cql_proxy_webserver_port);
 
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_bool(start_pgsql_proxy);
+DECLARE_bool(enable_ysql);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+
+DECLARE_bool(use_client_to_server_encryption);
+DECLARE_string(certs_dir);
+DECLARE_string(certs_for_client_dir);
+DECLARE_string(ysql_hba_conf);
+DECLARE_string(ysql_pg_conf);
 
 // Deprecated because it's misspelled.  But if set, this flag takes precedence over
 // remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
@@ -103,21 +114,37 @@ DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
 
 namespace yb {
 namespace tserver {
+namespace {
 
-static int TabletServerMain(int argc, char** argv) {
+void SetProxyAddress(std::string* flag, const std::string& name, uint16_t port) {
+  if (flag->empty()) {
+    HostPort host_port;
+    CHECK_OK(host_port.ParseString(FLAGS_rpc_bind_addresses, 0));
+    host_port.set_port(port);
+    *flag = host_port.ToString();
+    LOG(INFO) << "Reset " << name << " bind address to " << *flag;
+  }
+}
+
+// Helper function to set the proxy rpc addresses based on rpc_bind_addresses.
+void SetProxyAddresses() {
+  LOG(INFO) << "Using parsed rpc = " << FLAGS_rpc_bind_addresses;
+  SetProxyAddress(&FLAGS_redis_proxy_bind_address, "YEDIS", RedisServer::kDefaultPort);
+  SetProxyAddress(&FLAGS_cql_proxy_bind_address, "YCQL", CQLServer::kDefaultPort);
+}
+
+int TabletServerMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
                                                  TabletServer::kDefaultPort);
   FLAGS_webserver_port = TabletServer::kDefaultWebPort;
-
-  FLAGS_redis_proxy_bind_address = strings::Substitute("0.0.0.0:$0", RedisServer::kDefaultPort);
   FLAGS_redis_proxy_webserver_port = RedisServer::kDefaultWebPort;
-
-  FLAGS_cql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", CQLServer::kDefaultPort);
   FLAGS_cql_proxy_webserver_port = CQLServer::kDefaultWebPort;
   // Do not sync GLOG to disk for INFO, WARNING.
   // ERRORs, and FATALs will still cause a sync to disk.
   FLAGS_logbuflevel = google::GLOG_WARNING;
+
+  server::SkewedClock::Register();
 
   // Only write FATALs by default to stderr.
   FLAGS_stderrthreshold = google::FATAL;
@@ -150,29 +177,13 @@ static int TabletServerMain(int argc, char** argv) {
 
   CHECK_OK(GetPrivateIpMode());
 
+  SetProxyAddresses();
+
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
-  YB_EDITION_NS_PREFIX Factory factory;
+  enterprise::Factory factory;
 
   auto server = factory.CreateTabletServer(*tablet_server_options);
-
-  boost::optional<PgProcessConf> pg_process_conf;
-  std::unique_ptr<PgSupervisor> pg_supervisor;
-  if (FLAGS_start_pgsql_proxy) {
-    auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
-        FLAGS_pgsql_proxy_bind_address,
-        tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
-        server->GetSharedMemoryFd());
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
-    pg_process_conf = std::move(*pg_process_conf_result);
-    pg_process_conf->master_addresses = tablet_server_options->master_addresses_flag;
-
-    LOG(INFO) << "Starting PostgreSQL server listening on "
-              << pg_process_conf->listen_addresses << ", port " << pg_process_conf->pg_port;
-
-    pg_supervisor = std::make_unique<PgSupervisor>(*pg_process_conf);
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
-  }
 
   // ----------------------------------------------------------------------------------------------
   // Starting to instantiate servers
@@ -188,6 +199,33 @@ static int TabletServerMain(int argc, char** argv) {
   if (FLAGS_callhome_enabled) {
     call_home = std::make_unique<CallHome>(server.get(), ServerType::TSERVER);
     call_home->ScheduleCallHome();
+  }
+
+  std::unique_ptr<PgSupervisor> pg_supervisor;
+  if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
+    auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
+        FLAGS_pgsql_proxy_bind_address,
+        tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
+        server->GetSharedMemoryFd());
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
+    auto& pg_process_conf = *pg_process_conf_result;
+    pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
+    pg_process_conf.certs_dir = FLAGS_certs_dir.empty()
+        ? server::DefaultCertsDir(*server->fs_manager())
+        : FLAGS_certs_dir;
+    pg_process_conf.certs_for_client_dir = FLAGS_certs_for_client_dir.empty()
+        ? pg_process_conf.certs_dir
+        : FLAGS_certs_for_client_dir;
+    pg_process_conf.enable_tls = FLAGS_use_client_to_server_encryption;
+    const auto hosts_result = HostPort::ParseStrings(
+        server->options().rpc_opts.rpc_bind_addresses, 0);
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(hosts_result);
+    pg_process_conf.cert_base_name = hosts_result->front().host();
+    LOG(INFO) << "Starting PostgreSQL server listening on "
+              << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
+
+    pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf);
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
   }
 
   std::unique_ptr<RedisServer> redis_server;
@@ -246,6 +284,7 @@ static int TabletServerMain(int argc, char** argv) {
   return 0;
 }
 
+}  // namespace
 }  // namespace tserver
 }  // namespace yb
 

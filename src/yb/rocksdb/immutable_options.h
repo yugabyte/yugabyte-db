@@ -132,6 +132,8 @@ struct ImmutableCFOptions {
   std::shared_ptr<yb::MemTracker> mem_tracker;
 
   std::shared_ptr<yb::MemTracker> block_based_table_mem_tracker;
+
+  std::shared_ptr<IteratorReplacer> iterator_replacer;
 };
 
 }  // namespace rocksdb

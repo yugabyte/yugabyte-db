@@ -1,7 +1,7 @@
 ---
-title: C++
+title: Build a C++ application
 linkTitle: C++
-description: Build a C++ App
+description: Build a C++ application
 aliases:
   - /develop/client-drivers/cpp/
   - /latest/develop/client-drivers/cpp/
@@ -10,6 +10,7 @@ menu:
     identifier: build-apps-cpp
     parent: build-apps
     weight: 556
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -35,4 +36,3 @@ menu:
     {{% includeMarkdown "ycql/cpp.md" /%}}
   </div>
 </div>
-

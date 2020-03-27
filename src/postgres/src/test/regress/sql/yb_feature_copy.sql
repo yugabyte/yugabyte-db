@@ -183,6 +183,28 @@ ROLLBACK;
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
 ROLLBACK;
+
+CREATE TABLE t(k INT PRIMARY KEY, v INT);
+CREATE UNIQUE INDEX ON t(v);
+
+-- should fail, non unique primary key
+COPY t FROM stdin;
+1	1
+2	2
+2	3
+4	4
+\.
+
+-- should fail, non unique index
+COPY t FROM stdin;
+1	1
+2	2
+3	2
+4	4
+\.
+
+SELECT COUNT(*) FROM t;
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
@@ -190,3 +212,4 @@ DROP TABLE y;
 DROP TABLE testnl;
 DROP TABLE testeoc;
 DROP TABLE testnull;
+DROP TABLE t;

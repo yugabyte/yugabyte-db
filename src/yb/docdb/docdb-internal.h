@@ -14,6 +14,7 @@
 #ifndef YB_DOCDB_DOCDB_INTERNAL_H_
 #define YB_DOCDB_DOCDB_INTERNAL_H_
 
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
@@ -55,10 +56,11 @@ constexpr bool IsDocDbDebug() {
 namespace yb {
 namespace docdb {
 
-// Type of keys written by DocDB into RocksDB.
-YB_DEFINE_ENUM(KeyType, (kEmpty)(kIntentKey)(kReverseTxnKey)(kValueKey)(kTransactionMetadata));
-
+// Infer the key type from the given slice, given whether this is regular or intents RocksDB.
 KeyType GetKeyType(const Slice& slice, StorageDbType db_type);
+
+constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
+    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
 
 } // namespace docdb
 } // namespace yb

@@ -18,35 +18,28 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 
+#include "yb/tserver/tserver_error.h"
+
 namespace yb {
 namespace tserver {
 
 void SetupErrorAndRespond(TabletServerErrorPB* error,
                           const Status& s,
-                          TabletServerErrorPB::Code code,
                           rpc::RpcContext* context) {
-  // Generic "service unavailable" errors will cause the client to retry later.
-  if (code == TabletServerErrorPB::UNKNOWN_ERROR && s.IsServiceUnavailable()) {
-    context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, s);
-    return;
-  }
-
-  StatusToPB(s, error->mutable_status());
-  error->set_code(code);
-  // TODO: rename RespondSuccess() to just "Respond" or
-  // "SendResponse" since we use it for application-level error
-  // responses, and this just looks confusing!
-  context->RespondSuccess();
-}
-
-void SetupErrorAndRespond(TabletServerErrorPB* error,
-                          const Status& s,
-                          rpc::RpcContext* context) {
-  SetupErrorAndRespond(error, s, static_cast<TabletServerErrorPB::Code>(s.error_code()), context);
+  SetupErrorAndRespond(error, s, TabletServerError(s).value(), context);
 }
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
   std::shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
+  if (!consensus) {
+    auto state = tablet_peer.state();
+    if (state != tablet::RaftGroupStatePB::SHUTDOWN) {
+      // Should not happen.
+      return STATUS(IllegalState, "Tablet peer does not have consensus, but in $0 state",
+                    tablet::RaftGroupStatePB_Name(state));
+    }
+    return STATUS(Aborted, "Tablet peer was closed");
+  }
   auto leader_state = consensus->GetLeaderState();
 
   VLOG(1) << Format(
@@ -62,10 +55,11 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
       case LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE:
         // We are returning a NotTheLeader as opposed to LeaderNotReady, because there is a chance
         // that we're a partitioned-away leader, and the client needs to do another leader lookup.
-        return status.CloneAndChangeErrorCode(TabletServerErrorPB::NOT_THE_LEADER);
+        return status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::NOT_THE_LEADER));
       case LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED: FALLTHROUGH_INTENDED;
       case LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE:
-        return status.CloneAndChangeErrorCode(TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE);
+        return status.CloneAndAddErrorCode(TabletServerError(
+            TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE));
       case LeaderStatus::LEADER_AND_READY:
         LOG(FATAL) << "Unexpected status: " << to_underlying(leader_state.status);
     }
@@ -78,7 +72,11 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
 bool LeaderTabletPeer::FillTerm(TabletServerErrorPB* error, rpc::RpcContext* context) {
   auto leader_term = LeaderTerm(*peer);
   if (!leader_term.ok()) {
-    peer->tablet()->metrics()->not_leader_rejections->Increment();
+    auto tablet = peer->shared_tablet();
+    if (tablet) {
+      // It could happen that tablet becomes nullptr due to shutdown.
+      tablet->metrics()->not_leader_rejections->Increment();
+    }
     SetupErrorAndRespond(error, leader_term.status(), context);
     return false;
   }

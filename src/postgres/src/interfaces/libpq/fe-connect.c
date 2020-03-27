@@ -5379,7 +5379,7 @@ conninfo_add_defaults(PQconninfoOption *options, PQExpBuffer errorMessage)
 		if (strcmp(option->keyword, "user") == 0)
 		{
 		  /* YugaByte default username to "postgres" */
-			option->val = strdup("postgres");
+			option->val = strdup("yugabyte");
 			continue;
 		}
 	}
@@ -6647,11 +6647,13 @@ pqGetHomeDirectory(char *buf, int bufsize)
 	char		pwdbuf[BUFSIZ];
 	struct passwd pwdstr;
 	struct passwd *pwd = NULL;
+	const char* home = NULL;
 
 	(void) pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd);
-	if (pwd == NULL)
+	home = (pwd == NULL ? getenv("HOME") : pwd->pw_dir);
+	if (home == NULL)
 		return false;
-	strlcpy(buf, pwd->pw_dir, bufsize);
+	strlcpy(buf, home, bufsize);
 	return true;
 #else
 	char		tmppath[MAX_PATH];

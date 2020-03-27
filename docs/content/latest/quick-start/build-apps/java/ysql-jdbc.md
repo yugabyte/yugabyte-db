@@ -1,7 +1,8 @@
 ---
-title: Build a Java App
-linkTitle: Build a Java App
-description: Build a Java App
+title: Use Java to build a YugabyteDB application
+headerTitle: Build a Java app
+linkTitle: Build a Java app
+description: Follow this tutorial to use Java to build a simple YugabyteDB application.
 aliases:
   - /develop/client-drivers/java/
   - /latest/develop/client-drivers/java/
@@ -18,7 +19,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link active">
@@ -29,7 +29,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data JPA with Hibernate
+      YSQL - Spring Data JPA
     </a>
   </li>
   <li>
@@ -42,7 +42,7 @@ showAsideToc: true
 
 ## Maven
 
-To build your Java application using the PostgreSQL JDBC driver, add the following Maven dependency to your application:
+To build your Java application using the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/), add the following Maven dependency to your application:
 
 ```mvn
 <dependency>
@@ -52,17 +52,17 @@ To build your Java application using the PostgreSQL JDBC driver, add the followi
 </dependency>
 ```
 
-## Working Example
+## Working example
 
 ### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
-- installed JDK version 1.8+ and maven 3.3+
+- YugabyteDB up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in the [Quick Start guide](../../../../quick-start/).
+- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+- [Apache Maven](https://maven.apache.org/index.html) 3.3, or later, is installed.
 
-
-### Create the maven build file
+### Create the Maven build file
 
 Create a maven build file `pom.xml` and add the following content into it.
 
@@ -123,9 +123,9 @@ Create a maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-### Write an app
+### Write an application
 
-Create the appropriate directory structure as expected by maven.
+Create the appropriate directory structure as expected by Maven.
 
 ```sh
 $ mkdir -p src/main/java/com/yugabyte/sample/apps
@@ -148,7 +148,7 @@ public class YBSqlHelloWorld {
       Class.forName("org.postgresql.Driver");
       Connection connection = null;
       connection = DriverManager.getConnection(
-                 "jdbc:postgresql://127.0.0.1:5433/postgres","postgres", "postgres");
+                 "jdbc:postgresql://127.0.0.1:5433/yugabyte","yugabyte", "yugabyte");
 
       // Create table 'employee'
       String createStmt = "CREATE TABLE employee (id int PRIMARY KEY, " +
@@ -185,16 +185,15 @@ public class YBSqlHelloWorld {
 }
 ```
 
+### Build and run the application
 
-### Build and run the app
-
-To build the application, just run the following command.
+To build the application, run the following command.
 
 ```sh
 $ mvn package
 ```
 
-To run the program, do the following.
+To run the program, run the following command.
 
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBSqlHelloWorld

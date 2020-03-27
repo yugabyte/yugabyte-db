@@ -56,11 +56,17 @@
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 
 class MetricEntity;
 class ThreadPool;
+
+namespace cdc {
+class CDCServiceTest_TestLogRetentionByOpId_MaxRentionTime_Test;
+class CDCServiceTest_TestLogRetentionByOpId_MinSpace_Test;
+}
 
 namespace log {
 
@@ -105,6 +111,7 @@ class Log : public RefCountedThreadSafe<Log> {
                              uint32_t schema_version,
                              const scoped_refptr<MetricEntity>& metric_entity,
                              ThreadPool *append_thread_pool,
+                             int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log);
 
   ~Log();
@@ -146,7 +153,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Kick off an asynchronous task that pre-allocates a new log-segment, setting
   // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
-  CHECKED_STATUS AsyncAllocateSegment();
+  CHECKED_STATUS AsyncAllocateSegment() EXCLUDES(allocation_mutex_);
 
   // The closure submitted to allocation_pool_ to allocate a new segment.
   void SegmentAllocationTask();
@@ -191,6 +198,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // returns (0, 0)
   yb::OpId GetLatestEntryOpId() const;
 
+  int64_t GetMinReplicateIndex() const;
+
   // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
   // state that has been flushed are candidates for garbage collection.
   //
@@ -216,8 +225,6 @@ class Log : public RefCountedThreadSafe<Log> {
     return active_segment_.get();
   }
 
-
-
   // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
   // entries appended up to this point are available in closed, readable segments.
   CHECKED_STATUS AllocateSegmentAndRollOver();
@@ -234,6 +241,10 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // This method is thread-safe.
   void SetSchemaForNextLogSegment(const Schema& schema, uint32_t version);
+
+  void set_wal_retention_secs(uint32_t wal_retention_secs);
+
+  uint32_t wal_retention_secs() const;
 
   // Waits until specified op id is added to log.
   // Returns current op id after waiting, which could be greater than or equal to specified op id.
@@ -257,16 +268,31 @@ class Log : public RefCountedThreadSafe<Log> {
 
   CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
+  // Returns the number of segments.
+  const int num_segments() const;
+
   const std::string& LogPrefix() const {
     return log_prefix_;
+  }
+
+  void set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {
+    // TODO: check that the passed index is greater than the current index.
+    cdc_min_replicated_index_.store(cdc_min_replicated_index, std::memory_order_release);
+  }
+
+  int64_t cdc_min_replicated_index() {
+    return cdc_min_replicated_index_.load(std::memory_order_acquire);
   }
 
  private:
   friend class LogTest;
   friend class LogTestBase;
+
   FRIEND_TEST(LogTest, TestMultipleEntriesInABatch);
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
+  FRIEND_TEST(cdc::CDCServiceTest, TestLogRetentionByOpId_MaxRentionTime);
+  FRIEND_TEST(cdc::CDCServiceTest, TestLogRetentionByOpId_MinSpace);
 
   class Appender;
 
@@ -311,7 +337,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Creates a new WAL segment on disk, writes the next_segment_header_ to disk as the header, and
   // sets active_segment_ to point to this new segment.
-  CHECKED_STATUS SwitchToAllocatedSegment();
+  CHECKED_STATUS SwitchToAllocatedSegment() EXCLUDES(allocation_mutex_);
 
   // Preallocates the space for a new segment.
   CHECKED_STATUS PreAllocateNewSegment();
@@ -345,8 +371,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
   CHECKED_STATUS GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
 
-  const SegmentAllocationState allocation_state() {
-    boost::shared_lock<boost::shared_mutex> shared_lock(allocation_lock_);
+  const SegmentAllocationState allocation_state() EXCLUDES(allocation_mutex_) {
+    SharedLock<decltype(allocation_mutex_)> shared_lock(allocation_mutex_);
     return allocation_state_;
   }
 
@@ -375,7 +401,7 @@ class Log : public RefCountedThreadSafe<Log> {
   gscoped_ptr<WritableLogSegment> active_segment_;
 
   // The current (active) segment sequence number.
-  uint64_t active_segment_sequence_number_;
+  std::atomic<uint64_t> active_segment_sequence_number_ = {0};
 
   // The writable file for the next allocated segment
   std::shared_ptr<WritableFile> next_segment_file_;
@@ -450,8 +476,8 @@ class Log : public RefCountedThreadSafe<Log> {
   Promise<Status> allocation_status_;
 
   // Read-write lock to protect 'allocation_state_'.
-  mutable boost::shared_mutex allocation_lock_;
-  SegmentAllocationState allocation_state_;
+  mutable boost::shared_mutex allocation_mutex_;
+  SegmentAllocationState allocation_state_ GUARDED_BY(allocation_mutex_);
 
   scoped_refptr<MetricEntity> metric_entity_;
   gscoped_ptr<LogMetrics> metrics_;
@@ -469,6 +495,14 @@ class Log : public RefCountedThreadSafe<Log> {
   bool all_op_ids_safe_ = false;
 
   const std::string log_prefix_;
+
+  std::atomic<uint32_t> wal_retention_secs_{0};
+
+  // Minimum replicate index for the current log being written. Used for CDC read initialization.
+  std::atomic<int64_t> min_replicate_index_{-1};
+
+  // The current replicated index that CDC has read.  Used for CDC read cache optimization.
+  std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

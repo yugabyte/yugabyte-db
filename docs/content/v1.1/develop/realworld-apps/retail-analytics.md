@@ -13,20 +13,20 @@ showAsideToc: true
 
 ## 1. Start Local Cluster with YSQL API Enabled
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test YugaByte DB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
+Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 
 ## 2. Load Data
 
 ### Download the Sample Schema
 
 ```sh
-$ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
 ### Download the Sample Data
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+$ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
 
 ```sh
@@ -41,7 +41,7 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
-### Connect to YugaByte DB using psql
+### Connect to YugabyteDB using psql
 
 ```sh
 $ ./bin/psql -h 127.0.0.1 -p 5433 -U postgres

@@ -73,6 +73,12 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     ASYNC_SNAPSHOT_OP,
     ASYNC_COPARTITION_TABLE,
     ASYNC_FLUSH_TABLETS,
+    ASYNC_ADD_TABLE_TO_TABLET,
+    ASYNC_REMOVE_TABLE_FROM_TABLET,
+    ASYNC_GET_SAFE_TIME,
+    ASYNC_BACKFILL_TABLET_CHUNK,
+    ASYNC_BACKFILL_DONE,
+    BACKFILL_TABLE,
   };
 
   virtual Type type() const = 0;
@@ -88,6 +94,13 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
   // Task completion time, may be !Initialized().
   virtual MonoTime completion_timestamp() const = 0;
+
+ protected:
+  static bool IsStateTerminal(MonitoredTaskState state) {
+    return state == MonitoredTaskState::kComplete ||
+           state == MonitoredTaskState::kFailed ||
+           state == MonitoredTaskState::kAborted;
+  }
 };
 
 } // namespace yb

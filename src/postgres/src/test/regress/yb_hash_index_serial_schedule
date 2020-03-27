@@ -1,0 +1,9 @@
+# src/test/regress/yb_large_table_serial_schedule
+#
+####################################################################################################
+# LARGE TABLE Testsuite
+# Test for table of 50K rows.
+####################################################################################################
+test: yb_create_large_table_indexes
+test: yb_large_copy
+test: yb_index_selectivity

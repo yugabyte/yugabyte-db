@@ -55,6 +55,11 @@
 } while (0)
 
 namespace yb {
+namespace rpc {
+
+class Messenger;
+
+} // namespace rpc
 
 // Our test string literals contain "\x00" that is treated as a C-string null-terminator.
 // So we need to call the std::string constructor that takes the length argument.
@@ -298,6 +303,18 @@ class TestThreadHolder {
         thread.join();
       }
     }
+  }
+
+  template <class Cond>
+  CHECKED_STATUS WaitCondition(const Cond& cond) {
+    while (!cond()) {
+      if (stop_flag_.load(std::memory_order_acquire)) {
+        return STATUS(Aborted, "Wait aborted");
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    return Status::OK();
   }
 
   void WaitAndStop(const CoarseDuration& duration) {

@@ -18,20 +18,54 @@
 
 namespace yb {
 
+#if defined(__linux__)
+size_t GetUniqueIdFromFile(int fd, uint8_t* id);
+#endif // __linux__
+
 class PosixSequentialFile : public SequentialFile {
  public:
   PosixSequentialFile(const std::string& fname, FILE* f, const FileSystemOptions& options);
   virtual ~PosixSequentialFile();
 
-  Status Read(size_t n, Slice* result, uint8_t* scratch) override;
-  Status Skip(uint64_t n) override;
-  Status InvalidateCache(size_t offset, size_t length) override;
+  CHECKED_STATUS Read(size_t n, Slice* result, uint8_t* scratch) override;
+  CHECKED_STATUS Skip(uint64_t n) override;
+  CHECKED_STATUS InvalidateCache(size_t offset, size_t length) override;
 
   const string& filename() const override { return filename_; }
 
  private:
   std::string filename_;
   FILE* file_;
+  int fd_;
+  bool use_os_buffer_;
+};
+
+// pread() based random-access file.
+class PosixRandomAccessFile : public RandomAccessFile {
+ public:
+  PosixRandomAccessFile(const std::string& fname, int fd,
+                        const FileSystemOptions& options);
+  virtual ~PosixRandomAccessFile();
+
+  virtual CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result,
+                      uint8_t* scratch) const override;
+
+  Result<uint64_t> Size() const override;
+
+  Result<uint64_t> INode() const override;
+
+  const string& filename() const override { return filename_; }
+
+  size_t memory_footprint() const override;
+
+#ifdef __linux__
+  virtual size_t GetUniqueId(char* id) const override;
+#endif
+  virtual void Hint(AccessPattern pattern) override;
+  virtual CHECKED_STATUS InvalidateCache(size_t offset, size_t length) override;
+
+ private:
+  std::string filename_;
   int fd_;
   bool use_os_buffer_;
 };

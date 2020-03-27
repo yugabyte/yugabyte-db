@@ -62,9 +62,11 @@
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 #include "yb/tablet/tablet_options.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 
+class GarbageCollector;
 class PartitionSchema;
 class FsManager;
 class HostPort;
@@ -102,19 +104,6 @@ class TransitionInProgressDeleter;
   do { \
     Status _s = (expr); \
     if (PREDICT_FALSE(!_s.ok())) { \
-      tserver::LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
-      return _s; \
-    } \
-  } while (0)
-
-#define SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(expr, tablet_peer, meta, uuid, msg, \
-                                                  ts_manager_ptr) \
-  do { \
-    Status _s = (expr); \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      if (tablet_peer) { \
-        tablet_peer->Shutdown(); \
-      } \
       tserver::LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
       return _s; \
     } \
@@ -176,7 +165,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
     const PartitionSchema &partition_schema,
     const boost::optional<IndexInfo>& index_info,
     consensus::RaftConfigPB config,
-    std::shared_ptr<tablet::TabletPeer> *tablet_peer);
+    std::shared_ptr<tablet::TabletPeer> *tablet_peer,
+    const bool colocated = false);
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
@@ -252,6 +242,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void MarkTabletDirty(const std::string& tablet_id,
                        std::shared_ptr<consensus::StateChangeContext> context);
 
+  void MarkTabletBeingRemoteBootstrapped(const std::string& tablet_id);
+
+  void UnmarkTabletBeingRemoteBootstrapped(const std::string& tablet_id);
+
   // Returns the number of tablets in the "dirty" map, for use by unit tests.
   int GetNumDirtyTabletsForTests() const;
 
@@ -301,12 +295,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Flush some tablet if the memstore memory limit is exceeded
   void MaybeFlushTablet();
 
+  client::YBClient& client();
+
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
   std::vector<std::shared_ptr<TsTabletManagerListener>> TEST_listeners;
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
+  FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
 
   // Flag specified when registering a TabletPeer.
   enum RegisterTabletPeerMode {
@@ -399,7 +396,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   std::shared_ptr<tablet::TabletPeer> TabletToFlush();
 
   TSTabletManagerStatePB state() const {
-    boost::shared_lock<RWMutex> lock(lock_);
+    SharedLock<RWMutex> lock(lock_);
     return state_;
   }
 
@@ -412,6 +409,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void InitLocalRaftPeerPB();
 
   std::string LogPrefix() const;
+
+  std::string TabletLogPrefix(const std::string& tablet_id) const;
+
+  void CleanupCheckpoints();
+
+  void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
+
+  const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
 
@@ -426,8 +431,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
                              std::unordered_map<std::string, std::unordered_set<std::string>>>
     TableDiskAssignmentMap;
 
-  // Lock protecting tablet_map_, dirty_tablets_, state_, and
-  // transition_in_progress_.
+  // Lock protecting tablet_map_, dirty_tablets_, state_, transition_in_progress_, and
+  // tablets_being_remote_bootstrapped_.
   mutable RWMutex lock_;
 
   // Map from tablet ID to tablet
@@ -446,6 +451,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // When a tablet is added/removed/added locally and needs to be
   // reported to the master, an entry is added to this map.
   DirtyMap dirty_tablets_;
+
+  std::set<std::string> tablets_being_remote_bootstrapped_;
 
   // Next tablet report seqno.
   int32_t next_report_seq_;
@@ -482,7 +489,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   TabletPeers shutting_down_peers_;
 
+  std::shared_ptr<GarbageCollector> block_based_table_gc_;
+  std::shared_ptr<GarbageCollector> log_cache_gc_;
+
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
+
+  std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
@@ -534,6 +546,11 @@ Status HandleReplacingStaleTablet(scoped_refptr<tablet::RaftGroupMetadata> meta,
                                   const std::string& tablet_id,
                                   const std::string& uuid,
                                   const int64_t& leader_term);
+
+CHECKED_STATUS ShutdownAndTombstoneTabletPeerNotOk(
+    const Status& status, const tablet::TabletPeerPtr& tablet_peer,
+    const tablet::RaftGroupMetadataPtr& meta, const std::string& uuid, const char* msg,
+    TSTabletManager* ts_tablet_manager = nullptr);
 
 } // namespace tserver
 } // namespace yb

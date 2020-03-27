@@ -65,7 +65,7 @@ class Value {
 
   PrimitiveValue* mutable_primitive_value() { return &primitive_value_; }
 
-  const PrimitiveValue primitive_value() const { return primitive_value_; }
+  const PrimitiveValue& primitive_value() const { return primitive_value_; }
 
   const uint64_t merge_flags() const { return merge_flags_; }
 

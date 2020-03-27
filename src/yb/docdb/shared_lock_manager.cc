@@ -16,14 +16,14 @@
 #include <vector>
 
 #include <boost/range/adaptor/reversed.hpp>
-#include <boost/scope_exit.hpp>
 #include <glog/logging.h>
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
-#include "yb/util/trace.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/tostring.h"
+#include "yb/util/trace.h"
 
 using std::string;
 
@@ -194,9 +194,9 @@ bool LockedBatchEntry::Lock(IntentTypeSet lock_type, CoarseTimePoint deadline) {
       continue;
     }
     num_waiters.fetch_add(1, std::memory_order_release);
-    BOOST_SCOPE_EXIT(this_) {
-      this_->num_waiters.fetch_sub(1, std::memory_order_release);
-    } BOOST_SCOPE_EXIT_END;
+    auto se = ScopeExit([this] {
+      num_waiters.fetch_sub(1, std::memory_order_release);
+    });
     std::unique_lock<std::mutex> lock(mutex);
     old_value = num_holding.load(std::memory_order_acquire);
     if ((old_value & kIntentTypeSetConflicts[type_idx]) != 0) {

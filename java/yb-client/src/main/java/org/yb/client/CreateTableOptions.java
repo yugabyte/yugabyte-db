@@ -126,7 +126,7 @@ public class CreateTableOptions {
    * @return this instance
    */
   public CreateTableOptions setNumTablets(int numTablets) {
-    pb.setNumTablets(numTablets);
+    pb.getSchemaBuilder().getTablePropertiesBuilder().setNumTablets(numTablets);
     return this;
   }
 

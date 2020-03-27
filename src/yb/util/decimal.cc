@@ -273,7 +273,7 @@ std::string EncodeToDigitPairs(const std::vector<uint8_t>& digits) {
 string Decimal::EncodeToComparable() const {
   // Zero is encoded to the special value 128.
   if (digits_.empty()) {
-    return string(1, 128);
+    return string(1, static_cast<char>(128));
   }
   // We reserve two bits for sign: -, zero, and +. Their sign portions are resp. '00', '10', '11'.
   string exponent = exponent_.EncodeToComparable(/* num_reserved_bits */ 2);

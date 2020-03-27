@@ -17,7 +17,7 @@
 #define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
 #include <stddef.h>
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 #ifdef __cplusplus
 
@@ -163,6 +163,31 @@ typedef struct PgSysColumns {
   uint8_t *ybbasectid;
 } YBCPgSysColumns;
 
+// Structure to hold parameters for preparing query plan.
+//
+// Index-related parameters are used to describe different types of scan.
+//   - Sequential scan: Index parameter is not used.
+//     { index_oid, index_only_scan, use_secondary_index } = { kInvalidOid, false, false }
+//   - IndexScan:
+//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, false, true }
+//   - IndexOnlyScan:
+//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, true, true }
+//   - PrimaryIndexScan: This is a special case as YugaByte doesn't have a separated
+//     primary-index database object from table object.
+//       index_oid = TableOid
+//       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
+//       use_secondary_index = false
+//
+// Attribute "querying_systable"
+//   - If 'true', SELECT from SQL system catalogs.
+//   - Note that these catalogs are specifically for Postgres API and not YugaByte system-tables.
+typedef struct PgPrepareParameters {
+  YBCPgOid index_oid;
+  bool index_only_scan;
+  bool use_secondary_index;
+  bool querying_systable;
+} YBCPgPrepareParameters;
+
 // Structure to hold the execution-control parameters.
 typedef struct PgExecParameters {
   // TODO(neil) Move forward_scan flag here.
@@ -184,7 +209,24 @@ typedef struct PgExecParameters {
   uint64_t limit_count;
   uint64_t limit_offset;
   bool limit_use_default;
+  // For now we only support one rowmark.
+#ifdef __cplusplus
+  int rowmark = -1;
+#else
+  int rowmark;
+#endif
 } YBCPgExecParameters;
+
+typedef struct PgAttrValueDescriptor {
+  int attr_num;
+  uint64_t datum;
+  bool is_null;
+  const YBCPgTypeEntity *type_entity;
+} YBCPgAttrValueDescriptor;
+
+typedef struct PgCallbacks {
+  void (*FetchUniqueConstraintName)(YBCPgOid, char*, size_t);
+} YBCPgCallbacks;
 
 #ifdef __cplusplus
 }  // extern "C"

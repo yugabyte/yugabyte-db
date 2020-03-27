@@ -29,22 +29,35 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ERRNO_H
-#define YB_ERRNO_H
+#ifndef YB_UTIL_ERRNO_H
+#define YB_UTIL_ERRNO_H
 
 #include <string>
+
+#include "yb/util/status.h"
 
 namespace yb {
 
 void ErrnoToCString(int err, char *buf, size_t buf_len);
 
 // Return a string representing an errno.
-inline static std::string ErrnoToString(int err) {
+inline std::string ErrnoToString(int err) {
   char buf[512];
   ErrnoToCString(err, buf, sizeof(buf));
   return std::string(buf);
 }
 
+struct ErrnoTag : IntegralErrorTag<int32_t> {
+  // This category id is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 1;
+
+  static std::string ToMessage(Value value) {
+    return ErrnoToString(value);
+  }
+};
+
+typedef StatusErrorCodeImpl<ErrnoTag> Errno;
+
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_ERRNO_H

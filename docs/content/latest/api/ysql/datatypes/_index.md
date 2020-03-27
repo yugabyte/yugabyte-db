@@ -1,7 +1,7 @@
 ---
-title: Datatypes
-description: Datatypes
-summary: YSQL datatype overview and specification.
+title: Data types
+description: Data types
+summary: YSQL data type overview and specification.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -14,10 +14,10 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following table lists the primitive types in YSQL.
+The following table lists the primitive and compound data types in YSQL.
 
-| Datatype | Alias | Description |
-|----------|-------|-------------|
+| Data type | Alias | Description |
+|-----------|-------|-------------|
 | [`BIGINT`](type_numeric) | [`INT8`](type_numeric) | Signed 8-byte integer |
 | [`BIGSERIAL`](type_serial) | [`SERIAL8`](type_serial) | Autoincrement 8-byte integer |
 | `BIT [(n)]` <sup>1</sup> | | Fixed-length bit string |
@@ -34,8 +34,8 @@ The following table lists the primitive types in YSQL.
 | `INET` <sup>1</sup> | | IPv4 or IPv6 host address |
 | [`INTEGER`](type_numeric) | [`INT`, `INT4`](type_numeric) | Signed 4-byte integer |
 | [`INTERVAL [fields] [(p)]`](type_datetime) | | Time span |
-| [`JSON`](type_json) <sup>1</sup> | | Textual JSON data |
-| [`JSONB`](type_json) | | Binary JSON data |
+| [`JSON`](type_json) <sup>1</sup> | | JSON text data and functionality |
+| [`JSONB`](type_json) <sup>1</sup> | | JSON binary data and functionality |
 | `LINE` <sup>1</sup> | | Infinite line |
 | `LSEG` <sup>1</sup> | | Line segment |
 | `MACADDR` <sup>1</sup> | | MAC address |

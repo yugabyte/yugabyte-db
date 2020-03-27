@@ -45,8 +45,6 @@ def main():
                         help='skip build, only sync files')
     parser.add_argument('--build-args', type=str, default=None,
                         help='build arguments to pass')
-    parser.add_argument('--edition', type=str, default=None,
-                        help='use ee or (default) ce edition')
     parser.add_argument('--wait-for-ssh', action='store_true',
                         help='Wait for the remote server to be ssh-able')
     parser.add_argument('--profile',
@@ -71,9 +69,6 @@ def main():
     if args.build_type is None:
         args.build_type = "release"
 
-    if args.edition is None:
-        args.edition = "ce"
-
     # End of default arguments.
     # ---------------------------------------------------------------------------------------------
 
@@ -92,7 +87,6 @@ def main():
 
     remote_args = []
     remote_args.append("--build {}".format(args.build_type))
-    remote_args.append("--edition {}".format(args.edition))
     remote_args.append("--force")
     if args.build_args is not None:
         remote_args.append("--build_args=\"{}\"".format(args.build_args))

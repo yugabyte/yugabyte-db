@@ -28,6 +28,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -120,7 +121,10 @@ DEFINE_int32(o_direct_block_alignment_bytes, 4096,
 TAG_FLAG(o_direct_block_alignment_bytes, advanced);
 
 DEFINE_test_flag(bool, TEST_simulate_fs_without_fallocate, false,
-    "If true, the system simulates a file system that doesn't support fallocate");
+    "If true, the system simulates a file system that doesn't support fallocate.");
+
+DEFINE_test_flag(int64, TEST_simulate_free_space_bytes, -1,
+    "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
 
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
@@ -131,6 +135,25 @@ static __thread uint64_t thread_local_id;
 static Atomic64 cur_thread_local_id_;
 
 namespace yb {
+
+Status IOError(const std::string& context, int err_number, const char* file, int line) {
+  Errno err(err_number);
+  switch (err_number) {
+    case ENOENT:
+      return Status(Status::kNotFound, file, line, context, err);
+    case EEXIST:
+      return Status(Status::kAlreadyPresent, file, line, context, err);
+    case EOPNOTSUPP:
+      return Status(Status::kNotSupported, file, line, context, err);
+    case EIO:
+      if (FLAGS_suicide_on_eio) {
+        // TODO: This is very, very coarse-grained. A more comprehensive
+        // approach is described in KUDU-616.
+        LOG(FATAL) << "Fatal I/O error, context: " << context;
+      }
+  }
+  return Status(Status::kIOError, file, line, context, err);
+}
 
 namespace {
 
@@ -188,26 +211,6 @@ class ScopedFdCloser {
   int fd_;
 };
 
-static Status IOError(const std::string& context, int err_number, const char* file, int line) {
-  switch (err_number) {
-    case ENOENT:
-      return Status(Status::kNotFound, file, line, context, ErrnoToString(err_number), err_number);
-    case EEXIST:
-      return Status(Status::kAlreadyPresent, file, line, context, ErrnoToString(err_number),
-                    err_number);
-    case EOPNOTSUPP:
-      return Status(Status::kNotSupported, file, line, context, ErrnoToString(err_number),
-                    err_number);
-    case EIO:
-      if (FLAGS_suicide_on_eio) {
-        // TODO: This is very, very coarse-grained. A more comprehensive
-        // approach is described in KUDU-616.
-        LOG(FATAL) << "Fatal I/O error, context: " << context;
-      }
-  }
-  return Status(Status::kIOError, file, line, context, ErrnoToString(err_number), err_number);
-}
-
 #define STATUS_IO_ERROR(context, err_number) IOError(context, err_number, __FILE__, __LINE__)
 
 static Status DoSync(int fd, const string& filename) {
@@ -259,57 +262,6 @@ Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extrac
   }
   return extractor(sbuf);
 }
-
-// pread() based random-access
-class PosixRandomAccessFile: public RandomAccessFile {
- private:
-  std::string filename_;
-  int fd_;
-
- public:
-  PosixRandomAccessFile(std::string fname, int fd)
-      : filename_(std::move(fname)), fd_(fd) {}
-  virtual ~PosixRandomAccessFile() { close(fd_); }
-
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      uint8_t *scratch) const override {
-    ThreadRestrictions::AssertIOAllowed();
-    Status s;
-    ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
-    *result = Slice(scratch, (r < 0) ? 0 : r);
-    if (r < 0) {
-      // An error: return a non-ok status.
-      s = STATUS_IO_ERROR(filename_, errno);
-    }
-    return s;
-  }
-
-  Result<uint64_t> Size() const override {
-    TRACE_EVENT1("io", __PRETTY_FUNCTION__, "path", filename_);
-    ThreadRestrictions::AssertIOAllowed();
-    struct stat st;
-    if (fstat(fd_, &st) == -1) {
-      return STATUS_IO_ERROR(filename_, errno);
-    }
-    return st.st_size;
-  }
-
-  Result<uint64_t> INode() const override {
-    TRACE_EVENT1("io", __PRETTY_FUNCTION__, "path", filename_);
-    ThreadRestrictions::AssertIOAllowed();
-    struct stat st;
-    if (fstat(fd_, &st) == -1) {
-      return STATUS_IO_ERROR(filename_, errno);
-    }
-    return st.st_ino;
-  }
-
-  const string& filename() const override { return filename_; }
-
-  size_t memory_footprint() const override {
-    return malloc_usable_size(this) + filename_.capacity();
-  }
-};
 
 // Use non-memory mapped POSIX files to write data to a file.
 //
@@ -723,7 +675,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
         void *temp_buf = nullptr;
         auto err = posix_memalign(&temp_buf, FLAGS_o_direct_block_alignment_bytes, block_size_);
         if (err) {
-          return STATUS(RuntimeError, "Unable to allocate memory", ErrnoToString(err), err);
+          return STATUS(RuntimeError, "Unable to allocate memory", Errno(err));
         }
 
         uint8_t *start = static_cast<uint8_t *>(temp_buf);
@@ -964,9 +916,7 @@ class PosixEnv : public Env {
  public:
   PosixEnv();
   explicit PosixEnv(std::unique_ptr<FileFactory> file_factory);
-  virtual ~PosixEnv() {
-    fprintf(stdout, "Destroying Env::Default()\n");
-  }
+  virtual ~PosixEnv() = default;
 
   virtual Status NewSequentialFile(const std::string& fname,
                                    std::unique_ptr<SequentialFile>* result) override {
@@ -976,12 +926,6 @@ class PosixEnv : public Env {
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      std::unique_ptr<RandomAccessFile>* result) override {
     return file_factory_->NewRandomAccessFile(fname, result);
-  }
-
-  virtual Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                                     const std::string& fname,
-                                     std::unique_ptr<RandomAccessFile>* result) override {
-    return file_factory_->NewRandomAccessFile(opts, fname, result);
   }
 
   virtual Status NewWritableFile(const std::string& fname,
@@ -1217,6 +1161,24 @@ class PosixEnv : public Env {
     return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
+  uint64_t NowNanos() override {
+#if defined(__linux__) || defined(OS_FREEBSD)
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<uint64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+#elif defined(__MACH__)
+    clock_serv_t cclock;
+    mach_timespec_t ts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &ts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    return static_cast<uint64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+#else
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+       std::chrono::steady_clock::now().time_since_epoch()).count();
+#endif
+  }
+
   void SleepForMicroseconds(int micros) override {
     ThreadRestrictions::AssertWaitAllowed();
     SleepFor(MonoDelta::FromMicroseconds(micros));
@@ -1230,7 +1192,7 @@ class PosixEnv : public Env {
 #if defined(__linux__)
       int rc = readlink("/proc/self/exe", buf.get(), size);
       if (rc == -1) {
-        return STATUS(IOError, "Unable to determine own executable path", "", errno);
+        return STATUS(IOError, "Unable to determine own executable path", "", Errno(errno));
       } else if (rc >= size) {
         // The buffer wasn't large enough
         size *= 2;
@@ -1294,7 +1256,7 @@ class PosixEnv : public Env {
     // FTS requires a non-const copy of the name. strdup it and free() when
     // we leave scope.
     gscoped_ptr<char, FreeDeleter> name_dup(strdup(root.c_str()));
-    char *(paths[]) = { name_dup.get(), nullptr };
+    char *paths[] = { name_dup.get(), nullptr };
 
     // FTS_NOCHDIR is important here to make this thread-safe.
     gscoped_ptr<FTS, FtsCloser> tree(
@@ -1385,6 +1347,58 @@ class PosixEnv : public Env {
     return file_factory_.get();
   }
 
+  Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
+    if (PREDICT_FALSE(FLAGS_TEST_simulate_free_space_bytes >= 0)) {
+      return FLAGS_TEST_simulate_free_space_bytes;
+    }
+    struct statvfs stat;
+    auto ret = statvfs(path.c_str(), &stat);
+    if (ret != 0) {
+      if (errno == EACCES) {
+        return STATUS_SUBSTITUTE(NotAuthorized,
+            "Caller doesn't have the required permission on a component of the path $0",
+            path);
+      } else if (errno == EIO) {
+        return STATUS_SUBSTITUTE(IOError,
+            "I/O error occurred while reading from '$0' filesystem",
+            path);
+      } else if (errno == ELOOP) {
+        return STATUS_SUBSTITUTE(InternalError,
+            "Too many symbolic links while translating '$0' path",
+            path);
+      } else if (errno == ENAMETOOLONG) {
+        return STATUS_SUBSTITUTE(NotSupported,
+            "Path '$0' is too long",
+            path);
+      } else if (errno == ENOENT) {
+        return STATUS_SUBSTITUTE(NotFound,
+            "File specified by path '$0' doesn't exist",
+            path);
+      } else if (errno == ENOMEM) {
+        return STATUS(InternalError, "Insufficient memory");
+      } else if (errno == ENOSYS) {
+        return STATUS_SUBSTITUTE(NotSupported,
+            "Filesystem for path '$0' doesn't support statvfs",
+            path);
+      } else if (errno == ENOTDIR) {
+        return STATUS_SUBSTITUTE(InvalidArgument,
+            "A component of the path '$0' is not a directory",
+            path);
+      } else {
+        return STATUS_SUBSTITUTE(InternalError,
+            "Failed to read information about filesystem for path '%s': errno=$0: $1",
+            path,
+            errno,
+            ErrnoToString(errno));
+      }
+    }
+    uint64_t block_size = stat.f_frsize > 0 ? static_cast<uint64_t>(stat.f_frsize) :
+                                              static_cast<uint64_t>(stat.f_bsize);
+    uint64_t available_blocks = static_cast<uint64_t>(stat.f_bavail);
+
+    return available_blocks * block_size;
+  }
+
  private:
   // gscoped_ptr Deleter implementation for fts_close
   struct FtsCloser {
@@ -1440,12 +1454,6 @@ class PosixFileFactory : public FileFactory {
 
   Status NewRandomAccessFile(const std::string& fname,
                              std::unique_ptr<RandomAccessFile>* result) override {
-    return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
-  }
-
-  Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                             const std::string& fname,
-                             std::unique_ptr<RandomAccessFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewRandomAccessFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     int fd = open(fname.c_str(), O_RDONLY);
@@ -1453,7 +1461,7 @@ class PosixFileFactory : public FileFactory {
       return STATUS_IO_ERROR(fname, errno);
     }
 
-    result->reset(new PosixRandomAccessFile(fname, fd));
+    result->reset(new yb::PosixRandomAccessFile(fname, fd, yb::FileSystemOptions::kDefault));
     return Status::OK();
   }
 

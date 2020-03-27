@@ -18,13 +18,6 @@
 namespace yb {
 namespace ql {
 
-#define EXEC_INVALID_DROP_STMT(stmt, expected_error)                    \
-  do {                                                                  \
-    Status s = processor->Run(stmt);                                    \
-    ASSERT_FALSE(s.ok());                                               \
-    ASSERT_FALSE(s.ToString().find(expected_error) == string::npos);    \
-  } while (false);
-
 class TestQLDropStmt : public QLTestBase {
  public:
   TestQLDropStmt() : QLTestBase() {
@@ -48,7 +41,7 @@ TEST_F(TestQLDropStmt, TestQLDropTable) {
   const string not_found_drop_error = "Object Not Found";
 
   // No tables exist at this point. Verify that this statement fails.
-  EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_stmt, not_found_drop_error);
 
   // Although the table doesn't exist, a DROP TABLE IF EXISTS should succeed.
   EXEC_VALID_STMT(drop_cond_stmt);
@@ -60,7 +53,7 @@ TEST_F(TestQLDropStmt, TestQLDropTable) {
   EXEC_VALID_STMT(drop_stmt);
 
   // Verify that the table was indeed deleted.
-  EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_stmt, not_found_drop_error);
 
   // Create the table again.
   EXEC_VALID_STMT(create_stmt);
@@ -69,7 +62,7 @@ TEST_F(TestQLDropStmt, TestQLDropTable) {
   EXEC_VALID_STMT(drop_cond_stmt);
 
   // Verify that the table was indeed deleted.
-  EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_stmt, not_found_drop_error);
 }
 
 TEST_F(TestQLDropStmt, TestQLDropIndex) {
@@ -91,8 +84,8 @@ TEST_F(TestQLDropStmt, TestQLDropIndex) {
   const string not_found_index_drop_error = "Object Not Found";
 
   // No tables exist at this point. Verify that these statements fail.
-  EXEC_INVALID_DROP_STMT(drop_table_stmt, not_found_table_drop_error);
-  EXEC_INVALID_DROP_STMT(drop_index_stmt, not_found_index_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_table_stmt, not_found_table_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_index_stmt, not_found_index_drop_error);
 
   // Although the table and the index doesn't exist, a DROP TABLE IF EXISTS should succeed.
   EXEC_VALID_STMT(drop_table_cond_stmt);
@@ -107,8 +100,8 @@ TEST_F(TestQLDropStmt, TestQLDropIndex) {
   EXEC_VALID_STMT(drop_table_stmt);
 
   // Verify that the table and the index were indeed deleted.
-  EXEC_INVALID_DROP_STMT(drop_table_stmt, not_found_table_drop_error);
-  EXEC_INVALID_DROP_STMT(drop_index_stmt, not_found_index_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_table_stmt, not_found_table_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_index_stmt, not_found_index_drop_error);
 
   // Create the table and index again.
   EXEC_VALID_STMT(create_table_stmt);
@@ -119,8 +112,8 @@ TEST_F(TestQLDropStmt, TestQLDropIndex) {
   EXEC_VALID_STMT(drop_table_cond_stmt);
 
   // Verify that the table and the index were indeed deleted.
-  EXEC_INVALID_DROP_STMT(drop_table_stmt, not_found_table_drop_error);
-  EXEC_INVALID_DROP_STMT(drop_index_stmt, not_found_index_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_table_stmt, not_found_table_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_index_stmt, not_found_index_drop_error);
 
   // Create the table and index again.
   EXEC_VALID_STMT(create_table_stmt);
@@ -130,8 +123,8 @@ TEST_F(TestQLDropStmt, TestQLDropIndex) {
   EXEC_VALID_STMT(drop_table_stmt);
 
   // Verify that the table and the index were indeed deleted.
-  EXEC_INVALID_DROP_STMT(drop_table_stmt, not_found_table_drop_error);
-  EXEC_INVALID_DROP_STMT(drop_index_stmt, not_found_index_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_table_stmt, not_found_table_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_index_stmt, not_found_index_drop_error);
 }
 
 TEST_F(TestQLDropStmt, TestQLDropKeyspace) {
@@ -160,7 +153,7 @@ TEST_F(TestQLDropStmt, TestQLDropKeyspace) {
     //----------------------------------------------------------------------------------------------
 
     // No keyspaces exist at this point. Verify that this statement fails.
-    EXEC_INVALID_DROP_STMT(drop_keyspace, not_found_drop_error);
+    EXEC_INVALID_STMT_WITH_ERROR(drop_keyspace, not_found_drop_error);
 
     // Although the keyspace doesn't exist, a DROP KEYSPACE IF EXISTS should succeed.
     EXEC_VALID_STMT(drop_keyspace_cond);
@@ -172,7 +165,7 @@ TEST_F(TestQLDropStmt, TestQLDropKeyspace) {
     EXEC_VALID_STMT(drop_keyspace);
 
     // Verify that the keyspace was indeed deleted.
-    EXEC_INVALID_DROP_STMT(drop_keyspace, not_found_drop_error);
+    EXEC_INVALID_STMT_WITH_ERROR(drop_keyspace, not_found_drop_error);
 
     // Create the keyspace again.
     EXEC_VALID_STMT(create_keyspace);
@@ -181,7 +174,7 @@ TEST_F(TestQLDropStmt, TestQLDropKeyspace) {
     EXEC_VALID_STMT(drop_keyspace_cond);
 
     // Verify that the keyspace was indeed deleted.
-    EXEC_INVALID_DROP_STMT(drop_keyspace, not_found_drop_error);
+    EXEC_INVALID_STMT_WITH_ERROR(drop_keyspace, not_found_drop_error);
 
     //----------------------------------------------------------------------------------------------
     // Test DROP KEYSPACE for non-empty keyspace -- Containing a Table
@@ -195,7 +188,7 @@ TEST_F(TestQLDropStmt, TestQLDropKeyspace) {
     EXEC_VALID_STMT(create_table);
 
     // Cannot drop keyspace with type inside.
-    EXEC_INVALID_DROP_STMT(drop_keyspace, non_empty_drop_error);
+    EXEC_INVALID_STMT_WITH_ERROR(drop_keyspace, non_empty_drop_error);
 
     // Create a type.
     EXEC_VALID_STMT(drop_table);
@@ -215,7 +208,7 @@ TEST_F(TestQLDropStmt, TestQLDropKeyspace) {
     EXEC_VALID_STMT(create_type);
 
     // Cannot drop keyspace with type inside.
-    EXEC_INVALID_DROP_STMT(drop_keyspace, non_empty_drop_error);
+    EXEC_INVALID_STMT_WITH_ERROR(drop_keyspace, non_empty_drop_error);
 
     // Create a type.
     EXEC_VALID_STMT(drop_type);
@@ -239,28 +232,28 @@ TEST_F(TestQLDropStmt, TestQLDropType) {
   const string drop_table = "DROP TABLE test";
   const string drop_type_cond = "DROP TYPE IF EXISTS employee";
   const string not_found_drop_error = "Type Not Found";
-  const string type_in_use_error = "Server Error";
+  const string type_in_use_error = "Invalid Request";
 
   //------------------------------------------------------------------------------------------------
   // Test basic DROP TYPE.
   //------------------------------------------------------------------------------------------------
 
   // No types exist at this point. Verify that this statement fails.
-  EXEC_INVALID_DROP_STMT(drop_type, not_found_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_type, not_found_drop_error);
 
   // Create the type and a table using it.
   EXEC_VALID_STMT(create_type);
   EXEC_VALID_STMT(create_table);
 
   // Verify that we cannot drop the type (because the table is referencing it).
-  EXEC_INVALID_DROP_STMT(drop_type, type_in_use_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_type, type_in_use_error);
 
   // Drop the table and verify we can now drop the type;
   EXEC_VALID_STMT(drop_table);
   EXEC_VALID_STMT(drop_type);
 
   // Verify that the type was indeed deleted.
-  EXEC_INVALID_DROP_STMT(drop_type, not_found_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_type, not_found_drop_error);
 
   //------------------------------------------------------------------------------------------------
   // Test DROP TYPE with condition (IF NOT EXISTS)
@@ -274,14 +267,14 @@ TEST_F(TestQLDropStmt, TestQLDropType) {
   EXEC_VALID_STMT(create_table);
 
   // Verify that DROP TYPE IF EXISTS fails because table is referencing type.
-  EXEC_INVALID_DROP_STMT(drop_type, type_in_use_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_type, type_in_use_error);
 
   // Drop the table and verify we can now drop the type;
   EXEC_VALID_STMT(drop_table);
   EXEC_VALID_STMT(drop_type_cond);
 
   // Verify that the type was indeed deleted.
-  EXEC_INVALID_DROP_STMT(drop_type, not_found_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR(drop_type, not_found_drop_error);
 }
 
 TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
@@ -299,12 +292,12 @@ TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
     const string expected_drop_error = CqlError(strlen("DROP "),
                                                 ". DROP " + object + " statement not supported");
     auto drop_stmt = "DROP " + object + " test";
-    EXEC_INVALID_DROP_STMT(drop_stmt, expected_drop_error);
+    EXEC_INVALID_STMT_WITH_ERROR(drop_stmt, expected_drop_error);
 
     const string expected_drop_if_exists_error =
         CqlError(strlen("DROP "), ". DROP " + object + " IF EXISTS statement not supported");
     auto drop_if_exists_stmt = "DROP " + object + " IF EXISTS test";
-    EXEC_INVALID_DROP_STMT(drop_if_exists_stmt, expected_drop_if_exists_error);
+    EXEC_INVALID_STMT_WITH_ERROR(drop_if_exists_stmt, expected_drop_if_exists_error);
   }
 
   vector<string> drop_types = {
@@ -323,13 +316,13 @@ TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
   };
   for (const auto& drop_type : drop_types) {
     auto stmt = "DROP " + drop_type + " test";
-    EXEC_INVALID_DROP_STMT(stmt, CqlError(strlen("DROP ")));
+    EXEC_INVALID_STMT_WITH_ERROR(stmt, CqlError(strlen("DROP ")));
   }
 
   vector<string> opt_drop_behaviors = {"CASCADE", "RESTRICT"};
   for (const auto& opt_drop_behavior : opt_drop_behaviors) {
     auto stmt = "DROP TABLE test ";
-    EXEC_INVALID_DROP_STMT(stmt + opt_drop_behavior, CqlError(strlen(stmt)));
+    EXEC_INVALID_STMT_WITH_ERROR(stmt + opt_drop_behavior, CqlError(strlen(stmt)));
   }
 }
 
@@ -342,15 +335,15 @@ TEST_F(TestQLDropStmt, TestQLDropStmtAnalyzer) {
 
   string expected_drop_error = CqlError(strlen("DROP TABLE "),
                                         ". Only one object name is allowed in a drop statement");
-  EXEC_INVALID_DROP_STMT("DROP TABLE a, b", expected_drop_error);
-  EXEC_INVALID_DROP_STMT("DROP TABLE a, b, c", expected_drop_error);
-  EXEC_INVALID_DROP_STMT("DROP TABLE a, b, c, d", expected_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b", expected_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b, c", expected_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b, c, d", expected_drop_error);
 
   expected_drop_error = CqlError(strlen("DROP TABLE IF EXISTS "),
                                  ". Only one object name is allowed in a drop statement");
-  EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b", expected_drop_error);
-  EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b, c", expected_drop_error);
-  EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b, c, d", expected_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE IF EXISTS a, b", expected_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE IF EXISTS a, b, c", expected_drop_error);
+  EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE IF EXISTS a, b, c, d", expected_drop_error);
 }
 
 } // namespace ql

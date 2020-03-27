@@ -1,7 +1,8 @@
 ---
-title: Build a Go App
-linkTitle: Build a Go App
-description: Build a Go App
+title: Build a YugabyteDB application using Go
+headerTitle: Build a Go application
+linkTitle: Build a Go application
+description: Follow this tutorial to build a YugabyteDB application using Go
 menu:
   latest:
     parent: build-apps
@@ -38,12 +39,12 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [Quick start](../../../../quick-start/test-cassandra/).
 - installed Go version 1.8+
 
-## Install Go Cassandra Driver
+## Install the Go Cassandra driver
 
-To install the driver locally run:
+To install the driver locally, run:
 
 ```sh
 $ go get github.com/yugabyte/gocql
@@ -85,9 +86,9 @@ func main() {
     if err := session.Query(`DROP TABLE IF EXISTS ybdemo.employee`).Exec(); err != nil {
         log.Fatal(err)
     }
-    var createStmt = `CREATE TABLE ybdemo.employee (id int PRIMARY KEY, 
-                                                           name varchar, 
-                                                           age int, 
+    var createStmt = `CREATE TABLE ybdemo.employee (id int PRIMARY KEY,
+                                                           name varchar,
+                                                           age int,
                                                            language varchar)`;
     if err := session.Query(createStmt).Exec(); err != nil {
         log.Fatal(err)
@@ -95,7 +96,7 @@ func main() {
     fmt.Println("Created table ybdemo.employee")
 
     // Insert into the table.
-    var insertStmt string = "INSERT INTO ybdemo.employee(id, name, age, language)" + 
+    var insertStmt string = "INSERT INTO ybdemo.employee(id, name, age, language)" +
         " VALUES (1, 'John', 35, 'Go')";
     if err := session.Query(insertStmt).Exec(); err != nil {
         log.Fatal(err)
@@ -118,7 +119,7 @@ func main() {
 }
 ```
 
-## Running the app
+## Running the application
 
 To execute the file, run the following command:
 

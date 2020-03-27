@@ -17,6 +17,8 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/ql_value.h"
+
 #include "yb/util/decimal.h"
 
 namespace yb {
@@ -79,6 +81,9 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kUint32Value:
       WriteUint32(col_value.uint32_value(), buffer);
       break;
+    case InternalType::kUint64Value:
+      WriteUint64(col_value.uint64_value(), buffer);
+      break;
     case InternalType::kFloatValue:
       WriteFloat(col_value.float_value(), buffer);
       break;
@@ -123,7 +128,7 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
 // Read Tuple Routine in DocDB Format (wire_protocol).
 //--------------------------------------------------------------------------------------------------
 
-Status PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
+void PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
   // Setup the buffer to read the next set of tuples.
   CHECK(cursor->empty()) << "Existing cache is not yet fully read";
   *cursor = cache;
@@ -133,8 +138,6 @@ Status PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice
   size_t read_size = ReadNumber(cursor, &this_count);
   *total_row_count = this_count;
   cursor->remove_prefix(read_size);
-
-  return Status::OK();
 }
 
 PgWireDataHeader PgDocData::ReadDataHeader(Slice *cursor) {

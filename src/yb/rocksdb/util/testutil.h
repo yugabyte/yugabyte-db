@@ -240,12 +240,11 @@ class StringSource: public RandomAccessFile {
         mmap_(mmap),
         total_reads_(0) {}
 
-  virtual ~StringSource() { }
+  virtual ~StringSource() {}
 
-  uint64_t Size() const { return contents_.size(); }
+  yb::Result<uint64_t> Size() const override { return contents_.size(); }
 
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-      char* scratch) const override {
+  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     total_reads_++;
     if (offset > contents_.size()) {
       return STATUS(InvalidArgument, "invalid Read offset");
@@ -262,22 +261,25 @@ class StringSource: public RandomAccessFile {
     return Status::OK();
   }
 
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
-    if (max_size < 20) {
-      return 0;
-    }
-
+  virtual size_t GetUniqueId(char* id) const override {
     char* rid = id;
     rid = EncodeVarint64(rid, uniq_id_);
     rid = EncodeVarint64(rid, 0);
     return static_cast<size_t>(rid-id);
   }
 
+  yb::Result<uint64_t> INode() const override { return STATUS(NotSupported, "Not supported"); }
+
+  const std::string& filename() const override { return filename_; }
+
+  size_t memory_footprint() const override { LOG(FATAL) << "Not supported"; }
+
   int total_reads() const { return total_reads_; }
 
   void set_total_reads(int tr) { total_reads_ = tr; }
 
  private:
+  std::string filename_ = "StringSource";
   std::string contents_;
   uint64_t uniq_id_;
   bool mmap_;
@@ -473,9 +475,9 @@ class StringEnv : public EnvWrapper {
     if (!s.ok()) {
       return s;
     }
-    r->Append(content);
-    r->Flush();
-    r->Close();
+    RETURN_NOT_OK(r->Append(content));
+    RETURN_NOT_OK(r->Flush());
+    RETURN_NOT_OK(r->Close());
     assert(files_[file_name] == content);
     return Status::OK();
   }
@@ -739,6 +741,10 @@ class TestUserFrontier : public UserFrontier {
     UserBoundaryValuePB value;
     pb.UnpackTo(&value);
     value_ = value.tag();
+  }
+
+  Slice Filter() const override {
+    return Slice();
   }
 
  private:

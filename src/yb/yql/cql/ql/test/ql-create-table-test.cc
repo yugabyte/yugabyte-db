@@ -13,12 +13,14 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_defaults.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
-#include <boost/algorithm/string.hpp>
 
+#include "yb/common/ql_value.h"
 
 DECLARE_int32(simulate_slow_table_create_secs);
 DECLARE_bool(master_enable_metrics_snapshotter);
@@ -36,18 +38,7 @@ class Master;
 namespace ql {
 
 #define EXEC_DUPLICATE_OBJECT_CREATE_STMT(stmt)                         \
-  do {                                                                  \
-    Status s = processor->Run(stmt);                                    \
-    EXPECT_FALSE(s.ok());                                               \
-    EXPECT_FALSE(s.ToString().find("Duplicate Object. Object") == string::npos); \
-  } while (false)
-
-#define EXEC_INVALID_TABLE_CREATE_STMT(stmt, msg)                       \
-  do {                                                                  \
-    Status s = processor->Run(stmt);                                    \
-    ASSERT_FALSE(s.ok());                                               \
-    ASSERT_FALSE(s.ToString().find(msg) == string::npos);               \
-  } while (false)
+  EXEC_INVALID_STMT_WITH_ERROR(stmt, "Duplicate Object. Object")
 
 class TestQLCreateTable : public QLTestBase {
  public:
@@ -319,21 +310,21 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithClusteringOrderBy) {
   EXEC_VALID_STMT(CreateStmt(table4));
   EXEC_VALID_STMT(CreateStmt(table5));
 
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table6),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table6),
       "Invalid Table Property. Columns in the CLUSTERING ORDER directive must be in same order "
       "as the clustering key columns order (first_name must appear before last_name)");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table7),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table7),
       "Invalid Table Property. Columns in the CLUSTERING ORDER directive must be in same order "
       "as the clustering key columns order (first_name must appear before last_name)");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table8),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table8),
       "Invalid Table Property. Missing CLUSTERING ORDER for column first_name");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table9),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table9),
       "Invalid Table Property. Not a clustering key colum");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table10),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table10),
       "Invalid Table Property. Not a clustering key colum");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table11),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table11),
       "Invalid Table Property. Not a clustering key colum");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table12),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table12),
       "Invalid Table Property. Not a clustering key colum");
 }
 
@@ -378,32 +369,32 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithPartitionScemeOf) {
 
   EXEC_VALID_STMT(CreateStmt(table2));
   EXEC_VALID_STMT(CreateStmt(table3));
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table4),
-                                 "The number of hash keys in the current table "
-                                     "differ from the number of hash keys in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table5),
-                                 "The number of hash keys in the current table "
-                                     "differ from the number of hash keys in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table6),
-                                 "Object Not Found");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table7),
-                                 "The hash key 'description' in the current table has a different "
-                                     "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table8),
-                                 "The hash key 'dev_id' in the current table has a different "
-                                     "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table9),
-                                 "The hash key 'image_id' in the current table has a different "
-                                     "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table10),
-                                 "The hash key 'description' in the current table has a different "
-                                     "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table11),
-                                 "syntax error");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table12),
-                                 "syntax error");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table13),
-                                 "syntax error");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table4),
+                               "The number of hash keys in the current table "
+                                   "differ from the number of hash keys in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table5),
+                               "The number of hash keys in the current table "
+                                   "differ from the number of hash keys in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table6),
+                               "Object Not Found");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table7),
+                               "The hash key 'description' in the current table has a different "
+                                   "datatype from the corresponding hash key in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table8),
+                               "The hash key 'dev_id' in the current table has a different "
+                                   "datatype from the corresponding hash key in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table9),
+                               "The hash key 'image_id' in the current table has a different "
+                                   "datatype from the corresponding hash key in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table10),
+                               "The hash key 'description' in the current table has a different "
+                                   "datatype from the corresponding hash key in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table11),
+                               "syntax error");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table12),
+                               "syntax error");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table13),
+                               "syntax error");
 }
 
 // Check for presence of rows in system.metrics table.

@@ -1,7 +1,8 @@
 ---
-title: Quick Start YCQL
-linkTitle: Quick Start YCQL
-description: Quick Start
+title: Quick start YCQL
+headerTitle: Quick start YCQL
+linkTitle: Quick start YCQL
+description: Quick start to explore YCQL in YugabyteDB.
 image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
   - /quick-start/test-cassandra/
@@ -10,12 +11,12 @@ aliases:
 menu:
   latest:
     parent: api-cassandra
-    weight: 1100
+    weight: 1101
 ---
 
 After [creating a local cluster](../../../quick-start/create-local-cluster/), follow the instructions below to explore the [YCQL](../) API.
 
-[**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html) servers. It uses the Python driver, and connects to the single node specified on the command line. For ease of use, YugaByte DB ships with the 3.10 version of cqlsh in its bin directory.
+[**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html) servers. It uses the Python driver, and connects to the single node specified on the command line. For ease of use, YugabyteDB ships with the 3.10 version of cqlsh in its bin directory.
 
 ## 1. Connect with cqlsh
 
@@ -82,7 +83,6 @@ cqlsh> CREATE TABLE myapp.stock_market (
 );
 ```
 
-
 ## 3. Insert data
 
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your cqlsh shell.
@@ -118,7 +118,6 @@ cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 
 (2 rows)
 ```
-
 
 Query all the values for 'FB' and 'GOOG' as follows.
 

@@ -25,6 +25,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/util/errno.h"
 #include "yb/util/status.h"
 
 using namespace std::placeholders;
@@ -65,7 +66,8 @@ class Scheduler::Impl {
         timer_.cancel(ec);
         LOG_IF(ERROR, ec) << "Failed to cancel timer: " << ec.message();
 
-        auto status = STATUS(ServiceUnavailable, "Scheduler is shutting down", "", ESHUTDOWN);
+        auto status = STATUS(
+            ServiceUnavailable, "Scheduler is shutting down", "" /* msg2 */, Errno(ESHUTDOWN));
         // Abort all scheduled tasks. It is ok to run task earlier than it was scheduled because
         // we pass error status to it.
         for (auto task : tasks_) {
@@ -80,7 +82,7 @@ class Scheduler::Impl {
     strand_.dispatch([this, task] {
       if (closing_.load(std::memory_order_acquire)) {
         io_service_.post([task] {
-          task->Run(STATUS(Aborted, "Scheduler shutdown", "", ESHUTDOWN));
+          task->Run(STATUS(Aborted, "Scheduler shutdown", "" /* msg2 */, Errno(ESHUTDOWN)));
         });
         return;
       }

@@ -13,13 +13,23 @@
 
 #include "yb/docdb/doc_write_batch.h"
 
+#include "yb/docdb/doc_key.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/rocksutil/write_batch_formatter.h"
+
+#include "yb/server/hybrid_clock.h"
+
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/value_type.h"
-#include "yb/rocksdb/db.h"
-#include "yb/server/hybrid_clock.h"
+#include "yb/docdb/kv_debug.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/enums.h"
+
+using yb::BinaryOutputFormat;
 
 using yb::server::HybridClock;
 
@@ -58,9 +68,8 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
     return Status::OK();
   }
 
-  DocHybridTime write_ht;
-  rocksdb::Slice key;
-  if (!key_prefix_.IsPrefixOf(key = VERIFY_RESULT(doc_iter->FetchKey(&write_ht)))) {
+  auto key_data = VERIFY_RESULT(doc_iter->FetchKey());
+  if (!key_prefix_.IsPrefixOf(key_data.key)) {
     return Status::OK();
   }
 
@@ -73,18 +82,18 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
       &merge_flags, &ttl, &(current_entry_.user_timestamp)));
 
   bool has_expired;
-  CHECK_OK(HasExpiredTTL(write_ht.hybrid_time(), ttl,
+  CHECK_OK(HasExpiredTTL(key_data.write_time.hybrid_time(), ttl,
                          doc_iter->read_time().read, &has_expired));
 
   if (has_expired) {
     current_entry_.value_type = ValueType::kTombstone;
-    current_entry_.doc_hybrid_time = write_ht;
+    current_entry_.doc_hybrid_time = key_data.write_time;
     cache_.Put(key_prefix_, current_entry_);
     return Status::OK();
   }
 
   Slice value;
-  RETURN_NOT_OK(doc_iter->NextFullValue(&write_ht, &value, &key));
+  RETURN_NOT_OK(doc_iter->NextFullValue(&key_data.write_time, &value, &key_data.key));
 
   if (!doc_iter->valid()) {
     return Status::OK();
@@ -92,13 +101,13 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_an
 
   // If the first key >= key_prefix_ in RocksDB starts with key_prefix_, then a
   // document/subdocument pointed to by key_prefix_ exists, or has been recently deleted.
-  if (key_prefix_.IsPrefixOf(key)) {
+  if (key_prefix_.IsPrefixOf(key_data.key)) {
     // No need to decode again if no merge records were encountered.
     if (value != recent_value)
       RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &(current_entry_.value_type),
           /* merge flags */ nullptr, /* ttl */ nullptr, &(current_entry_.user_timestamp)));
-    current_entry_.found_exact_key_prefix = key_prefix_ == key;
-    current_entry_.doc_hybrid_time = write_ht;
+    current_entry_.found_exact_key_prefix = key_prefix_ == key_data.key;
+    current_entry_.doc_hybrid_time = key_data.write_time;
 
     // TODO: with optional init markers we can find something that is more than one level
     //       deep relative to the current prefix.
@@ -483,17 +492,15 @@ Status DocWriteBatch::ReplaceInList(
       deadline,
       read_ht);
 
-  Slice key_slice;
   Slice value_slice;
   SubDocKey found_key;
   int current_index = start_index;
   int replace_index = 0;
-  DocHybridTime doc_ht;
 
   if (dir == Direction::kForward) {
     // Ensure we seek directly to indices and skip init marker if it exists.
     key_prefix_.AppendValueType(ValueType::kArrayIndex);
-    SeekToKeyPrefix(iter.get(), false);
+    RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), false));
   } else {
     // We would like to seek past the entire list and go backwards.
     key_prefix_.AppendValueType(ValueType::kMaxByte);
@@ -502,9 +509,10 @@ Status DocWriteBatch::ReplaceInList(
     key_prefix_.AppendValueType(ValueType::kArrayIndex);
   }
 
+  FetchKeyResult key_data;
   while (true) {
     if (indices[replace_index] <= 0 || !iter->valid() ||
-        !(key_slice = VERIFY_RESULT(iter->FetchKey(&doc_ht))).starts_with(key_prefix_)) {
+        !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
       return is_cql ?
         STATUS_SUBSTITUTE(
           QLError,
@@ -517,7 +525,7 @@ Status DocWriteBatch::ReplaceInList(
           current_index);
     }
 
-    RETURN_NOT_OK(found_key.FullyDecodeFrom(key_slice, HybridTimeRequired::kFalse));
+    RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
 
     MonoDelta entry_ttl;
     ValueType value_type;
@@ -528,15 +536,16 @@ Status DocWriteBatch::ReplaceInList(
     // Redis lists do not have element-level TTL.
     if (!has_expired && is_cql) {
       entry_ttl = ComputeTTL(entry_ttl, default_ttl);
-      RETURN_NOT_OK(HasExpiredTTL(doc_ht.hybrid_time(), entry_ttl, read_ht.read, &has_expired));
+      RETURN_NOT_OK(HasExpiredTTL(
+          key_data.write_time.hybrid_time(), entry_ttl, read_ht.read, &has_expired));
     }
 
     if (has_expired) {
       found_key.KeepPrefix(sub_doc_key.num_subkeys()+1);
       if (dir == Direction::kForward) {
-        iter->SeekPastSubKey(key_slice);
+        iter->SeekPastSubKey(key_data.key);
       } else {
-        iter->PrevSubDocKey(KeyBytes(key_slice));
+        iter->PrevSubDocKey(KeyBytes(key_data.key));
       }
       continue;
     }
@@ -571,9 +580,9 @@ Status DocWriteBatch::ReplaceInList(
     }
 
     if (dir == Direction::kForward) {
-      iter->SeekPastSubKey(key_slice);
+      iter->SeekPastSubKey(key_data.key);
     } else {
-      iter->PrevSubDocKey(KeyBytes(key_slice));
+      iter->PrevSubDocKey(KeyBytes(key_data.key));
     }
   }
 }
@@ -599,6 +608,43 @@ void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
     kv_pair->mutable_key()->assign(entry.first);
     kv_pair->mutable_value()->assign(entry.second);
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Converting a RocksDB write batch to a string.
+// ------------------------------------------------------------------------------------------------
+
+class DocWriteBatchFormatter : public WriteBatchFormatter {
+ public:
+  DocWriteBatchFormatter(
+      StorageDbType storage_db_type,
+      BinaryOutputFormat binary_output_format)
+      : WriteBatchFormatter(binary_output_format),
+        storage_db_type_(storage_db_type) {}
+ protected:
+  std::string FormatKey(const Slice& key) override {
+    KeyType key_type;
+    auto key_result = DocDBKeyToDebugStr(key, storage_db_type_, &key_type);
+    if (key_result.ok()) {
+      return *key_result;
+    }
+    return Format(
+        "$0 (error: $1)",
+        WriteBatchFormatter::FormatKey(key),
+        key_result.status());
+  }
+
+ private:
+  StorageDbType storage_db_type_;
+};
+
+Result<std::string> WriteBatchToString(
+    const rocksdb::WriteBatch& write_batch,
+    StorageDbType storage_db_type,
+    BinaryOutputFormat binary_output_format) {
+  DocWriteBatchFormatter formatter(storage_db_type, binary_output_format);
+  RETURN_NOT_OK(write_batch.Iterate(&formatter));
+  return formatter.str();
 }
 
 }  // namespace docdb

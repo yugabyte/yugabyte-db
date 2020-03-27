@@ -19,6 +19,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.postgresql.util.PSQLException;
+import org.postgresql.util.PSQLWarning;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
@@ -106,11 +107,43 @@ public class TestPgMisc extends BasePgSQLTest {
   }
 
   @Test
-  public void testFeatureRestrictionInTemplate() throws Exception {
-    try {
-      executeQueryInTemplate("VACUUM;");
-      fail("Restricted feature executed in template");
+  public void testVacuum() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("VACUUM;");
+      if (statement.getWarnings() != null) {
+        throw statement.getWarnings();
+      }
+      fail("Vacuum executed without warnings");
+    } catch(PSQLWarning w) {
+    }
+  }
+
+  @Test
+  public void testTemporaryTableAnalyze() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TEMP TABLE test_table(a int);");
+      statement.execute("ANALYZE test_table;");
+      if (statement.getWarnings() != null) {
+        throw statement.getWarnings();
+      }
     } catch(PSQLException e) {
+      fail("Analyze executed with exception");
+    } catch(PSQLWarning w) {
+      fail("Analyze executed with warning");
+    }
+  }
+
+  @Test
+  public void testTemporaryTableTransactionInExecute() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TEMP TABLE test_table(a int, b int, c int, PRIMARY KEY (a))");
+
+      // Can insert using JDBC prepared statement.
+      statement.execute("INSERT INTO test_table(a, b, c) VALUES (1, 2, 3)");
+
+      // Can insert explicitly prepared statement.
+      statement.execute("PREPARE ins AS INSERT INTO test_table(a, b, c) VALUES (2, 3, 4)");
+      statement.execute("EXECUTE ins");
     }
   }
 

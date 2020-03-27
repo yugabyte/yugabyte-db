@@ -1,7 +1,9 @@
 ---
-title: BLOB
+title: BLOB data type [YCQL]
+headerTitle: BLOB data type
+linkTitle: BLOB
 summary: Binary strings of variable length
-description: BLOB Type
+description: Use the BLOB data type to represent arbitrary binary data of variable length.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`BLOB` datatype is used to represent arbitrary binary data of variable length.
+Use the `BLOB` data type to represent arbitrary binary data of variable length.
 
 ## Syntax
 
@@ -32,8 +34,8 @@ Where
 ## Semantics
 
 - Columns of type `BLOB` can be part of the `PRIMARY KEY`.
-- Implicitly, `BLOB` datatype is neither convertible nor comparable with other datatypes.
-- Two series of builtin-functions `BlobAs<Type>` and `<Type>AsBlob` are provided for conversion between `BLOB` and other datatypes.
+- Implicitly, `BLOB` data type is neither convertible nor comparable with other data types.
+- Two series of builtin-functions `BlobAs<Type>` and `<Type>AsBlob` are provided for conversion between `BLOB` and other data types.
 - `BLOB` size is virtually unlimited.
 
 ## Examples
@@ -65,6 +67,6 @@ cqlsh:example> SELECT * FROM messages;
   1 | 0xab00ff
 ```
 
-## See Also
+## See also
 
-[Data Types](..#datatypes)
+- [Data types](..#data-types)

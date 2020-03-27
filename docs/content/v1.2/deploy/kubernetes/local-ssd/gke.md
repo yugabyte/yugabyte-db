@@ -1,11 +1,11 @@
 
 ## 1. Create a gcloud cluster
 
-Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernetes masters. You can directly create a cluster with the desired machine type using the `--machine-type` option. In thie example we are going to create a node-pool with `n1-standard-8` type nodes for the YugaByte universe.
+Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernetes masters. You can directly create a cluster with the desired machine type using the `--machine-type` option. In thie example we are going to create a node-pool with `n1-standard-8` type nodes for the Yugabyte universe.
 
 - Choose the zone
 
-First, choose the zone in which you want to run the cluster in. In this tutorial, we are going to deploy the Kubernetes masters using the default machine type `n1-standard-1` in the zone `us-west1-a`, and add a node pool with the desired node type and node count in order to deploy the YugaByte DB universe. You can view the list of zones by running the following command:
+First, choose the zone in which you want to run the cluster in. In this tutorial, we are going to deploy the Kubernetes masters using the default machine type `n1-standard-1` in the zone `us-west1-a`, and add a node pool with the desired node type and node count in order to deploy the YugabyteDB universe. You can view the list of zones by running the following command:
 
 ```sh
 $ gcloud compute zones list
@@ -94,7 +94,7 @@ initialNodeCount: 3
 name: node-pool-8cpu-2ssd
 ```
 
-## 3. Create a YugaByte DB universe
+## 3. Create a YugabyteDB universe
 
 If this is your only container cluster, `kubectl` automatically points to this cluster. However, if you have multiple clusters, you should switch `kubectl` to point to this cluster by running the following command:
 
@@ -110,7 +110,7 @@ kubeconfig entry generated for yugabyte.
 You can launch a universe on this node pool to run on local SSDs by running the following command.
 
 ```sh
-$ kubectl apply -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
 
 ```
@@ -121,9 +121,9 @@ service "yb-tservers" created
 statefulset "yb-tserver" created
 ```
 
-You can see the [yaml file to launch a YugaByte DB kubernetes universe on nodes with local disks](https://github.com/YugaByte/yugabyte-db/blob/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml).
+You can see the [yaml file to launch a YugabyteDB kubernetes universe on nodes with local disks](https://github.com/yugabyte/yugabyte-db/blob/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml).
 
-Note the following `nodeSelector` snippet in the yaml file which instructs the Kubernetes scheduler to place the YugaByte pods on nodes that have local disks:
+Note the following `nodeSelector` snippet in the yaml file which instructs the Kubernetes scheduler to place the Yugabyte pods on nodes that have local disks:
 
 ```
   nodeSelector:
@@ -151,7 +151,7 @@ Also, note that we instruct the scheduler to place the various pods in the `yb-m
 
 ## 4. View the universe
 
-You can verify that the YugaByte DB pods are running by doing the following:
+You can verify that the YugabyteDB pods are running by doing the following:
 
 ```sh
 $ kubectl get pods
@@ -181,9 +181,9 @@ yb-masters     ClusterIP      None          <none>          7000/TCP,7100/TCP   
 yb-tservers    ClusterIP      None          <none>          9000/TCP,9100/TCP,9042/TCP,6379/TCP   1m
 ```
 
-Note the `yb-master-ui` service above. It is a loadbalancer service, which exposes the YugaByte DB universe UI. You can view this by browsing to the url http://XX.XX.XX.XX:7000. It should look as follows.
+Note the `yb-master-ui` service above. It is a loadbalancer service, which exposes the YugabyteDB universe UI. You can view this by browsing to the url http://XX.XX.XX.XX:7000. It should look as follows.
 
-![GKE YugaByte DB dashboard](/images/deploy/kubernetes/gke-kubernetes-dashboard.png)
+![GKE YugabyteDB dashboard](/images/deploy/kubernetes/gke-kubernetes-dashboard.png)
 
 
 ## 5. Connect to the universe
@@ -222,10 +222,10 @@ system_schema  system_auth  system
 
 ## 6. Destroy the cluster (optional)
 
-You can destroy the YugaByte DB universe by running the following. Note that this does not destroy the data, and you may not be able to respawn the cluster because there is data left behind on the persistent disks.
+You can destroy the YugabyteDB universe by running the following. Note that this does not destroy the data, and you may not be able to respawn the cluster because there is data left behind on the persistent disks.
 
 ```sh
-$ kubectl delete -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
+$ kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
 
 You can destroy the node-pool we created by running the following command:

@@ -1096,7 +1096,7 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 		MemoryContext oldcxt,
 					perChildCxt;
 
-		perChildCxt = AllocSetContextCreate(CurrentMemoryContext,
+		perChildCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 											"part trig clone",
 											ALLOCSET_SMALL_SIZES);
 
@@ -3447,7 +3447,7 @@ TriggerEnabled(EState *estate, ResultRelInfo *relinfo,
 		modified = false;
 		for (i = 0; i < trigger->tgnattr; i++)
 		{
-			if (bms_is_member(trigger->tgattr[i] - FirstLowInvalidHeapAttributeNumber,
+			if (bms_is_member(trigger->tgattr[i] - YBGetFirstLowInvalidAttributeNumber(relinfo->ri_RelationDesc),
 							  modifiedCols))
 			{
 				modified = true;
@@ -4497,7 +4497,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 
 	/* Make a per-tuple memory context for trigger function calls */
 	per_tuple_context =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(GetCurrentMemoryContext(),
 							  "AfterTriggerTupleContext",
 							  ALLOCSET_DEFAULT_SIZES);
 
@@ -4533,7 +4533,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 					 * Need to create a tuple slot for both YugaByte tables and
 					 * foreign tables
 					 */
-					if (IsYBRelation(rel) ||
+					if (IsYBBackedRelation(rel) ||
 					    rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 					{
 						if (slot1 != NULL)
@@ -5928,7 +5928,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 	 * In YugaByte mode we (re)use the FDW trigger flags (since we also use the
 	 * FDW tuplestore).
 	 */
-	if (!((IsYBRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger))
+	if (!((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger))
 		new_event.ate_flags = (row_trigger && event == TRIGGER_EVENT_UPDATE) ?
 			AFTER_TRIGGER_2CTID : AFTER_TRIGGER_1CTID;
 	/* else, we'll initialize ate_flags for each trigger */
@@ -5947,22 +5947,6 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		if (!TriggerEnabled(estate, relinfo, trigger, event,
 							modifiedCols, oldtup, newtup))
 			continue;
-
-		/*
-		 * In YugaByte mode we also use the tuplestore to store/pass tuples
-		 * within a query execution.
-		 */
-		if ((IsYBRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger)
-		{
-			if (fdw_tuplestore == NULL)
-			{
-				fdw_tuplestore = GetCurrentFDWTuplestore();
-				new_event.ate_flags = AFTER_TRIGGER_FDW_FETCH;
-			}
-			else
-				/* subsequent event for the same tuple */
-				new_event.ate_flags = AFTER_TRIGGER_FDW_REUSE;
-		}
 
 		/*
 		 * If the trigger is a foreign key enforcement trigger, there are
@@ -5997,6 +5981,22 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 					/* Not an FK trigger */
 					break;
 			}
+		}
+
+		/*
+		 * In YugaByte mode we also use the tuplestore to store/pass tuples
+		 * within a query execution.
+		 */
+		if ((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger)
+		{
+			if (fdw_tuplestore == NULL)
+			{
+				fdw_tuplestore = GetCurrentFDWTuplestore();
+				new_event.ate_flags = AFTER_TRIGGER_FDW_FETCH;
+			}
+			else
+				/* subsequent event for the same tuple */
+				new_event.ate_flags = AFTER_TRIGGER_FDW_REUSE;
 		}
 
 		/*

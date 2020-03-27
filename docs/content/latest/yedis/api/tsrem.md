@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`TSREM key timestamp [timestamp ...]`</b><br>
 This command removes one or more specified timestamps from the time series that is associated with the given `key`.
 <li>If the `key` exists, but is not of time series type, an error is raised.</li>
@@ -22,7 +23,8 @@ This command removes one or more specified timestamps from the time series that 
 ensures the provided timestamps no longer exist, but doesn't provide any information about whether
 they existed before the command was run.</li>
 
-## Return Value
+## Return value
+
 Returns the appropriate status string.
 
 ## Examples
@@ -103,6 +105,7 @@ TSGET ts_key 3
 (nil)
 ```
 
-## See Also
+## See also
+
 [`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrangebytime`](../tsrangebytime/),
 [`tsrangebytime`](../tsrangebytime/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

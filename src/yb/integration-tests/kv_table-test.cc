@@ -49,6 +49,9 @@ using yb::client::YBValue;
 
 using std::shared_ptr;
 
+DECLARE_int32(log_cache_size_limit_mb);
+DECLARE_int32(global_log_cache_size_limit_mb);
+
 namespace yb {
 namespace integration_tests {
 
@@ -201,6 +204,69 @@ TEST_F(KVTableTest, Restart) {
 
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
+}
+
+class KVTableSingleTabletTest : public KVTableTest {
+ public:
+  int num_tablets() override {
+    return 1;
+  }
+
+  void SetUp() override {
+    FLAGS_global_log_cache_size_limit_mb = 1;
+    FLAGS_log_cache_size_limit_mb = 1;
+    KVTableTest::SetUp();
+  }
+};
+
+// Write big values with small log cache.
+// And restart one tserver.
+//
+// So we expect that some operations would be unloaded to disk and loaded back
+// after this tservers joined raft group again.
+//
+// Also check that we track such operations.
+TEST_F_EX(KVTableTest, BigValues, KVTableSingleTabletTest) {
+  std::atomic_bool stop_requested_flag(false);
+  SetFlagOnExit set_flag_on_exit(&stop_requested_flag);
+  int rows = 100;
+  int start_key = 0;
+  int writer_threads = 4;
+  int value_size_bytes = 32_KB;
+  int max_write_errors = 0;
+
+  // Create two separate clients for read and writes.
+  auto write_client = CreateYBClient();
+  yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), &table_);
+
+  yb::load_generator::MultiThreadedWriter writer(rows, start_key, writer_threads,
+                                                 &write_session_factory, &stop_requested_flag,
+                                                 value_size_bytes, max_write_errors);
+
+  writer.Start();
+  mini_cluster_->mini_tablet_server(1)->Shutdown();
+  auto start_writes = writer.num_writes();
+  while (writer.num_writes() - start_writes < 50) {
+    std::this_thread::sleep_for(100ms);
+  }
+  ASSERT_OK(mini_cluster_->mini_tablet_server(1)->Start());
+
+  ASSERT_OK(WaitFor([] {
+    std::vector<MemTrackerData> trackers;
+    trackers.clear();
+    CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
+    bool found = false;
+    for (const auto& data : trackers) {
+      if (data.tracker->id() == "OperationsFromDisk" && data.tracker->peak_consumption()) {
+        LOG(INFO) << "Tracker: " << data.tracker->ToString() << ", peak consumption: "
+                  << data.tracker->peak_consumption();
+        found = true;
+      }
+    }
+    return found;
+  }, 15s, "Load operations from disk"));
+
+  writer.WaitForCompletion();
 }
 
 }  // namespace integration_tests

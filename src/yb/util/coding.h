@@ -21,21 +21,26 @@
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
 
-#ifndef STORAGE_LEVELDB_UTIL_CODING_H_
-#define STORAGE_LEVELDB_UTIL_CODING_H_
+#ifndef YB_UTIL_CODING_H
+#define YB_UTIL_CODING_H
 
 #include <stdint.h>
 #include <string.h>
 #include <string>
 
-#include "yb/util/slice.h"
+#include <boost/container/small_vector.hpp>
+
+#include "yb/util/coding_consts.h"
 #include "yb/util/faststring.h"
+#include "yb/util/slice.h"
 
 namespace yb {
+
 extern void PutFixed32(faststring* dst, uint32_t value);
 extern void PutFixed64(faststring* dst, uint64_t value);
 extern void PutVarint32(faststring* dst, uint32_t value);
 extern void PutVarint64(faststring* dst, uint64_t value);
+extern void PutVarint64(boost::container::small_vector_base<uint8_t>* dst, uint64_t value);
 
 // Put a length-prefixed Slice into the buffer. The length prefix
 // is varint-encoded.
@@ -55,8 +60,8 @@ extern bool GetLengthPrefixedSlice(Slice* input, Slice* result);
 // in *v and return a pointer just past the parsed value, or return
 // NULL on error.  These routines only look at bytes in the range
 // [p..limit-1]
-extern const uint8_t *GetVarint32Ptr(const uint8_t *p,const uint8_t *limit, uint32_t* v);
-extern const uint8_t *GetVarint64Ptr(const uint8_t *p,const uint8_t *limit, uint64_t* v);
+extern const uint8_t *GetVarint32Ptr(const uint8_t *p, const uint8_t *limit, uint32_t* v);
+extern const uint8_t *GetVarint64Ptr(const uint8_t *p, const uint8_t *limit, uint64_t* v);
 
 // Returns the length of the varint32 or varint64 encoding of "v"
 extern int VarintLength(uint64_t v);
@@ -121,4 +126,4 @@ inline const uint8_t *GetVarint32Ptr(const uint8_t *p,
 
 }  // namespace yb
 
-#endif  // STORAGE_LEVELDB_UTIL_CODING_H_
+#endif  // YB_UTIL_CODING_H

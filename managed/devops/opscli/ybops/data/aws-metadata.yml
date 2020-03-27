@@ -1,0 +1,77 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+region_cidr_format: "{}.0.0/16"
+zone_cidr_format: "{}.{}.0/20"
+# For list of AMIs: https://wiki.centos.org/Cloud/AWS
+# Updated to: 2018-Jan-14
+regions:
+  us-west-1:
+    cidr_prefix: "172.150"
+    image: ami-b1a59fd1
+  us-west-2:
+    cidr_prefix: "172.151"
+    image: ami-b63ae0ce
+  us-east-1:
+    cidr_prefix: "172.152"
+    image: ami-02e98f78
+#  us-south-1:
+#    cidr_prefix: "172.153"
+#    image: N/A
+  ap-northeast-1:
+    cidr_prefix: "172.154"
+    image: ami-4dd5522b
+# TODO: not currently supported in x-region VPC.
+# TODO: seems like at least we have an AMI...
+#  ap-northeast-2:
+#    cidr_prefix: "172.155"
+#    image: ami-7248e81c
+  ap-southeast-1:
+    cidr_prefix: "172.156"
+    image: ami-a6e88dda
+  ap-southeast-2:
+    cidr_prefix: "172.157"
+    image: ami-5b778339
+  eu-central-1:
+    cidr_prefix: "172.158"
+    image: ami-1e038d71
+  eu-west-1:
+    cidr_prefix: "172.159"
+    image: ami-192a9460
+  sa-east-1:
+    cidr_prefix: "172.160"
+    image: ami-6b5c1b07
+  us-east-2:
+    cidr_prefix: "172.161"
+    image: ami-e0eac385
+  eu-west-2:
+    cidr_prefix: "172.162"
+    image: ami-c8d7c9ac
+  eu-west-3:
+    cidr_prefix: "172.163"
+    image: ami-0c60d771
+  ca-central-1:
+    cidr_prefix: "172.164"
+    image: ami-b111aad5
+  ap-south-1:
+    cidr_prefix: "172.165"
+    image: ami-82a3eaed
+# TODO: not currently supported in x-region VPC.
+# cn-north-1:
+#    cidr_prefix: "172.166"
+#    image: N/A
+
+sg_rules:
+  - ip_protocol: tcp
+    from_port: 22
+    to_port: 22
+  - ip_protocol: tcp
+    from_port: 54422
+    to_port: 54422
+
+credential_vars: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']

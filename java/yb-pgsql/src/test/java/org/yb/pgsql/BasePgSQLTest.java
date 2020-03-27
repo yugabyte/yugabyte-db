@@ -12,48 +12,90 @@
 //
 package org.yb.pgsql;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.postgresql.core.TransactionState;
+import org.postgresql.jdbc.PgArray;
 import org.postgresql.jdbc.PgConnection;
+import org.postgresql.util.PGobject;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
-import org.yb.client.Partition;
 import org.yb.client.TestUtils;
-import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.MiniYBCluster;
-import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.*;
+import org.yb.minicluster.*;
+import org.yb.minicluster.Metrics.YSQLStat;
+import org.yb.pgsql.cleaners.ClusterCleaner;
+import org.yb.pgsql.cleaners.ConnectionCleaner;
+import org.yb.pgsql.cleaners.UserObjectCleaner;
+import org.yb.util.EnvAndSysPropertyUtil;
+import org.yb.util.SanitizerUtil;
+import org.yb.master.Master;
 
 import java.io.File;
-import java.sql.*;
-import java.util.*;
+import java.net.InetSocketAddress;
+import java.net.URL;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Scanner;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.yb.AssertionWrappers.*;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static org.yb.AssertionWrappers.assertArrayEquals;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertLessThan;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
+import static org.yb.util.SanitizerUtil.isASAN;
 import static org.yb.util.SanitizerUtil.isTSAN;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
 
   // Postgres settings.
-  protected static final String DEFAULT_PG_DATABASE = "postgres";
-  protected static final String DEFAULT_PG_USER = "postgres";
-  protected static final String DEFAULT_PG_PASSWORD = "";
+  protected static final String DEFAULT_PG_DATABASE = "yugabyte";
+  protected static final String DEFAULT_PG_USER = "yugabyte";
+  protected static final String DEFAULT_PG_PASS = "yugabyte";
+  public static final String TEST_PG_USER = "yugabyte_test";
+
+  // Non-standard PSQL states defined in yb_pg_errcodes.h
+  protected static final String SERIALIZATION_FAILURE_PSQL_STATE = "40001";
+  protected static final String SNAPSHOT_TOO_OLD_PSQL_STATE = "72000";
 
   // Postgres flags.
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
   private static final String PG_DATA_FLAG = "PGDATA";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
-  // Extra Postgres flags.
-  protected static Map<String, String> extraPostgresEnvVars;
+  // Metric names.
+  protected static final String METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
+  protected static final String SELECT_STMT_METRIC = METRIC_PREFIX + "SelectStmt";
+  protected static final String INSERT_STMT_METRIC = METRIC_PREFIX + "InsertStmt";
+  protected static final String DELETE_STMT_METRIC = METRIC_PREFIX + "DeleteStmt";
+  protected static final String UPDATE_STMT_METRIC = METRIC_PREFIX + "UpdateStmt";
+  protected static final String OTHER_STMT_METRIC = METRIC_PREFIX + "OtherStmts";
+  protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
+  protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
 
   // CQL and Redis settings.
   protected static boolean startCqlProxy = false;
@@ -63,7 +105,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected File pgBinDir;
 
-  private static List<Connection> connectionsToClose = new ArrayList<>();
+  // Post-test cleaners, stored in a tree-map to maintain order.
+  private final TreeMap<Integer, ClusterCleaner> cleanersByPriority = getCleaners();
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
 
@@ -72,13 +115,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static boolean pgInitialized = false;
 
-  public void runPgRegressTest(String schedule) throws Exception {
+  public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
     final int tserverIndex = 0;
     PgRegressRunner pgRegress = new PgRegressRunner(schedule,
-        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER);
+        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER,
+        maxRuntimeMillis);
     pgRegress.setEnvVars(getPgRegressEnvVars());
     pgRegress.start();
     pgRegress.stop();
+  }
+
+  public void runPgRegressTest(String schedule) throws Exception {
+    // Run test without maximum time.
+    runPgRegressTest(schedule, 0);
   }
 
   private static int getRetryableRpcSingleCallTimeoutMs() {
@@ -96,6 +145,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     } else {
       // We get a lot of timeouts in macOS debug builds.
       return 45000;
+    }
+  }
+
+  public static void perfAssertLessThan(double time1, double time2) {
+    if (TestUtils.isReleaseBuild()) {
+      assertLessThan(time1, time2);
+    }
+  }
+
+  public static void perfAssertEquals(double time1, double time2) {
+    if (TestUtils.isReleaseBuild()) {
+      assertLessThan(time1, time2 * 1.3);
+      assertLessThan(time1 * 1.3, time2);
     }
   }
 
@@ -121,7 +183,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  private Map<String, String> getMasterAndTServerFlags() {
+  protected Map<String, String> getMasterAndTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
     flagMap.put(
         "retryable_rpc_single_call_timeout_ms",
@@ -129,7 +191,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
-  protected String pgPrefetchLimit() {
+  protected Integer getYsqlPrefetchLimit() {
+    return null;
+  }
+
+  protected Integer getYsqlRequestLimit() {
     return null;
   }
 
@@ -139,15 +205,20 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
 
-    if (isTSAN()) {
+    if (isTSAN() || isASAN()) {
       flagMap.put("yb_client_admin_operation_timeout_sec", "120");
+      flagMap.put("pggate_rpc_timeout_secs", "120");
     }
     flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
     flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
 
     // Setup flag for postgres test on prefetch-limit when starting tserver.
-    if (pgPrefetchLimit() != null) {
-      flagMap.put("ysql_prefetch_limit", pgPrefetchLimit());
+    if (getYsqlPrefetchLimit() != null) {
+      flagMap.put("ysql_prefetch_limit", getYsqlPrefetchLimit().toString());
+    }
+
+    if (getYsqlRequestLimit() != null) {
+      flagMap.put("ysql_request_limit", getYsqlRequestLimit().toString());
     }
 
     flagMap.put("ysql_beta_features", "true");
@@ -155,11 +226,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
-  private Map<String, String> getMasterFlags() {
+  protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = new TreeMap<>();
     flagMap.put("client_read_write_timeout_ms", "120000");
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
-    flagMap.put("use_initial_sys_catalog_snapshot", "true");
     return flagMap;
   }
 
@@ -224,29 +294,44 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection.close();
       connection = null;
     }
-    connection = createConnection();
+
+    // Create test role.
+    try (Connection initialConnection = newConnectionBuilder().setUser(DEFAULT_PG_USER).connect();
+         Statement statement = initialConnection.createStatement()) {
+      statement.execute(
+          "CREATE ROLE " + TEST_PG_USER + " SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN");
+    }
+
+    connection = newConnectionBuilder().connect();
     pgInitialized = true;
   }
 
-  private void configureDefaultConnectionOptions(Connection conn) throws Exception {
-    conn.setTransactionIsolation(IsolationLevel.DEFAULT.pgIsolationLevel);
-    conn.setAutoCommit(AutoCommit.DEFAULT.enabled);
+  static ConnectionBuilder newConnectionBuilder() {
+    return new ConnectionBuilder(miniCluster);
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnection(
       IsolationLevel isolationLevel,
       AutoCommit autoCommit) throws Exception {
-    Connection conn = createConnection();
-    conn.setTransactionIsolation(isolationLevel.pgIsolationLevel);
-    conn.setAutoCommit(autoCommit.enabled);
-    return conn;
+    return newConnectionBuilder()
+        .setIsolationLevel(isolationLevel)
+        .setAutoCommit(autoCommit)
+        .connect();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnectionSerializableNoAutoCommit() throws Exception {
-    return createConnection(
-        IsolationLevel.SERIALIZABLE,
-        AutoCommit.DISABLED
-    );
+    return newConnectionBuilder()
+        .setIsolationLevel(IsolationLevel.SERIALIZABLE)
+        .setAutoCommit(AutoCommit.DISABLED)
+        .connect();
   }
 
   public String getPgHost(int tserverIndex) {
@@ -257,77 +342,48 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnection() throws Exception {
-    return createConnection(0);
+    return newConnectionBuilder().connect();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnection(int tserverIndex) throws Exception {
-    return createConnection(tserverIndex, DEFAULT_PG_DATABASE);
+    return newConnectionBuilder()
+        .setTServer(tserverIndex)
+        .connect();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createPgConnectionToTServer(
       int tserverIndex,
       IsolationLevel isolationLevel,
       AutoCommit autoCommit) throws Exception {
-    Connection conn = createConnection(tserverIndex, DEFAULT_PG_DATABASE);
-    conn.setTransactionIsolation(isolationLevel.pgIsolationLevel);
-    conn.setAutoCommit(autoCommit.enabled);
-    return conn;
+    return newConnectionBuilder()
+        .setTServer(tserverIndex)
+        .setIsolationLevel(isolationLevel)
+        .setAutoCommit(autoCommit)
+        .connect();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnection(int tserverIndex, String pgDB) throws Exception {
-    final String pgHost = getPgHost(tserverIndex);
-    final int pgPort = getPgPort(tserverIndex);
-    String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, pgPort, pgDB);
-    if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
-      url += "?loggerLevel=TRACE";
-    }
-
-    final int MAX_ATTEMPTS = 10;
-    int delayMs = 500;
-    Connection connection = null;
-    for (int attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt) {
-      try {
-        connection = DriverManager.getConnection(url, DEFAULT_PG_USER, DEFAULT_PG_PASSWORD);
-        if (connection == null) {
-          throw new NullPointerException("getConnection returned null");
-        }
-        connectionsToClose.add(connection);
-        configureDefaultConnectionOptions(connection);
-        // JDBC does not specify a default for auto-commit, let's set it to true here for
-        // determinism.
-        connection.setAutoCommit(true);
-        return connection;
-      } catch (SQLException sqlEx) {
-        // Close the connection now if we opened it, instead of waiting until the end of the test.
-        if (connection != null) {
-          try {
-            connection.close();
-            connectionsToClose.remove(connection);
-            connection = null;
-          } catch (SQLException closingError) {
-            LOG.error("Failure to close connection during failure cleanup before a retry:",
-                closingError);
-            LOG.error("When handling this exception when opening/setting up connection:", sqlEx);
-          }
-        }
-
-        if (attempt < MAX_ATTEMPTS &&
-            sqlEx.getMessage().contains("FATAL: the database system is starting up") ||
-            sqlEx.getMessage().contains("refused. Check that the hostname and port are correct " +
-                "and that the postmaster is accepting")) {
-          LOG.info("Postgres is still starting up, waiting for " + delayMs + " ms. " +
-              "Got message: " + sqlEx.getMessage());
-          Thread.sleep(delayMs);
-          delayMs = Math.min(delayMs + 500, 10000);
-          continue;
-        }
-        LOG.error("Exception while trying to create connection (after " + attempt +
-            " attempts): " + sqlEx.getMessage());
-        throw sqlEx;
-      }
-    }
-    throw new IllegalStateException("Should not be able to reach here");
+    return newConnectionBuilder()
+        .setTServer(tserverIndex)
+        .setDatabase(pgDB)
+        .connect();
   }
 
   protected Map<String, String> getPgRegressEnvVars() {
@@ -346,84 +402,51 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
-    pgRegressEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
+    pgRegressEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "yugabyte");
 
     return pgRegressEnvVars;
+  }
+
+  /**
+   * Register default post-test cleaners.
+   */
+  protected TreeMap<Integer, ClusterCleaner> getCleaners() {
+    TreeMap<Integer, ClusterCleaner> cleaners = new TreeMap<>();
+    cleaners.put(99, new UserObjectCleaner());
+    cleaners.put(100, new ConnectionCleaner());
+    return cleaners;
   }
 
   @After
   public void cleanUpAfter() throws Exception {
     if (connection == null) {
-      LOG.warn("No connection created, skipping dropping tables");
+      LOG.warn("No connection created, skipping cleanup");
       return;
     }
-    try (Statement statement = connection.createStatement())  {
-      DatabaseMetaData dbmd = connection.getMetaData();
-      String[] views = {"VIEW"};
-      ResultSet rs = dbmd.getTables(null, null, "%", views);
-      while (rs.next()) {
-        statement.execute("DROP VIEW " + rs.getString("TABLE_NAME") + " CASCADE");
-      }
-      String[] tables = {"TABLE"};
-      rs = dbmd.getTables(null, null, "%", tables);
-      while (rs.next()) {
-        statement.execute("DROP TABLE " + rs.getString("TABLE_NAME") + " CASCADE");
-      }
+
+    // If root connection was closed, open a new one for cleaning.
+    if (connection.isClosed()) {
+      connection = newConnectionBuilder().connect();
+    }
+
+    // Run cleaners in ascending key order (i.e. low key => high priority).
+    for (Map.Entry<Integer, ClusterCleaner> entry : cleanersByPriority.entrySet()) {
+      entry.getValue().clean(connection);
     }
   }
 
   @AfterClass
   public static void tearDownAfter() throws Exception {
-    try {
-      tearDownPostgreSQL();
-    } finally {
-      LOG.info("Destroying mini-cluster");
-      if (miniCluster != null) {
-        destroyMiniCluster();
-        miniCluster = null;
-      }
+    // Close the root connection, which is not cleaned up after each test.
+    if (connection != null && !connection.isClosed()) {
+      connection.close();
     }
-  }
-
-  private static void tearDownPostgreSQL() throws Exception {
-    if (connection != null) {
-      try (Statement statement = connection.createStatement()) {
-        try (ResultSet resultSet = statement.executeQuery(
-            "SELECT client_hostname, client_port, state, query, pid FROM pg_stat_activity")) {
-          while (resultSet.next()) {
-            int backendPid = resultSet.getInt(5);
-            LOG.info("Found connection: " +
-                "hostname=" + resultSet.getString(1) + ", " +
-                "port=" + resultSet.getInt(2) + ", " +
-                "state=" + resultSet.getString(3) + ", " +
-                "query=" + resultSet.getString(4) + ", " +
-                "backend_pid=" + backendPid);
-          }
-        }
-      }
-      catch (SQLException e) {
-        LOG.info("Exception when trying to list PostgreSQL connections", e);
-      }
-
-      LOG.info("Closing connections.");
-      for (Connection connection : connectionsToClose) {
-        try {
-          if (connection == null) {
-            LOG.error("connectionsToClose contains a null connection!");
-          } else {
-            connection.close();
-          }
-        } catch (SQLException ex) {
-          LOG.error("Exception while trying to close connection");
-          throw ex;
-        }
-      }
-    } else {
-      LOG.info("Connection is already null, nothing to close");
+    pgInitialized = false;
+    LOG.info("Destroying mini-cluster");
+    if (miniCluster != null) {
+      destroyMiniCluster();
+      miniCluster = null;
     }
-    LOG.info("Finished closing connection.");
-
-    LOG.info("Finished stopping postgres server.");
   }
 
   /**
@@ -457,6 +480,107 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static int getPgBackendPid(Connection connection) {
     return toPgConnection(connection).getBackendPID();
+  }
+
+  protected static class AgregatedValue {
+    long count;
+    double value;
+  }
+
+  protected AgregatedValue getStatementStat(String statName) throws Exception {
+    AgregatedValue value = new AgregatedValue();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      URL url = new URL(String.format("http://%s:%d/statements",
+                                      ts.getLocalhostIP(),
+                                      ts.getPgsqlWebPort()));
+      Scanner scanner = new Scanner(url.openConnection().getInputStream());
+      JsonParser parser = new JsonParser();
+      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+      JsonObject obj = tree.getAsJsonObject();
+      YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
+      if (ysqlStat != null) {
+        value.count += ysqlStat.calls;
+        value.value += ysqlStat.total_time;
+      }
+      scanner.close();
+    }
+    return value;
+  }
+
+  protected void verifyStatementStat(Statement statement, String stmt, String statName,
+                                     int stmtMetricDelta, boolean validStmt) throws Exception {
+    long oldValue = 0;
+    if (statName != null) {
+      oldValue = getStatementStat(statName).count;
+    }
+
+    if (validStmt) {
+      statement.execute(stmt);
+    } else {
+      runInvalidQuery(statement, stmt);
+    }
+
+    long newValue = 0;
+    if (statName != null) {
+      newValue = getStatementStat(statName).count;
+    }
+
+    assertEquals(oldValue + stmtMetricDelta, newValue);
+  }
+
+  protected AgregatedValue getMetric(String metricName) throws Exception {
+    AgregatedValue value = new AgregatedValue();
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      URL url = new URL(String.format("http://%s:%d/metrics",
+                                      ts.getLocalhostIP(),
+                                      ts.getPgsqlWebPort()));
+      Scanner scanner = new Scanner(url.openConnection().getInputStream());
+      JsonParser parser = new JsonParser();
+      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+      JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
+      assertEquals(obj.get("type").getAsString(), "server");
+      assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
+      Metrics.YSQLMetric metric = new Metrics(obj).getYSQLMetric(metricName);
+      value.count += metric.count;
+      value.value += metric.sum;
+      scanner.close();
+    }
+    return value;
+  }
+
+  protected long getMetricCounter(String metricName) throws Exception {
+    return getMetric(metricName).count;
+  }
+
+  /** Time execution of a query. */
+  protected long verifyStatementMetric(Statement statement, String stmt, String metricName,
+                                       int stmtMetricDelta, int txnMetricDelta,
+                                       boolean validStmt) throws Exception {
+    long oldValue = metricName == null ? 0 : getMetricCounter(metricName);
+    long oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+
+    final long startTimeMillis = System.currentTimeMillis();
+    if (validStmt) {
+      statement.execute(stmt);
+    } else {
+      runInvalidQuery(statement, stmt);
+    }
+
+    // Check the elapsed time.
+    long result = System.currentTimeMillis() - startTimeMillis;
+
+    long newValue = metricName == null ? 0 : getMetricCounter(metricName);
+    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+
+    assertEquals(oldValue + stmtMetricDelta, newValue);
+    assertEquals(oldTxnValue + txnMetricDelta, newTxnValue);
+
+    return result;
+  }
+
+  protected void verifyStatementTxnMetric(Statement statement, String stmt,
+                                          int txnMetricDelta) throws Exception {
+    verifyStatementMetric(statement, stmt, null, 0, txnMetricDelta, true);
   }
 
   protected void executeWithTimeout(Statement statement, String sql)
@@ -584,7 +708,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   //------------------------------------------------------------------------------------------------
   // Test Utilities
 
-  protected class Row implements Comparable<Row> {
+  protected class Row implements Comparable<Row>, Cloneable {
     ArrayList<Comparable> elems = new ArrayList<>();
 
     Row(Comparable... args) {
@@ -627,16 +751,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     public int compareTo(Row other) {
       // In our test, if selected Row has different number of columns from expected row, something
       // must be very wrong. Stop the test here.
-      assertEquals(elems.size(), other.elems.size());
+      assertEquals("Row width mismatch between " + this + " and " + other,
+          elems.size(), other.elems.size());
       for (int i = 0; i < elems.size(); i++) {
         if (elems.get(i) == null || other.elems.get(i) == null) {
           if (elems.get(i) != other.elems.get(i)) {
             return elems.get(i) == null ? -1 : 1;
           }
         } else {
-          int compare_result = elems.get(i).compareTo(other.elems.get(i));
-          if (compare_result != 0) {
-            return compare_result;
+          int compareResult = promoteType(elems.get(i)).compareTo(promoteType(other.elems.get(i)));
+          if (compareResult != 0) {
+            return compareResult;
           }
         }
       }
@@ -664,6 +789,31 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       sb.append(']');
       return sb.toString();
     }
+
+    @Override
+    public Row clone() throws CloneNotSupportedException {
+      Row clone = (Row)super.clone();
+      clone.elems = new ArrayList<>(elems.size());
+      for (Comparable<?> c : elems) {
+        clone.elems.add(c);
+      }
+      return clone;
+    }
+
+    //
+    // Helpers
+    //
+
+    /** Converts the value to a widest one of the same type */
+    private Comparable promoteType(Comparable v) {
+      if (v instanceof Byte || v instanceof Short || v instanceof Integer) {
+        return ((Number)v).longValue();
+      } else if (v instanceof Float) {
+        return ((Float)v).doubleValue();
+      } else {
+        return v;
+      }
+    }
   }
 
   protected Set<Row> getRowSet(ResultSet rs) throws SQLException {
@@ -678,12 +828,42 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
+  protected Comparable toComparable(Object obj) {
+    if (obj == null) {
+      return null;
+    } else if (obj instanceof Comparable) {
+      return (Comparable)obj;
+    } else if (obj instanceof PGobject) {
+      return ((PGobject) obj).getValue(); // For PG_LSN type.
+    } else if (obj instanceof PgArray) {
+      try {
+        Object arr = ((PgArray) obj).getArray();
+        if (arr instanceof Comparable[]) {
+          return new ComparableArray((Comparable[])arr);
+        } else {
+          throw new IllegalArgumentException(String.format(
+              "Cannot cast to Comparable[] %s: %s",
+              arr.getClass().getSimpleName(),
+              obj
+          ));
+        }
+      } catch (SQLException sqle) {
+        throw new RuntimeException(sqle);
+      }
+    } else if (obj instanceof byte[]) {
+      return Arrays.toString((byte[])obj); // For BYTEA type.
+    }
+
+    throw new IllegalArgumentException(
+        "Cannot cast to Comparable " + obj.getClass().getSimpleName() + ": " + obj.toString());
+  }
+
   protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
       for (int i = 0; i < elems.length; i++) {
-        elems[i] = (Comparable)rs.getObject(i + 1); // Column index starts from 1.
+        elems[i] = toComparable(rs.getObject(i + 1)); // Column index starts from 1.
       }
       rows.add(new Row(elems));
     }
@@ -846,11 +1026,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       String tableName,
       String valueColumnName,
       PartitioningMode partitioningMode) throws SQLException {
-    Statement statement = connection.createStatement();
-    String sql = getSimpleTableCreationStatement(tableName, valueColumnName, partitioningMode);
-    LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
-    statement.execute(sql);
-    LOG.info("Table creation finished: " + tableName);
+    try (Statement statement = connection.createStatement()) {
+      String sql = getSimpleTableCreationStatement(tableName, valueColumnName, partitioningMode);
+      LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
+      statement.execute(sql);
+      LOG.info("Table creation finished: " + tableName);
+    }
   }
 
   protected void createSimpleTable(String tableName, String valueColumnName) throws SQLException {
@@ -860,7 +1041,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected List<Row> setupSimpleTable(String tableName) throws SQLException {
     List<Row> allRows = new ArrayList<>();
     try (Statement statement = connection.createStatement()) {
-      createSimpleTable(tableName);
+      createSimpleTable(statement, tableName);
       String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
 
       for (int h = 0; h < 10; h++) {
@@ -892,12 +1073,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
   }
 
-  // Time execution time of a statement.
-  protected void timeQueryWithRowCount(String stmt, int expectedRowCount, long maxRuntimeMillis)
+  /** Run a query and check row-count. */
+  private void runQueryWithRowCount(String stmt, int expectedRowCount)
       throws Exception {
-    LOG.info(String.format("Exec query: %s", stmt));
-    final long runtimeMillis = System.currentTimeMillis();
-
     // Query and check row count.
     int rowCount = 0;
     try (Statement statement = connection.createStatement()) {
@@ -907,11 +1085,317 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         }
       }
     }
-    assertEquals(rowCount, expectedRowCount);
+    if (expectedRowCount >= 0) {
+      // Caller wants to assert row-count.
+      assertEquals(expectedRowCount, rowCount);
+    } else {
+      LOG.info(String.format("Exec query: row count = %d", rowCount));
+    }
+  }
+
+  /** Run a query and check row-count. */
+  private void runQueryWithRowCount(PreparedStatement pstmt, int expectedRowCount)
+      throws Exception {
+    // Query and check row count.
+    int rowCount = 0;
+    try (ResultSet rs = pstmt.executeQuery()) {
+      while (rs.next()) {
+        rowCount++;
+      }
+    }
+    if (expectedRowCount >= 0) {
+      // Caller wants to assert row-count.
+      assertEquals(expectedRowCount, rowCount);
+    } else {
+      LOG.info(String.format("Exec query: row count = %d", rowCount));
+    }
+  }
+
+  /** Time execution of a query. */
+  protected long timeQueryWithRowCount(String stmt, int expectedRowCount, int numberOfRuns)
+      throws Exception {
+    LOG.info(String.format("Exec statement: %s", stmt));
+
+    // Not timing the first query run as its result is not predictable.
+    runQueryWithRowCount(stmt, expectedRowCount);
+
+    // Seek average run-time for a few different run.
+    final long startTimeMillis = System.currentTimeMillis();
+    for (int qrun = 0; qrun < numberOfRuns; qrun++) {
+      runQueryWithRowCount(stmt, expectedRowCount);
+    }
 
     // Check the elapsed time.
-    long elapsedTimeMillis = System.currentTimeMillis() - runtimeMillis;
-    LOG.info(String.format("Complete query: %s. Elapsed time = %d msecs", stmt, elapsedTimeMillis));
-    assertTrue(elapsedTimeMillis < maxRuntimeMillis);
+    long result = System.currentTimeMillis() - startTimeMillis;
+    LOG.info(String.format("Ran query %d times. Total elapsed time = %d msecs",
+        numberOfRuns, result));
+    return result;
+  }
+
+  /** Time execution of a query. */
+  protected long timeQueryWithRowCount(
+      PreparedStatement pstmt,
+      int expectedRowCount,
+      int numberOfRuns) throws Exception {
+    LOG.info("Exec prepared statement");
+
+    // Not timing the first query run as its result is not predictable.
+    runQueryWithRowCount(pstmt, expectedRowCount);
+
+    // Seek average run-time for a few different run.
+    final long startTimeMillis = System.currentTimeMillis();
+    for (int qrun = 0; qrun < numberOfRuns; qrun++) {
+      runQueryWithRowCount(pstmt, expectedRowCount);
+    }
+
+    // Check the elapsed time.
+    long result = System.currentTimeMillis() - startTimeMillis;
+    LOG.info(String.format("Ran statement %d times. Total elapsed time = %d msecs",
+        numberOfRuns, result));
+    return result;
+  }
+
+  /** Time execution of a statement. */
+  protected long timeStatement(String stmt, int numberOfRuns)
+      throws Exception {
+    LOG.info(String.format("Exec statement: %s", stmt));
+
+    // Not timing the first query run as its result is not predictable.
+    try (Statement statement = connection.createStatement()) {
+      statement.executeUpdate(stmt);
+    }
+
+    // Seek average run-time for a few different run.
+    final long startTimeMillis = System.currentTimeMillis();
+    try (Statement statement = connection.createStatement()) {
+      for (int qrun = 0; qrun < numberOfRuns; qrun++) {
+        statement.executeUpdate(stmt);
+      }
+    }
+
+    // Check the elapsed time.
+    long result = System.currentTimeMillis() - startTimeMillis;
+    LOG.info(String.format("Ran statement %d times. Total elapsed time = %d msecs",
+        numberOfRuns, result));
+    return result;
+  }
+
+  /** Time execution of a statement. */
+  protected long timeStatement(PreparedStatement pstmt, int numberOfRuns)
+      throws Exception {
+    LOG.info("Exec prepared statement");
+
+    // Not timing the first query run as its result is not predictable.
+    pstmt.executeUpdate();
+
+    // Seek average run-time for a few different run.
+    final long startTimeMillis = System.currentTimeMillis();
+    for (int qrun = 0; qrun < numberOfRuns; qrun++) {
+      pstmt.executeUpdate();
+    }
+
+    // Check the elapsed time.
+    long result = System.currentTimeMillis() - startTimeMillis;
+    LOG.info(String.format("Ran statement %d times. Total elapsed time = %d msecs",
+        numberOfRuns, result));
+    return result;
+  }
+
+  /** Time execution of a query. */
+  protected void assertQueryRuntimeWithRowCount(
+      String stmt,
+      int expectedRowCount,
+      int numberOfRuns,
+      long maxTotalMillis) throws Exception {
+    long elapsedMillis = timeQueryWithRowCount(stmt, expectedRowCount, numberOfRuns);
+    assertTrue(
+        String.format("Query took %d ms! Expected %d ms at most", elapsedMillis, maxTotalMillis),
+        elapsedMillis <= maxTotalMillis);
+  }
+
+  /** Time execution of a query. */
+  protected void assertQueryRuntimeWithRowCount(
+      PreparedStatement pstmt,
+      int expectedRowCount,
+      int numberOfRuns,
+      long maxTotalMillis) throws Exception {
+    long elapsedMillis = timeQueryWithRowCount(pstmt, expectedRowCount, numberOfRuns);
+    assertTrue(
+        String.format("Query took %d ms! Expected %d ms at most", elapsedMillis, maxTotalMillis),
+        elapsedMillis <= maxTotalMillis);
+  }
+
+  /** Time execution of a statement. */
+  protected void assertStatementRuntime(
+      String stmt,
+      int numberOfRuns,
+      long maxTotalMillis) throws Exception {
+    long elapsedMillis = timeStatement(stmt, numberOfRuns);
+    assertTrue(
+        String.format("Statement took %d ms! Expected %d ms at most", elapsedMillis,
+            maxTotalMillis),
+        elapsedMillis <= maxTotalMillis);
+  }
+
+  /** Time execution of a statement. */
+  protected void assertStatementRuntime(
+      PreparedStatement pstmt,
+      int numberOfRuns,
+      long maxTotalMillis) throws Exception {
+    long elapsedMillis = timeStatement(pstmt, numberOfRuns);
+    assertTrue(
+        String.format("Statement took %d ms! Expected %d ms at most", elapsedMillis,
+            maxTotalMillis),
+        elapsedMillis <= maxTotalMillis);
+  }
+
+  /** UUID of the first table with specified name. **/
+  private String getTableUUID(String tableName)  throws Exception {
+    for (Master.ListTablesResponsePB.TableInfo table :
+        miniCluster.getClient().getTablesList().getTableInfoList()) {
+      if (table.getName().equals(tableName)) {
+        return table.getId().toStringUtf8();
+      }
+    }
+    throw new Exception(String.format("YSQL table ''%s' not found", tableName));
+  }
+
+  protected RocksDBMetrics getRocksDBMetric(String tableName) throws Exception {
+    return getRocksDBMetricByTableUUID(getTableUUID(tableName));
+  }
+
+  protected int getTableCounterMetric(String tableName,
+                                      String metricName) throws Exception {
+    return getTableCounterMetricByTableUUID(getTableUUID(tableName), metricName);
+  }
+
+
+  public static class ConnectionBuilder {
+    private static final int MAX_CONNECTION_ATTEMPTS = 15;
+    private static final int INITIAL_CONNECTION_DELAY_MS = 500;
+
+    private final MiniYBCluster miniCluster;
+
+    private int tserverIndex = 0;
+    private String database = DEFAULT_PG_DATABASE;
+    private String user = TEST_PG_USER;
+    private String password = null;
+    private IsolationLevel isolationLevel = IsolationLevel.DEFAULT;
+    private AutoCommit autoCommit = AutoCommit.DEFAULT;
+
+    ConnectionBuilder(MiniYBCluster miniCluster) {
+      this.miniCluster = miniCluster;
+    }
+
+    ConnectionBuilder setTServer(int tserverIndex) {
+      this.tserverIndex = tserverIndex;
+      return this;
+    }
+
+    ConnectionBuilder setDatabase(String database) {
+      this.database = database;
+      return this;
+    }
+
+    ConnectionBuilder setUser(String user) {
+      this.user = user;
+      return this;
+    }
+
+    ConnectionBuilder setPassword(String password) {
+      this.password = password;
+      return this;
+    }
+
+    ConnectionBuilder setIsolationLevel(IsolationLevel isolationLevel) {
+      this.isolationLevel = isolationLevel;
+      return this;
+    }
+
+    ConnectionBuilder setAutoCommit(AutoCommit autoCommit) {
+      this.autoCommit = autoCommit;
+      return this;
+    }
+
+    ConnectionBuilder newBuilder() {
+      return new ConnectionBuilder(miniCluster)
+          .setTServer(tserverIndex)
+          .setDatabase(database)
+          .setUser(user)
+          .setPassword(password)
+          .setIsolationLevel(isolationLevel)
+          .setAutoCommit(autoCommit);
+    }
+
+    Connection connect() throws Exception {
+      final InetSocketAddress postgresAddress = miniCluster.getPostgresContactPoints()
+          .get(tserverIndex);
+      String url = String.format(
+          "jdbc:postgresql://%s:%d/%s",
+          postgresAddress.getHostName(),
+          postgresAddress.getPort(),
+          database
+      );
+      if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
+        url += "?loggerLevel=TRACE";
+      }
+
+      int delayMs = INITIAL_CONNECTION_DELAY_MS;
+      for (int attempt = 1; attempt <= MAX_CONNECTION_ATTEMPTS; ++attempt) {
+        Connection connection = null;
+        try {
+          connection = checkNotNull(DriverManager.getConnection(url, user, password));
+
+          if (isolationLevel != null) {
+            connection.setTransactionIsolation(isolationLevel.pgIsolationLevel);
+          }
+          if (autoCommit != null) {
+            connection.setAutoCommit(autoCommit.enabled);
+          }
+
+          ConnectionCleaner.register(connection);
+          return connection;
+        } catch (SQLException sqlEx) {
+          // Close the connection now if we opened it, instead of waiting until the end of the test.
+          if (connection != null) {
+            try {
+              connection.close();
+            } catch (SQLException closingError) {
+              LOG.error("Failure to close connection during failure cleanup before a retry:",
+                  closingError);
+              LOG.error("When handling this exception when opening/setting up connection:", sqlEx);
+            }
+          }
+
+          boolean retry = false;
+
+          if (attempt < MAX_CONNECTION_ATTEMPTS) {
+            if (sqlEx.getMessage().contains("FATAL: the database system is starting up")
+                || sqlEx.getMessage().contains("refused. Check that the hostname and port are " +
+                "correct and that the postmaster is accepting")) {
+              retry = true;
+
+              LOG.info("Postgres is still starting up, waiting for " + delayMs + " ms. " +
+                  "Got message: " + sqlEx.getMessage());
+            } else if (sqlEx.getMessage().contains("the database system is in recovery mode")) {
+              retry = true;
+
+              LOG.info("Postgres is in recovery mode, waiting for " + delayMs + " ms. " +
+                  "Got message: " + sqlEx.getMessage());
+            }
+          }
+
+          if (retry) {
+            Thread.sleep(delayMs);
+            delayMs = Math.min(delayMs + 500, 10000);
+          } else {
+            LOG.error("Exception while trying to create connection (after " + attempt +
+                " attempts): " + sqlEx.getMessage());
+            throw sqlEx;
+          }
+        }
+      }
+      throw new IllegalStateException("Should not be able to reach here");
+    }
   }
 }

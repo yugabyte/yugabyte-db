@@ -1,7 +1,8 @@
 ---
-title: Backup & Restore
-linkTitle: Backup & Restore
-description: Backup & Restore
+title: Back up and restore Yugabyte Platform clusters
+headerTitle: Back up and restore
+linkTitle: Back up and restore
+description: Use the YugabyteDB Admin Console to back up and restore clusters.
 menu:
   latest:
     identifier: manage-ee-backup-restore
@@ -11,24 +12,25 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to backup and restore tables using the YugaByte Admin Console.
+This section will describe how to back up and restore tables using the YugabyteDB Admin Console.
 
-## Create Universe
+## Create universe
 
-First, create a universe similar to steps shown in [Create Universe](../create-universe-multi-zone).
+First, create a universe similar to steps shown in [Create universe](../create-universe-multi-zone).
 For the purposes of this demo we create a 1 node cluster that looks something like this. 
 
-![Create Universe 1 Node](/images/ee/br-create-universe.png) 
+![Create universe 1 Node](/images/ee/br-create-universe.png)
 
 Wait for the universe to become ready.
 
-## Setting Storage for Backup
+## Setting storage for backup
 
-### Local Storage
+### Local storage
+
 In this example, we create a local directory on the tserver to backup to. Select the
 `Connect` modal in the `Nodes` tab of the universe and select the server from Admin Host.
 
-![Connect Modal](/images/ee/br-connect-modal.png)       
+![Connect Modal](/images/ee/br-connect-modal.png)
 
 Once you are sshed in, create a directory `/backup` and change the owner to yugabyte.
 
@@ -39,7 +41,8 @@ $ sudo mkdir /backup; sudo chown yugabyte /backup
 Note that when there are more than 1 nodes, an nfs mounted on each server is recommended, and
 creating a local backup folder on each server will not work.
 
-### AWS Cloud Storage
+### AWS cloud storage
+
 One can also backup to Amazon cloud using the `amazon S3` tab in Backup configuration.
 
 ![AWS Backup](/images/ee/br-aws-s3.png)

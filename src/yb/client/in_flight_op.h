@@ -29,11 +29,6 @@ namespace internal {
 class RemoteTablet;
 
 YB_DEFINE_ENUM(InFlightOpState,
-    // Newly created op.
-    //
-    // OWNERSHIP: The op is only in this state when in local function scope (Batcher::Add)
-    (kNew)
-
     // Waiting for the MetaCache to determine which tablet ID hosts the row associated
     // with this operation. In the case that the relevant tablet's key range was
     // already cached, this state will be passed through immediately. Otherwise,
@@ -89,19 +84,16 @@ YB_DEFINE_ENUM(InFlightOpState,
 // we can save a pointer per object by manually incrementing the Batcher ref-count
 // when we create the object, and decrementing when we delete it.
 struct InFlightOp {
-  InFlightOp() : state(InFlightOpState::kNew) {
-  }
+  explicit InFlightOp(std::shared_ptr<YBOperation> yb_op_);
 
   // Lock protecting the internal state of the op.
   // This is necessary since callbacks may fire from IO threads
   // concurrent with the user trying to abort/delete the batch.
   // See comment above about lock ordering.
-  simple_spinlock lock_;
-
-  InFlightOpState state;
+  std::atomic<InFlightOpState> state{InFlightOpState::kLookingUpTablet};
 
   // The actual operation.
-  std::shared_ptr<YBOperation> yb_op;
+  const std::shared_ptr<YBOperation> yb_op;
 
   std::string partition_key;
 
@@ -112,6 +104,10 @@ struct InFlightOp {
   // Each operation has a unique sequence number which preserves the user's intended
   // order of operations. This is important when multiple operations act on the same row.
   int sequence_number_;
+
+  // Set only for the first operation in group.
+  // Operations are groupped by tablet and operation kind (write, leader read, follower read).
+  int64_t batch_idx = -1;
 
   std::string ToString() const;
 };

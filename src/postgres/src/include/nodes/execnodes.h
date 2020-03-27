@@ -207,7 +207,7 @@ typedef struct ExprContext_CB
  *	  before we begin to evaluate expressions for that tuple.  Each
  *	  ExprContext normally has its very own per-tuple memory context.
  *
- *	CurrentMemoryContext should be set to ecxt_per_tuple_memory before
+ *	GetCurrentMemoryContext() should be set to ecxt_per_tuple_memory before
  *	calling ExecEvalExpr() --- see ExecEvalExprSwitchContext().
  * ----------------
  */
@@ -579,9 +579,9 @@ typedef struct EState
 	struct JitContext *es_jit;
 	struct JitInstrumentation *es_jit_worker_instr;
 
-	/* YugaByte-specific fields */
-	uint64_t es_yb_read_ht; /* read hybrid time used by YB proxy to read consistent snapshot,
-                             initial value is 0, it means that value is not initialised */
+	/*
+	 * YugaByte-specific fields
+	 */
 
 	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify
 																				* and the only stmt in this txn. */
@@ -1082,6 +1082,9 @@ typedef struct ModifyTableState
 
 	/* Per plan map for tuple conversion from child to root */
 	TupleConversionMap **mt_per_subplan_tupconv_maps;
+
+	/* YB specific attributes. */
+	bool yb_mt_is_single_row_update_or_delete;
 } ModifyTableState;
 
 /* ----------------
@@ -1665,6 +1668,9 @@ typedef struct ForeignScanState
 	/* use struct pointer to avoid including fdwapi.h here */
 	struct FdwRoutine *fdwroutine;
 	void	   *fdw_state;		/* foreign-data wrapper can keep state here */
+
+	/* YB specific attributes. */
+	List	   *yb_fdw_aggs;	/* aggregate pushdown information */
 } ForeignScanState;
 
 /* ----------------
@@ -1959,6 +1965,9 @@ typedef struct AggState
 	AggStatePerGroup *all_pergroups;	/* array of first ->pergroups, than
 										 * ->hash_pergroup */
 	ProjectionInfo *combinedproj;	/* projection machinery */
+
+	/* YB specific attributes. */
+	bool		yb_pushdown_supported;	/* YB pushdown supported for agg */
 } AggState;
 
 /* ----------------

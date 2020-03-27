@@ -50,12 +50,12 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/connection_context.h"
-#include "yb/rpc/outbound_call.h"
-#include "yb/rpc/inbound_call.h"
 #include "yb/rpc/server_event.h"
 #include "yb/rpc/stream.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/ev_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -249,7 +249,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   std::priority_queue<ExpirationEntry,
                       std::vector<ExpirationEntry>,
                       CompareExpiration> expiration_queue_;
-  ev::timer timer_;
+
+  EvTimerHolder timer_;
 
   simple_spinlock outbound_data_queue_lock_;
 
@@ -271,8 +272,6 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   std::atomic<uint64_t> responded_call_count_{0};
 };
-
-void StartTimer(CoarseMonoClock::Duration left, ev::timer* timer);
 
 }  // namespace rpc
 }  // namespace yb

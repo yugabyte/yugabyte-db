@@ -19,6 +19,7 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_resultset.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/cql_operation.h"
@@ -417,7 +418,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
   DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
-      /* request = */ nullptr, rocksdb::kDefaultQueryId);
+      /* req */ nullptr, /* if_req */ nullptr, rocksdb::kDefaultQueryId);
 
   DocRowwiseIterator ql_iter(
       schema, schema, kNonTransactionalOperationContext, doc_db(),
@@ -438,7 +439,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
                                  PrimitiveValue::SystemColumnId(
                                      SystemColumnIds::kLivenessColumn)),
-                         Value(PrimitiveValue(ValueType::kNull)),
+                         Value(PrimitiveValue(ValueType::kNullLow)),
                          HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue::kTombstone), HybridTime(1000)));
@@ -465,7 +466,8 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
   DocQLScanSpec ql_scan_spec_system(schema, kFixedHashCode, kFixedHashCode,
-      hashed_components_system, /* request = */ nullptr, rocksdb::kDefaultQueryId);
+      hashed_components_system, /* req */ nullptr,  /* if_req */ nullptr,
+      rocksdb::kDefaultQueryId);
 
   DocRowwiseIterator ql_iter_system(
       schema, schema, kNonTransactionalOperationContext, doc_db(),
@@ -632,7 +634,7 @@ class DocOperationScanTest : public DocOperationTest {
         boost::optional<TransactionId> txn_id;
         if (txn_status_manager) {
           if (RandomActWithProbability(0.5, &rng_)) {
-            txn_id = GenerateTransactionId();
+            txn_id = TransactionId::GenerateRandom();
             SetCurrentTransactionId(*txn_id);
             txn_op_context = std::make_unique<TransactionOperationContext>(*txn_id,
                 txn_status_manager);
@@ -712,7 +714,7 @@ class DocOperationScanTest : public DocOperationTest {
           }
           DocQLScanSpec ql_scan_spec(
               schema_, kFixedHashCode, kFixedHashCode, hashed_components,
-              &condition, rocksdb::kDefaultQueryId, is_forward_scan);
+              &condition, nullptr /* if_ req */, rocksdb::kDefaultQueryId, is_forward_scan);
           DocRowwiseIterator ql_iter(
               schema_, schema_, txn_op_context, doc_db(), CoarseTimePoint::max() /* deadline */,
               read_ht);
@@ -825,7 +827,7 @@ class DocOperationTxnScanTest : public DocOperationScanTest {
     InsertRows(num_rows_per_key, &txn_status_manager);
 
     PerformScans(is_forward_scan,
-                 TransactionOperationContext(GenerateTransactionId(), &txn_status_manager),
+                 TransactionOperationContext(TransactionId::GenerateRandom(), &txn_status_manager),
                  [](size_t){});
   }
 };

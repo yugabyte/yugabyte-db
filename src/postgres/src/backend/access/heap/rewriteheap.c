@@ -258,7 +258,7 @@ begin_heap_rewrite(Relation old_heap, Relation new_heap, TransactionId oldest_xm
 	 * To ease cleanup, make a separate context that will contain the
 	 * RewriteState struct itself plus all subsidiary data.
 	 */
-	rw_cxt = AllocSetContextCreate(CurrentMemoryContext,
+	rw_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								   "Table rewrite",
 								   ALLOCSET_DEFAULT_SIZES);
 	old_cxt = MemoryContextSwitchTo(rw_cxt);

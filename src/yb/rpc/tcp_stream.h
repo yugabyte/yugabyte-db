@@ -25,6 +25,30 @@
 namespace yb {
 namespace rpc {
 
+struct TcpStreamSendingData {
+  typedef boost::container::small_vector<RefCntBuffer, 4> SendingBytes;
+
+  TcpStreamSendingData(OutboundDataPtr data_, const MemTrackerPtr& mem_tracker);
+
+  size_t bytes_size() const {
+    size_t result = 0;
+    for (const auto& entry : bytes) {
+      result += entry.size();
+    }
+    return result;
+  }
+
+  void ClearBytes() {
+    bytes.clear();
+    consumption = ScopedTrackedConsumption();
+  }
+
+  OutboundDataPtr data;
+  SendingBytes bytes;
+  ScopedTrackedConsumption consumption;
+  bool skipped = false;
+};
+
 class TcpStream : public Stream {
  public:
   explicit TcpStream(const StreamCreateData& data);
@@ -117,34 +141,11 @@ class TcpStream : public Stream {
 
   bool read_buffer_full_ = false;
 
-  typedef boost::container::small_vector<RefCntBuffer, 4> SendingBytes;
-
-  struct SendingData {
-    SendingData(OutboundDataPtr data_, const MemTrackerPtr& mem_tracker);
-
-    size_t bytes_size() const {
-      size_t result = 0;
-      for (const auto& entry : bytes) {
-        result += entry.size();
-      }
-      return result;
-    }
-
-    void ClearBytes() {
-      bytes.clear();
-      consumption = ScopedTrackedConsumption();
-    }
-
-    OutboundDataPtr data;
-    SendingBytes bytes;
-    ScopedTrackedConsumption consumption;
-    bool skipped = false;
-  };
-
-  std::deque<SendingData> sending_;
+  std::deque<TcpStreamSendingData> sending_;
   size_t data_blocks_sent_ = 0;
   size_t send_position_ = 0;
   size_t queued_bytes_to_send_ = 0;
+  size_t inbound_bytes_to_skip_ = 0;
   bool waiting_write_ready_ = false;
   MemTrackerPtr mem_tracker_;
 };

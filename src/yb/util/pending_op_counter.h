@@ -21,7 +21,6 @@
 #include "yb/util/status.h"
 
 namespace yb {
-namespace util {
 
 // This is used to track the number of pending operations using a certain resource (as of Apr 2018
 // just the RocksDB database within a tablet) so we can safely wait for all operations to complete
@@ -194,7 +193,6 @@ inline Status&& MoveStatus(ScopedPendingOperationPause&& p) {
   return std::move(p.status());
 }
 
-}  // namespace util
 }  // namespace yb
 
 #endif  // YB_UTIL_PENDING_OP_COUNTER_H_

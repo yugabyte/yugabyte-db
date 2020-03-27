@@ -29,6 +29,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 
@@ -43,7 +44,9 @@ class TabletRpc {
  public:
   virtual const tserver::TabletServerErrorPB* response_error() const = 0;
   virtual void Failed(const Status& status) = 0;
-  virtual void SendRpcToTserver() = 0;
+
+  // attempt_num starts with 1.
+  virtual void SendRpcToTserver(int attempt_num) = 0;
  protected:
   ~TabletRpc() {}
 };
@@ -71,6 +74,7 @@ class TabletInvoker {
 
   const RemoteTabletPtr& tablet() const { return tablet_; }
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy() const;
+  ::yb::HostPort ProxyEndpoint() const;
   YBClient& client() const { return *client_; }
   const RemoteTabletServer& current_ts() { return *current_ts_; }
   bool local_tserver_only() const { return local_tserver_only_; }

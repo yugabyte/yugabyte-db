@@ -577,6 +577,9 @@ Status WriteBatch::RollbackToSavePoint() {
 }
 
 namespace {
+
+YB_STRONGLY_TYPED_BOOL(InMemoryErase);
+
 class MemTableInserter : public WriteBatch::Handler {
  public:
   SequenceNumber sequence_;
@@ -585,25 +588,22 @@ class MemTableInserter : public WriteBatch::Handler {
   const bool ignore_missing_column_families_;
   const uint64_t log_number_;
   DBImpl* db_;
-  const bool dont_filter_deletes_;
-  const bool concurrent_memtable_writes_;
+  const InsertFlags insert_flags_;
 
   // cf_mems should not be shared with concurrent inserters
   MemTableInserter(SequenceNumber sequence, ColumnFamilyMemTables* cf_mems,
                    FlushScheduler* flush_scheduler,
                    bool ignore_missing_column_families, uint64_t log_number,
-                   DB* db, const bool dont_filter_deletes,
-                   bool concurrent_memtable_writes)
+                   DB* db, InsertFlags insert_flags)
       : sequence_(sequence),
         cf_mems_(cf_mems),
         flush_scheduler_(flush_scheduler),
         ignore_missing_column_families_(ignore_missing_column_families),
         log_number_(log_number),
         db_(reinterpret_cast<DBImpl*>(db)),
-        dont_filter_deletes_(dont_filter_deletes),
-        concurrent_memtable_writes_(concurrent_memtable_writes) {
+        insert_flags_(insert_flags) {
     assert(cf_mems_);
-    if (!dont_filter_deletes_) {
+    if (insert_flags_.Test(InsertFlag::kFilterDeletes)) {
       assert(db_);
     }
   }
@@ -646,13 +646,14 @@ class MemTableInserter : public WriteBatch::Handler {
     MemTable* mem = cf_mems_->GetMemTable();
     auto* moptions = mem->GetMemTableOptions();
     if (!moptions->inplace_update_support) {
-      mem->Add(CurrentSequenceNumber(), kTypeValue, key, value, concurrent_memtable_writes_);
+      mem->Add(CurrentSequenceNumber(), kTypeValue, key, value,
+               insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
     } else if (moptions->inplace_callback == nullptr) {
-      assert(!concurrent_memtable_writes_);
+      assert(!insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
       mem->Update(CurrentSequenceNumber(), key, value);
       RecordTick(moptions->statistics, NUMBER_KEYS_UPDATED);
     } else {
-      assert(!concurrent_memtable_writes_);
+      assert(!insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
       SequenceNumber current_seq = CurrentSequenceNumber();
       if (mem->UpdateCallback(current_seq, key, value)) {
       } else {
@@ -703,9 +704,14 @@ class MemTableInserter : public WriteBatch::Handler {
       return seek_status;
     }
     MemTable* mem = cf_mems_->GetMemTable();
+    if ((delete_type == ValueType::kTypeSingleDeletion ||
+         delete_type == ValueType::kTypeColumnFamilySingleDeletion) &&
+        mem->Erase(key)) {
+      return Status::OK();
+    }
     auto* moptions = mem->GetMemTableOptions();
-    if (!dont_filter_deletes_ && moptions->filter_deletes) {
-      assert(!concurrent_memtable_writes_);
+    if (insert_flags_.Test(InsertFlag::kFilterDeletes) && moptions->filter_deletes) {
+      assert(!insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
       SnapshotImpl read_from_snapshot;
       read_from_snapshot.number_ = sequence_;
       ReadOptions ropts;
@@ -720,7 +726,8 @@ class MemTableInserter : public WriteBatch::Handler {
         return Status::OK();
       }
     }
-    mem->Add(CurrentSequenceNumber(), delete_type, key, Slice(), concurrent_memtable_writes_);
+    mem->Add(CurrentSequenceNumber(), delete_type, key, Slice(),
+             insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
     sequence_++;
     CheckMemtableFull();
     return Status::OK();
@@ -738,7 +745,7 @@ class MemTableInserter : public WriteBatch::Handler {
 
   virtual CHECKED_STATUS MergeCF(uint32_t column_family_id, const Slice& key,
                                  const Slice& value) override {
-    assert(!concurrent_memtable_writes_);
+    assert(!insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
       ++sequence_;
@@ -776,7 +783,7 @@ class MemTableInserter : public WriteBatch::Handler {
       if (cf_handle == nullptr) {
         cf_handle = db_->DefaultColumnFamily();
       }
-      db_->Get(read_options, cf_handle, key, &get_value);
+      RETURN_NOT_OK(db_->Get(read_options, cf_handle, key, &get_value));
       Slice get_value_slice = Slice(get_value);
 
       // 2) Apply this merge
@@ -857,10 +864,10 @@ Status WriteBatchInternal::InsertInto(
     const autovector<WriteThread::Writer*>& writers, SequenceNumber sequence,
     ColumnFamilyMemTables* memtables, FlushScheduler* flush_scheduler,
     bool ignore_missing_column_families, uint64_t log_number, DB* db,
-    const bool dont_filter_deletes, bool concurrent_memtable_writes) {
+    InsertFlags insert_flags) {
   MemTableInserter inserter(sequence, memtables, flush_scheduler,
                             ignore_missing_column_families, log_number, db,
-                            dont_filter_deletes, concurrent_memtable_writes);
+                            insert_flags);
 
   for (size_t i = 0; i < writers.size(); i++) {
     if (!writers[i]->CallbackFailed()) {
@@ -878,12 +885,10 @@ Status WriteBatchInternal::InsertInto(const WriteBatch* batch,
                                       FlushScheduler* flush_scheduler,
                                       bool ignore_missing_column_families,
                                       uint64_t log_number, DB* db,
-                                      const bool dont_filter_deletes,
-                                      bool concurrent_memtable_writes) {
+                                      InsertFlags insert_flags) {
   MemTableInserter inserter(WriteBatchInternal::Sequence(batch), memtables,
                             flush_scheduler, ignore_missing_column_families,
-                            log_number, db, dont_filter_deletes,
-                            concurrent_memtable_writes);
+                            log_number, db, insert_flags);
   return batch->Iterate(&inserter);
 }
 

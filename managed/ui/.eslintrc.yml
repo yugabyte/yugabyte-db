@@ -1,0 +1,18 @@
+---
+extends:
+  - 'react-app'
+
+plugins:
+  - import
+
+rules:
+  import/named: 2
+  import/namespace: 2
+  import/export: 2
+
+  semi: 1
+  no-var: 1
+  prefer-const: 1
+  indent: [1, 2, {"SwitchCase": 1}]
+  react/jsx-indent: [1, 2]
+  react/jsx-wrap-multilines: 1

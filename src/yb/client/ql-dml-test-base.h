@@ -85,6 +85,9 @@ class KeyValueTableTest : public QLDmlTestBase {
   static Result<std::map<int32_t, int32_t>> SelectAllRows(
       TableHandle* table, const YBSessionPtr& session);
 
+  static Result<YBqlWriteOpPtr> Increment(
+      TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta = 1);
+
  protected:
   void CreateTable(Transactional transactional);
 

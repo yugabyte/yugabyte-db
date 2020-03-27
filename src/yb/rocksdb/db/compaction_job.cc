@@ -63,16 +63,17 @@
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_status_util.h"
+
+#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
@@ -512,7 +513,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   }
 
   if (output_directory_ && !db_options_.disableDataSync) {
-    output_directory_->Fsync();
+    RETURN_NOT_OK(output_directory_->Fsync());
   }
 
   compaction_stats_.micros = env_->NowMicros() - start_micros;
@@ -545,7 +546,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   TEST_SYNC_POINT("CompactionJob::Run():End");
 
   compact_->status = status;
-  return std::move(file_numbers_holder);
+  return file_numbers_holder;
 }
 
 Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
@@ -880,7 +881,7 @@ Status CompactionJob::FinishCompactionOutputFile(
     // Verify that the table is usable
     ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
     InternalIterator* iter = cfd->table_cache()->NewIterator(
-        ReadOptions(), env_options_, cfd->internal_comparator(), meta->fd,
+        ReadOptions(), env_options_, cfd->internal_comparator(), meta->fd, meta->UserFilter(),
         nullptr, cfd->internal_stats()->GetFileReadHist(
                      compact_->compaction->output_level()),
         false);
@@ -922,9 +923,9 @@ Status CompactionJob::FinishCompactionOutputFile(
     ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
     auto fn = TableFileName(cfd->ioptions()->db_paths, meta->fd.GetNumber(),
                             meta->fd.GetPathId());
-    sfm->OnAddFile(fn);
+    RETURN_NOT_OK(sfm->OnAddFile(fn));
     if (is_split_sst) {
-      sfm->OnAddFile(TableBaseToDataFileName(fn));
+      RETURN_NOT_OK(sfm->OnAddFile(TableBaseToDataFileName(fn)));
     }
     if (sfm->IsMaxAllowedSpaceReached()) {
       InstrumentedMutexLock l(db_mutex_);

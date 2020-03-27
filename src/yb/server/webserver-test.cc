@@ -87,7 +87,7 @@ TEST_F(WebserverTest, TestIndexPage) {
   ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/", ToString(addr_)),
                            &buf_));
   // Should have expected title.
-  ASSERT_STR_CONTAINS(buf_.ToString(), "YugaByte");
+  ASSERT_STR_CONTAINS(buf_.ToString(), "Yugabyte");
 
   // Should have link to the root path handlers (Home).
   ASSERT_STR_CONTAINS(buf_.ToString(), "Home");

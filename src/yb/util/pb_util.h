@@ -327,6 +327,14 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
                               CreateMode create,
                               SyncMode sync);
 
+// Return true if the two PBs are equal.
+//
+// If 'diff_str' is not null, stores a textual description of the
+// difference.
+bool ArePBsEqual(const google::protobuf::Message& prev_pb,
+                 const google::protobuf::Message& new_pb,
+                 std::string* diff_str);
+
 } // namespace pb_util
 } // namespace yb
 #endif // YB_UTIL_PB_UTIL_H

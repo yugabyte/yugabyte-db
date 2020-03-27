@@ -582,14 +582,14 @@ TEST_F(EnvPosixTest, RandomAccessUniqueID) {
 
   // Get Unique ID
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-  size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+  size_t id_size = file->GetUniqueId(temp_id);
   ASSERT_GT(id_size, 0);
   std::string unique_id1(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id1));
 
   // Get Unique ID again
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-  id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+  id_size = file->GetUniqueId(temp_id);
   ASSERT_GT(id_size, 0);
   std::string unique_id2(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id2));
@@ -597,7 +597,7 @@ TEST_F(EnvPosixTest, RandomAccessUniqueID) {
   // Get Unique ID again after waiting some time.
   env_->SleepForMicroseconds(1000000);
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-  id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+  id_size = file->GetUniqueId(temp_id);
   ASSERT_GT(id_size, 0);
   std::string unique_id3(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id3));
@@ -714,7 +714,7 @@ TEST_F(EnvPosixTest, RandomAccessUniqueIDConcurrent) {
     unique_ptr<RandomAccessFile> file;
     std::string unique_id;
     ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-    size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+    size_t id_size = file->GetUniqueId(temp_id);
     ASSERT_GT(id_size, 0);
     unique_id = std::string(temp_id, id_size);
     ASSERT_TRUE(IsUniqueIDValid(unique_id));
@@ -752,7 +752,7 @@ TEST_F(EnvPosixTest, RandomAccessUniqueIDDeletes) {
     {
       unique_ptr<RandomAccessFile> file;
       ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-      size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+      size_t id_size = file->GetUniqueId(temp_id);
       ASSERT_GT(id_size, 0);
       unique_id = std::string(temp_id, id_size);
     }
@@ -1029,7 +1029,7 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
                                 size_t* last_allocated_block) override {
       inc(8);
     }
-    size_t GetUniqueId(char* id, size_t max_size) const override {
+    size_t GetUniqueId(char* id) const override {
       inc(9);
       return 0;
     }
@@ -1078,7 +1078,7 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
     w.SetIOPriority(Env::IOPriority::IO_HIGH);
     w.GetFileSize();
     w.GetPreallocationStatus(nullptr, nullptr);
-    w.GetUniqueId(nullptr, 0);
+    w.GetUniqueId(nullptr);
     w.InvalidateCache(0, 0);
     w.CallProtectedMethods();
   }

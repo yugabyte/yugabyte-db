@@ -42,6 +42,7 @@
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/util/yb_partition.h"
 
 namespace yb {
 

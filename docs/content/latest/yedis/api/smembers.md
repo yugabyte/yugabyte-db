@@ -12,13 +12,16 @@ aliases:
 isTocNested: true
 showAsideToc: true
 ---
+
 ## Synopsis
+
 <b>`SMEMBERS key`</b><br>
 This command selects all members of the set that is associated with the given `key`.
 <li>If `key` is associated with a value that is not a set, an error is raised.</li>
 <li>If `key` does not exist, no value is returned.</li>
 
-## Return Value
+## Return value
+
 Returns all members of the given set.
 
 ## Examples
@@ -48,5 +51,6 @@ $ SMEMBERS yuga_world
 2) "America"
 ```
 
-## See Also
+## See also
+
 [`sadd`](../sadd/), [`scard`](../scard/), [`sismember`](../sismember/), [`srem`](../srem/)

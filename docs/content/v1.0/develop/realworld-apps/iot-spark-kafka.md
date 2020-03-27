@@ -11,8 +11,7 @@ menu:
 
 ## Overview
 
-This is an end-to-end functional application. It is a blueprint for an IoT application built on top of YugaByte DB (Cassandra API) as the database, Kafka as the message broker, Spark for realtime analytics and Spring Boot as the application framework. The stack used for this application is very similar to the SMACK stack (Spark, Mesos, Akka, YugaByte Cassandra, Kafka), which is a popular stack for developing IoT applications.
-
+This is an end-to-end functional application. It is a blueprint for an IoT application built on top of YugabyteDB (Cassandra API) as the database, Kafka as the message broker, Spark for realtime analytics and Spring Boot as the application framework. The stack used for this application is very similar to the SMACK stack (Spark, Mesos, Akka, YugabyteDB, Kafka), which is a popular stack for developing IoT applications.
 
 ## Scenario
 
@@ -23,25 +22,21 @@ Assume that a fleet management company wants to track their fleet of vehicles wh
 
 This app renders a dashboard showing both of the above. Below is a view of the realtime, auto-refreshing dashboard.
 
-![YB IoT Fleet Management Dashboard](/images/develop/realworld-apps/iot-spark-kafka/yb-iot-fleet-management-screenshot.png)
-
 
 ## App Architecture
 
 This application has the following subcomponents:
 
-- Data Store - YugaByte
+- Data Store - Yugabyte
 - Data Producer - Test program writing into Kafka
 - Data Processor - Spark reading from Kafka
 - Data Dashboard - Spring Boot app using web sockets, jQuery and bootstrap
 
 We will look at each of these components in detail. Below is an architecture diagram showing how these components fit together.
 
-![YB IoT Fleet Management Architecture](/images/develop/realworld-apps/iot-spark-kafka/yb-iot-fleet-mgmt-arch.png)
-
 
 ## Data Store
-Stores all the user-facing data. YugaByte DB is used here, with CQL as the programming language.
+Stores all the user-facing data. YugabyteDB is used here, with CQL as the programming language.
 
 All the data is stored in the keyspace `TrafficKeySpace`:
 ```
@@ -98,9 +93,9 @@ A single data point is a JSON payload and looks as follows:
 
 ## Data Processor
 
-This is a Spark streaming application that consumes the data stream from the Kafka topic, converts them into meaningful insights and writes the resultant data back to YugaByte DB.
+This is a Spark streaming application that consumes the data stream from the Kafka topic, converts them into meaningful insights and writes the resultant data back to YugabyteDB.
 
-Spark communicates with YugaByte DB using the Cassandra connector. This is done as follows:
+Spark communicates with YugabyteDB using the Cassandra connector. This is done as follows:
 ```
 SparkConf conf =
   new SparkConf().setAppName(prop.getProperty("com.iot.app.spark.app.name"))
@@ -134,7 +129,7 @@ It computes the following:
 
 ## Data Dashboard
 
-This is a [Spring Boot](http://projects.spring.io/spring-boot/) application which queries the data from YugaByte and pushes the data to the webpage using [Web Sockets](http://docs.spring.io/spring/docs/current/spring-framework-reference/html/websocket.html#websocket-intro) and [jQuery](https://jquery.com/). The data is pushed to the web page in fixed intervals so data will be refreshed automatically. Dashboard displays data in charts and tables. This web page uses [bootstrap.js](http://getbootstrap.com/) to display the dashboard containing charts and tables.
+This is a [Spring Boot](http://projects.spring.io/spring-boot/) application which queries the data from Yugabyte and pushes the data to the webpage using [Web Sockets](http://docs.spring.io/spring/docs/current/spring-framework-reference/html/websocket.html#websocket-intro) and [jQuery](https://jquery.com/). The data is pushed to the web page in fixed intervals so data will be refreshed automatically. Dashboard displays data in charts and tables. This web page uses [bootstrap.js](http://getbootstrap.com/) to display the dashboard containing charts and tables.
 
 We create entity classes for the three tables “Total_Traffic”, “Window_Traffic” and “Poi_Traffic”, and DAO interfaces for all the entities extending CassandraRepository. For example, we create the DAO class for TotalTrafficData entity as follows.
 
@@ -147,13 +142,13 @@ public interface TotalTrafficDataRepository extends CassandraRepository<TotalTra
 ```
 
 
-In order to connect to YugaByte cluster and get connection for database operations, we write the assandraConfig class. This is done as follows:
+In order to connect to Yugabyte cluster and get connection for database operations, we write the assandraConfig class. This is done as follows:
 
 ```
 public class CassandraConfig extends AbstractCassandraConfiguration {
   @Bean
   public CassandraClusterFactoryBean cluster() {
-    // Create a Cassandra cluster to access YugaByte using CQL.
+    // Create a Cassandra cluster to access Yugabyte using CQL.
     CassandraClusterFactoryBean cluster = new CassandraClusterFactoryBean();
     // Set the database host.
     cluster.setContactPoints(environment.getProperty("com.iot.app.cassandra.host"));
@@ -167,4 +162,4 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
 
 ## Summary
 
-This application is a blue print for building IoT applications. The instructions to build and run the application, as well as the source code can be found in [this github repo](https://github.com/YugaByte/yb-iot-fleet-management).
+This application is a blue print for building IoT applications. The instructions to build and run the application, as well as the source code can be found in [this github repo](https://github.com/yugabyte/yb-iot-fleet-management).

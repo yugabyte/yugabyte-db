@@ -48,7 +48,8 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/gutil/gscoped_ptr.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -79,6 +80,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(use_hybrid_clock);
 DECLARE_int32(ht_lease_duration_ms);
 DECLARE_int32(replication_factor);
+DECLARE_int32(log_min_seconds_to_retain);
 
 namespace yb {
 
@@ -105,7 +107,8 @@ using std::vector;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
-class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
+class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
+                       public ::testing::WithParamInterface<int> {
  public:
   AlterTableTest()
     : stop_threads_(false),
@@ -119,6 +122,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
     FLAGS_use_hybrid_clock = false;
     FLAGS_ht_lease_duration_ms = 0;
+    FLAGS_enable_ysql = false;
     ANNOTATE_BENIGN_RACE(&FLAGS_enable_maintenance_manager,
                          "safe to change at runtime");
   }
@@ -141,10 +145,11 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
         .default_admin_operation_timeout(MonoDelta::FromSeconds(60))
         .Build());
 
-    CHECK_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+    CHECK_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                 kTableName.namespace_type()));
 
     // Add a table, make sure it reports itself.
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(kTableName)
              .schema(&schema_)
              .table_type(YBTableType::YQL_TABLE_TYPE)
@@ -169,14 +174,14 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     return peers[0];
   }
 
-  void ShutdownTS() {
+  void ShutdownTS(int idx = 0) {
     // Drop the tablet_peer_ reference since the tablet peer becomes invalid once
     // we shut down the server. Additionally, if we hold onto the reference,
     // we'll end up calling the destructor from the test code instead of the
     // normal location, which can cause crashes, etc.
     tablet_peer_.reset();
-    if (cluster_->mini_tablet_server(0)->server() != nullptr) {
-      cluster_->mini_tablet_server(0)->Shutdown();
+    if (cluster_->mini_tablet_server(idx)->server() != nullptr) {
+      cluster_->mini_tablet_server(idx)->Shutdown();
     }
   }
 
@@ -219,7 +224,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
   Status AddNewI32Column(const YBTableName& table_name,
                          const string& column_name,
                          const MonoDelta& timeout) {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
     table_alterer->AddColumn(column_name)->Type(INT32)->NotNull();
     return table_alterer->timeout(timeout)->Alter();
   }
@@ -242,9 +247,10 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
   void ScannerThread();
 
   Status CreateTable(const YBTableName& table_name) {
-    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                                      table_name.namespace_type()));
 
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema_)
         .num_tablets(10)
@@ -276,7 +282,7 @@ class ReplicatedAlterTableTest : public AlterTableTest {
   virtual int num_replicas() const override { return 3; }
 };
 
-const YBTableName AlterTableTest::kTableName("my_keyspace", "fake-table");
+const YBTableName AlterTableTest::kTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table");
 
 // Simple test to verify that the "alter table" command sent and executed
 // on the TS handling the tablet of the altered table.
@@ -307,7 +313,7 @@ TEST_F(AlterTableTest, TestAddNullableColumnWithoutDefault) {
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
   {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->AddColumn("new")->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
   }
@@ -506,7 +512,7 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
   VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
 
   LOG(INFO) << "Dropping and adding back c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
@@ -524,7 +530,7 @@ TEST_F(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   ASSERT_NE(0, docdb_dump.length());
 
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   LOG(INFO) << "Forcing compaction";
@@ -552,7 +558,7 @@ TEST_F(AlterTableTest, TestLogSchemaReplay) {
   UpdateRow(0, { {"c1", 1}, {"c2", 10001} });
 
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   UpdateRow(1, { {"c2", 10002} });
@@ -577,8 +583,8 @@ TEST_F(AlterTableTest, TestLogSchemaReplay) {
 // Tests that a renamed table can still be altered. This is a regression test, we used to not carry
 // over column ids after a table rename.
 TEST_F(AlterTableTest, TestRenameTableAndAdd) {
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  YBTableName new_name(kTableName.namespace_name(), "someothername");
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  YBTableName new_name(kTableName.namespace_type(), kTableName.namespace_name(), "someothername");
   ASSERT_OK(table_alterer->RenameTo(new_name)
             ->Alter());
 
@@ -603,7 +609,7 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ("{ int32:16777216, int32:10002, null }", rows[1]);
 
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   rows = ScanToStrings();
@@ -634,6 +640,32 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ("{ int32:16777216, null, null }", rows[1]);
 }
 
+INSTANTIATE_TEST_CASE_P(TestAlterWalRetentionSecs,
+                        AlterTableTest,
+                        ::testing::Values(FLAGS_log_min_seconds_to_retain / 2,
+                                          FLAGS_log_min_seconds_to_retain * 2));
+
+TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
+  InsertRows(1, 1000);
+  int kWalRetentionSecs = GetParam();
+
+  LOG(INFO) << "Modifying wal retention time";
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+
+  ASSERT_OK(table_alterer->SetWalRetentionSecs(kWalRetentionSecs)->Alter());
+
+  int expected_wal_retention_secs = max(FLAGS_log_min_seconds_to_retain, kWalRetentionSecs);
+
+  ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
+  ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
+
+  // Test that the wal retention time gets set correctly in the metadata and in the log objects.
+  ASSERT_NO_FATALS(RestartTabletServer());
+
+  ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
+  ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
+}
+
 TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   // Disable maintenance manager, since we manually flush/compact
   // in this test.
@@ -658,7 +690,7 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   // Drop c1.
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   rows = ScanToStrings();
@@ -811,7 +843,7 @@ TEST_F(AlterTableTest, TestAlterUnderWriteLoad) {
 }
 
 TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
-  YBTableName kSplitTableName("my_keyspace", "split-table");
+  YBTableName kSplitTableName(YQL_DATABASE_CQL, "my_keyspace", "split-table");
 
   // Create a new table with 10 tablets.
   //
@@ -845,7 +877,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
 // seen in an earlier implementation of "alter table" where these could
 // conflict with each other.
 TEST_F(AlterTableTest, TestMultipleAlters) {
-  YBTableName kSplitTableName("my_keyspace", "split-table");
+  YBTableName kSplitTableName(YQL_DATABASE_CQL, "my_keyspace", "split-table");
   const size_t kNumNewCols = 10;
 
   // Create a new table with 10 tablets.
@@ -856,7 +888,7 @@ TEST_F(AlterTableTest, TestMultipleAlters) {
 
   // Issue a bunch of new alters without waiting for them to finish.
   for (int i = 0; i < kNumNewCols; i++) {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
     table_alterer->AddColumn(strings::Substitute("new_col$0", i))
                  ->Type(INT32)->NotNull();
     ASSERT_OK(table_alterer->wait(false)->Alter());
@@ -880,7 +912,7 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
 
   LOG(INFO) << "Dropping and adding back c1";
-  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
@@ -892,6 +924,32 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
 
   LOG(INFO) << "Verifying that the new default shows up";
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
+}
+
+TEST_F(ReplicatedAlterTableTest, TestAlterOneTSDown) {
+  const int kNumRows = 100;
+  InsertRows(0, kNumRows);
+
+  LOG(INFO) << "Verifying initial pattern";
+  VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
+
+  ShutdownTS(0);
+  // Now operating with 2 out of 3 servers.  Alter should still work because it's quorum-based.
+
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  ASSERT_OK(AddNewI32Column(kTableName, "c1"));
+  ASSERT_OK(AddNewI32Column(kTableName, "new_col"));
+
+  bool alter_in_progress;
+  string table_id;
+  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
+  ASSERT_FALSE(alter_in_progress);
+
+  LOG(INFO) << "Verifying that the new default shows up";
+  VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
+
+  RestartTabletServer(0);
 }
 
 }  // namespace yb

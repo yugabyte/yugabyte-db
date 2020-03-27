@@ -171,6 +171,9 @@ class DBImpl : public DB {
       ColumnFamilyHandle* column_family,
       const std::unordered_map<std::string, std::string>& options_map) override;
 
+  // Set whether DB should be flushed on shutdown.
+  void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
+
   using DB::NumberLevels;
   virtual int NumberLevels(ColumnFamilyHandle* column_family) override;
   using DB::MaxMemCompactionLevel;
@@ -223,7 +226,7 @@ class DBImpl : public DB {
 
   FlushAbility GetFlushAbility() override;
 
-  UserFrontierPtr GetMutableMemTableSmallestFrontier() override;
+  UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
@@ -541,6 +544,9 @@ class DBImpl : public DB {
   class FlushTask;
   friend class FlushTask;
 
+  class TaskPriorityUpdater;
+  friend class TaskPriorityUpdater;
+
   Status NewDB();
 
   // Recover the descriptor from persistent storage.  May do a significant
@@ -609,7 +615,8 @@ class DBImpl : public DB {
   static void UnscheduleCallback(void* arg);
   void WaitAfterBackgroundError(const Status& s, const char* job_name, LogBuffer* log_buffer);
   void BackgroundCallCompaction(
-      ManualCompaction* manual_compaction, std::unique_ptr<Compaction> compaction = nullptr);
+      ManualCompaction* manual_compaction, std::unique_ptr<Compaction> compaction = nullptr,
+      CompactionTask* compaction_task = nullptr);
   void BackgroundCallFlush(ColumnFamilyData* cfd);
   Result<FileNumbersHolder> BackgroundCompaction(
       bool* made_progress, JobContext* job_context, LogBuffer* log_buffer,
@@ -617,20 +624,20 @@ class DBImpl : public DB {
       std::unique_ptr<Compaction> compaction = nullptr);
   Result<FileNumbersHolder> BackgroundFlush(
       bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd);
+  void BackgroundJobComplete(const Status& s, JobContext* job_context, LogBuffer* log_buffer);
 
-  // Yugabyte: This updates the stats object to show
-  // total SST file size ticker.
-  // This is different from HandleTotalSSTFileSizes since the later
-  // looks into the version set and not necessarily computes
-  // all the live file sizes.
+  uint64_t GetCurrentVersionSstFilesSize() override;
 
-  uint64_t GetTotalSSTFileSize() override;
+  uint64_t GetCurrentVersionSstFilesUncompressedSize() override;
 
-  void SetSSTFileSizeTickers();
+  uint64_t GetCurrentVersionDataSstFilesSize() override;
 
-  uint64_t GetUncompressedSSTFileSize() override;
+  uint64_t GetCurrentVersionNumSSTFiles() override;
 
-  uint64_t GetDataSSTFileSize() override;
+  int GetCfdImmNumNotFlushed() override;
+
+  // Updates stats_ object with SST files size metrics.
+  void SetSSTFileTickers();
 
   void PrintStatistics();
 
@@ -667,6 +674,22 @@ class DBImpl : public DB {
 
   void SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task);
 
+  // Returns true if we have some background work.
+  // I.e. scheduled but not complete compaction or flush.
+  // prefix is used for logging.
+  bool CheckBackgroundWorkAndLog(const char* prefix) const;
+
+  void ListenFilesChanged(std::function<void()> listener) override;
+
+  void FilesChanged();
+
+  struct TaskPriorityChange {
+    size_t task_serial_no;
+    int new_priority;
+  };
+
+  const std::string& LogPrefix() const;
+
   // table_cache_ provides its own synchronization
   std::shared_ptr<Cache> table_cache_;
 
@@ -681,15 +704,10 @@ class DBImpl : public DB {
   InstrumentedMutex mutex_;
 
   std::atomic<bool> shutting_down_;
-  // This condition variable is signaled on these conditions:
-  // * whenever bg_compaction_scheduled_ goes down to 0
-  // * if AnyManualCompaction, whenever a compaction finishes, even if it hasn't
-  // made any progress
-  // * whenever a compaction made any progress
-  // * whenever bg_flush_scheduled_ value decreases (i.e. whenever a flush is
-  // done, even if it didn't make any progress)
-  // * whenever there is an error in background flush or compaction
+
+  // This condition variable is signaled when state of having background work is changed.
   InstrumentedCondVar bg_cv_;
+
   uint64_t logfile_number_;
   std::deque<uint64_t>
       log_recycle_files;  // a list of log files that we can recycle
@@ -856,7 +874,12 @@ class DBImpl : public DB {
   int unscheduled_compactions_;
 
   // count how many background compactions are running or have been scheduled
+  // This variable is left untouched when priority thread pool is used.
   int bg_compaction_scheduled_;
+
+  // Those tasks are managed by thread pool.
+  // And we remove them from this set, when they are processed/aborted by thread pool.
+  std::unordered_set<CompactionTask*> compaction_tasks_;
 
   // stores the total number of compactions that are currently running
   int num_total_running_compactions_;
@@ -950,9 +973,17 @@ class DBImpl : public DB {
   // Indicate DB was opened successfully
   bool opened_successfully_;
 
+  // Returns flush tick of the last flush of this DB.
+  int64_t last_flush_at_tick_ = 0;
+
+  // Whether DB should be flushed on shutdown.
+  bool disable_flush_on_shutdown_ = false;
+
+  std::function<void()> files_changed_listener_;
+
   // No copying allowed
-  DBImpl(const DBImpl&);
-  void operator=(const DBImpl&);
+  DBImpl(const DBImpl&) = delete;
+  void operator=(const DBImpl&) = delete;
 
   // Background threads call this function, which is just a wrapper around
   // the InstallSuperVersion() function. Background threads carry

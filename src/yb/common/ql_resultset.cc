@@ -3,6 +3,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/ql_resultset.h"
+
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 namespace yb {
@@ -11,6 +14,9 @@ namespace yb {
 // namespace yqlapi
 
 //--------------------------------------------------------------------------------------------------
+
+QLRSRowDesc::RSColDesc::RSColDesc(const QLRSColDescPB& desc_pb)
+  : name_(desc_pb.name()), ql_type_(QLType::FromQLTypePB(desc_pb.ql_type())) {}
 
 QLRSRowDesc::QLRSRowDesc(const QLRSRowDescPB& desc_pb) {
   rscol_descs_.reserve(desc_pb.rscol_descs().size());
@@ -38,6 +44,11 @@ void QLResultSet::AllocateRow() {
 
 void QLResultSet::AppendColumn(const size_t index, const QLValue& value) {
   value.Serialize(rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, rows_data_);
+}
+
+void QLResultSet::AppendColumn(const size_t index, const QLValuePB& value) {
+  QLValue::Serialize(
+      rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, value, rows_data_);
 }
 
 size_t QLResultSet::rsrow_count() const {

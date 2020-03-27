@@ -46,16 +46,18 @@ inline CHECKED_STATUS ReadBlockFromFile(
 }
 
 // The longest prefix of the cache key used to identify blocks.
-// We are using the fact that we know for Posix files the unique ID is three
-// varints.
-static constexpr size_t kMaxCacheKeyPrefixSize = kMaxVarint64Length * 3 + 1;
+// We are using the fact that we know the size of the unique ID for Posix files.
+static constexpr size_t kMaxCacheKeyPrefixSize =
+    yb::FileWithUniqueId::kPosixFileUniqueIdMaxSize + 1;
+static constexpr size_t kCacheKeyBufferSize =
+    block_based_table::kMaxCacheKeyPrefixSize + yb::kMaxVarint64Length;
 
-struct CacheKeyBuffer {
+struct CacheKeyPrefixBuffer {
   char data[kMaxCacheKeyPrefixSize];
   size_t size;
 };
 
-inline Slice GetCacheKey(const CacheKeyBuffer& cache_key_prefix, const BlockHandle& handle,
+inline Slice GetCacheKey(const CacheKeyPrefixBuffer& cache_key_prefix, const BlockHandle& handle,
     char* cache_key) {
   DCHECK_ONLY_NOTNULL(cache_key);
   DCHECK_NE(cache_key_prefix.size, 0);
@@ -66,10 +68,10 @@ inline Slice GetCacheKey(const CacheKeyBuffer& cache_key_prefix, const BlockHand
 }
 
 // Generate a cache key prefix from the file. Used for both data and metadata files.
-inline void GenerateCachePrefix(Cache* cc, File* file,
-    CacheKeyBuffer* prefix) {
+inline void GenerateCachePrefix(
+    Cache* cc, yb::FileWithUniqueId* file, CacheKeyPrefixBuffer* prefix) {
   // generate an id from the file
-  prefix->size = file->GetUniqueId(prefix->data, kMaxCacheKeyPrefixSize);
+  prefix->size = file->GetUniqueId(prefix->data);
 
   // If the prefix wasn't generated or was too long,
   // create one from the cache.

@@ -29,13 +29,11 @@
 #include "utils/relcache.h"
 
 #include "common/pg_yb_common.h"
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "access/reloptions.h"
 
 #include "utils/resowner.h"
-
-extern YBCPgSession ybc_pg_session;
 
 /*
  * Version of the catalog entries in the relcache and catcache.
@@ -55,13 +53,13 @@ extern YBCPgSession ybc_pg_session;
  * TODO: Improve cache versioning and refresh logic to be more fine-grained to
  * reduce frequency and/or duration of cache refreshes.
  */
-extern uint64 yb_catalog_cache_version;
+extern uint64_t yb_catalog_cache_version;
 
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
- * This relies on ybc_pg_session being non-NULL, so probably should not be used
+ * This relies on pgapi being non-NULL, so probably should not be used
  * in postmaster (which does not need to talk to YB backend) or early
  * in backend process initialization. In those cases the
  * YBIsEnabledInPostgresEnvVar function might be more appropriate.
@@ -83,7 +81,13 @@ extern bool IsYBRelationById(Oid relid);
 
 extern bool IsYBRelation(Relation relation);
 
-extern bool YBNeedRetryAfterCacheRefresh(ErrorData *error);
+/*
+ * Same as IsYBRelation but it additionally includes views on YugaByte
+ * relations i.e. views on persistent (non-temporary) tables.
+ */
+extern bool IsYBBackedRelation(Relation relation);
+
+extern bool YBNeedRetryAfterCacheRefresh(ErrorData *edata);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
@@ -96,6 +100,11 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
  * Specifically for an update/delete DML (where there actually is an old row).
  */
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation);
+
+/*
+ * Check if a relation has secondary indices.
+ */
+extern bool YBRelHasSecondaryIndices(Relation relation);
 
 /*
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
@@ -140,7 +149,13 @@ extern void YBInitPostgresBackend(const char *program_name,
  * This should be called on all exit paths from the PostgreSQL backend process.
  * Only main PostgreSQL backend thread is expected to call this.
  */
-extern void	YBOnPostgresBackendShutdown();
+extern void YBOnPostgresBackendShutdown();
+
+/*
+ * Signals PgTxnManager to restart current transaction - pick a new read point, etc.
+ * This relies on transaction/session read time already being marked for restart by YB layer.
+ */
+extern void YBCRestartTransaction();
 
 /*
  * Commits the current YugaByte-level transaction. Returns true in case of
@@ -168,6 +183,12 @@ extern bool YBIsPgLockingEnabled();
  * What is returned is always a static C string constant.
  */
 extern const char* YBPgTypeOidToStr(Oid type_id);
+
+/*
+ * Return a string representation of the given PgDataType, or say it is unknown.
+ * What is returned is always a static C string constant.
+ */
+extern const char* YBCPgDataTypeToStr(YBCPgDataType yb_type);
 
 /*
  * Report an error saying the given type as not supported by YugaByte.
@@ -204,14 +225,6 @@ extern void YBReportIfYugaByteEnabled();
  * checked.
  */
 bool YBShouldRestartAllChildrenIfOneCrashes();
-
-/*
- * Define additional inline wrappers around _Status functions that return the
- * real return value and ereport the error status.
- */
-#include "yb/yql/pggate/if_macros_c_pg_wrapper_inl.h"
-#include "yb/yql/pggate/pggate_if.h"
-#include "yb/yql/pggate/if_macros_undef.h"
 
 /*
  * These functions help indicating if we are creating system catalog.
@@ -276,5 +289,9 @@ extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
  * Checks if the master thinks initdb has already been done.
  */
 bool YBIsInitDbAlreadyDone();
+
+extern void YBBeginOperationsBuffering();
+extern void YBEndOperationsBuffering();
+extern void YBResetOperationsBuffering();
 
 #endif /* PG_YB_UTILS_H */

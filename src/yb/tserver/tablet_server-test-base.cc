@@ -32,6 +32,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_test_util.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/test_graph.h"
@@ -66,7 +67,7 @@ TabletServerTestBase::TabletServerTestBase(TableType table_type)
 
   // Decrease heartbeat timeout: we keep re-trying heartbeats when a
   // single master server fails due to a network error. Decreasing
-  // the hearbeat timeout to 1 second speeds up unit tests which
+  // the heartbeat timeout to 1 second speeds up unit tests which
   // purposefully specify non-running Master servers.
   FLAGS_heartbeat_rpc_timeout_ms = 1000;
 
@@ -339,7 +340,8 @@ void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValu
   ASSERT_EQ(count, expected.size());
 }
 
-const client::YBTableName TabletServerTestBase::kTableName("my_keyspace", "test-table");
+const client::YBTableName TabletServerTestBase::kTableName(
+    YQL_DATABASE_CQL, "my_keyspace", "test-table");
 const char* TabletServerTestBase::kTabletId = "test-tablet";
 
 } // namespace tserver

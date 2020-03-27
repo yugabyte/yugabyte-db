@@ -31,10 +31,12 @@
 //
 #include "yb/tools/yb-admin_client.h"
 
+#include <array>
 #include <type_traits>
 
 #include <boost/tti/has_member_function.hpp>
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
@@ -43,6 +45,7 @@
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/random_util.h"
 #include "yb/gutil/strings/split.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -96,6 +99,11 @@ using master::TSInfoPB;
 namespace {
 
 static constexpr const char* kRpcHostPortHeading = "RPC Host/Port";
+static constexpr const char* kDBTypePrefixUnknown = "unknown";
+static constexpr const char* kDBTypePrefixCql = "ycql";
+static constexpr const char* kDBTypePrefixYsql = "ysql";
+static constexpr const char* kDBTypePrefixRedis = "yedis";
+
 
 string FormatHostPort(const HostPortPB& host_port) {
   return Format("$0:$1", host_port.host(), host_port.port());
@@ -149,8 +157,9 @@ ClusterAdminClient::ClusterAdminClient(string addrs,
       initted_(false) {}
 
 ClusterAdminClient::~ClusterAdminClient() {
-  yb_client_.reset();
-  messenger_->Shutdown();
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
 }
 
 Status ClusterAdminClient::Init() {
@@ -159,7 +168,7 @@ Status ClusterAdminClient::Init() {
   // Check if caller will initialize the client and related parts.
   if (client_init_) {
     messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-    yb_client_ = CHECK_RESULT(YBClientBuilder()
+    yb_client_ = VERIFY_RESULT(YBClientBuilder()
         .add_master_server_addr(master_addr_list_)
         .default_admin_operation_timeout(timeout_)
         .Build(messenger_.get()));
@@ -177,18 +186,46 @@ Status ClusterAdminClient::Init() {
 Status ClusterAdminClient::MasterLeaderStepDown(const string& leader_uuid) {
   auto master_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr_);
 
-  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, &master_proxy);
+  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, std::string(), &master_proxy);
+}
+
+CHECKED_STATUS ClusterAdminClient::LeaderStepDownWithNewLeader(
+    const std::string& tablet_id,
+    const std::string& dest_ts_uuid) {
+  return LeaderStepDown(
+      /* leader_uuid */ std::string(),
+      tablet_id,
+      dest_ts_uuid,
+      /* leader_proxy */ nullptr);
 }
 
 Status ClusterAdminClient::LeaderStepDown(
     const PeerId& leader_uuid,
     const TabletId& tablet_id,
+    const PeerId& new_leader_uuid,
     std::unique_ptr<ConsensusServiceProxy>* leader_proxy) {
   LeaderStepDownRequestPB req;
-  req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(tablet_id);
+  if (!new_leader_uuid.empty()) {
+    req.set_new_leader_uuid(new_leader_uuid);
+  }
+  // The API for InvokeRpcNoResponseCheck requires a raw pointer to a ConsensusServiceProxy, so
+  // cache it outside, if we are creating a new proxy to a previously unknown leader.
+  std::unique_ptr<ConsensusServiceProxy> new_proxy;
+  if (!leader_uuid.empty()) {
+    // TODO: validate leader_proxy ?
+    req.set_dest_uuid(leader_uuid);
+  } else {
+    // Look up the location of the tablet leader from the Master.
+    HostPort leader_addr;
+    string lookup_leader_uuid;
+    RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &lookup_leader_uuid, &leader_addr));
+    req.set_dest_uuid(lookup_leader_uuid);
+    new_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr);
+  }
   const auto resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(&ConsensusServiceProxy::LeaderStepDown,
-      leader_proxy->get(), req));
+      new_proxy ? new_proxy.get() : leader_proxy->get(),
+      req));
   if (resp.has_error()) {
     LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
       << resp.error().ShortDebugString();
@@ -293,7 +330,8 @@ Status ClusterAdminClient::ChangeConfig(
   if (cc_type == consensus::REMOVE_SERVER &&
       leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
-    RETURN_NOT_OK(LeaderStepDown(leader_uuid, tablet_id, &consensus_proxy));
+    RETURN_NOT_OK(LeaderStepDown(
+          leader_uuid, tablet_id, /* new_leader_uuid */ std::string(), &consensus_proxy));
     sleep(5);  // TODO - election completion timing is not known accurately
     RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
     if (leader_uuid != old_leader_uuid) {
@@ -325,12 +363,23 @@ Status ClusterAdminClient::GetMasterLeaderInfo(PeerId* leader_uuid) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::DumpMasterState() {
+Status ClusterAdminClient::DumpMasterState(bool to_console) {
   CHECK(initted_);
   master::DumpMasterStateRequestPB req;
   req.set_peers_also(true);
   req.set_on_disk(true);
-  return ResultToStatus(InvokeRpc(&MasterServiceProxy::DumpState, master_proxy_.get(), req));
+  req.set_return_dump_as_string(to_console);
+
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &MasterServiceProxy::DumpState, master_proxy_.get(), req));
+
+  if (to_console) {
+    cout << resp.dump() << endl;
+  } else {
+    cout << "Master state dump has been completed and saved into "
+            "the master respective log files." << endl;
+  }
+  return Status::OK();
 }
 
 Status ClusterAdminClient::GetLoadMoveCompletion() {
@@ -338,7 +387,18 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &MasterServiceProxy::GetLoadMoveCompletion, master_proxy_.get(),
       master::GetLoadMovePercentRequestPB()));
-  cout << "Percent complete = " << resp.percent() << endl;
+  cout << "Percent complete = " << resp.percent() << " : "
+    << resp.remaining() << " remaining out of " << resp.total() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetLeaderBlacklistCompletion() {
+  CHECK(initted_);
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &MasterServiceProxy::GetLeaderBlacklistCompletion, master_proxy_.get(),
+      master::GetLeaderBlacklistPercentRequestPB()));
+  cout << "Percent complete = " << resp.percent() << " : "
+    << resp.remaining() << " remaining out of " << resp.total() << endl;
   return Status::OK();
 }
 
@@ -422,11 +482,12 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
 }
 
 Status ClusterAdminClient::SetupRedisTable() {
-  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  const YBTableName table_name(
+      YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
   RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName,
                                                        YQLDatabase::YQL_DATABASE_REDIS));
   // Try to create the table.
-  gscoped_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
+  std::unique_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
   Status s = table_creator->table_name(table_name)
                               .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
                               .Create();
@@ -445,7 +506,8 @@ Status ClusterAdminClient::SetupRedisTable() {
 }
 
 Status ClusterAdminClient::DropRedisTable() {
-  const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
+  const YBTableName table_name(
+      YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
   Status s = yb_client_->DeleteTable(table_name, true /* wait */);
   if (s.ok()) {
     LOG(INFO) << "Table '" << table_name.ToString() << "' deleted.";
@@ -698,11 +760,41 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTables() {
+const char* DatabasePrefix(YQLDatabase db) {
+  switch(db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
+    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
+    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypePrefixUnknown;
+}
+
+Status ClusterAdminClient::ListTables(bool include_db_type) {
   vector<YBTableName> tables;
   RETURN_NOT_OK(yb_client_->ListTables(&tables));
-  for (const YBTableName& table : tables) {
-    cout << table.ToString() << endl;
+  if (include_db_type) {
+    vector<string> full_names;
+    const auto& namespace_metadata = VERIFY_RESULT_REF(GetNamespaceMap());
+    for (const auto& table : tables) {
+      const auto db_type_iter = namespace_metadata.find(table.namespace_id());
+      if (db_type_iter != namespace_metadata.end()) {
+        full_names.push_back(Format("$0.$1",
+                               DatabasePrefix(db_type_iter->second.database_type()),
+                               table));
+      } else {
+        LOG(WARNING) << "Table in unknown namespace found "
+                     << table.ToString()
+                     << ", probably it has been just created";
+      }
+    }
+    sort(full_names.begin(), full_names.end());
+    copy(full_names.begin(), full_names.end(), std::ostream_iterator<string>(cout, "\n"));
+  } else {
+    for (const auto& table : tables) {
+      cout << table.ToString() << endl;
+    }
   }
   return Status::OK();
 }
@@ -779,6 +871,41 @@ Status ClusterAdminClient::DeleteTable(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::DeleteTableById(const TableId& table_id) {
+  RETURN_NOT_OK(yb_client_->DeleteTable(table_id));
+  cout << "Deleted table " << table_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteIndex(const YBTableName& table_name) {
+  YBTableName indexed_table_name;
+  RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_name, &indexed_table_name));
+  cout << "Deleted index " << table_name.ToString() << " from table " <<
+      indexed_table_name.ToString() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteIndexById(const TableId& table_id) {
+  YBTableName indexed_table_name;
+  RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_id, &indexed_table_name));
+  cout << "Deleted index " << table_id << " from table " <<
+      indexed_table_name.ToString() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteNamespace(const TypedNamespaceName& namespace_name) {
+  RETURN_NOT_OK(yb_client_->DeleteNamespace(namespace_name.name, namespace_name.db_type));
+  cout << "Deleted namespace " << namespace_name.name << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteNamespaceById(const NamespaceId& namespace_id) {
+  RETURN_NOT_OK(yb_client_->DeleteNamespace(
+      std::string() /* name */, boost::none /* database type */, namespace_id));
+  cout << "Deleted namespace " << namespace_id << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
   auto ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS(ts_uuid));
 
@@ -790,12 +917,18 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
   cout << RightPadToWidth("Table name", kTableNameColWidth) << kColumnSep
        << RightPadToUuidWidth("Tablet ID") << kColumnSep
        << "Is Leader" << kColumnSep
-       << "State" << endl;
+       << "State" << kColumnSep
+       << "Num SST Files" << kColumnSep
+       << "Num Log Segments" << kColumnSep
+       << "Num Memtables (Intents/Regular)" << endl;
   for (const auto& entry : resp.entries()) {
     cout << RightPadToWidth(entry.table_name(), kTableNameColWidth) << kColumnSep
          << RightPadToUuidWidth(entry.tablet_id()) << kColumnSep
          << entry.is_leader() << kColumnSep
-         << PBEnumToString(entry.state()) << endl;
+         << PBEnumToString(entry.state()) << kColumnSep
+         << entry.num_sst_files() << kColumnSep
+         << entry.num_log_segments() << kColumnSep
+         << entry.num_memtables_intents() << "/" << entry.num_memtables_regular() << endl;
   }
   return Status::OK();
 }
@@ -825,51 +958,18 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(bool is_enabled) {
 Status ClusterAdminClient::FlushTable(const YBTableName& table_name,
                                       int timeout_secs,
                                       bool is_compaction) {
-  FlushTablesRequestPB req;
-  req.set_is_compaction(is_compaction);
-  table_name.SetIntoTableIdentifierPB(req.add_tables());
-  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::FlushTables,
-      master_proxy_.get(), req));
+  RETURN_NOT_OK(yb_client_->FlushTable(table_name, timeout_secs, is_compaction));
+  cout << (is_compaction ? "Compacted " : "Flushed ") << table_name.ToString() << endl;
+  return Status::OK();
+}
 
-  if (is_compaction) {
-    cout << "Started compaction of table " << table_name.ToString() << endl
-         << "Compaction request id: " << resp.flush_request_id() << endl;
-  } else {
-    cout << "Started flushing table " << table_name.ToString() << endl
-         << "Flush request id: " << resp.flush_request_id() << endl;
-  }
-
-  IsFlushTablesDoneRequestPB wait_req;
-  // Wait for table creation.
-  wait_req.set_flush_request_id(resp.flush_request_id());
-
-  for (int k = 0; k < timeout_secs; ++k) {
-    const auto wait_resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
-        &MasterServiceProxy::IsFlushTablesDone, master_proxy_.get(), wait_req));
-
-    if (wait_resp.has_error()) {
-      if (wait_resp.error().status().code() == AppStatusPB::NOT_FOUND) {
-        cout << (is_compaction ? "Compaction" : "Flush") << " request was deleted: "
-             << resp.flush_request_id() << endl;
-      }
-
-      return StatusFromPB(wait_resp.error().status());
-    }
-
-    if (wait_resp.done()) {
-      cout << (is_compaction ? "Compaction" : "Flushing") << " complete: "
-           << (wait_resp.success() ? "SUCCESS" : "FAILED") << endl;
-      return Status::OK();
-    }
-
-    cout << "Waiting for " << (is_compaction ? "compaction..." : "flushing...")
-         << (wait_resp.success() ? "" : " Already FAILED") << endl;
-    std::this_thread::sleep_for(1s);
-  }
-
-  return STATUS(TimedOut,
-      Substitute("Expired timeout ($0 seconds) for table $1 $2",
-          timeout_secs, table_name.ToString(), is_compaction ? "compaction" : "flushing"));
+Status ClusterAdminClient::FlushTableById(
+    const TableId& table_id,
+    int timeout_secs,
+    bool is_compaction) {
+  RETURN_NOT_OK(yb_client_->FlushTable(table_id, timeout_secs, is_compaction));
+  cout << (is_compaction ? "Compacted " : "Flushed ") << table_id << endl;
+  return Status::OK();
 }
 
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
@@ -886,8 +986,152 @@ Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
   return STATUS(TimedOut, "ClusterAdminClient::WaitUntilMasterLeaderReady timed out.");
 }
 
+Status ClusterAdminClient::AddReadReplicaPlacementInfo(
+    const string& placement_info, int replication_factor, const std::string& optional_uuid) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+
+  // Get the cluster config from the master leader.
+  auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+
+  auto* cluster_config = resp_cluster_config.mutable_cluster_config();
+  if (cluster_config->replication_info().read_replicas_size() > 0) {
+    return STATUS(InvalidCommand, "Already have a read replica placement, cannot add another.");
+  }
+  auto* read_replica_config = cluster_config->mutable_replication_info()->add_read_replicas();
+
+  // If optional_uuid is set, make that the placement info, otherwise generate a random one.
+  string uuid_str = optional_uuid;
+  if (optional_uuid.empty()) {
+    uuid_str = RandomHumanReadableString(16);
+  }
+  read_replica_config->set_num_replicas(replication_factor);
+  read_replica_config->set_placement_uuid(uuid_str);
+
+  // Fill in the placement info with new stuff.
+  RETURN_NOT_OK(FillPlacementInfo(read_replica_config, placement_info));
+
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+
+  *req_new_cluster_config.mutable_cluster_config() = *cluster_config;
+
+  RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+                          master_proxy_.get(), req_new_cluster_config,
+                          "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+
+  LOG(INFO)<< "Created read replica placement with uuid: " << uuid_str;
+  return Status::OK();
+}
+
+CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
+    const std::string& placement_uuid, const std::string& placement_info, int replication_factor) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+
+  // Get the cluster config from the master leader.
+  auto master_resp = VERIFY_RESULT(GetMasterClusterConfig());
+  auto* cluster_config = master_resp.mutable_cluster_config();
+
+  auto* replication_info = cluster_config->mutable_replication_info();
+  if (replication_info->read_replicas_size() == 0) {
+    return STATUS(InvalidCommand, "No read replica placement info to modify.");
+  }
+
+  auto* read_replica_config = replication_info->mutable_read_replicas(0);
+
+  std::string config_placement_uuid;
+  if (placement_uuid.empty())  {
+    // If there is no placement_uuid set, use the existing uuid.
+    config_placement_uuid = read_replica_config->placement_uuid();
+  } else {
+    // Otherwise, use the passed in value.
+    config_placement_uuid = placement_uuid;
+  }
+
+  read_replica_config->Clear();
+
+  read_replica_config->set_num_replicas(replication_factor);
+  read_replica_config->set_placement_uuid(config_placement_uuid);
+  RETURN_NOT_OK(FillPlacementInfo(read_replica_config, placement_info));
+
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+
+  *req_new_cluster_config.mutable_cluster_config() = *cluster_config;
+
+  RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+                          master_proxy_.get(), req_new_cluster_config,
+                          "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+
+  LOG(INFO)<< "Changed read replica placement.";
+  return Status::OK();
+}
+
+CHECKED_STATUS ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+
+  auto master_resp = VERIFY_RESULT(GetMasterClusterConfig());
+  auto* cluster_config = master_resp.mutable_cluster_config();
+
+  auto* replication_info = cluster_config->mutable_replication_info();
+  if (replication_info->read_replicas_size() == 0) {
+    return STATUS(InvalidCommand, "No read replica placement info to delete.");
+  }
+
+  replication_info->clear_read_replicas();
+
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+
+  *req_new_cluster_config.mutable_cluster_config() = *cluster_config;
+
+  RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+                          master_proxy_.get(), req_new_cluster_config,
+                          "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+
+  LOG(INFO)<< "Deleted read replica placement.";
+  return Status::OK();
+}
+
+Status ClusterAdminClient::FillPlacementInfo(
+    master::PlacementInfoPB* placement_info_pb, const string& placement_str) {
+
+  std::vector<std::string> placement_info_split = strings::Split(
+      placement_str, ",", strings::SkipEmpty());
+  if (placement_info_split.size() < 1) {
+    return STATUS(InvalidCommand, "Cluster config must be a list of "
+                                  "placement infos seperated by commas. "
+                                  "Format: 'cloud1.region1.zone1:rf,cloud2.region2.zone2:rf, ..."
+        + std::to_string(placement_info_split.size()));
+  }
+
+  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+    std::vector<std::string> placement_block = strings::Split(placement_info_split[iter], ":",
+                                                              strings::SkipEmpty());
+
+    if (placement_block.size() != 2) {
+      return STATUS(InvalidCommand, "Each placement info must be in format placement:rf");
+    }
+
+    int min_num_replicas = boost::lexical_cast<int>(placement_block[1]);
+
+    std::vector<std::string> block = strings::Split(placement_block[0], ".",
+                                                    strings::SkipEmpty());
+    if (block.size() != 3) {
+      return STATUS(InvalidCommand,
+          "Each placement info must have exactly 3 values seperated"
+          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
+          + " is invalid");
+    }
+    auto pb = placement_info_pb->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
+    pb->mutable_cloud_info()->set_placement_region(block[1]);
+    pb->mutable_cloud_info()->set_placement_zone(block[2]);
+
+    pb->set_min_num_replicas(min_num_replicas);
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ModifyPlacementInfo(
-    std::string placement_info, int replication_factor) {
+    std::string placement_info, int replication_factor, const std::string& optional_uuid) {
 
   // Wait to make sure that master leader is ready.
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
@@ -924,10 +1168,17 @@ Status ClusterAdminClient::ModifyPlacementInfo(
     pb->mutable_cloud_info()->set_placement_zone(block[2]);
     pb->set_min_num_replicas(1);
   }
-  master::ReplicationInfoPB* replication_info_pb = new master::ReplicationInfoPB;
-  replication_info_pb->set_allocated_live_replicas(live_replicas);
-  sys_cluster_config_entry->clear_replication_info();
-  sys_cluster_config_entry->set_allocated_replication_info(replication_info_pb);
+
+  if (!optional_uuid.empty()) {
+    // If we have an optional uuid, set it.
+    live_replicas->set_placement_uuid(optional_uuid);
+  } else if (sys_cluster_config_entry->replication_info().live_replicas().has_placement_uuid()) {
+    // Otherwise, if we have an existing placement uuid, use that.
+    live_replicas->set_placement_uuid(
+        sys_cluster_config_entry->replication_info().live_replicas().placement_uuid());
+  }
+
+  sys_cluster_config_entry->mutable_replication_info()->set_allocated_live_replicas(live_replicas);
   req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
 
   RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
@@ -940,14 +1191,17 @@ Status ClusterAdminClient::ModifyPlacementInfo(
 
 Status ClusterAdminClient::GetUniverseConfig() {
   const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
-  cout << "Config: "  << endl << cluster_config.cluster_config().DebugString();
+  cout << "Config: \r\n"  << cluster_config.cluster_config().DebugString() << endl;
   return Status::OK();
 }
 
-Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add) {
+Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
+    bool blacklist_leader) {
   auto config = VERIFY_RESULT(GetMasterClusterConfig());
   auto& cluster_config = *config.mutable_cluster_config();
-  auto& blacklist = *cluster_config.mutable_server_blacklist();
+  auto& blacklist = (blacklist_leader) ?
+    *cluster_config.mutable_leader_blacklist() :
+    *cluster_config.mutable_server_blacklist();
   std::vector<HostPort> result_blacklist;
   for (const auto& host : blacklist.hosts()) {
     const HostPort hostport(host.host(), host.port());
@@ -972,6 +1226,21 @@ Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers,
   return ResultToStatus(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
                                   master_proxy_.get(), req_new_cluster_config,
                                   "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+}
+
+Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInfo(
+    YQLDatabase db_type, const std::string& namespace_name) {
+  LOG(INFO) << Format("Resolving namespace id for '$0' of type '$1'",
+                      namespace_name, DatabasePrefix(db_type));
+  for (const auto& item : VERIFY_RESULT_REF(GetNamespaceMap())) {
+    const auto& namespace_info = item.second;
+    if (namespace_info.database_type() == db_type && namespace_name == namespace_info.name()) {
+      return namespace_info;
+    }
+  }
+  return STATUS(NotFound,
+                Format("Namespace '$0' of type '$1' not found",
+                       namespace_name, DatabasePrefix(db_type)));
 }
 
 Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterClusterConfig() {
@@ -1003,8 +1272,48 @@ Result<Response> ClusterAdminClient::InvokeRpc(
   return ResponseResult(VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message)));
 }
 
+Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespaceMap() {
+  if (namespace_map_.empty()) {
+    auto v = VERIFY_RESULT(yb_client_->ListNamespaces());
+    for (auto& ns : v) {
+      namespace_map_.emplace(string(ns.id()), std::move(ns));
+    }
+  }
+  return const_cast<const ClusterAdminClient::NamespaceMap&>(namespace_map_);
+}
+
 string RightPadToUuidWidth(const string &s) {
   return RightPadToWidth(s, kNumCharactersInUuid);
+}
+
+Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name) {
+  YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
+  const size_t dot_pos = full_namespace_name.find('.');
+  if (dot_pos != string::npos) {
+    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
+        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
+        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
+        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
+    const Slice namespace_type(full_namespace_name.data(), dot_pos);
+    for (const auto& prefix : type_prefixes) {
+      if (namespace_type == prefix.first) {
+        db_type = prefix.second;
+        break;
+      }
+    }
+    if (db_type == YQL_DATABASE_UNKNOWN) {
+      return STATUS(InvalidArgument, Format("Invalid db type name '$0'", namespace_type));
+    }
+  } else {
+    db_type = (full_namespace_name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS
+        : YQL_DATABASE_CQL);
+  }
+
+  const size_t name_start = (dot_pos == string::npos ? 0 : (dot_pos + 1));
+  return TypedNamespaceName{
+      db_type,
+      std::string(full_namespace_name.data() + name_start,
+                  full_namespace_name.length() - name_start)};
 }
 
 }  // namespace tools

@@ -49,6 +49,7 @@ typedef struct
 	ItemPointerData fn_tid;
 	PGFunction	user_fn;		/* the function's address */
 	const Pg_finfo_record *inforec; /* address of its info record */
+	uint64 yb_catalog_version; /* catalog version at function load time */
 } CFuncHashTabEntry;
 
 static HTAB *CFuncHash = NULL;
@@ -109,11 +110,17 @@ fmgr_lookupByName(const char *name)
 	return NULL;
 }
 
+bool
+is_builtin_func(Oid id)
+{
+	return fmgr_isbuiltin(id) != NULL;
+}
+
 /*
  * This routine fills a FmgrInfo struct, given the OID
  * of the function to be called.
  *
- * The caller's CurrentMemoryContext is used as the fn_mcxt of the info
+ * The caller's GetCurrentMemoryContext() is used as the fn_mcxt of the info
  * struct; this means that any subsidiary data attached to the info struct
  * (either by fmgr_info itself, or later on by a function call handler)
  * will be allocated in that context.  The caller must ensure that this
@@ -125,7 +132,7 @@ fmgr_lookupByName(const char *name)
 void
 fmgr_info(Oid functionId, FmgrInfo *finfo)
 {
-	fmgr_info_cxt_security(functionId, finfo, CurrentMemoryContext, false);
+	fmgr_info_cxt_security(functionId, finfo, GetCurrentMemoryContext(), false);
 }
 
 /*
@@ -451,7 +458,7 @@ fmgr_info_other_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 	 * to get back a bare pointer to the actual C-language function.
 	 */
 	fmgr_info_cxt_security(languageStruct->lanplcallfoid, &plfinfo,
-						   CurrentMemoryContext, true);
+						   GetCurrentMemoryContext(), true);
 	finfo->fn_addr = plfinfo.fn_addr;
 
 	ReleaseSysCache(languageTuple);
@@ -544,10 +551,8 @@ lookup_C_func(HeapTuple procedureTuple)
 	if (entry == NULL)
 		return NULL;			/* no such entry */
 
-	if (IsYugaByteEnabled())
-		return NULL;    /* cannot rely on ctid comparison below in YB mode */
-
-	if (entry->fn_xmin == HeapTupleHeaderGetRawXmin(procedureTuple->t_data) &&
+	if (IsYugaByteEnabled() ? entry->yb_catalog_version == yb_catalog_cache_version :
+		entry->fn_xmin == HeapTupleHeaderGetRawXmin(procedureTuple->t_data) &&
 		ItemPointerEquals(&entry->fn_tid, &procedureTuple->t_self))
 		return entry;			/* OK */
 	return NULL;				/* entry is out of date */
@@ -588,6 +593,7 @@ record_C_func(HeapTuple procedureTuple,
 	entry->fn_tid = procedureTuple->t_self;
 	entry->user_fn = user_fn;
 	entry->inforec = inforec;
+	entry->yb_catalog_version = yb_catalog_cache_version;
 }
 
 /*

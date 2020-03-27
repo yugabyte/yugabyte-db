@@ -39,14 +39,14 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
 - installed JDK version 1.8+ and maven 3.3+
 
 
 ## Clone the orm-examples repo
 
 ```sh
-$ git clone https://github.com/YugaByte/orm-examples.git
+$ git clone https://github.com/yugabyte/orm-examples.git
 ```
 
 This repository has a Spring Boot example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through Spring Data JPA which internally uses Hibernate as the JPA provider. It consists of the following.
@@ -55,7 +55,7 @@ This repository has a Spring Boot example that implements a simple REST API serv
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repo](https://github.com/YugaByte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).
+The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).
 
 There are a number of options that can be customized in the properties file located at `src/main/resources/application.properties`. Given YSQL's compatibility with the PostgreSQL language, the `spring.jpa.database` property is set to `POSTGRESQL` and the `spring.datasource.url` is set to the YSQL JDBC url `jdbc:postgresql://localhost:5433/postgres`.
 
@@ -278,4 +278,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/YugaByte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo) repo.
+As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo) repo.

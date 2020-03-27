@@ -46,6 +46,8 @@ const DataType TYPEARGS = DataType::TYPEARGS;
 const DataType DATE = DataType::DATE;
 const DataType TIME = DataType::TIME;
 const DataType JSONB = DataType::JSONB;
+const DataType FROZEN = DataType::FROZEN;
+const DataType UDT = DataType::USER_DEFINED_TYPE;
 
 // IMPORTANT NOTES:
 // - If your cpp_function is defined in a different name space, you must "#include" its header file
@@ -276,7 +278,17 @@ const vector<BFDecl> kBFDirectory = {
   { "GetUuid", "uuid", "", UUID, {} },
 
   // tojson function.
+  // tojson() for all elementary types and for simple collections - on client side.
   { "ToJson", "tojson", "", JSONB, {ANYTYPE} },
+  // tojson() for parametric types (UDT, FROZEN, LIST<FROZEN>, MAP<FROZEN>, etc.) - on server side.
+  { "ServerOperator", "server_tojson", "OPCODE_LIST_TO_JSON", JSONB, { LIST }, TSOpcode::kToJson },
+  { "ServerOperator", "server_tojson", "OPCODE_SET_TO_JSON", JSONB, { SET }, TSOpcode::kToJson },
+  { "ServerOperator", "server_tojson", "OPCODE_MAP_TO_JSON", JSONB, { MAP }, TSOpcode::kToJson },
+  { "ServerOperator", "server_tojson", "OPCODE_UDT_TO_JSON", JSONB, { UDT }, TSOpcode::kToJson },
+  { "ServerOperator", "server_tojson", "OPCODE_TUPLE_TO_JSON", JSONB, { TUPLE },
+    TSOpcode::kToJson },
+  { "ServerOperator", "server_tojson", "OPCODE_FROZEN_TO_JSON", JSONB, { FROZEN },
+    TSOpcode::kToJson },
 };
 
 } // namespace bfql

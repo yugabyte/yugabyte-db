@@ -45,9 +45,12 @@
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/server/webserver.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
+#include "yb/util/shared_lock.h"
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
@@ -70,6 +73,7 @@ namespace master {
 using std::string;
 using std::vector;
 using std::shared_ptr;
+using std::ostringstream;
 using consensus::RaftPeerPB;
 using rpc::RpcContext;
 
@@ -90,6 +94,8 @@ MasterServiceImpl::MasterServiceImpl(Master* server)
 void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                                     TSHeartbeatResponsePB* resp,
                                     RpcContext rpc) {
+  LongOperationTracker long_operation_tracker("TSHeartbeat", 1s);
+
   // If CatalogManager is not initialized don't even know whether or not we will
   // be a leader (so we can't tell whether or not we can accept tablet reports).
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
@@ -140,10 +146,9 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   s = server_->catalog_manager()->FillHeartbeatResponse(req, resp);
   if (!s.ok()) {
-    LOG(WARNING) << "Unable to set universe key registry: " << s.ToString();
+    LOG(WARNING) << "Unable to fill heartbeat response: " << s.ToString();
     rpc.RespondFailure(s);
   }
-
 
   // TODO: KUDU-86 if something fails after this point the TS will not be able
   //       to register again.
@@ -195,7 +200,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   server_->ts_manager()->GetAllLiveDescriptors(&descs);
   for (const auto& desc : descs) {
-    *resp->add_tservers() = desc->GetTSInformationPB();
+    *resp->add_tservers() = *desc->GetTSInformationPB();
   }
 
   // Retrieve the ysql catalog schema version.
@@ -334,6 +339,12 @@ void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteNamespace);
 }
 
+void MasterServiceImpl::AlterNamespace(const AlterNamespaceRequestPB* req,
+                                       AlterNamespaceResponsePB* resp,
+                                       RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::AlterNamespace);
+}
+
 void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
                                        ListNamespacesResponsePB* resp,
                                        RpcContext rpc) {
@@ -406,15 +417,15 @@ void MasterServiceImpl::RedisConfigGet(
   HandleIn(req, resp, &rpc, &CatalogManager::RedisConfigGet);
 }
 
+// ------------------------------------------------------------------------------------------------
+// YCQL user-defined types
+// ------------------------------------------------------------------------------------------------
+
 void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
                                      CreateUDTypeResponsePB* resp,
                                      rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::CreateUDType);
 }
-
-// ------------------------------------------------------------------------------------------------
-// YCQL user-defined types
-// ------------------------------------------------------------------------------------------------
 
 void MasterServiceImpl::DeleteUDType(const DeleteUDTypeRequestPB* req,
                                      DeleteUDTypeResponsePB* resp,
@@ -432,6 +443,34 @@ void MasterServiceImpl::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                       GetUDTypeInfoResponsePB* resp,
                                       rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::GetUDTypeInfo);
+}
+
+// ------------------------------------------------------------------------------------------------
+// CDC Stream
+// ------------------------------------------------------------------------------------------------
+
+void MasterServiceImpl::CreateCDCStream(const CreateCDCStreamRequestPB* req,
+                                        CreateCDCStreamResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::CreateCDCStream);
+}
+
+void MasterServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+                                        DeleteCDCStreamResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteCDCStream);
+}
+
+void MasterServiceImpl::ListCDCStreams(const ListCDCStreamsRequestPB* req,
+                                       ListCDCStreamsResponsePB* resp,
+                                       rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListCDCStreams);
+}
+
+void MasterServiceImpl::GetCDCStream(const GetCDCStreamRequestPB* req,
+                                     GetCDCStreamResponsePB* resp,
+                                     rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetCDCStream);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -457,7 +496,7 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
 
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     ListTabletServersResponsePB::Entry* entry = resp->add_servers();
-    auto ts_info = desc->GetTSInformationPB();
+    auto ts_info = *desc->GetTSInformationPB();
     *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
     *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
@@ -524,7 +563,17 @@ void MasterServiceImpl::DumpState(
     return;
   }
 
-  server_->catalog_manager()->DumpState(&LOG(INFO), req->on_disk());
+  const string role = (req->has_peers_also() && req->peers_also() ? "Leader" : "Follower");
+  const string title = role + " Master " + server_->instance_pb().permanent_uuid();
+
+  if (req->return_dump_as_string()) {
+    ostringstream ss;
+    server_->catalog_manager()->DumpState(&ss, req->on_disk());
+    resp->set_dump(title + ":\n" + ss.str());
+  } else {
+    LOG(INFO) << title;
+    server_->catalog_manager()->DumpState(&LOG(INFO), req->on_disk());
+  }
 
   if (req->has_peers_also() && req->peers_also()) {
     std::vector<RaftPeerPB> masters_raft;
@@ -553,7 +602,7 @@ void MasterServiceImpl::DumpState(
 
     masters_raft.erase(it);
 
-    s = server_->catalog_manager()->PeerStateDump(masters_raft, req->on_disk());
+    s = server_->catalog_manager()->PeerStateDump(masters_raft, req, resp);
     CheckRespErrorOrSetUnknown(s, resp);
   }
 
@@ -576,11 +625,7 @@ void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* 
 void MasterServiceImpl::ChangeLoadBalancerState(
     const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
     RpcContext rpc) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
-    return;
-  }
-
+  // This should work on both followers and leaders, in order to cover leader failover!
   if (req->has_is_enabled()) {
     LOG(INFO) << "Changing balancer state to " << req->is_enabled();
     server_->catalog_manager()->SetLoadBalancerEnabled(req->is_enabled());
@@ -612,6 +657,12 @@ void MasterServiceImpl::GetLoadMoveCompletion(
     const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
     RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::GetLoadMoveCompletionPercent);
+}
+
+void MasterServiceImpl::GetLeaderBlacklistCompletion(
+    const GetLeaderBlacklistPercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
+    RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GetLeaderBlacklistCompletionPercent);
 }
 
 void MasterServiceImpl::IsMasterLeaderServiceReady(
@@ -655,7 +706,6 @@ void MasterServiceImpl::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
   HandleIn(req, resp, &rpc, &FlushManager::IsFlushTablesDone);
 }
 
-
 void MasterServiceImpl::IsInitDbDone(const IsInitDbDoneRequestPB* req,
                                      IsInitDbDoneResponsePB* resp,
                                      RpcContext rpc) {
@@ -665,10 +715,63 @@ void MasterServiceImpl::IsInitDbDone(const IsInitDbDoneRequestPB* req,
 void MasterServiceImpl::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                              ChangeEncryptionInfoResponsePB* resp,
                                              rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &YB_EDITION_NS_PREFIX CatalogManager::ChangeEncryptionInfo);
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ChangeEncryptionInfo);
 }
 
+void MasterServiceImpl::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
+                                            IsEncryptionEnabledResponsePB* resp,
+                                            rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsEncryptionEnabled);
+}
 
+void MasterServiceImpl::GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
+                                               GetUniverseKeyRegistryResponsePB* resp,
+                                               rpc::RpcContext rpc) {
+  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::GetUniverseKeyRegistry);
+}
+
+void MasterServiceImpl::AddUniverseKeys(const AddUniverseKeysRequestPB* req,
+                                        AddUniverseKeysResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::AddUniverseKeys);
+}
+
+void MasterServiceImpl::HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
+                                               HasUniverseKeyInMemoryResponsePB* resp,
+                                               rpc::RpcContext rpc) {
+  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::HasUniverseKeyInMemory);
+}
+
+void MasterServiceImpl::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
+                                                 SetupUniverseReplicationResponsePB* resp,
+                                                 rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetupUniverseReplication);
+}
+
+void MasterServiceImpl::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
+                                                  DeleteUniverseReplicationResponsePB* resp,
+                                                  rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteUniverseReplication);
+}
+
+void MasterServiceImpl::AlterUniverseReplication(const AlterUniverseReplicationRequestPB* req,
+                                                  AlterUniverseReplicationResponsePB* resp,
+                                                  rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::AlterUniverseReplication);
+}
+
+void MasterServiceImpl::SetUniverseReplicationEnabled(
+                          const SetUniverseReplicationEnabledRequestPB* req,
+                          SetUniverseReplicationEnabledResponsePB* resp,
+                          rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetUniverseReplicationEnabled);
+}
+
+void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
+                                               GetUniverseReplicationResponsePB* resp,
+                                               rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetUniverseReplication);
+}
 
 } // namespace master
 } // namespace yb

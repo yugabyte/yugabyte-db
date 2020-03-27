@@ -13,9 +13,9 @@ Install the software on each of the nodes using the steps shown below.
 
 ## Download
 
-Download the YugaByte CE binary package as described in the [Quick Start section](../../../quick-start/install/).
+Download the Yugabyte CE binary package as described in the [Quick Start section](../../../quick-start/install/).
 
-Copy the YugaByte DB package into each instace and then running the following commands.
+Copy the YugabyteDB package into each instace and then running the following commands.
 
 ```sh
 $ tar xvfz yugabyte-ce-<version>-<os>.tar.gz && cd yugabyte-<version>/

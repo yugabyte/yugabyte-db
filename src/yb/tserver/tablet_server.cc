@@ -39,13 +39,17 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/transaction_manager.h"
+#include "yb/client/transaction_pool.h"
+
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/service_if.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/webserver.h"
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/tserver/heartbeater.h"
+#include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -68,6 +72,7 @@ using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;
 
 using namespace yb::size_literals;
+using namespace std::placeholders;
 
 DEFINE_int32(tablet_server_svc_num_threads, -1,
              "Number of RPC worker threads for the TS service. If -1, it is auto configured.");
@@ -135,9 +140,13 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
-      tablet_server_service_(nullptr) {
+      tablet_server_service_(nullptr),
+      shared_object_(CHECK_RESULT(TServerSharedObject::Create())) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
+
+  LOG(INFO) << "yb::tserver::TabletServer created at " << this;
+  LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
 }
 
 TabletServer::~TabletServer() {
@@ -227,7 +236,9 @@ Status TabletServer::Init() {
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
-  heartbeater_.reset(new Heartbeater(opts_, this));
+  log_prefix_ = Format("P $0: ", permanent_uuid());
+
+  heartbeater_ = CreateHeartbeater(opts_, this);
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     metrics_snapshotter_.reset(new MetricsSnapshotter(opts_, this));
@@ -237,6 +248,12 @@ Status TabletServer::Init() {
                         "Could not init Tablet Manager");
 
   initted_.store(true, std::memory_order_release);
+
+  auto bound_addresses = rpc_server()->GetBoundAddresses();
+  if (!bound_addresses.empty()) {
+    shared_object_->SetEndpoint(bound_addresses.front());
+  }
+
   return Status::OK();
 }
 
@@ -268,24 +285,28 @@ void TabletServer::AutoInitServiceFlags() {
 
 Status TabletServer::RegisterServices() {
   tablet_server_service_ = new TabletServiceImpl(this);
+  LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service_;
   std::unique_ptr<ServiceIf> ts_service(tablet_server_service_);
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
                                                      std::move(ts_service)));
 
   std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
+  LOG(INFO) << "yb::tserver::TabletServiceAdminImpl created at " << admin_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
                                                      std::move(admin_service)));
 
   std::unique_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
                                                                         tablet_manager_.get()));
+  LOG(INFO) << "yb::tserver::ConsensusServiceImpl created at " << consensus_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
                                                      std::move(consensus_service),
                                                      rpc::ServicePriority::kHigh));
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service =
-      std::make_unique<YB_EDITION_NS_PREFIX RemoteBootstrapServiceImpl>(fs_manager_.get(),
-                                                                        tablet_manager_.get(),
-                                                                        metric_entity());
+      std::make_unique<RemoteBootstrapServiceImpl>(
+          fs_manager_.get(), tablet_manager_.get(), metric_entity());
+  LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
+    remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
   return Status::OK();
@@ -364,6 +385,14 @@ Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
   return Status::OK();
 }
 
+bool TabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) const {
+  tablet::TabletPeerPtr peer;
+  if (!tablet_manager_->LookupTablet(tablet_id, &peer)) {
+    return false;
+  }
+  return peer->LeaderStatus(allow_stale) == consensus::LeaderStatus::LEADER_AND_READY;
+}
+
 Status TabletServer::SetUniverseKeyRegistry(
     const yb::UniverseKeyRegistryPB& universe_key_registry) {
   return Status::OK();
@@ -421,18 +450,40 @@ rocksdb::Env* TabletServer::GetRocksDBEnv() {
 }
 
 int TabletServer::GetSharedMemoryFd() {
-  return shared_memory_.GetFd();
+  return shared_object_.GetFd();
 }
 
 void TabletServer::SetYSQLCatalogVersion(uint64_t new_version) {
   std::lock_guard<simple_spinlock> l(lock_);
   if (new_version > ysql_catalog_version_) {
     ysql_catalog_version_ = new_version;
-    shared_memory_.SetYSQLCatalogVersion(new_version);
+    shared_object_->SetYSQLCatalogVersion(new_version);
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
   }
+}
+
+TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
+  return tablet_manager_.get();
+}
+
+client::TransactionPool* TabletServer::TransactionPool() {
+  auto result = transaction_pool_.load(std::memory_order_acquire);
+  if (result) {
+    return result;
+  }
+  std::lock_guard<decltype(transaction_pool_mutex_)> lock(transaction_pool_mutex_);
+  if (transaction_pool_holder_) {
+    return transaction_pool_holder_.get();
+  }
+  transaction_manager_holder_ = std::make_unique<client::TransactionManager>(
+      &tablet_manager()->client(), clock(),
+      std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tablet_manager(), _1));
+  transaction_pool_holder_ = std::make_unique<client::TransactionPool>(
+      transaction_manager_holder_.get(), metric_entity().get());
+  transaction_pool_.store(transaction_pool_holder_.get(), std::memory_order_release);
+  return transaction_pool_holder_.get();
 }
 
 }  // namespace tserver

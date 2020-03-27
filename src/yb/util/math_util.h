@@ -15,6 +15,7 @@
 #ifndef YB_UTIL_MATH_UTIL_H_
 #define YB_UTIL_MATH_UTIL_H_
 
+#include <limits>
 #include <vector>
 
 namespace yb {
@@ -35,6 +36,25 @@ constexpr T1 constexpr_max(const T1& t1, const T2& t2, const Args&&... args) {
 template <class T>
 constexpr T ceil_div(const T& n, const T& div) {
   return (n + div - 1) / div;
+}
+
+template <class T>
+T max_if_negative(T value) {
+  if (value < 0) {
+    return std::numeric_limits<T>::max();
+  }
+  return value;
+}
+
+template <class T>
+T fit_bounds(const T& value, const T& min, const T& max) {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
 }
 
 }  // namespace yb

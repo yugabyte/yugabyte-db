@@ -23,9 +23,9 @@
 using yb::util::VarInt;
 using yb::util::FastEncodeDescendingSignedVarInt;
 using yb::util::FastDecodeDescendingSignedVarInt;
-using yb::util::FormatBytesAsStr;
-using yb::util::FormatSliceAsStr;
-using yb::util::QuotesType;
+using yb::FormatBytesAsStr;
+using yb::FormatSliceAsStr;
+using yb::QuotesType;
 using yb::util::to_char_ptr;
 using yb::util::to_uchar_ptr;
 
@@ -105,11 +105,8 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
         Corruption,
         "Negative decoded_shifted_write_id: $0. Was trying to decode from: $1",
         decoded_shifted_write_id,
-        FormatSliceAsStr(
-            Slice(ptr_before_decoding_write_id,
-                  slice->data() + slice->size() - ptr_before_decoding_write_id),
-            QuotesType::kDoubleQuotes,
-            /* max_length = */ 32));
+        Slice(ptr_before_decoding_write_id,
+              slice->data() + slice->size() - ptr_before_decoding_write_id).ToDebugHexString());
   }
   write_id_ = (decoded_shifted_write_id >> kNumBitsForHybridTimeSize) - 1;
 
@@ -122,7 +119,7 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
             "Encoded timestamp: $2.",
         size_at_the_end,
         bytes_decoded,
-        FormatBytesAsStr(to_char_ptr(slice->data() - bytes_decoded), bytes_decoded));
+        Slice(to_char_ptr(slice->data() - bytes_decoded), bytes_decoded).ToDebugHexString());
   }
 
   return Status::OK();

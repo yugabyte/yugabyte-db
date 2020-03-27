@@ -47,6 +47,7 @@
 #endif
 
 #include "yb/util/env_util.h"
+#include "yb/util/errno.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -73,7 +74,7 @@ Status FileCreationError(const std::string& path_dir, int err_number) {
     case EACCES: FALLTHROUGH_INTENDED;
     case EPERM: FALLTHROUGH_INTENDED;
     case EINVAL:
-      return STATUS(NotSupported, path_dir, ErrnoToString(err_number), err_number);
+      return STATUS(NotSupported, path_dir, Errno(err_number));
   }
   return Status::OK();
 }

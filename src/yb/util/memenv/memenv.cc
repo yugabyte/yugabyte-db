@@ -208,12 +208,6 @@ class InMemoryEnv : public EnvWrapper {
 
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      std::unique_ptr<RandomAccessFile>* result) override {
-    return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
-  }
-
-  virtual Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                                     const std::string& fname,
-                                     std::unique_ptr<RandomAccessFile>* result) override {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       return STATUS(IOError, fname, "File not found");
@@ -408,6 +402,10 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status GetTotalRAMBytes(int64_t* ram) override {
+    LOG(FATAL) << "Not implemented";
+  }
+
+  Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
     LOG(FATAL) << "Not implemented";
   }
 

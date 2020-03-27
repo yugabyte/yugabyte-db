@@ -45,6 +45,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/util/errno.h"
 #include "yb/util/metrics.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
@@ -213,18 +214,18 @@ void ThreadPoolToken::Wait() {
 }
 
 bool ThreadPoolToken::WaitUntil(const MonoTime& until) {
-  return WaitFor(until - MonoTime::Now());
-}
-
-bool ThreadPoolToken::WaitFor(const MonoDelta& delta) {
   MutexLock unique_lock(pool_->lock_);
   pool_->CheckNotPoolThreadUnlocked();
   while (IsActive()) {
-    if (!not_running_cond_.TimedWait(delta)) {
+    if (!not_running_cond_.WaitUntil(until)) {
       return false;
     }
   }
   return true;
+}
+
+bool ThreadPoolToken::WaitFor(const MonoDelta& delta) {
+  return WaitUntil(MonoTime::Now() + delta);
 }
 
 void ThreadPoolToken::Transition(ThreadPoolTokenState new_state) {
@@ -444,7 +445,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
   }
 
   if (PREDICT_FALSE(!token->MaySubmitNewTasks())) {
-    return STATUS(ServiceUnavailable, "Thread pool token was shut down.", "", ESHUTDOWN);
+    return STATUS(ServiceUnavailable, "Thread pool token was shut down.", "", Errno(ESHUTDOWN));
   }
 
   // Size limit check.
@@ -454,7 +455,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
     return STATUS(ServiceUnavailable,
                   Substitute("Thread pool is at capacity ($0/$1 tasks running, $2/$3 tasks queued)",
                              num_threads_, max_threads_, total_queued_tasks_, max_queue_size_),
-                  "", ESHUTDOWN);
+                  "", Errno(ESHUTDOWN));
   }
 
   // Should we create another thread?
@@ -529,18 +530,17 @@ void ThreadPool::Wait() {
 }
 
 bool ThreadPool::WaitUntil(const MonoTime& until) {
-  MonoDelta relative = until.GetDeltaSince(MonoTime::Now());
-  return WaitFor(relative);
-}
-
-bool ThreadPool::WaitFor(const MonoDelta& delta) {
   MutexLock unique_lock(lock_);
   while ((!queue_.empty()) || (active_threads_ > 0)) {
-    if (!idle_cond_.TimedWait(delta)) {
+    if (!idle_cond_.WaitUntil(until)) {
       return false;
     }
   }
   return true;
+}
+
+bool ThreadPool::WaitFor(const MonoDelta& delta) {
+  return WaitUntil(MonoTime::Now() + delta);
 }
 
 void ThreadPool::DispatchThread(bool permanent) {

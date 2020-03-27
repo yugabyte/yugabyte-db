@@ -1,7 +1,8 @@
 ---
-title: Docker 
-linkTitle: Docker 
-description: Docker
+title: Deploy a local YugabyteDB cluster using Docker Swarm
+headerTitle: Docker
+linkTitle: Docker
+description: Learn how to use Docker Swarm to deploy a local YugabyteDB cluster
 aliases:
  - /deploy/docker-swarm/
  - /latest/deploy/docker-swarm/
@@ -10,7 +11,7 @@ menu:
   latest:
     parent: deploy
     name: Docker
-    identifier: docker-1-swarm
+    identifier: docker-2-swarm
     weight: 625
 type: page
 isTocNested: false
@@ -18,50 +19,50 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/latest/deploy/docker/docker-swarm" class="nav-link active">
-      <i class="fas fa-layer-group"></i>
-      Docker Swarm
-    </a>
-  </li>
   <li>
     <a href="/latest/deploy/docker/docker-compose" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker Compose
     </a>
   </li>
+  <li >
+    <a href="/latest/deploy/docker/docker-swarm" class="nav-link active">
+      <i class="fas fa-layer-group"></i>
+      Docker Swarm
+    </a>
+  </li>
 </ul>
 
-Docker includes [swarm](https://docs.docker.com/engine/swarm/) mode for natively managing a cluster of [Docker Engines](https://docs.docker.com/engine/) called a swarm. The Docker CLI can be used create a swarm, deploy application services to a swarm, and manage swarm behavior -- without using any additional orchestration software. Details on how swarm mode works are available [here](https://docs.docker.com/engine/swarm/key-concepts/).
+Docker includes [swarm](https://docs.docker.com/engine/swarm/) mode for natively managing a cluster of [Docker Engines](https://docs.docker.com/engine/) called a swarm. The Docker CLI can be used create a swarm, deploy application services to a swarm, and manage swarm behavior — without using any additional orchestration software. Details on how swarm mode works are available [here](https://docs.docker.com/engine/swarm/key-concepts/).
 
 This tutorial uses [Docker Machine](https://docs.docker.com/machine/) to create multiple nodes on your desktop. These nodes can even be on multiple machines on the cloud platform of your choice.
 
 ## Prerequisites
 
-### Linux 
+### Linux
 
 - Docker Engine 1.12 or later installed using [Docker for Linux](https://docs.docker.com/engine/swarm/swarm-tutorial/#install-docker-engine-on-linux-machines).
 - [Docker Machine](https://docs.docker.com/machine/install-machine/).
 
-### macOS 
+### macOS
 
 - Docker Engine 1.12 or later installed using [Docker for Mac](https://docs.docker.com/docker-for-mac/). Docker Machine is already included with Docker for Mac.
 
 - VirtualBox 5.2 or later for creating the swarm nodes.
 
-### Windows 
+### Windows
 
 - Docker Engine 1.12 or later installed using [Docker for Windows](https://docs.docker.com/docker-for-mac/). Docker Machine is already included with Docker for Windows.
 
 - [Microsoft Hyper-V driver](https://docs.docker.com/machine/drivers/hyper-v/) for creating the swarm nodes.
 
-As noted in [Docker docs](https://docs.docker.com/engine/swarm/swarm-tutorial/#use-docker-for-mac-or-docker-for-windows), the host on which Docker for Mac or Docker for Windows is installed does not itself participate in the swarm. The included version of Docker Machine is used to create the swarm nodes using VirtualBox (for macOS) and Hyper-V (for Windows). 
+As noted in the [Docker documentation](https://docs.docker.com/engine/swarm/swarm-tutorial/#use-docker-for-mac-or-docker-for-windows), the host on which Docker for Mac or Docker for Windows is installed does not itself participate in the swarm. The included version of Docker Machine is used to create the swarm nodes using VirtualBox (for macOS) and Hyper-V (for Windows).
 
 ## 1. Create swarm nodes
 
-Following bash script is a simpler form of Docker's own swarm beginner tutorial [bash script](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-vbox-setup.sh). You can use this for Linux and macOS. If you are using Windows, then download and change the [powershell Hyper-V version](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-hyperv-setup.ps1) of the same script.
+Following bash script is a simpler form of Docker's own swarm beginner tutorial [bash script](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-vbox-setup.sh). You can use this for Linux and macOS. If you are using Windows, then download and change the [Powershell Hyper-V version](https://github.com/docker/labs/blob/master/swarm-mode/beginner-tutorial/swarm-node-hyperv-setup.ps1) of the same script.
 
-- The script first instantiates 3 [nodes](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/) using Docker Machine and VirtualBox. Thereafter, it initializes the swarm cluster by creating a swarm [manager](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/#manager-nodes) on the first node. Finally, it adds the remaining nodes as [workers](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/#worker-nodes) to the cluster. It also pulls the yugabytedb/yugabyte container image into each of the nodes to expedite the next steps. 
+- The script first instantiates three [nodes](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/) using Docker Machine and VirtualBox. Thereafter, it initializes the swarm cluster by creating a swarm [manager](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/#manager-nodes) on the first node. Finally, it adds the remaining nodes as [workers](https://docs.docker.com/engine/swarm/how-swarm-mode-works/nodes/#worker-nodes) to the cluster. It also pulls the `yugabytedb/yugabyte` container image into each of the nodes to expedite the next steps.
 
 {{< note title="Note" >}}
 In more fault-tolerant setups, there will be multiple manager nodes and they will be independent of the worker nodes. A 3-node master and 3-node worker setup is used in the Docker tutorial script referenced above.
@@ -78,8 +79,8 @@ workers=3
 echo "======> Creating $workers worker machines ...";
 for node in $(seq 1 $workers);
 do
-	echo "======> Creating worker$node machine ...";
-	docker-machine create -d virtualbox worker$node;
+    echo "======> Creating worker$node machine ...";
+    docker-machine create -d virtualbox worker$node;
 done
 
 # list all machines
@@ -99,21 +100,21 @@ docker-machine ssh worker1 "docker node ls"
 # other workers join swarm, worker1 is already a member
 for node in $(seq 2 $workers);
 do
-	echo "======> worker$node joining swarm as worker ..."
-	docker-machine ssh worker$node \
-	"docker swarm join \
-	--token $worker_token \
-	--listen-addr $(docker-machine ip worker$node) \
-	--advertise-addr $(docker-machine ip worker$node) \
-	$(docker-machine ip worker1)"
+    echo "======> worker$node joining swarm as worker ..."
+    docker-machine ssh worker$node \
+    "docker swarm join \
+    --token $worker_token \
+    --listen-addr $(docker-machine ip worker$node) \
+    --advertise-addr $(docker-machine ip worker$node) \
+    $(docker-machine ip worker1)"
 done
 
 # pull the yugabytedb container
 for node in $(seq 1 $workers);
 do
-	echo "======> pulling yugabytedb/yugabyte container on worker$node ..."
-	docker-machine ssh worker$node \
-	"docker pull yugabytedb/yugabyte"
+    echo "======> pulling yugabytedb/yugabyte container on worker$node ..."
+    docker-machine ssh worker$node \
+    "docker pull yugabytedb/yugabyte"
 done
 
 # show members of swarm
@@ -122,16 +123,15 @@ docker-machine ssh worker1 "docker node ls"
 
 - Review all the nodes created.
 
+```sh
+$ docker-machine ls
+```
 
 ```sh
-$ docker-machine ls 
-```
-
-```
 NAME      ACTIVE   DRIVER       STATE     URL                         SWARM   DOCKER        ERRORS
-worker1   -        virtualbox   Running   tcp://192.168.99.100:2376           v18.05.0-ce   
-worker2   -        virtualbox   Running   tcp://192.168.99.101:2376           v18.05.0-ce   
-worker3   -        virtualbox   Running   tcp://192.168.99.102:2376           v18.05.0-ce  
+worker1   -        virtualbox   Running   tcp://192.168.99.100:2376           v18.05.0-ce
+worker2   -        virtualbox   Running   tcp://192.168.99.101:2376           v18.05.0-ce
+worker3   -        virtualbox   Running   tcp://192.168.99.102:2376           v18.05.0-ce
 ```
 
 ## 2. Create overlay network
@@ -139,7 +139,7 @@ worker3   -        virtualbox   Running   tcp://192.168.99.102:2376           v1
 - SSH into the worker1 node where the swarm manager is running.
 
 ```sh
-$ docker-machine ssh worker1 
+$ docker-machine ssh worker1
 ```
 
 - Create an [overlay network](https://docs.docker.com/network/overlay/) that the swarm services can use to communicate with each other. The `attachable` option allows standalone containers to connect to swarm services on the network.
@@ -150,10 +150,12 @@ $ docker network create --driver overlay --attachable yugabytedb
 
 ## 3. Create yb-master services
 
-- Create 3 yb-master [`replicated`](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/) services each with replicas set to 1. This is the [only way](https://github.com/moby/moby/issues/30963) in Docker Swarm today to get stable network identies for each of yb-master containers that we will need to provide as input for creating the yb-tserver service in the next step. 
+- Create 3 YB-Master [`replicated`](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/) services each with replicas set to 1. This is the [only way](https://github.com/moby/moby/issues/30963) in Docker Swarm today to get stable network identities for each of the YB-Master containers that we will need to provide as input for creating the YB-TServer service in the next step.
 
-{{< note title="Note for Kubernetes Users" >}}
-Docker Swarm lacks an equivalent of [Kubernetes StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). The concept of replicated services is similar to [Kubernetes Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
+{{< note title="Note for Kubernetes users" >}}
+
+Docker Swarm lacks an equivalent of [Kubernetes StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). The concept of replicated services is similar to [Kubernetes deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
+
 {{< /note >}}
 
 ```sh
@@ -195,24 +197,22 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 
 - Run the command below to see the services that are now live.
 
-
 ```sh
 $ docker service ls
 ```
 
-
-```
+```sh
 ID                  NAME                MODE                REPLICAS            IMAGE                        PORTS
 jfnrqfvnrc5b        yb-master1          replicated          1/1                 yugabytedb/yugabyte:latest   *:7000->7000/tcp
-kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest   
-ah6wfodd4noh        yb-master3          replicated          1/1                 yugabytedb/yugabyte:latest  
+kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest
+ah6wfodd4noh        yb-master3          replicated          1/1                 yugabytedb/yugabyte:latest
 ```
 
-- View the yb-master admin UI by going to the port 7000 of any node, courtesy of the publish option used when yb-master1 was created. For e.g., we can see from Step 1 that worker2's IP address is 192.168.99.101. So, http://192.168.99.101:7000 takes us to the yb-master admin UI.
+- View the yb-master Admin UI by going to the port 7000 of any node, courtesy of the publish option used when yb-master1 was created. For example, we can see from Step 1 that worker2's IP address is `192.168.99.101`. So, `http://192.168.99.101:7000` takes us to the yb-master Admin UI.
 
 ## 4. Create yb-tserver service
 
-- Create a single yb-tserver [`global`](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/) service so that swarm can then automatically spawn 1 container/task on each worker node. Each time we add a node to the swarm, the swarm orchestrator creates a task and the scheduler assigns the task to the new node. 
+- Create a single yb-tserver [`global`](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/) service so that swarm can then automatically spawn 1 container/task on each worker node. Each time we add a node to the swarm, the swarm orchestrator creates a task and the scheduler assigns the task to the new node.
 
 {{< note title="Note for Kubernetes Users" >}}
 The global services concept in Docker Swarm is similar to [Kubernetes DaemonSets](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/).
@@ -230,28 +230,45 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-tserver \
 --tserver_master_addrs=yb-master1:7100,yb-master2:7100,yb-master3:7100
 ```
 
-
 {{< tip title="Tip" >}}
 Use remote volumes instead of local volumes (used above) when you want to scale-out or scale-in your swarm cluster.
 {{< /tip >}}
 
 - Run the command below to see the services that are now live.
 
-
 ```sh
 $ docker service ls
 ```
 
-```
+```sh
 ID                  NAME                MODE                REPLICAS            IMAGE                        PORTS
 jfnrqfvnrc5b        yb-master1          replicated          1/1                 yugabytedb/yugabyte:latest   *:7000->7000/tcp
-kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest   
-ah6wfodd4noh        yb-master3          replicated          1/1                 yugabytedb/yugabyte:latest   
-n6padh2oqjk7        yb-tserver          global              3/3                 yugabytedb/yugabyte:latest   *:9000->9000/tcp 
+kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest
+ah6wfodd4noh        yb-master3          replicated          1/1                 yugabytedb/yugabyte:latest
+n6padh2oqjk7        yb-tserver          global              3/3                 yugabytedb/yugabyte:latest   *:9000->9000/tcp
 ```
-- Now we can go to http://192.168.99.101:9000 to see the yb-tserver admin UI.
+
+- Now we can go to `http://192.168.99.101:9000` to see the yb-tserver admin UI.
 
 ## 5. Test the APIs
+
+### YSQL API
+
+- Connect to the ysqlsh client in yb-tserver.
+
+```sh
+$ docker exec -it <ybtserver_container_id> /home/yugabyte/bin/ysqlsh
+```
+
+```
+...
+ysqlsh (11.2-YB-2.0.1.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+- Follow the test instructions as noted in [Quick Start](../../../quick-start/explore-ysql/).
 
 ### YCQL API
 
@@ -259,19 +276,18 @@ n6padh2oqjk7        yb-tserver          global              3/3                 
 
 - Connect to that container using that container ID.
 
-
 ```sh
 $ docker exec -it <ybtserver_container_id> /home/yugabyte/bin/cqlsh
 ```
 
-```
+```sh
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> 
+cqlsh>
 ```
 
-- Follow the test instructions as noted in [Quick Start](../quick-start/test-cassandra/).
+- Follow the test instructions as noted in [Quick Start](../../../api/ycql/quick-start/).
 
 ### YEDIS API
 
@@ -279,42 +295,16 @@ cqlsh>
 
 - Initialize the YEDIS API.
 
-
 ```sh
 $ docker exec -it <ybmaster_container_id> /home/yugabyte/bin/yb-admin -- --master_addresses yb-master1:7100,yb-master2:7100,yb-master3:7100 setup_redis_table
 ```
 
-```
+```sh
 I0515 19:54:48.952378    39 client.cc:1208] Created table system_redis.redis of type REDIS_TABLE_TYPE
 I0515 19:54:48.953572    39 yb-admin_client.cc:440] Table 'system_redis.redis' created.
 ```
 
-- Follow the test instructions as noted in [Quick Start](../quick-start/test-redis/).
-
-### YSQL API
-
-- Install the `postgresql` client in the yb-tserver container.
-
-
-```sh
-$ docker exec -it <ybtserver_container_id> yum install postgresql
-```
-
-- Connect to the ysqlsh client in yb-tserver.
-
-```sh
-$ docker exec -it <ybtserver_container_id> ysqlsh
-```
-
-```
-...
-ysqlsh (11.2)
-Type "help" for help.
-
-postgres=#
-```
-
-- Follow the test instructions as noted in [Quick Start](../quick-start/test-postgresql/).
+- Follow the test instructions as noted in [Quick Start](../../../yedis/quick-start/).
 
 ## 6. Test fault-tolerance with node failure
 
@@ -330,7 +320,6 @@ Observe the output of `docker ps` every few seconds till you see that the yb-tse
 
 - On the host machine, get worker token for new worker nodes to use to join the existing swarm.
 
-
 ```sh
 $ docker-machine ssh worker1 "docker swarm join-token worker -q"
 ```
@@ -341,51 +330,44 @@ SWMTKN-1-aadasdsadas-2ja2q2esqsivlfx2ygi8u62yq
 
 - Create a new node `worker4`.
 
-
 ```sh
 $ docker-machine create -d virtualbox worker4
 ```
 
-- Pull the YugaByte DB container.
-
+- Pull the YugabyteDB container.
 
 ```sh
 $ docker-machine ssh worker4 "docker pull yugabytedb/yugabyte"
 ```
 
-
 - Join worker4 with existing swarm.
-
 
 ```sh
 $ docker-machine ssh worker4 \
-	"docker swarm join \
-	--token SWMTKN-1-aadasdsadas-2ja2q2esqsivlfx2ygi8u62yq \
-	--listen-addr $(docker-machine ip worker4) \
-	--advertise-addr $(docker-machine ip worker4) \
-	$(docker-machine ip worker1)"
+    "docker swarm join \
+    --token SWMTKN-1-aadasdsadas-2ja2q2esqsivlfx2ygi8u62yq \
+    --listen-addr $(docker-machine ip worker4) \
+    --advertise-addr $(docker-machine ip worker4) \
+    $(docker-machine ip worker1)"
 ```
 
 - Observe that Docker Swarm adds a new yb-tserver instance to the newly added `worker4` node and changes its replica status from 3 / 3 to 4 / 4.
-
-
 
 ```sh
 $ docker service ls
 ```
 
-```
+```sh
 ID                  NAME                MODE                REPLICAS            IMAGE                        PORTS
 jfnrqfvnrc5b        yb-master1          replicated          1/1                 yugabytedb/yugabyte:latest   *:7000->7000/tcp
-kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest   
-ah6wfodd4noh        yb-master3          replicated          1/1                 yugabytedb/yugabyte:latest   
-n6padh2oqjk7        yb-tserver          global              4/4                 yugabytedb/yugabyte:latest   *:9000->9000/tcp 
+kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest
+ah6wfodd4noh        yb-master3          replicated          1/1                 yugabytedb/yugabyte:latest
+n6padh2oqjk7        yb-tserver          global              4/4                 yugabytedb/yugabyte:latest   *:9000->9000/tcp
 ```
 
 ## 8. Remove services and destroy nodes
 
 - Stop the machines.
-
 
 ```sh
 $ docker-machine stop $(docker-machine ls -q)
@@ -393,8 +375,6 @@ $ docker-machine stop $(docker-machine ls -q)
 
 - Remove the machines.
 
-
 ```sh
 $ docker-machine rm $(docker-machine ls -q)
 ```
-

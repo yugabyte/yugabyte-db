@@ -83,7 +83,8 @@ TEST_F(TestRaftGroupMetadata, TestLoadFromSuperBlock) {
   ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Shut down the tablet.
-  harness_->tablet()->Shutdown();
+  harness_->tablet()->StartShutdown();
+  harness_->tablet()->CompleteShutdown();
 
   RaftGroupMetadata* meta = harness_->tablet()->metadata();
 

@@ -204,7 +204,7 @@ l_callsite_alwaysinline(LLVMValueRef f)
 static inline LLVMValueRef
 l_mcxt_switch(LLVMModuleRef mod, LLVMBuilderRef b, LLVMValueRef nc)
 {
-	const char *cmc = "CurrentMemoryContext";
+	const char *cmc = "GetCurrentMemoryContext()";
 	LLVMValueRef cur;
 	LLVMValueRef ret;
 

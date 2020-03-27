@@ -94,6 +94,14 @@ class ChangeMetadataOperationState : public OperationState {
     return request_->schema_version();
   }
 
+  uint32_t wal_retention_secs() const {
+    return request_->wal_retention_secs();
+  }
+
+  bool has_wal_retention_secs() const {
+    return request_->has_wal_retention_secs();
+  }
+
   void AcquireSchemaLock(rw_semaphore* l);
 
   // Release the acquired schema lock.
@@ -108,6 +116,8 @@ class ChangeMetadataOperationState : public OperationState {
   }
 
   log::Log* log() const { return log_; }
+
+  log::Log* mutable_log() { return log_; }
 
   virtual std::string ToString() const override;
 
@@ -150,17 +160,13 @@ class ChangeMetadataOperation : public Operation {
 
   CHECKED_STATUS Prepare() override;
 
-  // Executes an Apply for the metadata change operation.
-  CHECKED_STATUS Apply(int64_t leader_term) override;
-
-  // Actually commits the transaction.
-  void Finish(OperationResult result) override;
-
   std::string ToString() const override;
 
  private:
   // Starts the ChangeMetadataOperation by assigning it a timestamp.
   void DoStart() override;
+  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+  CHECKED_STATUS DoAborted(const Status& status) override;
 
   DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperation);
 };

@@ -48,6 +48,18 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
 
   // Handle a call directly.
   virtual void Handle(InboundCallPtr call) = 0;
+
+  // Initiate RPC service shutdown.
+  // Two phase shutdown is required to prevent shutdown deadlock of 2 dependent resources.
+  virtual void StartShutdown() = 0;
+
+  // Wait until RPC sevrice shutdown completes.
+  virtual void CompleteShutdown() = 0;
+
+  void Shutdown() {
+    StartShutdown();
+    CompleteShutdown();
+  }
 };
 
 } // namespace rpc

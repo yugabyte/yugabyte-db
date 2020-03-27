@@ -77,4 +77,10 @@ extern bool YBIsUsingYBParser();
  * Returns ERROR or WARNING level depends on environment variable
  */
 extern int YBUnsupportedFeatureSignalLevel();
+
+/**
+ * Returns whether non-transactional COPY gflag is enabled.
+ */
+extern bool YBIsNonTxnCopyEnabled();
+
 #endif /* PG_YB_COMMON_H */

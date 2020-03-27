@@ -37,8 +37,10 @@
 #include <string>
 #include <vector>
 
-#include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/gutil/macros.h"
+#include "yb/integration-tests/mini_cluster_base.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/server/skewed_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/env.h"
@@ -90,6 +92,9 @@ struct MiniClusterOptions {
   // Default: "", which auto-generates a unique path for this cluster.
   // The default may only be used from a gtest unit test.
   std::string data_root;
+
+  // Cluster id used to create fs path when we create tests with multiple clusters.
+  std::string cluster_id = "";
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -174,6 +179,9 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerFsRoot(int idx);
 
+  // The comma separated string of the master adresses host/ports from current list of masters.
+  string GetMasterAddresses() const;
+
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
 
   tserver::TSTabletManager* GetTabletManager(int idx);
@@ -193,6 +201,10 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS WaitForTabletServerCount(int count);
   CHECKED_STATUS WaitForTabletServerCount(int count,
                                   std::vector<std::shared_ptr<master::TSDescriptor> >* descs);
+
+  uint16_t AllocateFreePort() {
+    return port_picker_.AllocateFreePort();
+  }
 
  private:
 
@@ -269,6 +281,22 @@ CHECKED_STATUS WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, Mon
 
 std::thread RestartsThread(
     MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag);
+
+std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster, bool include_intents = true);
+
+int NumTotalRunningCompactions(MiniCluster* cluster);
+
+int NumRunningFlushes(MiniCluster* cluster);
+
+Result<scoped_refptr<master::TableInfo>> FindTable(
+    MiniCluster* cluster, const client::YBTableName& table_name);
+
+CHECKED_STATUS WaitForInitDb(MiniCluster* cluster);
+
+using TabletPeerFilter = std::function<bool(const tablet::TabletPeer*)>;
+size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
+
+tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);
 
 }  // namespace yb
 

@@ -17,6 +17,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/decimal.h"
 
+#include "yb/common/ql_value.h"
+
 using std::string;
 using std::unique_ptr;
 using std::shared_ptr;

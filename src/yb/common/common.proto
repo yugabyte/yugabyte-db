@@ -147,6 +147,14 @@ enum PermissionType {
   ALL_PERMISSION = 999999999;
 }
 
+enum IndexPermissions {
+  INDEX_PERM_DELETE_ONLY = 0;
+  INDEX_PERM_WRITE_AND_DELETE = 2;
+  INDEX_PERM_DO_BACKFILL = 4;
+  INDEX_PERM_READ_WRITE_AND_DELETE = 6;
+  INDEX_PERM_BACKFILL_FAILED = 8;
+}
+
 // The type used in column schemas, which may have type parameters (i.e. for collections)
 // If types have parameters, they are stored in the params field. Otherwise params is empty.
 // e.g. (using lower case of QLTypes and upper case for DataType):
@@ -195,17 +203,38 @@ message ColumnSchemaPB {
   optional uint32 sorting_type = 9 [default = 0];
   // Reserved for deprecated read_default_value and write_default_value fields.
   reserved 10, 11;
-  repeated QLJsonOperationPB json_operations = 13; // JSON attribute (for c->'a'->>'b' case).
+  // The JSON attribute was mistakenly placed here, but it is not used.
+  // To be safe, it's left here for now.
+  // JSON attribute (for c->'a'->>'b' case).
+  repeated QLJsonOperationPB OBSOLETE_json_operations = 13;
 }
 
 message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
   optional bool contain_counters = 2;
   optional bool is_transactional = 3 [default = false];
+
   // The table id of the table that this table is co-partitioned with.
   optional bytes copartition_table_id = 4;
+
   // For index table only: consistency with respect to the indexed table.
   optional YBConsistencyLevel consistency_level = 5 [ default = STRONG ];
+
+  // For CREATE INDEX, we use mangled name for its column, but it hasn't been that way.
+  // Due to coding history for INDEX support, we'll have the following scenarios.
+  // - UserTable: User-defined names are used for its columns.
+  // - IndexTable: Mangled names are used. We treat all INDEX column definition as expression of
+  //   column. For example INDEX on TAB(a) would be defined as IndexTable( ref_of(a) ).
+  // - Older IndexTable: User-defined name is used, and their definition in existing database
+  //   remains the same during upgrade.
+  //
+  // The field "use_mangled_column_name" helps indicating whether a table is using mangled_name.
+
+  optional bool use_mangled_column_name =  6 [ default = false ];
+  optional int32 num_tablets = 7 [ default = 0 ];
+  optional bool is_ysql_catalog_table = 8 [ default = false ];
+  optional bool is_backfilling = 9 [ default = false ];
+  optional uint64 backfilling_timestamp = 10;
 }
 
 message SchemaPB {
@@ -213,26 +242,58 @@ message SchemaPB {
   optional TablePropertiesPB table_properties = 2;
 }
 
-// This message contains the metadata of a secondary index of a table. It maps the indexed table
-// columns to the index table columns.
+// This message contains the metadata of a secondary index of a table.
+// It maps the index::columns to the expressions of table::columns.
+//
+// Notes on where to find metadata of an INDEX.
+// - Each INDEX is represented by IndexInfo and IndexTable.
+//     IndexInfoPB contains the definitions of the INDEX.
+//     IndexTable contains duplicate user-data for quick access.
+// - The IndexInfoPB is stored in the Catalog::Table being indexed.
+// - The TablePropertiesPB is kept in Catalog::IndexTable.
+//   Internally, Catalog::IndexTable is just the same as any Catalog::Table.
 message IndexInfoPB {
   optional bytes table_id = 1; // Index table id.
   optional bytes indexed_table_id = 8; // Indexed table id.
-  optional uint32 version = 2; // Index table's schema version.
+  optional uint32 version = 2 [ default = 0]; // Index table's schema version.
   optional bool is_local = 3 [ default = false ];  // Whether the index is a local index
   optional bool is_unique = 7 [ default = false ]; // Whether the index is a unique index
+  // We should only have this in the elements of "repeated IndexInfoPB indexes" of the
+  // SysTableEntryPB of the main table.
+  optional IndexPermissions index_permissions = 12 [ default = INDEX_PERM_READ_WRITE_AND_DELETE ];
 
   // Index column mapping.
+  // "colexpr" is used to compute the value of this column in an INDEX.
+  // - When a table is indexed by expressions, we create internal/hidden columns to store the index
+  //   value, and "value_expr" specifies the indexing expression.
+  // - As of 07/2019, only QLJsonColumnOperationsPB is allowed for "colexpr".
+  // - In the current index design & implementation, expression can only reference ONE column.
+  //
+  // Example:
+  //   Example for scalar index
+  //     TABLE (a, b, c)
+  //     INDEX (c) -> INDEX is a table whose column 'c' is referencing TABLE(c)
+  //     colexpr = ref to "c" column_id.
+  //   Example for JSON index
+  //     TABLE (a, b, j)
+  //     INDEX (j->>'b') -> INDEX is a table whose column 'j->>b' is referencing to TABLE(j)
+  //     colexpr = j->'b'
   message IndexColumnPB {
     optional uint32 column_id = 1;         // Column id in the index table.
+    optional string column_name = 3;       // Generated column name in the index table.
     optional uint32 indexed_column_id = 2; // Corresponding column id in indexed table.
+    optional QLExpressionPB colexpr = 4;   // Column value in INDEX.
   }
-  repeated IndexColumnPB columns = 4;  // Indexed and covering columns.
+  repeated IndexColumnPB columns = 4;      // Indexed and covering columns.
   optional uint32 hash_column_count = 5;   // Number of hash columns in the index.
   optional uint32 range_column_count = 6;  // Number of range columns in the index.
 
   repeated uint32 indexed_hash_column_ids = 9;   // Hash column ids in the indexed table.
   repeated uint32 indexed_range_column_ids = 10; // Range column ids in the indexed table.
+
+  // The mangled-name flag is kept on both IndexInfo and IndexTable as the same mangled-name is
+  // used in both IndexInfo and IndexTable columns.
+  optional bool use_mangled_column_name = 11 [ default = false ];  // Newer index has mangled name.
 }
 
 message HostPortPB {
@@ -324,11 +385,39 @@ enum IsolationLevel {
   SERIALIZABLE_ISOLATION = 2;
 }
 
+// This enum matches enum RowMarkType defined in src/include/nodes/plannodes.h.
+// The exception is ROW_MARK_ABSENT, which signifies the absence of a row mark.
+enum RowMarkType
+{
+  // Obtain exclusive tuple lock.
+  ROW_MARK_EXCLUSIVE = 0;
+
+  // Obtain no-key exclusive tuple lock.
+  ROW_MARK_NOKEYEXCLUSIVE = 1;
+
+  // Obtain shared tuple lock.
+  ROW_MARK_SHARE = 2;
+
+  // Obtain keyshare tuple lock.
+  ROW_MARK_KEYSHARE = 3;
+
+  // Not supported. Used for postgres compatibility.
+  ROW_MARK_REFERENCE = 4;
+
+  // Not supported. Used for postgres compatibility.
+  ROW_MARK_COPY = 5;
+
+  // Obtain no tuple lock (this should never sent be on the wire).  The value
+  // should be high for convenient comparisons with the other row lock types.
+  ROW_MARK_ABSENT = 15;
+}
+
 enum TransactionStatus {
   CREATED = 1;
   PENDING = 2;
 
   COMMITTED = 4;
+  SEALED = 5;
   APPLIED_IN_ALL_INVOLVED_TABLETS = 7;
 
   ABORTED = 8;
@@ -346,8 +435,7 @@ message TransactionMetadataPB {
   optional string status_tablet = 3;
   optional fixed64 priority = 4;
 
-  // Used for backward compatibility during rolling update.
-  optional fixed64 DEPRECATED_start_hybrid_time = 5;
+  optional fixed64 start_hybrid_time = 5;
 
   // Stores time when metadata was written to provisional records RocksDB on a
   // participating tablet. So it could be used for cleanup.
@@ -381,6 +469,9 @@ enum InvolvedTabletMetadataState {
 message TransactionInvolvedTabletPB {
   optional bytes tablet_id = 1;
   optional InvolvedTabletMetadataState metadata_state = 2;
+
+  // Number of batches written to this tablet during transaction.
+  optional uint64 num_batches = 3;
 }
 
 // For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl
@@ -444,6 +535,7 @@ message QLValuePB {
     // (see DateTime::kMaxTime)
     int64 time_value = 22;
     uint32 uint32_value = 23;
+    uint64 uint64_value = 24;
   }
 }
 

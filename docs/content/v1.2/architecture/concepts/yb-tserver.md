@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The YB-TServer (short for YugaByte Tablet Server) is the process that does the actual IO for end
+The YB-TServer (short for Yugabyte Tablet Server) is the process that does the actual IO for end
 user requests. Recall from the previous section that data for a table is split/sharded into tablets.
 Each tablet is composed of one or more tablet-peers depending on the replication factor. And each
 YB-TServer hosts one or more tablet-peers.
@@ -19,7 +19,7 @@ YB-TServer hosts one or more tablet-peers.
 Note: We will refer to the “tablet-peers hosted by a YB-TServer” simply as the “tablets hosted by a
 YB-TServer”.
 
-Below is a pictorial illustration of this in the case of a 4 node YugaByte universe, with one table
+Below is a pictorial illustration of this in the case of a 4 node Yugabyte universe, with one table
 that has 16 tablets and a replication factor of 3.
 
 ![tserver_overview](/images/architecture/tserver_overview.png)

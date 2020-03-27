@@ -53,7 +53,7 @@ MessengerOptions MakeMessengerOptions() {
 class ReactorTest : public RpcTestBase {
  public:
   ReactorTest()
-    : messenger_(CreateMessenger("my_messenger", MakeMessengerOptions())),
+    : messenger_(CreateMessenger("my_messenger", MakeMessengerOptions()).release()),
       latch_(1) {
   }
 
@@ -77,7 +77,7 @@ class ReactorTest : public RpcTestBase {
   }
 
  protected:
-  std::unique_ptr<Messenger> messenger_;
+  AutoShutdownMessengerHolder messenger_;
   CountDownLatch latch_;
 };
 

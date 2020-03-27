@@ -1,10 +1,10 @@
-This page documents bulk import for YugaByte DB’s [Cassandra compatible YCQL API](../../../api/ycql).
+This page documents bulk import for YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql).
 
-We will first export data from existing Apache Cassandra and MySQL tables. Thereafter, we will import the data using the various bulk load options supported by YugaByte DB. We will use a generic IoT timeseries data use case as a running example to illustrate the import process.
+We will first export data from existing Apache Cassandra and MySQL tables. Thereafter, we will import the data using the various bulk load options supported by YugabyteDB. We will use a generic IoT timeseries data use case as a running example to illustrate the import process.
 
 ## Create Destination Table
 
-Following is the schema of the destination YugaByte DB table.
+Following is the schema of the destination YugabyteDB table.
 
 ```sql
 CREATE KEYSPACE example;
@@ -87,14 +87,14 @@ cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 
 ### Medium Datasets (GBs)
 
-[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [YugaByte DB cassandra-loader fork](https://github.com/YugaByte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
+[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
 
 #### Install cassandra-loader
 
 You can do this as shown below.
 
 ```sh
-$ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
+$ wget https://github.com/yugabyte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
 ```
 
 ```sh
@@ -111,8 +111,8 @@ time ./cassandra-loader \
 	-schema "example.SensorData(customer_name, device_id, ts, sensor_data)"
 ```
 
-For additional options, refer to the [cassandra-loader options](https://github.com/YugaByte/cassandra-loader#options).
+For additional options, refer to the [cassandra-loader options](https://github.com/yugabyte/cassandra-loader#options).
 
 ### Large Datasets (TBs or larger)
 
-For large datasets that are in the order of terabytes, YugaByte DB's bulk-importer is the tool to be used. Currently, it is supported only for AWS based deployments. Further documentation on this topic will be added soon. Meanwhile, reach out to [support@yugabyte.com](mailto:support@yugabyte.com) for more details.
+For large datasets that are in the order of terabytes, YugabyteDB's bulk-importer is the tool to be used. Currently, it is supported only for AWS based deployments. Further documentation on this topic will be added soon. Meanwhile, reach out to [support@yugabyte.com](mailto:support@yugabyte.com) for more details.

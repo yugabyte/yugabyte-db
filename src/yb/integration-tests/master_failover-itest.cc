@@ -35,13 +35,15 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -50,6 +52,8 @@
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
+
+DECLARE_int32(yb_num_total_tablets);
 
 namespace yb {
 
@@ -113,22 +117,50 @@ class MasterFailoverTest : public YBTest {
   }
 
   Status CreateTable(const YBTableName& table_name, CreateTableMode mode) {
-    YBSchema schema;
-    YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
-    b.AddColumn("string_val")->Type(STRING)->NotNull();
-    CHECK_OK(b.Build(&schema));
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    RETURN_NOT_OK_PREPEND(
+        client_->CreateNamespaceIfNotExists(table_name.namespace_name()),
+        "Unable to create namespace " + table_name.namespace_name());
+    client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(table_name)
-        .schema(&schema)
+        .table_type(YBTableType::YQL_TABLE_TYPE)
+        .schema(&client_schema)
+        .hash_schema(YBHashSchema::kMultiColumnHash)
         .timeout(MonoDelta::FromSeconds(90))
         .wait(mode == kWaitForCreate)
         .Create();
   }
 
+  Status CreateIndex(
+      const YBTableName& indexed_table_name, const YBTableName& index_name, CreateTableMode mode) {
+    RETURN_NOT_OK_PREPEND(
+      client_->CreateNamespaceIfNotExists(index_name.namespace_name()),
+      "Unable to create namespace " + index_name.namespace_name());
+    client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
+    client::TableHandle table;
+    RETURN_NOT_OK_PREPEND(
+        table.Open(indexed_table_name, client_.get()),
+        "Unable to open table " + indexed_table_name.ToString());
+
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    return table_creator->table_name(index_name)
+        .table_type(YBTableType::YQL_TABLE_TYPE)
+        .indexed_table_id(table->id())
+        .schema(&client_schema)
+        .hash_schema(YBHashSchema::kMultiColumnHash)
+        .timeout(MonoDelta::FromSeconds(90))
+        .wait(mode == kWaitForCreate)
+        // In the new style create index request, the CQL proxy populates the
+        // index info instead of the master. However, in these tests we bypass
+        // the proxy and go directly to the master. We need to use the old
+        // style create request to have the master generate the appropriate
+        // index info.
+        .TEST_use_old_style_create_request()
+        .Create();
+  }
+
   Status RenameTable(const YBTableName& table_name_orig, const YBTableName& table_name_new) {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name_orig));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name_orig));
     return table_alterer
       ->RenameTo(table_name_new)
       ->timeout(MonoDelta::FromSeconds(90))
@@ -161,6 +193,21 @@ class MasterFailoverTest : public YBTest {
   std::unique_ptr<YBClient> client_;
 };
 
+class MasterFailoverTestIndexCreation : public MasterFailoverTest {
+ public:
+  MasterFailoverTestIndexCreation() {
+    opts_.extra_tserver_flags.push_back("--allow_index_table_read_write=true");
+    opts_.extra_tserver_flags.push_back(
+        "--index_backfill_upperbound_for_user_enforced_txn_duration_ms=100");
+    opts_.extra_master_flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=50");
+    opts_.extra_master_flags.push_back("--disable_index_backfill=false");
+    // Sometimes during master failover we have the create index kick in before the tservers have
+    // checked in. By default we wait for enough TSs -- else we fail the create table/idx request.
+    // We don't have to wait for that in the tests here.
+    opts_.extra_master_flags.push_back("--catalog_manager_check_ts_count_for_create_table=false");
+  }
+};
+
 // Test that synchronous CreateTable (issue CreateTable call and then
 // wait until the table has been created) works even when the original
 // leader master has been paused.
@@ -175,14 +222,14 @@ TEST_F(MasterFailoverTest, DISABLED_TestCreateTableSync) {
     return;
   }
 
-  int leader_idx;
+  int leader_idx = -1;
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
   LOG(INFO) << "Pausing leader master";
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
-  YBTableName table_name("testCreateTableSync");
+  YBTableName table_name(YQL_DATABASE_CQL, "testCreateTableSync");
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
   ASSERT_OK(OpenTableAndScanner(table_name));
 }
@@ -199,10 +246,10 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
     return;
   }
 
-  int leader_idx;
+  int leader_idx = -1;
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  YBTableName table_name("testPauseAfterCreateTableIssued");
+  YBTableName table_name(YQL_DATABASE_CQL, "testPauseAfterCreateTableIssued");
   LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
   ASSERT_OK(CreateTable(table_name, kNoWaitForCreate));
 
@@ -217,6 +264,87 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
   ASSERT_OK(OpenTableAndScanner(table_name));
 }
 
+// Orchestrate a master failover at various points of a backfill,
+// ensure that the backfill eventually completes.
+TEST_F(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
+  YBTableName table_name(YQL_DATABASE_CQL, "test", "testPauseAfterCreateTableIssued");
+  LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
+  FLAGS_yb_num_total_tablets = 5;
+  ASSERT_OK(CreateTable(table_name, kWaitForCreate));
+  LOG(INFO) << "CreateTable done for " << table_name.ToString();
+
+  MonoDelta total_time_taken_for_one_iteration;
+  constexpr int kNumLoops = 10;
+  for (int i = 0; i < kNumLoops; i++) {
+    auto start = ToSteady(CoarseMonoClock::Now());
+    int leader_idx = -1;
+    ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+    ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
+
+    consensus::OpId op_id;
+    ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
+    ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(static_cast<int>(op_id.index())));
+
+    YBTableName index_table_name(
+        YQL_DATABASE_CQL, "test", "testPauseAfterCreateTableIssuedIdx" + yb::ToString(i));
+    LOG(INFO) << "Issuing CreateIndex for " << index_table_name.ToString();
+    ASSERT_OK(CreateIndex(table_name, index_table_name, kNoWaitForCreate));
+
+    if (i > 0) {
+      // In the first run, we estimate how long it takes for an uninterrupted
+      // backfill process to complete, then the remaining iterations kill the
+      // master leader at various points to cause the  master failover during
+      // the various stages of index backfill.
+      MonoDelta sleep_time = total_time_taken_for_one_iteration * i / kNumLoops;
+      LOG(INFO) << "Sleeping for " << sleep_time << ", before master pause";
+      SleepFor(sleep_time);
+
+      LOG(INFO) << "Pausing leader master 0-based: " << leader_idx << " i.e. m-"
+                << 1 + leader_idx;
+      ASSERT_OK(cluster_->master(leader_idx)->Pause());
+    }
+
+    IndexInfoPB index_info_pb;
+    TableId index_table_id;
+    const auto deadline = CoarseMonoClock::Now() + 900s;
+    do {
+      ASSERT_OK(client_->data_->WaitForCreateTableToFinish(
+          client_.get(), index_table_name, "" /* table_id */, deadline));
+      ASSERT_OK(client_->data_->WaitForCreateTableToFinish(
+          client_.get(), table_name, "" /* table_id */, deadline));
+
+      Result<YBTableInfo> table_info = client_->GetYBTableInfo(table_name);
+      ASSERT_TRUE(table_info);
+      Result<YBTableInfo> index_table_info = client_->GetYBTableInfo(index_table_name);
+      ASSERT_TRUE(index_table_info);
+
+      index_table_id = index_table_info->table_id;
+      index_info_pb.Clear();
+      table_info->index_map[index_table_id].ToPB(&index_info_pb);
+      YB_LOG_EVERY_N_SECS(INFO, 1) << "The index info for "
+                                   << index_table_name.ToString() << " is "
+                                   << yb::ToString(index_info_pb);
+
+      ASSERT_TRUE(index_info_pb.has_index_permissions());
+    } while (index_info_pb.index_permissions() <
+                 IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE &&
+             CoarseMonoClock::Now() < deadline);
+
+    EXPECT_EQ(index_info_pb.index_permissions(),
+              IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+    LOG(INFO) << "All good for iteration " << i;
+    ASSERT_OK(client_->DeleteIndexTable(index_table_name, nullptr, /* wait */ true));
+    ASSERT_OK(client_->data_->WaitForDeleteTableToFinish(
+        client_.get(), index_table_id, deadline));
+
+    // For the first round we just simply calculate the time it takes
+    if (i == 0) {
+      total_time_taken_for_one_iteration = ToSteady(CoarseMonoClock::Now()) - start;
+    }
+  }
+}
+
 // Test the scenario where we create a table, pause the leader master,
 // and then issue the DeleteTable call: DeleteTable should go to the newly
 // elected leader master and succeed.
@@ -226,11 +354,11 @@ TEST_F(MasterFailoverTest, TestDeleteTableSync) {
     return;
   }
 
-  int leader_idx;
+  int leader_idx = -1;
 
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  YBTableName table_name("testDeleteTableSync");
+  YBTableName table_name(YQL_DATABASE_CQL, "test", "testDeleteTableSync");
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
@@ -256,18 +384,18 @@ TEST_F(MasterFailoverTest, TestRenameTableSync) {
     return;
   }
 
-  int leader_idx;
+  int leader_idx = -1;
 
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  YBTableName table_name_orig("testAlterTableSync");
+  YBTableName table_name_orig(YQL_DATABASE_CQL, "test", "testAlterTableSync");
   ASSERT_OK(CreateTable(table_name_orig, kWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
-  YBTableName table_name_new("testAlterTableSyncRenamed");
+  YBTableName table_name_new(YQL_DATABASE_CQL, "test", "testAlterTableSyncRenamed");
   ASSERT_OK(RenameTable(table_name_orig, table_name_new));
   shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(table_name_new, &table));

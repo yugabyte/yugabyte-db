@@ -13,8 +13,9 @@
 
 #include "yb/master/util/yql_vtable_helpers.h"
 
-#include "yb/util/yb_partition.h"
+#include "yb/common/ql_value.h"
 
+#include "yb/util/yb_partition.h"
 #include "yb/util/net/dns_resolver.h"
 
 namespace yb {
@@ -107,6 +108,85 @@ PublicPrivateIPFutures GetPublicPrivateIPFutures(
   }
 
   return result;
+}
+
+const QLValuePB& GetValueHelper<QLValuePB>::Apply(
+    const QLValuePB& value_pb, const DataType data_type) {
+  return value_pb;
+}
+
+QLValuePB GetValueHelper<std::string>::Apply(const std::string& strval, const DataType data_type) {
+  QLValuePB value_pb;
+  switch (data_type) {
+    case STRING:
+      value_pb.set_string_value(strval);
+      break;
+    case BINARY:
+      value_pb.set_binary_value(strval);
+      break;
+    default:
+      LOG(ERROR) << "unexpected string type " << data_type;
+      break;
+  }
+  return value_pb;
+}
+
+QLValuePB GetValueHelper<std::string>::Apply(
+    const char* strval, size_t len, const DataType data_type) {
+  QLValuePB value_pb;
+  switch (data_type) {
+    case STRING:
+      value_pb.set_string_value(strval, len);
+      break;
+    case BINARY:
+      value_pb.set_binary_value(strval, len);
+      break;
+    default:
+      LOG(ERROR) << "unexpected string type " << data_type;
+      break;
+  }
+  return value_pb;
+}
+
+QLValuePB GetValueHelper<int32_t>::Apply(const int32_t intval, const DataType data_type) {
+  QLValuePB value_pb;
+  switch (data_type) {
+    case INT64:
+      value_pb.set_int64_value(intval);
+      break;
+    case INT32:
+      value_pb.set_int32_value(intval);
+      break;
+    case INT16:
+      value_pb.set_int16_value(intval);
+      break;
+    case INT8:
+      value_pb.set_int8_value(intval);
+      break;
+    default:
+      LOG(ERROR) << "unexpected int type " << data_type;
+      break;
+  }
+  return value_pb;
+}
+
+QLValuePB GetValueHelper<InetAddress>::Apply(
+    const InetAddress& inet_val, const DataType data_type) {
+  QLValuePB result;
+  QLValue::set_inetaddress_value(inet_val, &result);
+  return result;
+}
+
+QLValuePB GetValueHelper<Uuid>::Apply(const Uuid& uuid_val, const DataType data_type) {
+  QLValuePB result;
+  QLValue::set_uuid_value(uuid_val, &result);
+  return result;
+}
+
+QLValuePB GetValueHelper<bool>::Apply(const bool bool_val, const DataType data_type) {
+  QLValuePB value_pb;
+  value_pb.set_bool_value(bool_val);
+  return value_pb;
 }
 
 }  // namespace util

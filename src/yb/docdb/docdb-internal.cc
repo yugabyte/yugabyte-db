@@ -27,7 +27,7 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   }
 
   if (slice.size() > 0 && slice[0] == ValueTypeAsChar::kTransactionId) {
-    if (slice.size() == TransactionId::static_size() + 1) {
+    if (slice.size() == TransactionId::StaticSize() + 1) {
       return KeyType::kTransactionMetadata;
     } else {
       return KeyType::kReverseTxnKey;

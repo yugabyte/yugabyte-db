@@ -1,43 +1,3 @@
---
--- CREATE_INDEX
--- Create ancillary data structures (i.e. indices)
---
-
---
--- LSM
---
-CREATE INDEX onek_unique1 ON onek USING lsm(unique1 int4_ops);
-
-CREATE INDEX IF NOT EXISTS onek_unique1 ON onek USING lsm(unique1 int4_ops);
-
-CREATE INDEX IF NOT EXISTS ON onek USING lsm(unique1 int4_ops);
-
-CREATE INDEX onek_unique2 ON onek USING lsm(unique2 int4_ops);
-
-CREATE INDEX onek_hundred ON onek USING lsm(hundred int4_ops);
-
-CREATE INDEX onek_stringu1 ON onek USING lsm(stringu1 name_ops);
-
-CREATE INDEX tenk1_unique1 ON tenk1 USING lsm(unique1 int4_ops);
-
-CREATE INDEX tenk1_unique2 ON tenk1 USING lsm(unique2 int4_ops);
-
-CREATE INDEX tenk1_hundred ON tenk1 USING lsm(hundred int4_ops);
-
-CREATE INDEX tenk1_thous_tenthous ON tenk1 (thousand, tenthous);
-
-CREATE INDEX tenk2_unique1 ON tenk2 USING lsm(unique1 int4_ops);
-
-CREATE INDEX tenk2_unique2 ON tenk2 USING lsm(unique2 int4_ops);
-
-CREATE INDEX tenk2_hundred ON tenk2 USING lsm(hundred int4_ops);
-
-CREATE INDEX rix ON road USING lsm (name text_ops);
-
-CREATE INDEX iix ON ihighway USING lsm (name text_ops);
-
-CREATE INDEX six ON shighway USING lsm (name text_ops);
-
 CREATE INDEX onek_two_idx ON onek USING lsm(two);
 
 DROP INDEX onek_two_idx;
@@ -207,23 +167,22 @@ INSERT INTO test_unique VALUES (2, 2, 2);
 SELECT * FROM test_unique;
 
 -- Test cascade-truncate indexes
--- TODO(dmitry) Temporary commented out due to issue #1632
--- CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
--- CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
+CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
+CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
 
--- INSERT INTO test_truncate VALUES (1, 2);
--- INSERT INTO test_truncate VALUES (2, 2);
+INSERT INTO test_truncate VALUES (1, 2);
+INSERT INTO test_truncate VALUES (2, 2);
 
--- EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
--- SELECT b FROM test_truncate WHERE b = 2;
+EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
+SELECT b FROM test_truncate WHERE b = 2;
 
--- TRUNCATE test_truncate;
--- SELECT b FROM test_truncate WHERE b = 2;
+TRUNCATE test_truncate;
+SELECT b FROM test_truncate WHERE b = 2;
 
--- INSERT INTO test_truncate VALUES (2, 2);
--- INSERT INTO test_truncate VALUES (1, 2);
+INSERT INTO test_truncate VALUES (2, 2);
+INSERT INTO test_truncate VALUES (1, 2);
 
--- DROP TABLE test_truncate;
+DROP TABLE test_truncate;
 
 -- Test index methods
 CREATE TABLE test_method (k int PRIMARY KEY, v int);
@@ -238,7 +197,6 @@ CREATE TABLE test_include (c1 int, c2 int, c3 int);
 INSERT INTO test_include VALUES (1, 1, 1), (1, 2, 2), (2, 2, 2), (3, 3, 3);
 -- Expect duplicate key error
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
-DROP INDEX test_include_c1_c2_idx;
 DELETE FROM test_include WHERE c1 = 1 AND c2 = 2;
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
 EXPLAIN SELECT c1, c2 FROM test_include WHERE c1 = 1;

@@ -43,6 +43,9 @@ class PgColumn {
   PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlReadRequestPB *write_req);
   PgsqlExpressionPB *AllocBindPB(PgsqlReadRequestPB *read_req);
 
+  // Bindings for read requests.
+  PgsqlExpressionPB *AllocBindConditionExprPB(PgsqlReadRequestPB *read_req);
+
   // Assign values for write requests.
   PgsqlExpressionPB *AllocAssignPB(PgsqlWriteRequestPB *write_req);
 
@@ -106,13 +109,14 @@ class PgColumn {
 
   // Protobuf code.
   // Input binds. For now these are just literal values of the columns.
-  // - In Kudu API, for primary columns, their associated values in protobuf expression list must
+  // - In DocDB API, for primary columns, their associated values in protobuf expression list must
   //   strictly follow the order that was specified by CREATE TABLE statement while Postgres DML
   //   statements will not follow this order. Therefore, we reserve the spaces in protobuf
   //   structures for associated expressions of the primary columns in the specified order.
   // - During DML execution, the reserved expression spaces will be filled with actual values.
   // - The data-member "primary_exprs" is to map column id with the reserved expression spaces.
   PgsqlExpressionPB *bind_pb_ = nullptr;
+  PgsqlExpressionPB *bind_condition_expr_pb_ = nullptr;
 
   // Protobuf for new-values of a column in the tuple.
   PgsqlExpressionPB *assign_pb_ = nullptr;

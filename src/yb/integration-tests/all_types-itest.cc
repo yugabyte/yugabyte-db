@@ -37,6 +37,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/ts_itest-base.h"
@@ -266,10 +267,11 @@ class AllTypesItest : public YBTest {
 
   Status CreateTable() {
     CreateAllTypesSchema();
-    gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
 
-    const YBTableName table_name("my_keyspace", "all-types-table");
-    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
+    const YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "all-types-table");
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                                      table_name.namespace_type()));
     RETURN_NOT_OK(table_creator->table_name(table_name)
                   .schema(&schema_)
                   .num_tablets(kNumTablets)

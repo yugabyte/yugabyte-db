@@ -39,6 +39,7 @@
 #include "yb/client/schema-internal.h"
 #include "yb/client/value-internal.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -112,23 +113,6 @@ YBColumnSpec* YBColumnSpec::Counter() {
   return this;
 }
 
-YBColumnSpec* YBColumnSpec::JsonOp(JsonOperatorPB op, const QLValuePB& value) {
-  data_->json_ops.push_back(ColumnSchema::QLJsonOperation(op, value));
-  return this;
-}
-
-YBColumnSpec* YBColumnSpec::JsonOp(JsonOperatorPB op, const std::string& str_value) {
-  QLValuePB v;
-  v.set_string_value(str_value);
-  return JsonOp(op, v);
-}
-
-YBColumnSpec* YBColumnSpec::JsonOp(JsonOperatorPB op, int32_t int_value) {
-  QLValuePB v;
-  v.set_int32_value(int_value);
-  return JsonOp(op, v);
-}
-
 YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
   data_->has_rename_to = true;
   data_->rename_to = new_name;
@@ -153,7 +137,7 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 
   *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
                         data_->static_column, data_->is_counter, data_->order,
-                        data_->sorting_type, data_->json_ops);
+                        data_->sorting_type);
 
   return Status::OK();
 }
@@ -337,10 +321,9 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_static,
                                bool is_counter,
                                int32_t order,
-                               ColumnSchema::SortingType sorting_type,
-                               const ColumnSchema::QLJsonOperations& json_ops) {
+                               ColumnSchema::SortingType sorting_type) {
   col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter, order,
-                          sorting_type, json_ops);
+                          sorting_type);
 }
 
 YBColumnSchema::YBColumnSchema(const YBColumnSchema& other)
@@ -405,10 +388,6 @@ bool YBColumnSchema::is_counter() const {
 
 int32_t YBColumnSchema::order() const {
   return DCHECK_NOTNULL(col_)->order();
-}
-
-const ColumnSchema::QLJsonOperations& YBColumnSchema::json_ops() const {
-  return DCHECK_NOTNULL(col_)->json_ops();
 }
 
 ////////////////////////////////////////////////////////////
@@ -490,6 +469,14 @@ bool YBSchema::Equals(const YBSchema& other) const {
          (schema_.get() && other.schema_.get() && schema_->Equals(*other.schema_));
 }
 
+Result<bool> YBSchema::Equals(const SchemaPB& other) const {
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(other, &schema));
+
+  YBSchema yb_schema(schema);
+  return Equals(yb_schema);
+}
+
 const TableProperties& YBSchema::table_properties() const {
   return schema_->table_properties();
 }
@@ -546,6 +533,10 @@ void YBSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {
   for (int i = 0; i < num_key_columns(); i++) {
     (*indexes)[i] = i;
   }
+}
+
+string YBSchema::ToString() const {
+  return schema_->ToString();
 }
 
 } // namespace client

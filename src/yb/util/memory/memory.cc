@@ -381,4 +381,15 @@ void MemoryTrackingBufferAllocator::FreeInternal(Buffer* buffer) {
   mem_tracker_->Release(buffer->size());
 }
 
+std::string TcMallocStats() {
+#if defined(TCMALLOC_ENABLED)
+  char buf[20_KB];
+  MallocExtension::instance()->GetStats(buf, sizeof(buf));
+  return buf;
+#else
+  return "";
+#endif
+}
+
+
 }  // namespace yb

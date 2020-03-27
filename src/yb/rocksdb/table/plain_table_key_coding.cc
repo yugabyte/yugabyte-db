@@ -172,7 +172,7 @@ Status PlainTableKeyEncoder::AppendKey(const Slice& key,
     meta_bytes_buf[*meta_bytes_buf_size] = PlainTableFactory::kValueTypeSeqId0;
     *meta_bytes_buf_size += 1;
   } else {
-    file->Append(key_to_write);
+    RETURN_NOT_OK(file->Append(key_to_write));
     *offset += key_to_write.size();
   }
 
@@ -348,7 +348,7 @@ Status PlainTableKeyDecoder::NextPlainEncodingKey(uint32_t start_offset,
 Status PlainTableKeyDecoder::NextPrefixEncodingKey(
     uint32_t start_offset, ParsedInternalKey* parsed_key, Slice* internal_key,
     uint32_t* bytes_read, bool* seekable) {
-  PlainTableEntryType entry_type;
+  PlainTableEntryType entry_type = PlainTableEntryType::kFullKey;
 
   bool expect_suffix = false;
   Status s;

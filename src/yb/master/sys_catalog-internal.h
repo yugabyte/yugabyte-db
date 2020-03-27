@@ -78,11 +78,21 @@ class SysCatalogWriter {
     const bool is_write = (op_type == QLWriteRequestPB::QL_STMT_INSERT ||
                            op_type == QLWriteRequestPB::QL_STMT_UPDATE);
 
-    QLWriteRequestPB* ql_write = req_.add_ql_write_batch();
-    ql_write->set_type(op_type);
-
+    string diff;
     faststring metadata_buf;
     if (is_write) {
+      if (pb_util::ArePBsEqual(item->metadata().state().pb,
+                      item->metadata().dirty().pb,
+                      VLOG_IS_ON(2) ? &diff : nullptr)) {
+        // Short-circuit empty updates.
+        return Status::OK();
+      }
+    }
+    QLWriteRequestPB* ql_write = req_.add_ql_write_batch();
+    ql_write->set_type(op_type);
+    if (is_write) {
+      VLOG(2) << "Updating item " << item->id() << " in catalog: " << diff;
+
       if (!pb_util::SerializeToString(item->metadata().dirty().pb, &metadata_buf)) {
         return STATUS(Corruption, strings::Substitute(
             "Unable to serialize SysCatalog entry of type $0 for id $1.",
@@ -110,11 +120,16 @@ class SysCatalogWriter {
                                      const QLTableRow& source_row,
                                      const TableId& target_table_id,
                                      const Schema& target_schema,
-                                     const uint32_t target_schema_version) {
+                                     const uint32_t target_schema_version,
+                                     bool is_upsert) {
     PgsqlWriteRequestPB* pgsql_write = req_.add_pgsql_write_batch();
 
     pgsql_write->set_client(YQL_CLIENT_PGSQL);
-    pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_INSERT);
+    if (is_upsert) {
+      pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
+    } else {
+      pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_INSERT);
+    }
     pgsql_write->set_table_id(target_table_id);
     pgsql_write->set_schema_version(target_schema_version);
 

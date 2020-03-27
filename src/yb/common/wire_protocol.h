@@ -81,6 +81,10 @@ CHECKED_STATUS AddHostPortPBs(const std::vector<Endpoint>& addrs,
 void HostPortsToPBs(const std::vector<HostPort>& addrs,
                     google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
 
+// Convert list of HostPortPBs into host ports.
+void HostPortsFromPBs(const google::protobuf::RepeatedPtrField<HostPortPB>& pbs,
+                      std::vector<HostPort>* addrs);
+
 enum SchemaPBConversionFlags {
   SCHEMA_PB_WITHOUT_IDS = 1 << 0,
 };

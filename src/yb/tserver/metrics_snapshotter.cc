@@ -16,13 +16,30 @@
 #include <memory>
 #include <vector>
 #include <mutex>
+#include <set>
+
+#include <chrono>
+#include <thread>
+
+#ifdef __APPLE__
+#include <mach/mach_init.h>
+#include <mach/mach_error.h>
+#include <mach/mach_host.h>
+#include <mach/vm_map.h>
+#else
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#endif
+
+#include <sys/statvfs.h>
+#include <rapidjson/document.h>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/escaping.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
@@ -39,6 +56,9 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -117,7 +137,7 @@ class MetricsSnapshotter::Thread {
 
   CHECKED_STATUS DoPrometheusMetricsSnapshot(const client::TableHandle& table,
     shared_ptr<YBSession> session, const std::string& entity_type, const std::string& entity_id,
-    const std::string& metric_name, int64_t metric_val);
+    const std::string& metric_name, int64_t metric_val, const rapidjson::Document* details);
   CHECKED_STATUS DoMetricsSnapshot();
 
   void FlushSession(const std::shared_ptr<YBSession>& session,
@@ -128,6 +148,9 @@ class MetricsSnapshotter::Thread {
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
+
+  // Retrieves current cpu usage information.
+  Result<vector<uint64_t>> GetCpuUsage();
 
   // The server for which we are collecting metrics.
   TabletServer* const server_;
@@ -156,6 +179,12 @@ class MetricsSnapshotter::Thread {
   // Tokens from FLAGS_metrics_snapshotter_table_metrics_whitelist.
   std::unordered_set<std::string> table_metrics_whitelist_;
 
+  // Used to calculate CPU usage if enabled. Stores {total_ticks, user_ticks, system_ticks}.
+  vector<uint64_t> prev_ticks_ = {0, 0, 0};
+  bool first_run_cpu_ticks_ = true;
+
+  TabletServerOptions opts_;
+
   DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
@@ -165,7 +194,6 @@ class MetricsSnapshotter::Thread {
 
 MetricsSnapshotter::MetricsSnapshotter(const TabletServerOptions& opts, TabletServer* server)
   : thread_(new Thread(opts, server)) {
-
 }
 MetricsSnapshotter::~MetricsSnapshotter() {
   WARN_NOT_OK(Stop(), "Unable to stop metrics snapshotter thread");
@@ -191,7 +219,8 @@ static std::unordered_set<std::string> CSVToSet(const std::string& s) {
 MetricsSnapshotter::Thread::Thread(const TabletServerOptions& opts, TabletServer* server)
   : server_(server),
     cond_(&mutex_),
-    log_prefix_(Format("P $0: ", server_->permanent_uuid())) {
+    log_prefix_(Format("P $0: ", server_->permanent_uuid())),
+    opts_(opts) {
   VLOG_WITH_PREFIX(1) << "Initializing metrics snapshotter thread";
 
   // Parse whitelist elements out of flag.
@@ -255,7 +284,8 @@ void MetricsSnapshotter::Thread::FlushSession(const std::shared_ptr<YBSession>& 
 
 Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::TableHandle& table,
     shared_ptr<YBSession> session, const std::string& entity_type, const std::string& entity_id,
-    const std::string& metric_name, int64_t metric_val) {
+    const std::string& metric_name, int64_t metric_val,
+    const rapidjson::Document* details = nullptr) {
   auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto req = op->mutable_request();
 
@@ -264,7 +294,12 @@ Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::Tab
   QLAddStringRangeValue(req, entity_id);
   QLAddStringRangeValue(req, metric_name);
   QLAddTimestampRangeValue(req, DateTime::TimestampNow().ToInt64());
-  table.AddInt32ColumnValue(req, "value", metric_val);
+  table.AddInt64ColumnValue(req, "value", metric_val);
+  if (details != nullptr) {
+    common::Jsonb jsonb;
+    RETURN_NOT_OK(jsonb.FromRapidJson(*details));
+    table.AddJsonbColumnValue(req, "details", jsonb.MoveSerializedJsonb());
+  }
 
   req->set_ttl(FLAGS_metrics_snapshotter_ttl_ms);
   return session->Apply(op);
@@ -277,7 +312,8 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
 
-  const YBTableName kTableName(master::kSystemNamespaceName, kMetricsSnapshotsTableName);
+  const YBTableName kTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kMetricsSnapshotsTableName);
 
   client::TableHandle table;
   RETURN_NOT_OK(table.Open(kTableName, client_));
@@ -287,11 +323,85 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   NMSWriter nmswriter{&table_metrics, &server_metrics};
   WARN_NOT_OK(server_->metric_registry()->WriteForPrometheus(&nmswriter),
       "Couldn't write metrics for native metrics storage");
-
   for (const auto& kv : server_metrics) {
     if (tserver_metrics_whitelist_.find(kv.first) != tserver_metrics_whitelist_.end()) {
       RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
             server_->permanent_uuid(), kv.first, kv.second));
+    }
+  }
+
+  if (tserver_metrics_whitelist_.find("node_up") != tserver_metrics_whitelist_.end()) {
+    RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
+                                              server_->permanent_uuid(), "node_up",
+                                              1));
+  }
+
+  if (tserver_metrics_whitelist_.find("disk_usage") != tserver_metrics_whitelist_.end()) {
+    struct statvfs stat;
+    set<uint64_t> fs_ids;
+    std::vector<std::string> all_data_paths = opts_.fs_opts.data_paths;
+    all_data_paths.insert(
+      all_data_paths.end(), opts_.fs_opts.wal_paths.begin(), opts_.fs_opts.wal_paths.end());
+    for (const auto& path : all_data_paths) {
+      if (statvfs(path.c_str(), &stat) == 0 && fs_ids.insert(stat.f_fsid).second) {
+        uint64_t num_frags = static_cast<uint64_t>(stat.f_blocks);
+        uint64_t frag_size = static_cast<uint64_t>(stat.f_frsize);
+        uint64_t free_blocks = static_cast<uint64_t>(stat.f_bfree);
+        uint64_t total_disk = num_frags * frag_size;
+        uint64_t free_disk = free_blocks * frag_size;
+        RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "table",
+                                                  server_->permanent_uuid(), "total_disk",
+                                                  total_disk));
+        RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "table",
+                                                  server_->permanent_uuid(), "free_disk",
+                                                  free_disk));
+      }
+    }
+  }
+
+  if (tserver_metrics_whitelist_.find("cpu_usage") != tserver_metrics_whitelist_.end()) {
+    // Store the {total_ticks, user_ticks, and system_ticks}
+    auto cur_ticks = CHECK_RESULT(GetCpuUsage());
+    bool get_cpu_success = std::all_of(
+        cur_ticks.begin(), cur_ticks.end(), [](bool v) { return v > 0; });
+    if (get_cpu_success && first_run_cpu_ticks_) {
+      prev_ticks_ = cur_ticks;
+      first_run_cpu_ticks_ = false;
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      cur_ticks = CHECK_RESULT(GetCpuUsage());
+      get_cpu_success = std::all_of(
+          cur_ticks.begin(), cur_ticks.end(), [](bool v) { return v > 0; });
+    }
+
+    if (get_cpu_success) {
+      uint64_t total_ticks = cur_ticks[0] - prev_ticks_[0];
+      uint64_t user_ticks = cur_ticks[1] - prev_ticks_[1];
+      uint64_t system_ticks = cur_ticks[2] - prev_ticks_[2];
+      if (total_ticks <= 0) {
+        YB_LOG_EVERY_N_SECS(ERROR, 120) << Format("Failed to calculate CPU usage - "
+                                                 "invalid total CPU ticks: $0.", total_ticks);
+      } else {
+        double cpu_usage_user = static_cast<double>(user_ticks) / total_ticks;
+        double cpu_usage_system = static_cast<double>(system_ticks) / total_ticks;
+
+        // The value column is type bigint, so store real value in details.
+        rapidjson::Document details;
+        details.SetObject();
+        details.AddMember("value", cpu_usage_user, details.GetAllocator());
+        RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "table",
+                        server_->permanent_uuid(), "cpu_usage_user", 1000000 * cpu_usage_user,
+                        &details));
+
+        details.RemoveAllMembers();
+        details.AddMember("value", cpu_usage_system, details.GetAllocator());
+        RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "table",
+                        server_->permanent_uuid(), "cpu_usage_system", 1000000 * cpu_usage_system,
+                        &details));
+      }
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 120) << Format("Failed to retrieve cpu ticks. Got "
+                                                  "[total_ticks, user-ticks, system_ticks]=$0.",
+                                                  cur_ticks);
     }
   }
 
@@ -306,6 +416,51 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
 
   FlushSession(session);
   return Status::OK();
+}
+
+Result<vector<uint64_t>> MetricsSnapshotter::Thread::GetCpuUsage() {
+  uint64_t total_ticks = 0, total_user_ticks = 0, total_system_ticks = 0;
+#ifdef __APPLE__
+  host_cpu_load_info_data_t cpuinfo;
+  mach_msg_type_number_t count = HOST_CPU_LOAD_INFO_COUNT;
+  if (host_statistics(
+        mach_host_self(), HOST_CPU_LOAD_INFO, (host_info_t) &cpuinfo, &count) == KERN_SUCCESS) {
+    for (int i = 0; i < CPU_STATE_MAX; i++) {
+      total_ticks += cpuinfo.cpu_ticks[i];
+    }
+    total_user_ticks = cpuinfo.cpu_ticks[CPU_STATE_USER];
+    total_system_ticks = cpuinfo.cpu_ticks[CPU_STATE_SYSTEM];
+  } else {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << "Couldn't get CPU ticks, failed opening host_statistics "
+                                      << "with errno: " << strerror(errno);
+  }
+#else
+  FILE* file = fopen("/proc/stat", "r");
+  if (!file) {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << "Could not get CPU ticks: failed to open /proc/stat "
+                                      << "with errno: " << strerror(errno);
+  }
+  uint64_t user_ticks, user_nice_ticks, system_ticks, idle_ticks;
+  int scanned = fscanf(file, "cpu %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
+      &user_ticks, &user_nice_ticks, &system_ticks, &idle_ticks);
+  if (scanned <= 0) {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << Format("Failed to scan /proc/stat for cpu ticks "
+                                               "with error code=$0 and errno=$1.", scanned, errno);
+  } else if (scanned != 4) {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << Format("Failed to scan /proc/stat for cpu ticks. ",
+                                               "Expected 4 inputs but got $0.", scanned);
+  } else {
+    if (fclose(file)) {
+      YB_LOG_EVERY_N_SECS(WARNING, 120) << "Failed to close /proc/stat with errno: "
+                                        << strerror(errno);
+    }
+    total_ticks = user_ticks + user_nice_ticks + system_ticks + idle_ticks;
+    total_user_ticks = user_ticks + user_nice_ticks;
+    total_system_ticks = system_ticks;
+  }
+#endif
+  vector<uint64_t> ret = {total_ticks, total_user_ticks, total_system_ticks};
+  return ret;
 }
 
 void MetricsSnapshotter::Thread::RunThread() {

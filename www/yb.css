@@ -67,7 +67,8 @@ body {
 
 .nav-logo {
     display: inline-block;
-    height: 39px;
+    height: 42px;
+    width: auto;
     margin: 10px auto;
     padding-left: 5px;
 }

@@ -31,6 +31,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/server_fwd.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
@@ -66,8 +68,8 @@ class TransactionCoordinatorContext {
  public:
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
-  virtual server::Clock& clock() const = 0;
   virtual int64_t LeaderTerm() const = 0;
+  virtual const server::ClockPtr& clock_ptr() const = 0;
 
   // Returns current hybrid time lease expiration.
   // Valid only if we are leader.
@@ -78,6 +80,10 @@ class TransactionCoordinatorContext {
       tserver::TransactionStatePB* request) = 0;
   virtual void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
+
+  server::Clock& clock() const {
+    return *clock_ptr();
+  }
 
  protected:
   ~TransactionCoordinatorContext() {}
@@ -121,7 +127,7 @@ class TransactionCoordinator {
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
 
   // Prepares log garbage collection. Return min index that should be preserved.
-  int64_t PrepareGC();
+  int64_t PrepareGC(std::string* details = nullptr);
 
   // Starts background processes of transaction coordinator.
   void Start();
@@ -130,10 +136,13 @@ class TransactionCoordinator {
   // And like most of other Shutdowns in our codebase it wait until shutdown completes.
   void Shutdown();
 
-  CHECKED_STATUS GetStatus(const std::string& transaction_id,
+  CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+                           CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response);
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
+
+  std::string DumpTransactions();
 
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;

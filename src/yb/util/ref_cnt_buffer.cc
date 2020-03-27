@@ -25,15 +25,19 @@ RefCntBuffer::RefCntBuffer()
     : data_(nullptr) {
 }
 
+size_t RefCntBuffer::GetInternalBufSize(size_t data_size) {
+  return data_size + sizeof(CounterType) + sizeof(size_t);
+}
+
 RefCntBuffer::RefCntBuffer(size_t size)
-    : data_(static_cast<char*>(malloc(size + sizeof(CounterType) + sizeof(size_t)))) {
+    : data_(static_cast<char*>(malloc(GetInternalBufSize(size)))) {
   CHECK(data_ != nullptr);
   size_reference() = size;
   new (&counter_reference()) CounterType(1);
 }
 
-RefCntBuffer::RefCntBuffer(const char *data, size_t size)
-    : data_(static_cast<char *>(malloc(size + sizeof(CounterType) + sizeof(size_t)))) {
+RefCntBuffer::RefCntBuffer(const char* data, size_t size)
+    : data_(static_cast<char*>(malloc(GetInternalBufSize(size)))) {
   CHECK(data_ != nullptr);
   memcpy(this->data(), data, size);
   size_reference() = size;

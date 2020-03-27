@@ -37,7 +37,7 @@
 #include <thread>
 
 #include <boost/thread/shared_mutex.hpp>
-#include <boost/scope_exit.hpp>
+
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_metrics.h"
@@ -62,12 +62,14 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/util/shared_lock.h"
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;  // NOLINT.
@@ -82,7 +84,7 @@ DEFINE_int32(log_min_segments_to_retain, 2,
 TAG_FLAG(log_min_segments_to_retain, runtime);
 TAG_FLAG(log_min_segments_to_retain, advanced);
 
-DEFINE_int32(log_min_seconds_to_retain, 300,
+DEFINE_int32(log_min_seconds_to_retain, 900,
              "The minimum number of seconds for which to keep log segments to keep at all times, "
              "regardless of what is required for durability. Logs may be still retained for "
              "a longer amount of time if they are necessary for correct restart. This should be "
@@ -128,6 +130,16 @@ DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
             "If true, we consider all operations to be safe and will not wait"
             "for the opId to apply to the local log. i.e. WaitForSafeOpIdToApply "
             "becomes a noop.");
+
+// TaskStream flags.
+// We have to make the queue length really long.
+// TODO: Create new flags log_taskstream_queue_max_size and log_taskstream_queue_max_wait_ms
+// and deprecate these flags.
+DEFINE_int32(taskstream_queue_max_size, 100000,
+             "Maximum number of operations waiting in the taskstream queue.");
+
+DEFINE_int32(taskstream_queue_max_wait_ms, 1000,
+             "Maximum time in ms to wait for items in the taskstream queue to arrive.");
 
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
@@ -200,7 +212,9 @@ class Log::Appender {
 Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
     : log_(log),
       task_stream_(new TaskStream<LogEntryBatch>(
-          std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool)) {
+          std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool,
+          FLAGS_taskstream_queue_max_size,
+          MonoDelta::FromMilliseconds(FLAGS_taskstream_queue_max_wait_ms))) {
   DCHECK(dummy);
 }
 
@@ -259,14 +273,14 @@ void Log::Appender::GroupWork() {
   }
   TRACE_EVENT1("log", "batch", "batch_size", sync_batch_.size());
 
-  BOOST_SCOPE_EXIT(this_) {
-    if (this_->log_->metrics_) {
+  auto se = ScopeExit([this] {
+    if (log_->metrics_) {
       MonoTime time_now = MonoTime::Now();
-      this_->log_->metrics_->group_commit_latency->Increment(
-          time_now.GetDeltaSince(this_->time_started_).ToMicroseconds());
+      log_->metrics_->group_commit_latency->Increment(
+          time_now.GetDeltaSince(time_started_).ToMicroseconds());
     }
-    this_->sync_batch_.clear();
-  } BOOST_SCOPE_EXIT_END;
+    sync_batch_.clear();
+  });
 
   Status s = log_->Sync();
   if (PREDICT_FALSE(!s.ok())) {
@@ -310,7 +324,7 @@ void Log::SegmentAllocationTask() {
 }
 
 const Status Log::kLogShutdownStatus(
-    STATUS(ServiceUnavailable, "WAL is shutting down", "", ESHUTDOWN));
+    STATUS(ServiceUnavailable, "WAL is shutting down", "", Errno(ESHUTDOWN)));
 
 Status Log::Open(const LogOptions &options,
                  const std::string& tablet_id,
@@ -320,6 +334,7 @@ Status Log::Open(const LogOptions &options,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& metric_entity,
                  ThreadPool* append_thread_pool,
+                 int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log) {
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(tablet_wal_path)),
@@ -353,7 +368,6 @@ Log::Log(LogOptions options, string log_path,
       tablet_wal_path_(std::move(tablet_wal_path)),
       schema_(schema),
       schema_version_(schema_version),
-      active_segment_sequence_number_(0),
       log_state_(kLogInitialized),
       max_segment_size_(options_.segment_size_bytes),
       appender_(new Appender(this, append_thread_pool)),
@@ -365,6 +379,7 @@ Log::Log(LogOptions options, string log_path,
       metric_entity_(metric_entity),
       on_disk_size_(0),
       log_prefix_(Format("T $0 P $1: ", tablet_id_, peer_uuid_)) {
+  set_wal_retention_secs(options.retention_secs);
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_max_threads(1).Build(&allocation_pool_));
   if (metric_entity_) {
     metrics_.reset(new LogMetrics(metric_entity_));
@@ -394,6 +409,7 @@ Status Log::Init() {
     vector<scoped_refptr<ReadableLogSegment> > segments;
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     active_segment_sequence_number_ = segments.back()->header().sequence_number();
+    LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << segments.back()->path();
   }
 
   if (durable_wal_write_) {
@@ -419,7 +435,7 @@ Status Log::Init() {
 }
 
 Status Log::AsyncAllocateSegment() {
-  std::lock_guard<boost::shared_mutex> lock_guard(allocation_lock_);
+  std::lock_guard<decltype(allocation_mutex_)> lock_guard(allocation_mutex_);
   CHECK_EQ(allocation_state_, kAllocationNotStarted);
   allocation_status_.Reset();
   allocation_state_ = kAllocationInProgress;
@@ -446,6 +462,9 @@ Status Log::RollOver() {
 
   DCHECK_EQ(allocation_state(), kAllocationFinished);
 
+  LOG_WITH_PREFIX(INFO) << Format("Last appended opid in segment $0: $1", active_segment_->path(),
+                                  last_appended_entry_op_id_.ToString());
+
   RETURN_NOT_OK(Sync());
   RETURN_NOT_OK(CloseCurrentSegment());
 
@@ -461,7 +480,7 @@ Status Log::Reserve(LogEntryTypePB type,
   TRACE_EVENT0("log", "Log::Reserve");
   DCHECK(reserved_entry != nullptr);
   {
-    boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+    SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
     CHECK_EQ(kLogWriting, log_state_);
   }
 
@@ -487,7 +506,7 @@ Status Log::Reserve(LogEntryTypePB type,
 
 Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callback) {
   {
-    boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+    SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
     CHECK_EQ(kLogWriting, log_state_);
   }
 
@@ -617,7 +636,7 @@ Status Log::UpdateIndexForBatch(const LogEntryBatch& batch) {
   for (const LogEntryPB& entry_pb : batch.entry_batch_pb_.entry()) {
     LogIndexEntry index_entry;
 
-    index_entry.op_id = entry_pb.replicate().id();
+    index_entry.op_id = yb::OpId::FromPB(entry_pb.replicate().id());
     index_entry.segment_sequence_number = batch.active_segment_sequence_number_;
     index_entry.offset_in_segment = batch.offset_;
     RETURN_NOT_OK(log_index_->AddEntry(index_entry));
@@ -637,6 +656,7 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
     if (!footer_builder_.has_min_replicate_index() ||
         index < footer_builder_.min_replicate_index()) {
       footer_builder_.set_min_replicate_index(index);
+      min_replicate_index_.store(index, std::memory_order_release);
     }
     if (!footer_builder_.has_max_replicate_index() ||
         index > footer_builder_.max_replicate_index()) {
@@ -704,7 +724,8 @@ Status Log::Sync() {
 Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const {
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
   // 'min_op_idx'.
-  RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(min_op_idx, segments_to_gc));
+  RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
+      min_op_idx, cdc_min_replicated_index_.load(std::memory_order_acquire), segments_to_gc));
 
   int max_to_delete = std::max(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
   if (segments_to_gc->size() > max_to_delete) {
@@ -730,7 +751,7 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
     if (!segment->footer().has_close_timestamp_micros()) continue;
 
     int64_t age_seconds = (now - segment->footer().close_timestamp_micros()) / 1000000;
-    if (age_seconds < FLAGS_log_min_seconds_to_retain) {
+    if (age_seconds < wal_retention_secs()) {
       VLOG_WITH_PREFIX(2)
           << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
           << "cannot GC it yet due to configured time-based retention policy.";
@@ -783,8 +804,25 @@ Status Log::WaitUntilAllFlushed() {
   return s.Wait();
 }
 
+void Log::set_wal_retention_secs(uint32_t wal_retention_secs) {
+  LOG_WITH_PREFIX(INFO) << "Setting log wal retention time to " << wal_retention_secs << " seconds";
+  wal_retention_secs_.store(wal_retention_secs, std::memory_order_release);
+}
+
+uint32_t Log::wal_retention_secs() const {
+  uint32_t wal_retention_secs = wal_retention_secs_.load(std::memory_order_acquire);
+  auto flag_wal_retention = GetAtomicFlag(&FLAGS_log_min_seconds_to_retain);
+  return flag_wal_retention > 0 ?
+      std::max(wal_retention_secs, static_cast<uint32_t>(flag_wal_retention)) :
+      wal_retention_secs;
+}
+
 yb::OpId Log::GetLatestEntryOpId() const {
   return last_synced_entry_op_id_.load(boost::memory_order_acquire);
+}
+
+int64_t Log::GetMinReplicateIndex() const {
+  return min_replicate_index_.load(std::memory_order_acquire);
 }
 
 yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta duration) {
@@ -810,6 +848,8 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
       if (duration) {
         return yb::OpId();
       }
+      // TODO(bogdan): If the log is closed at this point, consider refactoring to return status
+      // and fail cleanly.
       LOG_WITH_PREFIX(DFATAL) << "Long wait for safe op id: " << min_allowed
                               << ", passed: " << (CoarseMonoClock::Now() - start);
     }
@@ -871,7 +911,7 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
   SegmentSequence segments_to_delete;
   *total_size = 0;
   {
-    boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+    SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
     if (log_state_ != kLogWriting) {
       return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
           log_state_, kLogWriting);
@@ -891,7 +931,7 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
 void Log::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx,
                                         std::map<int64_t, int64_t>* max_idx_to_segment_size)
                                         const {
-  boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
   CHECK_EQ(kLogWriting, log_state_);
   // We want to retain segments so we're only asking the extra ones.
   int segments_count = std::max(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
@@ -900,7 +940,7 @@ void Log::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx,
   }
 
   int64_t now = GetCurrentTimeMicros();
-  int64_t max_close_time_us = now - (FLAGS_log_min_seconds_to_retain * 1000000);
+  int64_t max_close_time_us = now - (wal_retention_secs() * 1000000);
   reader_->GetMaxIndexesToSegmentSizeMap(min_op_idx, segments_count, max_close_time_us,
                                          max_idx_to_segment_size);
 }
@@ -910,7 +950,7 @@ LogReader* Log::GetLogReader() const {
 }
 
 Status Log::GetSegmentsSnapshot(SegmentSequence* segments) const {
-  boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
   if (!reader_) {
     return STATUS(IllegalState, "Log already closed");
   }
@@ -973,8 +1013,13 @@ Status Log::Close() {
   }
 }
 
-scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) const {
+const int Log::num_segments() const {
   boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  return (reader_) ? reader_->num_segments() : 0;
+}
+
+scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) const {
+  SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
   if (!reader_) {
     return nullptr;
   }
@@ -1005,7 +1050,8 @@ Status Log::PreAllocateNewSegment() {
   CHECK_EQ(allocation_state(), kAllocationInProgress);
 
   WritableFileOptions opts;
-  opts.sync_on_close = durable_wal_write_;
+  // We always want to sync on close: https://github.com/yugabyte/yugabyte-db/issues/3490
+  opts.sync_on_close = true;
   opts.o_direct = durable_wal_write_;
   RETURN_NOT_OK(CreatePlaceholderSegment(opts, &next_segment_path_, &next_segment_file_));
 
@@ -1018,7 +1064,7 @@ Status Log::PreAllocateNewSegment() {
   }
 
   {
-    std::lock_guard<boost::shared_mutex> lock_guard(allocation_lock_);
+    std::lock_guard<boost::shared_mutex> lock_guard(allocation_mutex_);
     allocation_state_ = kAllocationFinished;
   }
   return Status::OK();
@@ -1033,9 +1079,7 @@ Status Log::SwitchToAllocatedSegment() {
       FsManager::GetWalSegmentFileName(tablet_wal_path_, active_segment_sequence_number_);
 
   RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
-  if (durable_wal_write_) {
-    RETURN_NOT_OK(get_env()->SyncDir(log_dir_));
-  }
+  RETURN_NOT_OK(get_env()->SyncDir(log_dir_));
 
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(
@@ -1054,7 +1098,7 @@ Status Log::SwitchToAllocatedSegment() {
 
   // Set the new segment's schema.
   {
-    boost::shared_lock<rw_spinlock> l(schema_lock_);
+    SharedLock<decltype(schema_lock_)> l(schema_lock_);
     SchemaToPB(schema_, header.mutable_schema());
     header.set_schema_version(schema_version_);
   }
@@ -1064,15 +1108,14 @@ Status Log::SwitchToAllocatedSegment() {
   // the segments for other peers.
   {
     if (active_segment_.get() != nullptr) {
-      std::lock_guard<percpu_rwlock> l(state_lock_);
+      std::lock_guard<decltype(state_lock_)> l(state_lock_);
       CHECK_OK(ReplaceSegmentInReaderUnlocked());
     }
   }
 
   // Open the segment we just created in readable form and add it to the reader.
   std::unique_ptr<RandomAccessFile> readable_file;
-  RETURN_NOT_OK(get_env()->NewRandomAccessFile(
-      RandomAccessFileOptions(), new_segment_path, &readable_file));
+  RETURN_NOT_OK(get_env()->NewRandomAccessFile(new_segment_path, &readable_file));
 
   scoped_refptr<ReadableLogSegment> readable_segment(
     new ReadableLogSegment(new_segment_path,
@@ -1084,7 +1127,10 @@ Status Log::SwitchToAllocatedSegment() {
   active_segment_.reset(new_segment.release());
   cur_max_segment_size_ = NextSegmentDesiredSize();
 
-  allocation_state_ = kAllocationNotStarted;
+  {
+    std::lock_guard<decltype(allocation_mutex_)> lock_guard(allocation_mutex_);
+    allocation_state_ = kAllocationNotStarted;
+  }
 
   return Status::OK();
 }
@@ -1122,7 +1168,6 @@ Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
 }
 
 uint64_t Log::active_segment_sequence_number() const {
-  boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
   return active_segment_sequence_number_;
 }
 

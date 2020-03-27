@@ -16,6 +16,7 @@
 #ifndef YB_UTIL_RESULT_H
 #define YB_UTIL_RESULT_H
 
+#include <string>
 #include <type_traits>
 
 #include "yb/util/status.h"
@@ -49,12 +50,6 @@ struct ResultTraits<TValue&> {
   static TValue* GetPtr(const Stored* value) { return *value; }
 };
 
-#ifdef __clang__
-#define NODISCARD_CLASS [[nodiscard]]
-#else
-#define NODISCARD_CLASS
-#endif
-
 template<class TValue>
 class NODISCARD_CLASS Result {
  public:
@@ -68,8 +63,7 @@ class NODISCARD_CLASS Result {
     }
   }
 
-  template<class UValue,
-           typename = typename std::enable_if<std::is_convertible<UValue, TValue>::value>::type>
+  template<class UValue, class = std::enable_if_t<std::is_convertible<UValue, TValue>::value>>
   Result(const Result<UValue>& rhs) : success_(rhs.success_) {
     if (success_) {
       new (&value_) typename Traits::Stored(rhs.value_);
@@ -86,6 +80,10 @@ class NODISCARD_CLASS Result {
     }
   }
 
+  // Forbid creation from Status::OK as value must be explicitly specified in case status is OK
+  Result(const Status::OK&) = delete; // NOLINT
+  Result(Status::OK&&) = delete; // NOLINT
+
   Result(const Status& status) : success_(false), status_(status) { // NOLINT
     CHECK(!status_.ok());
   }
@@ -97,17 +95,14 @@ class NODISCARD_CLASS Result {
   Result(const TValue& value) : success_(true), value_(Traits::ToStored(value)) {} // NOLINT
 
   template <class UValue,
-            typename = typename std::enable_if<
-                std::is_convertible<const UValue&, const TValue&>::value>::type>
+            class = std::enable_if_t<std::is_convertible<const UValue&, const TValue&>::value>>
   Result(const UValue& value) // NOLINT
       : success_(true), value_(Traits::ToStored(value)) {}
 
   Result(typename Traits::RValueReference value) // NOLINT
       : success_(true), value_(std::move(value)) {}
 
-  template <class UValue,
-            typename = typename std::enable_if<
-                std::is_convertible<UValue&&, TValue&&>::value>::type>
+  template <class UValue, class = std::enable_if_t<std::is_convertible<UValue&&, TValue&&>::value>>
   Result(UValue&& value) : success_(true), value_(std::move(value)) {} // NOLINT
 
   Result& operator=(const Result& rhs) {
@@ -126,8 +121,7 @@ class NODISCARD_CLASS Result {
     return *new (this) Result(std::move(rhs));
   }
 
-  template<class UValue,
-           typename = typename std::enable_if<std::is_convertible<UValue, TValue>::value>::type>
+  template<class UValue, class = std::enable_if_t<std::is_convertible<UValue, TValue>::value>>
   Result& operator=(const Result<UValue>& rhs) {
     this->~Result();
     return *new (this) Result(rhs);
@@ -150,9 +144,7 @@ class NODISCARD_CLASS Result {
     return *new (this) Result(value);
   }
 
-  template <class UValue,
-            typename = typename std::enable_if<
-                std::is_convertible<UValue&&, TValue&&>::value>::type>
+  template <class UValue, class = std::enable_if_t<std::is_convertible<UValue&&, TValue&&>::value>>
   Result& operator=(UValue&& value) {
     this->~Result();
     return *new (this) Result(std::move(value));
@@ -194,9 +186,10 @@ class NODISCARD_CLASS Result {
     CHECK(success_checked_);
 #endif
     CHECK(!success_);
-    return status_;
+    return std::move(status_);
   }
 
+  auto& get() const { return *get_ptr(); }
   auto& operator*() const& { return *get_ptr(); }
   auto& operator*() & { return *get_ptr(); }
 
@@ -235,6 +228,10 @@ class NODISCARD_CLASS Result {
     return Status::OK();
   }
 
+  std::string ToString() const {
+    return ok() ? AsString(**this) : status().ToString();
+  }
+
   ~Result() {
     if (success_) {
       Traits::Destroy(&value_);
@@ -258,58 +255,9 @@ class NODISCARD_CLASS Result {
 
 // Specify Result<bool> to avoid confusion with operator bool and operator!.
 template<>
-class Result<bool> {
- public:
-  Result(const Status& status) : state_(State::kFailed), status_(status) {} // NOLINT
-  Result(Status&& status) : state_(State::kFailed), status_(std::move(status)) {} // NOLINT
-  Result(bool value) : state_(value ? State::kTrue : State::kFalse) {} // NOLINT
-
-  bool ok() const {
-#ifndef NDEBUG
-    success_checked_ = true;
-#endif
-    return state_ != State::kFailed;
-  }
-
-  const Status& status() const {
-#ifndef NDEBUG
-    CHECK(success_checked_);
-#endif
-    CHECK(state_ == State::kFailed);
-    return status_;
-  }
-
-  Status& status() {
-#ifndef NDEBUG
-    CHECK(success_checked_);
-#endif
-    CHECK(state_ == State::kFailed);
-    return status_;
-  }
-
-  bool get() const {
-#ifndef NDEBUG
-    CHECK(success_checked_);
-#endif
-    CHECK(state_ != State::kFailed);
-    return state_ != State::kFalse;
-  }
-
-  bool operator*() const { return get(); }
-
- private:
-  enum class State : uint8_t {
-    kFalse,
-    kTrue,
-    kFailed,
-  };
-
-  State state_;
-#ifndef NDEBUG
-  mutable bool success_checked_ = false;
-#endif
-  Status status_; // Don't use Result, because default Status is cheap.
-};
+Result<bool>::operator bool() const = delete;
+template<>
+bool Result<bool>::operator!() const = delete;
 
 template<class TValue>
 Status&& MoveStatus(Result<TValue>&& result) {
@@ -331,11 +279,7 @@ std::ostream& operator<<(std::ostream& out, const Result<TValue>& result) {
   return result.ok() ? out << *result : out << result.status();
 }
 
-inline std::ostream& operator<<(std::ostream& out, const Result<bool>& result) {
-  return result.ok() ? out << result.get() : out << result.status();
-}
-
-template <class Functor>
+template<class Functor>
 class ResultToStatusAdaptor {
  public:
   explicit ResultToStatusAdaptor(const Functor& functor) : functor_(functor) {}
@@ -351,7 +295,7 @@ class ResultToStatusAdaptor {
   Functor functor_;
 };
 
-template <class Functor>
+template<class Functor>
 ResultToStatusAdaptor<Functor> ResultToStatus(const Functor& functor) {
   return ResultToStatusAdaptor<Functor>(functor);
 }
@@ -361,31 +305,66 @@ CHECKED_STATUS ResultToStatus(const Result<TValue>& result) {
   return result.ok() ? Status::OK() : result.status();
 }
 
+/*
+ * GNU statement expression extension forces to return value and not rvalue reference.
+ * As a result VERIFY_RESULT or similar helpers will call move or copy constructor of T even
+ * for Result<T&>/Result<const T&>
+ * To void this undesirable behavior for Result<T&>/Result<const T&> the std::reference_wrapper<T>
+ * is returned from statement.
+ * Next functions are the helps to implement this strategy
+ */
+template<class T>
+T&& WrapMove(Result<T>&& result) {
+  return std::move(*result);
+}
+
+template<class T>
+const T& WrapMove(const Result<T>& result) {
+  return *result;
+}
+
+template<class T>
+std::reference_wrapper<T> WrapMove(Result<T&>&& result) {
+  return std::reference_wrapper<T>(*result);
+}
+
+template<class T>
+std::reference_wrapper<T> WrapMove(const Result<T&>& result) {
+  return std::reference_wrapper<T>(*result);
+}
+
+#define RESULT_CHECKER_HELPER(expr, checker) \
+  __extension__ ({ auto&& __result = (expr); checker; WrapMove(std::move(__result)); })
+
 // Checks that result is ok, extracts result value is case of success.
 #define CHECK_RESULT(expr) \
-  __extension__ ({ auto&& __result = (expr); CHECK_OK(__result); std::move(*__result); })
+  RESULT_CHECKER_HELPER(expr, CHECK_OK(__result))
 
 // Returns if result is not ok, extracts result value is case of success.
 #define VERIFY_RESULT(expr) \
-  __extension__ ({ auto&& __result = (expr); RETURN_NOT_OK(__result); std::move(*__result); })
+  RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK(__result))
 
-// Returns if result is not ok, prepending status with provided message,
+
+// Helper version of VERIFY_RESULT which returns reference instead of std::reference_wrapper.
+#define VERIFY_RESULT_REF(expr) \
+  VERIFY_RESULT(expr).get()
+
+  // Returns if result is not ok, prepending status with provided message,
 // extracts result value is case of success.
 #define VERIFY_RESULT_PREPEND(expr, message) \
-  __extension__ ({ \
-    auto&& __result = (expr); RETURN_NOT_OK_PREPEND(__result, message); std::move(*__result); })
+  RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK_PREPEND(__result, message))
 
 // Asserts that result is ok, extracts result value is case of success.
 #define ASSERT_RESULT(expr) \
-  __extension__ ({ auto&& __result = (expr); ASSERT_OK(__result); std::move(*__result); })
+  RESULT_CHECKER_HELPER(expr, ASSERT_OK(__result))
 
 // Asserts that result is ok, extracts result value is case of success.
 #define EXPECT_RESULT(expr) \
-  __extension__ ({ auto&& __result = (expr); EXPECT_OK(__result); std::move(*__result); })
+  RESULT_CHECKER_HELPER(expr, EXPECT_OK(__result))
 
 // Asserts that result is ok, extracts result value is case of success.
 #define ASSERT_RESULT_FAST(expr) \
-  __extension__ ({ auto&& __result = (expr); ASSERT_OK_FAST(__result); std::move(*__result); })
+  RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
 } // namespace yb
 

@@ -206,18 +206,17 @@ SELECT voidtest2(11,22);
 -- currently, we can inline voidtest2 but not voidtest1
 EXPLAIN (verbose, costs off) SELECT voidtest2(11,22);
 
--- TODO(dmitry) uncomment once problem with temp table inside function will be fixed (#1541)
--- CREATE TEMP TABLE sometable(f1 int);
+CREATE TEMP TABLE sometable(f1 int);
 
--- CREATE FUNCTION voidtest3(a int) RETURNS VOID LANGUAGE SQL AS
--- $$ INSERT INTO sometable VALUES(a + 1) $$;
--- SELECT voidtest3(17);
+CREATE FUNCTION voidtest3(a int) RETURNS VOID LANGUAGE SQL AS
+$$ INSERT INTO sometable VALUES(a + 1) $$;
+SELECT voidtest3(17);
 
--- CREATE FUNCTION voidtest4(a int) RETURNS VOID LANGUAGE SQL AS
--- $$ INSERT INTO sometable VALUES(a - 1) RETURNING f1 $$;
--- SELECT voidtest4(39);
+CREATE FUNCTION voidtest4(a int) RETURNS VOID LANGUAGE SQL AS
+$$ INSERT INTO sometable VALUES(a - 1) RETURNING f1 $$;
+SELECT voidtest4(39);
 
--- TABLE sometable;
+TABLE sometable ORDER BY f1;
 
 CREATE FUNCTION voidtest5(a int) RETURNS SETOF VOID LANGUAGE SQL AS
 $$ SELECT generate_series(1, a) $$ STABLE;

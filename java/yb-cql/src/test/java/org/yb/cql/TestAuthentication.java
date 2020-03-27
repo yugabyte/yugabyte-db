@@ -305,6 +305,33 @@ public class TestAuthentication extends BaseAuthenticationCQLTest {
     s2.execute(alterStmt);
   }
 
+  // The previous test verifies that a non-superuser role cannot alter the superuser status of a
+  // superuser role. This test verifies that a non-superuser role cannot modify the superuser status
+  // of a non-superuser role.
+  @Test
+  public void testAlterSuperuserFieldOfNonSuperuserRole() throws Exception {
+    String password = "abc";
+    String nonSuperuser = "nosuperuser_role_123";
+    String anotherNonSuperuser = "another_nosuperuser_role_123";
+
+    testCreateRoleHelper(nonSuperuser, password, /* canLogin */ true, /* isSuperuser */ false);
+    getDefaultSession().execute(String.format("GRANT ALL ON ALL ROLES to %s", nonSuperuser));
+    getDefaultSession().execute(String.format("GRANT ALL ON ALL KEYSPACES to %s", nonSuperuser));
+
+    Session s2 = getSession(nonSuperuser, password);
+
+    // Using nonSuperuser role to create anotherNonSuperuser so that it automatically acquires all
+    // the permissions on anotherNonSuperuser.
+    testCreateRoleHelperWithSession(anotherNonSuperuser, password, /* canLogin */ true,
+            /* isSuperuser */false, /* verifyConnectivity */ false, /* Session */ s2);
+
+    // Try to modify the superuser status from anotherNonSuperuser to trigger the failure.
+    String alterStmt = String.format("ALTER ROLE %s WITH SUPERUSER = FALSE", anotherNonSuperuser);
+    thrown.expect(com.datastax.driver.core.exceptions.UnauthorizedException.class);
+    thrown.expectMessage("Only superusers are allowed to alter superuser status");
+    s2.execute(alterStmt);
+  }
+
   @Test
   public void testRoleCannotDeleteItself() throws Exception {
     String user = "delete_itself_role";

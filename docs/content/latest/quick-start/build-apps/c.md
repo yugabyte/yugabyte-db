@@ -1,7 +1,7 @@
 ---
-title: C
+title: Build a C application
 linkTitle: C
-description: Build a C App
+description: Build a C application
 aliases:
   - /develop/client-drivers/c/
   - /latest/develop/client-drivers/c/
@@ -10,6 +10,7 @@ menu:
     identifier: build-apps-c
     parent: build-apps
     weight: 557
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -39,4 +40,3 @@ menu:
   </div>
 -->
 </div>
-

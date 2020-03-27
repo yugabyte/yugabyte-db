@@ -1,7 +1,8 @@
 ---
-title: Build a Go App
-linkTitle: Build a Go App
-description: Build a Go App
+title: Use Go to build a YugabyteDB application
+headerTitle: Build a Go application
+linkTitle: Build a Go application
+description: Use Go to build a simple YugabyteDB application that uses the PostgreSQL JDBC driver and performs basic database operations.
 aliases:
   - /develop/client-drivers/go/
   - /latest/develop/client-drivers/go/
@@ -39,22 +40,31 @@ showAsideToc: true
   </li>
 </ul>
 
-## Prerequisites
+The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
 
-This tutorial assumes that you have:
+## Before you begin
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
-- installed Go version 1.8+
+This tutorial assumes that you have satisfied the following prerequisites.
 
-## Install Go PostgreSQL Driver
+### YugabyteDB
 
-To install the driver locally run:
+YugabyteDB is up and running. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+
+### Go
+
+[Go version 1.8](https://golang.org/dl/), or later, is installed.
+
+### Go PostgreSQL driver
+
+The [Go PostgreSQL driver package (`pq`)](https://godoc.org/github.com/lib/pq) is a Go PostgreSQL driver for the `database/sql` package.
+
+To install the package locally, run the following command:
 
 ```sh
 $ go get github.com/lib/pq
 ```
 
-## Sample app
+## Create the application
 
 Create a file `ybsql_hello_world.go` and copy the contents below.
 
@@ -72,9 +82,9 @@ import (
 const (
   host     = "127.0.0.1"
   port     = 5433
-  user     = "postgres"
-  password = "postgres"
-  dbname   = "postgres"
+  user     = "yugabyte"
+  password = "yugabyte"
+  dbname   = "yugabyte"
 )
 
 func main() {
@@ -129,7 +139,7 @@ func main() {
 }
 ```
 
-## Running the app
+## Run the application
 
 To execute the file, run the following command:
 

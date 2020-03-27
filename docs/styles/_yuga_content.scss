@@ -1,4 +1,4 @@
-/* Copyright (c) YugaByte, Inc. */
+/* Copyright (c) Yugabyte, Inc. */
 
 @import "./_colors.scss";
 @import "./mixins.scss";
@@ -26,7 +26,7 @@
 
     .admonition-title, .title  {
       font-size: 26px;
-      font-weight: 600;
+      font-weight: 500;
       letter-spacing: -0.02em;
       margin-bottom: 25px;
       margin-bottom: 30px;
@@ -80,4 +80,5 @@
 .article .expandable-image {
   display: block;
   width: 350px;
+  cursor: pointer;
 }

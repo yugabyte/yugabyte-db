@@ -44,12 +44,14 @@ class LLVMDependency(Dependency):
         self.copy_sources = False
 
     def build(self, builder):
+        prefix = builder.get_prefix('llvm7')
+
         # The LLVM build can fail if a different version is already installed
         # in the install prefix. It will try to link against that version instead
         # of the one being built.
         subprocess.check_call(
                 "rm -Rf {0}/include/{{llvm*,clang*}} {0}/lib/lib{{LLVM,LTO,clang}}* {0}/lib/clang/ "
-                        "{0}/lib/cmake/{{llvm,clang}}".format(builder.prefix), shell=True)
+                        "{0}/lib/cmake/{{llvm,clang}}".format(prefix), shell=True)
 
         python_executable = which('python')
         if not os.path.exists(python_executable):
@@ -61,7 +63,7 @@ class LLVMDependency(Dependency):
 
         builder.build_with_cmake(self,
                                  ['-DCMAKE_BUILD_TYPE=Release',
-                                  '-DCMAKE_INSTALL_PREFIX={}'.format(builder.prefix),
+                                  '-DCMAKE_INSTALL_PREFIX={}'.format(prefix),
                                   '-DLLVM_INCLUDE_DOCS=OFF',
                                   '-DLLVM_INCLUDE_EXAMPLES=OFF',
                                   '-DLLVM_INCLUDE_TESTS=OFF',
@@ -74,14 +76,9 @@ class LLVMDependency(Dependency):
                                  ],
                                  use_ninja='auto')
 
-        # Create a link from Clang to thirdparty/clang-toolchain. This path is used
-        # for all Clang invocations. The link can't point to the Clang installed in
-        # the prefix directory, since this confuses CMake into believing the
-        # thirdparty prefix directory is the system-wide prefix, and it omits the
-        # thirdparty prefix directory from the rpath of built binaries.
         link_path = os.path.join(builder.tp_dir, 'clang-toolchain')
         remove_path(link_path)
-        list_dest = os.path.relpath(os.getcwd(), builder.tp_dir)
+        list_dest = os.path.relpath(prefix, builder.tp_dir)
         log("Link {} => {}".format(link_path, list_dest))
         os.symlink(list_dest, link_path)
 

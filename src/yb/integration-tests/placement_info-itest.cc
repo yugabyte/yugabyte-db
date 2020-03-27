@@ -76,8 +76,8 @@ class PlacementInfoTest : public YBTest {
     b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
     b.AddColumn("int_val")->Type(INT32)->NotNull();
     CHECK_OK(b.Build(&schema));
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-    table_name_ = std::make_unique<YBTableName>("test_tablet_locations");
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    table_name_ = std::make_unique<YBTableName>(YQL_DATABASE_CQL, "test_tablet_locations");
     table_name_->set_namespace_name(yb::master::kSystemNamespaceName);
     CHECK_OK(table_creator->table_name(*table_name_)
                  .schema(&schema)

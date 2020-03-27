@@ -38,7 +38,8 @@ class ColumnDesc {
              const bool is_static,
              const bool is_counter,
              const std::shared_ptr<QLType>& ql_type,
-             const InternalType internal_type)
+             const InternalType internal_type,
+             bool has_mangled_name = false)
       : index_(index),
         id_(id),
         name_(name),
@@ -47,7 +48,8 @@ class ColumnDesc {
         is_static_(is_static),
         is_counter_(is_counter),
         ql_type_(ql_type),
-        internal_type_(internal_type) {
+        internal_type_(internal_type),
+        has_mangled_name_(has_mangled_name) {
   }
 
   int index() const {
@@ -58,7 +60,29 @@ class ColumnDesc {
     return id_;
   }
 
-  const std::string& name() const {
+  // User name (not mangled).
+  std::string name() const {
+    // Demangle "name_" if it was previous mangled (IndexTable has mangled column names).
+    if (has_mangled_name_) {
+      return YcqlName::DemangleName(name_);
+    }
+    return name_;
+  }
+
+  // Index column name (mangled).
+  std::string MangledName() const {
+    // Mangle "name_" if it was not previous mangled.
+    // When we load INDEX, the column name is already mangled (Except for older INDEX).
+    if (has_mangled_name_) {
+      return name_;
+    }
+    return YcqlName::MangleColumnName(name_);
+  }
+
+  // Return the name that is kept in catalog.
+  // - For Catalog::Table, user-defined-column name is not mangled.
+  // - For Catalong::IndexTable, expression-column name (ColumnRef, JsonRef, ...) is mangled.
+  std::string MetadataName() const {
     return name_;
   }
 
@@ -96,6 +120,10 @@ class ColumnDesc {
   bool is_counter_ = false;
   std::shared_ptr<QLType> ql_type_;
   InternalType internal_type_ = InternalType::VALUE_NOT_SET;
+  // Depending on whether the table object is user-table, old index-table, or new index-table, the
+  // column name might or might not be mangled. The member "has_mangled_name_" is added so that we
+  // don't have to concern about which object this column belongs to.
+  bool has_mangled_name_;
 };
 
 }  // namespace ql

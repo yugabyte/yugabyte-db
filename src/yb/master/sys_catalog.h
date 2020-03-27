@@ -34,12 +34,16 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/server/metadata.h"
+
+#include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 
@@ -152,10 +156,10 @@ class SysCatalogTable {
 
   CHECKED_STATUS Visit(VisitorBase* visitor);
 
-  // Copy the content of a co-located table in sys catalog.
-  CHECKED_STATUS CopyPgsqlTable(const TableId& source_table_id,
-                                const TableId& target_table_id,
-                                int64_t leader_term);
+  // Copy the content of co-located tables in sys catalog as a batch.
+  CHECKED_STATUS CopyPgsqlTables(const std::vector<TableId>& source_table_ids,
+                                 const std::vector<TableId>& target_table_ids,
+                                 int64_t leader_term);
 
   // Drop YSQL table by removing the table metadata in sys-catalog.
   CHECKED_STATUS DeleteYsqlSystemTable(const string& table_id);
@@ -217,6 +221,8 @@ class SysCatalogTable {
 
   MetricRegistry* metric_registry_;
 
+  scoped_refptr<MetricEntity> metric_entity_;
+
   gscoped_ptr<ThreadPool> inform_removed_master_pool_;
 
   // Thread pool for Raft-related operations
@@ -237,6 +243,8 @@ class SysCatalogTable {
   consensus::RaftPeerPB local_peer_pb_;
 
   scoped_refptr<Histogram> setup_config_dns_histogram_;
+
+  std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };

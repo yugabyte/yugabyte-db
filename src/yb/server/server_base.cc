@@ -73,6 +73,7 @@
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
+#include "yb/util/encryption_util.h"
 #include "yb/gutil/sysinfo.h"
 
 DEFINE_int32(num_reactor_threads, -1,
@@ -116,7 +117,19 @@ AtomicInt<int32_t> mem_tracker_id_counter(-1);
 
 std::string kServerMemTrackerName = "server";
 
-std::vector<MemTrackerPtr> common_mem_trackers;
+struct CommonMemTrackers {
+  std::vector<MemTrackerPtr> trackers;
+
+  ~CommonMemTrackers() {
+#if defined(TCMALLOC_ENABLED)
+    // Prevent root mem tracker from accessing common mem trackers.
+    auto root = MemTracker::GetRootTracker();
+    root->SetPollChildrenConsumptionFunctors(nullptr);
+#endif
+  }
+};
+
+std::unique_ptr<CommonMemTrackers> common_mem_trackers;
 
 } // anonymous namespace
 
@@ -131,7 +144,7 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
 
 #if defined(TCMALLOC_ENABLED)
 void RegisterTCMallocTracker(const char* name, const char* prop) {
-  common_mem_trackers.push_back(MemTracker::CreateTracker(
+  common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
       -1, "TCMalloc "s + name, std::bind(&MemTracker::GetTCMallocProperty, prop)));
 }
 #endif
@@ -154,10 +167,19 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   // When mem tracker for first server is created we register mem trackers that report tc malloc
   // status.
   if (mem_tracker_->id() == kServerMemTrackerName) {
+    common_mem_trackers = std::make_unique<CommonMemTrackers>();
+
     RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free_bytes");
     RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
     RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
     RegisterTCMallocTracker("PageHeap Free", "tcmalloc.pageheap_free_bytes");
+
+    auto root = MemTracker::GetRootTracker();
+    root->SetPollChildrenConsumptionFunctors([]() {
+          for (auto& tracker : common_mem_trackers->trackers) {
+            tracker->UpdateConsumption();
+          }
+        });
   }
 #endif
 
@@ -239,7 +261,7 @@ Status RpcServerBase::Init() {
 
   InitSpinLockContentionProfiling();
 
-  SetStackTraceSignal(SIGUSR2);
+  RETURN_NOT_OK(SetStackTraceSignal(SIGUSR2));
 
   // Initialize the clock immediately. This checks that the clock is synchronized
   // so we're less likely to get into a partially initialized state on disk during startup
@@ -433,12 +455,14 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
+  yb::enterprise::InitOpenSSL();
+
   Status s = fs_manager_->Open();
-  if (s.IsNotFound()) {
+  if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
     LOG(INFO) << "Creating new FS layout";
     is_first_run_ = true;
-    RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(),
+    RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(true),
                           "Could not create new FS layout");
     s = fs_manager_->Open();
   }
@@ -496,7 +520,7 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
 }
 
 string RpcAndWebServerBase::GetEasterEggMessage() const {
-  return "Congratulations on installing YugaByte DB. "
+  return "Congratulations on installing YugabyteDB. "
          "We'd like to welcome you to the community with a free t-shirt and pack of stickers! "
          "Please claim your reward here: <a href='https://www.yugabyte.com/community-rewards/'>"
          "https://www.yugabyte.com/community-rewards/</a>";

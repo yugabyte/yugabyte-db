@@ -25,6 +25,40 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/util/status.h"
 
+// Utility macro to setup error response and return if status is not OK.
+#define RPC_STATUS_RETURN_ERROR(s, error, code, context) do { \
+    auto s_tmp = (s); \
+    if (PREDICT_FALSE(!s_tmp.ok())) { \
+      SetupErrorAndRespond(error, s_tmp, code, &(context)); \
+      return; \
+    } \
+  } while (false)
+
+// Utility macros to perform the appropriate check. If the check fails,
+// returns the specified (error) Status, with the given message.
+#define RPC_CHECK_OP_AND_RETURN_ERROR(var1, op, var2, s, error, code, context) \
+  do { \
+    auto v1_tmp = (var1); \
+    auto v2_tmp = (var2); \
+    if (PREDICT_FALSE(!((v1_tmp)op(v2_tmp)))) { \
+      RPC_STATUS_RETURN_ERROR(s, error, code, context); \
+    } \
+  } while (false)
+
+#define RPC_CHECK_AND_RETURN_ERROR(expr, s, error, code, context) \
+  RPC_CHECK_OP_AND_RETURN_ERROR(expr, ==, true, s, error, code, context)
+#define RPC_CHECK_EQ_AND_RETURN_ERROR(var1, var2, s, error, code, context) \
+  RPC_CHECK_OP_AND_RETURN_ERROR(var1, ==, var2, s, error, code, context)
+#define RPC_CHECK_NE_AND_RETURN_ERROR(var1, var2, s, error, code, context) \
+  RPC_CHECK_OP_AND_RETURN_ERROR(var1, !=, var2, s, error, code, context)
+#define RPC_CHECK_GT_AND_RETURN_ERROR(var1, var2, s, error, code, context) \
+  RPC_CHECK_OP_AND_RETURN_ERROR(var1, >, var2, s, error, code, context)
+#define RPC_CHECK_GE_AND_RETURN_ERROR(var1, var2, s, error, code, context) \
+  RPC_CHECK_OP_AND_RETURN_ERROR(var1, >=, var2, s, error, code, context)
+#define RPC_CHECK_LT_AND_RETURN_ERROR(var1, var2, s, error, code, context) \
+  RPC_CHECK_OP_AND_RETURN_ERROR(var1, <, var2, s, error, code, context)
+#define RPC_CHECK_LE_AND_RETURN_ERROR(var1, var2, s, error, code, context) \
+  RPC_CHECK_OP_AND_RETURN_ERROR(var1, <=, var2, s, error, code, context)
 
 namespace yb {
 
@@ -42,13 +76,6 @@ void SetupErrorAndRespond(ErrType* error,
   StatusToPB(s, error->mutable_status());
   error->set_code(code);
   context->RespondSuccess();
-}
-
-template <class ErrType>
-void SetupErrorAndRespond(ErrType* error,
-                          const Status& s,
-                          rpc::RpcContext* context) {
-  SetupErrorAndRespond(error, s, static_cast<typename ErrType::Code>(s.error_code()), context);
 }
 
 } // namespace yb

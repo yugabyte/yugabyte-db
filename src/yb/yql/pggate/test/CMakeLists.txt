@@ -32,12 +32,14 @@ set(YB_TEST_LINK_LIBS pggate_test ${YB_MIN_TEST_LIBS})
 add_dependencies(pggate_test postgres)
 
 ADD_YB_TEST(pggate_test_select)
+ADD_YB_TEST(pggate_test_select_inequality)
 ADD_YB_TEST(pggate_test_select_multi_tablets)
 ADD_YB_TEST(pggate_test_delete)
 ADD_YB_TEST(pggate_test_update)
 ADD_YB_TEST(pggate_test_catalog)
 
 ADD_COMMON_YB_TEST_DEPENDENCIES(pggate_test_select
+                                pggate_select_inequality
                                 pggate_test_select_multi_tablets
                                 pggate_test_catalog)
 

@@ -36,20 +36,6 @@ namespace docdb {
 
 class IntentAwareIterator;
 
-// Seek to a given prefix and hybrid_time. If an expired value is found, it is still considered
-// "valid" for the purpose of this function, but the value get transformed into a tombstone (a
-// deletion marker).
-//
-// search_key is an encoded form of a SubDocKey with no timestamp. This identifies a subdocument
-// that we're trying to find the next RocksDB key/value pair.
-Status SeekToValidKvAtTs(
-    rocksdb::Iterator *iter,
-    const rocksdb::Slice &search_key,
-    HybridTime hybrid_time,
-    SubDocKey *found_key,
-    bool *is_found = nullptr,
-    Value *found_value = nullptr);
-
 // See to a rocksdb point that is at least sub_doc_key.
 // If the iterator is already positioned far enough, does not perform a seek.
 void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter);
@@ -59,13 +45,11 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
 // When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of
 // this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
 // enough, does not perform a seek.
-void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter);
 void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter);
 
 // Seek out of the given SubDocKey. For efficiency, the method that takes a non-const KeyBytes
 // pointer avoids memory allocation by using the KeyBytes buffer to prepare the key to seek to by
 // appending an extra byte. The appended byte is removed when the method returns.
-void SeekOutOfSubKey(const Slice& key, rocksdb::Iterator* iter);
 void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter);
 
 KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht);
@@ -78,19 +62,6 @@ void PerformRocksDBSeek(
     const rocksdb::Slice &seek_key,
     const char* file_name,
     int line);
-
-// Positions the iterator at the largest key k <= seek_key
-void PerformRocksDBReverseSeek(
-    rocksdb::Iterator *iter,
-    const rocksdb::Slice &seek_key,
-    const char *file_name,
-    int line);
-
-// Positions the iterator at the largest key k <= seek_key
-#define ROCKSDB_REVERSE_SEEK(iter, key) \
-  do { \
-    PerformRocksDBReverseSeek((iter), (key), __FILE__, __LINE__); \
-  } while (0)
 
 // TODO: is there too much overhead in passing file name and line here in release mode?
 #define ROCKSDB_SEEK(iter, key) \
@@ -131,6 +102,9 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr);
 
+// Request RocksDB compaction and wait until it completes.
+void ForceRocksDBCompact(rocksdb::DB* db);
+
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
 // the tablet.
@@ -138,6 +112,26 @@ void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options);
+
+// Sets logs prefix for RocksDB options. This will also reinitialize options->info_log.
+void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix);
+
+// Class to edit RocksDB manifest w/o fully loading DB into memory.
+class RocksDBPatcher {
+ public:
+  explicit RocksDBPatcher(const std::string& dbpath, const rocksdb::Options& options);
+  ~RocksDBPatcher();
+
+  // Loads DB into patcher.
+  CHECKED_STATUS Load();
+
+  // Set hybrid time filter for DB.
+  CHECKED_STATUS SetHybridTimeFilter(HybridTime value);
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
 
 }  // namespace docdb
 }  // namespace yb

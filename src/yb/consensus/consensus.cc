@@ -64,9 +64,10 @@ ConsensusRound::ConsensusRound(Consensus* consensus,
   DCHECK_NOTNULL(replicate_msg_.get());
 }
 
-void ConsensusRound::NotifyReplicationFinished(const Status& status, int64_t leader_term) {
+void ConsensusRound::NotifyReplicationFinished(
+    const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
   if (PREDICT_FALSE(replicated_cb_ == nullptr)) return;
-  replicated_cb_(status, leader_term);
+  replicated_cb_(status, leader_term, applied_op_ids);
 }
 
 Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
@@ -80,8 +81,8 @@ Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
   return Status::OK();
 }
 
-LeaderStatus Consensus::GetLeaderStatus() const {
-  return GetLeaderState().status;
+LeaderStatus Consensus::GetLeaderStatus(bool allow_stale) const {
+  return GetLeaderState(allow_stale).status;
 }
 
 int64_t Consensus::LeaderTerm() const {
@@ -119,6 +120,18 @@ Status Consensus::ExecuteHook(HookPoint point) {
     }
   }
   return Status::OK();
+}
+
+Result<yb::OpId> Consensus::GetLastOpId(OpIdType type) {
+  switch (type) {
+    case OpIdType::RECEIVED_OPID:
+      return GetLastReceivedOpId();
+    case OpIdType::COMMITTED_OPID:
+      return GetLastCommittedOpId();
+    case OpIdType::UNKNOWN_OPID_TYPE:
+      break;
+  }
+  return STATUS(InvalidArgument, "Unsupported OpIdType", OpIdType_Name(type));
 }
 
 LeaderState& LeaderState::MakeNotReadyLeader(LeaderStatus status_) {

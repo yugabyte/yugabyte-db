@@ -52,7 +52,6 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/threadpool.h"
 
-
 namespace yb {
 
 class MetricRegistry;
@@ -100,7 +99,7 @@ class TabletStatusListener {
   const Schema& schema() const;
 
   std::string last_status() const {
-    boost::shared_lock<boost::shared_mutex> l(lock_);
+    SharedLock<boost::shared_mutex> l(lock_);
     return last_status_;
   }
 
@@ -114,21 +113,10 @@ class TabletStatusListener {
 };
 
 struct BootstrapTabletData {
-  RaftGroupMetadataPtr meta;
-  std::shared_future<client::YBClient*> client_future;
-  scoped_refptr<server::Clock> clock;
-  std::shared_ptr<MemTracker> mem_tracker;
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker;
-  MetricRegistry* metric_registry;
-  TabletStatusListener* listener;
-  scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
-  TabletOptions tablet_options;
-  std::string log_prefix_suffix;
-  TransactionParticipantContext* transaction_participant_context;
-  client::LocalTabletFilter local_tablet_filter;
-  TransactionCoordinatorContext* transaction_coordinator_context;
-  ThreadPool* append_pool;
-  consensus::RetryableRequests* retryable_requests;
+  TabletInitData tablet_init_data;
+  TabletStatusListener* listener = nullptr;
+  ThreadPool* append_pool = nullptr;
+  consensus::RetryableRequests* retryable_requests = nullptr;
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet
@@ -139,7 +127,7 @@ struct BootstrapTabletData {
 // TSTabletManager.
 CHECKED_STATUS BootstrapTablet(
     const BootstrapTabletData& data,
-    std::shared_ptr<TabletClass>* rebuilt_tablet,
+    TabletPtr* rebuilt_tablet,
     scoped_refptr<log::Log>* rebuilt_log,
     consensus::ConsensusBootstrapInfo* consensus_info);
 

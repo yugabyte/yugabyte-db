@@ -104,37 +104,32 @@ void WriteOperation::DoStart() {
   state()->tablet()->StartOperation(state());
 }
 
+Status WriteOperation::DoAborted(const Status& status) {
+  TRACE("FINISH: aborting operation");
+  state()->Abort();
+  return status;
+}
+
 // FIXME: Since this is called as a void in a thread-pool callback,
 // it seems pointless to return a Status!
-Status WriteOperation::Apply(int64_t leader_term) {
-  TRACE_EVENT0("txn", "WriteOperation::Apply");
+Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
+  TRACE_EVENT0("txn", "WriteOperation::Complete");
   TRACE("APPLY: Starting");
 
-  if (PREDICT_FALSE(
-          ANNOTATE_UNPROTECTED_READ(FLAGS_tablet_inject_latency_on_apply_write_txn_ms) > 0)) {
+  auto injected_latency = GetAtomicFlag(&FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
+  if (PREDICT_FALSE(injected_latency) > 0) {
       TRACE("Injecting $0ms of latency due to --tablet_inject_latency_on_apply_write_txn_ms",
-            FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
-      SleepFor(MonoDelta::FromMilliseconds(FLAGS_tablet_inject_latency_on_apply_write_txn_ms));
+            injected_latency);
+      SleepFor(MonoDelta::FromMilliseconds(injected_latency));
   } else {
     TEST_PAUSE_IF_FLAG(tablet_pause_apply_write_ops);
   }
 
-  Tablet* tablet = state()->tablet();
+  *complete_status = state()->tablet()->ApplyRowOperations(state());
+  // Failure is regular case, since could happen because transaction was aborted, while
+  // replicating it's intents.
+  LOG_IF(INFO, !complete_status->ok()) << "Apply operation failed: " << *complete_status;
 
-  tablet->ApplyRowOperations(state());
-
-  return Status::OK();
-}
-
-void WriteOperation::Finish(OperationResult result) {
-  TRACE_EVENT0("txn", "WriteOperation::Finish");
-  if (PREDICT_FALSE(result == Operation::ABORTED)) {
-    TRACE("FINISH: aborting operation");
-    state()->Abort();
-    return;
-  }
-
-  DCHECK_EQ(result, Operation::COMMITTED);
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("FINISH: making edits visible");
@@ -145,6 +140,8 @@ void WriteOperation::Finish(OperationResult result) {
     auto op_duration_usec = MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds();
     metrics->write_op_duration_client_propagated_consistency->Increment(op_duration_usec);
   }
+
+  return Status::OK();
 }
 
 string WriteOperation::ToString() const {

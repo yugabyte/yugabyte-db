@@ -38,12 +38,14 @@
 #include <glog/logging.h>
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/util/errno.h"
 #include "yb/util/rw_semaphore.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 
@@ -53,19 +55,19 @@ using base::subtle::Release_Store;
 
 // Wrapper around the Google SpinLock class to adapt it to the method names
 // expected by Boost.
-class simple_spinlock {
+class CAPABILITY("mutex") simple_spinlock {
  public:
   simple_spinlock() {}
 
-  void lock() EXCLUSIVE_LOCK_FUNCTION() {
+  void lock() ACQUIRE() {
     l_.Lock();
   }
 
-  void unlock() UNLOCK_FUNCTION() {
+  void unlock() RELEASE() {
     l_.Unlock();
   }
 
-  bool try_lock() EXCLUSIVE_TRYLOCK_FUNCTION(true) {
+  bool try_lock() TRY_ACQUIRE(true) {
     return l_.TryLock();
   }
 
@@ -99,7 +101,7 @@ struct padded_spinlock : public simple_spinlock {
 // annotations also assume that the same thread the takes the lock will unlock it.
 //
 // See rw_semaphore.h for documentation on the individual methods where unclear.
-class rw_spinlock {
+class CAPABILITY("mutex") rw_spinlock  {
  public:
   rw_spinlock() {
     ANNOTATE_RWLOCK_CREATE(this);
@@ -163,7 +165,7 @@ class rw_spinlock {
 //
 //   // Lock shared:
 //   {
-//     boost::shared_lock<rw_spinlock> lock(mylock.get_lock());
+//     SharedLock<rw_spinlock> lock(mylock.get_lock());
 //     ...
 //   }
 //
@@ -250,7 +252,7 @@ class percpu_rwlock {
   padded_lock *locks_;
 };
 
-// Simple implementation of the std::shared_lock API, which is not available in
+// Simple implementation of the SharedLock API, which is not available in
 // the standard library until C++14. Defers error checking to the underlying
 // mutex.
 

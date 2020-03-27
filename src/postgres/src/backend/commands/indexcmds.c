@@ -200,7 +200,7 @@ CheckIndexCompatible(Oid oldId,
 	indexInfo->ii_ExclusionStrats = NULL;
 	indexInfo->ii_Am = accessMethodId;
 	indexInfo->ii_AmCache = NULL;
-	indexInfo->ii_Context = CurrentMemoryContext;
+	indexInfo->ii_Context = GetCurrentMemoryContext();
 	typeObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
 	collationObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
 	classObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
@@ -572,16 +572,16 @@ DefineIndex(Oid relationId,
 	{
 		if (accessMethodName == NULL)
 		{
-			accessMethodName = IsYBRelation(rel) ? "lsm" : DEFAULT_INDEX_TYPE;
+			accessMethodName = IsYBRelation(rel) ? DEFAULT_YB_INDEX_TYPE : DEFAULT_INDEX_TYPE;
 		}
 		else if (IsYBRelation(rel))
 		{
 			if (strcmp(accessMethodName, "btree") == 0 || strcmp(accessMethodName, "hash") == 0)
 			{
 				ereport(NOTICE,
-						(errmsg("index method \"%s\" was replaced with \"lsm\" in YugaByte DB",
-								accessMethodName)));
-				accessMethodName = "lsm";
+						(errmsg("index method \"%s\" was replaced with \"%s\" in YugabyteDB",
+								accessMethodName, DEFAULT_YB_INDEX_TYPE)));
+				accessMethodName = DEFAULT_YB_INDEX_TYPE;
 			}
 		}
 	}
@@ -682,7 +682,7 @@ DefineIndex(Oid relationId,
 	indexInfo->ii_ParallelWorkers = 0;
 	indexInfo->ii_Am = accessMethodId;
 	indexInfo->ii_AmCache = NULL;
-	indexInfo->ii_Context = CurrentMemoryContext;
+	indexInfo->ii_Context = GetCurrentMemoryContext();
 
 	typeObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
 	collationObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
@@ -890,7 +890,7 @@ DefineIndex(Oid relationId,
 					 stmt->oldNode, indexInfo, indexColNames,
 					 accessMethodId, tablespaceId,
 					 collationObjectId, classObjectId,
-					 coloptions, reloptions,
+					 coloptions, reloptions, stmt->options,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId);

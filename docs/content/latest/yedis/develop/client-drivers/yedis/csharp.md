@@ -1,19 +1,36 @@
-## Pre-requisites
+---
+title: Build a YugabyteDB YEDIS application using C#
+headerTitle: Build an application using C#
+linkTitle: C#
+description: Use C# to build a YugabyteDB application that interacts with YEDIS
+aliases:
+ - /latest/yedis/develop/client-drivers/csharp
+menu:
+  latest:
+    identifier: client-drivers-yedis-csharp
+    parent: develop-yedis
+isTocNested: true
+showAsideToc: true
+---
+
+## Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-redis/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start).
 - installed Visual Studio
 
-## Writing a HelloWorld C# app
+## Write a HelloWorld C# application
+
 In your Visual Studio create a new Project and choose Console Application as template. Follow the instructions to save the project.
 
 ### Install StackExchange.Redis C# driver
-To install the driver in your Visual Studio project
+
+To install the driver in your Visual Studio project:
+
 <ol>
   <li>Open your Project Solution View.</li>
   <li>Right-click on Packages and click Add Packages.</li>
-  ![Add Package](/images/develop/client-drivers/csharp/visual-studio-add-package.png)
   <li>Search for StackExchange.Redis and click Add Package.</li>
   ![Search Package](/images/develop/client-drivers/csharp/visual-studio-search-redis-package.png)
 </ol>
@@ -25,7 +42,7 @@ using System;
 using System.Collections.Generic;
 using StackExchange.Redis;
 
-namespace YugaByte_CSharp_Demo
+namespace Yugabyte_CSharp_Demo
 {
     class Program
     {
@@ -47,7 +64,7 @@ namespace YugaByte_CSharp_Demo
                         { "127.0.0.1", 6379 },
                     },
                     CommandMap = CommandMap.Create(new HashSet<string>
-                    {   // EXCLUDE commands that are not fully supported on YugaByte side.
+                    {   // EXCLUDE commands that are not fully supported on YugabyteDB side.
                         "SUBSCRIBE", "CLUSTER", "TIME", "PING"
                     }, available: false)
                 };
@@ -71,7 +88,7 @@ namespace YugaByte_CSharp_Demo
             }
             catch (RedisConnectionException e)
             {
-                Console.WriteLine("Unable to make a connection to local YugaByte DB. " +
+                Console.WriteLine("Unable to make a connection to local YugabyteDB. " +
                                   "Error:", e.Message);
             }
         }
@@ -79,8 +96,9 @@ namespace YugaByte_CSharp_Demo
 }
 ```
 
-### Running the C# app
-Run the C# app from menu select `Run -> Start Without Debugging`
+### Run the application
+
+Run the C# application from menu select `Run -> Start Without Debugging`
 
 You should see the following as the output.
 

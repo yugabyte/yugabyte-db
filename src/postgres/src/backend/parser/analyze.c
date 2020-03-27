@@ -155,6 +155,13 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 
 	query = transformTopLevelStmt(pstate, parseTree);
 
+	if (pstate->p_target_relation &&
+		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+		&& IsYugaByteEnabled())
+	{
+		SetTxnWithPGRel();
+	}
+
 	/* make sure all is well with parameter types */
 	check_variable_parameters(pstate, query);
 
@@ -860,7 +867,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		qry->targetList = lappend(qry->targetList, tle);
 
 		rte->insertedCols = bms_add_member(rte->insertedCols,
-										   attr_num - FirstLowInvalidHeapAttributeNumber);
+										   attr_num - YBGetFirstLowInvalidAttributeNumber(pstate->p_target_relation));
 
 		icols = lnext(icols);
 		attnos = lnext(attnos);
@@ -2363,8 +2370,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 			YBCPgTableDesc ybc_tabledesc = NULL;
 			bool is_primary = false;
 			bool is_hash = false;
-			HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-											 YBCGetDatabaseOid(pstate->p_target_relation),
+			HandleYBStatus(YBCPgGetTableDesc(YBCGetDatabaseOid(pstate->p_target_relation),
 											 RelationGetRelid(pstate->p_target_relation),
 											 &ybc_tabledesc));
 			HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_tabledesc,
@@ -2387,7 +2393,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 
 		/* Mark the target column as requiring update permissions */
 		target_rte->updatedCols = bms_add_member(target_rte->updatedCols,
-												 attrno - FirstLowInvalidHeapAttributeNumber);
+												 attrno - YBGetFirstLowInvalidAttributeNumber(pstate->p_target_relation));
 
 		orig_tl = lnext(orig_tl);
 	}

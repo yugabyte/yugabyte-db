@@ -42,12 +42,25 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <gtest/gtest.h>
 
+#if defined(TCMALLOC_ENABLED)
+#include <gperftools/heap-profiler.h>
+#endif
+
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
+
+#include "yb/rpc/secure_stream.h"
 #include "yb/rpc/serialization.h"
+#include "yb/rpc/tcp_stream.h"
+#include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/test_util.h"
+
+#include "yb/util/memory/memory_usage_test_util.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_rpc_test_CalculatorService_Sleep);
 METRIC_DECLARE_histogram(rpc_incoming_queue_time);
@@ -58,6 +71,9 @@ DEFINE_int32(rpc_test_connection_keepalive_num_iterations, 1,
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_int32(num_connections_to_server);
 DECLARE_bool(enable_rpc_keepalive);
+DECLARE_int64(memory_limit_hard_bytes);
+DECLARE_bool(TEST_pause_calculator_echo_request);
+DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
 
 using namespace std::chrono_literals;
 using std::string;
@@ -97,7 +113,7 @@ void CheckParseEndpoint(const std::string& input, std::string expected = std::st
   }
   auto endpoint = ParseEndpoint(input, kDefaultPort);
   ASSERT_TRUE(endpoint.ok()) << "input: " << input << ", status: " << endpoint.status().ToString();
-  ASSERT_EQ(expected, yb::ToString(*endpoint));
+  ASSERT_EQ(expected, AsString(*endpoint));
 }
 
 } // namespace
@@ -110,10 +126,10 @@ TEST_F(TestRpc, Endpoint) {
   ASSERT_FALSE(addr2 < addr1);
   ASSERT_EQ(1000, addr1.port());
   ASSERT_EQ(2000, addr2.port());
-  ASSERT_EQ(string("0.0.0.0:1000"), yb::ToString(addr1));
-  ASSERT_EQ(string("0.0.0.0:2000"), yb::ToString(addr2));
+  ASSERT_EQ(string("0.0.0.0:1000"), AsString(addr1));
+  ASSERT_EQ(string("0.0.0.0:2000"), AsString(addr2));
   Endpoint addr3(addr1);
-  ASSERT_EQ(string("0.0.0.0:1000"), yb::ToString(addr3));
+  ASSERT_EQ(string("0.0.0.0:1000"), AsString(addr3));
 
   CheckParseEndpoint("127.0.0.1", "127.0.0.1:80");
   CheckParseEndpoint("192.168.0.1:123");
@@ -162,7 +178,7 @@ TEST_F(TestRpc, TestCall) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   for (int i = 0; i < 10; i++) {
@@ -170,9 +186,31 @@ TEST_F(TestRpc, TestCall) {
   }
 }
 
+TEST_F(TestRpc, BigTimeout) {
+  // Set up server.
+  TestServerOptions options;
+  options.messenger_options.keep_alive_timeout = 60s;
+  HostPort server_addr;
+  StartTestServer(&server_addr, options);
+
+  // Set up client.
+  LOG(INFO) << "Connecting to " << server_addr;
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
+  Proxy p(client_messenger.get(), server_addr);
+
+  for (int i = 0; i < 10; i++) {
+    ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
+  }
+
+  LOG(INFO) << "Calls OK";
+
+  auto call_consumption = MemTracker::GetRootTracker()->FindChild("Call")->consumption();
+  ASSERT_EQ(call_consumption, 0);
+}
+
 // Test that connecting to an invalid server properly throws an error.
 TEST_F(TestRpc, TestCallToBadServer) {
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   HostPort addr;
   Proxy p(client_messenger.get(), addr);
 
@@ -193,7 +231,7 @@ TEST_F(TestRpc, TestInvalidMethodCall) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Call the method which fails.
@@ -212,7 +250,7 @@ TEST_F(TestRpc, TestWrongService) {
   StartTestServer(&server_addr);
 
   // Set up client with the wrong service name.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Call the method which fails.
@@ -258,7 +296,7 @@ TEST_F(TestRpc, TestHighFDs) {
   // Set up server and client, and verify we can make a successful call.
   HostPort server_addr;
   StartTestServer(&server_addr);
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
   ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
 }
@@ -284,7 +322,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   for (int i = 0; i < FLAGS_rpc_test_connection_keepalive_num_iterations; ++i) {
     // Set up client.
     LOG(INFO) << "Connecting to " << server_addr;
-    std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", messenger_options);
+    auto client_messenger = CreateAutoShutdownMessengerHolder("Client", messenger_options);
     Proxy p(client_messenger.get(), server_addr);
 
     ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
@@ -321,7 +359,7 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   // Set up client.
   auto client_options = kDefaultClientMessengerOptions;
   client_options.keep_alive_timeout = 100ms;
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", client_options);
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client", client_options);
   Proxy p(client_messenger.get(), server_addr);
 
   // Make a call which sleeps longer than the keepalive.
@@ -355,7 +393,7 @@ TEST_F(TestRpc, TestConnectionHeartbeating) {
   for (int i = 0; i < FLAGS_rpc_test_connection_keepalive_num_iterations; ++i) {
     // Set up client.
     LOG(INFO) << "Connecting to " << server_addr;
-    std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", messenger_options);
+    auto client_messenger = CreateAutoShutdownMessengerHolder("Client", messenger_options);
     Proxy p(client_messenger.get(), server_addr);
 
     ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
@@ -374,7 +412,7 @@ TEST_F(TestRpc, TestRpcSidecar) {
   StartTestServer(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Test some small sidecars
@@ -384,19 +422,16 @@ TEST_F(TestRpc, TestRpcSidecar) {
   // we can't write the whole response to the socket in a single call.
   DoTestSidecar(&p, {3_MB, 2_MB, 240_MB});
 
-  std::vector<size_t> sizes(CallResponse::kMaxSidecarSlices);
+  std::vector<size_t> sizes(20);
   std::fill(sizes.begin(), sizes.end(), 123);
   DoTestSidecar(&p, sizes);
-
-  sizes.push_back(333);
-  DoTestSidecar(&p, sizes, Status::kRemoteError);
 }
 
 // Test that timeouts are properly handled.
 TEST_F(TestRpc, TestCallTimeout) {
   HostPort server_addr;
   StartTestServer(&server_addr);
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   uint64_t delay_ns = 1;
@@ -441,7 +476,7 @@ TEST_F(TestRpc, TestNegotiationTimeout) {
                                   &acceptor_thread));
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   ASSERT_NO_FATALS(DoTestExpectTimeout(&p, MonoDelta::FromMilliseconds(100)));
@@ -459,7 +494,7 @@ TEST_F(TestRpc, TestServerShutsDown) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Send a call.
@@ -529,13 +564,14 @@ TEST_F(TestRpc, TestServerShutsDown) {
     //
     // EPROTOTYPE sometimes happens on Mac OS X.
     // TODO: figure out why.
-    ASSERT_TRUE(s.error_code() == EPIPE ||
-                s.error_code() == ECONNRESET ||
-                s.error_code() == ESHUTDOWN ||
-                s.error_code() == ECONNREFUSED ||
-                s.error_code() == EINVAL
+    Errno err(s);
+    ASSERT_TRUE(err == EPIPE ||
+                err == ECONNRESET ||
+                err == ESHUTDOWN ||
+                err == ECONNREFUSED ||
+                err == EINVAL
 #if defined(__APPLE__)
-                || s.error_code() == EPROTOTYPE
+                || err == EPROTOTYPE
 #endif
                )
       << "Unexpected status: " << s.ToString();
@@ -553,7 +589,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
 
   // Set up client.
 
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   RpcController controller;
@@ -585,7 +621,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
 }
 
 TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   HostPort bad_addr;
   CountDownLatch latch(1);
 
@@ -615,7 +651,7 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   StartTestServerWithGeneratedCode(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   rpc_test::SleepRequestPB req;
@@ -646,7 +682,7 @@ TEST_F(TestRpc, QueueTimeout) {
   StartTestServerWithGeneratedCode(&server_addr, options);
 
   // Set up client.
-  auto client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   const auto* method = CalculatorServiceMethods::SleepMethod();
@@ -737,7 +773,7 @@ TEST_F(TestRpc, TestDisconnect) {
   StartTestServerWithGeneratedCode(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
 
   constexpr size_t kRequests = 10000;
   DisconnectShare share = { { client_messenger.get(), server_addr }, kRequests };
@@ -786,7 +822,7 @@ TEST_F(TestRpc, DumpTimedOutCall) {
     }
   });
 
-  std::unique_ptr<Messenger> messenger = CreateMessenger("Client");
+  auto messenger = CreateAutoShutdownMessengerHolder("Client");
   Proxy p(messenger.get(), server_addr);
 
   {
@@ -808,6 +844,236 @@ TEST_F(TestRpc, DumpTimedOutCall) {
 
   stop.store(true, std::memory_order_release);
   thread.join();
+}
+
+#if defined(TCMALLOC_ENABLED)
+
+namespace {
+
+const char kEmptyMsgLengthPrefix[kMsgLengthPrefixLength] = {0};
+
+}
+
+// Test that even with small packets we track memory usage in sending queue with acceptable
+// accuracy.
+TEST_F(TestRpc, SendingQueueMemoryUsage) {
+  std::deque<TcpStreamSendingData> sending;
+
+  auto tracker = MemTracker::CreateTracker("t");
+
+  MemoryUsage current, latest_before_realloc;
+
+  const auto allocated_bytes_initial = GetCurrentAllocatedBytes();
+  while (current.allocated_bytes < 1_MB) {
+    auto data_ptr = std::make_shared<StringOutboundData>(
+        kEmptyMsgLengthPrefix, kMsgLengthPrefixLength, "Empty message");
+    sending.emplace_back(data_ptr, tracker);
+
+    const auto allocated_bytes = GetCurrentAllocatedBytes() - allocated_bytes_initial;
+    if (allocated_bytes != current.allocated_bytes) {
+      latest_before_realloc = current;
+    }
+    current.allocated_bytes = allocated_bytes;
+    current.tracked_consumption += sending.back().consumption.consumption();
+    // Account data_ptr as well.
+    current.tracked_consumption += sizeof(data_ptr);
+    current.entities_count = sending.size();
+  }
+
+  LOG(INFO) << DumpMemoryUsage(latest_before_realloc);
+
+  // Amount of memory really allocated from tcmalloc could be higher due to round up.
+  ASSERT_GT(
+      latest_before_realloc.tracked_consumption,
+      size_t(latest_before_realloc.allocated_bytes / kHighMemoryAllocationAccuracyLimit));
+  ASSERT_LE(latest_before_realloc.tracked_consumption, latest_before_realloc.allocated_bytes);
+}
+
+#endif
+
+namespace {
+
+constexpr auto kMemoryLimitHardBytes = 100_MB;
+
+TestServerOptions SetupServerForTestCantAllocateReadBuffer() {
+  FLAGS_binary_call_parser_reject_on_mem_tracker_hard_limit = true;
+  FLAGS_memory_limit_hard_bytes = kMemoryLimitHardBytes;
+  TestServerOptions options;
+  options.messenger_options.n_reactors = 1;
+  options.messenger_options.num_connections_to_server = 1;
+  options.messenger_options.keep_alive_timeout = 60s;
+  return options;
+}
+
+void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& server_addr) {
+  const MonoDelta kTimeToWaitForOom = 20s;
+  const MonoDelta kCallsTimeout = NonTsanVsTsan(3s, 10s);
+
+  Proxy p(client_messenger, server_addr);
+
+  rpc_test::EchoRequestPB req;
+  rpc_test::EchoResponsePB resp;
+
+  std::vector<std::unique_ptr<RpcController>> controllers;
+
+  auto n_calls = 50;
+
+  SetAtomicFlag(true, &FLAGS_TEST_pause_calculator_echo_request);
+  StringWaiterLogSink log_waiter("Unable to allocate read buffer because of limit");
+
+  LOG(INFO) << "Start sending calls...";
+  CountDownLatch latch(n_calls);
+  for (int i = 0; i < n_calls; i++) {
+    req.set_data(std::string(10_MB + i, 'X'));
+    auto controller = new RpcController();
+    controllers.push_back(std::unique_ptr<RpcController>(controller));
+    controller->set_timeout(kCallsTimeout);
+    p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
+      latch.CountDown();
+    });
+    if ((i + 1) % 10 == 0) {
+      LOG(INFO) << "Sent " << i + 1 << " calls.";
+      LOG(INFO) << DumpMemoryUsage();
+    }
+  }
+  LOG(INFO) << n_calls << " calls sent.";
+
+  ASSERT_OK(log_waiter.WaitFor(kTimeToWaitForOom));
+
+  SetAtomicFlag(false, &FLAGS_TEST_pause_calculator_echo_request);
+  LOG(INFO) << "Resumed call function.";
+
+  LOG(INFO) << "Waiting for the calls to be marked finished...";
+  latch.Wait();
+
+  LOG(INFO) << n_calls << " calls marked as finished.";
+
+  for (int i = 0; i < controllers.size(); ++i) {
+    auto& controller = controllers[i];
+    ASSERT_TRUE(controller->finished());
+    auto s = controller->status();
+    ASSERT_TRUE(s.ok() || s.IsTimedOut())
+        << "Unexpected error for call #" << i + 1 << ": " << AsString(s);
+  }
+  controllers.clear();
+  req.clear_data();
+
+  LOG(INFO) << DumpMemoryUsage();
+  {
+    constexpr auto target_memory_consumption = kMemoryLimitHardBytes / 2;
+    const auto wait_status = LoggedWaitFor(
+        [] {
+#if defined(TCMALLOC_ENABLED)
+          // Don't rely on root mem tracker consumption, since it includes memory released by
+          // the application, but not yet released by TCMalloc.
+          const auto consumption = MemTracker::GetTCMallocCurrentAllocatedBytes();
+#else
+          // For TSAN/ASAN we don't have TCMalloc and rely on root mem tracker consumption.
+          const auto consumption = MemTracker::GetRootTracker()->consumption();
+#endif
+          LOG(INFO) << "Memory consumption: " << HumanReadableNumBytes::ToString(consumption);
+          return consumption < target_memory_consumption;
+        }, 10s,
+        Format("Waiting until memory consumption is less than $0 ...", target_memory_consumption));
+    LOG(INFO) << DumpMemoryUsage();
+    ASSERT_OK(wait_status);
+  }
+
+  // Further calls should be processed successfully since memory consumption is now under limit.
+  n_calls = 20;
+  LOG(INFO) << "Start sending more calls...";
+  latch.Reset(n_calls);
+  for (int i = 0; i < n_calls; i++) {
+    req.set_data(std::string(i + 1, 'Y'));
+    auto controller = new RpcController();
+    controllers.push_back(std::unique_ptr<RpcController>(controller));
+    controller->set_timeout(kCallsTimeout);
+    p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
+      latch.CountDown();
+    });
+  }
+  LOG(INFO) << n_calls << " calls sent.";
+  latch.Wait();
+  LOG(INFO) << n_calls << " calls marked as finished.";
+
+  for (int i = 0; i < controllers.size(); ++i) {
+    auto& controller = controllers[i];
+    ASSERT_TRUE(controller->finished());
+    auto s = controller->status();
+    ASSERT_TRUE(s.ok()) << "Unexpected error for call #" << i + 1 << ": " << AsString(s);
+  }
+}
+
+}  // namespace
+
+TEST_F(TestRpc, CantAllocateReadBuffer) {
+  // Set up server.
+  TestServerOptions options = SetupServerForTestCantAllocateReadBuffer();
+  HostPort server_addr;
+  StartTestServerWithGeneratedCode(&server_addr, options);
+
+  // Set up client.
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
+
+  TestCantAllocateReadBuffer(client_messenger.get(), server_addr);
+}
+
+class TestRpcSecure : public RpcTestBase {
+ public:
+  void SetUp() override {
+    RpcTestBase::SetUp();
+    secure_context_ = std::make_unique<SecureContext>();
+    EXPECT_OK(secure_context_->TEST_GenerateKeys(512, "127.0.0.1"));
+  }
+
+ protected:
+  std::unique_ptr<Messenger> CreateSecureMessenger(
+      const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
+    auto builder = CreateMessengerBuilder(name, options);
+    builder.SetListenProtocol(SecureStreamProtocol());
+    builder.AddStreamFactory(
+        SecureStreamProtocol(),
+        SecureStreamFactory(TcpStream::Factory(), MemTracker::GetRootTracker(),
+                            secure_context_.get()));
+    return EXPECT_RESULT(builder.Build());
+  }
+
+  std::unique_ptr<SecureContext> secure_context_;
+};
+
+TEST_F(TestRpcSecure, TLS) {
+  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(CreateSecureMessenger("Client"));
+  auto proxy_cache = std::make_unique<ProxyCache>(client_messenger.get());
+
+  TestServerOptions options;
+  HostPort server_hostport;
+  StartTestServerWithGeneratedCode(
+      CreateSecureMessenger("TestServer", kDefaultServerMessengerOptions), &server_hostport,
+      options);
+
+  rpc_test::CalculatorServiceProxy p(proxy_cache.get(), server_hostport, SecureStreamProtocol());
+
+  RpcController controller;
+  controller.set_timeout(5s);
+  rpc_test::AddRequestPB req;
+  req.set_x(10);
+  req.set_y(20);
+  rpc_test::AddResponsePB resp;
+  ASSERT_OK(p.Add(req, &resp, &controller));
+  ASSERT_EQ(30, resp.result());
+}
+
+TEST_F(TestRpcSecure, CantAllocateReadBuffer) {
+  // Set up server.
+  TestServerOptions options = SetupServerForTestCantAllocateReadBuffer();
+  HostPort server_addr;
+  StartTestServerWithGeneratedCode(
+      CreateSecureMessenger("TestServer", options.messenger_options), &server_addr, options);
+
+  // Set up client.
+  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(CreateSecureMessenger("Client"));
+
+  TestCantAllocateReadBuffer(client_messenger.get(), server_addr);
 }
 
 } // namespace rpc

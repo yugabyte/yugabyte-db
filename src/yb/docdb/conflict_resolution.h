@@ -70,6 +70,7 @@ CHECKED_STATUS ResolveTransactionConflicts(const DocOperations& doc_ops,
 Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
                                              HybridTime resolution_ht,
                                              const DocDB& doc_db,
+                                             PartialRangeKeyIntents partial_range_key_intents,
                                              TransactionStatusManager* status_manager);
 
 struct ParsedIntent {

@@ -1,0 +1,172 @@
+ --
+-- insert with DEFAULT in the target_list
+--
+create table inserttest (col1 int4, col2 int4 NOT NULL, col3 text default 'testing');
+insert into inserttest (col1, col2, col3) values (DEFAULT, DEFAULT, DEFAULT);
+ERROR:  null value in column "col2" violates not-null constraint
+DETAIL:  Failing row contains (null, null, testing).
+insert into inserttest (col2, col3) values (3, DEFAULT);
+insert into inserttest (col1, col2, col3) values (DEFAULT, 5, DEFAULT);
+insert into inserttest values (DEFAULT, 5, 'test');
+insert into inserttest values (DEFAULT, 7);
+select * from inserttest order by col1, col2, col3;
+ col1 | col2 |  col3
+------+------+---------
+      |    3 | testing
+      |    5 | test
+      |    5 | testing
+      |    7 | testing
+(4 rows)
+
+--
+-- insert with similar expression / target_list values (all fail)
+--
+insert into inserttest (col1, col2, col3) values (DEFAULT, DEFAULT);
+ERROR:  INSERT has more target columns than expressions
+LINE 1: insert into inserttest (col1, col2, col3) values (DEFAULT, D...
+                                            ^
+insert into inserttest (col1, col2, col3) values (1, 2);
+ERROR:  INSERT has more target columns than expressions
+LINE 1: insert into inserttest (col1, col2, col3) values (1, 2);
+                                            ^
+insert into inserttest (col1) values (1, 2);
+ERROR:  INSERT has more expressions than target columns
+LINE 1: insert into inserttest (col1) values (1, 2);
+                                                 ^
+insert into inserttest (col1) values (DEFAULT, DEFAULT);
+ERROR:  INSERT has more expressions than target columns
+LINE 1: insert into inserttest (col1) values (DEFAULT, DEFAULT);
+                                                       ^
+select * from inserttest order by col1, col2, col3;
+ col1 | col2 |  col3
+------+------+---------
+      |    3 | testing
+      |    5 | test
+      |    5 | testing
+      |    7 | testing
+(4 rows)
+
+--
+-- VALUES test
+--
+insert into inserttest values(10, 20, '40'), (-1, 2, DEFAULT),
+    ((select 2), (select i from (values(3)) as foo (i)), 'values are fun!');
+select * from inserttest order by col1, col2, col3;
+ col1 | col2 |      col3
+------+------+-----------------
+   -1 |    2 | testing
+    2 |    3 | values are fun!
+   10 |   20 | 40
+      |    3 | testing
+      |    5 | test
+      |    5 | testing
+      |    7 | testing
+(7 rows)
+
+--
+-- TOASTed value test
+--
+insert into inserttest values(30, 50, repeat('x', 10000));
+select col1, col2, char_length(col3) from inserttest order by col1, col2, col3;
+ col1 | col2 | char_length
+------+------+-------------
+   -1 |    2 |           7
+    2 |    3 |          15
+   10 |   20 |           2
+   30 |   50 |       10000
+      |    3 |           7
+      |    5 |           4
+      |    5 |           7
+      |    7 |           7
+(8 rows)
+
+drop table inserttest;
+--
+-- check indirection (field/array assignment), cf bug #14265
+--
+-- these tests are aware that transformInsertStmt has 3 separate code paths
+--
+create type insert_test_type as (if1 int, if2 text[]);
+create table inserttest (f1 int, f2 int[],
+                         f3 insert_test_type, f4 insert_test_type[]);
+insert into inserttest (f2[1], f2[2]) values (1,2);
+insert into inserttest (f2[1], f2[2]) values (3,4), (5,6);
+insert into inserttest (f2[1], f2[2]) select 7,8;
+insert into inserttest (f2[1], f2[2]) values (1,default);  -- not supported
+ERROR:  cannot set an array element to DEFAULT
+LINE 1: insert into inserttest (f2[1], f2[2]) values (1,default);
+                                       ^
+insert into inserttest (f3.if1, f3.if2) values (1,array['foo']);
+insert into inserttest (f3.if1, f3.if2) values (1,'{foo}'), (2,'{bar}');
+insert into inserttest (f3.if1, f3.if2) select 3, '{baz,quux}';
+insert into inserttest (f3.if1, f3.if2) values (1,default);  -- not supported
+ERROR:  cannot set a subfield to DEFAULT
+LINE 1: insert into inserttest (f3.if1, f3.if2) values (1,default);
+                                        ^
+insert into inserttest (f3.if2[1], f3.if2[2]) values ('foo', 'bar');
+insert into inserttest (f3.if2[1], f3.if2[2]) values ('foo', 'bar'), ('baz', 'quux');
+insert into inserttest (f3.if2[1], f3.if2[2]) select 'bear', 'beer';
+insert into inserttest (f4[1].if2[1], f4[1].if2[2]) values ('foo', 'bar');
+insert into inserttest (f4[1].if2[1], f4[1].if2[2]) values ('foo', 'bar'), ('baz', 'quux');
+insert into inserttest (f4[1].if2[1], f4[1].if2[2]) select 'bear', 'beer';
+select * from inserttest ORDER BY f1, f2, f3, f4;
+ f1 |  f2   |        f3        |           f4
+----+-------+------------------+------------------------
+    | {1,2} |                  |
+    | {3,4} |                  |
+    | {5,6} |                  |
+    | {7,8} |                  |
+    |       | (1,{foo})        |
+    |       | (1,{foo})        |
+    |       | (2,{bar})        |
+    |       | (3,"{baz,quux}") |
+    |       | (,"{baz,quux}")  |
+    |       | (,"{bear,beer}") |
+    |       | (,"{foo,bar}")   |
+    |       | (,"{foo,bar}")   |
+    |       |                  | {"(,\"{baz,quux}\")"}
+    |       |                  | {"(,\"{bear,beer}\")"}
+    |       |                  | {"(,\"{foo,bar}\")"}
+    |       |                  | {"(,\"{foo,bar}\")"}
+(16 rows)
+
+-- also check reverse-listing
+create table inserttest2 (f1 bigint, f2 text);
+create rule irule1 as on insert to inserttest2 do also
+  insert into inserttest (f3.if2[1], f3.if2[2])
+  values (new.f1,new.f2);
+create rule irule2 as on insert to inserttest2 do also
+  insert into inserttest (f4[1].if1, f4[1].if2[2])
+  values (1,'fool'),(new.f1,new.f2);
+create rule irule3 as on insert to inserttest2 do also
+  insert into inserttest (f4[1].if1, f4[1].if2[2])
+  select new.f1, new.f2;
+\d+ inserttest2
+                                Table "public.inserttest2"
+ Column |  Type  | Collation | Nullable | Default | Storage  | Stats target | Description
+--------+--------+-----------+----------+---------+----------+--------------+-------------
+ f1     | bigint |           |          |         | plain    |              |
+ f2     | text   |           |          |         | extended |              |
+Rules:
+    irule1 AS
+    ON INSERT TO inserttest2 DO  INSERT INTO inserttest (f3.if2[1], f3.if2[2])
+  VALUES (new.f1, new.f2)
+    irule2 AS
+    ON INSERT TO inserttest2 DO  INSERT INTO inserttest (f4[1].if1, f4[1].if2[2]) VALUES (1,'fool'::text), (new.f1,new.f2)
+    irule3 AS
+    ON INSERT TO inserttest2 DO  INSERT INTO inserttest (f4[1].if1, f4[1].if2[2])  SELECT new.f1,
+            new.f2
+
+drop table inserttest2;
+drop table inserttest;
+drop type insert_test_type;
+-- direct partition inserts should check partition bound constraint
+-- TODO(jason): fix expected output when issue #1126 is closed or closing.
+create table range_parted (
+	a text,
+	b int
+) partition by range (a, (b+0));
+ERROR:  PARTITION BY not supported yet
+LINE 4: ) partition by range (a, (b+0));
+          ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1126. Click '+' on the description to raise its priority

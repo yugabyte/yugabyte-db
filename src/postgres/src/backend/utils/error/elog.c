@@ -167,6 +167,22 @@ static char formatted_log_time[FORMATTED_TS_LEN];
 		} \
 	} while (0)
 
+#define RETURN_IF_MULTITHREADED_MODE() \
+	do { \
+		if (IsMultiThreadedMode()) \
+		{ \
+			return 0; \
+		} \
+	} while(0) \
+
+#define SET_MSG_AND_RETURN_IF_MULTITHREADED_MODE(fmt) \
+	do { \
+		if (IsMultiThreadedMode()) \
+		{ \
+			YBCPgSetThreadLocalErrMsg(fmt); \
+			return 0; \
+		} \
+	} while(0) \
 
 static const char *err_gettext(const char *str) pg_attribute_format_arg(1);
 static void set_errdata_field(MemoryContextData *cxt, char **ptr, const char *str);
@@ -468,7 +484,7 @@ errfinish(int dummy,...)
 		CritSectionCount = 0;	/* should be unnecessary, but... */
 
 		/*
-		 * Note that we leave CurrentMemoryContext set to ErrorContext. The
+		 * Note that we leave GetCurrentMemoryContext() set to ErrorContext. The
 		 * handler should reset it to something else soon.
 		 */
 
@@ -591,12 +607,29 @@ errfinish(int dummy,...)
 int
 errcode(int sqlerrcode)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
 	CHECK_STACK_DEPTH();
 
 	edata->sqlerrcode = sqlerrcode;
+
+	return 0;					/* return value does not matter */
+}
+
+int
+yb_txn_errcode(uint16_t txn_errcode)
+{
+	RETURN_IF_MULTITHREADED_MODE();
+
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	/* we don't bother incrementing recursion_depth */
+	CHECK_STACK_DEPTH();
+
+	edata->yb_txn_errcode = txn_errcode;
 
 	return 0;					/* return value does not matter */
 }
@@ -614,6 +647,8 @@ errcode(int sqlerrcode)
 int
 errcode_for_file_access(void)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -685,6 +720,8 @@ errcode_for_file_access(void)
 int
 errcode_for_socket_access(void)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -817,6 +854,8 @@ errcode_for_socket_access(void)
 int
 errmsg(const char *fmt,...)
 {
+	SET_MSG_AND_RETURN_IF_MULTITHREADED_MODE(fmt);
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -847,6 +886,8 @@ errmsg(const char *fmt,...)
 int
 errmsg_internal(const char *fmt,...)
 {
+	SET_MSG_AND_RETURN_IF_MULTITHREADED_MODE(fmt);
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -871,6 +912,8 @@ int
 errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 			  unsigned long n,...)
 {
+	SET_MSG_AND_RETURN_IF_MULTITHREADED_MODE(n == 1 ? fmt_singular : fmt_plural);
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -893,6 +936,8 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 int
 errdetail(const char *fmt,...)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -920,6 +965,8 @@ errdetail(const char *fmt,...)
 int
 errdetail_internal(const char *fmt,...)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -941,6 +988,8 @@ errdetail_internal(const char *fmt,...)
 int
 errdetail_log(const char *fmt,...)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -963,6 +1012,8 @@ int
 errdetail_log_plural(const char *fmt_singular, const char *fmt_plural,
 					 unsigned long n,...)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -986,6 +1037,8 @@ int
 errdetail_plural(const char *fmt_singular, const char *fmt_plural,
 				 unsigned long n,...)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -1007,6 +1060,8 @@ errdetail_plural(const char *fmt_singular, const char *fmt_plural,
 int
 errhint(const char *fmt,...)
 {
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -1302,6 +1357,29 @@ getinternalerrposition(void)
 	return edata->internalpos;
 }
 
+/*
+ * When running within DocDB as the execution library we do not have the
+ * error management framework fully set up yet.
+ * So we just do our best to log an error and jump back to the pgapi.c
+ * execution layer which should report the failure to DocDB.
+ * TODO - Investigate how to best integrate with the regular error
+ * framework to get better error messages/reporting (considering globals,
+ * error stack, signal masks, etc.).
+ */
+void yb_pgbackend_ereport(int elevel, const char *fmt,...) {
+	if (fmt != NULL)
+	{
+		YBCPgSetThreadLocalErrMsg(fmt);
+	}
+	jmp_buf *buffer = YBCPgGetThreadLocalJumpBuffer();
+	longjmp(*buffer, elevel);
+}
+
+/* Dummy function to cause errmsg call to be evaluated. */
+void yb_pgbackend_ereport_dummy(int dummy,...) {
+	/* Nothing to do. */
+	return;
+}
 
 /*
  * elog_start --- startup for old-style API
@@ -1526,7 +1604,7 @@ CopyErrorData(void)
 	 */
 	CHECK_STACK_DEPTH();
 
-	Assert(CurrentMemoryContext != ErrorContext);
+	Assert(GetCurrentMemoryContext() != ErrorContext);
 
 	/* Copy the struct itself */
 	newedata = (ErrorData *) palloc(sizeof(ErrorData));
@@ -1557,7 +1635,7 @@ CopyErrorData(void)
 		newedata->internalquery = pstrdup(newedata->internalquery);
 
 	/* Use the calling context for string allocation */
-	newedata->assoc_context = CurrentMemoryContext;
+	newedata->assoc_context = GetCurrentMemoryContext();
 
 	return newedata;
 }
@@ -1840,7 +1918,7 @@ GetErrorContextStack(void)
 	 * Set up assoc_context to be the caller's context, so any allocations
 	 * done (which will include edata->context) will use their context.
 	 */
-	edata->assoc_context = CurrentMemoryContext;
+	edata->assoc_context = GetCurrentMemoryContext();
 
 	/*
 	 * Call any context callback functions to collect the context information
@@ -2135,13 +2213,13 @@ write_eventlog(int level, const char *line, int len)
 	 *
 	 * Since we palloc the structure required for conversion, also fall
 	 * through to writing unconverted if we have not yet set up
-	 * CurrentMemoryContext.
+	 * GetCurrentMemoryContext().
 	 *
 	 * Also verify that we are not on our way into error recursion trouble due
 	 * to error messages thrown deep inside pgwin32_message_to_UTF16().
 	 */
 	if (!in_error_recursion_trouble() &&
-		CurrentMemoryContext != NULL &&
+		GetCurrentMemoryContext() != NULL &&
 		GetMessageEncoding() != GetACPEncoding())
 	{
 		utf16 = pgwin32_message_to_UTF16(line, len, NULL);
@@ -2196,11 +2274,11 @@ write_console(const char *line, int len)
 	 *
 	 * Since we palloc the structure required for conversion, also fall
 	 * through to writing unconverted if we have not yet set up
-	 * CurrentMemoryContext.
+	 * GetCurrentMemoryContext().
 	 */
 	if (!in_error_recursion_trouble() &&
 		!redirection_done &&
-		CurrentMemoryContext != NULL)
+		GetCurrentMemoryContext() != NULL)
 	{
 		WCHAR	   *utf16;
 		int			utf16len;
@@ -3219,7 +3297,7 @@ send_message_to_frontend(ErrorData *edata)
 			err_sendstring(&msgbuf, edata->hint);
 		}
 
-		if (edata->context)
+		if (edata->context && !(IsYugaByteEnabled() && edata->hide_ctx))
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_CONTEXT);
 			err_sendstring(&msgbuf, edata->context);

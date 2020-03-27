@@ -16,7 +16,10 @@
 
 #include "yb/common/json_util.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/util/bfql/bfunc_convert.h"
+#include "yb/util/string_case.h"
 
 namespace yb {
 namespace common {
@@ -148,9 +151,11 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
       rapidjson::Value map_key, map_value;
       for (int i = 0; i < map_pb.keys_size(); ++i) {
         RETURN_NOT_OK(ConvertQLValuePBToRapidJson(map_pb.keys(i), &map_key, alloc));
-        if (!map_key.IsString()) {
-          string json_str = WriteRapidJsonToString(map_key);
-          map_key.Swap(rapidjson::Value().SetString(json_str.c_str(), *alloc));
+        // Quote the key if the key is not a string OR
+        // if the key string contains characters in upper-case.
+        if (!map_key.IsString() || ContainsUpperCase(map_key.GetString())) {
+          string map_key_str = WriteRapidJsonToString(map_key);
+          map_key.Swap(rapidjson::Value().SetString(map_key_str.c_str(), *alloc));
         }
 
         RETURN_NOT_OK(ConvertQLValuePBToRapidJson(map_pb.values(i), &map_value, alloc));

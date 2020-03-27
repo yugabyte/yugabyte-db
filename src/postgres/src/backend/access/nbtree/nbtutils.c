@@ -37,9 +37,6 @@ typedef struct BTSortArrayContext
 static Datum _bt_find_extreme_element(IndexScanDesc scan, ScanKey skey,
 						 StrategyNumber strat,
 						 Datum *elems, int nelems);
-static int _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
-						bool reverse,
-						Datum *elems, int nelems);
 static int	_bt_compare_array_elements(const void *a, const void *b, void *arg);
 static bool _bt_compare_scankey_args(IndexScanDesc scan, ScanKey op,
 						 ScanKey leftarg, ScanKey rightarg,
@@ -242,7 +239,7 @@ _bt_preprocess_array_keys(IndexScanDesc scan)
 	 * if we already have one from a previous rescan cycle.
 	 */
 	if (so->arrayContext == NULL)
-		so->arrayContext = AllocSetContextCreate(CurrentMemoryContext,
+		so->arrayContext = AllocSetContextCreate(GetCurrentMemoryContext(),
 												 "BTree array context",
 												 ALLOCSET_SMALL_SIZES);
 	else
@@ -438,7 +435,7 @@ _bt_find_extreme_element(IndexScanDesc scan, ScanKey skey,
  * scan and skey identify the index column, whose opfamily determines the
  * comparison semantics.  If reverse is true, we sort in descending order.
  */
-static int
+int
 _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 						bool reverse,
 						Datum *elems, int nelems)

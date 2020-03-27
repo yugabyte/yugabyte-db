@@ -18,6 +18,8 @@
 
 #include "yb/consensus/consensus_fwd.h"
 
+#include "yb/util/mem_tracker.h"
+
 namespace yb {
 namespace consensus {
 
@@ -26,7 +28,8 @@ class ReplicateMsgsHolder {
   ReplicateMsgsHolder() : ops_(nullptr) {}
 
   explicit ReplicateMsgsHolder(
-      google::protobuf::RepeatedPtrField<ReplicateMsg>* ops, ReplicateMsgs messages);
+      google::protobuf::RepeatedPtrField<ReplicateMsg>* ops, ReplicateMsgs messages,
+      ScopedTrackedConsumption consumption);
 
   ReplicateMsgsHolder(ReplicateMsgsHolder&& rhs);
   void operator=(ReplicateMsgsHolder&& rhs);
@@ -51,6 +54,8 @@ class ReplicateMsgsHolder {
   // object as other peers. Since the PB request_ itself can't hold reference counts, this holds
   // them.
   ReplicateMsgs messages_;
+
+  ScopedTrackedConsumption consumption_;
 };
 
 }  // namespace consensus

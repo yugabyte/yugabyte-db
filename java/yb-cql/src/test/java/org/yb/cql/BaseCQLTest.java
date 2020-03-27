@@ -30,8 +30,6 @@ import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SocketOptions;
-import com.datastax.driver.core.exceptions.InvalidQueryException;
-import com.datastax.driver.core.exceptions.OperationTimedOutException;
 import com.datastax.driver.core.exceptions.QueryValidationException;
 
 import org.slf4j.Logger;
@@ -39,26 +37,19 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.client.YBClient;
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.ServerInfo;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
@@ -76,6 +67,10 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   protected static final String TSERVER_FLUSHES_METRIC =
       "handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute";
+
+  // CQL and Redis settings.
+  protected static boolean startCqlProxy = true;
+  protected static boolean startRedisProxy = false;
 
   protected Cluster cluster;
   protected Session session;
@@ -111,13 +106,28 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return Double.longBitsToDouble((sign << 63) | (exp << 52) | fraction);
   }
 
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = new TreeMap<>();
+
+    flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
+    flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
+
+    return flagMap;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
+      builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
+    }
+    builder.enablePostgres(false);
+  }
+
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     LOG.info("BaseCQLTest.setUpBeforeClass is running");
     BaseMiniClusterTest.tserverArgs.add("--client_read_write_timeout_ms=180000");
-    BaseMiniClusterTest.tserverArgs.add("--start_redis_proxy=false");
-    BaseMiniClusterTest.tserverArgs.add("--start_pgsql_proxy=false");
-
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
     // all columns.
     System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
@@ -464,6 +474,15 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected String runValidSelect(String stmt) {
+    ResultSet rs = session.execute(stmt);
+    String result = "";
+    for (Row row : rs) {
+      result += row.toString();
+    }
+    return result;
+  }
+
   protected String runInvalidStmt(Statement stmt) {
     return runInvalidStmt(stmt, session);
   }
@@ -474,6 +493,12 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   protected String runInvalidStmt(String stmt) {
     return runInvalidStmt(stmt, session);
+  }
+
+  protected void runInvalidStmt(String stmt, String errorSubstring) {
+    String errorMsg = runInvalidStmt(stmt);
+    assertTrue("Error message '" + errorMsg + "' should contain '" + errorSubstring + "'",
+               errorMsg.contains(errorSubstring));
   }
 
   protected void assertNoRow(String select_stmt) {
@@ -541,20 +566,36 @@ public class BaseCQLTest extends BaseMiniClusterTest {
    * @param stmt The (select) query to be executed
    * @param expectedRows the rows in the expected order
    */
-  protected void assertQueryRowsOrdered(String stmt, String... expectedRows) {
+  protected void assertQueryRowsOrdered(Statement stmt, List<String> expectedRows) {
     ResultSet rs = session.execute(stmt);
     List<String> actualRows = new ArrayList<String>();
     for (Row row : rs) {
       actualRows.add(row.toString());
     }
-    assertEquals(Arrays.stream(expectedRows).collect(Collectors.toList()), actualRows);
+    assertEquals(expectedRows, actualRows);
+  }
+
+  /**
+   * Assert the result of a query when the order of the rows is enforced.
+   * To be used, for instance, for queries where (range) column ordering (ASC/DESC) is being tested.
+   *
+   * @param stmt The (select) query to be executed
+   * @param expectedRows the rows in the expected order
+   */
+  protected void assertQueryRowsOrdered(String stmt, String... expectedRows) {
+    assertQueryRowsOrdered(new SimpleStatement(stmt),
+                           Arrays.stream(expectedRows).collect(Collectors.toList()));
   }
 
   /** Checks that the query yields an error containing the given (case-insensitive) substring */
-  protected void assertQueryError(String stmt, String expectedErrorSubstring) {
+  protected void assertQueryError(Statement stmt, String expectedErrorSubstring) {
     String result = runInvalidStmt(stmt);
     assertTrue("Query error '" + result + "' did not contain '" + expectedErrorSubstring + "'",
         result.toLowerCase().contains(expectedErrorSubstring.toLowerCase()));
+  }
+
+  protected void assertQueryError(String stmt, String expectedErrorSubstring) {
+    assertQueryError(new SimpleStatement(stmt), expectedErrorSubstring);
   }
 
   // blob type utils
@@ -615,105 +656,23 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     execute(deleteKeyspaceStmt);
   }
 
-  // Get metrics of all tservers.
-  public Map<MiniYBDaemon, Metrics> getAllMetrics() throws Exception {
-    Map<MiniYBDaemon, Metrics> initialMetrics = new HashMap<>();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      Metrics metrics = new Metrics(ts.getLocalhostIP(),
-                                    ts.getCqlWebPort(),
-                                    "server");
-      initialMetrics.put(ts, metrics);
-    }
-    return initialMetrics;
-  }
-
-  // Get IO metrics of all tservers.
-  public Map<MiniYBDaemon, IOMetrics> getTSMetrics() throws Exception {
-    Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"));
-      initialMetrics.put(ts, metrics);
-    }
-    return initialMetrics;
-  }
-
-  // Get combined IO metrics of all tservers since a certain point.
-  public IOMetrics getCombinedMetrics(Map<MiniYBDaemon, IOMetrics> initialMetrics)
-      throws Exception {
-    IOMetrics totalMetrics = new IOMetrics();
-    int tsCount = miniCluster.getTabletServers().values().size();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-                                                    ts.getCqlWebPort(),
-                                                    "server"))
-                          .subtract(initialMetrics.get(ts));
-      LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
-      totalMetrics.add(metrics);
-    }
-    LOG.info("Total metrics: " + totalMetrics.toString());
-    return totalMetrics;
-  }
-
-  private Set<String> getTableIds(String keyspaceName, String tableName)  throws Exception {
-    return miniCluster.getClient().getTabletUUIDs(keyspaceName, tableName);
+  private String getTableUUID(String keyspaceName, String tableName)  throws Exception {
+    return miniCluster.getClient().openTable(keyspaceName, tableName).getTableId();
   }
 
   public RocksDBMetrics getRocksDBMetric(String tableName) throws Exception {
-    Set<String> tabletIds = getTableIds(DEFAULT_TEST_KEYSPACE, tableName);
-    RocksDBMetrics metrics = new RocksDBMetrics();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      try {
-        URL url = new URL(String.format("http://%s:%d/metrics",
-                                        ts.getLocalhostIP(),
-                                        ts.getWebPort()));
-        Scanner scanner = new Scanner(url.openConnection().getInputStream());
-        JsonParser parser = new JsonParser();
-        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
-        for (JsonElement elem : tree.getAsJsonArray()) {
-          JsonObject obj = elem.getAsJsonObject();
-          if (obj.get("type").getAsString().equals("tablet") &&
-              tabletIds.contains(obj.get("id").getAsString())) {
-            metrics.add(new RocksDBMetrics(new Metrics(obj)));
-          }
-        }
-      } catch (MalformedURLException e) {
-        throw new InternalError(e.getMessage());
-      }
-    }
-    return metrics;
+    return getRocksDBMetricByTableUUID(getTableUUID(DEFAULT_TEST_KEYSPACE, tableName));
   }
 
   public int getTableCounterMetric(String keyspaceName,
                                    String tableName,
                                    String metricName) throws Exception {
-    int value = 0;
-    Set<String> tabletIds = getTableIds(keyspaceName, tableName);
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      try {
-        URL url = new URL(String.format("http://%s:%d/metrics",
-                                        ts.getLocalhostIP(),
-                                        ts.getWebPort()));
-        Scanner scanner = new Scanner(url.openConnection().getInputStream());
-        JsonParser parser = new JsonParser();
-        JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
-        for (JsonElement elem : tree.getAsJsonArray()) {
-          JsonObject obj = elem.getAsJsonObject();
-          if (obj.get("type").getAsString().equals("tablet") &&
-              tabletIds.contains(obj.get("id").getAsString())) {
-            value += new Metrics(obj).getCounter(metricName).value;
-          }
-        }
-      } catch (MalformedURLException e) {
-        throw new InternalError(e.getMessage());
-      }
-    }
-    return value;
+    return getTableCounterMetricByTableUUID(getTableUUID(keyspaceName, tableName), metricName);
   }
 
   public int getRestartsCount(String tableName) throws Exception {
-    return getTableCounterMetric(DEFAULT_TEST_KEYSPACE, tableName, "restart_read_requests");
+    return getTableCounterMetricByTableUUID(getTableUUID(DEFAULT_TEST_KEYSPACE, tableName),
+                                "restart_read_requests");
   }
 
   public int getRetriesCount() throws Exception {

@@ -20,7 +20,6 @@
 #ifndef YB_GUTIL_REF_COUNTED_H
 #define YB_GUTIL_REF_COUNTED_H
 
-#include <cassert>
 #include <atomic>
 
 #ifndef NDEBUG
@@ -350,12 +349,12 @@ class scoped_refptr {
   bool operator!() const { return ptr_ == nullptr; }
 
   T* operator->() const {
-    assert(ptr_ != nullptr);
+    DCHECK(ptr_ != nullptr);
     return ptr_;
   }
 
   T& operator*() const {
-    assert(ptr_ != nullptr);
+    DCHECK(ptr_ != nullptr);
     return *ptr_;
   }
 

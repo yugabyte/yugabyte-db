@@ -1,10 +1,36 @@
-This page documents bulk export for YugaByte DB’s [Cassandra compatible YCQL API](../../../api/ycql). To export data from a YugaByte DB (or even an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/YugaByte/cassandra-loader#cassandra-unloader) tool.
+---
+title: Bulk export
+linkTitle: Bulk export
+description: Bulk export
+image: /images/section_icons/manage/enterprise.png
+headcontent: Bulk export data from YugabyteDB.
+menu:
+  latest:
+    identifier: manage-bulk-export
+    parent: manage-bulk-import-export
+    weight: 707
+aliases:
+  - /latest/manage/data-migration/bulk-export/
+isTocNested: true
+showAsideToc: true
+---
 
-We will first create a source YugaByte DB table and populate it with data. Then we will export the data out using the cassandra-unloader tool. We will use a generic gaming user profile use case as a running example to illustrate the export process.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
+This page documents bulk export for YugabyteDB’s [Cassandra-compatible YCQL API](../../../../api/ycql). To export data from a YugabyteDB (or an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
+
+We will first create a source YugabyteDB table and populate it with data. Then we will export the data out using the cassandra-unloader tool. We will use a generic gaming user profile use case as a running example to illustrate the export process.
 
 ## Create Source Table
 
-Following is the schema of the destination YugaByte DB table.
+Following is the schema of the destination YugabyteDB table.
 
 ```sql
 CREATE KEYSPACE load;
@@ -71,14 +97,14 @@ python ./gen_csv.py file04.csv 5120 &
 
 ## Load Sample Data
 
-[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [YugaByte DB cassandra-loader fork](https://github.com/YugaByte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
+[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly csv files). For more details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (e.g. “[1,2,3]” rather than [1,2,3] for lists).
 
 ### Install cassandra-loader
 
 You can do this as shown below.
 
 ```sh
-$ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
+$ wget https://github.com/yugabyte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
 ```
 
 ```sh
@@ -103,7 +129,7 @@ The files can be queued up for upload one at a time. Sample invocation:
     -f file01.csv
 ```
 
-For additional options to cassandra-loader, see [here](https://github.com/YugaByte/cassandra-loader#options).
+For additional options to cassandra-loader, see [here](https://github.com/yugabyte/cassandra-loader#options).
 
 ## Export Data
 
@@ -127,4 +153,15 @@ $ chmod a+x cassandra-unloader
    -f outfile.csv
 ```
 
-For additional options to cassandra-unloader, see [here](https://github.com/YugaByte/cassandra-loader#cassandra-unloader).
+For additional options to cassandra-unloader, see [here](https://github.com/yugabyte/cassandra-loader#cassandra-unloader).
+
+{{< note title="Always specify timezone" >}}
+The time zone is not added to the default timestamp formats when using the `cassandra-loader` and `cassandra-unloader` utilities.
+Make sure that timestamps are exported and imported in the same format, including the time zone.
+Examples:  `yyyy-MM-dd HH:mm:ss.SSSZ` and `yyyy-MM-dd HH:mm:ss.SSSXXX`.
+{{< /note >}}
+
+
+{{< note title="Use tab character for delim on JSONB columns" >}}
+The default delimiter (`,`) does not work with `JSONB` columns. Use the tab character for delim `-delim $'\t'`.
+{{< /note >}}

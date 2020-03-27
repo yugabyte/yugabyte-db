@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
  * ybc_fdw.c
- *		  Foreign-data wrapper for YugaByte DB.
+ *		  Foreign-data wrapper for YugabyteDB.
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -56,6 +56,7 @@
 /*  YB includes. */
 #include "commands/dbcommands.h"
 #include "catalog/pg_operator.h"
+#include "catalog/ybctype.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
@@ -246,16 +247,10 @@ typedef struct YbFdwExecState
 static void
 ybcBeginForeignScan(ForeignScanState *node, int eflags)
 {
-	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	EState      *estate      = node->ss.ps.state;
 	Relation    relation     = node->ss.ss_currentRelation;
-	TupleDesc   tupdesc      = RelationGetDescr(relation);
-
-	/* Planning function above should ensure target list is set */
-	List *target_attrs = foreignScan->fdw_private;
 
 	YbFdwExecState *ybc_state = NULL;
-	ListCell       *lc;
 
 	/* Do nothing in EXPLAIN (no ANALYZE) case.  node->fdw_state stays NULL. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
@@ -265,85 +260,193 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state = (YbFdwExecState *) palloc0(sizeof(YbFdwExecState));
 
 	node->fdw_state = (void *) ybc_state;
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-	                              YBCGetDatabaseOid(relation),
-	                              RelationGetRelid(relation),
-	                              InvalidOid /* index_oid */,
-	                              &ybc_state->handle,
-	                              estate ? &estate->es_yb_read_ht : 0));
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
+																RelationGetRelid(relation),
+																NULL /* prepare_params */, 
+																&ybc_state->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
 	ybc_state->exec_params = &estate->yb_exec_params;
+
+	ybc_state->exec_params->rowmark = -1;
+	ListCell   *l;
+	foreach(l, estate->es_rowMarks) {
+		ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+		// Do not propogate non-row-locking row marks.
+		if (erm->markType != ROW_MARK_REFERENCE &&
+			erm->markType != ROW_MARK_COPY)
+			ybc_state->exec_params->rowmark = erm->markType;
+		break;
+	}
+
 	ybc_state->is_exec_done = false;
-
-	/* Set scan targets. */
-	bool has_targets = false;
-	foreach(lc, target_attrs)
-	{
-		TargetEntry *target = (TargetEntry *) lfirst(lc);
-
-		/* For regular (non-system) attribute check if they were deleted */
-		Oid   attr_typid  = InvalidOid;
-		int32 attr_typmod = 0;
-		if (target->resno > 0)
-		{
-			Form_pg_attribute attr;
-			attr = TupleDescAttr(tupdesc, target->resno - 1);
-			/* Ignore dropped attributes */
-			if (attr->attisdropped)
-			{
-				continue;
-			}
-			attr_typid  = attr->atttypid;
-			attr_typmod = attr->atttypmod;
-		}
-
-		YBCPgTypeAttrs type_attrs = {attr_typmod};
-		YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
-		                                            target->resno,
-		                                            attr_typid,
-		                                            &type_attrs);
-		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-		                                                 expr),
-		                            ybc_state->handle,
-		                            ybc_state->stmt_owner);
-		has_targets = true;
-	}
-
-	/*
-	 * We can have no target columns at this point for e.g. a count(*). For now
-	 * we request the first non-dropped column in that case.
-	 * TODO look into handling this on YugaByte side.
-	 */
-	if (!has_targets)
-	{
-		for (int16_t i = 0; i < tupdesc->natts; i++)
-		{
-			/* Ignore dropped attributes */
-			if (TupleDescAttr(tupdesc, i)->attisdropped)
-			{
-				continue;
-			}
-
-			YBCPgTypeAttrs type_attrs = { TupleDescAttr(tupdesc, i)->atttypmod };
-			YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
-			                                            i + 1,
-														TupleDescAttr(tupdesc, i)->atttypid,
-			                                            &type_attrs);
-			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-			                                                 expr),
-			                            ybc_state->handle,
-			                            ybc_state->stmt_owner);
-			break;
-		}
-	}
 
 	/* Set the current syscatalog version (will check that we are up to date) */
 	HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
 	                                                        yb_catalog_cache_version),
 	                            ybc_state->handle,
 	                            ybc_state->stmt_owner);
+}
+
+/*
+ * Setup the scan targets (either columns or aggregates).
+ */
+static void
+ybcSetupScanTargets(ForeignScanState *node)
+{
+	EState *estate = node->ss.ps.state;
+	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
+	Relation relation = node->ss.ss_currentRelation;
+	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
+	TupleDesc tupdesc = RelationGetDescr(relation);
+	ListCell *lc;
+
+	/* Planning function above should ensure target list is set */
+	List *target_attrs = foreignScan->fdw_private;
+
+	MemoryContext oldcontext =
+		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
+
+	/* Set scan targets. */
+	if (node->yb_fdw_aggs == NIL)
+	{
+		/* Set non-aggregate column targets. */
+		bool has_targets = false;
+		foreach(lc, target_attrs)
+		{
+			TargetEntry *target = (TargetEntry *) lfirst(lc);
+
+			/* For regular (non-system) attribute check if they were deleted */
+			Oid   attr_typid  = InvalidOid;
+			int32 attr_typmod = 0;
+			if (target->resno > 0)
+			{
+				Form_pg_attribute attr;
+				attr = TupleDescAttr(tupdesc, target->resno - 1);
+				/* Ignore dropped attributes */
+				if (attr->attisdropped)
+				{
+					continue;
+				}
+				attr_typid  = attr->atttypid;
+				attr_typmod = attr->atttypmod;
+			}
+
+			YBCPgTypeAttrs type_attrs = {attr_typmod};
+			YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
+														target->resno,
+														attr_typid,
+														&type_attrs);
+			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+															 expr),
+										ybc_state->handle,
+										ybc_state->stmt_owner);
+			has_targets = true;
+		}
+
+		/*
+		 * We can have no target columns at this point for e.g. a count(*). For now
+		 * we request the first non-dropped column in that case.
+		 * TODO look into handling this on YugaByte side.
+		 */
+		if (!has_targets)
+		{
+			for (int16_t i = 0; i < tupdesc->natts; i++)
+			{
+				/* Ignore dropped attributes */
+				if (TupleDescAttr(tupdesc, i)->attisdropped)
+				{
+					continue;
+				}
+
+				YBCPgTypeAttrs type_attrs = { TupleDescAttr(tupdesc, i)->atttypmod };
+				YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
+															i + 1,
+															TupleDescAttr(tupdesc, i)->atttypid,
+															&type_attrs);
+				HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+																 expr),
+											ybc_state->handle,
+											ybc_state->stmt_owner);
+				break;
+			}
+		}
+	}
+	else
+	{
+		/* Set aggregate scan targets. */
+		foreach(lc, node->yb_fdw_aggs)
+		{
+			Aggref *aggref = lfirst_node(Aggref, lc);
+			char *func_name = get_func_name(aggref->aggfnoid);
+			ListCell *lc_arg;
+			YBCPgExpr op_handle;
+			const YBCPgTypeEntity *type_entity;
+
+			/* Get type entity for the operator from the aggref. */
+			type_entity = YBCPgFindTypeEntity(aggref->aggtranstype);
+
+			/* Create operator. */
+			HandleYBStmtStatusWithOwner(YBCPgNewOperator(ybc_state->handle,
+														 func_name,
+														 type_entity,
+														 &op_handle),
+										ybc_state->handle,
+										ybc_state->stmt_owner);
+
+			/* Handle arguments. */
+			if (aggref->aggstar) {
+				/*
+				 * Add dummy argument for COUNT(*) case. We don't use a column reference
+				 * as we want to count rows even if all column values are NULL.
+				 */
+				YBCPgExpr const_handle;
+				YBCPgNewConstant(ybc_state->handle,
+								 type_entity,
+								 0 /* datum */,
+								 true /* is_null */,
+								 &const_handle);
+				HandleYBStmtStatusWithOwner(YBCPgOperatorAppendArg(op_handle,
+																   const_handle),
+											ybc_state->handle,
+											ybc_state->stmt_owner);
+			} else {
+				/* Add aggregate arguments to operator. */
+				foreach(lc_arg, aggref->args)
+				{
+					TargetEntry *tle = lfirst_node(TargetEntry, lc_arg);
+					int attno = castNode(Var, tle->expr)->varattno;
+					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
+					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
+
+					YBCPgExpr arg = YBCNewColumnRef(ybc_state->handle,
+													attno,
+													attr->atttypid,
+													&type_attrs);
+					HandleYBStmtStatusWithOwner(YBCPgOperatorAppendArg(op_handle, arg),
+												ybc_state->handle,
+												ybc_state->stmt_owner);
+				}
+			}
+
+			/* Add aggregate operator as scan target. */
+			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+															 op_handle),
+										ybc_state->handle,
+										ybc_state->stmt_owner);
+		}
+
+		/*
+		 * Setup the scan slot based on new tuple descriptor for the given targets. This is a dummy
+		 * tupledesc that only includes the number of attributes. Switch to per-query memory from
+		 * per-tuple memory so the slot persists across iterations.
+		 */
+		TupleDesc target_tupdesc = CreateTemplateTupleDesc(list_length(node->yb_fdw_aggs),
+														   false /* hasoid */);
+		ExecInitScanTupleSlot(estate, &node->ss, target_tupdesc);
+	}
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
@@ -354,7 +457,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 static TupleTableSlot *
 ybcIterateForeignScan(ForeignScanState *node)
 {
-	TupleTableSlot *slot      = node->ss.ss_ScanTupleSlot;
+	TupleTableSlot *slot;
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
 	bool           has_data   = false;
 
@@ -365,6 +468,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 * - The subsequent fetches don't need to setup the query with these operations again.
 	 */
 	if (!ybc_state->is_exec_done) {
+		ybcSetupScanTargets(node);
 		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params),
 																ybc_state->handle,
 																ybc_state->stmt_owner);
@@ -372,6 +476,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	}
 
 	/* Clear tuple slot before starting */
+	slot = node->ss.ss_ScanTupleSlot;
 	ExecClearTuple(slot);
 
 	TupleDesc       tupdesc = slot->tts_tupleDescriptor;
@@ -392,16 +497,28 @@ ybcIterateForeignScan(ForeignScanState *node)
 	/* If we have result(s) update the tuple slot. */
 	if (has_data)
 	{
-		HeapTuple tuple = heap_form_tuple(tupdesc, values, isnull);
-		if (syscols.oid != InvalidOid)
+		if (node->yb_fdw_aggs == NIL)
 		{
-			HeapTupleSetOid(tuple, syscols.oid);
+			HeapTuple tuple = heap_form_tuple(tupdesc, values, isnull);
+			if (syscols.oid != InvalidOid)
+			{
+				HeapTupleSetOid(tuple, syscols.oid);
+			}
+
+			slot = ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+
+			/* Setup special columns in the slot */
+			slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
 		}
-
-		slot = ExecStoreTuple(tuple, slot, InvalidBuffer, false);
-
-		/* Setup special columns in the slot */
-		slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
+		else
+		{
+			/*
+			 * Aggregate results stored in virtual slot (no tuple). Set the
+			 * number of valid values and mark as non-empty.
+			 */
+			slot->tts_nvalid = tupdesc->natts;
+			slot->tts_isempty = false;
+		}
 	}
 
 	return slot;

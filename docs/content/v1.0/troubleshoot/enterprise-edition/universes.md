@@ -11,18 +11,18 @@ menu:
 
 ## Metrics Page
 In the [Admin Console](../../../deploy/enterprise-edition/install-admin-console/), click on the [Universe](../../../architecture/concepts/universe/#universe) page, then go to the Metrics tab.
-The page shows a number of interactive metrics graphs that capture the state of the YugaByte Universe over time. 
+The page shows a number of interactive metrics graphs that capture the state of the Yugabyte Universe over time. 
 
-![YugaByte Metrics Page](/images/troubleshooting/check-metrics.png)
+![Yugabyte Metrics Page](/images/troubleshooting/check-metrics.png)
 
 Note: For a quick overview, check the query ops and latency graphs as well as the CPU, memory, disk, and network usage graphs. In case of dips or spikes the other graphs will offer additional information that can help diagnose the issue.
 
 
 ## Nodes Status
 In the [Admin Console](../../../deploy/enterprise-edition/install-admin-console/), click on the [Universe](../../../architecture/concepts/universe/#universe) page, then go to the Nodes tab.
-The page will show the status of the Master and TServer on each YugaByte node.
+The page will show the status of the Master and TServer on each Yugabyte node.
 
-![YugaByte Nodes Page](/images/troubleshooting/check-node-status.png)
+![Yugabyte Nodes Page](/images/troubleshooting/check-node-status.png)
 
 In case of issues, more information about each Master or TServer is available on its respective Details page. 
 Generally the link is: `<node-ip>:7000` for Masters and `<node-ip>:9000` for TServers.

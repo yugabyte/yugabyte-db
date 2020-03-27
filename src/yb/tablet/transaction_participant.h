@@ -36,6 +36,8 @@
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/result.h"
@@ -50,37 +52,49 @@ class WriteBatch;
 namespace yb {
 
 class HybridTime;
+class OneWayBitmap;
+class PendingOperationCounter;
 class TransactionMetadataPB;
 
 namespace tserver {
 
+class GetTransactionStatusAtParticipantResponsePB;
 class TransactionStatePB;
 
 }
 
 namespace tablet {
 
-class TransactionIntentApplier;
-class UpdateTxnOperationState;
-
 struct TransactionApplyData {
-  int64_t leader_term;
+  int64_t leader_term = -1;
   TransactionId transaction_id;
   consensus::OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
+  bool sealed = false;
   TabletId status_tablet;
 
   std::string ToString() const;
+};
+
+struct RemoveIntentsData {
+  consensus::OpId op_id;
+  HybridTime log_ht;
 };
 
 // Interface to object that should apply intents in RocksDB when transaction is applying.
 class TransactionIntentApplier {
  public:
   virtual CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) = 0;
-  virtual CHECKED_STATUS RemoveIntents(const TransactionId& transaction_id) = 0;
-  virtual CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) = 0;
+  virtual CHECKED_STATUS RemoveIntents(
+      const RemoveIntentsData& data, const TransactionId& transaction_id) = 0;
+  virtual CHECKED_STATUS RemoveIntents(
+      const RemoveIntentsData& data, const TransactionIdSet& transactions) = 0;
+
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
+
+  // See TransactionParticipant::WaitMinRunningHybridTime below
+  virtual void MinRunningHybridTimeSatisfied() = 0;
 
  protected:
   ~TransactionIntentApplier() {}
@@ -92,6 +106,10 @@ class TransactionParticipantContext {
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
   virtual const server::ClockPtr& clock_ptr() const = 0;
+
+  // Fills RemoveIntentsData with information about replicated state.
+  virtual void GetLastReplicatedData(RemoveIntentsData* data) = 0;
+
   virtual bool Enqueue(rpc::ThreadPoolTask* task) = 0;
   virtual HybridTime Now() = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
@@ -99,8 +117,25 @@ class TransactionParticipantContext {
   virtual void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
 
+  // Returns hybrid time that lower than any future transaction apply record.
+  virtual HybridTime SafeTimeForTransactionParticipant() = 0;
+
+  std::string LogPrefix() const;
+
  protected:
   ~TransactionParticipantContext() {}
+};
+
+struct TransactionalBatchData {
+  // Write id of last strong write intent in transaction.
+  IntraTxnWriteId write_id = 0;
+
+  // Hybrid time of last replicated write in transaction.
+  HybridTime hybrid_time;
+
+  std::string ToString() const {
+    return Format("{ write_id: $0 hybrid_time: $1 }", write_id, hybrid_time);
+  }
 };
 
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
@@ -108,19 +143,31 @@ class TransactionParticipantContext {
 // instance per tablet.
 class TransactionParticipant : public TransactionStatusManager {
  public:
-  TransactionParticipant(TransactionParticipantContext* context, TransactionIntentApplier* applier);
+  TransactionParticipant(
+      TransactionParticipantContext* context, TransactionIntentApplier* applier,
+      const scoped_refptr<MetricEntity>& entity);
   virtual ~TransactionParticipant();
 
+  // Notify participant that this context is ready and it could start performing its requests.
+  void Start();
+
   // Adds new running transaction.
-  void Add(const TransactionMetadataPB& data, bool may_have_metadata,
-           rocksdb::WriteBatch *write_batch);
+  MUST_USE_RESULT bool Add(
+      const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override;
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& id) override;
 
-  boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
-      const TransactionId& id);
+  // Prepares batch data for specified transaction id.
+  // I.e. adds specified batch idx to set of replicated batches and fills encoded_replicated_batches
+  // with new state of replicated batch indexes. Encoding does not matter for user of this function,
+  // he should just append it to appropriate value.
+  //
+  // Returns boost::none when transaction is unknown.
+  boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
+      const TransactionId& id, size_t batch_idx,
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
 
-  void UpdateLastWriteId(const TransactionId& id, IntraTxnWriteId value);
+  void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
@@ -132,26 +179,61 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void Cleanup(TransactionIdSet&& set) override;
 
-  CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
-
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
-    int64_t leader_term;
+    int64_t leader_term = -1;
     const tserver::TransactionStatePB& state;
     const consensus::OpId& op_id;
     HybridTime hybrid_time;
-    bool already_applied;
+    bool sealed = false;
+    AlreadyApplied already_applied;
+
+    std::string ToString() const;
   };
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
-  void SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds);
+  void SetDB(
+      rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
+      PendingOperationCounter* pending_op_counter);
+
+  CHECKED_STATUS CheckAborted(const TransactionId& id);
+
+  void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
+
+  void GetStatus(const TransactionId& transaction_id,
+                 size_t required_num_replicated_batches,
+                 int64_t term,
+                 tserver::GetTransactionStatusAtParticipantResponsePB* response,
+                 rpc::RpcContext* context);
 
   TransactionParticipantContext* context() const;
 
+  HybridTime MinRunningHybridTime() const;
+
+  // When minimal start hybrid time of running transaction will be at least `ht` applier
+  // method `MinRunningHybridTimeSatisfied` will be invoked.
+  void WaitMinRunningHybridTime(HybridTime ht);
+
+  void StartShutdown();
+
+  void CompleteShutdown();
+
+  // Resolve all transactions that were committed or aborted at resolve_at.
+  // After this function returns with success:
+  // - All intents of committed transactions will have been applied.
+  // - No transactions can be committed with commit time <= resolve_at from that point on..
+  CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
+
+  std::string DumpTransactions() const;
+
   size_t TEST_GetNumRunningTransactions() const;
 
-  size_t TEST_CountIntents() const;
+  // Returns pair of number of intents and number of transactions.
+  std::pair<size_t, size_t> TEST_CountIntents() const;
+
+  OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 
  private:
   int64_t RegisterRequest() override;

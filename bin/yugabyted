@@ -1,0 +1,2100 @@
+#!/usr/bin/env python
+from __future__ import unicode_literals
+
+import argparse
+import atexit
+import json
+import logging
+import multiprocessing
+import os
+import re
+import resource
+import shutil
+import subprocess
+import sys
+import time
+import traceback
+import uuid
+import tempfile
+import tarfile
+from datetime import datetime
+from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
+from threading import Thread
+
+# Version-dependent imports
+PY_VERSION = sys.version_info[0]
+if PY_VERSION < 3:
+    import Queue as queue
+    from urllib2 import Request, urlopen, URLError, HTTPError
+    from urllib import urlencode
+else:
+    import queue
+    from urllib.request import Request, urlopen
+    from urllib.error import URLError, HTTPError
+    from urllib.parse import urlencode
+
+"""
+Run `yugabyted` to start a single-node YugabyteDB process. If no options are specified,
+`yugabyted` will assume the following default directory tree:
+
+yugabyte
++-- var
+    |
+    +-- conf
+        |   +-- yugabyted.conf
+     +-- logs
+         |   +-- master & tserver & yugaware
+     +-- data
++-- bin
+|   |   +-- yugabyted
+|   |   +-- yb-master
+|   |   +-- yb-tserver
+|   |   +-- ...
++-- ui
+|   |   +-- bin...
+|   |   +-- ...
+"""
+# Script constants.
+SCRIPT_NAME = os.path.basename(__file__)
+YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+YUGABYTE_VAR_DIR = os.path.join(YUGABYTE_DIR, "var")
+DEFAULT_CONF_DIR = os.path.join(YUGABYTE_VAR_DIR, "conf")
+BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
+DEFAULT_DATA_DIR = os.path.join(YUGABYTE_VAR_DIR, "data")
+DEFAULT_LOG_DIR = os.path.join(YUGABYTE_VAR_DIR, "logs")
+DEFAULT_CONF = os.path.join(DEFAULT_CONF_DIR, "{}.conf".format(SCRIPT_NAME))
+DEFAULT_CALLHOME = True
+TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
+FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
+BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
+SLACK_LINK = "https://www.yugabyte.com/slack"
+COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
+HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
+DEFAULT_DEMO_DATABASE = "northwind"
+SAMPLE_DATA_LINKS = {
+    "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
+    "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
+    "sports": "https://docs.yugabyte.com/latest/sample-data/sportsdb/",
+    "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
+}
+EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
+
+# YugabyteDB configs.
+IP_ANY = "0.0.0.0"
+IP_LOCALHOST = "127.0.0.1"
+DEFAULT_BIND_IP = IP_ANY
+DEFAULT_MASTER_RPC_PORT = 7100
+DEFAULT_TSERVER_RPC_PORT = 9100
+DEFAULT_MASTER_WEBSERVER_PORT = 7000
+DEFAULT_TSERVER_WEBSERVER_PORT = 9000
+DEFAULT_YSQL_PORT = 5433
+DEFAULT_YCQL_PORT = 9042
+DEFAULT_WEBSERVER_PORT = 7200
+DEFAULT_CALLHOME = True
+VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
+YUGABYTE_API_CLIENT_PROGRAMS = {
+    "ysql": "ysqlsh",
+    "ycql": "cqlsh",
+}
+YB_NUM_SHARDS_PER_TSERVER = 1
+YSQL_NUM_SHARDS_PER_TSERVER = 1
+METRICS_SNAPSHOT_LIST = [
+    "handler_latency_yb_tserver_TabletServerService_Read_count",
+    "handler_latency_yb_tserver_TabletServerService_Write_count",
+    "handler_latency_yb_tserver_TabletServerService_Read_sum",
+    "handler_latency_yb_tserver_TabletServerService_Write_sum",
+    "disk_usage", "cpu_usage", "node_up"
+]
+
+# YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
+YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
+YUGAWARE_BIN_DIR = os.path.join(YUGAWARE_DIR, "bin")
+YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.default.conf")
+WEBSERVER_DB = "system_platform"
+DEMO_DB_PREFIX = "yb_demo_"
+
+BREW_CONF_FILE = "/usr/local/etc/yugabyted.conf"
+
+ALERT_WARNING = "Warning"
+ULIMIT_ERR_CODE = "LOW_ULIMITS"
+
+start_time_sec = time.time()
+
+class ControlScript(object):
+    def __init__(self):
+        self.configs = None
+        self.processes = {}
+        self.stop_callhome = False
+        self.alerts = []
+        self.script = None
+
+    # Starts YugabyteDB node.
+    def start(self):
+        if self.script.is_running():
+            Output.print_out("{} is already running!".format(SCRIPT_NAME))
+            sys.exit(1)
+        Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
+        self.set_env_vars()
+
+        if self.configs.temp_data.get("daemon"):
+            self.daemonize()
+        self.script.write_pid(os.getpid())
+        errors = self.script.set_rlimits(print_info=True)
+        if errors:
+            self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, errors))
+
+        self.set_signals(self.kill_children)
+        atexit.register(self.kill_children)
+        Output.script_exit_func = self.kill_children
+
+        self.start_processes()
+
+    # Kills currently running yugabyted process if it exists.
+    def stop(self, *args):
+        err = self.script.kill()
+        if err:
+            Output.print_out(
+                "Failed to shut down {}: {}. Please check PID in {}".format(
+                    SCRIPT_NAME, err, self.script.pidfile))
+            sys.exit(1)
+        else:
+            Output.print_out("{} stopped.".format(SCRIPT_NAME))
+        sys.exit(0)
+
+    # Prints status of YugabyteDB.
+    def status(self):
+        if os.path.isdir(self.configs.saved_data.get("data_dir")):
+            Output.print_out(self.get_status_string())
+        else:
+            Output.print_out("{} is not running.".format(SCRIPT_NAME))
+
+    # Prints YugabyteDB version.
+    def version(self):
+        with open(VERSION_METADATA_PATH) as metadata:
+            data = json.load(metadata)
+            title = "Version".format(SCRIPT_NAME)
+            output = "\n" + "-" * 70 + "\n"
+            output += ("| {:^66} |\n").format(title)
+            output += "-" * 70 + "\n"
+            build = data.get("build_number")
+            try:
+                version = "{}-b{}".format(data.get("version_number"), int(build))
+            except ValueError as e:
+                version = "{} ({})".format(data.get("version_number"), build)
+            for k, v in [
+                    ("Version", version),
+                    ("Build Time", data.get("build_timestamp")),
+                    ("Build Hash", data.get("git_hash"))]:
+                output_k = Output.make_yellow(k)
+                extra_len = len(Output.make_yellow(""))
+                output += ("| {:" + str(15 + extra_len) + "}: {:<49} |\n").format(output_k, v)
+            output += "-" * 70 + "\n"
+            Output.print_out(output)
+
+    # Starts an interactive YSQL shell.
+    def connect_ysql(self):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{} is not running. Cannot connect to YSQL.".format(SCRIPT_NAME))
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        ysql_proxy.connect()
+
+    # Starts an interactive YCQL shell.
+    def connect_ycql(self):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{} is not running. Cannot connect to YCQL.".format(SCRIPT_NAME))
+        path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
+        cmd = [
+            path, self.advertise_ip(),
+            str(self.configs.saved_data.get("ycql_port"))
+        ]
+        os.execv(path, cmd)
+
+    # Creates demo database and starts an interactive shell into it. Destroys the sample database
+    # after shell quits.
+    def demo(self):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
+        db_name = DEMO_DB_PREFIX + self.configs.temp_data.get("demo_db")
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if ysql_proxy.db_exists(db_name):
+            Output.log_error_and_exit(
+                "Demo is already running. Concurrent demos are currently unsupported.")
+        # TODO: Race condition currently exists when running demo too close to each other. This
+        # will be solved when concurrent isolated demos are implemented.
+        self.create_demo()
+
+        # Ignore kill SIGINT to match normal ysqlsh and psql behavior.
+        signal(SIGINT, SIG_IGN)
+        signal(SIGABRT, self.destroy_demo)
+        signal(SIGTERM, self.destroy_demo)
+        atexit.register(self.destroy_demo)
+        self.connect_demo()
+        self.set_signals(SIG_DFL)
+
+    # Create target demo database if it does not exist.
+    def create_demo(self):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
+        demo_db = self.configs.temp_data.get("demo_db")
+        db_name = DEMO_DB_PREFIX + demo_db
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if ysql_proxy.db_exists(db_name):
+            Output.print_out("Demo database {} already exists.".format(demo_db))
+            return
+
+        Output.print_out(
+            "Initializing {} demo database. This may take up to a minute...".format(demo_db))
+        # Create demo database.
+        Output.log("Creating database {}...".format(db_name))
+        _, err = ysql_proxy.create_db(db_name)
+        if err:
+            Output.log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
+
+        # Populate demo database.
+        Output.log("Populating {} with sample data...".format(db_name))
+        files = []
+        for name in Configs.get_demo_info()[demo_db]["files"]:
+            files.append(os.path.join(YUGABYTE_DIR, "share", name))
+        _, err = ysql_proxy.load_files(files, db=db_name)
+        if err:
+            Output.log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
+
+        msg = "Successfully loaded sample database!"
+        Output.print_and_log(msg)
+
+    # Run YSQL shell in target demo database.
+    def connect_demo(self):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
+        demo_db = self.configs.temp_data.get("demo_db")
+        db_name = DEMO_DB_PREFIX + demo_db
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if not ysql_proxy.db_exists(db_name):
+            self.create_demo()
+
+        # Ignore kill SIGINT to match normal ysqlsh and psql behavior.
+        signal(SIGINT, SIG_IGN)
+        website = Output.make_underline(SAMPLE_DATA_LINKS[demo_db])
+        Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
+        Output.print_out(
+            "For more, go to {}\n".format(website)
+        )
+        ysql_proxy.connect(db=db_name)
+
+    # Destroy target demo database if it exists.
+    def destroy_demo(self, signum=None, frame=None):
+        if self.get_failed_node_processes():
+            Output.log_error_and_exit(
+                "{0} is not running. Please run `{0} start` before starting a demo.".format(
+                    SCRIPT_NAME))
+
+        demo_db = self.configs.temp_data.get("demo_db")
+        db_name = DEMO_DB_PREFIX + demo_db
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if ysql_proxy.db_exists(db_name):
+            _, err = ysql_proxy.drop_db(db_name)
+            if err:
+                Output.log_error_and_exit("Failed to drop database {}: {}".format(demo_db, err))
+        msg = "Deleted demo database {}.".format(demo_db)
+        Output.print_and_log(msg)
+
+    def collect_logs(self):
+        logpath = self.configs.saved_data.get("log_dir")
+        if not os.path.exists(logpath):
+            Output.print_and_log("No logs directory at {}".format(logpath))
+            return
+        tmpprefix = "yugabyted-{}.tar.gz".format(str(datetime.now()).replace(" ", "-"))
+        tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
+        with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
+            archive.add(logpath)
+        Output.print_and_log("Logs are packaged into {}".format(tarpath))
+
+    # Checks yb-master and yb-tserver are running. Returns failed processes.
+    # TODO: Check postmaster.pid.
+    def get_failed_node_processes(self):
+        failed_processes = []
+        for process in ("master", "tserver"):
+            if not ProcessManager.is_process_running(
+                    process, self.configs.saved_data.get("data_dir")):
+                failed_processes.append("yb-{}".format(process))
+        return failed_processes
+
+    # Called after receiving certain signals or on exit. Kills all subprocesses.
+    def kill_children(self, signum=None, frame=None):
+        if signum:
+            Output.log("Received signal: {}".format(signum), logging.DEBUG)
+        Output.print_and_log("Shutting down...")
+        Output.console_access = False
+        self.script.daemon_success.put(-1)
+        cur_pid = os.getpid()
+        pgid = os.getpgid(cur_pid)
+        if not pgid:
+            Output.log(
+                "PGID could not be found for PID {}. Is {} running?".format(cur_pid, SCRIPT_NAME))
+            os._exit(os.EX_OK)
+        self.set_signals(SIG_DFL)
+
+        for p in self.processes.values():
+            p.delete_pidfile()
+        self.script.delete_pidfile()
+
+        try:
+            # Kill process group instead of self.processes to ensure
+            # any spawned child processes are killed. Use SIGKILL because YugaWare
+            # requires KILL signal to terminate and nodes currently do not gracefully terminate.
+            os.killpg(pgid, SIGKILL)
+            Output.log(
+                "{} may not have terminated properly... "
+                "Please check PGID {}.".format(SCRIPT_NAME, pgid))
+        except OSError as err:
+            Output.log(
+                "Failed to kill PGID {}... Is {} running?\n{}".format(pgid, SCRIPT_NAME, str(err)))
+
+        # exit no matter what
+        os._exit(os.EX_OK)
+
+    # Starts yb-master, yb-tserver, and yugaware processes.
+    # After initializing, creates a callhome thread.
+    def start_processes(self):
+        bind_ip = self.configs.saved_data.get("bind_ip")
+        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
+        join_ip = self.configs.saved_data.get("join")
+        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        if join_ip:
+            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+        tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
+
+        common_gflags = [
+            "--stop_on_parent_termination",
+            "--undefok=stop_on_parent_termination",
+            "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
+            "--webserver_interface={}".format(bind_ip),
+            "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
+                ",".join(METRICS_SNAPSHOT_LIST)),
+            "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
+            "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER),
+        ]
+
+        if not join_ip:
+            common_gflags.append("--cluster_uuid={}".format(
+                self.configs.saved_data.get("universe_uuid")))
+
+
+        yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_gflags + \
+            [
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
+                "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
+                "--replication_factor=1",
+                "--use_initial_sys_catalog_snapshot",
+                "--server_dump_info_path={}".format(
+                    os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
+                "--master_enable_metrics_snapshotter=true",
+                "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
+                "--default_memory_limit_to_ram_ratio=0.35",
+                "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
+            ]
+        if not join_ip:
+            yb_master_cmd.append("--master_addresses={}".format(master_addresses))
+
+        if self.configs.saved_data.get("master_flags"):
+            yb_master_cmd.extend(
+                ["--{}".format(flag) for flag in \
+                    self.configs.saved_data.get("master_flags").split(",")])
+
+        yb_tserver_cmd = [os.path.join(BIN_DIR, "yb-tserver")] + common_gflags + \
+            [
+                "--tserver_master_addrs={}".format(master_addresses),
+                "--rpc_bind_addresses={}:{}".format(bind_ip, tserver_rpc_port),
+                "--server_broadcast_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
+                "--cql_proxy_bind_address={}:{}".format(
+                    bind_ip, self.configs.saved_data.get("ycql_port")),
+                "--server_dump_info_path={}".format(
+                    os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
+                "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}:{}".format(
+                    bind_ip, self.configs.saved_data.get("ysql_port")),
+                "--tserver_enable_metrics_snapshotter=true",
+                "--metrics_snapshotter_interval_ms=11000",
+                "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
+                "--default_memory_limit_to_ram_ratio=0.6",
+                "--instance_uuid_override={}".format(self.configs.saved_data.get("tserver_uuid")),
+            ]
+
+        if self.configs.saved_data.get("tserver_flags"):
+            yb_tserver_cmd.extend(
+                ["--{}".format(flag) for flag in \
+                    self.configs.saved_data.get("tserver_flags").split(",")])
+
+        yw_cmd = [
+            os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
+            "-Dplay.evolutions.db.default.autoApply=true",
+            "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
+            "-Dhttp.address={}".format(bind_ip),
+            "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
+        ]
+
+        self.processes = {
+            "master": YBProcessManager(
+                "master", yb_master_cmd, self.configs.saved_data.get("log_dir"),
+                self.configs.saved_data.get("data_dir")),
+            "tserver": YBProcessManager(
+                "tserver", yb_tserver_cmd, self.configs.saved_data.get("log_dir"),
+                self.configs.saved_data.get("data_dir")),
+        }
+
+        if self.configs.temp_data.get("ui"):
+            self.processes["yugaware"] = ProcessManager(
+                "yugaware", yw_cmd, self.configs.saved_data.get("log_dir"),
+                self.configs.saved_data.get("data_dir"))
+
+        for p in self.processes.values():
+            pid = p.get_pid()
+            if pid:
+                Output.print_out(
+                    "{} is already running... Is there an existing {} process?".format(
+                        p.name, SCRIPT_NAME))
+                # Clear self.processes so kill_children() doesn't kill existing processes.
+                self.processes = {}
+                return
+
+        is_first_run = True
+        callhome_thread = None
+        self.stop_callhome = False
+        while True:
+            should_callhome = False
+
+            is_first_install = is_first_run and not self.is_yb_initialized()
+
+            # Create data directory.
+            data_dir = self.configs.saved_data.get("data_dir")
+            if not os.path.exists(data_dir):
+                Output.log(
+                    "Creating data directory {}.".format(data_dir))
+                os.makedirs(data_dir)
+
+            # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
+            pid_file_name = os.path.basename(self.script.pidfile)
+            data_dir_files = [ x for x in os.listdir(data_dir) if x != pid_file_name ]
+            if is_first_install and data_dir_files:
+                Output.print_and_log(
+                    ("Found files {} in data dir {} from possibly failed initialization."
+                    " Removing...").format(data_dir_files, data_dir))
+                rmcontents(data_dir, exclude_names=[pid_file_name])
+
+            # Start or initialize yb-master and yb-tserver.
+            if is_first_run:
+                Output.init_animation("Running system checks...")
+                self.post_install_yb()
+
+            for name in ("master", "tserver"):
+                process = self.processes.get(name)
+                process.remove_error_logs()
+                if not process.is_running():
+                    if not is_first_run:
+                        Output.log(
+                            "{} died unexpectedly. Restarting...".format(process.name),
+                            logging.ERROR)
+                    process.start()
+                    should_callhome = True
+
+            if is_first_run:
+                if not self.wait_tserver():
+                    Output.update_animation("Database failed to start",
+                        status=Output.ANIMATION_FAIL)
+                    Output.log_error_and_exit("Failed to start tserver {}".format(SCRIPT_NAME))
+
+                if not self.setup_master():
+                    Output.update_animation("Database failed to start",
+                        status=Output.ANIMATION_FAIL)
+                    Output.log_error_and_exit("Failed to start master {}".format(SCRIPT_NAME))
+
+                Output.update_animation("System checks")
+            yw_logged_in = False
+            if self.configs.temp_data.get("ui"):
+                yw_process = self.processes.get("yugaware")
+                yw_proxy = YugaWareProxy(advertise_ip,
+                    self.configs.saved_data.get("webserver_port"))
+                if is_first_run and not self.is_yw_initialized():
+                    Output.log("Setting up admin console schema...")
+                    Output.init_animation("Installing database...")
+                    if not self.init_yw():
+                        Output.log_error_and_exit("Failed to set up admin console schema...")
+                    Output.update_animation("Database installed")
+
+                    yw_process.start()
+
+                    Output.init_animation("Bringing up UI...")
+                    Output.log(self.wait_yw_login(yw_proxy))
+                    yw_logged_in = True
+
+                    Output.log(yw_proxy.set_security("insecure"))
+                    Output.log(yw_proxy.insecure_login())
+
+                    Output.log(yw_proxy.import_universe(
+                                advertise_ip,
+                                master_rpc_port,
+                                self.configs.saved_data.get("universe_uuid")))
+
+                    Output.log(yw_proxy.set_landing_page(
+                            self.configs.saved_data.get("universe_uuid")))
+                    should_callhome = True
+                    Output.update_animation("UI ready")
+                else:
+                    if not yw_process.is_running():
+                        if not is_first_run:
+                            Output.log(
+                                "Webserver died unexpectedly. Restarting...", logging.ERROR)
+                        yw_process.start()
+
+                        # TODO: If insecure login fails here, we should assume importing
+                        # universe and setting security level failed and retry initializing YW.
+                        if is_first_run:
+                            Output.init_animation("Bringing up UI...")
+
+                        yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
+                        if yw_logged_in:
+                            animation_status = Output.ANIMATION_SUCCESS
+                        else:
+                            animation_status = Output.ANIMATION_FAIL
+                        if is_first_run:
+                            Output.update_animation("UI status", status=animation_status)
+
+                        should_callhome = True
+                    else:
+                        yw_logged_in = False
+                if yw_process.is_running() and yw_logged_in:
+                    if self.alerts:
+                        yw_proxy.send_alerts(self.alerts)
+
+            if is_first_run:
+                status = self.get_status_string() + \
+                    "{} {} started successfully! To load a sample dataset, " \
+                    "try '{} demo'.\n" \
+                    "{} Join us on Slack at {}\n" \
+                    "{} Claim your free t-shirt at {}\n".format(
+                        Output.ROCKET, SCRIPT_NAME, SCRIPT_NAME, Output.PARTY,
+                        Output.make_underline(SLACK_LINK), Output.SHIRT,
+                        Output.make_underline(COMMUNITY_REWARDS_LINK))
+                Output.print_out(status)
+
+                if self.configs.temp_data.get("daemon"):
+                    # Let original process know daemon was successful so it can exit.
+                    # This is to display the initial status message.
+                    self.script.daemon_success.put(1)
+                    # Ignore any console output as important information will be logged.
+                    with open('/dev/null', 'r+') as dev_null:
+                        Output.console_access = False
+                        sys.stderr.flush()
+                        sys.stdout.flush()
+                        os.dup2(dev_null.fileno(), sys.stdin.fileno())
+                        os.dup2(dev_null.fileno(), sys.stderr.fileno())
+                        os.dup2(dev_null.fileno(), sys.stdout.fileno())
+
+                Diagnostics.first_run_secs = time.time() - start_time_sec
+                Diagnostics.first_install = is_first_install
+
+                if self.configs.saved_data.get("callhome"):
+                    callhome_thread = Thread(target=self.callhome_loop)
+                    callhome_thread.daemon = True
+                    callhome_thread.start()
+
+
+            is_first_run = False
+
+            if should_callhome:
+                self.callhome()
+
+            time.sleep(int(self.configs.saved_data.get("polling_interval")))
+
+        # Stop callhome. Useful in future if we do anything after quitting.
+        self.stop_callhome = True
+        callhome_thread.join()
+
+    # Pushes yugabyted script to background as a daemon. The process is not tied to a shell, but
+    # it will not survive between machine restarts.
+    def daemonize(self):
+        def remove_handlers():
+            if PY_VERSION < 3:
+                handlers = [e for e in atexit._exithandlers if e[0] == self.kill_children]
+                for handler in handlers:
+                    atexit._exithandlers.remove(handler)
+            else:
+                atexit.unregister(self.kill_children)
+
+        if os.fork():
+            # Delete any custom exit handlers so daemon has full control.
+            remove_handlers()
+
+            # If parent is interrupted, kill the children as well. Note there is potentially a
+            # window where the daemon hasn't created its pidfile yet and this will error out before
+            # it can kill the daemon.
+            self.set_signals(self.stop)
+
+            # Keep the parent process alive until the daemon confirms yugabyted started properly.
+            try:
+                self.script.daemon_success.get(timeout=600)
+            except queue.Empty as e:
+                Output.print_and_log(
+                    "Timed out trying to start {} daemon.".format(SCRIPT_NAME), logging.ERROR)
+                self.stop()
+            sys.exit()
+        os.chdir(YUGABYTE_DIR)
+        os.setsid()
+        os.umask(0)
+        if os.fork():
+            remove_handlers()
+            sys.exit()
+        Output.log("Daemon grandchild process begins execution.")
+
+    # Sets env variables needed for yugabyted start.
+    def set_env_vars(self):
+        # Sets YW metrics to use local database.
+        os.environ["USE_NATIVE_METRICS"] = "true"
+
+    # Runs post_install script for linux computers.
+    def post_install_yb(self):
+        if not sys.platform.startswith('linux'):
+            return
+
+        post_install_script_path = os.path.join(YUGABYTE_DIR, 'bin', 'post_install.sh')
+
+        Output.log("Running the post-installation script {} (may be a no-op)".format(
+                    post_install_script_path))
+        process = subprocess.Popen(
+                post_install_script_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        std_out, std_err = process.communicate()
+        if process.returncode != 0:
+            Output.log_error_and_exit(
+                "Failed running {} (exit code: {}). Standard output:\n{}\n. "
+                "Standard error:\n{}".format(
+                    post_install_script_path, process.returncode, std_out, std_err))
+        Output.log("Successfully ran the post-installation script.")
+
+
+    # Initialize YW process. Creates all necessary tables. Returns false if init failed.
+    def init_yw(self):
+        # Create Play evolutions table. Required for YugaWare to start up properly.
+        create_play_table = [
+            os.path.join(YUGAWARE_BIN_DIR, "yugaware"),
+            "-Dconfig.file=" + YUGAWARE_CONF,
+            "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
+        ]
+        Output.log("Initializing play tables...")
+        run_process(create_play_table)
+        Output.log("Done initializing play tables.")
+
+        return True
+
+    # Returns if yb-master and yb-tserver were properly initialized before.
+    def is_yb_initialized(self):
+        for info_file in ("master-info", "tserver-info", "tserver-info-redis", "tserver-info-cql"):
+            if not os.path.exists(os.path.join(self.configs.saved_data.get("data_dir"), info_file)):
+                return False
+        return True
+
+    # Returns if yugaware was properly initialized before.
+    def is_yw_initialized(self):
+        # Check Play evolutions table was created.
+        Output.log("Checking play_evolutions table")
+        list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
+        out, err, ret_code = run_process(list_tables_cmd)
+        Output.log("Finished checking play evolutions table")
+        return not err and not ret_code and "play_evolutions" in out
+
+    # Returns true if this master was found in the current list of masters
+    def wait_master(self):
+        join_ip = self.configs.saved_data.get("join")
+        master_ip = join_ip if join_ip else self.advertise_ip()
+        master_addr = "{}:{}".format(master_ip,
+                                     self.configs.saved_data.get("master_rpc_port"))
+
+        if (not self.processes.get("master").is_running()
+                or not self.processes.get("tserver").is_running()):
+            Output.log("Failed waiting for yb-master/tserver... process died.", logging.ERROR)
+            raise RuntimeError("process died unexpectedly.")
+
+        cur_master_uuids = YBAdminProxy.get_masters(master_addr)
+        master_uuid = self.configs.saved_data.get("master_uuid")
+        if not cur_master_uuids:
+            raise RetryableError()
+        return master_uuid in cur_master_uuids
+
+    # Verify that the master is in the current list of masters.
+    # If not, set it up appropriately.
+    def setup_master(self, timeout=180):
+        Output.log("Waiting for master")
+        try:
+            if retry_op(self.wait_master):
+                return True
+        except RuntimeError:
+            Output.log_error_and_exit("Failed to setup master. Exception: {}".format(
+                traceback.format_exc()))
+            return False
+
+        # The master was not in the current list of masters
+        join_ip = self.configs.saved_data.get("join")
+        bind_ip = self.configs.saved_data.get("bind_ip")
+        master_addrs = "{}:{}".format(join_ip,
+                    self.configs.saved_data.get("master_rpc_port"))
+        master_uuids = YBAdminProxy.get_masters(master_addrs)
+        if not YBAdminProxy.add_master(master_addrs, bind_ip):
+            Output.log_error_and_exit("Unable to add master {} to existing cluster at {}.".format(
+                bind_ip, join_ip))
+            return False
+
+        # If we are the third master, set replication factor to 3. This makes the cluster
+        # automatically expand to rf3 when the third node is added.
+        if len(master_uuids) == 2:
+            if not YBAdminProxy.set_rf(master_addrs, 3):
+                Output.log_error_and_exit("Unable to change replication factor for {}.".format(
+                    master_addrs))
+                return False
+
+        try:
+            if retry_op(self.wait_master):
+                Output.log("Completed setup and wait for master.")
+                return True
+        except RuntimeError:
+            Output.log("setup_master: exception: {}".format(traceback.format_exc()))
+
+        Output.log("Failed to setup master, did add_master succeed?")
+        return False
+
+    def is_tserver_up(self):
+        join_ip = self.configs.saved_data.get("join")
+        master_ip = join_ip if join_ip else self.advertise_ip()
+        master_addr = "{}:{}".format(master_ip,
+                                     self.configs.saved_data.get("master_rpc_port"))
+
+        if (not self.processes.get("master").is_running()
+                or not self.processes.get("tserver").is_running()):
+            Output.log("Failed waiting for yb-master/tserver... process died.", logging.ERROR)
+            raise RuntimeError("process not running")
+
+        cur_tservers = YBAdminProxy.get_tservers(master_addr)
+        tserver_uuid = self.configs.saved_data.get("tserver_uuid")
+        if not cur_tservers or tserver_uuid not in cur_tservers:
+            raise RetryableError()
+
+        Output.log("Found tserver uuid {} in list of tserver uuids {}.".format(
+            tserver_uuid, cur_tservers))
+        return True
+
+    def wait_tserver(self, timeout=180):
+        Output.log("Waiting for tserver ...")
+        try:
+            if retry_op(self.is_tserver_up):
+                Output.log("Completed waiting for tserver.")
+                return True
+        except RuntimeError:
+            Output.log("wait_tserver: exception: {}".format(traceback.format_exc()))
+
+        Output.log("Failed to wait for tserver.")
+        return False
+
+
+    def wait_yw_login(self, yw_proxy, timeout=180, insecure=False):
+        Output.log("Attempting to log in...")
+        start_time = time.time()
+        # Only the last error message is recorded if timed out.
+        err = ""
+        while time.time() - start_time < timeout:
+            err = yw_proxy.insecure_login() if insecure else yw_proxy.login()
+            if not err:
+                Output.log("Login succeeded.")
+                return ""
+            time.sleep(.5)
+        Output.log("Failed to login: {}".format(err))
+        return "Timeout: " + err
+
+    # Returns pretty output table.
+    def get_status_string(self):
+        advertise_ip = self.advertise_ip()
+
+        ycql_port = self.configs.saved_data.get("ycql_port")
+        cql_hostname_param = ""
+        cql_port_param = ""
+        if advertise_ip != IP_LOCALHOST or ycql_port != DEFAULT_YCQL_PORT:
+            cql_hostname_param =  advertise_ip
+            cql_port_param = str(ycql_port)
+
+        ysql_hostname_param = "-h {}".format(advertise_ip) if advertise_ip != IP_LOCALHOST else ""
+        ysql_port = self.configs.saved_data.get("ysql_port")
+        ysql_port_param = "-p {}".format(ysql_port) if ysql_port != DEFAULT_YSQL_PORT else ""
+
+        # Make sure ascii escape characters for color encoding do not count towards char limit.
+        if self.get_failed_node_processes():
+            title = Output.make_bold(Output.make_red(SCRIPT_NAME))
+            extra_len = len(Output.make_bold(Output.make_red("")))
+            status = "Stopped"
+        else:
+            title = Output.make_bold(Output.make_green(SCRIPT_NAME))
+            extra_len = len(Output.make_bold(Output.make_green("")))
+            status = "Running"
+
+
+        ysql_flags = " {} {}".format(ysql_hostname_param, ysql_port_param)
+        ycql_flags = " {} {}".format(cql_hostname_param, cql_port_param)
+
+        # TODO: Check if YW is disabled. This could be from saving --ui flag, checking PID,
+        # or some other method. The first is not preferred because it would deviate from how the
+        # other saved data works in that they persist between runs but --ui shoudln't.
+
+        yw_status = "http://{}:{}".format(advertise_ip,
+                                          self.configs.saved_data.get("webserver_port"))
+
+        status_info = [
+            (Output.make_yellow("Status"), status),
+            (Output.make_yellow("Webserver UI"), yw_status),
+            (Output.make_yellow("JDBC"),
+               "jdbc:postgresql://{}:{}/yugabyte?user=yugabyte&password=yugabyte".format(
+                advertise_ip, ysql_port)),
+            (Output.make_yellow("YSQL"), "bin/ysqlsh{}".format(ysql_flags)),
+            (Output.make_yellow("YCQL"), "bin/cqlsh{}".format(ycql_flags)),
+            (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
+            (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
+            (Output.make_yellow("Universe UUID"), self.configs.saved_data.get("universe_uuid"))
+        ]
+        div_line = "+" + "-" * 98 + "+" + "\n"
+        status = "\n" + div_line
+        status += ("| {:^" + str(96 + extra_len) + "} |\n").format(title)
+        status += div_line
+        for k, v in status_info:
+            extra_len = len(Output.make_yellow(""))
+            status += ("| {:" + str(20 + extra_len) + "}: {:<74} |\n").format(k, v)
+        status += div_line
+        return status
+
+    # Callhome loop. Sends data every minute for the first hour, then every hour after.
+    def callhome_loop(self):
+        num_times_called = 0
+        initial_interval = 60
+        final_interval = 3600
+        while not self.stop_callhome:
+            self.callhome()
+            num_times_called += 1
+            # Send callhome data more often in initial hour.
+            time.sleep(initial_interval if num_times_called < 60 else final_interval)
+
+    # Collects callhome data and sends it.
+    def callhome(self):
+        if self.configs.saved_data.get("callhome"):
+            try:
+                url = "http://diagnostics.yugabyte.com"
+                headers = {
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla",
+                }
+                data = Diagnostics(self.configs).get_data(self.processes)
+                req = Request(url, headers=headers, data=data.encode('utf8'))
+                resp = urlopen(req)
+            except Exception as e:
+                Output.log("Callhome failed: " + str(e))
+                pass
+
+    # Calls func after receiving certain exit signals.
+    def set_signals(self, func):
+        for sig in EXIT_SIGNALS:
+            signal(sig, func)
+
+    # Returns true if Java is installed. While Java 8+ is necessary for YW, we don't explicitly
+    # check for it so that future version format changes (e.g. Java 1.4 to Java 5) won't give
+    # wrong error messages.
+    def java_installed(self):
+        try:
+            cmd = ["java", "-version"]
+            java_info = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            return java_info is not None
+        except (OSError, subprocess.CalledProcessError) as e:
+            Output.log("Failed to find java: {}".format(e), logging.ERROR)
+            return False
+
+    # Parse config file and input args. Validate them and save any new configs.
+    def validate_and_set_configs(self, args):
+        has_errors = False
+
+        self.conf_file = args.config or Configs.get_brew_config() or DEFAULT_CONF
+
+        self.conf_file = os.path.abspath(os.path.realpath(self.conf_file))
+
+        conf_dir = os.path.dirname(self.conf_file)
+        if not os.path.isdir(conf_dir):
+            os.makedirs(conf_dir)
+
+
+        self.configs = Configs.parse_config_file(self.conf_file)
+
+        for path_args in ("data_dir", "log_dir"):
+            path = getattr(args, path_args, None)
+            if path:
+                setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
+
+        if args.parser == "start":
+            if args.data_dir is not None:
+                config_data_dir = self.configs.saved_data.get("data_dir")
+                if (config_data_dir and os.path.exists(config_data_dir) and
+                        config_data_dir != args.data_dir):
+                    has_errors = True
+                    # TODO: Gradefully handle this case... User should be able to override config.
+                    Output.print_out(
+                        "Data directory already exists at {}.".format(config_data_dir))
+
+            if args.log_dir is not None:
+                config_log_dir = self.configs.saved_data.get("log_dir")
+                if (config_log_dir and os.path.exists(config_log_dir) and
+                        config_log_dir != args.log_dir):
+                    Output.print_out(
+                        "Old log directory already exists at {}. New logs will go to {}".format(
+                            config_log_dir, args.log_dir))
+
+            args.ui = self.parse_bool(args.ui)
+            args.daemon = self.parse_bool(args.daemon)
+            args.callhome = self.parse_bool(args.callhome)
+
+            if args.ui and not self.java_installed():
+                Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
+                args.ui = False
+
+            self.configs.temp_data["daemon"] = args.daemon
+            self.configs.temp_data["ui"] = args.ui
+
+        if has_errors:
+            sys.exit(1)
+
+        # Override configs and defaults with user specified variables
+        for k, v in get_kv(args.__dict__):
+            if (v is not None and k in self.configs.saved_data
+                    and v != self.configs.saved_data.get(k)):
+                self.configs.saved_data[k] = v
+
+        data_dir = self.configs.saved_data["data_dir"]
+        log_dir = self.configs.saved_data["log_dir"]
+        if args.parser == "start":
+            self.configs.save_configs()
+
+            if not os.path.isdir(data_dir):
+                os.makedirs(data_dir)
+            if not os.path.isdir(log_dir):
+                os.makedirs(log_dir)
+
+        self.script = ScriptProcessManager(log_dir, data_dir)
+
+
+    def parse_bool(self, config):
+        return config in TRUE_CHOICES
+
+    def run(self):
+        # Parent subparser for common args
+        common_parser = argparse.ArgumentParser(add_help=False)
+        common_parser.add_argument(
+            "--config", help="{} configuration file, default value is {}".format(
+                              SCRIPT_NAME, DEFAULT_CONF))
+        # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
+        # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
+        common_parser.add_argument(
+            "--data_dir", help="Directory where {} will store data.".format(SCRIPT_NAME))
+
+        start_msg = "To start {}, run '{}'.\n\n".format(
+            SCRIPT_NAME, Output.make_green("{} start".format(SCRIPT_NAME)))
+        parser = PrettyArgParser(description=start_msg)
+        all_parsers = {"default": parser}
+        subparsers = parser.add_subparsers(dest="parser")
+        subparsers.required = True
+        for cmd, description in (
+                ("start", "Start {}.".format(SCRIPT_NAME)),
+                ("stop", "Stop running {}.".format(SCRIPT_NAME)),
+                ("status", "Print status of {}.".format(SCRIPT_NAME)),
+                ("version", "Version of {}.".format(SCRIPT_NAME)),
+                ("collect_logs", "Collect and package logs for troubleshooting.")):
+            subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
+            func = getattr(self, cmd, None)
+            subparser.set_defaults(func=func)
+            all_parsers[cmd] = subparser
+
+        # Add ysql and ycql CLI options
+        connect = subparsers.add_parser("connect", help="Connect to an API through the CLI.")
+        all_parsers["connect"] = connect
+        connect_subparser = connect.add_subparsers(dest="parser")
+        connect_subparser.required = True
+        for api in YUGABYTE_API_CLIENT_PROGRAMS:
+            cur_parser = connect_subparser.add_parser(
+                api, help="Use {} through the CLI.".format(api.upper()), parents=[common_parser])
+            func = getattr(self, "connect_{}".format(api), None)
+            cur_parser.set_defaults(func=func)
+            all_parsers[api] = cur_parser
+
+        # Add demo commands to create, connect, and destroy.
+
+        demo_parser = subparsers.add_parser("demo", help="Load and interact with preset demo data.")
+        all_parsers["demo"] = demo_parser
+        demo_subparsers = demo_parser.add_subparsers(dest="parser")
+        demo_subparsers.required = True
+        for cmd, description in (
+                ("connect", "Connect to the demo database."),
+                ("destroy", "Destroy the demo database.")):
+            subparser = demo_subparsers.add_parser(cmd, help=description, parents=[common_parser])
+            parser_name = cmd + "_demo"
+            func = getattr(self, parser_name, None)
+            subparser.set_defaults(func=func)
+            all_parsers[parser_name] = subparser
+
+        # Commands that can alter configuration file.
+        for cmd in ("start",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME))
+            cur_parser.add_argument(
+                "--ycql_port", help="Port on which YCQL will run.")
+            cur_parser.add_argument(
+                "--ysql_port", help="Port on which YSQL will run.")
+            cur_parser.add_argument(
+                "--master_rpc_port", help="Port on which yb-master will listen for RPCs.")
+            cur_parser.add_argument(
+                "--tserver_rpc_port", help="Port on which yb-tserver will listen for RPCs.")
+            cur_parser.add_argument(
+                "--master_webserver_port", help="Port on which yb-master webserver will run.")
+            cur_parser.add_argument(
+                "--tserver_webserver_port", help="Port on which yb-tserver webserver will run.")
+            cur_parser.add_argument(
+                "--webserver_port", help="Port on which main webserver will run.")
+            cur_parser.add_argument(
+                "--bind_ip", help="IP address to which {} processes will bind.".format(SCRIPT_NAME))
+            cur_parser.add_argument(
+                "--join", help="IP address to which this process will join".format(SCRIPT_NAME))
+            cur_parser.add_argument(
+                "--daemon", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                help="Runs {} in the background as a daemon. Does not persist on restart. "
+                     "Default true.".format(SCRIPT_NAME))
+            cur_parser.add_argument(
+                "--callhome", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
+                     "Default true.")
+            cur_parser.add_argument(
+                "--ui", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                help="Toggle enabling or disabling webserver UI. Default true.")
+
+            # Hidden commands for development/advanced users
+            cur_parser.add_argument(
+                "--polling_interval", help=argparse.SUPPRESS)
+            cur_parser.add_argument(
+                "--master_flags", help=argparse.SUPPRESS)
+            cur_parser.add_argument(
+                "--tserver_flags", help=argparse.SUPPRESS)
+
+
+        if not sys.argv[1:]:
+            parser.print_help()
+            return
+
+
+        args = parser.parse_args()
+        self.validate_and_set_configs(args)
+
+        log_dir = self.configs.saved_data.get("log_dir")
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
+        Output.log_dir = log_dir
+        logging.basicConfig(
+            level=logging.DEBUG, filemode="a",
+            filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
+            format="[%(filename)s " + args.parser + "] %(asctime)s %(levelname)s: %(message)s")
+
+        Output.log("cmd = {} using config file: {} (args.config={})".format(
+            args.parser, self.conf_file, args.config))
+
+        try:
+            args.func()
+        except Exception as e:
+            Output.print_out(
+                "{} crashed. For troubleshooting, contact us on {} or check our FAQ at {}".format(
+                    SCRIPT_NAME, Output.make_underline(SLACK_LINK),
+                    Output.make_underline(HELP_LINK)))
+            Output.log_error_and_exit(traceback.format_exc())
+
+    def advertise_ip(self):
+        bind_ip = self.configs.saved_data.get("bind_ip")
+        return bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+
+
+class Configs(object):
+    def __init__(self, config_file):
+        self.saved_data = {
+            "data_dir": DEFAULT_DATA_DIR,
+            "log_dir": DEFAULT_LOG_DIR,
+            "master_rpc_port": DEFAULT_MASTER_RPC_PORT,
+            "tserver_rpc_port": DEFAULT_TSERVER_RPC_PORT,
+            "master_webserver_port": DEFAULT_MASTER_WEBSERVER_PORT,
+            "tserver_webserver_port": DEFAULT_TSERVER_WEBSERVER_PORT,
+            "ysql_port": DEFAULT_YSQL_PORT,
+            "ycql_port": DEFAULT_YCQL_PORT,
+            "bind_ip": DEFAULT_BIND_IP,
+            "webserver_port": DEFAULT_WEBSERVER_PORT,
+            "universe_uuid": str(uuid.uuid4()),
+            "node_uuid": str(uuid.uuid4()),
+            "tserver_uuid": str(uuid.uuid4()).replace("-", ""),
+            "master_uuid": str(uuid.uuid4()).replace("-", ""),
+            "polling_interval": "5",
+            "callhome": DEFAULT_CALLHOME,
+            "master_flags": "",
+            "tserver_flags": "",
+            "join": "",
+        }
+        # Used to store data specific to certain functions that we don't want to save.
+        self.temp_data = {
+            "demo_db": DEFAULT_DEMO_DATABASE,
+            "daemon": True,
+            "ui": True,
+        }
+        self.config_file = config_file
+
+    # Saves current configs to config file.
+    def save_configs(self):
+        with open(self.config_file, "w+") as f:
+            json.dump(self.saved_data, f, indent=4)
+
+    # Custom parser for reading config file.
+    @staticmethod
+    def parse_config_file(config_file):
+        configs = Configs(config_file)
+        if os.path.isfile(config_file):
+            try:
+                with open(config_file) as f:
+                   configs.saved_data.update(json.load(f))
+            except ValueError as e:
+                Output.log_error_and_exit(
+                    "Failed to read config file {}: {}".format(config_file, str(e)))
+
+        return configs
+
+    @staticmethod
+    def get_brew_config():
+        # hack alert: we are using the cellar dir name to identify a brew install
+        if ("darwin" == sys.platform and
+            os.path.realpath(sys.argv[0]).lower().find('cellar') >= 0 and
+            os.path.exists(BREW_CONF_FILE)):
+            return BREW_CONF_FILE
+
+        return None
+
+    # Returns information about demo databases.
+    @staticmethod
+    def get_demo_info():
+        return {
+            "retail": {
+                "files": ("schema.sql", "products.sql", "users.sql", "reviews.sql", "orders.sql"),
+                "output": "    Database: yb_demo_retail\n"
+                        "    |_ users\n"
+                        "    |_ products\n"
+                        "    |_ orders\n"
+                        "    |_ reviews\n\n",
+                "examples": "# JOINS (find user details of orders):\n"
+                        "    %s users.id, users.name, users.email, orders.id, orders.total\n"
+                        "        %s orders %s users %s orders.user_id=users.id\n"
+                        "        %s 10;\n\n" % tuple([Output.make_cyan(kw) for kw in (
+                            "SELECT", "FROM", "INNER JOIN", "ON", "LIMIT")])
+            },
+            "northwind": {
+                "files": ("northwind_ddl.sql", "northwind_data.sql"),
+                "output": "",
+                "examples": "# JOINS (find customer details for orders):\n"
+                        "   %s c.customer_id, c.company_name, o.order_id, o.order_date\n"
+                        "       %s orders o %s customers c %s o.customer_id=c.customer_id\n"
+                        "       %s 10;\n\n" % tuple([Output.make_cyan(kw) for kw in (
+                            "SELECT", "FROM", "INNER JOIN", "ON", "LIMIT")])
+            },
+            "club": {
+                "files": ("clubdata_ddl.sql", "clubdata_data.sql"),
+                "output": "",
+                "examples": ""
+            },
+            "sports": {
+                "files": (
+                    "sportsdb_tables.sql", "sportsdb_fks.sql",
+                    "sportsdb_indexes.sql", "sportsdb_inserts.sql"),
+                "output": "",
+                "examples": ""
+            }
+        }
+
+
+class ProcessManager(object):
+    def __init__(self, name, cmd, log_dir, data_dir, process_log_dir=""):
+        self.name = name
+        self.cmd = cmd
+        self.log_dir = log_dir
+        self.data_dir = data_dir
+        self.pidfile = os.path.join(self.data_dir, "{}.pid".format(name))
+        self.process = None
+        self.start_time = None
+        self.process_log_dir = process_log_dir
+
+    # Start process. Creates pidfile and corresponding output logs.
+    def start(self):
+        Output.log("About to start {} with cmd {}".format(self.name, " ".join(self.cmd)))
+        out_log = os.path.join(self.log_dir, "{}.out".format(self.name))
+        err_log = os.path.join(self.log_dir, "{}.err".format(self.name))
+        with open(out_log, "a") as out_log, open(err_log, "a") as err_log:
+            self.process = subprocess.Popen(
+                self.cmd, stdout=out_log, stderr=err_log, preexec_fn=self.set_rlimits)
+            self.start_time = time.time()
+        self.write_pid(self.process.pid)
+
+        # Add symlink to the logs from log directory.
+        log_path = os.path.join(self.log_dir, self.name)
+        if self.process_log_dir and not os.path.exists(log_path):
+            try:
+                os.symlink(self.process_log_dir, log_path)
+            except OSError as e:
+                Output.log(
+                    "Failed to create symlink from {} to {}".format(self.process_log_dir, log_path),
+                    logging.ERROR)
+
+    # Records given pid in pidfile.
+    # TODO: Redirect YW logs to yugabyte-logs
+    def write_pid(self, pid):
+        with open(self.pidfile, "w+") as pid_file:
+            pid_file.write(str(pid))
+            Output.log("{} started running with PID {}.".format(self.name, pid))
+
+    # Returns pid of this process if it's running.
+    def get_pid(self):
+        if os.path.exists(self.pidfile):
+            if self.process:
+                return self.process.pid
+            else:
+                with open(self.pidfile, "r") as f:
+                    try:
+                        pid = int(f.readline())
+                    except ValueError as e:
+                        Output.log(
+                            "Could not parse int PID from {}. Deleting file.".format(self.pidfile),
+                            logging.DEBUG)
+                        self.delete_pidfile()
+                        return None
+                command = ProcessManager.get_command(pid)
+                if command and self.name.encode('utf8') in command:
+                    return pid
+
+            Output.log(
+                "Pidfile {} was not properly deleted."
+                "Contained PID {}. Deleting file.".format(self.pidfile, pid), logging.DEBUG)
+            self.delete_pidfile()
+        return None
+
+    # Kills self.process if it exists.
+    def kill(self):
+        if self.process:
+            self.process.kill()
+        else:
+            pid = self.get_pid()
+            if pid:
+                try:
+                    os.kill(pid, SIGTERM)
+                except OSError as e:
+                    return e
+        self.delete_pidfile()
+
+    # Delete corresponding pidfile for this process.
+    def delete_pidfile(self):
+        if os.path.exists(self.pidfile):
+            try:
+                os.remove(self.pidfile)
+            except OSError as e:
+                if os.path.exists(self.pidfile):
+                    Output.log(
+                        "Failed to delete {}.".format(self.pidfile), level=logging.ERROR)
+        self.start_time = None
+
+    # Check fatal errors in fatal/error logs, if any. Overwritten in YBProcessManager
+    def check_fatals(self):
+        pass
+
+    # Returns process status.
+    def is_running(self):
+        self.check_fatals()
+        return self.get_pid() and self.process and self.process.poll() is None
+
+    # Checks resource settings for current shell. Prints warning if requirements aren't met.
+    def set_rlimits(self, print_info=False):
+        rlim_max = resource.RLIM_INFINITY
+        # TODO: Figure out what specs are recommended. max_user_processes is problematic.
+        # https://github.com/yugabyte/yugabyte-db/issues/2818
+        recommended_resources = {
+            # "RLIMIT_FSIZE": (rlim_max, "file_size"),
+            # "RLIMIT_MEMLOCK": (rlim_max, "max_locked_memory"),
+            # "RLIMIT_AS": (rlim_max, "max_memory_size"),
+            "RLIMIT_NOFILE": (64000, "open_files"),
+            # "RLIMIT_CPU": (rlim_max, "cpu_time"),
+            "RLIMIT_NPROC": (64, "max_user_processes"),
+            # "RLIMIT_VMEM": (rlim_max, "virtual_memory"),
+        }
+
+        # If the current platform does not support the resource,
+        # it won't be defined in the resource module.
+        failed = []
+        for res, (min_val, ulimit) in recommended_resources.items():
+            if not hasattr(resource, res):
+                continue
+            # Check soft limit, not hard limit.
+            key = getattr(resource, res)
+            soft_lim, hard_lim = resource.getrlimit(key)
+            if soft_lim != rlim_max and (soft_lim < min_val or min_val == rlim_max):
+                try:
+                    resource.setrlimit(key, (min_val, hard_lim))
+                    if print_info:
+                        Output.log("Changed {} from {} to {}".format(res, soft_lim, min_val))
+                except ValueError as e:
+                    failed.append((ulimit, soft_lim, min_val))
+                    if print_info:
+                        Output.log(
+                            "Error changing {} from {} to {}: {}".format(
+                                res, soft_lim, min_val, e),
+                            logging.ERROR)
+
+        if failed and print_info:
+            config_link = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
+            msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
+                ", ".join(list(zip(*failed))[0]))
+            yw_alert = msg + "Note {} will still run, although it may fail for larger " \
+                "workloads. For more info, see {}".format(SCRIPT_NAME, config_link)
+            msg += "Note {} will still run, although it may fail for larger workloads. " \
+                "For more info, see {}\n".format(SCRIPT_NAME, Output.make_underline(config_link))
+            msg = Output.make_yellow("WARNING: ") + msg
+            Output.print_and_log(msg, logging.WARNING)
+            return yw_alert
+
+    # Returns the command that was run with the input pid.
+    @staticmethod
+    def get_command(pid):
+        try:
+            return subprocess.check_output(["ps", "-p", str(pid), "-o", "command="])
+        except subprocess.CalledProcessError as e:
+            return ""
+
+    # Returns if process called name is running.
+    @staticmethod
+    def is_process_running(name, pid_dir):
+        return ProcessManager(name, cmd="", log_dir="", data_dir=pid_dir).get_pid() is not None
+
+
+# Class for managing yugabyted process components - e.g. pidfiles and lockfiles.
+# Maybe this class can take over the ControlScript.start_processes functionality?
+class ScriptProcessManager(ProcessManager):
+    def __init__(self, log_dir, data_dir):
+        super(ScriptProcessManager, self).__init__(SCRIPT_NAME, "", log_dir, data_dir)
+        # Used to retrieve status of daemon process. When daemon successfully initializes,
+        # it will put a value here which can be checked on.
+        self.daemon_success = multiprocessing.Queue()
+
+    def start(self):
+        return
+
+    def is_running(self):
+        return self.get_pid() is not None
+
+
+class YBProcessManager(ProcessManager):
+    def __init__(self, name, cmd, log_dir, data_dir):
+        data_log_path = "{}/yb-data/{}/logs".format(data_dir, name)
+        super(YBProcessManager, self).__init__(name, cmd, log_dir, data_dir, data_log_path)
+        self.error_log = "{}/yb-{}.ERROR".format(data_log_path, name)
+
+
+    def start(self):
+        # Remove old logs as timestamped logs should have already been created.
+        self.remove_error_logs()
+
+        super(YBProcessManager, self).start()
+
+    def remove_error_logs(self):
+        if os.path.isfile(self.error_log):
+            os.remove(self.error_log)
+
+    def check_fatals(self):
+        # Error logs contain port information, but fatal logs don't.
+        address_error_1 = "Could not start on address"
+        address_error_2 = "Error binding socket to "
+        address_error_3 = "Is another postmaster already running on port "
+        if os.path.isfile(self.error_log):
+            with open(self.error_log) as log:
+                for line in log.readlines():
+                    if address_error_1 in line:
+                        err_msg = line.split(address_error_1)
+                        # Try to find address, otherwise log entire error message.
+                        if len(err_msg) == 2:
+                            err_msg = err_msg[1]
+                        else:
+                            err_msg = line
+                        Output.log_error_and_exit(
+                            "Failed to bind to address: {}".format(err_msg))
+                    elif address_error_2 in line:
+                        err_msg = line.split(address_error_2)[1]
+                        address = err_msg.split()[0]
+                        Output.log_error_and_exit(
+                            "Failed to bind to address: {}".format(address))
+                    elif address_error_3 in line:
+                        err_msg = line.split(address_error_3)
+                        # Try to find address, otherwise log entire error message.
+                        if len(err_msg) == 2:
+                            err_msg = err_msg[1].split()[0]
+                            Output.log_error_and_exit(
+                                "Failed to bind to port: {}.".format(err_msg))
+                        else:
+                            Output.log_error_and_exit(
+                                "Failed to bind to address: {}".format(err_msg))
+
+
+class Diagnostics(object):
+    first_install = None
+    first_run_secs = None
+
+    def __init__(self, configs):
+        self.configs = configs
+
+    # Collects data.
+    def get_data(self, processes):
+        payload = {
+            "data_dir_size": self.get_dir_size(self.configs.saved_data.get("data_dir")),
+            "num_cpus": multiprocessing.cpu_count(),
+            "master_flags": self.configs.saved_data.get("master_flags"),
+            "tserver_flags": self.configs.saved_data.get("tserver_flags"),
+            "is_docker" : str(os.path.exists("/.dockerenv"))
+        }
+        if Diagnostics.first_install is not None:
+            payload['first_install'] = str(Diagnostics.first_install)
+            Diagnostics.first_install = None
+        if Diagnostics.first_run_secs is not None:
+            payload['first_run_secs'] = str(int(Diagnostics.first_run_secs))
+            Diagnostics.first_run_secs = None
+        for p in processes.values():
+            payload["{}_status".format(p.name)] = "UP" if p.is_running() else "DOWN"
+            if p.start_time:
+                payload["{}_start_time".format(p.name)] = p.start_time
+
+        bind_ip = self.configs.saved_data.get("bind_ip")
+        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+
+        master_addrs = "{}:{}".format(
+            advertise_ip, self.configs.saved_data.get("master_rpc_port"))
+        # TODO: This is going to change for multi-node.
+        cur_master_addr = master_addrs
+        data = {
+            "cluster_uuid": self.configs.saved_data.get("universe_uuid"),
+            "node_uuid": self.configs.saved_data.get("node_uuid"),
+            "server_type": SCRIPT_NAME,
+            "timestamp": int(time.time()),
+            "payload": payload
+        }
+        return json.dumps(data)
+
+    def get_dir_size(self, dirname):
+        size = 0
+        for path, _, files in os.walk(dirname):
+            for f in files:
+                filepath = os.path.join(path, f)
+                # Check that the file is not a symlink
+                if os.path.isfile(filepath):
+                    size += os.path.getsize(filepath)
+        return size
+
+
+# Proxy for parsing output from yb-admin commands.
+class YBAdminProxy(object):
+    path = os.path.join(BIN_DIR, "yb-admin")
+
+    @staticmethod
+    def add_master(master_addrs, new_master_ip, timeout=10):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs,
+              "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (0 == ret_code)
+
+    @staticmethod
+    def set_rf(master_addrs, rf, timeout=10):
+        cmd = [ YBAdminProxy.path, "--master_addresses", master_addrs,
+                "modify_placement_info", "cloud1.datacenter1.rack1", str(rf) ]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (0 == ret_code)
+
+    @staticmethod
+    def get_masters(master_addrs, timeout=10):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_masters"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return None
+        return [ line.split()[0] for line in out.splitlines()[1:] ]
+
+    # Returns list[tserver uuid] reported by yb-master.
+    @staticmethod
+    def get_tservers(master_addrs, timeout=10):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_tablet_servers"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return None
+        return [ line.split()[0] for line in out.splitlines()[1:] ]
+
+    # Returns the cluster_uuid for this universe
+    @staticmethod
+    def get_cluster_uuid(master_addrs):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "get_universe_config"]
+        out, err, ret_code = run_process(cmd)
+        if ret_code:
+            return None
+        for line in out.splitlines():
+            if "cluster_uuid: " in line:
+                return line.split("cluster_uuid: ")[1].replace('"', '')
+        return None
+
+    # Returns node_uuid by finding the UUID corresponding to current master's IP
+    @staticmethod
+    def get_node_uuid(master_addrs, cur_master_addr):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_masters"]
+        out, err, ret_code = run_process(cmd)
+        if ret_code:
+            return None
+        for line in out.splitlines()[1:]:
+            master_uuid, rpc_addr, _, _ = line.split()
+            if rpc_addr == cur_master_addr:
+                return master_uuid
+        return None
+
+
+# Proxy for ysqlsh commands.
+class YsqlProxy(object):
+    def __init__(self, port, path=os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ysql"])):
+        self.port = str(port)
+        self.path = path
+
+    # Starts interactive YSQL shell.
+    def connect(self, db=None):
+        cmd = [self.path, "-p", self.port]
+        if db:
+            cmd.extend(["-d", db])
+        shell = subprocess.Popen(cmd)
+        shell.communicate()
+
+    # Checks if db exists.
+    # Note that this will return false if ysqlsh can't connect, even if db exists.
+    def db_exists(self, db):
+        cmd = [self.path, "-p", self.port, "-q", "-c", "\\t", "-c",
+            "select datname from pg_catalog.pg_database where datname='{}'".format(db)]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return out.strip() == db
+
+    # Creates specified db.
+    def create_db(self, db):
+        cmd = [self.path, "-p", self.port, "-c", "create database {}".format(db)]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return out, err
+
+    # Deletes specified db.
+    def drop_db(self, db):
+        cmd = [self.path, "-p", self.port, "-c", "drop database {}".format(db)]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return out, err
+
+    # Runs ysqlsh with specified files.
+    def load_files(self, filepaths, db=None):
+        cmd = [self.path, "-p", self.port]
+        if db:
+            cmd.extend(["-d", db])
+        for path in filepaths:
+            cmd.extend(["-f", path])
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return out, err
+
+
+# Currently unused. Useful for getting diagnostics that are available only through logs.
+class LogAnalyzer(object):
+    unsupported_error = "not supported yet"
+    def __init__(self, logfile):
+        self.logfile = logfile
+        # Flag to stop tailing the logfile.
+        self.kill_thread = False
+        self.unsupported_commands = []
+
+    def analyze(self):
+        lines = self.tail()
+        for line in lines:
+            if LogAnalyzer.unsupported_error in line:
+                # Get the command logged right before error message
+                cmd = line.split("not supported yet")[0].split()[-1]
+                self.unsupported_commands.append(cmd)
+
+    # Generator that continually returns last line of logfile.
+    def tail(self):
+        with open(self.logfile) as open_file:
+            open_file.seek(0, 2)
+            while not self.kill_thread:
+                line = open_file.readline()
+                if not line:
+                    time.sleep(0.1)
+                    continue
+                yield line
+
+# Manages API calls to YW.
+class YugaWareProxy(object):
+    def __init__(self, ip, webserver_port, univ_name="local-universe"):
+        self.univ_name = univ_name
+        self.api_token_secure = ""
+        self.api_token_insecure = ""
+        self.cust_uuid = ""
+        self.url = "http://{}:{}/api/v1".format(ip, webserver_port)
+
+    # Retrieves permanent api_token. Returns error, if any.
+    def login(self):
+        try:
+            target = "{}/login".format(self.url)
+            headers = {
+                "Content-Type": "application/json",
+            }
+            data = urlencode({"email": "admin", "password": "admin"})
+            req = Request(target, data=data.encode('utf8'))
+            resp = urlopen(req)
+            session_data = json.loads(resp.read())
+            auth_token = session_data["authToken"]
+            self.cust_uuid = session_data["customerUUID"]
+            # Auth token will expire, so get API token instead.
+            target = "{}/customers/{}/api_token".format(self.url, self.cust_uuid)
+            headers = {
+                "X-Auth-Token": auth_token,
+            }
+            req = Request(target, headers=headers)
+            req.get_method = lambda: "PUT"
+            resp = urlopen(req)
+            api_data = json.loads(resp.read())
+            self.api_token_secure = api_data["apiToken"]
+            return None
+        except (ValueError, HTTPError, URLError, KeyError) as e:
+            return "Failed to log into webserver. {}".format(e)
+
+    # Attempts insecure login. Returns error, if any.
+    def insecure_login(self):
+        try:
+            target = "{}/insecure_login".format(self.url)
+            req = Request(target)
+            resp = urlopen(req)
+            session_data = json.loads(resp.read())
+            self.api_token_insecure = session_data["apiToken"]
+            self.cust_uuid = session_data["customerUUID"]
+            return None
+        except (ValueError, HTTPError, URLError, KeyError) as e:
+            return "Failed to log into webserver. {}".format(e)
+
+    # Import local universe into YW. Returns error, if any.
+    def import_universe(self, master_address, master_rpc_port, universeUUID):
+        target = "{}/customers/{}/universes/import".format(self.url, self.cust_uuid)
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
+            "Content-Type": "application/json",
+        }
+        data = {
+            "cloudProviderType": "other",
+            "currentState": "BEGIN",
+            "masterAddresses": "{}:{}".format(master_address, master_rpc_port),
+            "universeName": self.univ_name,
+            "universeUUID": universeUUID,
+        }
+
+        Output.log("Importing Yugabyte into webserver...")
+        try:
+            Output.log("Importing master.", logging.DEBUG)
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
+            resp = json.loads(urlopen(req).read())
+            checks = resp.get("checks")
+            Output.log("Import master payload: {}".format(resp), logging.DEBUG)
+            if universeUUID == resp.get("universeUUID") and checks and not all(
+                    check == 'OK' for check in checks.values()):
+                Output.log_error_and_exit(
+                    "Failed to import local universe into webserver: checks failed.")
+
+            Output.log("Importing tserver.", logging.DEBUG)
+            data["currentState"] = "IMPORTED_MASTERS"
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
+            resp = json.loads(urlopen(req).read())
+            checks = resp.get("checks")
+            Output.log("Import tserver payload: {}".format(resp), logging.DEBUG)
+            if checks and not all(check == 'OK' for check in checks.values()):
+                Output.log_error_and_exit(
+                    "Failed to import local universe into webserver: checks failed.")
+
+            Output.log("Finalizing import.", logging.DEBUG)
+            data["currentState"] = "IMPORTED_TSERVERS"
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
+            resp = json.loads(urlopen(req).read())
+            checks = resp.get("checks")
+            Output.log("Finalizing import payload: {}".format(resp), logging.DEBUG)
+            # Node exporter does not matter for local universes and will fail on import.
+            if "node_exporter_ip_error_map" in checks:
+                del[checks["node_exporter_ip_error_map"]]
+            if checks and not all(check == 'OK' for check in checks.values()):
+                Output.log_error_and_exit(
+                    "Failed to import local universe into webserver: checks failed.")
+        except (ValueError, HTTPError, URLError, KeyError) as e:
+            return "Failed to import local universe into YW with payload: {}.\n" \
+                "Got error: {}".format(data, e)
+
+        Output.log("Import succeeded!")
+        return None
+
+    # Disables/hides paid services on UI.
+    def set_landing_page(self, universe_uuid):
+        target = "{}/customers/{}/features".format(self.url, self.cust_uuid)
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
+            "Content-Type": "application/json",
+        }
+        data = {
+            "features": {
+                "main": {
+                    "landing_page": "universes/{}".format(universe_uuid),
+                    "universe_list": "disabled"
+                }
+            }
+        }
+
+        err_msg = None
+        Output.log("Setting UI landing page...")
+        try:
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
+            req.get_method = lambda: "PUT"
+            resp = urlopen(req)
+            if resp.code != 200:
+                err_msg = "Failed setting landing page with error code: {}.".format(resp.code)
+        except (ValueError, HTTPError, URLError, KeyError) as e:
+            err_msg = "Failed to set landing page: {}".format(e)
+
+        if not err_msg:
+            Output.log("Successfully set landing page.")
+        else:
+            Output.log(err_msg, logging.ERROR)
+        return err_msg
+
+    # Sets YugaWare to input security level.
+    def set_security(self, level):
+        target = "{}/customers/{}/security".format(self.url, self.cust_uuid)
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
+            "Content-Type": "application/json",
+        }
+        data = {"level": level}
+        err_msg = None
+        Output.log("Updating YW security to {}...".format(level))
+        try:
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
+            req.get_method = lambda: "PUT"
+            resp = urlopen(req)
+            if resp.code != 200:
+                err_msg = "Failed to set security level. YW returned code: " + resp.code
+        except (ValueError, HTTPError, URLError, KeyError) as e:
+            err_msg = "Failed to set security level: {}".format(e)
+
+        if not err_msg:
+            Output.log("Sucesssfully set YW security to {}".format(level))
+        else:
+            Output.log(err_msg, logging.ERROR)
+        return err_msg
+
+    # Add alerts to YugaWare.
+    def send_alerts(self, alerts):
+        target = "{}/customers/{}/alerts".format(self.url, self.cust_uuid)
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token_secure,
+            "Content-Type": "application/json",
+        }
+        Output.log("Adding alerts: {}".format(alerts))
+        for alert in alerts:
+            data = {
+                "type": alert[0],
+                "errCode": alert[1],
+                "message": alert[2]
+            }
+            try:
+                req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
+                req.get_method = lambda: "PUT"
+                resp = urlopen(req)
+                if resp.code != 200:
+                    Output.log(
+                        "Got error code {} when adding alert: {}".format(resp.code, alert),
+                        logging.ERROR)
+            except (ValueError, HTTPError, URLError, KeyError) as e:
+                Output.log("Failed adding alert {} with error: {}".format(alert, e), logging.ERROR)
+        del alerts[:]
+
+
+# Class that handles any output operations. Use print for what users should see.
+# Use log for logging. ANSI escape characters should not be used for logging.
+class Output(object):
+    supports_color = (sys.platform != 'win32' or 'ANSICON' in os.environ) and \
+        hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+    END = "\u001b[0m"
+    BOLD = "\u001b[1m"
+    UNDERLINE = "\u001b[4m"
+    RED = "\u001b[31m"
+    GREEN = "\u001b[32m"
+    YELLOW = "\u001b[33m"
+    BLUE = "\u001b[34m"
+    MAGENTA = "\u001b[35m"
+    CYAN = "\u001b[36m"
+    # Transform to an "extended ASCII" library to parse the string then print it as unicode
+    ROCKET = "\xf0\x9f\x9a\x80".encode('latin1').decode('utf8')
+    PARTY = "\xf0\x9f\x8e\x89".encode('latin1').decode('utf8')
+    SHIRT = "\xf0\x9f\x91\x95".encode('latin1').decode('utf8')
+    log_dir = None
+    script_exit_func = None
+    # Only attempt to write to stdout while we have access to console.
+    console_access = True
+
+    ANIMATION_SUCCESS = 0
+    ANIMATION_FAIL = -1
+    ANIMATION_RUNNING = 1
+    # Tuple of (animation_status, animation_message) to ensure atomicity.
+    animation_status = (ANIMATION_SUCCESS, "")
+    animation_thread = None
+
+    @staticmethod
+    def print_out(msg):
+        if not Output.console_access:
+            return
+
+        try:
+            try:
+                if PY_VERSION < 3:
+                    print(msg.encode('utf8'))
+                else:
+                    print(msg)
+            except UnicodeEncodeError:
+                print(msg.encode('ascii', 'ignore').decode())
+        except Exception as e:
+            # Ignore any print errors as they are not critical to the application.
+            Output.log("Failed to print with error: {}".format(traceback.format_exc()))
+
+    # Writes one line that may be replaced with the update_animation method.
+    # Note - ONLY one line can be replaced. E.g. only characters after a newline can be replaced.
+    @staticmethod
+    def init_animation(msg):
+        if not Output.console_access:
+            return
+
+        def animate():
+            loading_symbols = ['/', '-', '\\', '|']
+            end_symbols = {
+                Output.ANIMATION_SUCCESS: '\u2705',
+                Output.ANIMATION_FAIL: '\u274C',
+            }
+            line_len = 0
+            i = 0
+            running = True
+            while running and Output.console_access:
+                status, msg = Output.animation_status
+                if status == Output.ANIMATION_RUNNING:
+                    symbol = loading_symbols[i]
+                else:
+                    symbol = end_symbols[status]
+                    running = False
+
+                line = "\r{} {}".format(symbol, msg)
+                line_len = max(len(line), line_len)
+                line_to_write = "{:<{}}".format(line, line_len)
+                if not running:
+                    line_to_write += "\n"
+
+                try:
+                    try:
+                        if PY_VERSION < 3:
+                            sys.stdout.write(line_to_write.encode('utf-8'))
+                        else:
+                            sys.stdout.write(line_to_write)
+                    except UnicodeEncodeError:
+                        sys.stdout.write(line_to_write.encode('ascii', 'ignore').decode())
+
+                    try:
+                        sys.stdout.flush()
+                    except IOError as e:
+                        Output.log("Errored when flushing stdout: {}".format(e), logging.ERROR)
+                    i = (i + 1) % len(loading_symbols)
+                except Exception as e:
+                    # Ignore stdout write errors as they are not critical to application.
+                    Output.log("Failed stdout write with error: {}".format(traceback.format_exc()))
+
+                time.sleep(.05)
+
+        Output.animation_status = (Output.ANIMATION_RUNNING, msg)
+        Output.animation_thread = Thread(target=animate)
+        Output.animation_thread.start()
+
+    @staticmethod
+    def update_animation(msg, status=ANIMATION_SUCCESS):
+        if not Output.console_access:
+            return
+
+        if not Output.animation_thread:
+            Output.print_out(msg)
+
+        Output.animation_status = (status, msg)
+        if status != Output.ANIMATION_RUNNING and Output.animation_thread:
+            Output.animation_thread.join()
+            Output.animation_thread = None
+
+    @staticmethod
+    def log(msg, level=logging.INFO):
+        if '' == msg or msg is None:
+            return
+
+        full_msg = msg
+        time_since_sec = time.time() - start_time_sec
+        if time_since_sec < 1000:
+            # add time since start to make it easier to debug startup perf
+            full_msg = " | {:.1f}s | {}".format(time_since_sec, msg)
+        try:
+            logging.log(level, full_msg)
+        except:
+            pass
+
+    @staticmethod
+    def print_and_log(msg, level=logging.INFO):
+        Output.log(msg, level=level)
+        Output.print_out(msg)
+
+    @staticmethod
+    def log_error_and_exit(msg):
+        if Output.log_dir:
+            msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
+        Output.print_and_log(msg, logging.ERROR)
+        Output.console_access = False
+        if Output.script_exit_func:
+            Output.script_exit_func()
+        sys.exit(1)
+
+    @staticmethod
+    def make_bold(msg):
+        return Output.BOLD + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_underline(msg):
+        return Output.UNDERLINE + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_red(msg):
+        return Output.RED + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_green(msg):
+        return Output.GREEN + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_yellow(msg):
+        return Output.YELLOW + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_blue(msg):
+        return Output.BLUE + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_magenta(msg):
+        return Output.MAGENTA + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_cyan(msg):
+        return Output.CYAN + msg + Output.END if Output.supports_color else msg
+
+
+# Class to customize argparse output.
+class PrettyArgParser(argparse.ArgumentParser):
+    epilog = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
+    def __init__(self, **kwargs):
+        kwargs["formatter_class"] = PrettyHelpFormatter
+        kwargs["epilog"] = self.epilog
+        super(PrettyArgParser, self).__init__(**kwargs)
+        self._positionals.title = Output.make_yellow("Commands")
+        self._optionals.title = Output.make_yellow("Flags")
+
+    # Add epilog help message to errors.
+    def error(self, message):
+        Output.print_out("{} {}.".format(Output.make_red("Error:"), message))
+        self.print_help(sys.stderr)
+        self.exit(2)
+
+
+# Class that capitalizes argparse help message.
+class PrettyHelpFormatter(argparse.HelpFormatter):
+    # Change the "Usage: "  string to yellow
+    def add_usage(self, usage, actions, groups, prefix=None):
+        if prefix is None:
+            prefix = Output.make_yellow('Usage: ')
+        super(PrettyHelpFormatter, self).add_usage(
+            usage, actions, groups, prefix)
+
+
+# Returns key-value pairs of input dict. Independent of python version.
+def get_kv(map):
+    if PY_VERSION < 3:
+        return map.iteritems()
+    else:
+        return map.items()
+
+def run_process(cmd, timeout=None, log_cmd=False):
+    if log_cmd:
+        Output.log("run_process: cmd: {}".format(str(cmd)))
+    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    if PY_VERSION >= 3:
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            Output.log("run_process: {} timeout expired for command: ".format(cmd))
+            return None, str(e), -1
+    else:
+        out, err = proc.communicate()
+    (ret_out, ret_err, retcode) = (out.decode('utf-8'), err.decode('utf-8'), proc.returncode)
+    if log_cmd:
+        Output.log("run_process returned {}: \nOUT >>\n{}\n<< ERR >>\n<<".format(
+            retcode, ret_out, ret_err))
+    return (ret_out, ret_err, retcode)
+
+def rmcontents(dirname, exclude_names=[]):
+    for f in os.listdir(dirname):
+        if f in exclude_names:
+            continue
+        fullpath = os.path.join(dirname, f)
+        if os.path.islink(fullpath) or os.path.isfile(fullpath):
+            os.unlink(fullpath)
+            continue
+        if os.path.isdir(fullpath):
+            shutil.rmtree(fullpath)
+            continue
+        Output.log("Unexpected type of file : [ {} ]".format(fullpath))
+
+
+class RetryableError(Exception):
+    pass
+
+# Retry as long as func throws RetryableError.
+def retry_op(func, timeout=180):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            return func()
+        except RetryableError:
+            continue
+
+        time.sleep(.5)
+    raise RuntimeError("Failed after retrying operation for {} secs.")
+
+if __name__ == '__main__':
+    ControlScript().run()

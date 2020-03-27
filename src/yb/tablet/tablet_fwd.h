@@ -35,13 +35,23 @@ typedef std::shared_ptr<Tablet> TabletPtr;
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
+class SnapshotCoordinator;
+class SnapshotOperationState;
+class TabletSnapshots;
 class TabletStatusPB;
 class TabletStatusListener;
+class TransactionIntentApplier;
+class TransactionCoordinator;
+class TransactionCoordinatorContext;
+class TransactionParticipant;
+class TransactionParticipantContext;
+class UpdateTxnOperationState;
 class WriteOperationState;
 
-typedef YB_EDITION_NS_PREFIX Tablet TabletClass;
-
 YB_STRONGLY_TYPED_BOOL(RequireLease);
+YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
+YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
+YB_STRONGLY_TYPED_BOOL(AlreadyApplied);
 
 }  // namespace tablet
 }  // namespace yb

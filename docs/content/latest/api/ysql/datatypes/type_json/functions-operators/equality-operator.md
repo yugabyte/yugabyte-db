@@ -1,0 +1,65 @@
+---
+title: Equality
+linkTitle: '= (equality)'
+summary: Equality - the `=` operator
+headerTitle: = (equality)
+description: The = operator checks for equality and requires that the inputs are presented as jsonb values.
+menu:
+  latest:
+    identifier: equality-operator
+    parent: functions-operators
+    weight: 15
+isTocNested: true
+showAsideToc: true
+---
+
+**Purpose:** test if two `jsonb` values are equal.
+
+**Signature:**
+```
+input values:       jsonb = jsonb
+return value:       boolean
+```
+
+**Notes:** it doesn't have an overload for `json`.. If you want to test that two `json` values are equal, express the predicate thus:
+```
+lhs_json_value::text = rhs_json_value::text
+```
+Example:
+```postgresql
+do $body$
+declare
+  j1 constant jsonb := '["a","b","c"]';
+  j2 constant jsonb := '
+    [
+      "a","b","c"
+    ]';
+begin
+  assert
+    j1 = j2,
+  'unexpected';
+end;
+$body$;
+```
+
+Notice that the text definitions of the to-be-compared JSON values may differ in whitespace. Because `jsonb` holds a fully parsed representation of the value, whitespace (except within primitive JSON _string_ values and key names) has no meaning.
+
+If you need to test two `json` values for equality, then you must `::text` typecast each.
+
+See the account of the `::text` operator when the input is a `json` value. The `json` representation preserves semantically insignificant whitespace and repeats occurrents of the same keys in an _object_. This implies that the equality comparison ow two `json` values will in general be unpredicatble and therefore meaningless. This is another reason to prefer consistently to choose to use `jsonb`.
+
+```postgresql 
+do $body$
+declare
+  j1 constant json := '["a","b","c"]';
+  j2 constant json := '["a","b","c"]';
+  j3 constant json := '["a","b", "c"]';
+
+begin
+  assert
+    (j1::text = j2::text) and
+    not (j1::text = j3::text),
+  'unexpected';
+end;
+$body$;
+```

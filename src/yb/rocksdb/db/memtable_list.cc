@@ -349,7 +349,6 @@ Status MemTableList::InstallMemtableFlushResults(
     mems[i]->file_number_ = file_number;
   }
   if (frontiers) {
-    DCHECK_NE(0, mems[0]->edit_.GetNewFiles().size());
     mems[0]->edit_.UpdateFlushedFrontier(frontiers->Largest().Clone());
   }
 

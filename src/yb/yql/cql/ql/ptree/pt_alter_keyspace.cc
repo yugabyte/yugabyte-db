@@ -18,6 +18,8 @@
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+#include "yb/common/redis_constants_common.h"
+
 DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {

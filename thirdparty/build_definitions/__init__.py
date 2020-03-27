@@ -40,9 +40,12 @@ BUILD_GROUP_INSTRUMENTED = 2
 
 BUILD_TYPE_COMMON = 'common'
 BUILD_TYPE_UNINSTRUMENTED = 'uninstrumented'
+BUILD_TYPE_GCC8_UNINSTRUMENTED = 'gcc8_uninstrumented'
 BUILD_TYPE_ASAN = 'asan'
 BUILD_TYPE_TSAN = 'tsan'
 BUILD_TYPE_CLANG_UNINSTRUMENTED = 'clang_uninstrumented'
+# BUILD_TYPE_GCC8_UNINSTRUMENTED has been temporarily removed, since it relies on broken Linuxbrew
+# distribution. See https://github.com/yugabyte/yugabyte-db/issues/3044#issuecomment-560639105
 BUILD_TYPES = [BUILD_TYPE_COMMON, BUILD_TYPE_UNINSTRUMENTED, BUILD_TYPE_CLANG_UNINSTRUMENTED,
                BUILD_TYPE_ASAN, BUILD_TYPE_TSAN]
 
@@ -199,6 +202,15 @@ class Dependency(object):
         self.build_group = build_group
         self.archive_name = make_archive_name(name, version, self.download_url)
         self.patch_version = 0
+
+    def get_additional_c_cxx_flags(self, builder):
+        return []
+
+    def get_additional_c_flags(self, builder):
+        return []
+
+    def get_additional_cxx_flags(self, builder):
+        return []
 
     def should_build(self, builder):
         return True

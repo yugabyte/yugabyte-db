@@ -112,21 +112,29 @@ class TransactionPool::Impl {
       ++preparing_transactions_;
     }
     IncrementGauge(gauge_preparing_);
-    new_txn->Prepare({}, ForceConsistentRead::kFalse,
-                     std::bind(&Impl::TransactionReady, this, new_txn, old_taken),
-                     nullptr /* metadata */, nullptr /* may_have_metadata */);
+    if (new_txn->Prepare(
+        /* ops= */{}, ForceConsistentRead::kFalse, TransactionRpcDeadline(), Initial::kFalse,
+        std::bind(&Impl::TransactionReady, this, _1, new_txn, old_taken),
+        nullptr /* metadata */)) {
+      TransactionReady(Status::OK(), new_txn, old_taken);
+    }
     return result;
   }
 
  private:
-  void TransactionReady(const YBTransactionPtr& txn, uint64_t taken_before_creation) {
-    IncrementGauge(gauge_prepared_);
+  void TransactionReady(
+      const Status& status, const YBTransactionPtr& txn, uint64_t taken_before_creation) {
+    if (status.ok()) {
+      IncrementGauge(gauge_prepared_);
+    }
     DecrementGauge(gauge_preparing_);
 
     std::lock_guard<std::mutex> lock(mutex_);
-    uint64_t taken_during_preparation = taken_transactions_ - taken_before_creation;
-    taken_during_preparation_sum_ += taken_during_preparation;
-    transactions_.push_back({txn, taken_during_preparation});
+    if (status.ok()) {
+      uint64_t taken_during_preparation = taken_transactions_ - taken_before_creation;
+      taken_during_preparation_sum_ += taken_during_preparation;
+      transactions_.push_back({ txn, taken_during_preparation });
+    }
     --preparing_transactions_;
     if (CheckClosing()) {
       return;
@@ -136,7 +144,7 @@ class TransactionPool::Impl {
     }
   }
 
-  void ScheduleCleanup() EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  void ScheduleCleanup() REQUIRES(mutex_) {
     scheduled_task_ = manager_.client()->messenger()->scheduler().Schedule(
         std::bind(&Impl::Cleanup, this, _1), FLAGS_transaction_pool_cleanup_interval_ms * 1ms);
   }
@@ -191,7 +199,7 @@ class TransactionPool::Impl {
     }
   }
 
-  YBTransactionPtr Pop() EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  YBTransactionPtr Pop() REQUIRES(mutex_) {
     DecrementGauge(gauge_prepared_);
     YBTransactionPtr result = std::move(transactions_.front().transaction);
     taken_during_preparation_sum_ -= transactions_.front().taken_during_preparation;
@@ -199,7 +207,7 @@ class TransactionPool::Impl {
     return result;
   }
 
-  bool CheckClosing() EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  bool CheckClosing() REQUIRES(mutex_) {
     if (!closing_) {
       return false;
     }
@@ -209,7 +217,9 @@ class TransactionPool::Impl {
     return true;
   }
 
-  bool Idle() const EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  bool Idle() const REQUIRES(mutex_) {
+    LOG(INFO) << "preparing_transactions: " << preparing_transactions_
+              << ", scheduled_task: " << scheduled_task_;
     return preparing_transactions_ == 0 && scheduled_task_ == rpc::kUninitializedScheduledTaskId;
   }
 

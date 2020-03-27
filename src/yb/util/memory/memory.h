@@ -58,13 +58,15 @@
 
 #include <glog/logging.h>
 
-#include "yb/util/boost_mutex_utils.h"
-#include "yb/util/mutex.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/singleton.h"
+
+#include "yb/util/boost_mutex_utils.h"
+#include "yb/util/mutex.h"
+#include "yb/util/size_literals.h"
 
 using std::copy;
 using std::max;
@@ -987,6 +989,9 @@ template <typename U>
 std::shared_ptr<U> shared_from(U* u) {
   return std::static_pointer_cast<U>(u->shared_from_this());
 }
+
+// Returns empty string if TCMalloc is not enabled.
+std::string TcMallocStats();
 
 }  // namespace yb
 

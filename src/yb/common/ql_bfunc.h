@@ -29,9 +29,11 @@
 #ifndef YB_COMMON_QL_BFUNC_H_
 #define YB_COMMON_QL_BFUNC_H_
 
-#include "yb/common/ql_value.h"
+#include "yb/common/common_fwd.h"
+
 #include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/bfpg/gen_opcodes.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

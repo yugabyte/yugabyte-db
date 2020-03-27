@@ -86,6 +86,9 @@ struct TableInfo {
   // make sure this vector doesn't grow too large.
   std::vector<DeletedColumn> deleted_cols;
 
+  // We use the retention time from the primary table.
+  uint32_t wal_retention_secs = 0;
+
   TableInfo() = default;
   TableInfo(std::string table_id,
             std::string table_name,
@@ -154,12 +157,6 @@ struct KvStoreInfo {
   std::vector<std::unique_ptr<TableInfo>> old_tables;
 };
 
-// Manages the "blocks tracking" for the specified Raft group.
-//
-// RaftGroupMetadata is owned by the Raft group. As new blocks are written to store
-// the Raft group's data, the Tablet calls Flush() to persist the block list
-// on disk.
-//
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
 // Raft groups from this data.
@@ -185,7 +182,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
                                   const TabletDataState& initial_tablet_data_state,
                                   RaftGroupMetadataPtr* metadata,
                                   const std::string& data_root_dir = std::string(),
-                                  const std::string& wal_root_dir = std::string());
+                                  const std::string& wal_root_dir = std::string(),
+                                  const bool colocated = false);
 
   // Load existing metadata from disk.
   static CHECKED_STATUS Load(FsManager* fs_manager,
@@ -304,6 +302,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   std::string wal_dir() const { return wal_dir_; }
 
+  // Set the WAL retention time for the primary table.
+  void set_wal_retention_secs(uint32 wal_retention_secs);
+
+  // Returns the wal retention time for the primary table.
+  uint32_t wal_retention_secs() const;
+
+  CHECKED_STATUS set_cdc_min_replicated_index(int64 cdc_min_replicated_index);
+
+  int64_t cdc_min_replicated_index() const;
+
   // Returns the data root dir for this Raft group, for example:
   // /mnt/d0/yb-data/tserver/data
   // TODO(#79): rework when we have more than one KV-store (and data roots) per Raft group.
@@ -382,6 +390,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
       const RaftGroupId& raft_group_id, const Partition& partition,
       const std::string& lower_bound_key, const std::string& upper_bound_key) const;
 
+  bool colocated() const { return colocated_; }
+
  private:
   typedef simple_spinlock MutexType;
 
@@ -408,7 +418,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
                     Partition partition,
                     const boost::optional<IndexInfo>& index_info,
                     const uint32_t schema_version,
-                    const TabletDataState& tablet_data_state);
+                    const TabletDataState& tablet_data_state,
+                    const bool colocated = false);
 
   // Constructor for loading an existing Raft group.
   RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id);
@@ -481,6 +492,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Record of the last opid logged by the tablet before it was last tombstoned. Has no meaning for
   // non-tombstoned tablets.
   yb::OpId tombstone_last_logged_opid_;
+
+  // True if the raft group is for a colocated tablet.
+  bool colocated_;
+
+  // The minimum index that has been replicated by the cdc service.
+  int64_t cdc_min_replicated_index_ = std::numeric_limits<int64_t>::max();
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

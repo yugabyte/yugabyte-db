@@ -26,8 +26,8 @@
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 
-#include "yb/common/ql_value.h"
 #include "yb/util/bfql/tserver_opcodes.h"
+#include "yb/util/decimal.h"
 
 namespace yb {
 namespace ql {
@@ -35,6 +35,7 @@ namespace ql {
 // Because statements own expressions and their headers include expression headers, we forward
 // declare statement classes here.
 class PTSelectStmt;
+class PTDmlStmt;
 
 //--------------------------------------------------------------------------------------------------
 // The order of the following enum values are not important.
@@ -113,7 +114,8 @@ class PTExpr : public TreeNode {
         ql_op_(ql_op),
         internal_type_(internal_type),
         ql_type_(ql_type),
-        expected_internal_type_(InternalType::VALUE_NOT_SET) {}
+        expected_internal_type_(InternalType::VALUE_NOT_SET),
+        index_name_(MCMakeShared<MCString>(memctx)) {}
   virtual ~PTExpr() {}
 
   // Expression return type in DocDB format.
@@ -168,14 +170,35 @@ class PTExpr : public TreeNode {
     return ql_type_->main() != DataType::UNKNOWN_DATA;
   }
 
-  // Return selected name of expression. In SELECT statement, each selected expression is assigned a
-  // name, and this method is to form the name of an expression. For example, when selected expr is
-  // a column of a table, QLName() would be the name of that column.
-  virtual string QLName() const {
+  // Return name of expression.
+  // - Option kUserOriginalName
+  //     When report data to user, we use the original name that users enterred. In SELECT,
+  //     each selected expression is assigned a name, and this method is to form the name of an
+  //     expression using un-mangled column names. For example, when selected expr is a column of a
+  //     table, QLName() would be the name of that column.
+  //
+  // - Option kMangledName
+  //     When INDEX is created, YugaByte generates column name by mangling the original name from
+  //     users for the index expression columns.
+  //
+  // - Option kMetadataName
+  //     When loading column descriptor from Catalog::Table and Catalog::IndexTable, we might want
+  //     to read the name that is kept in the Catalog. Unmangled name for regular column, and
+  //     mangled name for index-expression column.
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const {
     LOG(INFO) << "Missing QLName for expression("
               << static_cast<int>(expr_op())
               << ") that is being selected";
     return "expr";
+  }
+
+  virtual string MangledName() const {
+    return QLName(QLNameOption::kMangledName);
+  }
+
+  virtual string MetadataName() const {
+    // If this expression was used to define an index column, use its descriptor name.
+    return index_desc_ ? index_desc_->MetadataName() : QLName(QLNameOption::kMetadataName);
   }
 
   // Node type.
@@ -235,6 +258,22 @@ class PTExpr : public TreeNode {
     return yb::bfql::TSOpcode::kNoOp;
   }
 
+  // Predicate for expressions that have no column reference.
+  // - When an expression does not have ColumnRef, it can be evaluated without reading table data.
+  // - By default, returns true to indicate so that optimization doesn't take place unless we
+  //   know for sure ColumnRef is used.
+  //
+  // Examples:
+  // - Constant has no column reference.
+  // - PTRef always has column-ref.
+  // - All other epxressions are dependent on whether or not its argument list contains a column.
+  //   NOW() and COUNT(*) have no reference. The '*' argument is translated to PTStar (DummyStar)
+  //   because we don't need to read any extra information from DocDB to process the statement for
+  //   this expression.
+  virtual bool HaveColumnRef() const {
+    return true;
+  }
+
   static PTExpr::SharedPtr CreateConst(MemoryContext *memctx,
                                        YBLocation::SharedPtr loc,
                                        PTBaseType::SharedPtr data_type);
@@ -250,6 +289,9 @@ class PTExpr : public TreeNode {
   // - The main job of semantics analysis is to run type resolution to find the correct values for
   //   ql_type and internal_type_ for expressions.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override = 0;
+
+  // Check if this expression represents a column in an INDEX table.
+  bool CheckIndexColumn(SemContext *sem_context);
 
   // Check if an operator is allowed in the current context before analyzing it.
   virtual CHECKED_STATUS CheckOperator(SemContext *sem_context);
@@ -289,12 +331,37 @@ class PTExpr : public TreeNode {
   // Compare this node datatype with the expected type from the parent treenode.
   virtual CHECKED_STATUS CheckExpectedTypeCompatibility(SemContext *sem_context);
 
+  // Access function for descriptor.
+  const ColumnDesc *index_desc() const {
+    return index_desc_;
+  }
+
+  const MCSharedPtr<MCString>& index_name() const {
+    return index_name_;
+  }
+
  protected:
+  // Get the column descriptor for this expression. IndexTable can have expression as its column.
+  const ColumnDesc *GetColumnDesc(const SemContext *sem_context);
+
+  // Get the descriptor for a column name.
+  const ColumnDesc *GetColumnDesc(const SemContext *sem_context, const MCString& col_name) const;
+
+  // Get the descriptor for a column or expr name from either a DML STMT or a TABLE.
+  const ColumnDesc *GetColumnDesc(const SemContext *sem_context,
+                                  const MCString& col_name,
+                                  PTDmlStmt *stmt) const;
+
   ExprOperator op_;
   yb::QLOperator ql_op_;
   InternalType internal_type_;
   QLType::SharedPtr ql_type_;
   InternalType expected_internal_type_;
+
+  // Fields that should be resolved by semantic analysis.
+  // An expression might be a reference to a column in an INDEX.
+  const ColumnDesc *index_desc_ = nullptr;
+  MCSharedPtr<MCString> index_name_;
 };
 
 using PTExprListNode = TreeListNode<PTExpr>;
@@ -396,6 +463,11 @@ class PTExpr0 : public expr_class {
   }
 
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+    // Before traversing the expression, check if this whole expression is actually a column.
+    if (this->CheckIndexColumn(sem_context)) {
+      return Status::OK();
+    }
+
     RETURN_NOT_OK(this->CheckOperator(sem_context));
 
     // Analyze this node operator and setup its ql_type and internal_type_.
@@ -440,6 +512,11 @@ class PTExpr1 : public expr_class {
   }
 
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+    // Before traversing the expression, check if this whole expression is actually a column.
+    if (this->CheckIndexColumn(sem_context)) {
+      return Status::OK();
+    }
+
     RETURN_NOT_OK(this->CheckOperator(sem_context));
 
     // Run semantic analysis on child nodes.
@@ -501,6 +578,11 @@ class PTExpr2 : public expr_class {
   }
 
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+    // Before traversing the expression, check if this whole expression is actually a column.
+    if (this->CheckIndexColumn(sem_context)) {
+      return Status::OK();
+    }
+
     RETURN_NOT_OK(this->CheckOperator(sem_context));
 
     // Run semantic analysis on child nodes.
@@ -572,6 +654,11 @@ class PTExpr3 : public expr_class {
   }
 
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+    // Before traversing the expression, check if this whole expression is actually a column.
+    if (this->CheckIndexColumn(sem_context)) {
+      return Status::OK();
+    }
+
     RETURN_NOT_OK(this->CheckOperator(sem_context));
 
     // Run semantic analysis on child nodes.
@@ -693,8 +780,13 @@ class PTExprConst : public PTExpr0<itype, ytype>,
     return Status::OK();
   };
 
-  virtual string QLName() const override {
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName)
+      const override {
     return LiteralType::ToQLName(LiteralType::value());
+  }
+
+  virtual bool HaveColumnRef() const override {
+    return false;
   }
 };
 
@@ -725,11 +817,16 @@ class PTStar : public PTNull {
     return MCMakeShared<PTStar>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual string QLName() const override {
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override {
     return "";
   }
+
   virtual bool IsDummyStar() const override {
     return true;
+  }
+
+  virtual bool HaveColumnRef() const override {
+    return false;
   }
 };
 
@@ -833,7 +930,7 @@ class PTJsonOperator : public PTExpr {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   const PTExpr::SharedPtr& arg() const {
     return arg_;
@@ -841,6 +938,18 @@ class PTJsonOperator : public PTExpr {
 
   JsonOperator json_operator() const {
     return json_operator_;
+  }
+
+  // Selected name.
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override {
+    string jquote = "'";
+    string op_name = json_operator_ == JsonOperator::JSON_OBJECT ? "->" : "->>";
+    string jattr = arg_->QLName(option);
+    if (option == QLNameOption::kMangledName) {
+      jattr = YcqlName::MangleJsonAttrName(jattr);
+    }
+
+    return op_name + jquote + jattr + jquote;
   }
 
  protected:
@@ -911,6 +1020,7 @@ class PTRelationExpr : public PTExpr {
                                          PTExpr::SharedPtr op1,
                                          PTExpr::SharedPtr op2,
                                          PTExpr::SharedPtr op3) override;
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override;
 };
 using PTRelation0 = PTExpr0<InternalType::kBoolValue, DataType::BOOL, PTRelationExpr>;
 using PTRelation1 = PTExpr1<InternalType::kBoolValue, DataType::BOOL, PTRelationExpr>;
@@ -941,10 +1051,6 @@ class PTOperatorExpr : public PTExpr {
   // Analyze this operator after all operands were analyzed.
   using PTExpr::AnalyzeOperator;
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
-
- protected:
-  // Get the column descriptor from the current statement.
-  const ColumnDesc *GetColumnDesc(const SemContext *sem_context, const MCString& col_name) const;
 };
 
 using PTOperator0 = PTExpr0<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA, PTOperatorExpr>;
@@ -981,7 +1087,17 @@ class PTRef : public PTOperator0 {
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
 
   // Selected name.
-  virtual string QLName() const override {
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override {
+    if (option == QLNameOption::kMetadataName) {
+      // Should only be called after the descriptor is loaded from the catalog by Analyze().
+      CHECK(desc_) << "Metadata is not yet loaded to this node";
+      return desc_->MetadataName();
+    }
+
+    if (option == QLNameOption::kMangledName) {
+      return YcqlName::MangleColumnName(name_->QLName());
+    }
+
     return name_->QLName();
   }
 
@@ -1046,6 +1162,24 @@ class PTJsonColumnWithOperators : public PTOperator0 {
     return name_;
   }
 
+  // Selected name.
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override {
+    string qlname;
+    if (option == QLNameOption::kMetadataName) {
+      DCHECK(desc_) << "Metadata is not yet loaded to this node";
+      qlname = desc_->MetadataName();
+    } else if (option == QLNameOption::kMangledName) {
+      qlname = YcqlName::MangleColumnName(name_->QLName());
+    } else {
+      qlname = name_->QLName();
+    }
+
+    for (PTExpr::SharedPtr expr : operators_->node_list()) {
+      qlname += expr->QLName(option);
+    }
+    return qlname;
+  }
+
   const PTExprListNode::SharedPtr& operators() const {
     return operators_;
   }
@@ -1062,10 +1196,6 @@ class PTJsonColumnWithOperators : public PTOperator0 {
 
   // Analyze LHS expression.
   virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
-
-  CHECKED_STATUS SetupPrimaryKey(SemContext *sem_context) const;
-  CHECKED_STATUS SetupHashAndPrimaryKey(SemContext *sem_context) const;
-  CHECKED_STATUS SetupCoveringIndexColumn(SemContext *sem_context) const;
 
  private:
   PTQualifiedName::SharedPtr name_;
@@ -1168,10 +1298,10 @@ class PTAllColumns : public PTOperator0 {
     return TreeNodeOpcode::kPTAllColumns;
   }
 
-  virtual string QLName() const override {
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override {
     // We should not get here as '*' should have been converted into a list of column name before
     // the selected tuple is constructed and described.
-    LOG(DFATAL) << "Calling QLName for '*' is not expected";
+    VLOG(3) << "Calling QLName for '*' is not expected";
     return "*";
   }
 
@@ -1212,7 +1342,7 @@ class PTExprAlias : public PTOperator1 {
   using PTOperatorExpr::AnalyzeOperator;
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
 
-  virtual string QLName() const override {
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override {
     return alias_->c_str();
   }
 
@@ -1308,7 +1438,7 @@ class PTBindVar : public PTExpr {
     return TreeNodeOpcode::kPTBindVar;
   }
 
-  virtual string QLName() const override {
+  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override {
     string qlname = (user_pos_) ? user_pos_->ToString() : name()->c_str();
     return ":" +  qlname;
   }
@@ -1357,6 +1487,22 @@ class PTBindVar : public PTExpr {
   // The name Cassandra uses for binding the args of a builtin system call e.g. "token(?, ?)"
   static const string bcall_arg_bindvar_name(const string& bcall_name, size_t arg_position) {
     return strings::Substitute("arg$0(system.$1)", arg_position, bcall_name);
+  }
+
+  // The name Cassandra uses for binding the collection elements.
+  static const string coll_bindvar_name(const string& col_name) {
+    return strings::Substitute("value($0)", col_name);
+  }
+
+  // The name for binding the JSON attributes.
+  static const string json_bindvar_name(const string& col_name) {
+    return strings::Substitute("json_attr($0)", col_name);
+  }
+
+  // Use the binding name by default (if no other cases applicable).
+  static const string& default_bindvar_name() {
+    static string default_bindvar_name = "expr";
+    return default_bindvar_name;
   }
 
  private:

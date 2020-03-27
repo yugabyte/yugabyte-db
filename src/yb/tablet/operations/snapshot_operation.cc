@@ -4,10 +4,13 @@
 
 #include "yb/tablet/operations/snapshot_operation.h"
 
+#include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/tablet/snapshot_coordinator.h"
+#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -51,10 +54,24 @@ void SnapshotOperationState::ReleaseSchemaLock() {
 }
 
 std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_dir) const {
-  if (request_->has_snapshot_dir_override()) {
+  if (!request_->snapshot_dir_override().empty()) {
     return request_->snapshot_dir_override();
   }
-  return JoinPathSegments(top_snapshots_dir, request_->snapshot_id());
+  std::string snapshot_id_str;
+  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(request_->snapshot_id());
+  if (!txn_snapshot_id.IsNil()) {
+    snapshot_id_str = txn_snapshot_id.ToString();
+  } else {
+    snapshot_id_str = request_->snapshot_id();
+  }
+
+  return JoinPathSegments(top_snapshots_dir, snapshot_id_str);
+}
+
+tserver::TabletSnapshotOpRequestPB* SnapshotOperationState::AllocateRequest() {
+  request_holder_ = std::make_unique<tserver::TabletSnapshotOpRequestPB>();
+  request_ = request_holder_.get();
+  return request_holder_.get();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -77,8 +94,7 @@ consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
 
 Status SnapshotOperation::Prepare() {
   TRACE("PREPARE SNAPSHOT: Starting");
-  Tablet* tablet = state()->tablet();
-  RETURN_NOT_OK(tablet->PrepareForSnapshotOp(state()));
+  RETURN_NOT_OK(state()->tablet()->snapshots().Prepare(state()));
 
   TRACE("PREPARE SNAPSHOT: finished");
   return Status::OK();
@@ -91,56 +107,34 @@ void SnapshotOperation::DoStart() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status SnapshotOperation::Apply(int64_t leader_term) {
-  TRACE("APPLY SNAPSHOT: Starting");
-  TabletClass* const tablet = down_cast<TabletClass*>(state()->tablet());
-  bool handled = false;
-
-  switch (state()->operation()) {
-    case TabletSnapshotOpRequestPB::CREATE: {
-      handled = true;
-      RETURN_NOT_OK(tablet->CreateSnapshot(state()));
-      break;
-    }
-    case TabletSnapshotOpRequestPB::RESTORE: {
-      handled = true;
-      RETURN_NOT_OK(tablet->RestoreSnapshot(state()));
-      break;
-    }
-    case TabletSnapshotOpRequestPB::DELETE: {
-      handled = true;
-      RETURN_NOT_OK(tablet->DeleteSnapshot(state()));
-      break;
-    }
-    case TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-  }
-
-  if (!handled) {
-    FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, state()->operation());
-  }
-
-  return Status::OK();
+Status SnapshotOperation::DoAborted(const Status& status) {
+  TRACE("SnapshotOperation: operation aborted");
+  state()->Finish();
+  return status;
 }
 
-void SnapshotOperation::Finish(OperationResult result) {
-  if (PREDICT_FALSE(result == Operation::ABORTED)) {
-    TRACE("SnapshotOperation: operation aborted");
-    state()->Finish();
-    return;
+Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
+  TRACE("APPLY SNAPSHOT: Starting");
+  auto operation = state()->request()->operation();
+  switch (operation) {
+    case TabletSnapshotOpRequestPB::CREATE_ON_MASTER: {
+      auto snapshot_coordinator = state()->tablet()->snapshot_coordinator();
+      if (!snapshot_coordinator) {
+        return STATUS_FORMAT(IllegalState, "Replicated $0 to tablet without snapshot coordinator",
+                             TabletSnapshotOpRequestPB::Operation_Name(operation));
+      }
+      return snapshot_coordinator->Replicated(leader_term, *state());
+    }
+    case TabletSnapshotOpRequestPB::CREATE_ON_TABLET: FALLTHROUGH_INTENDED;
+    case TabletSnapshotOpRequestPB::RESTORE: FALLTHROUGH_INTENDED;
+    case TabletSnapshotOpRequestPB::DELETE:
+      return state()->tablet()->snapshots().Replicated(state());
+    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
+    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
+    case TabletSnapshotOpRequestPB::UNKNOWN:
+      break;
   }
-
-  // The schema lock was acquired by Tablet::PrepareForCreateSnapshot.
-  // Normally, we would release it in tablet.cc after applying the operation,
-  // but currently we need to wait until after the COMMIT message is logged
-  // to release this lock as a workaround for KUDU-915. See the same TODO in
-  // AlterSchemaOperation().
-  state()->ReleaseSchemaLock();
-
-  DCHECK_EQ(result, Operation::COMMITTED);
-  // Now that all of the changes have been applied and the commit is durable
-  // make the changes visible to readers.
-  TRACE("SnapshotOperation: making snapshot visible");
-  state()->Finish();
+  FATAL_INVALID_ENUM_VALUE(TabletSnapshotOpRequestPB::Operation, operation);
 }
 
 string SnapshotOperation::ToString() const {

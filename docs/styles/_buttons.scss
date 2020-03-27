@@ -1,6 +1,6 @@
 .btn, button {
   position: relative;
-  font-family: "Open Sans", sans-serif;
+  font-family: "Inter", sans-serif;
   font-weight: 400;
   transition: all 0.2s;
   line-height: 40px;
@@ -86,8 +86,8 @@
     a.nav-link {
       position: relative;
       top: 1px;
-      font-family: Montserrat, sans-serif;
-      font-weight: 600;
+      font-family: 'Rubik', sans-serif;
+      font-weight: 500;
       font-size: 20px;
       font-weight: 500 !important;
       border-radius: 0 !important;
@@ -158,6 +158,20 @@
   }
 }
 
+.modal-close-icon {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: black;
+  background: #fff;
+  font-size: 22px;
+  border: 1px solid #d2d2d2;
+  padding: 0px 9px;
+  border-radius: 25px;
+  box-shadow: 0 0 10px #ccc;
+  cursor: pointer;
+}
+
 button.small {
   border: none !important;
   vertical-align: middle;
@@ -169,7 +183,7 @@ button.small {
   width: auto;
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 500;
   text-align: center;
   cursor: pointer;
   padding: 3px 12px;

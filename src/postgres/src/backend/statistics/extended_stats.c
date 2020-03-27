@@ -74,7 +74,7 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
 	MemoryContext cxt;
 	MemoryContext oldcxt;
 
-	cxt = AllocSetContextCreate(CurrentMemoryContext,
+	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								"BuildRelationExtStatistics",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
@@ -371,10 +371,10 @@ multi_sort_add_dimension(MultiSortSupport mss, int sortdim, Oid oper)
 {
 	SortSupport ssup = &mss->ssup[sortdim];
 
-	ssup->ssup_cxt = CurrentMemoryContext;
+	ssup->ssup_cxt = GetCurrentMemoryContext();
 	ssup->ssup_collation = DEFAULT_COLLATION_OID;
 	ssup->ssup_nulls_first = false;
-	ssup->ssup_cxt = CurrentMemoryContext;
+	ssup->ssup_cxt = GetCurrentMemoryContext();
 
 	PrepareSortSupportFromOrderingOp(oper, ssup);
 }

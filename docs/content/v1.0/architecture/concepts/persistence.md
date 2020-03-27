@@ -11,7 +11,7 @@ menu:
 
 ## Introduction
 
-DocDB is YugaByte’s Log Structured Merge tree (LSM) based storage engine. Once data is replicated
+DocDB is Yugabyte’s Log Structured Merge tree (LSM) based storage engine. Once data is replicated
 via Raft  across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB.
 
 DocDB is a persistent “**key to object/document**” store rather than just a “key to value” store.
@@ -32,7 +32,7 @@ recover the state of any document at some point in the past. Overwritten or dele
 of data are garbage-collected as soon as there are no transactions reading at a snapshot at which
 the old value would be visible.
 
-YugaByte’s DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a
+Yugabyte’s DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a
 log-structured merge tree (LSM) based key-value store. The primary motivation behind the
 enhancements or customizations to RocksDB are described below:
 
@@ -52,11 +52,11 @@ enhancements or customizations to RocksDB are described below:
   suppress expired data. Expired values within the subdocument are cleaned up/garbage collected by our
   customized compaction hooks.
 
-* **Avoid penalty of two transaction/write-ahead (WAL) logs**: YugaByte is a distributed database that
+* **Avoid penalty of two transaction/write-ahead (WAL) logs**: Yugabyte is a distributed database that
   uses Raft for replication. Changes to the distributed system are already recorded/journalled as part
   of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s
   DocDB, but the additional WAL mechanism in RocksDB (under DocDB) is unnecessary and adds overhead.
-  For correctness, in addition to disabling the WAL mechanism in RocksDB, YugaByte tracks the Raft
+  For correctness, in addition to disabling the WAL mechanism in RocksDB, Yugabyte tracks the Raft
   “sequence id” up to which data has been flushed from RocksDB’s memtables to SSTable files. This
   ensures that we can correctly garbage collect the Raft WAL logs as well as replay the minimal number
   of records from Raft WAL logs on a server crash or restart.
@@ -64,7 +64,7 @@ enhancements or customizations to RocksDB are described below:
 * **Multi-version concurrency control (MVCC) is done at a higher layer**: The mutations to records in the
   system are versioned using hybrid-timestamps maintained at the YBase layer. As a result, the notion
   of MVCC as implemented in a vanilla RocksDB (using sequence ids) is not necessary and only adds
-  overhead. YugaByte does not use RocksDB’s sequence ids, and instead uses hybrid-timestamps that are
+  overhead. Yugabyte does not use RocksDB’s sequence ids, and instead uses hybrid-timestamps that are
   part of the encoded key to implement MVCC.
 
 * **Backups/Snapshots**: These need to be higher level operations that take into consideration data in
@@ -124,7 +124,7 @@ out useful/hot data.
 ## Encoding Details
 
 DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
-YugaByte (currently CQL, Redis, and PostgreSQL(beta)).
+Yugabyte (currently CQL, Redis, and PostgreSQL(beta)).
 
 ### Mapping Documents to Key-Value Store
 

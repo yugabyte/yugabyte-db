@@ -52,6 +52,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /*
  * GUC parameters
@@ -171,6 +172,16 @@ vacuum(int options, List *relations, VacuumParams *params,
 	const char *stmttype;
 	volatile bool in_outer_xact,
 				use_own_xacts;
+
+	/*
+	 * VACUUM currently not supported for Yugabyte.
+	 */
+	if (options & VACOPT_VACUUM)
+	{
+		ereport(WARNING,
+				(errmsg("VACUUM will be ignored")));
+		return;
+	}
 
 	Assert(params != NULL);
 

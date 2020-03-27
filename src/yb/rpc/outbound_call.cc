@@ -230,20 +230,20 @@ OutboundCall::~OutboundCall() {
 }
 
 void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
-  // TODO: would be better to cancel the transfer while it is still on the queue if we
-  // timed out before the transfer started, but there is still a race in the case of
-  // a partial send that we have to handle here
+  if (status.ok()) {
+    // Even when call is already finished (timed out) we should notify connection that it was sent
+    // because it should expect response with appropriate id.
+    conn->CallSent(shared_from(this));
+  }
+
   if (IsFinished()) {
-    DCHECK(IsTimedOut());
+    LOG_IF_WITH_PREFIX(DFATAL, !IsTimedOut())
+        << "Transferred call is in wrong state: " << state_.load(std::memory_order_acquire);
+  } else if (status.ok()) {
+    SetSent();
   } else {
-    if (status.ok()) {
-      conn->CallSent(shared_from(this));
-      SetSent();
-    } else {
-      VLOG_WITH_PREFIX(1) << "Connection torn down before " << ToString()
-                          << " could send its call: " << status.ToString();
-      SetFailed(status);
-    }
+    VLOG_WITH_PREFIX(1) << "Connection torn down: " << status;
+    SetFailed(status);
   }
 }
 
@@ -307,31 +307,59 @@ OutboundCall::State OutboundCall::state() const {
   return state_.load(std::memory_order_acquire);
 }
 
-void OutboundCall::set_state(State new_state) {
-  auto old_state = state_.exchange(new_state, std::memory_order_acquire);
+bool FinishedState(RpcCallState state) {
+  switch (state) {
+    case READY:
+    case ON_OUTBOUND_QUEUE:
+    case SENT:
+      return false;
+    case TIMED_OUT:
+    case FINISHED_ERROR:
+    case FINISHED_SUCCESS:
+      return true;
+  }
+  LOG(FATAL) << "Unknown call state: " << state;
+  return false;
+}
+
+bool ValidStateTransition(RpcCallState old_state, RpcCallState new_state) {
+  switch (new_state) {
+    case ON_OUTBOUND_QUEUE:
+      return old_state == READY;
+    case SENT:
+      return old_state == ON_OUTBOUND_QUEUE;
+    case TIMED_OUT:
+      return old_state == SENT || old_state == ON_OUTBOUND_QUEUE;
+    case FINISHED_SUCCESS:
+      return old_state == SENT;
+    case FINISHED_ERROR:
+      return old_state == SENT || old_state == ON_OUTBOUND_QUEUE || old_state == READY;
+    default:
+      // No sanity checks for others.
+      return true;
+  }
+}
+
+bool OutboundCall::SetState(State new_state) {
+  auto old_state = state_.load(std::memory_order_acquire);
   // Sanity check state transitions.
   DVLOG(3) << "OutboundCall " << this << " (" << ToString() << ") switching from " <<
     StateName(old_state) << " to " << StateName(new_state);
-  switch (new_state) {
-    case ON_OUTBOUND_QUEUE:
-      DCHECK_EQ(old_state, READY);
-      break;
-    case SENT:
-      DCHECK_EQ(old_state, ON_OUTBOUND_QUEUE);
-      break;
-    case TIMED_OUT:
-      DCHECK(old_state == SENT || old_state == ON_OUTBOUND_QUEUE) << "Real state: " << old_state;
-      break;
-    case FINISHED_SUCCESS:
-      DCHECK_EQ(old_state, SENT);
-      break;
-    case FINISHED_ERROR:
-      DCHECK(old_state == SENT || old_state == ON_OUTBOUND_QUEUE || old_state == READY)
-          << "Real state: " << old_state;
-      break;
-    default:
-      // No sanity checks for others.
-      break;
+  for (;;) {
+    if (FinishedState(old_state)) {
+      VLOG(1) << "Call already finished: " << RpcCallState_Name(old_state) << ", new state: "
+              << RpcCallState_Name(new_state);
+      return false;
+    }
+    if (!ValidStateTransition(old_state, new_state)) {
+      LOG(DFATAL)
+          << "Invalid call state transition: " << RpcCallState_Name(old_state) << " => "
+          << RpcCallState_Name(new_state);
+      return false;
+    }
+    if (state_.compare_exchange_weak(old_state, new_state, std::memory_order_acq_rel)) {
+      return true;
+    }
   }
 }
 
@@ -367,9 +395,15 @@ void OutboundCall::InvokeCallbackSync() {
 
     LOG(WARNING) << "RPC callback for " << ToString() << " took " << time_spent;
   }
+
+  // Could be destroyed during callback. So reset it.
+  controller_ = nullptr;
+  response_ = nullptr;
 }
 
 void OutboundCall::SetResponse(CallResponse&& resp) {
+  DCHECK(!IsFinished());
+
   auto now = MonoTime::Now();
   TRACE_TO_WITH_TIME(trace_, now, "Response received.");
   // Track time taken to be responded.
@@ -389,8 +423,12 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
                                 response_->InitializationErrorString()));
       return;
     }
-    set_state(FINISHED_SUCCESS);
-    InvokeCallback();
+    if (SetState(FINISHED_SUCCESS)) {
+      InvokeCallback();
+    } else {
+      LOG(DFATAL) << "Success of already finished call: "
+                  << RpcCallState_Name(state_.load(std::memory_order_acquire));
+    }
   } else {
     // Error
     auto err = std::make_unique<ErrorStatusPB>();
@@ -410,7 +448,7 @@ void OutboundCall::SetQueued() {
   if (outbound_call_metrics_) {
     outbound_call_metrics_->queue_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
-  set_state(ON_OUTBOUND_QUEUE);
+  SetState(ON_OUTBOUND_QUEUE);
   TRACE_TO_WITH_TIME(trace_, end_time, "Queued.");
 }
 
@@ -420,23 +458,29 @@ void OutboundCall::SetSent() {
   if (outbound_call_metrics_) {
     outbound_call_metrics_->send_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
-  set_state(SENT);
+  SetState(SENT);
   TRACE_TO_WITH_TIME(trace_, end_time, "Call Sent.");
 }
 
 void OutboundCall::SetFinished() {
+  DCHECK(!IsFinished());
+
   // Track time taken to be responded.
   if (outbound_call_metrics_) {
     outbound_call_metrics_->time_to_response->Increment(
         MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
   }
-  set_state(FINISHED_SUCCESS);
-  InvokeCallback();
+  if (SetState(FINISHED_SUCCESS)) {
+    InvokeCallback();
+  }
   TRACE_TO(trace_, "Callback called.");
 }
 
 void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB> err_pb) {
+  DCHECK(!IsFinished());
+
   TRACE_TO(trace_, "Call Failed.");
+  bool invoke_callback;
   {
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = status;
@@ -446,24 +490,33 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
     } else {
       CHECK(!err_pb);
     }
-    set_state(FINISHED_ERROR);
+    invoke_callback = SetState(FINISHED_ERROR);
   }
-  InvokeCallback();
+  if (invoke_callback) {
+    InvokeCallback();
+  }
 }
 
 void OutboundCall::SetTimedOut() {
+  DCHECK(!IsFinished());
+
   TRACE_TO(trace_, "Call TimedOut.");
+  bool invoke_callback;
   {
-    auto status = STATUS_FORMAT(TimedOut,
-                                "$0 RPC to $1 timed out after $2",
-                                remote_method_->method_name(),
-                                conn_id_.remote(),
-                                controller_->timeout());
+    auto status = STATUS_FORMAT(
+        TimedOut,
+        "$0 RPC (request call id $3) to $1 timed out after $2",
+        remote_method_->method_name(),
+        conn_id_.remote(),
+        controller_->timeout(),
+        call_id_);
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = std::move(status);
-    set_state(TIMED_OUT);
+    invoke_callback = SetState(TIMED_OUT);
   }
-  InvokeCallback();
+  if (invoke_callback) {
+    InvokeCallback();
+  }
 }
 
 bool OutboundCall::IsTimedOut() const {
@@ -471,23 +524,11 @@ bool OutboundCall::IsTimedOut() const {
 }
 
 bool OutboundCall::IsFinished() const {
-  auto state = state_.load(std::memory_order_acquire);
-  switch (state) {
-    case READY:
-    case ON_OUTBOUND_QUEUE:
-    case SENT:
-      return false;
-    case TIMED_OUT:
-    case FINISHED_ERROR:
-    case FINISHED_SUCCESS:
-      return true;
-  }
-  LOG(FATAL) << "Unknown call state: " << state;
-  return false;
+  return FinishedState(state_.load(std::memory_order_acquire));
 }
 
-Status OutboundCall::GetSidecar(int idx, Slice* sidecar) const {
-  return call_response_.GetSidecar(idx, sidecar);
+Result<Slice> OutboundCall::GetSidecar(int idx) const {
+  return call_response_.GetSidecar(idx);
 }
 
 string OutboundCall::ToString() const {
@@ -497,9 +538,13 @@ string OutboundCall::ToString() const {
 bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
   std::lock_guard<simple_spinlock> l(lock_);
+  auto state_value = state();
+  if (!req.dump_timed_out() && state_value == RpcCallState::TIMED_OUT) {
+    return false;
+  }
   InitHeader(resp->mutable_header());
-  resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
-  resp->set_state(state());
+  resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(start_).ToMilliseconds());
+  resp->set_state(state_value);
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
@@ -550,33 +595,13 @@ CallResponse::CallResponse()
     : parsed_(false) {
 }
 
-CallResponse::CallResponse(CallResponse&& rhs) {
-  DCHECK(rhs.parsed_);
-  parsed_ = rhs.parsed_;
-  header_.Swap(&rhs.header_);
-  serialized_response_ = rhs.serialized_response_;
-  sidecar_slices_ = rhs.sidecar_slices_;
-  response_data_ = std::move(rhs.response_data_);
-}
-
-void CallResponse::operator=(CallResponse&& rhs) {
-  DCHECK(rhs.parsed_);
-  DCHECK(!parsed_);
-  parsed_ = rhs.parsed_;
-  header_.Swap(&rhs.header_);
-  serialized_response_ = rhs.serialized_response_;
-  sidecar_slices_ = rhs.sidecar_slices_;
-  response_data_ = std::move(rhs.response_data_);
-}
-
-Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
+Result<Slice> CallResponse::GetSidecar(int idx) const {
   DCHECK(parsed_);
-  if (idx < 0 || idx >= header_.sidecar_offsets_size()) {
-    return STATUS(InvalidArgument, strings::Substitute(
-        "Index $0 does not reference a valid sidecar", idx));
+  if (idx < 0 || idx + 1 >= sidecar_bounds_.size()) {
+    return STATUS_FORMAT(InvalidArgument,
+        "Index $0 does not reference a valid sidecar", idx);
   }
-  *sidecar = sidecar_slices_[idx];
-  return Status::OK();
+  return Slice(sidecar_bounds_[idx], sidecar_bounds_[idx + 1]);
 }
 
 Status CallResponse::ParseFrom(CallData* call_data) {
@@ -590,28 +615,24 @@ Status CallResponse::ParseFrom(CallData* call_data) {
   // Use information from header to extract the payload slices.
   const size_t sidecars = header_.sidecar_offsets_size();
 
-  if (sidecars > kMaxSidecarSlices) {
-    return STATUS(Corruption, strings::Substitute(
-        "Received $0 additional payload slices, expected at most $1",
-        sidecars, kMaxSidecarSlices));
-  }
-
   if (sidecars > 0) {
     serialized_response_ = Slice(entire_message.data(),
                                  header_.sidecar_offsets(0));
-    for (size_t i = 0; i < sidecars; ++i) {
-      size_t begin_offset = header_.sidecar_offsets(i);
-      size_t end_offset = i + 1 == sidecars ? entire_message.size()
-                                            : header_.sidecar_offsets(i + 1);
-      if (end_offset > entire_message.size() || end_offset < begin_offset) {
-        return STATUS(Corruption, strings::Substitute(
-            "Invalid sidecar offsets; sidecar $0 apparently starts at $1,"
-            " ends at $2, but the entire message has length $3",
-            i, begin_offset, end_offset, entire_message.size()));
+    sidecar_bounds_.reserve(sidecars + 1);
+
+    uint32_t prev_offset = 0;
+    for (auto offset : header_.sidecar_offsets()) {
+      if (offset > entire_message.size() || offset < prev_offset) {
+        return STATUS_FORMAT(
+            Corruption,
+            "Invalid sidecar offsets; sidecar apparently starts at $0,"
+            " ends at $1, but the entire message has length $2",
+            prev_offset, offset, entire_message.size());
       }
-      sidecar_slices_[i] = Slice(entire_message.data() + begin_offset,
-                                 entire_message.data() + end_offset);
+      sidecar_bounds_.push_back(entire_message.data() + offset);
+      prev_offset = offset;
     }
+    sidecar_bounds_.emplace_back(entire_message.end());
   } else {
     serialized_response_ = entire_message;
   }

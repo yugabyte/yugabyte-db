@@ -37,6 +37,8 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
 
 #include "yb/util/net/net_util.h"
@@ -232,7 +234,8 @@ Status RemoteYsckMaster::RetrieveTablesList(vector<shared_ptr<YsckTable> >* tabl
     int num_replicas = 0;
     CHECK(info.has_namespace_());
     CHECK(info.namespace_().has_name());
-    YBTableName name(info.namespace_().name(), info.name());
+    YBTableName name(
+        master::GetDatabaseTypeForTable(info.table_type()), info.namespace_().name(), info.name());
     bool is_pg_table = false;
     RETURN_NOT_OK(GetTableInfo(info.id(), &schema, &num_replicas, &is_pg_table));
     if (is_pg_table) {
@@ -331,6 +334,10 @@ RemoteYsckMaster::RemoteYsckMaster(
       proxy_cache_(new rpc::ProxyCache(messenger_.get())),
       generic_proxy_(new server::GenericServiceProxy(proxy_cache_.get(), address)),
       proxy_(new master::MasterServiceProxy(proxy_cache_.get(), address)) {}
+
+RemoteYsckMaster::~RemoteYsckMaster() {
+  messenger_->Shutdown();
+}
 
 } // namespace tools
 } // namespace yb

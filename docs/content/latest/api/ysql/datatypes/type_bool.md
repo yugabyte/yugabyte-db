@@ -1,8 +1,8 @@
 ---
-title: BOOLEAN Datatypes
-linktitle: Boolean
-summary: BOOLEAN Datatypes
-description: BOOLEAN Datatypes
+title: BOOLEAN data types
+linkTitle: Boolean
+summary: BOOLEAN data types
+description: BOOLEAN data types
 menu:
   latest:
     identifier: api-ysql-datatypes-bool
@@ -14,7 +14,8 @@ showAsideToc: true
 ---
 
 ## Synopsis
-BOOLEAN datatype represents three different states: TRUE, FALSE, or NULL.
+
+The `BOOLEAN` data type represents three different states: `TRUE`, `FALSE`, or `NULL`.
 
 ## Description
 
@@ -23,4 +24,3 @@ type_specification ::= { BOOLEAN | BOOL }
 literal ::= { TRUE | true | 't' | 'y' | 'yes' | 'on' | 1 |
               FALSE | false | 'f' | 'n' | 'no' | 'off' | 0 }
 ```
-

@@ -63,5 +63,8 @@ void ToUpperCase(const std::string &string,
 // - 'hiBerNATe' -> 'Hibernate'
 void Capitalize(std::string *word);
 
+// Check if the given string has one or more characters in upper-case.
+bool ContainsUpperCase(const std::string& str);
+
 }  // namespace yb
 #endif  // YB_UTIL_STRING_CASE_H_

@@ -53,7 +53,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 <li>The argument datatypes must be convertible to the expected type for that argument that was specified by the function definition.</li>
 <li>Function execution will return a value of the specified type by the function definition.</li>
-<li>YugaByte allows function calls to be used any where that expression is allowed.</li>
+<li>Yugabyte allows function calls to be used any where that expression is allowed.</li>
 
 ## See Also
 [All Expressions](..##expressions)

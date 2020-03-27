@@ -78,17 +78,23 @@ namespace {
 std::mutex providers_mutex;
 std::unordered_map<std::string, PhysicalClockProvider> providers;
 
-PhysicalClockPtr GetClock(const std::string& name) {
-  if (name.empty()) {
+// options should be in format clock_name[,extra_data] and extra_data would be passed to
+// clock factory.
+PhysicalClockPtr GetClock(const std::string& options) {
+  if (options.empty()) {
     return WallClock();
   }
+
+  auto pos = options.find(',');
+  auto name = pos == std::string::npos ? options : options.substr(0, pos);
+  auto arg = pos == std::string::npos ? std::string() : options.substr(pos + 1);
   std::lock_guard<std::mutex> lock(providers_mutex);
   auto it = providers.find(name);
   if (it == providers.end()) {
     LOG(DFATAL) << "Unknown time source: " << name;
     return WallClock();
   }
-  return it->second();
+  return it->second(arg);
 }
 
 } // namespace
@@ -137,6 +143,8 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
   // If the current time surpasses the last update just return it
   HybridClockComponents current_components = components_.load(boost::memory_order_acquire);
   HybridClockComponents new_components = { now->time_point, 1 };
+
+  VLOG(4) << __func__ << ", new: " << new_components << ", current: " << current_components;
 
   // Loop over the check in case of concurrent updates making the CAS fail.
   while (now->time_point > current_components.last_usec) {
@@ -197,6 +205,11 @@ void HybridClock::Update(const HybridTime& to_update) {
     GetPhysicalValueMicros(to_update), GetLogicalValue(to_update) + 1
   };
 
+  // VLOG(4) crashes in TSAN mode
+  if (VLOG_IS_ON(4)) {
+    LOG(INFO) << __func__ << ", new: " << new_components << ", current: " << current_components;
+  }
+
   new_components.HandleLogicalComponentOverflow();
 
   // Keep trying to CAS until it works or until HT has advanced past this update.
@@ -218,9 +231,17 @@ uint64_t HybridClock::ErrorForMetrics() {
   return error;
 }
 
-void HybridClock::HybridClockComponents::HandleLogicalComponentOverflow() {
+std::string HybridClockComponents::ToString() const {
+  return Format("{ last_usec: $0 logical: $1 }", last_usec, logical);
+}
+
+std::ostream& operator<<(std::ostream& out, const HybridClockComponents& components) {
+  return out << components.ToString();
+}
+
+void HybridClockComponents::HandleLogicalComponentOverflow() {
   if (logical > HybridTime::kLogicalBitMask) {
-    static constexpr uint64_t kMaxOverflowValue = 1 << HybridTime::kBitsForLogicalComponent;
+    static constexpr uint64_t kMaxOverflowValue = 1ULL << HybridTime::kBitsForLogicalComponent;
     if (logical > kMaxOverflowValue) {
       LOG(FATAL) << "Logical component is too high: last_usec=" << last_usec
                  << "logical=" << logical << ", max allowed is " << kMaxOverflowValue;

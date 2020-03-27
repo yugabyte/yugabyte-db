@@ -23,7 +23,7 @@ Returns status string.
 You can do this as shown below.
 
 ```sh
-$ SET yugakey "YugaByte"
+$ SET yugakey "Yugabyte"
 ```
 
 ```
@@ -35,7 +35,7 @@ $ GET yugakey
 ```
 
 ```
-"YugaByte"
+"Yugabyte"
 ```
 
 ## See Also

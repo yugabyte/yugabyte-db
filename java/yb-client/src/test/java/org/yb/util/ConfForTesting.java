@@ -14,6 +14,20 @@ package org.yb.util;
 
 public final class ConfForTesting {
 
+  private static boolean detectCI() {
+    boolean isJenkins = System.getProperty("user.name").equals("jenkins") &&
+                        System.getenv("BUILD_ID") != null &&
+                        System.getenv("JOB_NAME") != null;
+    // TODO: also detect other CI environments.
+    return isJenkins;
+  }
+
+  private static final boolean isCI = detectCI();
+
+  public static boolean isCI() {
+    return isCI;
+  }
+
   private ConfForTesting() {
   }
 
@@ -22,10 +36,6 @@ public final class ConfForTesting {
 
   public static final String GZIP_PER_TEST_METHOD_LOGS_ENV_VAR =
       "YB_GZIP_PER_TEST_METHOD_LOGS";
-
-  public static boolean isJenkins() {
-    return System.getenv("BUILD_ID") != null && System.getenv("JOB_NAME") != null;
-  }
 
   public static boolean usePerTestLogFiles() {
     // Don't create per-test-method logs if we're told only one test method is invoked at a time.

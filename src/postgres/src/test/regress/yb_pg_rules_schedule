@@ -1,0 +1,7 @@
+# src/test/regress/yb_pg_rules_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This includes tests related to rules.
+####################################################################################################
+test: yb_pg_rules

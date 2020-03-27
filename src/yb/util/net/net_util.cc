@@ -46,7 +46,6 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional.hpp>
-#include <boost/scope_exit.hpp>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/map-util.h"
@@ -67,6 +66,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/random.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 
@@ -304,9 +304,7 @@ Status GetHostname(string* hostname) {
   char name[HOST_NAME_MAX];
   int ret = gethostname(name, HOST_NAME_MAX);
   if (ret != 0) {
-    return STATUS(NetworkError, "Unable to determine local hostname",
-                                ErrnoToString(errno),
-                                errno);
+    return STATUS(NetworkError, "Unable to determine local hostname", Errno(errno));
   }
   *hostname = name;
   return Status::OK();
@@ -321,15 +319,12 @@ Result<string> GetHostname() {
 Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter) {
   ifaddrs* addresses;
   if (getifaddrs(&addresses)) {
-    return STATUS(NetworkError,
-                  "Failed to list network interfaces: $0",
-                  ErrnoToString(errno),
-                  errno);
+    return STATUS(NetworkError, "Failed to list network interfaces", Errno(errno));
   }
 
-  BOOST_SCOPE_EXIT(addresses) {
+  auto se = ScopeExit([addresses] {
     freeifaddrs(addresses);
-  } BOOST_SCOPE_EXIT_END
+  });
 
   for (auto address = addresses; address; address = address->ifa_next) {
     if (address->ifa_addr != nullptr) {
@@ -378,7 +373,7 @@ Status GetFQDN(string* hostname) {
       return STATUS(NetworkError,
                     Substitute("Unable to lookup FQDN ($0), getaddrinfo returned $1",
                                *hostname, getaddrinfo_rc_to_string(rc)),
-                    ErrnoToString(errno), errno);
+                    Errno(errno));
     }
   }
 
@@ -434,14 +429,17 @@ void TryRunLsof(const Endpoint& addr, vector<string>* log) {
   // Little inline bash script prints the full ancestry of any pid listening
   // on the same port as 'addr'. We could use 'pstree -s', but that option
   // doesn't exist on el6.
+  //
+  // Note the sed command to check for the process name wrapped in ().
+  // Example prefix of /proc/$pid/stat output, with a process with spaces in the name:
+  // 3917 (tmux: server) S 1
   string cmd = strings::Substitute(
       "export PATH=$$PATH:/usr/sbin ; "
       "lsof -n -i 'TCP:$0' -sTCP:LISTEN ; "
       "for pid in $$(lsof -F p -n -i 'TCP:$0' -sTCP:LISTEN | cut -f 2 -dp) ; do"
       "  while [ $$pid -gt 1 ] ; do"
       "    ps h -fp $$pid ;"
-      "    stat=($$(</proc/$$pid/stat)) ;"
-      "    pid=$${stat[3]} ;"
+      "    pid=$$(sed 's/.* (.*) [^ ] \\([0-9]*\\).*/\\1/g' /proc/$$pid/stat);"
       "  done ; "
       "done",
       addr.port());

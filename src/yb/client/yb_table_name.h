@@ -16,14 +16,13 @@
 
 #include <string>
 
+#include "yb/common/common.pb.h"
+
 #ifdef YB_HEADERS_NO_STUBS
 #include "yb/util/logging.h"
 #else
 #include "yb/client/stubs.h"
 #endif
-
-#include "yb/common/redis_constants_common.h"
-
 
 namespace yb {
 
@@ -41,26 +40,41 @@ DECLARE_bool(yb_system_namespace_readonly);
 class YBTableName {
  public:
   // Empty (undefined) name.
-  YBTableName() {}
+  YBTableName() : namespace_type_(YQL_DATABASE_UNKNOWN) {}
 
   // Complex table name: 'namespace_name.table_name'.
   // The namespace must not be empty.
   // For the case of undefined namespace the next constructor must be used.
-  YBTableName(const std::string& namespace_name, const std::string& table_name) {
+  YBTableName(YQLDatabase db_type,
+              const std::string& namespace_name,
+              const std::string& table_name) : namespace_type_(db_type) {
     set_namespace_name(namespace_name);
     set_table_name(table_name);
   }
 
-  YBTableName(const std::string& namespace_id, const std::string& namespace_name,
-              const std::string& table_name) {
+  YBTableName(YQLDatabase db_type,
+              const std::string& namespace_id,
+              const std::string& namespace_name,
+              const std::string& table_name) : namespace_type_(db_type) {
     set_namespace_id(namespace_id);
     set_namespace_name(namespace_name);
     set_table_name(table_name);
   }
 
+  YBTableName(YQLDatabase db_type,
+              const std::string& namespace_id,
+              const std::string& namespace_name,
+              const std::string& table_id,
+              const std::string& table_name) : namespace_type_(db_type) {
+    set_namespace_id(namespace_id);
+    set_namespace_name(namespace_name);
+    set_table_id(table_id);
+    set_table_name(table_name);
+  }
+
   // Simple table name (no namespace provided at the moment of construction).
   // In this case the namespace has not been set yet and it MUST be set later.
-  explicit YBTableName(const std::string& table_name) {
+  YBTableName(YQLDatabase db_type, const std::string& table_name) : namespace_type_(db_type) {
     set_table_name(table_name);
   }
 
@@ -74,6 +88,14 @@ class YBTableName {
 
   const std::string& namespace_name() const {
     return namespace_name_; // Can be empty.
+  }
+
+  const std::string& namespace_id() const {
+    return namespace_id_; // Can be empty.
+  }
+
+  YQLDatabase namespace_type() const {
+    return namespace_type_;
   }
 
   const std::string& resolved_namespace_name() const {
@@ -91,22 +113,24 @@ class YBTableName {
     return table_name_;
   }
 
-  bool is_system() const {
-    return IsSystemNamespace(resolved_namespace_name());
+  bool has_table_id() const {
+    return !table_id_.empty();
   }
+
+  const std::string& table_id() const {
+    return table_id_; // Can be empty
+  }
+
+  bool is_system() const;
 
   bool is_redis_namespace() const {
-    return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName));
+    return namespace_type_ == YQL_DATABASE_REDIS;
   }
 
-  bool is_redis_table() const {
-    return (
-        (has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName) &&
-        table_name_.find(common::kRedisTableName) == 0);
-  }
+  bool is_redis_table() const;
 
   std::string ToString() const {
-    return (has_namespace() ? namespace_name_ + '.' + table_name_ : table_name_);
+    return has_namespace() ? (namespace_name_ + '.' + table_name_) : table_name_;
   }
 
   void set_namespace_id(const std::string& namespace_id) {
@@ -117,11 +141,17 @@ class YBTableName {
   void set_namespace_name(const std::string& namespace_name) {
     DCHECK(!namespace_name.empty());
     namespace_name_ = namespace_name;
+    check_db_type();
   }
 
   void set_table_name(const std::string& table_name) {
     DCHECK(!table_name.empty());
     table_name_ = table_name;
+  }
+
+  void set_table_id(const std::string& table_id) {
+    DCHECK(!table_id.empty());
+    table_id_ = table_id;
   }
 
   // ProtoBuf helpers.
@@ -131,16 +161,18 @@ class YBTableName {
   void SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const;
   void GetFromNamespaceIdentifierPB(const master::NamespaceIdentifierPB& id);
 
-  static bool IsSystemNamespace(const std::string& namespace_name);
-
  private:
-  std::string namespace_id_; // Optional. Can be set when the client knows the namespace id also.
+  void check_db_type();
+
+  std::string namespace_id_; // Optional. Can be set when the client knows the namespace id.
   std::string namespace_name_; // Can be empty, that means the namespace has not been set yet.
+  YQLDatabase namespace_type_; // Can be empty, that means the namespace id will be used.
+  std::string table_id_; // Optional. Can be set when client knows the table id also.
   std::string table_name_;
 };
 
 inline bool operator ==(const YBTableName& lhs, const YBTableName& rhs) {
-  // Not comparing namespace_id because it is optional.
+  // Not comparing namespace_id and table_id because they are optional.
   return (lhs.namespace_name() == rhs.namespace_name() && lhs.table_name() == rhs.table_name());
 }
 

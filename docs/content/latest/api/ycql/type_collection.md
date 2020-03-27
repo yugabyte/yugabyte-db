@@ -1,7 +1,9 @@
 ---
-title: MAP, SET, LIST
+title: Collection data types (MAP, LIST, and SET) [YSQL]
+headerTitle: Collection data types (MAP, LIST, and SET)
+linkTitle: Collection
 summary: MAP, SET and LIST types
-description: Collection Types
+description: Use collection data types to specify columns for data objects that can contain more than one value.
 menu:
   latest:
     parent: api-cassandra
@@ -15,19 +17,23 @@ showAsideToc: true
 
 ## Synopsis
 
-Collection datatypes are used to specify columns for data objects that can contains more than one value.
+Use collection data types to specify columns for data objects that can contain more than one value.
 
 ### LIST
+
 `LIST` is an ordered collection of elements. All elements in a `LIST` must be of the same primitive type. Elements can be prepend or append by `+` operator to a list, removed by `-` operator, and referenced by their indexes of that list by `[]` operator.
 
 ### MAP
+
 `MAP` is an sorted collection of pairs of elements, a key and a value. The sorting order is based on the key values and is implementation-dependent. With their key values, elements in a `MAP` can be set by the `[]` operator, added by the `+` operator, and removed by the `-` operator.
 When queries, the element pairs of a map will be returned in the sorting order.
 
 ### SET
+
 `SET` is a sorted collection of elements. The sorting order is implementation-dependent. Elements can be added by `+` operator and removed by `-` operator. When queried, the elements of a set will be returned in the sorting order.
 
 ## Syntax
+
 ```
 type_specification ::= { LIST<type> | MAP<key_type:type> | SET<key_type> }
 
@@ -41,9 +47,9 @@ set_literal ::= '{' [ expression ...] '}'
 
 Where 
 
-- Columns of type `LIST`, 'MAP', or `SET` cannot be part of the `PRIMARY KEY`.
-- `type` must be a [non-parametric datatype](../#datatypes) or a [frozen](../type_frozen) datatype.
-- `key_type` must be any datatype that is allowed in a primary key (Currently `FROZEN` and all non-parametric datatypes except `BOOL`).
+- Columns of type `LIST`, `MAP`, or `SET` cannot be part of the `PRIMARY KEY`.
+- `type` must be a [non-parametric data type](../#data-types) or a [frozen](../type_frozen) data type.
+- `key_type` must be any data type that is allowed in a primary key (Currently `FROZEN` and all non-parametric data types except `BOOL`).
 - For `map_literal` the left-side `expression` represents the key and the right-side one represents the value.
 - `expression` is any well formed CQL expression. See [Expression](..#expressions) for more information on syntax rules.
 
@@ -51,8 +57,8 @@ Where
 
 - Type parameters must be simple types or [frozen types](../type_frozen) (collections and user-defined types must be frozen to be used as collection parameters).
 - Columns of type `LIST`, `MAP`, and `SET` cannot be part of the `PRIMARY KEY`.
-- Implicitly, values of collection datatypes are neither convertible nor comparable to other datatypes.
-- Each expression in a collection literal must evaluate to a value convertible to the corresponding parameter datatype.
+- Implicitly, values of collection data types are neither convertible nor comparable to other data types.
+- Each expression in a collection literal must evaluate to a value convertible to the corresponding parameter data type.
 - Comparisons on collection values are not allowed (e.g. in `WHERE` or `IF` clauses).
 - Empty collections are treated as null values.
 
@@ -64,7 +70,8 @@ In particular, some list operations (insert at an index and remove elements) req
 
 ## Examples
 
-### `CREATE TABLE` with Collections.
+### `CREATE TABLE` with collections
+
 - Collection types are used like simple types (except they are not allowed in primary key).
 
 ```sql
@@ -74,7 +81,8 @@ cqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY,
                                   top_cities LIST<TEXT>);
 ```
 
-### `INSERT` Collection Data.
+### `INSERT` collection data
+
 - Collection values are inserted by setting all their elements at once.
 
 ```sql
@@ -102,7 +110,7 @@ cqlsh:example> SELECT * FROM users;
       foo | {'a@example.com', 'c@example.com'} | {'home': '999-9999', 'mobile': '000-0000'} | ['New York', 'Paris']
 ```
 
-### `UPDATE` Collection Column.
+### `UPDATE` collection column
 
 - Collection values can be updated by setting all their elements at once.
 
@@ -129,7 +137,8 @@ cqlsh:example> SELECT * FROM users;
       foo | {'a@example.com', 'c@example.com'} | {'home': '999-9999', 'mobile': '000-0000'} | ['New York', 'Paris']
 ```
 
-### Collection Expressions
+### Collection expressions
+
 - Collection elements can be added with `+` or removed with `-`.
 
 ```sql
@@ -197,7 +206,7 @@ cqlsh:example> SELECT * FROM users;
       foo | {'foo@example.com'} | {'mobile': '000-0000', 'office': '333-3333'} | ['Sunnyvale', 'Delhi']
 ```
 
-### `UPDATE` Map and List Elements
+### `UPDATE` map and list elements
 
 - Maps allow referencing elements by key.
 
@@ -241,6 +250,6 @@ cqlsh:example> SELECT * FROM users;
       foo | {'c@example.com', 'foo@example.com'} | {'mobile': '111-1111', 'office': '333-3333'} |       ['New York', 'Paris']
 ```
 
-## See Also
+## See also
 
-[Data Types](..#datatypes)
+- [Data types](..#data-types)

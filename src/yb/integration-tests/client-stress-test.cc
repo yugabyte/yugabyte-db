@@ -32,6 +32,7 @@
 
 #include <memory>
 #include <vector>
+#include <regex>
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
@@ -40,6 +41,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/mathlimits.h"
+#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -50,11 +52,15 @@
 
 #include "yb/rpc/rpc.h"
 
+#include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/random.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/test_util.h"
+
+DECLARE_int32(memory_limit_soft_percentage);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(leader_memory_pressure_rejections);
@@ -63,6 +69,7 @@ METRIC_DECLARE_counter(follower_memory_pressure_rejections);
 using strings::Substitute;
 using std::vector;
 using namespace std::literals; // NOLINT
+using namespace std::placeholders;
 
 namespace yb {
 
@@ -266,8 +273,6 @@ class ClientStressTest_LowMemory : public ClientStressTest {
 
 // Stress test where, due to absurdly low memory limits, many client requests
 // are rejected, forcing the client to retry repeatedly.
-// TODO(mbautin): switch this test to QL (RocksDB-backed) after we implement proper memory
-// tracking for RocksDB (https://yugabyte.atlassian.net/browse/ENG-442).
 TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   // Sanitized tests run much slower, so we don't want to wait for as many
   // rejections before declaring the test to be passed.
@@ -291,26 +296,15 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     // we'll just treat the lack of a metric as non-fatal. If the entity
     // or metric is truly missing, we'll eventually timeout and fail.
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-      int64_t value;
-      Status s = cluster_->tablet_server(i)->GetInt64Metric(
-          &METRIC_ENTITY_tablet,
-          nullptr,
-          &METRIC_leader_memory_pressure_rejections,
-          "value",
-          &value);
-      if (!s.IsNotFound()) {
-        ASSERT_OK(s);
-        total_num_rejections += value;
-      }
-      s = cluster_->tablet_server(i)->GetInt64Metric(
-          &METRIC_ENTITY_tablet,
-          nullptr,
-          &METRIC_follower_memory_pressure_rejections,
-          "value",
-          &value);
-      if (!s.IsNotFound()) {
-        ASSERT_OK(s);
-        total_num_rejections += value;
+      for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
+                                  &METRIC_follower_memory_pressure_rejections }) {
+        auto result = cluster_->tablet_server(i)->GetInt64Metric(
+            &METRIC_ENTITY_tablet, nullptr, metric, "value");
+        if (result.ok()) {
+          total_num_rejections += *result;
+        } else {
+          ASSERT_TRUE(result.status().IsNotFound()) << result.status();
+        }
       }
     }
     if (total_num_rejections >= kMinRejections) {
@@ -378,6 +372,192 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
   for (auto& item : items) {
     ASSERT_OK(item.future.get());
   }
+}
+
+namespace {
+
+// TODO: Add peak root mem tracker metric after https://github.com/yugabyte/yugabyte-db/issues/3442
+// is implemented. Retrieve metric value using RPC instead of parsing HTML report.
+Result<size_t> GetPeakRootConsumption(const ExternalTabletServer& ts) {
+  EasyCurl c;
+  faststring buf;
+  EXPECT_OK(c.FetchURL(Format("http://$0/mem-trackers?raw=1", ts.bound_http_hostport().ToString()),
+                       &buf));
+  static const std::regex re(
+      R"#(\s*<td>root</td><td>([0-9.]+\w)(\s+\([0-9.]+\w\))?</td>)#"
+      R"#(<td>([0-9.]+\w)</td><td>([0-9.]+\w)</td>\s*)#");
+  const auto str = buf.ToString();
+  std::smatch match;
+  if (std::regex_search(str, match, re)) {
+    const auto consumption_str = match.str(3);
+    int64_t consumption;
+    if (HumanReadableNumBytes::ToInt64(consumption_str, &consumption)) {
+      return consumption;
+    } else {
+      return STATUS_FORMAT(
+          InvalidArgument,
+          "Failed to parse memory consumption: $0", consumption_str);
+    }
+  } else {
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Failed to parse root mem tracker consumption from: $0", str);
+  }
+}
+
+class ThrottleLogCounter : public ExternalDaemon::StringListener {
+ public:
+  explicit ThrottleLogCounter(ExternalDaemon* daemon) : daemon_(daemon) {
+    daemon_->SetLogListener(this);
+  }
+
+  ~ThrottleLogCounter() {
+    daemon_->RemoveLogListener(this);
+  }
+
+  size_t rejected_call_messages() { return rejected_call_messages_; }
+
+  size_t ignored_call_messages() { return ignored_call_messages_; }
+
+ private:
+  void Handle(const GStringPiece& s) override {
+    if (s.contains("Rejecting RPC call")) {
+      rejected_call_messages_.fetch_add(1);
+    } else if (s.contains("Ignoring RPC call")) {
+      ignored_call_messages_.fetch_add(1);
+    }
+  }
+
+  ExternalDaemon* daemon_;
+  std::atomic<size_t> rejected_call_messages_{0};
+  std::atomic<size_t> ignored_call_messages_{0};
+};
+
+class ClientStressTest_FollowerOom : public ClientStressTest {
+ protected:
+  ExternalMiniClusterOptions default_opts() override {
+    ExternalMiniClusterOptions opts;
+
+    opts.extra_tserver_flags = {
+        Format("--memory_limit_hard_bytes=$0", kHardLimitBytes),
+        Format("--consensus_max_batch_size_bytes=$0", kConsensusMaxBatchSizeBytes)
+    };
+
+    opts.num_tablet_servers = 3;
+    return opts;
+  }
+
+  const size_t kHardLimitBytes = 500_MB;
+  const size_t kConsensusMaxBatchSizeBytes = 32_MB;
+};
+
+} // namespace
+
+// Original scenario for reproducing the issue is the following:
+// 1. Kill follower, wait some time, then restart.
+// 2. That should lead to follower trying to catch up with leader, but due to big UpdateConsensus
+// RPC requests and slow parsing, requests will be consuming more and more memory
+// (https://github.com/yugabyte/yugabyte-db/issues/2563,
+// https://github.com/yugabyte/yugabyte-db/issues/2564)
+// 3. We expect in this scenario follower to hit soft memory limit and fix for #2563 should
+// start throttling inbound RPCs.
+//
+// In this test we simulate slow inbound RPC requests parsing using
+// TEST_yb_inbound_big_calls_parse_delay_ms flag.
+TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
+  TestWorkload workload(cluster_.get());
+  workload.set_write_timeout_millis(30000);
+  workload.set_num_tablets(1);
+  workload.set_num_write_threads(4);
+  workload.set_write_batch_size(500);
+  workload.set_payload_bytes(100);
+  workload.Setup();
+  workload.Start();
+
+  while (workload.rows_inserted() < 500) {
+    std::this_thread::sleep_for(10ms);
+  }
+
+  auto ts = cluster_->tablet_server(0);
+
+  LOG(INFO) << "Peak root mem tracker consumption: "
+            << HumanReadableNumBytes::ToString(ASSERT_RESULT(GetPeakRootConsumption(*ts)));
+
+  LOG(INFO) << "Killing ts-1";
+  ts->Shutdown();
+  std::this_thread::sleep_for(30s);
+  LOG(INFO) << "Restarting ts-1";
+  ts->mutable_flags()->push_back("--TEST_yb_inbound_big_calls_parse_delay_ms=30000");
+  ts->mutable_flags()->push_back("--binary_call_parser_reject_on_mem_tracker_hard_limit=true");
+  ts->mutable_flags()->push_back(Format("--rpc_throttle_threshold_bytes=$0", 1_MB));
+  ASSERT_OK(ts->Restart());
+
+  ThrottleLogCounter log_counter(ts);
+  for (;;) {
+    const auto ignored_rejected_call_messages =
+        log_counter.ignored_call_messages() + log_counter.rejected_call_messages();
+    YB_LOG_EVERY_N_SECS(INFO, 5) << "Ignored/rejected call messages: "
+                                 << ignored_rejected_call_messages;
+    if (ignored_rejected_call_messages > 5) {
+      break;
+    }
+    std::this_thread::sleep_for(1s);
+  }
+
+  const auto peak_consumption = ASSERT_RESULT(GetPeakRootConsumption(*ts));
+  LOG(INFO) << "Peak root mem tracker consumption: "
+            << HumanReadableNumBytes::ToString(peak_consumption);
+
+  ASSERT_GT(peak_consumption, kHardLimitBytes * FLAGS_memory_limit_soft_percentage / 100);
+
+  LOG(INFO) << "Stopping cluster";
+
+  workload.StopAndJoin();
+
+  cluster_->Shutdown();
+
+  LOG(INFO) << "Done";
+}
+
+
+class RF1ClientStressTest : public ClientStressTest {
+ public:
+  ExternalMiniClusterOptions default_opts() override {
+    ExternalMiniClusterOptions result;
+    result.num_tablet_servers = 1;
+    result.extra_master_flags = { "--replication_factor=1" };
+    return result;
+  }
+};
+
+// Test that config change works while running a workload.
+TEST_F_EX(ClientStressTest, IncreaseReplicationFactorUnderLoad, RF1ClientStressTest) {
+  TestWorkload work(cluster_.get());
+  work.set_num_write_threads(1);
+  work.set_num_tablets(6);
+  work.Setup();
+  work.Start();
+
+  // Fill table with some records.
+  std::this_thread::sleep_for(1s);
+
+  ASSERT_OK(cluster_->AddTabletServer(/* start_cql_proxy= */ false, {"--time_source=skewed,-500"}));
+
+  master::ReplicationInfoPB replication_info;
+  replication_info.mutable_live_replicas()->set_num_replicas(2);
+  ASSERT_OK(work.client().SetReplicationInfo(replication_info));
+
+  LOG(INFO) << "Replication factor changed";
+
+  auto deadline = CoarseMonoClock::now() + 3s;
+  while (CoarseMonoClock::now() < deadline) {
+    ASSERT_NO_FATALS(cluster_->AssertNoCrashes());
+    std::this_thread::sleep_for(100ms);
+  }
+
+  work.StopAndJoin();
+
+  LOG(INFO) << "Written rows: " << work.rows_inserted();
 }
 
 }  // namespace yb

@@ -37,6 +37,8 @@ class SnapshotOperationState : public OperationState {
         request_(request) {
   }
 
+  tserver::TabletSnapshotOpRequestPB* AllocateRequest();
+
   const tserver::TabletSnapshotOpRequestPB* request() const override { return request_; }
 
   tserver::TabletSnapshotOpRequestPB::Operation operation() const {
@@ -66,7 +68,7 @@ class SnapshotOperationState : public OperationState {
   std::string GetSnapshotDir(const std::string& top_snapshots_dir) const;
 
  private:
-
+  std::unique_ptr<tserver::TabletSnapshotOpRequestPB> request_holder_;
   // The original RPC request and response.
   const tserver::TabletSnapshotOpRequestPB *request_;
 
@@ -93,17 +95,13 @@ class SnapshotOperation : public Operation {
 
   CHECKED_STATUS Prepare() override;
 
-  // Executes an Apply for the TabletSnapshotOp operation
-  CHECKED_STATUS Apply(int64_t leader_term) override;
-
-  // Actually commits the operation.
-  void Finish(OperationResult result) override;
-
   std::string ToString() const override;
 
  private:
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.
   void DoStart() override;
+  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+  CHECKED_STATUS DoAborted(const Status& status) override;
 
   std::unique_ptr<SnapshotOperationState> state_;
 

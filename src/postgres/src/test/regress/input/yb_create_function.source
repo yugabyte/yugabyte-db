@@ -1,0 +1,13 @@
+--
+-- Yugabyte created functions
+--
+
+CREATE FUNCTION bigname_in(cstring)
+   RETURNS bigname
+   AS '@libdir@/regress@DLSUFFIX@'
+   LANGUAGE C STRICT IMMUTABLE;
+
+CREATE FUNCTION bigname_out(bigname)
+   RETURNS cstring
+   AS '@libdir@/regress@DLSUFFIX@'
+   LANGUAGE C STRICT IMMUTABLE;

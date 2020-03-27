@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`TSADD key timestamp value [timestamp value ...] [EXPIRE_IN TTL] [EXPIRE_AT UNIX_TIMESTAMP]`</b><br>
 This command sets the data for the given `timestamp` with the given `value` in the time series that
 is specified by `key`. This is useful in storing time series like data where the `key` could be a
@@ -26,10 +27,12 @@ metric at the given `timestamp`.
 <li>`EXPIRE_IN TTL` sets the TTL (time-to-live) in seconds for the entries being added.</li>
 <li>`EXPIRE_AT UNIX_TIMESTAMP` ensures that the entries added would expire by the given [`UNIX_TIMESTAMP`](https://en.wikipedia.org/wiki/Unix_time) (seconds since January 1, 1970).</li>
 
-## Return Value
+## Return value
+
 Returns the appropriate status string.
 
 ## Examples
+
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
 
 ```sh
@@ -47,6 +50,7 @@ $ TSADD cpu_usage 20 "80" 30 "60" 40 "90"
 ```
 "OK"
 ```
+
 We could also encode the timestamp as “yyyymmddhhmm”, since this would still produce integers that are sortable by the actual timestamp.
 
 ```sh
@@ -108,6 +112,6 @@ $ TSADD cpu_usage 70 "80" EXPIRE_AT 3513642307
 "OK"
 ```
 
-## See Also
+## See also
 [`tsrem`](../tsrem/), [`tsget`](../tsget/), [`tsrangebytime`](../tsrangebytime/),
 [`tsrevrangebytime`](../tsrevrangebytime/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

@@ -134,7 +134,8 @@ pgbench(
 		qr{builtin: TPC-B},
 		qr{clients: 2\b},
 		qr{processed: 10/10},
-		qr{mode: simple}
+		qr{mode: simple},
+		qr{maximum number of tries: 1}
 	],
 	[qr{^$}],
 	'pgbench tpcb-like');
@@ -153,7 +154,7 @@ pgbench(
 	'pgbench simple update');
 
 pgbench(
-	'-t 100 -c 7 -M prepared -b se --debug',
+	'-t 100 -c 7 -M prepared -b se --debug all',
 	0,
 	[
 		qr{builtin: select only},
@@ -548,6 +549,11 @@ my @errors = (
 SELECT LEAST(:i, :i, :i, :i, :i, :i, :i, :i, :i, :i, :i);
 }
 	],
+	[   'sql division by zero', 0, [qr{ERROR:  division by zero}],
+		q{-- SQL division by zero
+SELECT 1 / 0;
+}
+	],
 
 	# SHELL
 	[
@@ -720,6 +726,17 @@ SELECT LEAST(:i, :i, :i, :i, :i, :i, :i, :i, :i, :i, :i);
 		[qr{unrecognized time unit}], q{\sleep 1 week}
 	],
 
+	# CONDITIONAL BLOCKS
+	[   'if elif failed conditions', 0,
+		[qr{division by zero}],
+		q{-- failed conditions
+\if 1 / 0
+\elif 1 / 0
+\else
+\endif
+}
+	],
+
 	# MISC
 	[
 		'misc invalid backslash command',         1,
@@ -738,13 +755,32 @@ for my $e (@errors)
 	my $n = '001_pgbench_error_' . $name;
 	$n =~ s/ /_/g;
 	pgbench(
-		'-n -t 1 -Dfoo=bla -Dnull=null -Dtrue=true -Done=1 -Dzero=0.0 -Dbadtrue=trueXXX -M prepared',
+		'-n -t 1 -Dfoo=bla -Dnull=null -Dtrue=true -Done=1 -Dzero=0.0 -Dbadtrue=trueXXX -M prepared -d fails',
 		$status,
-		[ $status ? qr{^$} : qr{processed: 0/1} ],
+		($status ?
+		 [ qr{^$} ] :
+		 [ qr{processed: 0/1}, qr{number of errors: 1 \(100.000%\)},
+		   qr{^((?!number of retried)(.|\n))*$} ]),
 		$re,
 		'pgbench script error: ' . $name,
 		{ $n => $script });
 }
+
+# reset client variables in case of failure
+pgbench(
+	'-n -t 2 -d fails', 0,
+	[ qr{processed: 0/2}, qr{number of errors: 2 \(100.000%\)},
+	  qr{^((?!number of retried)(.|\n))*$} ],
+	[ qr{(client 0 got a failure in command 1 \(SQL\) of script 0; ERROR:  syntax error at or near ":"(.|\n)*){2}} ],
+	'pgbench reset client variables in case of failure',
+	{	'001_pgbench_reset_client_variables' => q{
+BEGIN;
+-- select an unassigned variable
+SELECT :unassigned_var;
+\set unassigned_var 1
+END;
+}
+	});
 
 # zipfian cache array overflow
 pgbench(

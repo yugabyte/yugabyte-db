@@ -19,6 +19,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.postgresql.util.PSQLException;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
@@ -48,9 +49,9 @@ public class TestPgForeignKey extends BasePgSQLTest {
   }
 
   @Test
-  public void testPgRegressPgMisc() throws Exception {
+  public void testPgRegress() throws Exception {
     runPgRegressTest("yb_foreign_key_serial_schedule");
-   }
+  }
 
   private void checkRows(Statement statement,
                          String table_name,
@@ -61,14 +62,23 @@ public class TestPgForeignKey extends BasePgSQLTest {
   }
 
   @Test
-  public void testForeignKeyConflicts() throws Exception {
+  public void testForeignKeyConflictsWithSerializableIsolation() throws Exception {
+    testForeignKeyConflicts(Connection.TRANSACTION_SERIALIZABLE);
+  }
+
+  @Test
+  public void testForeignKeyConflictsWithSnapshotIsolation() throws Exception {
+    testForeignKeyConflicts(Connection.TRANSACTION_REPEATABLE_READ);
+  }
+
+  private void testForeignKeyConflicts(int pgIsolationLevel) throws Exception {
 
     Set<Row> expectedPkRows = new HashSet<>();
     Set<Row> expectedFkRows = new HashSet<>();
 
     // Set up the tables.
     try (Statement statement = connection.createStatement()) {
-      connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+      connection.setTransactionIsolation(pgIsolationLevel);
 
       // Setup pk table.
       statement.execute("create table pk(id int primary key)");
@@ -86,8 +96,19 @@ public class TestPgForeignKey extends BasePgSQLTest {
       }
       checkRows(statement, "fk", expectedFkRows);
 
-      try (Connection connection1 = createConnectionSerializableNoAutoCommit();
-           Connection connection2 = createConnectionSerializableNoAutoCommit()) {
+      IsolationLevel isolationLevel = IsolationLevel.REPEATABLE_READ;
+      if (pgIsolationLevel == Connection.TRANSACTION_SERIALIZABLE) {
+        isolationLevel = IsolationLevel.SERIALIZABLE;
+      }
+
+      try (Connection connection1 = newConnectionBuilder()
+              .setIsolationLevel(isolationLevel)
+              .setAutoCommit(AutoCommit.DISABLED)
+              .connect();
+           Connection connection2 = newConnectionBuilder()
+                   .setIsolationLevel(isolationLevel)
+                   .setAutoCommit(AutoCommit.DISABLED)
+                   .connect()) {
 
         // Test update/delete conflicts.
         for (int id = 1; id < 20; id += 2) {
@@ -145,6 +166,91 @@ public class TestPgForeignKey extends BasePgSQLTest {
         }
 
       }
+    }
+  }
+
+  // Ensure that foreign key caching maintains data correctness and referential integrity.
+  @Test
+  public void testForeignKeyCaching() throws Exception {
+    Set<Row> expectedPkRows = new HashSet<>();
+    Set<Row> expectedFkPrimaryRows = new HashSet<>();
+    Set<Row> expectedFkUniqueRows = new HashSet<>();
+
+    // Set up the tables.
+    try (Statement statement = connection.createStatement()) {
+      connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+
+      // Setup pk table.
+      statement.execute(
+          "create table pk(b int, a int, y int, x int, primary key(a, b))");
+      statement.execute("create unique index on pk(x, y)");
+
+      for (int id = 1; id <= 5; id++) {
+        statement.execute(
+            String.format("insert into pk(b, a, y, x) values (%d, %d, %d, %d)",
+                id * 10, id, id * 1000, id * 100));
+        expectedPkRows.add(new Row(id * 10, id, id * 1000, id * 100));
+      }
+      checkRows(statement, "pk", expectedPkRows);
+
+      // Setup fk table on primary key.
+      statement.execute("create table fk_primary(id int primary key, b int, a int, " +
+          "foreign key(a, b) references pk(a, b))");
+
+      // Setup fk table on unique index.
+      statement.execute("create table fk_unique(id int primary key, y int, x int, " +
+          "foreign key(x, y) references pk(x, y))");
+
+      statement.execute("BEGIN");
+      // Insert multiple rows using the same referenced row to cause FK caching.
+      for (int id = 1; id < 10; id++) {
+        statement.execute(String.format("insert into fk_primary(id, b, a) values (%d, 10, 1)", id));
+        expectedFkPrimaryRows.add(new Row(id, 10, 1));
+
+        statement.execute(
+            String.format("insert into fk_unique(id, y, x) values (%d, 1000, 100)", id));
+        expectedFkUniqueRows.add(new Row(id, 1000, 100));
+      }
+      statement.execute("COMMIT");
+
+      checkRows(statement, "fk_primary", expectedFkPrimaryRows);
+      checkRows(statement, "fk_unique", expectedFkUniqueRows);
+
+      // Check that deleting referenced row fails the transaction.
+      try {
+        statement.execute("BEGIN");
+        statement.execute("INSERT INTO fk_primary(id, b, a) VALUES(20, 20, 2)");
+        statement.execute("DELETE FROM pk WHERE a=2 AND b=20");
+        statement.execute("COMMIT");
+      } catch (PSQLException e) {
+        assertTrue(e.getMessage().contains("Key (a, b)=(2, 20) is still referenced from table"));
+        statement.execute("ROLLBACK");
+      }
+
+      // Check that updating referenced row fails the transaction.
+      // TODO: Enable this test case after #3583.
+      if (false) {
+        try {
+          statement.execute("BEGIN");
+          statement.execute("INSERT INTO fk_unique(id, y, x) VALUES(2000, 2000, 200)");
+          statement.execute("UPDATE pk SET x=201, y=2001 WHERE x=200 AND y=2000");
+          statement.execute("COMMIT");
+        } catch (PSQLException e) {
+          assertTrue(
+              e.getMessage().contains("Key (x, y)=(200, 2000) is still referenced from table"));
+          statement.execute("ROLLBACK");
+        }
+      }
+
+      // Check that deleting unrelated rows in pk table remains unaffected by caching.
+      statement.execute("insert into pk(b, a, y, x) values (55, 55, 66, 66)");
+      statement.execute("insert into pk(b, a, y, x) values (66, 66, 55, 55)");
+
+      statement.execute("BEGIN");
+      statement.execute("insert into fk_unique(id, y, x) values (55, 55, 55)");
+      // Deleting row with a=55 and b=55 should work.
+      statement.execute("delete from pk where a=55 and b=55");
+      statement.execute("COMMIT");
     }
   }
 }

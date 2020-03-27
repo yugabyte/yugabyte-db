@@ -1,0 +1,126 @@
+/* Copyright (c) YugaByte, Inc. */
+@import "_style/colors.scss";
+@import "_style/mixins.scss";
+
+.form-action-button-container {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 30px;
+  padding: 14px 12px;
+  border-top: 1px solid #ececea;
+  background-color: #f6f6f5;
+  margin-bottom: 0 !important;
+
+  .btn {
+    margin: 0 6px;
+    min-width: 120px !important;
+  }
+}
+
+.node-link-container {
+  cursor: pointer;
+  margin-left: 8px;
+  font-weight: 500;
+  color: $YB_ORANGE;
+}
+
+.remove-cell-container {
+  font-size: 16px;
+}
+
+.remove-cell-container-active {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.form-item-custom-label {
+  font-weight: 500;
+  text-align: left;
+  padding: 8px 0px;
+}
+
+.editor-container {
+  padding-bottom: 40px;
+}
+
+.config-provider-row {
+  margin-top: 10px;
+
+  .config-provider-tooltip {
+    margin-left: -10px;
+    padding: 10px 10px 0 0;
+    font-size: 1.2em;
+  }
+}
+
+.config-zone-tooltip {
+  margin-top: 8px;
+  font-size: 1.2em;
+}
+
+.provider-task-progress-container .progressbar {
+  margin-left: 0px;
+}
+
+.file-label {
+  padding-top: 12px;
+  font-size: 14px;
+  color: $YB_DARK_GRAY;
+}
+
+.upload-file-button {
+  height: 42px;
+  cursor: pointer;
+  text-align: center;
+  padding-top: 11px;
+  padding-left: 15px;
+  padding-right: 15px;
+  color: #444;
+  background-color: #DDD;
+  box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);
+  vertical-align: middle;
+  @include transition(0.125s);
+
+  &:hover {
+    background-color: hsl(0,0%,80%);
+    @include transition(0.35s);
+  }
+}
+
+.config-section-header .buttons {
+  .btn, button {
+    margin-left: 8px;
+  }
+}
+
+.zone-name {
+  display: inline-block;
+  font-weight: 300;
+  margin-right: 8px;
+}
+
+.zone-bs-table {
+  height: 30px;
+  padding-top: 3px;
+  padding-bottom: 4px;
+}
+
+.zone-form-wrapper {
+  margin-top: 15px;
+}
+
+.provider-task-progress-container {
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.remove-cell-active {
+  color: $YB_ORANGE;
+}
+
+.pre-provision-message .yb-code-block {
+  margin-top: 5px;
+  margin-bottom: -5px;
+}

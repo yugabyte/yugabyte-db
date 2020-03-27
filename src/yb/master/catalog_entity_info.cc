@@ -43,6 +43,8 @@ using std::string;
 
 using strings::Substitute;
 
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+
 namespace yb {
 namespace master {
 
@@ -51,15 +53,56 @@ namespace master {
 // ================================================================================================
 
 string TabletReplica::ToString() const {
-  return Format("{ ts_desc: $0 state: $1 role: $2 }",
+  return Format("{ ts_desc: $0 state: $1 role: $2 member_type: $3 time since update: $4ms}",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
-                consensus::RaftPeerPB_Role_Name(role));
+                consensus::RaftPeerPB_Role_Name(role),
+                consensus::RaftPeerPB::MemberType_Name(member_type),
+                MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
+}
+
+void TabletReplica::UpdateFrom(const TabletReplica& source) {
+  state = source.state;
+  role = source.role;
+  member_type = source.member_type;
+  time_updated = MonoTime::Now();
+}
+
+bool TabletReplica::IsStale() const {
+  MonoTime now(MonoTime::Now());
+  if (now.GetDeltaSince(time_updated).ToMilliseconds() >=
+      GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+    return true;
+  }
+  return false;
+}
+
+bool TabletReplica::IsStarting() const {
+  return (state == tablet::NOT_STARTED || state == tablet::BOOTSTRAPPING);
 }
 
 // ================================================================================================
 // TabletInfo
 // ================================================================================================
+
+class TabletInfo::LeaderChangeReporter {
+ public:
+  explicit LeaderChangeReporter(TabletInfo* info)
+      : info_(info), old_leader_(info->GetLeaderUnlocked()) {
+  }
+
+  ~LeaderChangeReporter() {
+    auto new_leader = info_->GetLeaderUnlocked();
+    if (old_leader_ != new_leader) {
+      LOG(INFO) << "T " << info_->tablet_id() << ": Leader changed from "
+                << yb::ToString(old_leader_) << " to " << yb::ToString(new_leader);
+    }
+  }
+ private:
+  TabletInfo* info_;
+  TSDescriptor* old_leader_;
+};
+
 
 TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
@@ -72,8 +115,31 @@ TabletInfo::~TabletInfo() {
 
 void TabletInfo::SetReplicaLocations(ReplicaMap replica_locations) {
   std::lock_guard<simple_spinlock> l(lock_);
+  LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   replica_locations_ = std::move(replica_locations);
+}
+
+Result<TSDescriptor*> TabletInfo::GetLeader() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto result = GetLeaderUnlocked();
+  if (result) {
+    return result;
+  }
+
+  return STATUS_FORMAT(
+      NotFound,
+      "No leader found for tablet $0 with $1 replicas: $2.",
+      ToString(), replica_locations_.size(), replica_locations_);
+}
+
+TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
+  for (const auto& pair : replica_locations_) {
+    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+      return pair.second.ts_desc;
+    }
+  }
+  return nullptr;
 }
 
 void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
@@ -81,9 +147,15 @@ void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
   *replica_locations = replica_locations_;
 }
 
-bool TabletInfo::AddToReplicaLocations(const TabletReplica& replica) {
+void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   std::lock_guard<simple_spinlock> l(lock_);
-  return InsertIfNotPresent(&replica_locations_, replica.ts_desc->permanent_uuid(), replica);
+  LeaderChangeReporter leader_change_reporter(this);
+  auto it = replica_locations_.find(replica.ts_desc->permanent_uuid());
+  if (it == replica_locations_.end()) {
+    replica_locations_.emplace(replica.ts_desc->permanent_uuid(), replica);
+    return;
+  }
+  it->second.UpdateFrom(replica);
 }
 
 void TabletInfo::set_last_update_time(const MonoTime& ts) {
@@ -110,7 +182,12 @@ uint32_t TabletInfo::reported_schema_version() const {
   return reported_schema_version_;
 }
 
-std::string TabletInfo::ToString() const {
+bool TabletInfo::colocated() const {
+  auto l = LockForRead();
+  return l->data().pb.colocated();
+}
+
+string TabletInfo::ToString() const {
   return Substitute("$0 (table $1)", tablet_id_,
                     (table_ != nullptr ? table_->ToString() : "MISSING"));
 }
@@ -162,9 +239,15 @@ bool TableInfo::is_running() const {
   return l->data().is_running();
 }
 
-std::string TableInfo::ToString() const {
+string TableInfo::ToString() const {
   auto l = LockForRead();
   return Substitute("$0 [id=$1]", l->data().pb.name(), table_id_);
+}
+
+string TableInfo::ToStringWithState() const {
+  auto l = LockForRead();
+  return Substitute("$0 [id=$1, state=$2]",
+      l->data().pb.name(), table_id_, SysTablesEntryPB::State_Name(l->data().pb.state()));
 }
 
 const NamespaceId TableInfo::namespace_id() const {
@@ -177,19 +260,28 @@ const Status TableInfo::GetSchema(Schema* schema) const {
   return SchemaFromPB(l->data().schema(), schema);
 }
 
-const std::string TableInfo::indexed_table_id() const {
+bool TableInfo::colocated() const {
   auto l = LockForRead();
-  return l->data().pb.has_indexed_table_id() ? l->data().pb.indexed_table_id() : "";
+  return l->data().pb.colocated();
+}
+
+const string TableInfo::indexed_table_id() const {
+  auto l = LockForRead();
+  return l->data().pb.has_index_info()
+             ? l->data().pb.index_info().indexed_table_id()
+             : l->data().pb.has_indexed_table_id() ? l->data().pb.indexed_table_id() : "";
 }
 
 bool TableInfo::is_local_index() const {
   auto l = LockForRead();
-  return l->data().pb.is_local_index();
+  return l->data().pb.has_index_info() ? l->data().pb.index_info().is_local()
+                                       : l->data().pb.is_local_index();
 }
 
 bool TableInfo::is_unique_index() const {
   auto l = LockForRead();
-  return l->data().pb.is_unique_index();
+  return l->data().pb.has_index_info() ? l->data().pb.index_info().is_unique()
+                                       : l->data().pb.is_unique_index();
 }
 
 TableType TableInfo::GetTableType() const {
@@ -197,18 +289,18 @@ TableType TableInfo::GetTableType() const {
   return l->data().pb.table_type();
 }
 
-bool TableInfo::RemoveTablet(const std::string& partition_key_start) {
-  std::lock_guard<rw_spinlock> l(lock_);
+bool TableInfo::RemoveTablet(const string& partition_key_start) {
+  std::lock_guard<decltype(lock_)> l(lock_);
   return EraseKeyReturnValuePtr(&tablet_map_, partition_key_start) != NULL;
 }
 
 void TableInfo::AddTablet(TabletInfo *tablet) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   AddTabletUnlocked(tablet);
 }
 
 void TableInfo::AddTablets(const vector<TabletInfo*>& tablets) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   for (TabletInfo *tablet : tablets) {
     AddTabletUnlocked(tablet);
   }
@@ -227,7 +319,7 @@ void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
 }
 
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos* ret) const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   int32_t max_returned_locations = req->max_returned_locations();
 
   TableInfo::TabletInfoMap::const_iterator it, it_end;
@@ -253,7 +345,7 @@ void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletI
 }
 
 bool TableInfo::IsAlterInProgress(uint32_t version) const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     if (e.second->reported_schema_version() < version) {
       VLOG(3) << "Table " << table_id_ << " ALTER in progress due to tablet "
@@ -264,9 +356,19 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
   }
   return false;
 }
+bool TableInfo::AreAllTabletsDeleted() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
+    auto tablet_lock = e.second->LockForRead();
+    if (!tablet_lock->data().is_deleted()) {
+      return false;
+    }
+  }
+  return true;
+}
 
 bool TableInfo::IsCreateInProgress() const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     auto tablet_lock = e.second->LockForRead();
     if (!tablet_lock->data().is_running()) {
@@ -277,27 +379,27 @@ bool TableInfo::IsCreateInProgress() const {
 }
 
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
-  std::lock_guard<rw_spinlock> l(lock_);
+  std::lock_guard<decltype(lock_)> l(lock_);
   create_table_error_ = status;
 }
 
 Status TableInfo::GetCreateTableErrorStatus() const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return create_table_error_;
 }
 
 std::size_t TableInfo::NumTasks() const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return pending_tasks_.size();
 }
 
 bool TableInfo::HasTasks() const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return !pending_tasks_.empty();
 }
 
 bool TableInfo::HasTasks(MonitoredTask::Type type) const {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   for (auto task : pending_tasks_) {
     if (task->type() == type) {
       return true;
@@ -309,7 +411,7 @@ bool TableInfo::HasTasks(MonitoredTask::Type type) const {
 void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
   bool abort_task = false;
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     if (!closing_) {
       pending_tasks_.insert(task);
       if (tasks_tracker_) {
@@ -328,7 +430,7 @@ void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
 
 void TableInfo::RemoveTask(const std::shared_ptr<MonitoredTask>& task) {
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     pending_tasks_.erase(task);
   }
   VLOG(1) << __func__ << " Removed task " << task.get() << " " << task->description();
@@ -347,7 +449,7 @@ void TableInfo::AbortTasksAndClose() {
 void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
   std::vector<std::shared_ptr<MonitoredTask>> abort_tasks;
   {
-    std::lock_guard<rw_spinlock> l(lock_);
+    std::lock_guard<decltype(lock_)> l(lock_);
     if (close) {
       closing_ = true;
     }
@@ -367,7 +469,7 @@ void TableInfo::WaitTasksCompletion() {
   while (1) {
     std::vector<std::shared_ptr<MonitoredTask>> waiting_on_for_debug;
     {
-      shared_lock<rw_spinlock> l(lock_);
+      shared_lock<decltype(lock_)> l(lock_);
       if (pending_tasks_.empty()) {
         break;
       } else if (VLOG_IS_ON(1)) {
@@ -384,16 +486,26 @@ void TableInfo::WaitTasksCompletion() {
 }
 
 std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   return pending_tasks_;
 }
 
-void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo>> *ret) const {
+void TableInfo::GetAllTablets(TabletInfos *ret) const {
   ret->clear();
-  shared_lock<rw_spinlock> l(lock_);
+  shared_lock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     ret->push_back(make_scoped_refptr(e.second));
   }
+}
+
+TabletInfoPtr TableInfo::GetColocatedTablet() const {
+  shared_lock<decltype(lock_)> l(lock_);
+  if (colocated()) {
+    for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
+      return make_scoped_refptr(e.second);
+    }
+  }
+  return nullptr;
 }
 
 IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
@@ -469,7 +581,12 @@ YQLDatabase NamespaceInfo::database_type() const {
   return l->data().pb.database_type();
 }
 
-std::string NamespaceInfo::ToString() const {
+bool NamespaceInfo::colocated() const {
+  auto l = LockForRead();
+  return l->data().pb.colocated();
+}
+
+string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
 
@@ -509,7 +626,7 @@ const QLTypePB& UDTypeInfo::field_types(int index) const {
   return l->data().pb.field_types(index);
 }
 
-std::string UDTypeInfo::ToString() const {
+string UDTypeInfo::ToString() const {
   auto l = LockForRead();
   return Substitute("$0 [id=$1] {metadata=$2} ", name(), udtype_id_, l->data().pb.DebugString());
 }

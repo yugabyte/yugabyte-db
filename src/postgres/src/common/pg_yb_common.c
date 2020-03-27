@@ -116,7 +116,20 @@ YBUnsupportedFeatureSignalLevel()
 {
 	static int cached_value = -1;
 	if (cached_value == -1) {
-		cached_value = YBCIsEnvVarTrue("YB_SUPPRESS_UNSUPPORTED_ERROR") ? WARNING : ERROR;
+		// TODO(dmitry): Remove 'YB_SUPPRESS_UNSUPPORTED_ERROR'
+		cached_value = YBCIsEnvVarTrue("YB_SUPPRESS_UNSUPPORTED_ERROR") ||
+									 YBCIsEnvVarTrue("FLAGS_ysql_suppress_unsupported_error") ? WARNING : ERROR;
+	}
+	return cached_value;
+}
+
+bool
+YBIsNonTxnCopyEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("FLAGS_ysql_non_txn_copy");
 	}
 	return cached_value;
 }

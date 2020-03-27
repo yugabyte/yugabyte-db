@@ -1,8 +1,8 @@
 ---
-title: Read Replicas
-linkTitle: Read Replicas
-description: Read Replicas
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+title: Create read replica clusters
+headerTitle: Create read replica clusters
+linkTitle: Read replica clusters
+description: Create a read replica cluster in hybrid cloud deployment.
 menu:
   latest:
     identifier: manage-read-replicas
@@ -16,7 +16,7 @@ This section will describe how to create a universe with both a primary and [rea
 
 ## Create the universe
 
-First, we are going to enter the following values to create a primary cluster on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider. Click on `Create Universe` and enter the following intent. 
+First, we are going to enter the following values to create a primary cluster on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider. Click **Create Universe** and then enter the following intent.
 
 - Enter a universe name: **helloworld3**
 - Enter the set of regions: **Oregon**
@@ -26,7 +26,7 @@ First, we are going to enter the following values to create a primary cluster on
 
 ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 
-Then, click on **Configure Read Replica** and enter the following intent to create a read replica
+Then, click **Configure Read Replica** and then enter the following intent to create a read replica
 cluster on [AWS](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-aws). 
 
 - Enter the set of regions: **US East**
@@ -36,7 +36,7 @@ cluster on [AWS](../../../deploy/enterprise-edition/configure-cloud-providers/#c
 ![Create Read Replica Cluster on AWS](/images/ee/read-replica-creation.png)
 
 Since we do not need to a establish a quorum for read replica clusters, the replication factor can be
-either even or odd.Click `Create`.
+either even or odd. Click **Create**.
 
 ## Examine the universe
 

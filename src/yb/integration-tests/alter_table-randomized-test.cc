@@ -79,7 +79,7 @@ using std::pair;
 using std::vector;
 using strings::SubstituteAndAppend;
 
-static const YBTableName kTableName("my_keyspace", "test-table");
+static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
 static const int kMaxColumns = 30;
 
 class AlterTableRandomized : public YBTest {
@@ -235,7 +235,8 @@ struct MirrorTable {
       : client_(client) {}
 
   Status Create() {
-    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                      kTableName.namespace_type()));
     YBSchema schema;
     YBSchemaBuilder b;
     b.AddColumn("key")->Type(INT32)->HashPrimaryKey()->NotNull();
@@ -311,7 +312,7 @@ struct MirrorTable {
 
   void AddAColumn(const string& name, bool nullable) {
     // Add to the real table.
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
     table_alterer->AddColumn(name)->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
@@ -321,7 +322,7 @@ struct MirrorTable {
   }
 
   void DropAColumn(const string& name) {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     CHECK_OK(table_alterer->DropColumn(name)->Alter());
     ts_.DropColumn(name);
   }

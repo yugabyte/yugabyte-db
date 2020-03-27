@@ -132,14 +132,10 @@ struct OutboundCallMetrics {
 // over.
 class CallResponse {
  public:
-  // Maximum number of separate payloads in one response i.e. max number of separate results that
-  // return rows (not just status) for the ops grouped together in one tserver RPC call.
-  static constexpr size_t kMaxSidecarSlices = 16;
-
   CallResponse();
 
-  CallResponse(CallResponse&& rhs);
-  void operator=(CallResponse&& rhs);
+  CallResponse(CallResponse&& rhs) = default;
+  CallResponse& operator=(CallResponse&& rhs) = default;
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object. Takes ownership of data content.
@@ -164,8 +160,12 @@ class CallResponse {
     return serialized_response_;
   }
 
-  // See RpcController::GetSidecar()
-  CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
+  Result<Slice> GetSidecar(int idx) const;
+
+  size_t DynamicMemoryUsage() const {
+    return DynamicMemoryUsageOf(header_, response_data_) +
+           GetFlatDynamicMemoryUsageOf(sidecar_bounds_);
+  }
 
  private:
   // True once ParseFrom() is called.
@@ -180,7 +180,7 @@ class CallResponse {
 
   // Slices of data for rpc sidecars. They point into memory owned by transfer_.
   // Number of sidecars chould be obtained from header_.
-  std::array<Slice, kMaxSidecarSlices> sidecar_slices_;
+  boost::container::small_vector<const uint8_t*, kMinBufferForSidecarSlices> sidecar_bounds_;
 
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
@@ -247,7 +247,11 @@ class OutboundCall : public RpcCall {
   void SetQueued();
 
   // Update the call state to show that the request has been sent.
+  // Could be called on already finished call in case it was already timed out.
   void SetSent();
+
+  // Outbound call could be moved to final state only once,
+  // so only one of SetFinished/SetTimedOut/SetFailed/SetResponse can be called.
 
   // Update the call state to show that the call has finished.
   void SetFinished();
@@ -260,13 +264,14 @@ class OutboundCall : public RpcCall {
   // Mark the call as timed out. This also triggers the callback to notify
   // the caller.
   void SetTimedOut();
+
+  // Fill in the call response.
+  void SetResponse(CallResponse&& resp);
+
   bool IsTimedOut() const;
 
   // Is the call finished?
   bool IsFinished() const override final;
-
-  // Fill in the call response.
-  void SetResponse(CallResponse&& resp);
 
   std::string ToString() const override;
 
@@ -305,16 +310,24 @@ class OutboundCall : public RpcCall {
     return *rpc_metrics_;
   }
 
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override {
+    return DynamicMemoryUsageAllowSizeOf(error_pb_) +
+           DynamicMemoryUsageOf(buffer_, call_response_, trace_);
+  }
+
  protected:
   friend class RpcController;
 
-  virtual CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
+  virtual Result<Slice> GetSidecar(int idx) const;
 
   ConnectionId conn_id_;
   const std::string* hostname_;
   MonoTime start_;
-  RpcController* const controller_;
+  RpcController* controller_;
   // Pointer for the protobuf where the response should be written.
+  // Can be used only while callback_ object is alive.
   google::protobuf::Message* response_;
 
  private:
@@ -326,7 +339,7 @@ class OutboundCall : public RpcCall {
 
   void NotifyTransferred(const Status& status, Connection* conn) override;
 
-  void set_state(State new_state);
+  bool SetState(State new_state);
   State state() const;
 
   // Same as set_state, but requires that the caller already holds

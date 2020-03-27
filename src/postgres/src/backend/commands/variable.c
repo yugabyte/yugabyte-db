@@ -515,6 +515,16 @@ check_transaction_read_only(bool *newval, void **extra, GucSource source)
 	return true;
 }
 
+void
+assign_transaction_read_only(bool newval, void *extra)
+{
+	XactReadOnly = newval;
+	if (YBTransactionsEnabled())
+	{
+		YBCPgSetTransactionReadOnly(XactReadOnly);
+	}
+}
+
 /*
  * SET TRANSACTION ISOLATION LEVEL
  *
@@ -590,7 +600,7 @@ assign_XactIsoLevel(const char *newval, void *extra)
 	XactIsoLevel = *((int *) extra);
 	if (YBTransactionsEnabled())
 	{
-		YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
+		YBCPgSetTransactionIsolationLevel(XactIsoLevel);
 	}
 }
 
@@ -634,6 +644,16 @@ check_transaction_deferrable(bool *newval, void **extra, GucSource source)
 	}
 
 	return true;
+}
+
+void
+assign_transaction_deferrable(bool newval, void *extra)
+{
+  XactDeferrable = newval;
+	if (YBTransactionsEnabled())
+	{
+		YBCPgSetTransactionDeferrable(XactDeferrable);
+	}
 }
 
 /*

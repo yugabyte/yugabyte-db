@@ -43,7 +43,8 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
     ConsensusFrontier frontier;
     EXPECT_TRUE(frontier.Equals(frontier));
     EXPECT_EQ(
-        "{ op_id: { term: 0 index: 0 } hybrid_time: <invalid> history_cutoff: <invalid> }",
+        "{ op_id: 0.0 hybrid_time: <invalid> history_cutoff: <invalid> "
+            "hybrid_time_filter: <invalid> }",
         frontier.ToString());
     EXPECT_TRUE(frontier.IsUpdateValid(frontier, UpdateUserValueType::kLargest));
     EXPECT_TRUE(frontier.IsUpdateValid(frontier, UpdateUserValueType::kSmallest));
@@ -55,8 +56,8 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
   {
     ConsensusFrontier frontier{{1, 1}, 1000_usec_ht, 500_usec_ht};
     EXPECT_EQ(
-        "{ op_id: { term: 1 index: 1 } hybrid_time: { physical: 1000 } "
-            "history_cutoff: { physical: 500 } }",
+        "{ op_id: 1.1 hybrid_time: { physical: 1000 } history_cutoff: { physical: 500 } "
+             "hybrid_time_filter: <invalid> }",
         frontier.ToString());
     ConsensusFrontier higher_idx{{1, 2}, 1000_usec_ht, 500_usec_ht};
     ConsensusFrontier higher_ht{{1, 1}, 1001_usec_ht, 500_usec_ht};
@@ -113,26 +114,26 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
   pb.mutable_op_id()->set_index(0);
   EXPECT_EQ(
       PbToString(pb),
-      "{ op_id: { term: 0 index: 0 } hybrid_time: <min> history_cutoff: <invalid> }");
+      "{ op_id: 0.0 hybrid_time: <min> history_cutoff: <invalid> hybrid_time_filter: <invalid> }");
 
   pb.mutable_op_id()->set_term(2);
   pb.mutable_op_id()->set_index(3);
   EXPECT_EQ(
       PbToString(pb),
-      "{ op_id: { term: 2 index: 3 } hybrid_time: <min> history_cutoff: <invalid> }");
+      "{ op_id: 2.3 hybrid_time: <min> history_cutoff: <invalid> hybrid_time_filter: <invalid> }");
 
   pb.set_hybrid_time(100000);
   EXPECT_EQ(
       PbToString(pb),
-      "{ op_id: { term: 2 index: 3 } hybrid_time: { physical: 24 logical: 1696 } "
-          "history_cutoff: <invalid> }");
+      "{ op_id: 2.3 hybrid_time: { physical: 24 logical: 1696 } history_cutoff: <invalid> "
+          "hybrid_time_filter: <invalid> }");
 
   pb.set_history_cutoff(200000);
   EXPECT_EQ(
         PbToString(pb),
-        "{ op_id: { term: 2 index: 3 } hybrid_time: { physical: 24 logical: 1696 } "
-            "history_cutoff: { physical: 48 logical: 3392 } }");
-
+        "{ op_id: 2.3 hybrid_time: { physical: 24 logical: 1696 } "
+            "history_cutoff: { physical: 48 logical: 3392 } "
+            "hybrid_time_filter: <invalid> }");
 }
 
 }  // namespace docdb

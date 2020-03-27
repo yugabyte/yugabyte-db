@@ -1,9 +1,10 @@
 ---
-title: Community Edition Quick Start
-linkTitle: Quick Start
-description: Community Edition Quick Start
+title: YugabyteDB quick start
+headerTitle: Quick start
+linkTitle: Quick start
+description: Get started exploring YugabyteDB's distributed SQL and core features in less than five minutes on macOS, Linux, Docker, and Kubernetes (Minikube).
 image: /images/section_icons/index/quick_start.png
-headcontent: The easiest way to test YugaByte DB's basic features and APIs is to create a local cluster on a single host.
+headcontent: The easiest way to test YugabyteDB's basic features and APIs is to create a local cluster on a single host.
 type: page
 aliases:
   - /quick-start/
@@ -15,21 +16,22 @@ menu:
 ---
 
 {{< note title="Note" >}}
-We do not recommend a local cluster setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node on multi-host setup using the <a href="../../latest/deploy">manual or orchestrated deployment steps</a>.
+
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../latest/deploy).
+
 {{< /note >}}
 
-
-## Get Started Yourself
+## Get started yourself
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="install/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">1. Install YugaByte DB</div>
+        <div class="title">1. Install YugabyteDB</div>
       </div>
       <div class="body">
-        Install the binary on macOS/Linux or use Docker/Kubernetes to run on any OS of choice.
+        Install the binary on macOS or Linux or use a Docker image to run on the operating system of your choice.
       </div>
     </a>
   </div>
@@ -38,7 +40,7 @@ We do not recommend a local cluster setup on a single host for production deploy
     <a class="section-link icon-offset" href="create-local-cluster/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">2. Create Local Cluster</div>
+        <div class="title">2. Create a local cluster</div>
       </div>
       <div class="body">
         Create a local cluster.
@@ -53,7 +55,7 @@ We do not recommend a local cluster setup on a single host for production deploy
         <div class="title">3. Explore YSQL</div>
       </div>
       <div class="body">
-        Explore YugaByte SQL (YSQL).
+        Explore Yugabyte SQL (YSQL).
       </div>
     </a>
   </div>
@@ -62,10 +64,10 @@ We do not recommend a local cluster setup on a single host for production deploy
     <a class="section-link icon-offset" href="build-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">4. Build an App</div>
+        <div class="title">4. Build an application</div>
       </div>
       <div class="body">
-        Build an app in the programming language of your choice.
+        Build an application in the programming language of your choice.
       </div>
     </a>
   </div>

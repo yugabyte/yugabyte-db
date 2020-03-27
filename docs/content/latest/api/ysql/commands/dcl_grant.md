@@ -1,55 +1,138 @@
 ---
-title: GRANT
-description: GRANT Command
-summary: GRANT Command
+title: GRANT statement [YSQL]
+headerTitle: GRANT
+linkTitle: GRANT
+description: Use the GRANT statement to grant access privileges on database objects as well as to assign membership in roles.
+summary: GRANT statement
 menu:
   latest:
     identifier: api-ysql-commands-grant
-    parent: api-ysql-commands-grant
+    parent: api-ysql-commands
 aliases:
   - /latest/api/ysql/permissions/
 isTocNested: true
 showAsideToc: true
 ---
 
-## Synopsis 
+## Synopsis
 
-`GRANT` allows access privileges.
+Use the `GRANT` statement to grant access privileges on database objects as well as to assign membership in roles.
 
 ## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-#### grant
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/grant_table,grant_table_col,grant_seq,grant_db,grant_domain,grant_schema,grant_type,grant_role,grant_role_spec.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/grant_table,grant_table_col,grant_seq,grant_db,grant_domain,grant_schema,grant_type,grant_role,grant_role_spec.diagram.md" /%}}
+  </div>
+</div>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="732" height="78" viewbox="0 0 732 78"><path class="connector" d="M0 50h5m61 0h10m79 0h10m38 0h10m117 0h10m36 0h30m-5 0q-5 0-5-5v-19q0-5 5-5h20m24 0h21q5 0 5 5v19q0 5-5 5m-5 0h50m50 0h10m61 0h10m65 0h20m-231 0q5 0 5 5v8q0 5 5 5h206q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="34" width="61" height="24" rx="7"/><text class="text" x="15" y="50">GRANT</text><a xlink:href="../../grammar_diagrams#privileges"><rect class="rule" x="76" y="34" width="79" height="24"/><text class="text" x="86" y="50">privileges</text></a><rect class="literal" x="165" y="34" width="38" height="24" rx="7"/><text class="text" x="175" y="50">ON</text><a xlink:href="../../grammar_diagrams#privilege-target"><rect class="rule" x="213" y="34" width="117" height="24"/><text class="text" x="223" y="50">privilege_target</text></a><rect class="literal" x="340" y="34" width="36" height="24" rx="7"/><text class="text" x="350" y="50">TO</text><rect class="literal" x="421" y="5" width="24" height="24" rx="7"/><text class="text" x="431" y="21">,</text><a xlink:href="../../grammar_diagrams#name"><rect class="rule" x="406" y="34" width="55" height="24"/><text class="text" x="416" y="50">name</text></a><rect class="literal" x="511" y="34" width="50" height="24" rx="7"/><text class="text" x="521" y="50">WITH</text><rect class="literal" x="571" y="34" width="61" height="24" rx="7"/><text class="text" x="581" y="50">GRANT</text><rect class="literal" x="642" y="34" width="65" height="24" rx="7"/><text class="text" x="652" y="50">OPTION</text></svg>
+## Semantics
 
-### Grammar
+`GRANT` can be used to assign privileges on database objects as well as memberships in roles.
 
-```
-grant ::= GRANT privileges ON privilege_target TO name [, ...] [ WITH GRANT OPTION ] ;
-```
+### `GRANT` on database objects
+
+This variant of `GRANT` command is used to assign privileges on database objects to one or more roles.
+If keyword `PUBLIC` is used instead of `role_name`, then it means that the privileges are to be granted to all roles, including those that might be created later.
+
+If `WITH GRANT OPTION` is specified, the recipient of the privilege can in turn grant it to others. Without a grant option, the recipient cannot do that. Grant options cannot be granted to `PUBLIC`.
+
+There is no need to grant privileges to the owner of an object (usually the user that created it), as the owner has all privileges by default. (The owner could, however, choose to revoke some of their own privileges for safety.)
+
+Possible privileges are
+
+- SELECT
+
+  - This allows SELECT from any or specified columns of the specified table, view, or sequence. It also allows the use of COPY TO. This privilege is also needed to reference existing column values in UPDATE or DELETE.
+
+- INSERT
+
+  - This allows INSERT of a new row into the specified table. If specific columns are listed, only those columns may be assigned to in the INSERT command (other columns will therefore receive default values). Also allows COPY FROM.
+
+- UPDATE
+
+  - This allows UPDATE of any column, or the specific columns listed, of the specified table.
+
+- DELETE
+  - This allows DELETE of a row from the specified table.
+
+- TRUNCATE
+
+  - This allows TRUNCATE on the specified table.
+
+- REFERENCES
+
+  - This allows creation of a foreign key constraint referencing the specified table, or specified columns of the table.
+
+- TRIGGER
+
+  - This allows the creation of a trigger on the specified table.
+
+- CREATE
+
+  - For databases, this allows new schemas to be created within the database.
+  - For schemas, this allows new objects to be created within the schema. To rename an existing object, you must own the object and have this privilege for the containing schema.
+
+- CONNECT
+
+  - This allows the user to connect to the specified database. This privilege is checked at connection startup.
+
+- TEMPORARY / TEMP
+
+  - This allows temporary tables to be created while using the specified database.
+
+- EXECUTE
+
+  - Allows the use of the specified function or procedure and the use of any operators that are implemented on top of the function.
+
+- USAGE
+
+  - For schemas, this allows access to objects contained in the specified schema (assuming that the objects' own privilege requirements are also met). Essentially this allows the grantee to “look up” objects within the schema.
+  - For sequences, this privilege allows the use of the `currval()` and `nextval()` functions.
+  - For types and domains, this privilege allows the use of the type or domain in the creation of tables, functions, and other schema objects.
+
+- ALL PRIVILEGES
+
+  - Grant all privileges at once.
+
+### `GRANT` on roles
+
+This variant of `GRANT` is used to grant membership in a role to one or more other roles.
+If `WITH ADMIN OPTION` is specified, the member can in turn grant membership in the role to others, and revoke membership in the role as well.
 
 ## Examples
 
-- Create a sample role.
+- Grant SELECT privilege to all users on table 'stores'
 
-```sql
-postgres=# CREATE USER John;
+```postgresql
+yugabyte=# GRANT SELECT ON stores TO PUBLIC;
 ```
 
-- Grant John all permissions on the `postgres` database.
+- Add user John to SysAdmins group.
 
-```sql
-postgres=# GRANT ALL ON DATABASE postgres TO John;
+```postgresql
+yugabyte=# GRANT SysAdmins TO John;
 ```
 
-- Remove John's permissions from the `postgres` database.
+## See also
 
-```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
-```
-
-## See Also
-
-[Other YSQL Statements](..)
+- [`REVOKE`](../dcl_revoke)
+- [`CREATE ROLE`](../dcl_create_role)

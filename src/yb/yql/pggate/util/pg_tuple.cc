@@ -14,7 +14,7 @@
 
 #include "yb/yql/pggate/util/pg_tuple.h"
 
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/client/client.h"
 
 #include "postgres/src/include/pg_config_manual.h"

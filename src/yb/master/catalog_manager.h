@@ -43,6 +43,7 @@
 
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/functional/hash.hpp>
+#include <gtest/internal/gtest-internal.h>
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -51,7 +52,13 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/permissions_manager.h"
+#include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
@@ -66,11 +73,8 @@
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status.h"
-#include "yb/gutil/thread_annotations.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/permissions_manager.h"
-#include "yb/master/initial_sys_catalog_snapshot.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/version_tracker.h"
 
 namespace yb {
 
@@ -79,6 +83,16 @@ class ThreadPool;
 
 template<class T>
 class AtomicGauge;
+
+namespace pgwrapper {
+
+#define CALL_GTEST_TEST_CLASS_NAME_(...) GTEST_TEST_CLASS_NAME_(__VA_ARGS__)
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
+class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables));
+#undef CALL_GTEST_TEST_CLASS_NAME_
+
+}
 
 namespace tablet {
 
@@ -102,6 +116,8 @@ struct DeferredAssignmentActions;
 
 static const char* const kSecurityConfigType = "security-configuration";
 static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
+static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid";
+static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 
 using PlacementId = std::string;
 
@@ -124,18 +140,6 @@ class BlacklistState {
   int64_t initial_load_;
 };
 
-// Convenience typedefs.
-typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
-typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
-typedef std::pair<NamespaceId, TableName> TableNameKey;
-typedef std::unordered_map<
-    TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
-
-typedef std::unordered_map<UDTypeId, scoped_refptr<UDTypeInfo>> UDTypeInfoMap;
-typedef std::pair<NamespaceId, UDTypeName> UDTypeNameKey;
-typedef std::unordered_map<
-    UDTypeNameKey, scoped_refptr<UDTypeInfo>, boost::hash<UDTypeNameKey>> UDTypeInfoByNameMap;
-
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -144,6 +148,18 @@ typedef std::unordered_map<
 //
 // Thread-safe.
 class CatalogManager : public tserver::TabletPeerLookupIf {
+  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
+
+  class NamespaceNameMapper {
+   public:
+    NamespaceInfoMap& operator[](YQLDatabase db_type);
+    const NamespaceInfoMap& operator[](YQLDatabase db_type) const;
+    void clear();
+
+   private:
+    std::array<NamespaceInfoMap, 4> typed_maps_;
+  };
+
  public:
   // Some code refers to ScopedLeaderSharedLock as CatalogManager::ScopedLeaderSharedLock.
   using ScopedLeaderSharedLock = ::yb::master::ScopedLeaderSharedLock;
@@ -294,13 +310,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
+  // Alter the specified Namespace.
+  CHECKED_STATUS AlterNamespace(const AlterNamespaceRequestPB* req,
+                                AlterNamespaceResponsePB* resp,
+                                rpc::RpcContext* rpc);
+
   // Delete YSQL database tables.
   CHECKED_STATUS DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
                                     DeleteNamespaceResponsePB* resp,
                                     rpc::RpcContext* rpc);
 
-  // Delete all user tables in YSQL database.
+  // Delete all tables in YSQL database.
   CHECKED_STATUS DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
+                                    DeleteNamespaceResponsePB* resp,
                                     rpc::RpcContext* rpc);
 
   // List all the current namespaces.
@@ -342,6 +364,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
 
+  // Delete CDC streams for a table.
+  virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id);
+  virtual CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids);
+
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 
@@ -373,7 +399,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Get Table info given namespace id and table name.
   scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
-      const NamespaceName& namespace_name, const TableName& table_name);
+      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name);
 
   // Return all the available TableInfo. The flag 'includeOnlyRunningTables' determines whether
   // to retrieve all Tables irrespective of their state or just the tables with the state
@@ -390,6 +416,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Return the recent tasks.
   std::vector<std::shared_ptr<MonitoredTask>> GetRecentTasks();
 
+  // Return the recent user-initiated jobs.
+  std::vector<std::shared_ptr<MonitoredTask>> GetRecentJobs();
+
   NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const;
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
 
@@ -397,20 +426,29 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
 
   // Is the table a system table?
-  bool IsSystemTable(const TableInfo& table) const;
+  bool IsSystemTableUnlocked(const TableInfo& table) const;
 
   // Is the table a user created table?
   bool IsUserTable(const TableInfo& table) const;
+  bool IsUserTableUnlocked(const TableInfo& table) const;
 
   // Is the table a user created index?
   bool IsUserIndex(const TableInfo& table) const;
+  bool IsUserIndexUnlocked(const TableInfo& table) const;
 
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
 
+  // Is the table a table created for colocated database?
+  bool IsColocatedParentTable(const TableInfo& table) const;
+
+  // Is the table a table created in a colocated database?
+  bool IsColocatedUserTable(const TableInfo& table) const;
+
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
   bool IsUserCreatedTable(const TableInfo& table) const;
+  bool IsUserCreatedTableUnlocked(const TableInfo& table) const;
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
@@ -474,7 +512,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   consensus::RaftPeerPB::Role Role() const;
 
   CHECKED_STATUS PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft,
-                               bool on_disk = false);
+                               const DumpMasterStateRequestPB* req,
+                               DumpMasterStateResponsePB* resp);
 
   // If we get removed from an existing cluster, leader might ask us to detach ourselves from the
   // cluster. So we enter a shell mode equivalent state, with no bg tasks and no tablet peer
@@ -508,6 +547,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
+  // Get the percentage of leaders that have been moved off of the leader black-listed tablet
+  // servers.
+  CHECKED_STATUS GetLeaderBlacklistCompletionPercent(GetLoadMovePercentResponsePB* resp);
+
+  // Get the percentage of leaders/tablets that have been moved off of the (leader) black-listed
+  // tablet servers.
+  CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp,
+      bool blacklist_leader);
+
   // API to check if all the live tservers have similar tablet workload.
   CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                 IsLoadBalancedResponsePB* resp);
@@ -526,7 +574,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
   CHECKED_STATUS VisitSysCatalog(int64_t term);
-  virtual CHECKED_STATUS RunLoaders();
+  virtual CHECKED_STATUS RunLoaders(int64_t term);
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
@@ -539,16 +587,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns whether the table is a YCQL table.
   static bool IsYcqlTable(const TableInfo& table);
 
+  CHECKED_STATUS FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_identifier,
+                                       scoped_refptr<NamespaceInfo>* ns_info) const;
+
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                scoped_refptr<NamespaceInfo>* ns_info) const;
 
   CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
                            scoped_refptr<TableInfo>* table_info);
 
-  Result<TabletInfos> GetTabletsOrSetupError(const TableIdentifierPB& table_identifier,
-                                             MasterErrorPB::Code* error,
-                                             scoped_refptr<TableInfo>* table = nullptr,
-                                             scoped_refptr<NamespaceInfo>* ns = nullptr);
+  Result<TableDescription> DescribeTable(const TableIdentifierPB& table_identifier);
 
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
@@ -560,6 +608,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   PermissionsManager* permissions_manager() {
     return permissions_manager_.get();
+  }
+
+  uintptr_t tablets_version() const {
+    return tablet_map_.Version() + table_ids_map_.Version();
+  }
+
+  uintptr_t tablet_locations_version() const {
+    return tablet_locations_version_.load(std::memory_order_acquire);
+  }
+
+  EncryptionManager& encryption_manager() {
+    return *encryption_manager_;
   }
 
  protected:
@@ -574,12 +634,22 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class SysConfigLoader;
   friend class ::yb::master::ScopedLeaderSharedLock;
   friend class PermissionsManager;
+  friend class MultiStageAlterTable;
+  friend class BackfillTable;
+  friend class BackfillTablet;
 
+#define CALL_FRIEND_TEST(...) FRIEND_TEST(__VA_ARGS__)
+  CALL_FRIEND_TEST(pgwrapper::PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
+  CALL_FRIEND_TEST(pgwrapper::PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
+  CALL_FRIEND_TEST(pgwrapper::PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables));
+#undef CALL_FRIEND_TEST
   FRIEND_TEST(SysCatalogTest, TestCatalogManagerTasksTracker);
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
   FRIEND_TEST(SysCatalogTest, TestSysCatalogTablesOperations);
   FRIEND_TEST(SysCatalogTest, TestSysCatalogTabletsOperations);
   FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
+
+  FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -616,8 +686,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Sets up various system configs.
   CHECKED_STATUS PrepareDefaultSysConfig(int64_t term);
 
-  // Starts an asynchronous run of initdb. Errors are handled in the callback.
-  CHECKED_STATUS StartRunningInitDbIfNeeded(int64_t term) SHARED_LOCKS_REQUIRED(lock_);
+  // Starts an asynchronous run of initdb. Errors are handled in the callback. Returns true
+  // if started running initdb, false if decided that it is not needed.
+  bool StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(lock_);
 
   CHECKED_STATUS PrepareDefaultNamespaces(int64_t term);
 
@@ -638,7 +709,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     int64_t term,
                                     YQLVirtualTable* vtable);
 
-  CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id, int64_t term);
+  CHECKED_STATUS PrepareNamespace(YQLDatabase db_type,
+                                  const NamespaceName& name,
+                                  const NamespaceId& id,
+                                  int64_t term);
 
   CHECKED_STATUS ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
                                                  TabletLocationsPB* locs_pb);
@@ -660,7 +734,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                         std::vector<TabletInfo*>* tablets);
 
   // Helper for creating copartitioned table.
-  CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB req,
+  CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB& req,
                                           CreateTableResponsePB* resp,
                                           rpc::RpcContext* rpc,
                                           Schema schema,
@@ -695,9 +769,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   TabletInfo *CreateTabletInfo(TableInfo* table,
                                const PartitionPB& partition);
 
+  // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
+  Status RemoveTableIdsFromTabletInfo(
+      TabletInfoPtr tablet_info, unordered_set<TableId> tables_to_remove);
+
   // Add index info to the indexed table.
   CHECKED_STATUS AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                                     const IndexInfoPB& index_info);
+                                     const IndexInfoPB& index_info,
+                                     CreateTableResponsePB* resp);
 
   // Delete index info from the indexed table.
   CHECKED_STATUS DeleteIndexInfoFromTable(const TableId& indexed_table_id,
@@ -714,28 +793,40 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Requires that the lock is already held.
   CHECKED_STATUS HandleReportedTablet(TSDescriptor* ts_desc,
                                       const ReportedTabletPB& report,
-                                      ReportedTabletUpdatesPB *report_updates);
+                                      ReportedTabletUpdatesPB* report_updates,
+                                      bool is_incremental);
 
-  CHECKED_STATUS ResetTabletReplicasFromReportedConfig(const ReportedTabletPB& report,
-                                                       const scoped_refptr<TabletInfo>& tablet,
-                                                       TabletInfo::lock_type* tablet_lock,
-                                                       TableInfo::lock_type* table_lock);
+  CHECKED_STATUS ResetTabletReplicasFromReportedConfig(
+      const ReportedTabletPB& report, const scoped_refptr<TabletInfo>& tablet,
+      const std::string& sender_uuid,
+      TabletInfo::lock_type* tablet_lock, TableInfo::lock_type* table_lock);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
   // server that is part of a consensus configuration has not heartbeated to the Master yet, we
   // leave it out of the consensus configuration reported to clients.
   // TODO: See if we can remove this logic, as it seems confusing.
-  void AddReplicaToTabletIfNotFound(TSDescriptor* ts_desc,
-                                    const ReportedTabletPB& report,
-                                    const scoped_refptr<TabletInfo>& tablet);
+  void UpdateTabletReplica(TSDescriptor* ts_desc,
+                           const ReportedTabletPB& report,
+                           const scoped_refptr<TabletInfo>& tablet);
 
-  void NewReplica(TSDescriptor* ts_desc, const ReportedTabletPB& report, TabletReplica* replica);
+  // It works as AddReplicaToTabletIfNotFound if the replica is not in the tablet map.
+  // If it already exists, it replaces the existing replica with a new replica created from the
+  // report.
+  void UpdateReplicaInTablet(TSDescriptor* ts_desc,
+                             const ReportedTabletPB& report,
+                             const scoped_refptr<TabletInfo>& tablet);
+
+  static void NewReplica(
+      TSDescriptor* ts_desc, const ReportedTabletPB& report, TabletReplica* replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
   // that must be processed because not running yet.
   void ExtractTabletsToProcess(TabletInfos *tablets_to_delete,
                                TabletInfos *tablets_to_process);
+
+  // Determine whether any tables are in the DELETING state.
+  bool AreTablesDeleting();
 
   // Task that takes care of the tablet assignments/creations.
   // Loops through the "not created" tablets and sends a CreateTablet() request.
@@ -797,6 +888,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void SendCreateTabletRequests(const std::vector<TabletInfo*>& tablets);
 
   // Send the "alter table request" to all tablets of the specified table.
+  //
+  // Also, initiates the required AlterTable requests to backfill the Index.
+  // Initially the index is set to be in a INDEX_PERM_DELETE_ONLY state, then
+  // updated to INDEX_PERM_WRITE_AND_DELETE state; followed by backfilling. Once
+  // all the tablets have completed backfilling, the index will be updated
+  // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
   void SendAlterTableRequest(const scoped_refptr<TableInfo>& table);
 
   // Start the background task to send the AlterTable() RPC to the leader for this
@@ -816,7 +913,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Truncate the specified table/index.
   CHECKED_STATUS TruncateTable(const TableId& table_id,
-                               bool is_index,
                                TruncateTableResponsePB* resp,
                                rpc::RpcContext* rpc);
 
@@ -827,7 +923,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      bool is_index_table,
                                      bool update_indexed_table,
                                      std::vector<scoped_refptr<TableInfo>>* tables,
-                                     std::vector<scoped_refptr<DeletedTableInfo>>* deleted_tables,
                                      std::vector<std::unique_ptr<TableInfo::lock_type>>* table_lcks,
                                      DeleteTableResponsePB* resp,
                                      rpc::RpcContext* rpc);
@@ -835,8 +930,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Request tablet servers to delete all replicas of the tablet.
   void DeleteTabletReplicas(const TabletInfo* tablet, const std::string& msg);
 
-  // Marks each of the tablets in the given table as deleted and triggers requests
-  // to the tablet servers to delete them.
+  // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
+  // servers to delete them.  The table parameter is expected to be given "write locked".
   void DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>& table);
 
   // Send the "delete tablet request" to the specified TS/tablet.
@@ -907,9 +1002,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // when the blacklist load removal operation was started. It permits overwrite semantics
   // for the blacklist.
   CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist);
+  CHECKED_STATUS SetLeaderBlacklist(const BlacklistPB& leader_blacklist);
 
-  // Calculate the total number of replicas which are being handled by blacklisted servers.
-  int64_t GetNumBlacklistReplicas();
+  // Calculate the total number of replicas which are being handled by servers in state.
+  int64_t GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only);
 
   int64_t leader_ready_term() {
     std::lock_guard<simple_spinlock> l(state_lock_);
@@ -917,17 +1013,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   }
 
   // Delete tables from internal map by id, if it has no more active tasks and tablets.
+  // This function should only be called from the bg_tasks thread, in a single threaded fashion!
   void CleanUpDeletedTables();
-
-  // Updated table state from DELETING to DELETED, if it has no more tablets.
-  void MarkTableDeletedIfNoTablets(scoped_refptr<DeletedTableInfo> deleted_table,
-                                   TableInfo* table_info = nullptr);
 
   // Called when a new table id is added to table_ids_map_.
   void HandleNewTableId(const TableId& id);
 
   // Creates a new TableInfo object.
   scoped_refptr<TableInfo> NewTableInfo(TableId id);
+
+  template <class Loader>
+  CHECKED_STATUS Load(const std::string& title, const int64_t term);
 
   // ----------------------------------------------------------------------------------------------
   // Private member fields
@@ -945,21 +1041,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // are not saved in the name maps below.
 
   // Table map: table-id -> TableInfo
-  TableInfoMap table_ids_map_;
+  VersionTracker<TableInfoMap> table_ids_map_;
 
   // Table map: [namespace-id, table-name] -> TableInfo
+  // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   TableInfoByNameMap table_names_map_;
 
-  DeletedTabletMap deleted_tablet_map_; // Deleted Tablets map:
-                                        // [tserver-id, tablet-id] -> DeletedTableInfo
-
   // Tablet maps: tablet-id -> TabletInfo
-  TabletInfoMap tablet_map_;
+  VersionTracker<TabletInfoMap> tablet_map_;
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
-  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
   NamespaceInfoMap namespace_ids_map_;
-  NamespaceInfoMap namespace_names_map_;
+  NamespaceNameMapper namespace_names_mapper_;
 
   // User-Defined type maps: udtype-id -> UDTypeInfo and udtype-name -> UDTypeInfo
   UDTypeInfoMap udtype_ids_map_;
@@ -997,6 +1090,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Track all information related to the black list operations.
   BlacklistState blacklistState;
+
+  // Track all information related to the leader black list operations.
+  BlacklistState leaderBlacklistState;
 
   // TODO: convert this to YB_DEFINE_ENUM for automatic pretty-printing.
   enum State {
@@ -1044,6 +1140,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Number of live tservers metric.
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_live_;
 
+  // Number of dead tservers metric.
+  scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
+
   friend class ClusterLoadBalancer;
 
   // Policy for load balancing tablets on tablet servers.
@@ -1059,6 +1158,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Tablets of system tables on the master indexed by the tablet id.
   std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
 
+  // Tablet of colocated namespaces indexed by the namespace id.
+  std::unordered_map<NamespaceId, scoped_refptr<TabletInfo>> colocated_tablet_ids_map_;
+
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
@@ -1070,7 +1172,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Tracks most recent async tasks.
   scoped_refptr<TasksTracker> tasks_tracker_;
 
+  // Tracks most recent user initiated jobs.
+  scoped_refptr<TasksTracker> jobs_tracker_;
+
+  std::unique_ptr<EncryptionManager> encryption_manager_;
+
  private:
+  virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id);
+  void RemoveFromNamespaceMaps(const NamespaceInfo& ns, rpc::RpcContext* rpc);
+
+  // Should be bumped up when tablet locations are changed.
+  std::atomic<uintptr_t> tablet_locations_version_{0};
+
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
 

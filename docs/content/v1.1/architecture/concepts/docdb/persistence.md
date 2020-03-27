@@ -50,11 +50,11 @@ The primary motivation behind the enhancements or customizations to RocksDB are 
   suppress expired data. Expired values within the subdocument are cleaned up/garbage collected by our
   customized compaction hooks.
 
-* **Avoid penalty of two transaction/write-ahead (WAL) logs**: YugaByte is a distributed database that
+* **Avoid penalty of two transaction/write-ahead (WAL) logs**: Yugabyte is a distributed database that
   uses Raft for replication. Changes to the distributed system are already recorded/journalled as part
   of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s
   DocDB, but the additional WAL mechanism in RocksDB (under DocDB) is unnecessary and adds overhead.
-  For correctness, in addition to disabling the WAL mechanism in RocksDB, YugaByte tracks the Raft
+  For correctness, in addition to disabling the WAL mechanism in RocksDB, Yugabyte tracks the Raft
   “sequence id” up to which data has been flushed from RocksDB’s memtables to SSTable files. This
   ensures that we can correctly garbage collect the Raft WAL logs as well as replay the minimal number
   of records from Raft WAL logs on a server crash or restart.
@@ -62,7 +62,7 @@ The primary motivation behind the enhancements or customizations to RocksDB are 
 * **Multi-version concurrency control (MVCC) is done at a higher layer**: The mutations to records in the
   system are versioned using hybrid-timestamps maintained at the YBase layer. As a result, the notion
   of MVCC as implemented in a vanilla RocksDB (using sequence ids) is not necessary and only adds
-  overhead. YugaByte does not use RocksDB’s sequence ids, and instead uses hybrid-timestamps that are
+  overhead. Yugabyte does not use RocksDB’s sequence ids, and instead uses hybrid-timestamps that are
   part of the encoded key to implement MVCC.
 
 * **Backups/Snapshots**: These need to be higher level operations that take into consideration data in
@@ -122,7 +122,7 @@ out useful/hot data.
 ## Mapping DocDB documents to RocksDB
 
 DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
-YugaByte DB (currently YCQL, YEDIS, and YSQL(beta)).
+YugabyteDB (currently YCQL, YEDIS, and YSQL(beta)).
 
 
 The documents are stored using a key-value store based on RocksDB, which is typeless. The documents

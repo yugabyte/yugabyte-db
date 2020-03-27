@@ -21,6 +21,8 @@
 
 #include <glog/logging.h>
 
+#include "yb/util/stol_utils.h"
+
 namespace yb {
 
 constexpr int64_t OpId::kUnknownTerm;
@@ -49,6 +51,20 @@ void OpId::MakeAtMost(const OpId& rhs) {
   if (rhs.term < term || (rhs.term == term && rhs.index < index)) {
     *this = rhs;
   }
+}
+
+std::string OpId::ToString() const {
+  return Format("$0.$1", term, index);
+}
+
+Result<OpId> OpId::FromString(Slice input) {
+  auto pos = std::find(input.cdata(), input.cend(), '.');
+  if (pos == input.cend()) {
+    return STATUS(InvalidArgument, "OpId should contain '.'", input);
+  }
+  auto term = VERIFY_RESULT(CheckedStoll(Slice(input.cdata(), pos)));
+  auto index = VERIFY_RESULT(CheckedStoll(Slice(pos + 1, input.cend())));
+  return OpId(term, index);
 }
 
 std::ostream& operator<<(std::ostream& out, const OpId& op_id) {

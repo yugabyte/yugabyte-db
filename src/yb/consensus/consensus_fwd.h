@@ -21,9 +21,10 @@ namespace yb {
 namespace consensus {
 
 class Consensus;
+class ConsensusContext;
 class PeerProxyFactory;
 class PeerMessageQueue;
-class ReplicaOperationFactory;
+class RaftConfigPB;
 class ReplicateMsg;
 class ReplicateMsgsHolder;
 class RetryableRequests;
@@ -34,6 +35,7 @@ class VoteResponsePB;
 struct ConsensusOptions;
 struct ConsensusBootstrapInfo;
 struct LeaderState;
+struct ReadOpsResult;
 struct RetryableRequestsCounts;
 struct StateChangeContext;
 

@@ -20,8 +20,12 @@
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
-#include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/logging.h"
 
 namespace yb {
@@ -29,10 +33,26 @@ namespace tserver {
 
 // Non-template helpers.
 
-void SetupErrorAndRespond(TabletServerErrorPB* error,
+inline void SetupErrorAndRespond(TabletServerErrorPB* error,
                           const Status& s,
                           TabletServerErrorPB::Code code,
-                          rpc::RpcContext* context);
+                          rpc::RpcContext* context) {
+  // Generic "service unavailable" errors will cause the client to retry later.
+  if (code == TabletServerErrorPB::UNKNOWN_ERROR && s.IsServiceUnavailable()) {
+    TabletServerDelay delay(s);
+    if (!delay.value().Initialized()) {
+      context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, s);
+      return;
+    }
+  }
+
+  StatusToPB(s, error->mutable_status());
+  error->set_code(code);
+  // TODO: rename RespondSuccess() to just "Respond" or
+  // "SendResponse" since we use it for application-level error
+  // responses, and this just looks confusing!
+  context->RespondSuccess();
+}
 
 void SetupErrorAndRespond(TabletServerErrorPB* error,
                           const Status& s,
@@ -49,7 +69,7 @@ bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
                              RespClass* resp,
                              rpc::RpcContext* context) {
   const string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
-  if (PREDICT_FALSE(!req->has_dest_uuid())) {
+  if (req->dest_uuid().empty()) {
     // Maintain compat in release mode, but complain.
     string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
         method_name, context->requestor_string(), req->ShortDebugString());

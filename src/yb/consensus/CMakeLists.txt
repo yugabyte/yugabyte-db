@@ -138,8 +138,9 @@ target_link_libraries(consensus
   protobuf)
 
 set(YB_TEST_LINK_LIBS
-  log
   consensus
+  log
+  rpc_test_util
   tserver
   tablet
   yb_util

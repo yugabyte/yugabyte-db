@@ -1,0 +1,500 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+@import "_style/mixins.scss";
+
+.btn {
+  display: inline-block;
+  padding: 9px 15px 11px;
+  margin-bottom: 0;
+  font-size: 14px;
+  border-radius: 7px;
+  z-index: 1 !important;
+  box-sizing: border-box;
+
+  &, &:hover, &:focus, &:active {
+    border-color: transparent;
+  }
+}
+
+.btn-default {
+  &, &:hover, &:focus, &:active {
+    border-color: transparent;
+  }
+}
+
+.btn-clear{
+  &, &:hover, &:focus, &:active {
+    display: inline-block;
+    height: auto;
+    width: auto;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background-color: transparent;
+
+    * {
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+  }
+}
+
+.btn-orange {
+  &, &:focus {
+    background: $YB_ORANGE;
+    color: white;
+    font-weight: 500;
+    @include transition(0.35s);
+  }
+  i {
+    color: #fff;
+    margin-left: 0;
+    @include transition(0.35s);
+  }
+  &:hover {
+    @include transition(0.125s);
+    background-color: $YB_ORANGE_HOVER;
+    color: white;
+    i {
+      @include transition(0.125s);
+      color: rgba(white, 0.5);
+    }
+  }
+  &:active:focus, &:active {
+    background-color: darken($YB_ORANGE_HOVER, 2%);
+    color: #fff;
+    box-shadow: none;
+    i {
+      color: rgba(white, 0.5);
+    }
+  }
+  .btn-disabled {
+    color: rgba(white, 0.5) !important;
+  }
+
+  &[disabled], &[disabled]:focus, &[disabled]:active {
+    background-color: $YB_ORANGE;
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  &.btn-is-loading[disabled], &.btn-is-loading[disabled]:focus, &.btn-is-loading[disabled]:active {
+    opacity: 1;
+  }
+}
+
+.btn-default {
+  color: $YB_TEXT_COLOR;
+  background-color: #fff;
+  font-weight: 300;
+  border: 1px solid $YB_GRAY;
+  @include transition(0.35s);
+  .caret {
+    border-top-color: #44518b;
+  }
+  i {
+    color: $YB_VIOLET_TEXT;
+    font-size: 16px;
+    line-height: 1;
+    padding-right: 3px;
+  }
+  &:hover {
+    @include transition(0.125s);
+    border-color: $YB_GRAY_HOVER;
+    background-color: $YB_GRAY_HOVER;
+  }
+  &:active:focus, &:focus, &:active, &.active, &.active:focus {
+    border-color: darken($YB_GRAY, 2%);
+    background-color: darken($YB_GRAY, 2%);
+    box-shadow: none;
+  }
+}
+
+.btn-round {
+  width: 53px;
+  height: 53px;
+  border-radius: 50%;
+
+  &, &:hover, &:active:focus, &:focus, &:active, &.active {
+    border: none;
+  }
+}
+
+
+.btn-grey {
+    color: $YB_TEXT_COLOR;
+    background-color: $YB_GRAY_HOVER;
+    font-weight: 300;
+    @include transition(0.35s);
+    i {
+      color: $YB_ORANGE;
+      font-size: 16px;
+      line-height: 1;
+    }
+    &:hover {
+      @include transition(0.125s);
+      background-color: $YB_GRAY;
+    }
+    &:active:focus, &:focus, &:active, &.active {
+      border-color: darken($YB_GRAY_BORDER, 2%);
+      background-color: darken($YB_GRAY, 2%);
+      box-shadow: none;
+    }
+  }
+
+  button, .btn {
+  .fa {
+    margin-right: 8px;
+  }
+}
+
+.btn-center {
+  width: 33%;
+  margin-left: 33%;
+}
+
+.btn-small {
+  display: inline-block;
+  padding: 0px 4px;
+  margin-bottom: 0;
+  font-size: 11px;
+  line-height: 14px;
+  border-radius: 2px;
+}
+
+.btn-copy {
+  text-transform: uppercase;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  vertical-align: baseline;
+  width: 40px;
+  font-size: 11px;
+  line-height: 16px;
+  height: 18px;
+  border: none;
+  overflow: hidden;
+  position: relative;
+  font-weight: 500;
+  top: -1px;
+  margin-left: 5px;
+  box-shadow: 0 1px 2px rgba($YB_DARK_GRAY_2, 0.15);
+
+  &, &:active, &:hover, &:focus {
+    background-color: $YB_SUCCESS_COLOR;
+    color: $YB_ORANGE;
+  }
+
+  &:after {
+    position: absolute;
+    top: 0;
+    left: 0;
+    font: normal normal normal 14px/1 FontAwesome;
+    content: '\F00C';
+    color: #fff;
+    text-align: center;
+    border-radius: 2px;
+    width: 40px;
+    height: 18px;
+    line-height: 16px;
+    opacity: 1;
+    background-color: $YB_SUCCESS_COLOR;
+  }
+}
+pre {
+  .btn-copy {
+    position: absolute;
+    right: 13px;
+    top: 13px;
+    &, &:focus {
+      background-color: #ffffff;
+    }
+  }
+}
+
+.btn-copy-round {
+  height: 24px;
+  width: 24px;
+  font-size: 13px;
+  line-height: 8px;
+  border-radius: 50%;
+  text-align: center;
+
+  .fa {
+    margin-right: 0;
+  }
+
+  &:after {
+    position: absolute;
+    top: 0;
+    left: 0;
+    font: normal normal normal 14px/1 FontAwesome;
+    content: '\F00C';
+    color: #fff;
+    text-align: center;
+    border-radius: 2px;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    opacity: 1;
+    background-color: $YB_SUCCESS_COLOR !important;
+  }
+}
+
+.btn-copy-inactive {
+  &, &:focus {
+    background-color: $YB_BACKGROUND;
+    color: $YB_ORANGE;
+  }
+  &:active, &:hover {
+    &, &:focus {
+      @include transition-property(0s, background-color, 0s);
+      @include transition-property(0s, color, 0s);
+      background-color: $YB_ORANGE;
+      color: #fff;
+    }
+  }
+  &:after {
+    content: '';
+    opacity: 0;
+    @include transition-property(0.6s, opacity, 0s);
+  }
+}
+
+.btn-marked {
+  position: relative;
+  &:after {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: $YB_FAIL_COLOR;
+    top: -4px;
+    right: -4px;
+    content: '';
+  }
+  &[aria-expanded="true"]:after {
+    content: none;
+  }
+}
+
+.btn-group {
+  &.open {
+    .btn-default, .btn-default:hover, .btn-default:focus {
+      color: $YB_TEXT_COLOR;
+      border-color: $YB_GRAY_HOVER;
+      background-color: $YB_GRAY_HOVER;
+    }
+  }
+}
+
+.open > .dropdown-toggle.btn-default {
+  &, &:hover, &:focus {
+    border-color: $YB_GRAY;
+    background-color: $YB_GRAY;
+    box-shadow: none;
+  }
+}
+
+.btn-disabled {
+  &, &:hover, &:focus {
+    color: rgba($YB_TEXT_COLOR, 0.5) !important;
+    border-color: transparent;
+    background-color: $YB_GRAY_HOVER;
+  }
+}
+
+.btn-group {
+  .btn-orange + .btn {
+    border-left: none;
+  }
+  .btn-orange + * {
+    & > .btn {
+      border-left: none;
+    }
+  }
+}
+
+.page-action-buttons {
+  padding-top: 20px;
+  text-align: right;
+
+  .btn-group {
+  text-align: right;
+  }
+
+  .fa {
+  margin: 0 4px 0 0;
+  }
+}
+
+.header-row .btn-group div {
+  float: left;
+}
+
+.bottom-bar-padding {
+  padding-bottom: 80px;
+}
+
+.radio-label {
+  cursor: pointer;
+  line-height: 34px;
+  margin: 0 8px;
+  white-space: nowrap;
+
+  &.disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  div {
+    display: inline-block;
+  }
+
+  input[type=radio] {
+    margin-right: 5px;
+  }
+}
+
+.dropdown-menu {
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  overflow: hidden;
+
+  li {
+    a, div {
+      padding: 15px 20px;
+      height: 52px;
+      font-weight: 300;
+    }
+    i {
+      color: $YB_ORANGE;
+      vertical-align: middle;
+      margin-right: 10px;
+      width: 20px;
+      text-align: left;
+    }
+  }
+  .badge {
+    margin-top: 2px;
+
+    &.badge-red {
+      background-color: $YB_FAIL_COLOR;
+    }
+    &.badge-gray {
+      background-color: $YB_GRAY_HOVER;
+      color: rgba($YB_TEXT_COLOR, 0.7);
+    }
+    &.badge-blue {
+      background-color: $YB_BLUE_COLOR;
+    }
+  }
+}
+
+.pagination{
+  li {
+    a, span {
+      color: $YB_VIOLET_TEXT;
+    }
+    &.active {
+      a, span {
+        &, &:hover, &:focus {
+          background: $YB_VIOLET_TEXT;
+          border-color: $YB_VIOLET_TEXT;
+          color: #fff;
+        }
+      }
+    }
+  }
+}
+
+.yb-input-checkbox {
+  width: 30px;
+  height: 30px;
+  vertical-align: middle;
+  margin-top: 0;
+}
+
+.yb-add-button {
+  font-family: "Inter";
+  color: $YB_ORANGE;
+  font-weight: 400;
+  display: inline-block;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  i {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: $YB_ORANGE;
+    color: white;
+    text-align: center;
+    line-height: 24px;
+    margin-right: 5px;
+    font-size: 16px;
+    top: 1px;
+    position: relative;
+  }
+}
+
+.yb-remove-button {
+  vertical-align: middle;
+  padding: 0;
+  background: transparent;
+  color: white;
+  height: 40px;
+  width: 38px;
+  font-size: 16px;
+  border-radius: 50%;
+  line-height: 22px;
+  text-align: center;
+  color: $YB_TEXT_COLOR;
+  border: none;
+  @include transition(0.125s);
+  i {
+    display: inline-block;
+    text-align: center;
+    margin-right: 0 !important;
+    margin-top: 0;
+  }
+  &:hover {
+    opacity: 0.7;
+    @include transition(0.35s);
+  }
+  &:hover, &:focus, &:active {
+    box-shadow: none;
+  }
+}
+
+.dark-background {
+  .btn {
+    width: 160px;
+    margin: 20px auto 0px auto;
+    display: block;
+  }
+}
+
+.button-group-row {
+  .btn-group {
+    display: flex;
+  }
+}
+
+.btn-group-radio {
+  label {
+    &.readonly {
+      cursor: not-allowed;
+    }
+    &.readonly:not(.btn-orange) {
+      background-color: #eee;
+      border-color: #dedee0;
+    }
+  }
+}
+
+.btn-config {
+  min-width: 170px;
+}

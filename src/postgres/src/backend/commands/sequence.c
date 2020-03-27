@@ -222,8 +222,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCInsertSequenceTuple(ybc_pg_session,
-											  MyDatabaseId,
+		HandleYBStatus(YBCInsertSequenceTuple(MyDatabaseId,
 											  seqoid,
 											  yb_catalog_cache_version,
 											  seqdataform.last_value,
@@ -472,8 +471,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
-											MyDatabaseId,
+		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 											relid,
 											yb_catalog_cache_version,
 											&last_val,
@@ -513,8 +511,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 			if (last_val != newdataform->last_value || is_called != newdataform->is_called)
 			{
 				bool skipped = false;
-				HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
-													  MyDatabaseId,
+				HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
 													  ObjectIdGetDatum(relid),
 													  yb_catalog_cache_version,
 													  newdataform->last_value /* last_val */,
@@ -587,7 +584,7 @@ DeleteSequenceTuple(Oid relid)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCDeleteSequenceTuple(ybc_pg_session, MyDatabaseId, relid));
+		HandleYBStatus(YBCDeleteSequenceTuple(MyDatabaseId, relid));
 	}
 
 	CatalogTupleDelete(rel, tuple);
@@ -597,19 +594,10 @@ DeleteSequenceTuple(Oid relid)
 }
 
 HeapTuple
-ReadSequenceTuple(Relation seqrel, bool check_permissions)
+YBReadSequenceTuple(Relation seqrel)
 {
   /* Get sequence OID */
   Oid relid = seqrel->rd_id;
-
-  /* Verify we can access it */
-  if (check_permissions &&
-      pg_class_aclcheck(relid, GetUserId(),
-                        ACL_USAGE) != ACLCHECK_OK)
-    ereport(ERROR,
-            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-                errmsg("permission denied for sequence %s",
-                       RelationGetRelationName(seqrel))));
 
   /* Read our data from YB's table of all sequences */
   FormData_pg_sequence_data seqdataform;
@@ -617,8 +605,7 @@ ReadSequenceTuple(Relation seqrel, bool check_permissions)
   {
     int64_t last_val;
     bool is_called;
-    HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
-                                        MyDatabaseId,
+    HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
                                         relid,
                                         yb_catalog_cache_version,
                                         &last_val,
@@ -764,12 +751,12 @@ nextval_internal(Oid relid, bool check_permissions)
 	ReleaseSysCache(pgstuple);
 
 retry:
+	rescnt = 0;
 	if (IsYugaByteEnabled())
 	{
 		int64_t last_val;
 		bool is_called;
-		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
-											MyDatabaseId,
+		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
 											relid,
 											yb_catalog_cache_version,
 											&last_val,
@@ -912,14 +899,16 @@ check_bounds:
 	 */
 	if (IsYugaByteEnabled())
 	{
+		if (last == seq->last_value && seq->is_called == true) {
+		  YBC_DEBUG_LOG_FATAL("Invalid sequence value %ld", last);
+		}
 		bool skipped = false;
 		/*
 		 * We do a conditional update here to detect write conflicts with other sessions. If the
 		 * update fails, we retry again by reading the last_val and is_called values and going
 		 * through the whole process again.
 		 */
-		HandleYBStatus(YBCUpdateSequenceTupleConditionally(ybc_pg_session,
-														   MyDatabaseId,
+		HandleYBStatus(YBCUpdateSequenceTupleConditionally(MyDatabaseId,
 														   relid,
 														   yb_catalog_cache_version,
 														   last /* last_val */,
@@ -1165,8 +1154,7 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	 */
 	if (IsYugaByteEnabled())
 	{
-    HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
-                                          MyDatabaseId,
+    HandleYBStatus(YBCUpdateSequenceTuple(MyDatabaseId,
                                           relid,
                                           yb_catalog_cache_version,
                                           next,

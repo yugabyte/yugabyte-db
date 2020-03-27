@@ -1,8 +1,8 @@
 --
 -- FOREIGN KEY
 --
--- TODO - YB only supports foreign keys in serializable isolation currently.
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+-- TODO: Run this test with REPEATABLE READ isolation level:                                                                                                                                                            --       https://github.com/yugabyte/yugabyte-db/issues/2604
+--
 -- MATCH FULL
 --
 -- First test, check and cascade
@@ -752,14 +752,29 @@ CREATE TABLE FKTABLE_FAIL1 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest2)
 ERROR:  column "ftest2" referenced in foreign key constraint does not exist
 CREATE TABLE FKTABLE_FAIL2 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(ptest2));
 ERROR:  column "ptest2" referenced in foreign key constraint does not exist
-DROP TABLE FKTABLE_FAIL1;
-DROP TABLE FKTABLE_FAIL2;
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
+ count
+-------
+     0
+(1 row)
+
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL2';
+ count
+-------
+     0
+(1 row)
+
 DROP TABLE PKTABLE;
 -- Test for referencing column number smaller than referenced constraint
 CREATE TABLE PKTABLE (ptest1 int, ptest2 int, UNIQUE(ptest1, ptest2));
 CREATE TABLE FKTABLE_FAIL1 (ftest1 int REFERENCES pktable(ptest1));
 ERROR:  there is no unique constraint matching given keys for referenced table "pktable"
-DROP TABLE FKTABLE_FAIL1;
+SELECT COUNT(*) FROM pg_class WHERE relname = 'FKTABLE_FAIL1';
+ count
+-------
+     0
+(1 row)
+
 DROP TABLE PKTABLE;
 --
 -- Tests for mismatched types
@@ -771,15 +786,11 @@ INSERT INTO PKTABLE VALUES(42);
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This should also fail for the same reason, but here we
 -- give the column name
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable(ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
 CREATE TABLE FKTABLE (ftest1 int8 REFERENCES pktable);
@@ -799,8 +810,6 @@ DROP TABLE FKTABLE;
 CREATE TABLE FKTABLE (ftest1 numeric REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: numeric and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
 -- numeric, and we allow promotion on the FK side
@@ -825,32 +834,22 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 text, PRIMARY KEY(ptest1, ptest2));
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- Again, so should this...
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This fails because we mixed up the column ordering
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest2_fkey" cannot be implemented
 DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: text and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- As does this...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "fktable_ftest2_fkey" cannot be implemented
 DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: text and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- And again..
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest2, ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
 DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and text.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE FKTABLE;
 -- This works...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 text, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest2, ptest1));
 DROP TABLE FKTABLE;
@@ -872,22 +871,16 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY 
 ptest4) REFERENCES pktable(ptest2, ptest1));
 ERROR:  foreign key constraint "pktable_ptest3_fkey" cannot be implemented
 DETAIL:  Key columns "ptest3" and "ptest2" are of incompatible types: integer and text.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- Nor should this... (same reason, we have 4,3 referencing 1,2 which mismatches types
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "pktable_ptest4_fkey" cannot be implemented
 DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: text and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- Not this one either... Same as the last one except we didn't defined the columns being referenced.
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable);
 ERROR:  foreign key constraint "pktable_ptest4_fkey" cannot be implemented
 DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: text and integer.
--- TODO: Need drop as DDLs are not transactional in YB (see issue #1383).
-DROP TABLE PKTABLE;
 -- TODO: YugaByte does not yet support table inheritance.
 -- Leaving the first failing statement uncommented so that this test
 -- will fail when the feature is implemented (the full test should
@@ -1178,9 +1171,7 @@ ALTER TABLE fktable ADD CONSTRAINT fk_241_132
 FOREIGN KEY (x2,x4,x1) REFERENCES pktable(id1,id3,id2);
 ERROR:  foreign key constraint "fk_241_132" cannot be implemented
 DETAIL:  Key columns "x2" and "id1" are of incompatible types: character varying and integer.
--- TODO YB cannot drop multiple tables in one stmt.
-DROP TABLE fktable;
-DROP TABLE pktable;
+DROP TABLE pktable, fktable;
 -- test a tricky case: we can elide firing the FK check trigger during
 -- an UPDATE if the UPDATE did not change the foreign key
 -- field. However, we can't do this if our transaction was the one that
@@ -1415,20 +1406,16 @@ delete from defp where f1 = 0; -- fail
 ERROR:  update or delete on table "defp" violates foreign key constraint "defc_f1_fkey" on table "defc"
 DETAIL:  Key (f1)=(0) is still referenced from table "defc".
 alter table defc alter column f1 set default 1;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: alter table defc alter column f1 set default 1;
-                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 delete from defp where f1 = 0;
-ERROR:  update or delete on table "defp" violates foreign key constraint "defc_f1_fkey" on table "defc"
-DETAIL:  Key (f1)=(0) is still referenced from table "defc".
 select * from defc;
  f1
 ----
-  0
+  1
 (1 row)
 
 delete from defp where f1 = 1; -- fail
+ERROR:  update or delete on table "defp" violates foreign key constraint "defc_f1_fkey" on table "defc"
+DETAIL:  Key (f1)=(1) is still referenced from table "defc".
 --
 -- Test the difference between NO ACTION and RESTRICT
 --
@@ -1442,9 +1429,7 @@ update pp set f1=f1+1;
 update pp set f1=f1+1; -- fail
 ERROR:  update or delete on table "pp" violates foreign key constraint "cc_f1_fkey" on table "cc"
 DETAIL:  Key (f1)=(13) is still referenced from table "cc".
--- TODO YB cannot drop multiple tables in one stmt.
-drop table cc;
-drop table pp;
+drop table pp, cc;
 create temp table pp (f1 int primary key);
 create temp table cc (f1 int references pp on update restrict);
 insert into pp values(12);
@@ -1454,26 +1439,28 @@ insert into cc values(13);
 update pp set f1=f1+1; -- fail
 ERROR:  update or delete on table "pp" violates foreign key constraint "cc_f1_fkey" on table "cc"
 DETAIL:  Key (f1)=(13) is still referenced from table "cc".
--- TODO YB cannot drop multiple tables in one stmt.
-drop table cc;
-drop table pp;
+drop table pp, cc;
 --
 -- Test interaction of foreign-key optimization with rules (bug #14219)
 --
 create temp table t1 (a integer primary key, b text);
 create temp table t2 (a integer primary key, b integer references t1);
 create rule r1 as on delete to t1 do delete from t2 where t2.b = old.a;
-ERROR:  CREATE RULE not supported yet
-LINE 1: create rule r1 as on delete to t1 do delete from t2 where t2...
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+-- TODO(jason): fix expected output when issue #2220 is closed or closing.
 explain (costs off) delete from t1 where a = 1;
-       QUERY PLAN
--------------------------
+          QUERY PLAN
+-------------------------------
+ Delete on t2
+   ->  Nested Loop
+         ->  Seq Scan on t2
+               Filter: (b = 1)
+         ->  Seq Scan on t1
+               Filter: (a = 1)
+
  Delete on t1
    ->  Seq Scan on t1
          Filter: (a = 1)
-(3 rows)
+(10 rows)
 
 delete from t1 where a = 1;
 -- Test a primary key with attributes located in later attnum positions
@@ -1488,9 +1475,7 @@ DETAIL:  Key (d, e)=(4, 5) is still referenced from table "fktable2".
 update pktable2 set d = 5;
 ERROR:  Update PRIMARY KEY columns are not yet supported
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/659. Click '+' on the description to raise its priority
--- TODO YB cannot drop multiple tables in one stmt.
-drop table fktable2;
-drop table pktable2;
+drop table pktable2, fktable2;
 -- TODO YugaByte does not support deferrable constraints yet.
 /*
 --
@@ -1829,3 +1814,5 @@ alter table fkpart2.fk_part_1_1 drop constraint my_fkey;	-- doesn't exist
 drop schema fkpart0, fkpart1, fkpart2 cascade;
 \set VERBOSITY default
 */
+-- TODO(jason): remove when issue #1721 is closed or closing.
+DISCARD TEMP;

@@ -63,6 +63,18 @@ struct DBPropertyInfo {
 extern const DBPropertyInfo* GetPropertyInfo(const Slice& property);
 
 #ifndef ROCKSDB_LITE
+enum class InternalDBStatsType {
+  WAL_FILE_BYTES,
+  WAL_FILE_SYNCED,
+  BYTES_WRITTEN,
+  NUMBER_KEYS_WRITTEN,
+  WRITE_DONE_BY_OTHER,
+  WRITE_DONE_BY_SELF,
+  WRITE_WITH_WAL,
+  WRITE_STALL_MICROS,
+  INTERNAL_DB_STATS_ENUM_MAX,
+};
+
 class InternalStats {
  public:
   enum InternalCFStatsType {
@@ -77,18 +89,6 @@ class InternalStats {
     WRITE_STALLS_ENUM_MAX,
     BYTES_FLUSHED,
     INTERNAL_CF_STATS_ENUM_MAX,
-  };
-
-  enum InternalDBStatsType {
-    WAL_FILE_BYTES,
-    WAL_FILE_SYNCED,
-    BYTES_WRITTEN,
-    NUMBER_KEYS_WRITTEN,
-    WRITE_DONE_BY_OTHER,
-    WRITE_DONE_BY_SELF,
-    WRITE_WITH_WAL,
-    WRITE_STALL_MICROS,
-    INTERNAL_DB_STATS_ENUM_MAX,
   };
 
   InternalStats(int num_levels, Env* env, ColumnFamilyData* cfd)
@@ -152,21 +152,6 @@ class InternalStats {
           num_dropped_records(0),
           count(_count) {}
 
-    explicit CompactionStats(const CompactionStats& c)
-        : micros(c.micros),
-          bytes_read_non_output_levels(c.bytes_read_non_output_levels),
-          bytes_read_output_level(c.bytes_read_output_level),
-          bytes_written(c.bytes_written),
-          bytes_moved(c.bytes_moved),
-          num_input_files_in_non_output_levels(
-              c.num_input_files_in_non_output_levels),
-          num_input_files_in_output_level(
-              c.num_input_files_in_output_level),
-          num_output_files(c.num_output_files),
-          num_input_records(c.num_input_records),
-          num_dropped_records(c.num_dropped_records),
-          count(c.count) {}
-
     void Add(const CompactionStats& c) {
       this->micros += c.micros;
       this->bytes_read_non_output_levels += c.bytes_read_non_output_levels;
@@ -218,13 +203,13 @@ class InternalStats {
   }
 
   void AddDBStats(InternalDBStatsType type, uint64_t value) {
-    auto& v = db_stats_[type];
+    auto& v = db_stats_[static_cast<size_t>(type)];
     v.store(v.load(std::memory_order_relaxed) + value,
             std::memory_order_relaxed);
   }
 
   uint64_t GetDBStats(InternalDBStatsType type) {
-    return db_stats_[type].load(std::memory_order_relaxed);
+    return db_stats_[static_cast<size_t>(type)].load(std::memory_order_relaxed);
   }
 
   HistogramImpl* GetFileReadHist(int level) {
@@ -253,7 +238,8 @@ class InternalStats {
   void DumpCFStats(std::string* value);
 
   // Per-DB stats
-  std::atomic<uint64_t> db_stats_[INTERNAL_DB_STATS_ENUM_MAX];
+  std::atomic<uint64_t> db_stats_[
+      static_cast<size_t>(InternalDBStatsType::INTERNAL_DB_STATS_ENUM_MAX)];
   // Per-ColumnFamily stats
   uint64_t cf_stats_value_[INTERNAL_CF_STATS_ENUM_MAX];
   uint64_t cf_stats_count_[INTERNAL_CF_STATS_ENUM_MAX];

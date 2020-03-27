@@ -39,7 +39,8 @@
 
 #include <boost/asio/strand.hpp>
 
-#include <boost/scope_exit.hpp>
+#include <cds/container/basket_queue.h>
+#include <cds/gc/dhp.h>
 
 #include <glog/logging.h>
 
@@ -55,6 +56,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
@@ -132,17 +134,33 @@ class ServicePoolImpl final : public InboundCallHandler {
         rpcs_queue_overflow_(METRIC_rpcs_queue_overflow.Instantiate(entity)),
         check_timeout_strand_(scheduler->io_service()),
         log_prefix_(Format("$0: ", service_->service_name())) {
+
+          // Create per service counter for rpcs_in_queue_.
+          auto id = Format("rpcs_in_queue_$0", service_->service_name());
+          EscapeMetricNameForPrometheus(&id);
+          string description = id + " metric for ServicePoolImpl";
+          rpcs_in_queue_ = entity->FindOrCreateGauge(
+              std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+                  entity->prototype().name(), std::move(id),
+                  description, MetricUnit::kRequests, description)),
+              static_cast<int64>(0) /* initial_value */);
+
+          LOG_WITH_PREFIX(INFO) << "yb::rpc::ServicePoolImpl created at " << this;
   }
 
   ~ServicePoolImpl() {
-    Shutdown();
+    StartShutdown();
+    CompleteShutdown();
+  }
+
+  void CompleteShutdown() {
     shutdown_complete_latch_.Wait();
     while (scheduled_tasks_.load(std::memory_order_acquire) != 0) {
       std::this_thread::sleep_for(10ms);
     }
   }
 
-  void Shutdown() {
+  void StartShutdown() {
     bool closing_state = false;
     if (closing_.compare_exchange_strong(closing_state, true)) {
       service_->Shutdown();
@@ -153,33 +171,29 @@ class ServicePoolImpl final : public InboundCallHandler {
       }
 
       check_timeout_strand_.dispatch([this] {
-        InboundCall* inbound_call;
-        while ((inbound_call = pre_check_timeout_queue_.Pop())) {
-          inbound_call->UnretainSelf();
-        }
+        std::weak_ptr<InboundCall> inbound_call_wrapper;
+        while (pre_check_timeout_queue_.pop(inbound_call_wrapper)) {}
         shutdown_complete_latch_.CountDown();
       });
     }
   }
 
-  void Enqueue(InboundCallPtr call) {
+  void Enqueue(const InboundCallPtr& call) {
     TRACE_TO(call->trace(), "Inserting onto call queue");
 
-    auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
-    if (queued_calls >= max_queued_calls_) {
-      queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-      Overflow(call, "service", queued_calls);
+    auto task = call->BindTask(this);
+    if (!task) {
+      Overflow(call, "service", queued_calls_.load(std::memory_order_relaxed));
       return;
     }
 
     auto call_deadline = call->GetClientDeadline();
     if (call_deadline != CoarseTimePoint::max()) {
-      call->RetainSelf();
-      pre_check_timeout_queue_.Push(call.get());
+      pre_check_timeout_queue_.push(call);
       ScheduleCheckTimeout(call_deadline);
     }
 
-    thread_pool_.Enqueue(call->BindTask(this));
+    thread_pool_.Enqueue(task);
   }
 
   const Counter* RpcsTimedOutInQueueMetricForTests() const {
@@ -192,6 +206,10 @@ class ServicePoolImpl final : public InboundCallHandler {
 
   std::string service_name() const {
     return service_->service_name();
+  }
+
+  ServiceIfPtr TEST_get_service() const {
+    return service_;
   }
 
   void Overflow(const InboundCallPtr& call, const char* type, size_t limit) {
@@ -216,7 +234,6 @@ class ServicePoolImpl final : public InboundCallHandler {
       return;
     }
 
-    queued_calls_.fetch_sub(1, std::memory_order_relaxed);
     if (status.IsServiceUnavailable()) {
       Overflow(call, "global", thread_pool_.options().queue_limit);
       return;
@@ -230,10 +247,6 @@ class ServicePoolImpl final : public InboundCallHandler {
   }
 
   void Handle(InboundCallPtr incoming) override {
-    Handle(std::move(incoming), true);
-  }
-
-  void Handle(InboundCallPtr incoming, bool queued) {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
 
@@ -246,9 +259,6 @@ class ServicePoolImpl final : public InboundCallHandler {
       TRACE_TO(incoming->trace(), "Handling call");
 
       if (incoming->TryStartProcessing()) {
-        if (queued) {
-          queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-        }
         service_->Handle(std::move(incoming));
       }
       return;
@@ -266,7 +276,6 @@ class ServicePoolImpl final : public InboundCallHandler {
  private:
   void TimedOut(InboundCall* call, const char* error_message, Counter* metric) {
     if (call->RespondTimedOutIfPending(error_message)) {
-      queued_calls_.fetch_sub(1, std::memory_order_relaxed);
       metric->Increment();
     }
   }
@@ -294,29 +303,33 @@ class ServicePoolImpl final : public InboundCallHandler {
   }
 
   void CheckTimeout(ScheduledTaskId task_id, CoarseTimePoint time, const Status& status) {
-    BOOST_SCOPE_EXIT(this_, task_id, time) {
+    auto se = ScopeExit([this, task_id, time] {
       auto expected_duration = time.time_since_epoch();
-      this_->next_check_timeout_.compare_exchange_strong(
+      next_check_timeout_.compare_exchange_strong(
           expected_duration, CoarseTimePoint::max().time_since_epoch(),
           std::memory_order_acq_rel);
-      this_->check_timeout_task_.compare_exchange_strong(
-          task_id, kUninitializedScheduledTaskId, std::memory_order_acq_rel);
-      this_->scheduled_tasks_.fetch_sub(1, std::memory_order_acq_rel);
-    } BOOST_SCOPE_EXIT_END;
+      auto expected_task_id = task_id;
+      check_timeout_task_.compare_exchange_strong(
+          expected_task_id, kUninitializedScheduledTaskId, std::memory_order_acq_rel);
+      scheduled_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+    });
     if (!status.ok()) {
       return;
     }
 
     auto now = CoarseMonoClock::now();
     {
-      InboundCall* inbound_call;
-      while ((inbound_call = pre_check_timeout_queue_.Pop())) {
+      std::weak_ptr<InboundCall> weak_inbound_call;
+      while (pre_check_timeout_queue_.pop(weak_inbound_call)) {
+        auto inbound_call = weak_inbound_call.lock();
+        if (!inbound_call) {
+          continue;
+        }
         if (now > inbound_call->GetClientDeadline()) {
-          TimedOut(inbound_call, kTimedOutInQueue, rpcs_timed_out_early_in_queue_.get());
+          TimedOut(inbound_call.get(), kTimedOutInQueue, rpcs_timed_out_early_in_queue_.get());
         } else {
           check_timeout_queue_.emplace(inbound_call);
         }
-        inbound_call->UnretainSelf();
       }
     }
 
@@ -341,14 +354,11 @@ class ServicePoolImpl final : public InboundCallHandler {
     time += kTimeoutCheckGranularity;
     while (CoarseTimePoint(next_check_timeout) > time) {
       if (next_check_timeout_.compare_exchange_weak(
-          next_check_timeout, time.time_since_epoch(),
-          std::memory_order_acq_rel)) {
+              next_check_timeout, time.time_since_epoch(), std::memory_order_acq_rel)) {
         check_timeout_strand_.dispatch([this, time] {
           auto check_timeout_task = check_timeout_task_.load(std::memory_order_acquire);
           if (check_timeout_task != kUninitializedScheduledTaskId) {
             scheduler_.Abort(check_timeout_task);
-          } else {
-            DCHECK_EQ(scheduled_tasks_.load(std::memory_order_acquire), 0);
           }
           scheduled_tasks_.fetch_add(1, std::memory_order_acq_rel);
           auto task_id = scheduler_.Schedule(
@@ -369,6 +379,26 @@ class ServicePoolImpl final : public InboundCallHandler {
     return log_prefix_;
   }
 
+  bool CallQueued() override {
+    auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
+    if (queued_calls < 0) {
+      YB_LOG_EVERY_N_SECS(DFATAL, 5) << "Negative number of queued calls: " << queued_calls;
+    }
+
+    if (queued_calls >= max_queued_calls_) {
+      queued_calls_.fetch_sub(1, std::memory_order_relaxed);
+      return false;
+    }
+
+    rpcs_in_queue_->Increment();
+    return true;
+  }
+
+  void CallDequeued() override {
+    queued_calls_.fetch_sub(1, std::memory_order_relaxed);
+    rpcs_in_queue_->Decrement();
+  }
+
   const size_t max_queued_calls_;
   ThreadPool& thread_pool_;
   Scheduler& scheduler_;
@@ -377,15 +407,18 @@ class ServicePoolImpl final : public InboundCallHandler {
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_timed_out_early_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;
+  scoped_refptr<AtomicGauge<int64_t>> rpcs_in_queue_;
   // Have to use CoarseDuration here, since CoarseTimePoint does not work with clang + libstdc++
   std::atomic<CoarseDuration> last_backpressure_at_{CoarseTimePoint().time_since_epoch()};
-  std::atomic<size_t> queued_calls_{0};
+  std::atomic<int64_t> queued_calls_{0};
 
   // It is too expensive to update timeout priority queue when each call is received.
   // So we are doing the following trick.
   // All calls are added to pre_check_timeout_queue_, w/o priority.
   // Then before timeout check we move calls from this queue to priority queue.
-  MPSCQueue<InboundCall> pre_check_timeout_queue_;
+  typedef cds::container::BasketQueue<cds::gc::DHP, std::weak_ptr<InboundCall>>
+      PreCheckTimeoutQueue;
+  PreCheckTimeoutQueue pre_check_timeout_queue_;
 
   // Used to track scheduled time, to avoid unnecessary rescheduling.
   std::atomic<CoarseDuration> next_check_timeout_{CoarseTimePoint::max().time_since_epoch()};
@@ -403,8 +436,8 @@ class ServicePoolImpl final : public InboundCallHandler {
     // We use weak pointer to avoid retaining call that was already processed.
     std::weak_ptr<InboundCall> call;
 
-    explicit QueuedCheckDeadline(InboundCall* inp)
-        : time(inp->GetClientDeadline()), call(shared_from(inp)) {
+    explicit QueuedCheckDeadline(const InboundCallPtr& inp)
+        : time(inp->GetClientDeadline()), call(inp) {
     }
   };
 
@@ -432,8 +465,12 @@ ServicePool::ServicePool(size_t max_tasks,
 ServicePool::~ServicePool() {
 }
 
-void ServicePool::Shutdown() {
-  impl_->Shutdown();
+void ServicePool::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void ServicePool::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 void ServicePool::QueueInboundCall(InboundCallPtr call) {
@@ -441,7 +478,7 @@ void ServicePool::QueueInboundCall(InboundCallPtr call) {
 }
 
 void ServicePool::Handle(InboundCallPtr call) {
-  impl_->Handle(std::move(call), false /* queued */);
+  impl_->Handle(std::move(call));
 }
 
 const Counter* ServicePool::RpcsTimedOutInQueueMetricForTests() const {
@@ -454,6 +491,10 @@ const Counter* ServicePool::RpcsQueueOverflowMetric() const {
 
 std::string ServicePool::service_name() const {
   return impl_->service_name();
+}
+
+ServiceIfPtr ServicePool::TEST_get_service() const {
+  return impl_->TEST_get_service();
 }
 
 } // namespace rpc

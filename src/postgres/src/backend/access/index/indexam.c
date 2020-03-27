@@ -239,7 +239,7 @@ index_insert(Relation indexRelation,
 
 /* ----------------
  *		index_delete - delete an index tuple from a relation.
- *      This is used only for indexes backed by YugaByte DB. For Postgres, when a tuple is updated,
+ *      This is used only for indexes backed by YugabyteDB. For Postgres, when a tuple is updated,
  *      the ctid of the original tuple will be invalid (except for heap-only tuple (HOT)). Because
  *      of this, index entries of the original tuple do not need to be deleted in UPDATE. For
  *      YugaByte-based tables, the ybctid is the primary key of the tuple and will remain valid
@@ -634,18 +634,14 @@ HeapTuple
 index_fetch_heap(IndexScanDesc scan)
 {
 	/*
-	 * For YugaByte secondary indexes, we need to select from the base table using
-	 * ybctid. For primary keys, the row is already prepared in "xs_hitup" that can
-	 * be returned directly.
+	 * For YugaByte secondary indexes, there are two scenarios.
+	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
+	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
 	 */
 	if (IsYugaByteEnabled())
 	{
-		if (scan->indexRelation->rd_index->indisprimary)
-		{
-			Assert(scan->xs_hitup != 0);
+		if (scan->xs_hitup != 0)
 			return scan->xs_hitup;
-		}
-
 		return YBCFetchTuple(scan->heapRelation, scan->xs_ctup.t_ybctid);
 	}
 

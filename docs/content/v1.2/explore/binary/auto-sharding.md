@@ -9,7 +9,7 @@ $ ./bin/yb-ctl destroy
 Start a new local universe with a replication factor of 1 (rf=1). We are passing the following options/flags:
 
 - `--rf 1` This creates a universe with a replication factor of 1.
-- `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By making this number 4, we will end up creating 12 tablets on a 3 node cluster. 
+- `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By making this number 4, we will end up creating 12 tablets on a 3 node cluster.
 - `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to 1MB. We do this in order to force a flush of the data to disk when we insert a value more than 1MB, so that we can observe which tablets the data gets written to.
 
 You can do this as shown below.
@@ -40,7 +40,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node Count: 3 | Replication Factor: 1                                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/cqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
@@ -50,7 +50,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node 1: yb-tserver (pid 72053), yb-master (pid 72050)                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/cqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
@@ -61,7 +61,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node 2: yb-tserver (pid 72128)                                                                   |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : postgresql://postgres@127.0.0.2:5433                                       |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/cqlsh 127.0.0.2 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.2 -p 6379                                       |
@@ -71,8 +71,8 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node 3: yb-tserver (pid 72166)                                                                   |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : postgresql://postgres@127.0.0.3:5433                                       |
-| YSQL                : ./bin/ysqlsh -U postgres -h 127.0.0.3 -p 5433                                |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
+| YSQL                : ./bin/ysqlsh -U postgres -h 127.0.0.3 -p 5433                              |
 | YCQL                : ./bin/cqlsh 127.0.0.3 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.3 -p 6379                                       |
 | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-3/disk-1/yb-data                      |
@@ -99,7 +99,7 @@ cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blo
 ```
 
 
-For each table, we have instructed YugaByte DB to create 4 shards per tserver present in the universe. Since we have 3 nodes, we expect 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
+For each table, we have instructed YugabyteDB to create 4 shards per tserver present in the universe. Since we have 3 nodes, we expect 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
 
 
 ## 3. Explore tablets
@@ -156,7 +156,7 @@ Let us insert a key-value entry, with the value size around 2MB. Since the memst
 Download the sample app jar.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run the workload.

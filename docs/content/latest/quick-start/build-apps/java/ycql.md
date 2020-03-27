@@ -1,7 +1,7 @@
 ---
-title: Build a Java App
-linkTitle: Build a Java App
-description: Build a Java App
+title: Use Java to build a YugabyteDB application
+linkTitle: Build a Java app
+description: Follow this tutorial to use Java and YCQL to build a simple YugabyteDB application.
 menu:
   latest:
     parent: build-apps
@@ -23,7 +23,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data JPA with Hibernate
+      YSQL - Spring Data JPA
     </a>
   </li>
   <li>
@@ -34,11 +34,9 @@ showAsideToc: true
   </li>
 </ul>
 
-
-
 ## Maven
 
-To build your Java application using the YugaByte DB Cassandra driver, add the following Maven dependency to your application:
+To build your Java application using the YugabyteDB Cassandra driver, add the following Maven dependency to your application:
 
 ```mvn
 <dependency>
@@ -48,18 +46,16 @@ To build your Java application using the YugaByte DB Cassandra driver, add the f
 </dependency>
 ```
 
-
 ## Working Example
 
 ### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../quick-start/test-cassandra/).
 - installed JDK version 1.8+ and maven 3.3+
 
-
-### Creating the maven build file
+### Create the Maven build file
 
 Create a maven build file `pom.xml` and add the following content into it.
 
@@ -178,8 +174,7 @@ public class YBCqlHelloWorld {
 }
 ```
 
-
-### Building and running the app
+### Build and run the application
 
 To build the application, just run the following command.
 
@@ -187,7 +182,7 @@ To build the application, just run the following command.
 $ mvn package
 ```
 
-To run the program, do the following.
+To run the program, run the following command.
 
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBCqlHelloWorld

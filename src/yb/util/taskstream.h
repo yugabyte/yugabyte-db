@@ -32,17 +32,7 @@
 
 using namespace std::chrono_literals;
 
-// We have to make the queue length really long.
-// Note that the lock-free queue seems to be preallocating memory proportional to the queue size
-// (about 64 bytes per entry for 8-byte pointer keys)
-DEFINE_int32(taskstream_queue_max_size, 100000,
-             "Maximum number of operations waiting in the taskstream queue.");
-
-DEFINE_int32(taskstream_queue_max_wait_ms, 1000,
-             "Maximum time in ms to wait for items in the taskstream queue to arrive.");
-
 using std::vector;
-
 
 namespace yb {
 class ThreadPool;
@@ -62,7 +52,10 @@ template <typename T>
 // This feature is used for the preparer and appender functionality.
 class TaskStream {
  public:
-  explicit TaskStream(std::function<void(T*)> process_item, ThreadPool* thread_pool);
+  explicit TaskStream(std::function<void(T*)> process_item,
+                      ThreadPool* thread_pool,
+                      int32_t queue_max_size,
+                      const MonoDelta& queue_max_wait);
   ~TaskStream();
 
   CHECKED_STATUS Start();
@@ -83,7 +76,10 @@ class TaskStream {
 template <typename T>
 class TaskStreamImpl {
  public:
-  explicit TaskStreamImpl(std::function<void(T*)> process_item, ThreadPool* thread_pool);
+  explicit TaskStreamImpl(std::function<void(T*)> process_item,
+                          ThreadPool* thread_pool,
+                          int32_t queue_max_size,
+                          const MonoDelta& queue_max_wait);
   ~TaskStreamImpl();
   CHECKED_STATUS Start();
   void Stop();
@@ -117,15 +113,22 @@ class TaskStreamImpl {
   std::unique_ptr<ThreadPoolToken> taskstream_pool_token_;
   std::function<void(T*)> process_item_;
 
+  // Maximum time to wait for the queue to become non-empty.
+  const MonoDelta queue_max_wait_;
+
   void Run();
   void ProcessItem(T* item);
 };
 
 template <typename T>
-TaskStreamImpl<T>::TaskStreamImpl(std::function<void(T*)> process_item, ThreadPool* thread_pool)
-    : queue_(FLAGS_taskstream_queue_max_size),
+TaskStreamImpl<T>::TaskStreamImpl(std::function<void(T*)> process_item,
+                                  ThreadPool* thread_pool,
+                                  int32_t queue_max_size,
+                                  const MonoDelta& queue_max_wait)
+    : queue_(queue_max_size),
       taskstream_pool_token_(thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL)),
-      process_item_(process_item) {
+      process_item_(process_item),
+      queue_max_wait_(queue_max_wait) {
 }
 
 template <typename T>
@@ -160,7 +163,7 @@ template <typename T> Status TaskStreamImpl<T>::Submit(T *task) {
   if (!queue_.BlockingPut(task)) {
     return STATUS_FORMAT(ServiceUnavailable,
                          "TaskStream queue is full (max capacity $0)",
-                         FLAGS_taskstream_queue_max_size);
+                         queue_.max_size());
   }
 
   int expected = 0;
@@ -182,8 +185,7 @@ Status TaskStreamImpl<T>::TEST_SubmitFunc(const std::function<void()>& func) {
 template <typename T> void TaskStreamImpl<T>::Run() {
   VLOG(1) << "Starting taskstream task:" << this;
   for (;;) {
-    MonoTime wait_timeout_deadline = MonoTime::Now() + MonoDelta::FromMilliseconds(
-        FLAGS_taskstream_queue_max_wait_ms);
+    MonoTime wait_timeout_deadline = MonoTime::Now() + queue_max_wait_;
     std::vector<T *> group;
     queue_.BlockingDrainTo(&group, wait_timeout_deadline);
     if (!group.empty()) {
@@ -220,8 +222,12 @@ template <typename T> void TaskStreamImpl<T>::ProcessItem(T* item) {
 // TaskStream
 
 template <typename T>
-TaskStream<T>::TaskStream(std::function<void(T *)> process_item, ThreadPool* thread_pool)
-    : impl_(std::make_unique<TaskStreamImpl<T>>(process_item, thread_pool)) {
+TaskStream<T>::TaskStream(std::function<void(T *)> process_item,
+                          ThreadPool* thread_pool,
+                          int32_t queue_max_size,
+                          const MonoDelta& queue_max_wait)
+    : impl_(std::make_unique<TaskStreamImpl<T>>(
+        process_item, thread_pool, queue_max_size, queue_max_wait)) {
 }
 
 template <typename T>

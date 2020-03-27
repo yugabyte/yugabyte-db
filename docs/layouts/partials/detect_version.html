@@ -1,5 +1,5 @@
 {{ $context := . }}
-{{ $path := split .Dir "/" }}
+{{ $path := split .File.Dir "/" }}
 {{ $title := (index $path 0) }}
 {{ $title := cond (and (not $title) (eq .Type "search")) "latest" $title }}
 {{ range $index,$value := .Site.Menus }}

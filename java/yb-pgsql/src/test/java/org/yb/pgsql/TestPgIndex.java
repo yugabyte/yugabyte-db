@@ -28,13 +28,13 @@ import java.util.Arrays;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value= YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestPgIndex extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgIndex.class);
 
   @Test
   public void testConcurrentInsert() throws Exception {
-    try (Statement statement = createConnection().createStatement()) {
+    try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE t(value INT NOT NULL UNIQUE, worker_idx INT NOT NULL)");
       final int recordCount = 500;
       Worker[] workers = new Worker[3];
@@ -93,7 +93,7 @@ public class TestPgIndex extends BasePgSQLTest {
       LOG.info("Worker {} started", idx_);
       int inserted = 0;
       try (Statement statement = connection_.createStatement()) {
-        for(int i = 0; i < count_; ++i) {
+        for (int i = 0; i < count_; ++i) {
           try {
             statement.execute(String.format("INSERT INTO t values(%d, %d)", i, idx_));
             ++inserted;
@@ -107,6 +107,29 @@ public class TestPgIndex extends BasePgSQLTest {
         LOG.error("Exception", e);
       }
       insertedCount_ = inserted;
+    }
+  }
+
+  @Test
+  public void testCreateTableWithDuplicateIndexes() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int," +
+          "CONSTRAINT tt_id_pkey PRIMARY KEY(id)," +
+          "CONSTRAINT tt_id_unq UNIQUE(id))");
+
+      statement.execute("INSERT INTO test_table(id) VALUES (1), (2), (3)");
+
+      // Primary key was added.
+      runInvalidQuery(
+          statement,
+          "INSERT INTO test_table VALUES (1)",
+          "duplicate key value violates unique constraint \"tt_id_pkey\""
+      );
+
+      // Unique constraint was not added.
+      assertQuery(statement,
+          "SELECT indexname FROM pg_indexes WHERE tablename='test_table'",
+          new Row("tt_id_pkey"));
     }
   }
 }

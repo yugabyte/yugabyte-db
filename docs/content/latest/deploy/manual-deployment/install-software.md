@@ -1,7 +1,8 @@
 ---
-title: Install Software
-linkTitle: 2. Install Software
-description: Install Software
+title: Install YugabyteDB software
+headerTitle: Install software
+linkTitle: 2. Install software
+description: Download and install YugabyteDB software to each node
 aliases:
   - /deploy/manual-deployment/install-software
 menu:
@@ -13,16 +14,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Install the software on each of the nodes using the steps shown below.
+Install YugabyteDB on each of the nodes using the steps shown below.
 
 ## Download
 
-Download the YugaByte CE binary package as described in the [Quick Start section](../../../quick-start/install/).
+Download the YugabyteDB binary package as described in the [Quick Start section](../../../quick-start/install/).
 
-Copy the YugaByte DB package into each instace and then running the following commands.
+Copy the YugabyteDB package into each instance and then run the following commands.
 
 ```sh
-$ tar xvfz yugabyte-ce-<version>-<os>.tar.gz && cd yugabyte-<version>/
+$ tar xvfz yugabyte-<version>-<os>.tar.gz && cd yugabyte-<version>/
 ```
 
 ## Configure

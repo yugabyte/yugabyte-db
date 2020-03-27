@@ -1,7 +1,7 @@
 
 ## Installation
 
-Install the Ruby YCQL driver using the following command. You can get further details for the driver [here](https://github.com/YugaByte/cassandra-ruby-driver).
+Install the Ruby YCQL driver using the following command. You can get further details for the driver [here](https://github.com/yugabyte/cassandra-ruby-driver).
 
 ```sh
 $ gem install yugabyte-ycql-driver
@@ -13,7 +13,7 @@ $ gem install yugabyte-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
 
 
 ### Writing the Ruby code

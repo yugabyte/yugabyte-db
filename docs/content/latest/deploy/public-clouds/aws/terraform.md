@@ -1,8 +1,41 @@
+---
+title: Deploy YugabyteDB in Amazon Web Services with Terraform
+headerTitle: Amazon Web Services
+linkTitle: Amazon Web Services
+description: Deploy YugabyteDB in Amazon Web Services with Terraform.
+menu:
+  latest:
+    identifier: deploy-in-aws-2-terraform
+    parent: public-clouds
+    weight: 630
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link">
+      <i class="icon-shell"></i>
+      CloudFormation
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/terraform" class="nav-link active">
+      <i class="icon-shell"></i>
+      Terraform
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+      <i class="icon-shell"></i>
+      Manual deployment
+    </a>
+  </li>
+</ul>
 
 ## Prerequisites
 
 1. Download and install [terraform](https://www.terraform.io/downloads.html). 
-
 
 2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
 
@@ -21,10 +54,9 @@ Common commands:
     fmt                Rewrites config files to canonical format
 ```
 
-
 ## 1. Create a terraform config file
 
-Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/YugaByte/terraform-aws-yugabyte).
+Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/yugabyte/terraform-aws-yugabyte).
 
 ```sh
 provider "aws" {
@@ -36,7 +68,7 @@ provider "aws" {
 
 module "yugabyte-db-cluster" {
   # The source module used for creating AWS clusters.
-  source = "github.com/YugaByte/terraform-aws-yugabyte"
+  source = "github.com/Yugabyte/terraform-aws-yugabyte"
 
   # The name of the cluster to be created, change as per need.
   cluster_name = "test-cluster"
@@ -54,7 +86,7 @@ module "yugabyte-db-cluster" {
   vpc_id = "VPC_ID_HERE"
   subnet_ids = ["SUBNET_ID_HERE"]
 
-  # Replication factor of the YugaByte DB cluster.
+  # Replication factor of the YugabyteDB cluster.
   replication_factor = "3"
 
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
@@ -104,7 +136,6 @@ You can check the state of the nodes at any point by running the following comma
 $ terraform show
 ```
 
-
 ## 3. Verify resources created
 
 The following resources are created by this module:
@@ -113,7 +144,7 @@ The following resources are created by this module:
 
 For cluster named `test-cluster`, the instances will be named `yb-ce-test-cluster-n1`, `yb-ce-test-cluster-n2`, `yb-ce-test-cluster-n3`.
 
-- `module.yugabyte-db-cluster.aws_security_group.yugabyte` The security group that allows the various clients to access the YugaByte DB cluster.
+- `module.yugabyte-db-cluster.aws_security_group.yugabyte` The security group that allows the various clients to access the YugabyteDB cluster.
 
 For cluster named `test-cluster`, this security group will be named `yb-ce-test-cluster` with the ports 7000, 9000, 9042 and 6379 open to all other instances in the same security group.
 
@@ -121,9 +152,9 @@ For cluster named `test-cluster`, this security group will be named `yb-ce-test-
 
 For cluster named `test-cluster`, this security group will be named `yb-ce-test-cluster-intra` with the ports 7100, 9100 open to all other instances in the same security group.
 
-- `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugaByte DB universe.
+- `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugabyteDB universe.
 
-## 4. Destroy the cluster (optional)
+## 4. [Optional] Destroy the cluster
 
 To destroy what we just created, you can run the following command.
 

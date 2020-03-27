@@ -127,8 +127,7 @@ class LogIndex::IndexChunk : public RefCountedThreadSafe<LogIndex::IndexChunk> {
 namespace  {
 Status CheckError(int rc, const char* operation) {
   if (PREDICT_FALSE(rc < 0)) {
-    int err = errno;
-    return STATUS(IOError, operation, ErrnoToString(err), err);
+    return STATUS(IOError, operation, Errno(errno));
   }
   return Status::OK();
 }
@@ -158,8 +157,7 @@ Status LogIndex::IndexChunk::Open() {
   mapping_ = static_cast<uint8_t*>(mmap(nullptr, kChunkFileSize, PROT_READ | PROT_WRITE,
                                         MAP_SHARED, fd_, 0));
   if (mapping_ == nullptr) {
-    int err = errno;
-    return STATUS(IOError, "Unable to mmap()", ErrnoToString(err), err);
+    return STATUS(IOError, "Unable to mmap()", Errno(err));
   }
 
   return Status::OK();
@@ -236,13 +234,13 @@ Status LogIndex::GetChunkForIndex(int64_t log_index, bool create,
 
 Status LogIndex::AddEntry(const LogIndexEntry& entry) {
   scoped_refptr<IndexChunk> chunk;
-  RETURN_NOT_OK(GetChunkForIndex(entry.op_id.index(),
+  RETURN_NOT_OK(GetChunkForIndex(entry.op_id.index,
                                  true /* create if not found */,
                                  &chunk));
-  int index_in_chunk = entry.op_id.index() % kEntriesPerIndexChunk;
+  int index_in_chunk = entry.op_id.index % kEntriesPerIndexChunk;
 
   PhysicalEntry phys;
-  phys.term = entry.op_id.term();
+  phys.term = entry.op_id.term;
   phys.segment_sequence_number = entry.segment_sequence_number;
   phys.offset_in_segment = entry.offset_in_segment;
 
@@ -265,7 +263,7 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
     return STATUS(NotFound, "entry not found");
   }
 
-  entry->op_id = consensus::MakeOpId(phys.term, index);
+  entry->op_id = yb::OpId(phys.term, index);
   entry->segment_sequence_number = phys.segment_sequence_number;
   entry->offset_in_segment = phys.offset_in_segment;
 
@@ -303,7 +301,7 @@ void LogIndex::GC(int64_t min_index_to_retain) {
 
 string LogIndexEntry::ToString() const {
   return Substitute("op_id=$0.$1 segment_sequence_number=$2 offset=$3",
-                    op_id.term(), op_id.index(),
+                    op_id.term, op_id.index,
                     segment_sequence_number,
                     offset_in_segment);
 }

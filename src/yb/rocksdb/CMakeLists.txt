@@ -134,7 +134,7 @@ set(ROCKSDB_SRCS
     util/hash.cc
     util/histogram.cc
     util/instrumented_mutex.cc
-    util/iostats_context.cc
+    util/timeout_error.cc
     utilities/backupable/backupable_db.cc
     utilities/convenience/info_log_finder.cc
     utilities/checkpoint/checkpoint.cc
@@ -178,7 +178,6 @@ set(ROCKSDB_SRCS
     util/options_parser.cc
     util/options_sanity_check.cc
     util/perf_context.cc
-    util/perf_level.cc
     util/random.cc
     util/rate_limiter.cc
     util/slice_transform.cc
@@ -225,11 +224,12 @@ add_library(rocksdb_tools
   tools/ldb_cmd.cc
   tools/ldb_tool.cc
   tools/sst_dump_tool.cc)
-target_link_libraries(rocksdb_tools rocksdb)
+target_link_libraries(rocksdb_tools rocksdb yb_rocksutil)
 
 macro(ADD_YB_ROCKSDB_TOOL tool)
   add_executable(${tool} tools/${tool}.cc)
   target_link_libraries(${tool} rocksdb_tools)
+  set_target_properties(${tool} PROPERTIES COMPILE_FLAGS "-DDISABLE_STATUS_NODISCARD")
 endmacro()
 
 set(ROCKSDB_TEST_UTIL_SRCS
@@ -244,7 +244,7 @@ if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
 endif()
 
 add_library(rocksdb_test_util ${ROCKSDB_TEST_UTIL_SRCS})
-target_link_libraries(rocksdb_test_util gmock rocksdb)
+target_link_libraries(rocksdb_test_util gmock rocksdb yb_rocksutil)
 
 ADD_YB_ROCKSDB_TOOL(sst_dump)
 add_executable(db_bench tools/db_bench.cc tools/db_bench_tool.cc)
@@ -260,7 +260,7 @@ target_link_libraries(rocksdb_dump rocksdb_tools)
 add_executable(rocksdb_undump tools/dump/rocksdb_undump.cc)
 target_link_libraries(rocksdb_undump rocksdb_tools)
 
-set(YB_TEST_LINK_LIBS rocksdb_test_util rocksdb ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS rocksdb_test_util rocksdb ${YB_MIN_TEST_LIBS} rocksdb_tools)
 
 ADD_YB_TEST(db/compaction_job_test)
 ADD_YB_TEST(db/compaction_picker_test)
@@ -291,7 +291,6 @@ ADD_YB_TEST(table/full_filter_block_test)
 ADD_YB_TEST(table/fixed_size_filter_block_test)
 ADD_YB_TEST(table/merger_test)
 ADD_YB_TEST(table/table_test)
-ADD_YB_TEST(tools/ldb_cmd_test)
 ADD_YB_TEST(tools/sst_dump_test)
 ADD_YB_TEST(util/arena_test)
 ADD_YB_TEST(util/autovector_test)
@@ -304,7 +303,6 @@ ADD_YB_TEST(util/env_test)
 ADD_YB_TEST(util/event_logger_test)
 ADD_YB_TEST(util/filelock_test)
 ADD_YB_TEST(util/histogram_test)
-ADD_YB_TEST(util/iostats_context_test)
 ADD_YB_TEST(util/memenv_test)
 ADD_YB_TEST(util/mock_env_test)
 ADD_YB_TEST(util/options_test)
@@ -343,6 +341,7 @@ ADD_YB_TEST(db/db_inplace_update_test)
 ADD_YB_TEST(db/db_iter_test)
 ADD_YB_TEST(db/db_log_iter_test)
 ADD_YB_TEST(db/db_properties_test)
+ADD_YB_TEST(db/db_sst_test)
 ADD_YB_TEST(db/db_table_properties_test)
 ADD_YB_TEST(db/db_tailing_iter_test)
 ADD_YB_TEST(db/db_test)
@@ -358,6 +357,7 @@ ADD_YB_TEST(db/version_edit_test)
 ADD_YB_TEST(db/write_callback_test)
 ADD_YB_TEST(table/cuckoo_table_builder_test)
 ADD_YB_TEST(table/cuckoo_table_reader_test)
+ADD_YB_TEST(tools/ldb_cmd_test)
 ADD_YB_TEST(tools/reduce_levels_test)
 ADD_YB_TEST(util/delete_scheduler_test)
 ADD_YB_TEST(util/thread_local_test)

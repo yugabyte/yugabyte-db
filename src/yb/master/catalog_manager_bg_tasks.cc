@@ -39,6 +39,7 @@
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/cluster_balance.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/util/flag_tags.h"
 
 using std::shared_ptr;
@@ -140,16 +141,24 @@ void CatalogManagerBgTasks::Run() {
       } else {
         catalog_manager_->load_balance_policy_->RunLoadBalancer();
       }
+
+      if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
+        catalog_manager_->CleanUpDeletedTables();
+      }
+      std::vector<scoped_refptr<CDCStreamInfo>> streams;
+      auto s = catalog_manager_->FindCDCStreamsMarkedAsDeleting(&streams);
+      if (s.ok() && !streams.empty()) {
+        s = catalog_manager_->CleanUpDeletedCDCStreams(streams);
+      }
     }
-
-    // if (!to_delete.empty()) {
-    //   // TODO: Run the cleaner
-    // }
-
+    WARN_NOT_OK(catalog_manager_->encryption_manager_->
+                GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),
+                "Could not schedule GetUniverseKeyRegistry task.");
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add
     //  - HandleReportedTablet/ProcessPendingAssignments will call WakeIfHasPendingUpdates()
     //    to notify about tablets creation.
+    //  - DeleteTable will call Wake() to finish destructing any table internals
     l.Unlock();
     Wait(FLAGS_catalog_manager_bg_task_wait_ms);
   }

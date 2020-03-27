@@ -1,6 +1,41 @@
-# Prerequisites
-1. Download and install [terraform](https://www.terraform.io/downloads.html). 
+---
+title: Deploy YugabyteDB in Google Cloud Platform with Terraform
+headerTitle: Google Cloud Platform
+linkTitle: Google Cloud Platform
+description: Use Terraform to deploy a YugabyteDB cluster in Google Cloud Platform.
+aliases:
+  - /latest/deploy/public-clouds/gcp/
+menu:
+  latest:
+    identifier: deploy-in-gcp-1-terraform
+    parent: public-clouds
+    weight: 640
+---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link active">
+      <i class="icon-shell"></i>
+      Terraform
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/terraform" class="nav-link">
+      <i class="icon-shell"></i>
+      Google Cloud Deployment Manager
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+      <<i class="fas fa-cubes" aria-hidden="true"></i>
+      Google Kubernetes Engine (GKE)
+    </a>
+  </li>
+</ul>
+
+## Prerequisites
+
+1. Download and install [terraform](https://www.terraform.io/downloads.html).
 
 2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
 
@@ -19,25 +54,28 @@ Common commands:
     fmt                Rewrites config files to canonical format
 ```
 
+## 1. Create a terraform configuration file
 
-## 1. Create a terraform config file
-* First create a terraform file with provider details 
-  ```
-  provider "google" 
-  { 
-    # Provide your Creadentilals 
+* First, create a terraform file with provider details.
+
+```
+  provider "google"
+  {
+    # Provide your Creadentilals
     credentials = "${file("yugabyte-pcf-bc8114281026.json")}"
 
-    # The name of your GCP project 
+    # The name of your GCP project
     project = "<Your-GCP-Project-Name>"
   }
-  ```
-  **NOTE:** :- You can get credentials file by following steps given [here](https://cloud.google.com/docs/authentication/getting-started) 
+```
 
-* Now add the yugabyte terraform module to your file 
-  ```
+  **NOTE:** :- You can get credentials file by following steps given [here](https://cloud.google.com/docs/authentication/getting-started)
+
+* Now add the Yugabyte Terraform module to your file.
+
+```
   module "yugabyte-db-cluster" {
-  source = "github.com/YugaByte/terraform-gcp-yugabyte.git"
+  source = "github.com/Yugabyte/terraform-gcp-yugabyte.git"
 
   # The name of the cluster to be created.
   cluster_name = "test-cluster"
@@ -56,8 +94,7 @@ Common commands:
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
   node_count = "3"
   }
-  ```
-
+```
 
 ## 2. Create a cluster
 
@@ -67,12 +104,11 @@ Init terraform first if you have not already done so.
 $ terraform init
 ```
 
-To check what changes are going to happen in environment run the following 
+To check what changes are going to happen in environment run the following
 
 ```sh
 $ terraform plan
 ```
-
 
 Now run the following to create the instances and bring up the cluster.
 
@@ -93,22 +129,24 @@ You can check the state of the nodes at any point by running the following comma
 ```sh
 $ terraform show
 ```
+
 ## 3. Verify resources created
+
 The following resources are created by this module:
 
 - `module.terraform-gcp-yugabyte.google_compute_instance.yugabyte_node` The GCP VM instances.
 
 For cluster named `test-cluster`, the instances will be named `yugabyte-test-cluster-n1`, `yugabyte-test-cluster-n2`, `yugabyte-test-cluster-n3`.
 
-- `module.terraform-gcp-yugabyte.google_compute_firewall.YugaByte-Firewall` The firwall rule that allows the various clients to access the YugaByte DB cluster.
+- `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Firewall` The firwall rule that allows the various clients to access the YugabyteDB cluster.
 
 For cluster named `test-cluster`, this firewall rule will be named `default-yugabyte-test-cluster-firewall` with the ports 7000, 9000, 9042 and 6379 open to all.
 
-- `module.terraform-gcp-yugabyte.google_compute_firewall.YugaByte-Intra-Firewall` The firewall rule that allows communication internal to the cluster.
+- `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Intra-Firewall` The firewall rule that allows communication internal to the cluster.
 
 For cluster named `test-cluster`, this firewall rule will be named `default-yugabyte-test-cluster-intra-firewall` with the ports 7100, 9100 open to all other vm instances in the same network.
 
-- `module.terraform-gcp-yugabyte.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugaByte DB universe.
+- `module.terraform-gcp-yugabyte.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugabyteDB universe.
 
 ## 4. Destroy the cluster (optional)
 

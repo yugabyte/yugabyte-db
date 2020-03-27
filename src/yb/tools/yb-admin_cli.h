@@ -37,13 +37,20 @@
 #include <vector>
 #include <string>
 
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
+namespace client {
+
+class YBTableName;
+
+} // namespace client
+
 namespace tools {
 
 class ClusterAdminClient;
-typedef YB_EDITION_NS_PREFIX ClusterAdminClient ClusterAdminClientClass;
+typedef enterprise::ClusterAdminClient ClusterAdminClientClass;
 
 // Tool to administer a cluster from the CLI.
 class ClusterAdminCli {
@@ -52,9 +59,9 @@ class ClusterAdminCli {
 
   virtual ~ClusterAdminCli() = default;
 
-  int Run(int argc, char** argv);
+  Status Run(int argc, char** argv);
 
-  static void UsageAndExit(const std::string& prog_name);
+  static const Status kInvalidArguments;
 
  protected:
   typedef std::function<Status(const CLIArguments&)> CommandFn;
@@ -73,6 +80,10 @@ class ClusterAdminCli {
   std::vector<Command> commands_;
   std::map<std::string, size_t> command_indexes_;
 };
+
+Result<client::YBTableName> ResolveTableName(ClusterAdminClientClass* client,
+                                             const string& full_namespace_name,
+                                             const string& table_name);
 
 }  // namespace tools
 }  // namespace yb

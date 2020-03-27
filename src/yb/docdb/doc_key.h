@@ -42,12 +42,16 @@ using DocKeyHash = uint16_t;
 
 // A key that allows us to locate a document. This is the prefix of all RocksDB keys of records
 // inside this document. A document key contains:
+//   - An optional ID (cotable id or pgtable id).
 //   - An optional fixed-width hash prefix.
 //   - A group of primitive values representing "hashed" components (this is what the hash is
 //     computed based on, so this group is present/absent together with the hash).
 //   - A group of "range" components suitable for doing ordered scans.
 //
 // The encoded representation of the key is as follows:
+//   - Optional ID:
+//     * For cotable id, the byte ValueType::kTableId followed by a sixteen byte UUID.
+//     * For pgtable id, the byte ValueType::kPgTableOid followed by a four byte PgTableId.
 //   - Optional fixed-width hash prefix, followed by hashed components:
 //     * The byte ValueType::kUInt16Hash, followed by two bytes of the hash prefix.
 //     * Hashed components:
@@ -59,8 +63,9 @@ using DocKeyHash = uint16_t;
 //        representation of the respective type (see PrimitiveValue's key encoding).
 //     2. ValueType::kGroupEnd terminates the sequence.
 enum class DocKeyPart {
+  UP_TO_HASH,
+  UP_TO_ID,
   WHOLE_DOC_KEY,
-  HASHED_PART_ONLY
 };
 
 class DocKeyDecoder;
@@ -90,6 +95,20 @@ class DocKey {
          std::vector<PrimitiveValue> hashed_components,
          std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
 
+  DocKey(const Uuid& cotable_id,
+         DocKeyHash hash,
+         std::vector<PrimitiveValue> hashed_components,
+         std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
+
+  DocKey(PgTableOid pgtable_id,
+         DocKeyHash hash,
+         std::vector<PrimitiveValue> hashed_components,
+         std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
+
+  explicit DocKey(const Uuid& cotable_id);
+
+  explicit DocKey(PgTableOid pgtable_id);
+
   // Constructors to create a DocKey for the given schema to support co-located tables.
   explicit DocKey(const Schema& schema);
   DocKey(const Schema& schema, DocKeyHash hash);
@@ -112,8 +131,24 @@ class DocKey {
 
   // Resize the range components:
   //  - drop elements (primitive values) from the end if new_size is smaller than the old size.
-  //  - append kNull primitive values (default constructor) if new_size is bigger than the old size.
+  //  - append default primitive values (kNullLow) if new_size is bigger than the old size.
   void ResizeRangeComponents(int new_size);
+
+  const Uuid& cotable_id() const {
+    return cotable_id_;
+  }
+
+  bool has_cotable_id() const {
+    return !cotable_id_.IsNil();
+  }
+
+  const PgTableOid pgtable_id() const {
+    return pgtable_id_;
+  }
+
+  bool has_pgtable_id() const {
+    return pgtable_id_ > 0;
+  }
 
   DocKeyHash hash() const {
     return hash_;
@@ -208,7 +243,26 @@ class DocKey {
   }
 
   bool BelongsTo(const Schema& schema) const {
-    return cotable_id_ == schema.cotable_id();
+    if (!cotable_id_.IsNil()) {
+      return cotable_id_ == schema.cotable_id();
+    } else if (pgtable_id_ > 0) {
+      return pgtable_id_ == schema.pgtable_id();
+    }
+    return schema.cotable_id().IsNil() && schema.pgtable_id() == 0;
+  }
+
+  void set_cotable_id(const Uuid& cotable_id) {
+    if (!cotable_id.IsNil()) {
+      DCHECK_EQ(pgtable_id_, 0);
+    }
+    cotable_id_ = cotable_id;
+  }
+
+  void set_pgtable_id(const PgTableOid pgtable_id) {
+    if (pgtable_id > 0) {
+      DCHECK(cotable_id_.IsNil());
+    }
+    pgtable_id_ = pgtable_id;
   }
 
   void set_hash(DocKeyHash hash) {
@@ -237,6 +291,10 @@ class DocKey {
   // Uuid of the non-primary table this DocKey belongs to co-located in a tablet. Nil for the
   // primary or single-tenant table.
   Uuid cotable_id_;
+
+  // Postgres table OID of the non-primary table this DocKey belongs to in colocated tables.
+  // 0 for primary or single tenant table.
+  PgTableOid pgtable_id_;
 
   // TODO: can we get rid of this field and just use !hashed_group_.empty() instead?
   bool hash_present_;
@@ -267,9 +325,9 @@ class DocKeyEncoderAfterHashStep {
   KeyBytes* out_;
 };
 
-class DocKeyEncoderAfterCotableIdStep {
+class DocKeyEncoderAfterTableIdStep {
  public:
-  explicit DocKeyEncoderAfterCotableIdStep(KeyBytes* out) : out_(out) {
+  explicit DocKeyEncoderAfterTableIdStep(KeyBytes* out) : out_(out) {
   }
 
   template <class Collection>
@@ -312,7 +370,11 @@ class DocKeyEncoder {
  public:
   explicit DocKeyEncoder(KeyBytes* out) : out_(out) {}
 
-  DocKeyEncoderAfterCotableIdStep CotableId(const Uuid& cotable_id);
+  DocKeyEncoderAfterTableIdStep CotableId(const Uuid& cotable_id);
+
+  DocKeyEncoderAfterTableIdStep PgtableId(const PgTableOid pgtable_id);
+
+  DocKeyEncoderAfterTableIdStep Schema(const Schema& schema);
 
  private:
   KeyBytes* out_;
@@ -323,6 +385,8 @@ class DocKeyDecoder {
   explicit DocKeyDecoder(const Slice& input) : input_(input) {}
 
   Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
+  Result<bool> DecodePgtableId(PgTableOid* pgtable_id = nullptr);
+
   Result<bool> HasPrimitiveValue();
 
   Result<bool> DecodeHashCode(
@@ -454,7 +518,7 @@ class SubDocKey {
     return subkeys_;
   }
 
-  std::vector<PrimitiveValue> subkeys() {
+  std::vector<PrimitiveValue>& subkeys() {
     return subkeys_;
   }
 
@@ -549,8 +613,35 @@ class SubDocKey {
   static CHECKED_STATUS DecodePrefixLengths(
       Slice slice, boost::container::small_vector_base<size_t>* out);
 
-  // Fills out with ends of SubDocKey components. First item in out will be size of DocKey,
-  // second size of DocKey + size of first subkey and so on.
+  // Fills out with ends of SubDocKey components.  First item in out will be size of ID part
+  // (cotable id or pgtable id) of DocKey (0 if ID is not present), second size of whole DocKey,
+  // third size of DocKey + size of first subkey, and so on.
+  //
+  // To illustrate,
+  // * for key
+  //     SubDocKey(DocKey(0xfca0, [3], []), [SystemColumnId(0); HT{ physical: 1581475435181551 }])
+  //   aka
+  //     47FCA0488000000321214A80238001B5E605A0CA10804A
+  //   (and with spaces to make it clearer)
+  //     47FCA0 4880000003 21 21 4A80 238001B5E605A0CA10804A
+  //   the ends will be
+  //     {0, 10, 12}
+  // * for key
+  //     SubDocKey(DocKey(PgTableId=16385, [], [5]), [SystemColumnId(0); HT{ physical: ... }])
+  //   aka
+  //     30000040014880000005214A80238001B5E700309553804A
+  //   (and with spaces to make it clearer)
+  //     3000004001 4880000005 21 4A80 238001B5E700309553804A
+  //   the ends will be
+  //     {5, 11, 13}
+  // * for key
+  //     SubDocKey(DocKey(PgTableId=16385, [], []), [HT{ physical: 1581471227403848 }])
+  //   aka
+  //     300000400121238001B5E7006E61B7804A
+  //   (and with spaces to make it clearer)
+  //     3000004001 21 238001B5E7006E61B7804A
+  //   the ends will be
+  //     {5}
   //
   // If out is not empty, then it will be interpreted as partial result for this decoding operation
   // and the appropriate prefix will be skipped.
@@ -568,6 +659,7 @@ class SubDocKey {
 
   std::string ToString() const;
   static std::string DebugSliceToString(Slice slice);
+  static Result<std::string> DebugSliceToStringAsResult(Slice slice);
 
   const DocKey& doc_key() const {
     return doc_key_;
@@ -626,13 +718,6 @@ class SubDocKey {
   void set_hybrid_time(const DocHybridTime& hybrid_time) {
     DCHECK(hybrid_time.is_valid());
     doc_ht_ = hybrid_time;
-  }
-
-  // Sets HybridTime with the maximum write id so that the reader can see the values written at
-  // exactly the given hybrid time. Useful when constructing a seek key.
-  void SetHybridTimeForReadPath(HybridTime hybrid_time) {
-    DCHECK(hybrid_time.is_valid());
-    doc_ht_ = DocHybridTime(hybrid_time, kMaxWriteId);
   }
 
   bool has_hybrid_time() const {
@@ -782,6 +867,7 @@ struct KeyBounds {
 };
 
 // Combined DB to store regular records and intents.
+// TODO: move this to a more appropriate header file.
 struct DocDB {
   rocksdb::DB* regular;
   rocksdb::DB* intents;

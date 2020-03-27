@@ -137,6 +137,13 @@ class BackupEngineImpl : public BackupEngine {
       const std::string& dir,
       std::unordered_map<std::string, uint64_t>* result);
 
+  void InsertPathnameToSizeBytesWarnNotOk(
+      const std::string& dir,
+      std::unordered_map<std::string, uint64_t>* result) {
+    WARN_NOT_OK(InsertPathnameToSizeBytes(dir, result),
+                "Failed to insert pathname to size bytes " + dir);
+  }
+
   struct FileInfo {
     FileInfo(const std::string& fname, uint64_t sz, uint32_t checksum)
       : refs(0), filename(fname), size(sz), checksum_value(checksum) {}
@@ -164,7 +171,7 @@ class BackupEngineImpl : public BackupEngine {
     ~BackupMeta() {}
 
     void RecordTimestamp() {
-      env_->GetCurrentTime(&timestamp_);
+      CHECK_OK(env_->GetCurrentTime(&timestamp_));
     }
     int64_t GetTimestamp() const {
       return timestamp_;
@@ -599,11 +606,11 @@ Status BackupEngineImpl::Initialize() {
     for (const auto& rel_dir :
          {GetSharedFileRel(), GetSharedFileWithChecksumRel()}) {
       const auto abs_dir = GetAbsolutePath(rel_dir);
-      InsertPathnameToSizeBytes(abs_dir, &abs_path_to_size);
+      InsertPathnameToSizeBytesWarnNotOk(abs_dir, &abs_path_to_size);
     }
     // load the backups if any
     for (auto& backup : backups_) {
-      InsertPathnameToSizeBytes(
+      InsertPathnameToSizeBytesWarnNotOk(
           GetAbsolutePath(GetPrivateFileRel(backup.first)), &abs_path_to_size);
       Status s =
           backup.second->LoadFromFile(options_.backup_dir, abs_path_to_size);
@@ -676,7 +683,7 @@ Status BackupEngineImpl::CreateNewBackup(
     s = db->GetSortedWalFiles(&live_wal_files);
   }
   if (!s.ok()) {
-    db->EnableFileDeletions(false);
+    WARN_NOT_OK(db->EnableFileDeletions(false), "Failed to disable file deletions");
     return s;
   }
   TEST_SYNC_POINT("BackupEngineImpl::CreateNewBackup:SavedLiveFiles1");
@@ -823,7 +830,7 @@ Status BackupEngineImpl::CreateNewBackup(
   }
 
   // we copied all the files, enable file deletions
-  db->EnableFileDeletions(false);
+  RETURN_NOT_OK(db->EnableFileDeletions(false));
 
   if (s.ok()) {
     // move tmp private backup to real backup folder
@@ -848,23 +855,23 @@ Status BackupEngineImpl::CreateNewBackup(
   }
   if (s.ok() && options_.sync) {
     unique_ptr<Directory> backup_private_directory;
-    backup_env_->NewDirectory(
+    RETURN_NOT_OK(backup_env_->NewDirectory(
         GetAbsolutePath(GetPrivateFileRel(new_backup_id, false)),
-        &backup_private_directory);
+        &backup_private_directory));
     if (backup_private_directory != nullptr) {
-      backup_private_directory->Fsync();
+      RETURN_NOT_OK(backup_private_directory->Fsync());
     }
     if (private_directory_ != nullptr) {
-      private_directory_->Fsync();
+      RETURN_NOT_OK(private_directory_->Fsync());
     }
     if (meta_directory_ != nullptr) {
-      meta_directory_->Fsync();
+      RETURN_NOT_OK(meta_directory_->Fsync());
     }
     if (shared_directory_ != nullptr) {
-      shared_directory_->Fsync();
+      RETURN_NOT_OK(shared_directory_->Fsync());
     }
     if (backup_directory_ != nullptr) {
-      backup_directory_->Fsync();
+      RETURN_NOT_OK(backup_directory_->Fsync());
     }
   }
 
@@ -878,8 +885,9 @@ Status BackupEngineImpl::CreateNewBackup(
     RLOG(options_.info_log, "Backup Statistics %s\n",
         backup_statistics_.ToString().c_str());
     // delete files that we might have already written
-    DeleteBackup(new_backup_id);
-    GarbageCollect();
+    WARN_NOT_OK(DeleteBackup(new_backup_id),
+                yb::Format("Failed to delete backup $0", new_backup_id));
+    WARN_NOT_OK(GarbageCollect(), "Garbage collection failed");
     return s;
   }
 
@@ -1012,8 +1020,8 @@ Status BackupEngineImpl::RestoreDBFromBackup(
       static_cast<int>(restore_options.keep_log_files));
 
   // just in case. Ignore errors
-  db_env_->CreateDirIfMissing(db_dir);
-  db_env_->CreateDirIfMissing(wal_dir);
+  WARN_NOT_OK(db_env_->CreateDirIfMissing(db_dir), "Failed to create " + db_dir);
+  WARN_NOT_OK(db_env_->CreateDirIfMissing(wal_dir), "Failed to create " + wal_dir);
 
   if (restore_options.keep_log_files) {
     // delete files in db_dir, but keep all the log files
@@ -1021,7 +1029,8 @@ Status BackupEngineImpl::RestoreDBFromBackup(
     // move all the files from archive dir to wal_dir
     std::string archive_dir = ArchivalDirectory(wal_dir);
     std::vector<std::string> archive_files;
-    db_env_->GetChildren(archive_dir, &archive_files);  // ignore errors
+    WARN_NOT_OK(db_env_->GetChildren(archive_dir, &archive_files),
+                "Failed to get children");
     for (const auto& f : archive_files) {
       uint64_t number;
       FileType type;
@@ -1133,7 +1142,8 @@ Status BackupEngineImpl::VerifyBackup(BackupID backup_id) {
   for (const auto& rel_dir : {GetPrivateFileRel(backup_id), GetSharedFileRel(),
                               GetSharedFileWithChecksumRel()}) {
     const auto abs_dir = GetAbsolutePath(rel_dir);
-    InsertPathnameToSizeBytes(abs_dir, &curr_abs_path_to_size);
+    WARN_NOT_OK(InsertPathnameToSizeBytes(abs_dir, &curr_abs_path_to_size),
+                "Failed to insert pathname to size bytes for " + abs_dir);
   }
 
   for (const auto& file_info : backup->GetFiles()) {
@@ -1162,7 +1172,7 @@ Status BackupEngineImpl::PutLatestBackupFileContents(uint32_t latest_backup) {
                                    &file,
                                    env_options);
   if (!s.ok()) {
-    backup_env_->DeleteFile(GetLatestBackupFile(true));
+    backup_env_->CleanupFile(GetLatestBackupFile(true));
     return s;
   }
 
@@ -1173,7 +1183,7 @@ Status BackupEngineImpl::PutLatestBackupFileContents(uint32_t latest_backup) {
       snprintf(file_contents, sizeof(file_contents), "%u\n", latest_backup);
   s = file_writer->Append(Slice(file_contents, len));
   if (s.ok() && options_.sync) {
-    file_writer->Sync(false);
+    RETURN_NOT_OK(file_writer->Sync(false));
   }
   if (s.ok()) {
     s = file_writer->Close();
@@ -1350,7 +1360,7 @@ Status BackupEngineImpl::AddBackupFileWorkItem(
           "overwrite the file.",
           fname.c_str());
       need_to_copy = true;
-      backup_env_->DeleteFile(dst_path);
+      RETURN_NOT_OK(backup_env_->DeleteFile(dst_path));
     } else {
       // the file is present and referenced by a backup
       RLOG(options_.info_log, "%s already present, calculate checksum",
@@ -1433,7 +1443,7 @@ Status BackupEngineImpl::CalculateChecksum(const std::string& src, Env* src_env,
 void BackupEngineImpl::DeleteChildren(const std::string& dir,
                                       uint32_t file_type_filter) {
   std::vector<std::string> children;
-  db_env_->GetChildren(dir, &children);  // ignore errors
+  db_env_->GetChildrenWarnNotOk(dir, &children);
 
   for (const auto& f : children) {
     uint64_t number;
@@ -1443,7 +1453,7 @@ void BackupEngineImpl::DeleteChildren(const std::string& dir,
       // don't delete this file
       continue;
     }
-    db_env_->DeleteFile(dir + "/" + f);  // ignore errors
+    db_env_->CleanupFile(dir + "/" + f);
   }
 }
 
@@ -1515,7 +1525,7 @@ Status BackupEngineImpl::GarbageCollect() {
     std::string full_private_path =
         GetAbsolutePath(GetPrivateFileRel(backup_id, tmp_dir));
     std::vector<std::string> subchildren;
-    backup_env_->GetChildren(full_private_path, &subchildren);
+    RETURN_NOT_OK(backup_env_->GetChildren(full_private_path, &subchildren));
     for (auto& subchild : subchildren) {
       Status s = backup_env_->DeleteFile(full_private_path + subchild);
       RLOG(options_.info_log, "Deleting %s -- %s",

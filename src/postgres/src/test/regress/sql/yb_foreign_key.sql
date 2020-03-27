@@ -1,10 +1,9 @@
 --
 -- FOREIGN KEY (YB-added tests)
 --
-
--- TODO - YB only supports foreign keys in serializable isolation currently.
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
+-- TODO: Run this test with REPEATABLE READ isolation level:
+--       https://github.com/yugabyte/yugabyte-db/issues/2604
+--
 -- MATCH FULL
 --
 -- First test, check and cascade
@@ -115,3 +114,24 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
 DROP TABLE ITABLE CASCADE;
 DROP TABLE FKTABLE;
+
+-- UPDATE with multiple foreign keys --
+CREATE TABLE pk(k INT PRIMARY KEY, x INT UNIQUE, y INT UNIQUE);
+CREATE TABLE fk_primary(k INT REFERENCES pk(k));
+CREATE TABLE fk_unique_x(x INT REFERENCES pk(x));
+CREATE TABLE fk_unique_y(y INT REFERENCES pk(y));
+INSERT INTO pk VALUES(1, 10, 100);
+
+UPDATE pk SET x = 11 WHERE x = 10;
+UPDATE pk SET y = 101 WHERE y = 100;
+
+INSERT INTO fk_unique_x VALUES(11);
+INSERT INTO fk_unique_y VALUES(101);
+
+UPDATE pk SET x = 12 WHERE x = 11;
+UPDATE pk SET y = 102 WHERE y = 101;
+
+DROP TABLE fk_unique_y;
+DROP TABLE fk_unique_x;
+DROP TABLE fk_primary;
+DROP TABLE pk;

@@ -46,6 +46,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/map-util.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/crc.h"
@@ -156,7 +157,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Tablet is not running yet: $0", tablet_id));
 
-  scoped_refptr<RemoteBootstrapSessionClass> session;
+  scoped_refptr<RemoteBootstrapSession> session;
   {
     std::lock_guard<std::mutex> l(sessions_mutex_);
     auto it = sessions_.find(session_id);
@@ -164,12 +165,8 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
       LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
-      session.reset(new RemoteBootstrapSessionClass(tablet_peer, session_id,
-                                                    requestor_uuid, fs_manager_, &nsessions_));
-      RPC_RETURN_NOT_OK(session->Init(),
-                        RemoteBootstrapErrorPB::UNKNOWN_ERROR,
-                        Substitute("Error initializing remote bootstrap session for tablet $0",
-                                   tablet_id));
+      session.reset(new RemoteBootstrapSession(
+          tablet_peer, session_id, requestor_uuid, &nsessions_));
       it = sessions_.emplace(session_id, SessionData{session, CoarseTimePoint()}).first;
       auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
       if (new_nsessions != sessions_.size()) {
@@ -181,13 +178,14 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
       LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
-      RPC_RETURN_NOT_OK(session->Init(),
-                        RemoteBootstrapErrorPB::UNKNOWN_ERROR,
-                        Substitute("Error initializing remote bootstrap session for tablet $0",
-                                   tablet_id));
     }
     it->second.ResetExpiration();
   }
+
+  RPC_RETURN_NOT_OK(session->Init(),
+                    RemoteBootstrapErrorPB::UNKNOWN_ERROR,
+                    Substitute("Error initializing remote bootstrap session for tablet $0",
+                               tablet_id));
 
   resp->set_session_id(session_id);
   resp->set_session_idle_timeout_millis(FLAGS_remote_bootstrap_idle_timeout_ms);
@@ -225,51 +223,13 @@ void RemoteBootstrapServiceImpl::CheckSessionActive(
   }
 }
 
-Status RemoteBootstrapServiceImpl::GetDataFilePiece(
-    const DataIdPB& data_id,
-    const scoped_refptr<RemoteBootstrapSessionClass>& session,
-    uint64_t offset,
-    int64_t client_maxlen,
-    string* data,
-    int64_t* total_data_length,
-    RemoteBootstrapErrorPB::Code* error_code) {
-
-  switch (data_id.type()) {
-    case DataIdPB::LOG_SEGMENT: {
-      // Fetching a log segment chunk.
-      const uint64_t segment_seqno = data_id.wal_segment_seqno();
-      RETURN_NOT_OK_PREPEND(session->GetLogSegmentPiece(
-                                segment_seqno, offset, client_maxlen,
-                                data, total_data_length, error_code),
-                            "Unable to get piece of log segment");
-      break;
-    }
-    case DataIdPB::ROCKSDB_FILE: {
-      // Fetching a RocksDB file chunk.
-      const string file_name = data_id.file_name();
-      RETURN_NOT_OK_PREPEND(session->GetRocksDBFilePiece(
-                                file_name, offset, client_maxlen,
-                                data, total_data_length, error_code),
-                            "Unable to get piece of RocksDB file");
-      break;
-    }
-    default:
-      *error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
-  }
-  DCHECK(client_maxlen == 0 || data->size() <= client_maxlen)
-      << "client_maxlen: " << client_maxlen << ", data->size(): " << data->size();
-
-  return Status::OK();
-}
-
 void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                                            FetchDataResponsePB* resp,
                                            rpc::RpcContext context) {
   const string& session_id = req->session_id();
 
   // Look up and validate remote bootstrap session.
-  scoped_refptr<RemoteBootstrapSessionClass> session;
+  scoped_refptr<RemoteBootstrapSession> session;
   {
     std::lock_guard<std::mutex> l(sessions_mutex_);
     auto it = sessions_.find(session_id);
@@ -286,29 +246,31 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
 
   MAYBE_FAULT(FLAGS_fault_crash_on_handle_rb_fetch_data);
 
-  uint64_t offset = req->offset();
-  VLOG(3) << " rate limiter max len: "  << session->rate_limiter().GetMaxSizeForNextTransmission();
-  auto rate_limit = session->rate_limiter().GetMaxSizeForNextTransmission();
-  int64_t client_maxlen = rate_limit == 0
-      ? req->max_length() : std::min(static_cast<uint64_t>(req->max_length()), rate_limit);
+  int64_t rate_limit = session->rate_limiter().GetMaxSizeForNextTransmission();
+  VLOG(3) << " rate limiter max len: " << rate_limit;
+  GetDataPieceInfo info = {
+    .offset = req->offset(),
+    .client_maxlen = rate_limit == 0 ? req->max_length() : std::min(req->max_length(), rate_limit),
+    .data = std::string(),
+    .data_size = 0,
+    .error_code = RemoteBootstrapErrorPB::UNKNOWN_ERROR,
+  };
   const DataIdPB& data_id = req->data_id();
-  RemoteBootstrapErrorPB::Code error_code = RemoteBootstrapErrorPB::UNKNOWN_ERROR;
-  RPC_RETURN_NOT_OK(ValidateFetchRequestDataId(data_id, &error_code, session),
-                    error_code, "Invalid DataId");
+  RPC_RETURN_NOT_OK(ValidateFetchRequestDataId(data_id, &info.error_code, session),
+                    info.error_code, "Invalid DataId");
+
+  RPC_RETURN_NOT_OK(session->GetDataPiece(data_id, &info),
+                    info.error_code, "Unable to get piece of data file");
+
+  session->rate_limiter().UpdateDataSizeAndMaybeSleep(info.data.size());
+  uint32_t crc32 = Crc32c(info.data.data(), info.data.length());
 
   DataChunkPB* data_chunk = resp->mutable_chunk();
-  string* data = data_chunk->mutable_data();
-  int64_t total_data_length = 0;
-  RPC_RETURN_NOT_OK(GetDataFilePiece(data_id, session, offset, client_maxlen, data,
-                                     &total_data_length, &error_code),
-                    error_code, "Unable to get piece of data file");
-
-  data_chunk->set_total_data_length(total_data_length);
-  session->rate_limiter().UpdateDataSizeAndMaybeSleep(data->size());
-  data_chunk->set_offset(offset);
+  *data_chunk->mutable_data() = std::move(info.data);
+  data_chunk->set_total_data_length(info.data_size);
+  data_chunk->set_offset(info.offset);
 
   // Calculate checksum.
-  uint32_t crc32 = Crc32c(data->data(), data->length());
   data_chunk->set_crc32(crc32);
   context.RespondSuccess();
 }
@@ -381,7 +343,7 @@ void RemoteBootstrapServiceImpl::Shutdown() {
 Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
         const DataIdPB& data_id,
         RemoteBootstrapErrorPB::Code* app_error,
-        const scoped_refptr<RemoteBootstrapSessionClass>& session) const {
+        const scoped_refptr<RemoteBootstrapSession>& session) const {
   int num_set = data_id.has_wal_segment_seqno() + data_id.has_file_name();
   if (PREDICT_FALSE(num_set != 1)) {
     *app_error = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
@@ -390,32 +352,7 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
                    "DataTypeID: $0", data_id.ShortDebugString()));
   }
 
-  switch (data_id.type()) {
-    case DataIdPB::LOG_SEGMENT:
-      if (PREDICT_FALSE(!data_id.wal_segment_seqno())) {
-        return STATUS(InvalidArgument,
-            "segment sequence number must be specified for type == LOG_SEGMENT",
-            data_id.ShortDebugString());
-      }
-      return Status::OK();
-    case DataIdPB::ROCKSDB_FILE:
-      if (PREDICT_FALSE(data_id.file_name().empty())) {
-        return STATUS(InvalidArgument,
-            "file name must be specified for type == ROCKSDB_FILE",
-            data_id.ShortDebugString());
-      }
-      return Status::OK();
-    case DataIdPB::SNAPSHOT_FILE:
-      return ValidateSnapshotFetchRequestDataId(data_id);
-    case DataIdPB::UNKNOWN:
-      return STATUS(InvalidArgument, "Type UNKNOWN not supported", data_id.ShortDebugString());
-  }
-  LOG(FATAL) << "Invalid data id type: " << data_id.type();
-}
-
-Status RemoteBootstrapServiceImpl::ValidateSnapshotFetchRequestDataId(
-    const DataIdPB& data_id) const {
-  return STATUS(InvalidArgument, "Type SNAPSHOT_FILE not supported", data_id.ShortDebugString());
+  return session->ValidateDataId(data_id);
 }
 
 void RemoteBootstrapServiceImpl::SessionData::ResetExpiration() {

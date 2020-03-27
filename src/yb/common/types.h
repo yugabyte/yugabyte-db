@@ -53,7 +53,6 @@ namespace yb {
 // type we support.
 const int kLargestTypeSize = sizeof(Slice);
 
-using std::string;
 class TypeInfo;
 
 // This is the important bit of this header:
@@ -68,9 +67,9 @@ class TypeInfo {
   DataType type() const { return type_; }
   // Returns the type used to actually store the data.
   DataType physical_type() const { return physical_type_; }
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
   const size_t size() const { return size_; }
-  void AppendDebugStringForValue(const void *ptr, string *str) const;
+  void AppendDebugStringForValue(const void *ptr, std::string *str) const;
   int Compare(const void *lhs, const void *rhs) const;
   void CopyMinValue(void* dst) const {
     memcpy(dst, min_value_, size_);
@@ -82,11 +81,11 @@ class TypeInfo {
 
   const DataType type_;
   const DataType physical_type_;
-  const string name_;
+  const std::string name_;
   const size_t size_;
   const void* const min_value_;
 
-  typedef void (*AppendDebugFunc)(const void *, string *);
+  typedef void (*AppendDebugFunc)(const void *, std::string *);
   const AppendDebugFunc append_func_;
 
   typedef int (*CompareFunc)(const void *, const void *);
@@ -116,7 +115,7 @@ struct DataTypeTraits<UINT8> {
   static const char *name() {
     return "uint8";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleItoa(*reinterpret_cast<const uint8_t *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -134,7 +133,7 @@ struct DataTypeTraits<INT8> {
   static const char *name() {
     return "int8";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleItoa(*reinterpret_cast<const int8_t *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -152,7 +151,7 @@ struct DataTypeTraits<UINT16> {
   static const char *name() {
     return "uint16";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleItoa(*reinterpret_cast<const uint16_t *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -170,7 +169,7 @@ struct DataTypeTraits<INT16> {
   static const char *name() {
     return "int16";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleItoa(*reinterpret_cast<const int16_t *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -188,7 +187,7 @@ struct DataTypeTraits<UINT32> {
   static const char *name() {
     return "uint32";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleItoa(*reinterpret_cast<const uint32_t *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -206,7 +205,7 @@ struct DataTypeTraits<INT32> {
   static const char *name() {
     return "int32";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleItoa(*reinterpret_cast<const int32_t *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -224,7 +223,7 @@ struct DataTypeTraits<UINT64> {
   static const char *name() {
     return "uint64";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleItoa(*reinterpret_cast<const uint64_t *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -242,7 +241,7 @@ struct DataTypeTraits<INT64> {
   static const char *name() {
     return "int64";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleItoa(*reinterpret_cast<const int64_t *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -260,7 +259,7 @@ struct DataTypeTraits<FLOAT> {
   static const char *name() {
     return "float";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleFtoa(*reinterpret_cast<const float *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -278,7 +277,7 @@ struct DataTypeTraits<DOUBLE> {
   static const char *name() {
     return "double";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     str->append(SimpleDtoa(*reinterpret_cast<const double *>(val)));
   }
   static int Compare(const void *lhs, const void *rhs) {
@@ -296,7 +295,7 @@ struct DataTypeTraits<BINARY> {
   static const char *name() {
     return "binary";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     const Slice *s = reinterpret_cast<const Slice *>(val);
     str->append(strings::CHexEscape(s->ToString()));
   }
@@ -319,7 +318,7 @@ struct DataTypeTraits<BOOL> {
   static const char* name() {
     return "bool";
   }
-  static void AppendDebugStringForValue(const void* val, string* str) {
+  static void AppendDebugStringForValue(const void* val, std::string* str) {
     str->append(*reinterpret_cast<const bool *>(val) ? "true" : "false");
   }
 
@@ -339,7 +338,7 @@ struct DerivedTypeTraits {
   typedef typename DataTypeTraits<PhysicalType>::cpp_type cpp_type;
   static const DataType physical_type = PhysicalType;
 
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     DataTypeTraits<PhysicalType>::AppendDebugStringForValue(val, str);
   }
 
@@ -357,7 +356,7 @@ struct DataTypeTraits<STRING> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "string";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     const Slice *s = reinterpret_cast<const Slice *>(val);
     str->append(strings::Utf8SafeCEscape(s->ToString()));
   }
@@ -368,7 +367,7 @@ struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "inet";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     const Slice *s = reinterpret_cast<const Slice *>(val);
     InetAddress addr;
     DCHECK(addr.FromSlice(*s).ok());
@@ -381,7 +380,7 @@ struct DataTypeTraits<JSONB> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "jsonb";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     const Slice *s = reinterpret_cast<const Slice *>(val);
     str->append(strings::Utf8SafeCEscape(s->ToString()));
   }
@@ -392,7 +391,7 @@ struct DataTypeTraits<UUID> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "uuid";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     const Slice *s = reinterpret_cast<const Slice *>(val);
     Uuid uuid;
     DCHECK(uuid.FromSlice(*s).ok());
@@ -405,7 +404,7 @@ struct DataTypeTraits<TIMEUUID> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "timeuuid";
   }
-  static void AppendDebugStringForValue(const void *val, string *str) {
+  static void AppendDebugStringForValue(const void *val, std::string *str) {
     const Slice *s = reinterpret_cast<const Slice *>(val);
     Uuid uuid;
     DCHECK(uuid.FromSlice(*s).ok());
@@ -473,7 +472,7 @@ struct DataTypeTraits<DECIMAL> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "decimal";
   }
-  static void AppendDebugDecimalForValue(const void* val, string* str) {
+  static void AppendDebugDecimalForValue(const void* val, std::string* str) {
     const Slice *s = reinterpret_cast<const Slice *>(val);
     str->append(strings::Utf8SafeCEscape(s->ToString()));
   }
@@ -484,7 +483,7 @@ struct DataTypeTraits<VARINT> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "varint";
   }
-  static void AppendDebugVarIntForValue(const void* val, string* str) {
+  static void AppendDebugVarIntForValue(const void* val, std::string* str) {
     const Slice *s = reinterpret_cast<const Slice *>(val);
     str->append(strings::Utf8SafeCEscape(s->ToString()));
   }
@@ -502,7 +501,7 @@ struct DataTypeTraits<TIMESTAMP> : public DerivedTypeTraits<INT64>{
     return "timestamp";
   }
 
-  static void AppendDebugStringForValue(const void* val, string* str) {
+  static void AppendDebugStringForValue(const void* val, std::string* str) {
     int64_t timestamp_micros = *reinterpret_cast<const int64_t *>(val);
     time_t secs_since_epoch = timestamp_micros / US_TO_S;
     // If the time is negative we need to take into account that any microseconds
@@ -516,7 +515,7 @@ struct DataTypeTraits<TIMESTAMP> : public DerivedTypeTraits<INT64>{
     gmtime_r(&secs_since_epoch, &tm_info);
     char time_up_to_secs[24];
     strftime(time_up_to_secs, sizeof(time_up_to_secs), kDateFormat, &tm_info);
-    char time[34];
+    char time[40];
     snprintf(time, sizeof(time), kDateMicrosAndTzFormat, time_up_to_secs, remaining_micros);
     str->append(time);
   }
@@ -648,7 +647,7 @@ class Variant {
   // Set the variant to a STRING type.
   // The specified data block will be copied, and released by the variant
   // on the next set/clear call.
-  void Reset(const string& data) {
+  void Reset(const std::string& data) {
     Slice slice(data);
     Reset(STRING, &slice);
   }

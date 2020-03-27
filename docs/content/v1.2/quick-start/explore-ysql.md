@@ -1,7 +1,7 @@
 ---
 title: 3. Explore YSQL 
 linkTitle: 3. Explore YSQL 
-description: Explore YugaByte SQL (YSQL)
+description: Explore Yugabyte SQL (YSQL)
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v1.2:
@@ -12,11 +12,11 @@ isTocNested: false
 showAsideToc: true
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the instructions here to explore YugaByte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
+After [creating a local cluster](../create-local-cluster/), follow the instructions here to explore YugabyteDB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
 
 {{< note title="Note" >}}
-YSQL is currently in beta. We are actively working on making it production ready for the 2.0 release in Summer 2019. If you face any problems while trying YSQL or find important features not yet supported, help us make it better by reporting issues on <a href="https://github.com/YugaByte/yugabyte-db/issues">GitHub</a> and/or join our <a href="https://www.yugabyte.com/slack">Slack channel</a> to discuss live with us.
+YSQL is currently in beta. We are actively working on making it production ready for the 2.0 release in Summer 2019. If you face any problems while trying YSQL or find important features not yet supported, help us make it better by reporting issues on <a href="https://github.com/yugabyte/yugabyte-db/issues">GitHub</a> and/or join our <a href="https://www.yugabyte.com/slack">Slack channel</a> to discuss live with us.
 {{< /note >}}
 
 ## 1. Load Data
@@ -25,13 +25,13 @@ YSQL is currently in beta. We are actively working on making it production ready
 - Download the sample schema.
 
 ```sh
-$ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
 -  Download the sample data
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+$ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
 
 ```sh
@@ -46,7 +46,7 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
--  Connect using ysqlsh, the YugaByte SQL shell
+-  Connect using ysqlsh, the Yugabyte SQL shell
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

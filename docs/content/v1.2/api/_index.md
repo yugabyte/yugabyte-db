@@ -3,7 +3,7 @@ title: APIs
 linkTitle: APIs
 description: APIs
 image: /images/section_icons/index/api.png
-headcontent: YugaByte DB API Reference 
+headcontent: YugabyteDB API Reference 
 section: REFERENCE
 menu:
   v1.2:
@@ -20,7 +20,7 @@ menu:
         <div class="title">YSQL (Beta)</div>
       </div>
       <div class="body">
-        Complete reference for YugaByte Structured Query Language (YSQL) API.
+        Complete reference for Yugabyte Structured Query Language (YSQL) API.
       </div>
     </a>
   </div>
@@ -31,7 +31,7 @@ menu:
         <div class="title">YCQL</div>
       </div>
       <div class="body">
-        Complete reference for YugaByte Cloud Query Language (YCQL) API.
+        Complete reference for Yugabyte Cloud Query Language (YCQL) API.
       </div>
     </a>
   </div> 

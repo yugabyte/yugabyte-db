@@ -1,7 +1,8 @@
 ---
 title: YEDIS
 linkTitle: YEDIS
-description: YugaByte Dictionary Service (YEDIS) 
+headerTitle: Yugabyte Dictionary Service (YEDIS)
+description: The YEDIS API allows YugabyteDB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library.
 headcontent: 
 image: /images/section_icons/api/yedis.png
 aliases:
@@ -13,7 +14,7 @@ menu:
     weight: 2800
 ---
 
-The YEDIS API allows YugaByte DB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library. A Redis client can connect, send requests, and receive results from this API.
+The YEDIS API allows YugabyteDB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library. A Redis client can connect, send requests, and receive results from this API.
 
 {{< note title="Note" >}}
 While YEDIS supports many Redis data types (such as string, hash, set, sorted set and a new Timeseries type) and commands, there are some notable exceptions at present.
@@ -22,7 +23,7 @@ While YEDIS supports many Redis data types (such as string, hash, set, sorted se
 * List, Bitmaps, HyperLogLogs, GeoSpatial types/commands are not yet implemented.
 
 <b>
-In the near-term, YugaByte is not actively working on new feature or driver enhancements to the YEDIS API other than bug fixes and stability improvements. Current focus is on YSQL (Postgres-compatible distributed SQL API) and YCQL (a flexible-schema API with Cassandra QL roots).
+In the near-term, YugabyteDB is not actively working on new feature or driver enhancements to the YEDIS API other than bug fixes and stability improvements. Current focus is on YSQL (Postgres-compatible distributed SQL API) and YCQL (a flexible-schema API with Cassandra QL roots).
 </b>
 
 For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with features
@@ -74,7 +75,7 @@ testing (using e.g., Jepsen) and performance work is in the YSQL and YCQL areas.
     <a class="section-link icon-offset" href="api/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />
-        <div class="title">API Reference</div>
+        <div class="title">API reference</div>
       </div>
       <div class="body">
          Complete API reference.

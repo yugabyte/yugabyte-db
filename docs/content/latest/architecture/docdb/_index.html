@@ -1,18 +1,25 @@
 ---
-title: DocDB Store
-linkTitle: DocDB Store
-description: DocDB
+title: DocDB store
+headerTitle: DocDB store
+linkTitle: DocDB store
+description: Learn about the architecture of the DocDB, the YugabyteDB distributed document store that is responsible for sharding, replication, transactions, and persistence.
 image: /images/section_icons/architecture/concepts.png
 aliases:
   - /architecture/concepts/docdb/
   - /latest/architecture/concepts/docdb/
-headcontent: YugaByte DB's distributed document store responsible for sharding, replication, transactions and persistence.
+headcontent: YugabyteDB's distributed document store responsible for sharding, replication, transactions, and persistence.
 menu:
   latest:
     identifier: docdb
     parent: architecture
     weight: 1140
 ---
+
+{{< note title="Note" >}}
+
+YugabyteDB's sharding and replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
+
+{{</note >}}
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -34,7 +41,7 @@ menu:
         <div class="title">Replication</div>
       </div>
       <div class="body">
-        Replicating the data in every table with Raft Consensus.
+        Replicating the data in every table with Raft consensus.
       </div>
     </a>
   </div>
@@ -62,6 +69,17 @@ menu:
       </div>
     </a>
   </div>
- 
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="colocated-tables/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+        <div class="title">Colocated tables</div>
+      </div>
+      <div class="body">
+        Scaling number of relations and databases by colocating data.
+      </div>
+    </a>
+  </div>
+
 </div>
-  

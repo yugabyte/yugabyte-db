@@ -39,7 +39,7 @@ namespace yb {
 namespace tools {
 
 Result<Timestamp> TimestampFromString(const std::string& str) {
-  auto val = util::CheckedStoll(str);
+  auto val = CheckedStoll(str);
   if (val.ok()) {
     return DateTime::TimestampFromInt(*val);
   }
@@ -70,7 +70,7 @@ std::set<int> SkippedColumns(const string& columns_to_skip) {
   std::set<int> skipped_cols;
   CsvTokenizer tokenizer = Tokenize(columns_to_skip, ',');
   for (auto it = tokenizer.begin(); it != tokenizer.end(); it++) {
-    auto col = util::CheckedStoi(*it);
+    auto col = CheckedStoi(*it);
     CHECK(col.ok());
     skipped_cols.insert(*col);
   }

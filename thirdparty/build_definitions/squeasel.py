@@ -27,7 +27,7 @@ class SqueaselDependency(Dependency):
 
     def build(self, builder):
         log_prefix = builder.log_prefix(self)
-        compile_command = [builder.cc_wrapper, '-std=c99', '-O3', '-DNDEBUG', '-fPIC', '-c',
+        compile_command = [builder.get_c_compiler(), '-std=c99', '-O3', '-DNDEBUG', '-fPIC', '-c',
                            'squeasel.c']
         compile_command += builder.compiler_flags + builder.c_flags
         log_output(log_prefix, compile_command)

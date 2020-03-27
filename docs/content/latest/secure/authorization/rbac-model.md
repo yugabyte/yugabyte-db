@@ -1,69 +1,83 @@
 ---
-title: 1. RBAC Model
-linkTitle: 1. RBAC Model
-description: 1. RBAC Model
-headcontent: How role-based access control works in YCQL
+title: Role-based access control (RBAC) model in YSQL
+linkTitle: RBAC model
+headerTitle: Role-based access control (RBAC) model
+description: The role-based access control (RBAC) model in YSQL is a collection of privileges on resources given to roles.
+headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
-aliases:
-  - /secure/authorization/rbac-model/
 menu:
   latest:
-    identifier: secure-authorization-rbac-model
-    parent: secure-authorization
+    identifier: rbac-model
+    parent: authorization
     weight: 716
 isTocNested: true
 showAsideToc: true
 ---
 
-The role-based access control model in YCQL is a collection of permissions on resources given to roles. Thus, the entire RBAC model is built around **roles**, **resources** and **permissions**. It is essential to understand these concepts in order to understand the RBAC model.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/secure/authorization/rbac-model" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/secure/authorization/rbac-model-ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
+The role-based access control (RBAC) model in YSQL is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and privileges. It is essential to understand these concepts in order to understand the RBAC model.
 
 ## Roles
 
-Roles in YCQL can represent individual users or a group of users. They encapsulate a set of privileges that can be assigned to other roles (or users). Roles are essential to implementing and administering access control on a YugaByte DB cluster. Below are some important points about roles:
+Roles in YSQL can represent individual users or a group of users. They encapsulate a set of privileges that can be assigned to other roles (or users). Roles are essential to implementing and administering access control on a YugabyteDB cluster. Below are some important points about roles:
 
-* Roles which have login privilege are users. Hence, all users are roles but all roles are not users.
+* Roles which have `LOGIN` privilege are users. Hence, all users are roles, but all roles are not users.
 
 * Roles can be granted to other roles, making it possible to organize roles into a hierarchy.
 
-* Roles inherit the permissions of all other roles granted to them.
-
+* Roles inherit the privileges of all other roles granted to them.
 
 ## Resources
 
-YCQL defines a number of specific resources, that represent underlying database objects. A resource can denote one object or a collection of objects. YCQL resources are hierarchical as described below:
+YSQL defines a number of specific resources, that represent underlying database objects. A resource can denote one object or a collection of objects. YSQL resources are hierarchical as described below:
 
-* Keyspaces and tables follow the hierarchy: `ALL KEYSPACES` > `KEYSPACE` > `TABLE`
+* Databases and tables follow the hierarchy: `ALL DATABASES` > `DATABASE` > `TABLE`
 * ROLES are hierarchical (they can be assigned to other roles). They follow the hierarchy: `ALL ROLES` > `ROLE #1` > `ROLE #2` ...
 
 The table below lists out the various resources.
 
 Resource        | Description |
 ----------------|-------------|
-`KEYSPACE`      | Denotes one keyspace. Typically includes all the tables and indexes defined in that keyspace. |
+`DATABASE`      | Denotes one database. Typically includes all the tables and indexes defined in that database. |
 `TABLE`         | Denotes one table. Includes all the indexes defined on that table. |
 `ROLE`          | Denotes one role. |
-`ALL KEYSPACES` | Collection of all keyspaces in the database. |
+`ALL DATABASES` | Collection of all databases in the database. |
 `ALL ROLES`     | Collection of all roles in the database. |
 
+## Privileges
 
+Privileges are necessary to execute operations on database objects. Privileges can be granted at any level of the database hierarchy and are inherited downwards. The set of privileges include:
 
-## Permissions
-
-Permissions are necessary to execute operations on database objects. Permissions can be granted at any level of the database hierarchy and are inherited downwards. The set of permissions include:
-
-
-Permission  | Objects                      | Operations                          |
+Privilege  | Objects                      | Operations                          |
 ------------|------------------------------|-------------------------------------|
-`ALTER`     | keyspace, table, role        | ALTER                               |
-`AUTHORIZE` | keyspace, table, role        | GRANT PERMISSION, REVOKE PERMISSION |
-`CREATE`    | keyspace, table, role, index | CREATE                              |
-`DROP`      | keyspace, table, role, index | DROP                                |
-`MODIFY`    | keyspace, table              | INSERT, UPDATE, DELETE, TRUNCATE    |
-`SELECT`    | keyspace, table              | SELECT                              |
-`DESCRIBE` (not implemented)  | role       | LIST ROLES                          |
+`ALTER`     | database, table, role        | ALTER                               |
+`AUTHORIZE` | database, table, role        | GRANT privilege, REVOKE privilege |
+`CREATE`    | database, table, role, index | CREATE                              |
+`DROP`      | database, table, role, index | DROP                                |
+`MODIFY`    | database, table              | INSERT, UPDATE, DELETE, TRUNCATE    |
+`SELECT`    | database, table              | SELECT                              |
 
 {{< note title="Note" >}}
-The `ALTER` permission on the base table is required in order to `CREATE` or `DROP` indexes on it.
+
+The `ALTER TABLE` privilege on the base table is required in order to CREATE or DROP indexes on it.
+
 {{< /note >}}
 
-Read more about [YCQL permissions](../../api/ycql/ddl_grant_permission/#permissions).
+Read more about [YSQL privileges](../../../api/ysql/commands/dcl_grant/).

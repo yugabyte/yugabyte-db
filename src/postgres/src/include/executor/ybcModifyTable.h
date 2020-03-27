@@ -46,13 +46,12 @@ extern Oid YBCExecuteInsert(Relation rel,
                             HeapTuple tuple);
 
 /*
- * Execute (the only) insert from a single row transaction into a
- * YugaByte table. Will execute as a single-row transaction.
+ * Execute the insert outside of a transaction.
  * Assumes the caller checked that it is safe to do so.
  */
-extern Oid YBCExecuteSingleRowTxnInsert(Relation rel,
-                                        TupleDesc tupleDesc,
-                                        HeapTuple tuple);
+extern Oid YBCExecuteNonTxnInsert(Relation rel,
+								  TupleDesc tupleDesc,
+								  HeapTuple tuple);
 
 /*
  * Insert a tuple into the an index's backing YugaByte index table.
@@ -64,8 +63,14 @@ extern void YBCExecuteInsertIndex(Relation rel,
 
 /*
  * Delete a tuple (identified by ybctid) from a YugaByte table.
+ * If this is a single row op we will return false in the case that there was
+ * no row to delete. This can occur because we do not first perform a scan if
+ * it is a single row op.
  */
-extern void YBCExecuteDelete(Relation rel, TupleTableSlot *slot);
+extern bool YBCExecuteDelete(Relation rel,
+							 TupleTableSlot *slot,
+							 EState *estate,
+							 ModifyTableState *mtstate);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
@@ -77,8 +82,16 @@ extern void YBCExecuteDeleteIndex(Relation index,
 
 /*
  * Update a row (identified by ybctid) in a YugaByte table.
+ * If this is a single row op we will return false in the case that there was
+ * no row to update. This can occur because we do not first perform a scan if
+ * it is a single row op.
  */
-extern void YBCExecuteUpdate(Relation rel, TupleTableSlot *slot, HeapTuple tuple);
+extern bool YBCExecuteUpdate(Relation rel,
+							 TupleTableSlot *slot,
+							 HeapTuple tuple,
+							 EState *estate,
+							 ModifyTableState *mtstate,
+							 Bitmapset *updatedCols);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.
@@ -92,20 +105,31 @@ extern void YBCUpdateSysCatalogTuple(Relation rel,
 									 HeapTuple oldtuple,
 									 HeapTuple tuple);
 
-// Buffer write operations.
-extern void YBCStartBufferingWriteOperations();
-extern void YBCFlushBufferedWriteOperations();
-
 //------------------------------------------------------------------------------
 // Utility methods.
 
+extern bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo);
+
 extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
+
+extern Datum YBCGetYBTupleIdFromTuple(YBCPgStatement pg_stmt,
+									  Relation rel,
+									  HeapTuple tuple,
+									  TupleDesc tupleDesc);
 
 /*
  * Returns if a table has secondary indices.
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
 
-extern bool YBCRelHasSecondaryIndices(Relation relation);
+/*
+ * Get primary key columns as bitmap of a table for real and system YB columns.
+ */
+extern Bitmapset *GetFullYBTablePrimaryKey(Relation rel);
+
+/*
+ * Get primary key columns as bitmap of a table for real columns.
+ */
+extern Bitmapset *GetYBTablePrimaryKey(Relation rel);
 
 #endif							/* YBCMODIFYTABLE_H */

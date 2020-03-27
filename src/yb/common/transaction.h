@@ -16,6 +16,7 @@
 #ifndef YB_COMMON_TRANSACTION_H
 #define YB_COMMON_TRANSACTION_H
 
+#include <boost/container/small_vector.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/optional.hpp>
 #include <boost/uuid/uuid.hpp>
@@ -31,6 +32,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uuid.h"
 
 namespace rocksdb {
@@ -41,11 +43,8 @@ class DB;
 
 namespace yb {
 
-using TransactionId = boost::uuids::uuid;
-typedef boost::hash<TransactionId> TransactionIdHash;
+YB_STRONGLY_TYPED_UUID(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
-
-inline TransactionId GenerateTransactionId() { return Uuid::Generate(); }
 
 // Decodes transaction id from its binary representation.
 // Checks that slice contains only TransactionId.
@@ -70,6 +69,10 @@ struct TransactionStatusResult {
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
+
+  std::string ToString() const {
+    return Format("{ status: $0 status_time: $1 }", status, status_time);
+  }
 };
 
 inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult& result) {
@@ -80,7 +83,8 @@ inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult
 typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
 struct TransactionMetadata;
 
-YB_STRONGLY_TYPED_BOOL(MustExist);
+YB_DEFINE_ENUM(TransactionLoadFlag, (kMustExist)(kCleanup));
+typedef EnumBitSet<TransactionLoadFlag> TransactionLoadFlags;
 
 // Used by RequestStatusAt.
 struct StatusRequest {
@@ -89,8 +93,13 @@ struct StatusRequest {
   HybridTime global_limit_ht;
   int64_t serial_no;
   const std::string* reason;
-  MustExist must_exist;
+  TransactionLoadFlags flags;
   TransactionStatusCallback callback;
+
+  std::string ToString() const {
+    return Format("{ id: $0 read_ht: $1 global_limit_ht: $2 serial_no: $3 reason: $4 flags: $5}",
+                  *id, read_ht, global_limit_ht, serial_no, *reason, flags);
+  }
 };
 
 class RequestScope;
@@ -115,11 +124,17 @@ class TransactionStatusManager {
   // 4. Any kind of network/timeout errors would be reflected in error passed to callback.
   virtual void RequestStatusAt(const StatusRequest& request) = 0;
 
-  virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
+  // Prepares metadata for provided protobuf. Either trying to extract it from pb, or fetch
+  // from existing metadatas.
+  virtual Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) = 0;
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 
   virtual void Cleanup(TransactionIdSet&& set) = 0;
+
+  // For each pair fills second with priority of transaction with id equals to first.
+  virtual void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
  private:
   friend class RequestScope;
@@ -198,22 +213,28 @@ inline std::ostream& operator<<(std::ostream& out, const TransactionOperationCon
 }
 
 struct TransactionMetadata {
-  TransactionId transaction_id = boost::uuids::nil_uuid();
+  TransactionId transaction_id = TransactionId::Nil();
   IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
   TabletId status_tablet;
+
+  // By default random value is picked for newly created transaction.
   uint64_t priority;
 
   // Used for snapshot isolation (as read time and for conflict resolution).
   // start_time is used only for backward compability during rolling update.
-  HybridTime DEPRECATED_start_time;
+  HybridTime start_time;
 
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
   void ToPB(TransactionMetadataPB* dest) const;
 
+  // Fill dest with full metadata even when isolation is non transactional.
+  void ForceToPB(TransactionMetadataPB* dest) const;
+
   std::string ToString() const {
-    return Format("{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 }",
-                  transaction_id, isolation, status_tablet, priority);
+    return Format(
+        "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4 }",
+        transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time);
   }
 };
 

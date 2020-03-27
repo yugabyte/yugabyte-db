@@ -30,8 +30,28 @@
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_properties_internal.h"
 #include "yb/rocksdb/util/coding.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
+
+DEFINE_bool(verify_encrypted_meta_block_checksums, true,
+            "Whether to verify checksums for meta blocks of encrypted SSTables.");
 
 namespace rocksdb {
+
+namespace {
+
+ReadOptions CreateMetaBlockReadOptions(RandomAccessFileReader* file) {
+  ReadOptions read_options;
+
+  // We need to verify checksums for meta blocks in order to recover from the encryption format
+  // issue described at https://github.com/yugabyte/yugabyte-db/issues/3707.
+  // However, we only do that for encrypted files in order to prevent lots of RocksDB unit tests
+  // from failing as described at https://github.com/yugabyte/yugabyte-db/issues/3974.
+  read_options.verify_checksums = file->file()->IsEncrypted() &&
+                                  FLAGS_verify_encrypted_meta_block_checksums;
+  return read_options;
+}
+
+}  // namespace
 
 MetaIndexBuilder::MetaIndexBuilder()
     : meta_index_block_(new BlockBuilder(1 /* restart interval */)) {}
@@ -160,11 +180,9 @@ Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
   }
 
   BlockContents block_contents;
-  ReadOptions read_options;
-  read_options.verify_checksums = false;
-  Status s;
-  s = ReadBlockContents(file, footer, read_options, handle, &block_contents,
-                        env, nullptr /* mem_tracker */, false);
+  ReadOptions read_options = CreateMetaBlockReadOptions(file);
+  Status s = ReadBlockContents(file, footer, read_options, handle, &block_contents,
+                               env, nullptr /* mem_tracker */, false);
 
   if (!s.ok()) {
     return s;
@@ -247,8 +265,7 @@ Status ReadTableProperties(RandomAccessFileReader* file, uint64_t file_size,
 
   auto metaindex_handle = footer.metaindex_handle();
   BlockContents metaindex_contents;
-  ReadOptions read_options;
-  read_options.verify_checksums = false;
+  ReadOptions read_options = CreateMetaBlockReadOptions(file);
   s = ReadBlockContents(file, footer, read_options, metaindex_handle,
                         &metaindex_contents, env, nullptr /* mem_tracker */, false);
   if (!s.ok()) {
@@ -302,8 +319,7 @@ Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
 
   auto metaindex_handle = footer.metaindex_handle();
   BlockContents metaindex_contents;
-  ReadOptions read_options;
-  read_options.verify_checksums = false;
+  ReadOptions read_options = CreateMetaBlockReadOptions(file);
   s = ReadBlockContents(file, footer, read_options, metaindex_handle,
                         &metaindex_contents, env, mem_tracker, false);
   if (!s.ok()) {
@@ -332,8 +348,7 @@ Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   // Reading metaindex block
   auto metaindex_handle = footer.metaindex_handle();
   BlockContents metaindex_contents;
-  ReadOptions read_options;
-  read_options.verify_checksums = false;
+  ReadOptions read_options = CreateMetaBlockReadOptions(file);
   status = ReadBlockContents(file, footer, read_options, metaindex_handle,
                              &metaindex_contents, env, mem_tracker, false);
   if (!status.ok()) {

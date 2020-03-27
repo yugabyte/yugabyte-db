@@ -87,3 +87,8 @@ test_failures.json
 # Eclipse and Eclipse-compatible tools
 .classpath
 .metadata/
+
+# Diagram generator for docs
+rrdiagram*.jar*
+
+.clangd

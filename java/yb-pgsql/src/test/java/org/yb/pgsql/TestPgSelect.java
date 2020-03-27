@@ -18,11 +18,13 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.RegexMatcher;
 
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -242,6 +244,37 @@ public class TestPgSelect extends BasePgSQLTest {
     }
   }
 
+  /**
+   * Regression test for #1827.
+   */
+  @Test
+  public void testJoinWithArraySearch() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int, name varchar, PRIMARY KEY (id))");
+      statement.execute("CREATE TABLE join_table(id int, tid int, PRIMARY KEY (id))");
+
+      statement.execute("INSERT INTO test_table VALUES (0, 'name 1')");
+      statement.execute("INSERT INTO test_table VALUES (1, 'name 2')");
+      statement.execute("INSERT INTO test_table VALUES (2, 'name 3')");
+
+      statement.execute("INSERT INTO join_table VALUES (0, 0)");
+      statement.execute("INSERT INTO join_table VALUES (1, 0)");
+      statement.execute("INSERT INTO join_table VALUES (2, 1)");
+      statement.execute("INSERT INTO join_table VALUES (3, 1)");
+      statement.execute("INSERT INTO join_table VALUES (4, 2)");
+      statement.execute("INSERT INTO join_table VALUES (5, 2)");
+
+      assertQuery(statement, "SELECT tt.name, jt.id FROM test_table tt" +
+              " INNER JOIN join_table jt ON tt.id = jt.tid" +
+              " WHERE tt.id IN (0, 1)" +
+              " ORDER BY jt.id",
+          new Row("name 1", 0),
+          new Row("name 1", 1),
+          new Row("name 2", 2),
+          new Row("name 2", 3));
+    }
+  }
+
   @Test
   public void testExpressions() throws Exception {
     try (Statement statement = connection.createStatement()) {
@@ -258,6 +291,156 @@ public class TestPgSelect extends BasePgSQLTest {
       // Test expressions in SELECT WHERE clause.
       assertOneRow("SELECT * FROM test_expr WHERE h + r <= 10 AND substring(vs from 2) = 'bc'",
                    2L, 3.0D, 4, "abc");
+    }
+  }
+
+  @Test
+  public void testPgsqlVersion() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery("SELECT version();")) {
+          assertTrue(rs.next());
+          assertThat(String.valueOf(rs.getArray(1)),
+                     RegexMatcher.matchesRegex("PostgreSQL.*-YB-.*"));
+          assertFalse(rs.next());
+      }
+      try (ResultSet rs = statement.executeQuery("show server_version;")) {
+        assertTrue(rs.next());
+        assertThat(String.valueOf(rs.getArray(1)),
+                RegexMatcher.matchesRegex(".*-YB-.*"));
+        assertFalse(rs.next());
+      }
+    }
+  }
+
+  private void verifyStatementPushdownMetric(Statement statement,
+                                             String stmt,
+                                             boolean pushdown_expected) throws Exception {
+    verifyStatementMetric(statement, stmt, AGGREGATE_PUSHDOWNS_METRIC,
+                          pushdown_expected ? 1 : 0, 1, true);
+  }
+
+  @Test
+  public void testAggregatePushdowns() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      createSimpleTable("aggtest");
+
+      // Pushdown COUNT/MAX/MIN/SUM for INTEGER/FLOAT.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(vi), MAX(vi), MIN(vi), SUM(vi) FROM aggtest", true);
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(r), MAX(r), MIN(r), SUM(r) FROM aggtest", true);
+
+      // Don't pushdown if non-supported aggregate is provided (e.g. AVG, at least for now).
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(vi), AVG(vi) FROM aggtest", false);
+
+      // Pushdown COUNT(*).
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(*) FROM aggtest", true);
+
+      // Don't pushdown if there's a WHERE condition.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(*) FROM aggtest WHERE h > 0", false);
+
+      // Pushdown for BIGINT COUNT/MAX/MIN.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(h), MAX(h), MIN(h) FROM aggtest", true);
+
+      // Don't pushdown for BIGINT SUM.
+      verifyStatementPushdownMetric(
+          statement, "SELECT SUM(h) FROM aggtest", false);
+
+      // Pushdown COUNT/MIN/MAX for text.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(vs), MAX(vs), MIN(vs) FROM aggtest", true);
+
+      // Pushdown shared aggregates.
+      verifyStatementPushdownMetric(
+          statement, "SELECT MAX(vi), MAX(vi) + 1 FROM aggtest", true);
+
+      // Don't pushdown complicated expression in aggregate.
+      verifyStatementPushdownMetric(
+          statement, "SELECT MAX(vi + 1) FROM aggtest", false);
+
+      // Don't pushdown window functions.
+      verifyStatementPushdownMetric(
+          statement, "SELECT h, COUNT(h) OVER (PARTITION BY h) FROM aggtest", false);
+
+      // Don't pushdown if DISTINCT present.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(DISTINCT vi) FROM aggtest", false);
+
+      // Create table with NUMERIC/DECIMAL types.
+      statement.execute("CREATE TABLE aggtest2 (n numeric, d decimal)");
+
+      // Pushdown COUNT for NUMERIC/DECIMAL types.
+      verifyStatementPushdownMetric(
+          statement, "SELECT COUNT(n), COUNT(d) FROM aggtest2", true);
+
+      // Don't pushdown SUM/MAX/MIN for NUMERIC/DECIMAL types.
+      for (String col : Arrays.asList("n", "d")) {
+        for (String agg : Arrays.asList("SUM", "MAX", "MIN")) {
+          verifyStatementPushdownMetric(
+              statement, "SELECT " + agg + "(" + col + ") FROM aggtest2", false);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testReverseScanMultiRangeCol() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+
+      statement.execute("CREATE TABLE test_reverse_scan_multicol (h int, r1 int, r2 int, r3 int," +
+                              " PRIMARY KEY (h, r1, r2, r3))");
+      String insert_stmt = "INSERT INTO test_reverse_scan_multicol VALUES (1, %d, %d, %d)";
+
+      for (int r1 = 1; r1 <= 5; r1++) {
+        for (int r2 = 1; r2 <= 5; r2++) {
+          for (int r3 = 1; r3 <= 5; r3++) {
+            statement.execute(String.format(insert_stmt, r1, r2, r3));
+          }
+        }
+      }
+
+      // Test reverse scan with prefix bounds: r1[2, 4], r2(1,4).
+      String select_stmt = "SELECT * FROM test_reverse_scan_multicol WHERE h = 1" +
+                                          "AND r1 >= 2 AND r1 <= 4 AND r2 > 1 and r2 < 4" +
+                                          "ORDER BY r1 DESC, r2 DESC, r3 DESC";
+      ResultSet rs = statement.executeQuery(select_stmt);
+
+      for (int r1 = 4; r1 >= 2; r1--) {
+        for (int r2 = 3; r2 > 1; r2--) {
+          for (int r3 = 5; r3 >= 1; r3--) {
+            assertTrue(rs.next());
+            assertEquals(r1, rs.getInt("r1"));
+            assertEquals(r2, rs.getInt("r2"));
+            assertEquals(r3, rs.getInt("r3"));
+          }
+        }
+      }
+      assertFalse(rs.next());
+
+      // Test reverse scan with non-prefix bounds and LIMIT: r1[2, 4], r3[2, 3].
+      // Total 3 * 5 * 2 = 30 rows but set LIMIT to 25.
+      select_stmt = "SELECT * FROM test_reverse_scan_multicol WHERE h = 1" +
+              "AND r1 >= 2 AND r1 <= 4 AND r3 > 1 and r3 < 4" +
+              "ORDER BY r1 DESC, r2 DESC, r3 DESC LIMIT 25";
+      rs = statement.executeQuery(select_stmt);
+
+      int idx = 0;
+      for (int r1 = 4; r1 >= 2 && idx < 25; r1--) {
+        for (int r2 = 5; r2 >= 1 && idx < 25; r2--) {
+          for (int r3 = 3; r3 > 1 && idx < 25; r3--) {
+            assertTrue(rs.next());
+            assertEquals(r1, rs.getInt("r1"));
+            assertEquals(r2, rs.getInt("r2"));
+            assertEquals(r3, rs.getInt("r3"));
+            idx++;
+          }
+        }
+      }
+      assertFalse(rs.next());
     }
   }
 }

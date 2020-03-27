@@ -52,6 +52,8 @@ enum class TSOpcode : int32_t {
   kListAppend,
   kListPrepend,
   kListRemove,
+
+  kToJson,
 };
 
 bool IsAggregateOpcode(TSOpcode op);

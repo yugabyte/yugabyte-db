@@ -29,7 +29,7 @@ class PgDocData : public PgWire {
 
   static CHECKED_STATUS WriteColumn(const QLValue& col_value, faststring *buffer);
 
-  static CHECKED_STATUS LoadCache(const string& data, int64_t *total_row_count, Slice *cursor);
+  static void LoadCache(const string& data, int64_t *total_row_count, Slice *cursor);
 
   static PgWireDataHeader ReadDataHeader(Slice *cursor);
 };

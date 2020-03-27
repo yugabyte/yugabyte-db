@@ -1969,19 +1969,11 @@ public class TestSelect extends BaseCQLTest {
     selectAndVerify("SELECT tojson(m) FROM test_coll;", "{\"55\":66,\"77\":88}");
 
     // === TEST FROZEN. ===
-    // Feature Not Supported: ToJson() does not support UDT, FROZEN.
-    // https://github.com/YugaByte/yugabyte-db/issues/1675
-    // Uncomment the following code if UDT & FROZEN are supported correctly.
-
     // Test SET<FROZEN<SET>.
     session.execute("CREATE TABLE test_frozen1 (h int PRIMARY KEY, " +
                     "f FROZEN<set<int>>, sf SET<FROZEN<set<int>>>)");
     session.execute("INSERT INTO test_frozen1 (h, f, sf) values (1, {33,44}, {{55,66}})");
     selectAndVerify("SELECT tojson(h) FROM test_frozen1;", "1");
-    // Not supported yet.
-    runInvalidQuery("SELECT tojson(f) FROM test_frozen1");
-    runInvalidQuery("SELECT tojson(sf) FROM test_frozen1");
-/*
     selectAndVerify("SELECT tojson(f) FROM test_frozen1", "[33,44]");
     selectAndVerify("SELECT tojson(sf) FROM test_frozen1", "[[55,66]]");
 
@@ -1992,20 +1984,15 @@ public class TestSelect extends BaseCQLTest {
         "{{'a','b'}:[66,77,88]})");
     selectAndVerify("SELECT tojson(f) FROM test_frozen2",
         "{\"[\\\"a\\\",\\\"b\\\"]\":[66,77,88]}");
-*/
+
     // === TEST USER DEFINED TYPE. ===
     // Test UDT.
     session.execute("CREATE TYPE udt(v1 int, v2 int)");
     session.execute("CREATE TABLE test_udt (h int PRIMARY KEY, u udt, su SET<FROZEN<udt>>)");
     session.execute("INSERT INTO test_udt (h, u, su) values (1, {v1:11,v2:22}, {{v1:33,v2:44}})");
     selectAndVerify("SELECT tojson(h) FROM test_udt", "1");
-    // Feature Not Supported: ToJson() does not support UDT, FROZEN.
-    // https://github.com/YugaByte/yugabyte-db/issues/1675
-    runInvalidQuery("SELECT tojson(u) FROM test_frozen1");
-    runInvalidQuery("SELECT tojson(su) FROM test_frozen1");
-/*
     selectAndVerify("SELECT tojson(u) FROM test_udt", "{\"v1\":11,\"v2\":22}");
-    selectAndVerify("SELECT tojson(su) FROM test_udt", "[{\"v1\":11,\"v2\":22}]");
+    selectAndVerify("SELECT tojson(su) FROM test_udt", "[{\"v1\":33,\"v2\":44}]");
 
     // Test FROZEN<UDT>.
     session.execute("CREATE TABLE test_udt2 (h int PRIMARY KEY, u frozen<udt>)");
@@ -2053,8 +2040,8 @@ public class TestSelect extends BaseCQLTest {
     selectAndVerify("SELECT tojson(h) FROM test_udt7", "1");
     // Verify that the column names in upper case are double quoted (see the case in Cassandra).
     selectAndVerify("SELECT tojson(u) FROM test_udt7",
-        "{\"v1\":11,\\\"V2\\\":22,\"v  3\":33,\\\"V  4\\\":44}");
-*/
+        "{\"\\\"V  4\\\"\":44,\"\\\"V2\\\"\":22,\"v  3\":33,\"v1\":11}");
+
     // Test UDT2<int, UDT>.
     // Feature Not Supported: UDT field types cannot refer to other user-defined types.
     // https://github.com/YugaByte/yugabyte-db/issues/1630
@@ -2064,6 +2051,15 @@ public class TestSelect extends BaseCQLTest {
     //    session.execute("INSERT INTO test_udt8 (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
     //    selectAndVerify("SELECT tojson(u) FROM test_udt8",
     //        "{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}");
+
+    // Test TUPLE.
+    // Feature Not Supported
+    // https://github.com/YugaByte/yugabyte-db/issues/936
+    runInvalidQuery("CREATE TABLE test_tuple (h int PRIMARY KEY, t tuple<int>)");
+    // Uncomment the following block if we support TUPLE.
+    //    session.execute("CREATE TABLE test_tuple (h int PRIMARY KEY, t tuple<int, text>)");
+    //    session.execute("INSERT INTO test_tuple (h, t) values (1, (77, 'string'))");
+    //    selectAndVerify("SELECT tojson(u) FROM test_tuple", "[77,\"string\"]");
 
     // Test SELECT JSON *.
     // Feature Not Supported: Invalid SQL Statement. Syntax error.
