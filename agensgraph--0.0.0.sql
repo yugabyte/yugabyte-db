@@ -30,6 +30,10 @@ CREATE UNIQUE INDEX ag_graph_oid_index ON ag_graph USING btree (oid);
 
 CREATE UNIQUE INDEX ag_graph_name_index ON ag_graph USING btree (name);
 
+CREATE UNIQUE INDEX ag_graph_namespace_index
+ON ag_graph
+USING btree (namespace);
+
 -- 0 is an invalid label ID
 CREATE DOMAIN label_id AS int NOT NULL CHECK (VALUE > 0 AND VALUE <= 65535);
 
@@ -52,6 +56,8 @@ USING btree (name, graph);
 CREATE UNIQUE INDEX ag_label_graph_id_index
 ON ag_label
 USING btree (graph, id);
+
+CREATE UNIQUE INDEX ag_label_relation_index ON ag_label USING btree (relation);
 
 --
 -- catalog lookup functions
@@ -79,6 +85,12 @@ LANGUAGE c
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION alter_graph(graph_name name, operation cstring, new_value name)
+RETURNS void
+LANGUAGE c
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION drop_label(graph_name name, label_name name,
+                           force boolean = false)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';

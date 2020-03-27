@@ -28,7 +28,7 @@ SELECT * FROM cypher('cypher_create', $$CREATE (:v {})$$) AS (a agtype);
 
 SELECT * FROM cypher('cypher_create', $$CREATE (:v {key: 'value'})$$) AS (a agtype);
 
-SELECT * FROM cypher_create.v;
+SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
 
 -- for now, edges are not supported
 SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) AS (a agtype);

@@ -18,18 +18,30 @@ LOAD 'agensgraph';
 SET search_path TO ag_catalog;
 
 --
--- create_graph() and drop_graph() tests
+-- create_graph(), drop_label(), and drop_graph() tests
 --
 
 SELECT create_graph('g');
 SELECT * FROM ag_graph WHERE name = 'g';
 
+-- create a label to test drop_label()
+SELECT * FROM cypher('g', $$CREATE (:l)$$) AS r(a agtype);
+
+-- test drop_label()
+SELECT drop_label('g', 'l');
+
 -- create a label to test drop_graph()
 SELECT * FROM cypher('g', $$CREATE (:v)$$) AS r(a agtype);
 
+-- DROP SCHEMA ... CASCADE should fail
+DROP SCHEMA g CASCADE;
+
+-- DROP TABLE ... should fail
+DROP TABLE g.v;
+
+-- should fail (cascade = false)
 SELECT drop_graph('g');
--- FIXME: ag_label entries in the dropped graph needs to be deleted
-DELETE FROM ag_label WHERE graph = (SELECT oid FROM ag_graph WHERE name = 'g');
+
 SELECT drop_graph('g', true);
 SELECT count(*) FROM ag_graph WHERE name = 'g';
 SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
@@ -113,6 +125,4 @@ SELECT name, id, kind, relation FROM ag_label;
 SELECT * FROM cypher('g', $$CREATE (:v2)$$) as r(a agtype);
 SELECT name, id, kind, relation FROM ag_label;
 
--- FIXME: ag_label entries in the dropped graph needs to be deleted
-DELETE FROM ag_label WHERE graph = (SELECT oid FROM ag_graph WHERE name = 'g');
 SELECT drop_graph('g', true);

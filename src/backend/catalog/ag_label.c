@@ -16,13 +16,18 @@
 
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
+#include "access/skey.h"
+#include "access/stratnum.h"
 #include "catalog/indexing.h"
 #include "fmgr.h"
 #include "storage/lockdefs.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 
@@ -85,6 +90,35 @@ Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
     return label_oid;
 }
 
+// DELETE FROM ag_catalog.ag_label WHERE relation = relation
+void delete_label(Oid relation)
+{
+    ScanKeyData scan_keys[1];
+    Relation ag_label;
+    SysScanDesc scan_desc;
+    HeapTuple tuple;
+
+    ScanKeyInit(&scan_keys[0], Anum_ag_label_relation, BTEqualStrategyNumber,
+                F_OIDEQ, ObjectIdGetDatum(relation));
+
+    ag_label = heap_open(ag_label_relation_id(), RowExclusiveLock);
+    scan_desc = systable_beginscan(ag_label, ag_label_relation_index_id(),
+                                   true, NULL, 1, scan_keys);
+
+    tuple = systable_getnext(scan_desc);
+    if (!HeapTupleIsValid(tuple))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("label (relation=%u) does not exist", relation)));
+    }
+
+    CatalogTupleDelete(ag_label, &tuple->t_self);
+
+    systable_endscan(scan_desc);
+    heap_close(ag_label, RowExclusiveLock);
+}
+
 Oid get_label_oid(const char *label_name, Oid label_graph)
 {
     label_cache_data *cache_data;
@@ -105,6 +139,22 @@ int32 get_label_id(const char *label_name, Oid label_graph)
         return cache_data->id;
     else
         return INVALID_LABEL_ID;
+}
+
+Oid get_label_relation(const char *label_name, Oid label_graph)
+{
+    label_cache_data *cache_data;
+
+    cache_data = search_label_name_graph_cache(label_name, label_graph);
+    if (cache_data)
+        return cache_data->relation;
+    else
+        return InvalidOid;
+}
+
+char *get_label_relation_name(const char *label_name, Oid label_graph)
+{
+    return get_rel_name(get_label_relation(label_name, label_graph));
 }
 
 PG_FUNCTION_INFO_V1(_label_id);

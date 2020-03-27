@@ -120,6 +120,44 @@ Examples
   
   (1 row)
 
+drop_label()
+------------
+
+Drops a label in a graph.
+
+Prototype
+~~~~~~~~~
+
+``drop_label(graph_name name, label_name name) void``
+
+Parameters
+~~~~~~~~~~
+
++----------------+----------------------+
+| Name           | Description          |
++================+======================+
+| ``graph_name`` | The name of a graph. |
++----------------+----------------------+
+| ``label_name`` | The name of a label. |
++----------------+----------------------+
+
+Return Value
+~~~~~~~~~~~~
+
+N/A
+
+Examples
+~~~~~~~~
+
+.. code-block:: psql
+
+  =# SELECT drop_label('g', 'v');
+  NOTICE:  label "g"."v" has been dropped
+   drop_label
+  ------------
+  
+  (1 row)
+
 .. _get_cypher_keywords:
 
 get_cypher_keywords()

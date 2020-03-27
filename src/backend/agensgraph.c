@@ -18,6 +18,7 @@
 
 #include "fmgr.h"
 
+#include "catalog/ag_catalog.h"
 #include "nodes/ag_nodes.h"
 #include "optimizer/cypher_paths.h"
 #include "parser/cypher_analyze.h"
@@ -30,6 +31,7 @@ void _PG_init(void)
 {
     register_ag_nodes();
     set_rel_pathlist_init();
+    object_access_hook_init();
     post_parse_analyze_init();
 }
 
@@ -38,5 +40,6 @@ void _PG_fini(void);
 void _PG_fini(void)
 {
     post_parse_analyze_fini();
+    object_access_hook_fini();
     set_rel_pathlist_fini();
 }

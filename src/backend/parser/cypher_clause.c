@@ -459,7 +459,7 @@ static void transform_cypher_node(cypher_parsestate *cpstate,
     }
 
     schema_name = get_graph_namespace_name(cpstate->graph_name);
-    rel_name = get_label_relation_name(node->label);
+    rel_name = get_label_relation_name(node->label, cpstate->graph_oid);
     label_range_var = makeRangeVar(schema_name, rel_name, -1);
     alias = makeAlias(node->name, NIL);
 

@@ -16,10 +16,112 @@
 
 #include "postgres.h"
 
+#include "catalog/dependency.h"
+#include "catalog/objectaccess.h"
+#include "catalog/pg_class_d.h"
+#include "catalog/pg_namespace_d.h"
 #include "utils/lsyscache.h"
 
 #include "catalog/ag_catalog.h"
+#include "catalog/ag_label.h"
 #include "catalog/ag_namespace.h"
+#include "utils/ag_cache.h"
+
+static object_access_hook_type prev_object_access_hook;
+
+static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
+                          int sub_id, void *arg);
+
+void object_access_hook_init(void)
+{
+    prev_object_access_hook = object_access_hook;
+    object_access_hook = object_access;
+}
+
+void object_access_hook_fini(void)
+{
+    object_access_hook = prev_object_access_hook;
+}
+
+/*
+ * object_access_hook is called before actual deletion. So, looking up ag_cache
+ * is still valid at this point. For labels, once a backed table is deleted,
+ * its corresponding ag_label cache entry will be removed by cache
+ * invalidation.
+ */
+static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
+                          int sub_id, void *arg)
+{
+    ObjectAccessDrop *drop_arg;
+
+    if (prev_object_access_hook)
+        prev_object_access_hook(access, class_id, object_id, sub_id, arg);
+
+    // We are interested in DROP SCHEMA and DROP TABLE commands.
+    if (access != OAT_DROP)
+        return;
+
+    drop_arg = arg;
+
+    /*
+     * PERFORM_DELETION_INTERNAL flag will be set when remove_schema() calls
+     * performDeletion(). However, if PostgreSQL does performDeletion() with
+     * PERFORM_DELETION_INTERNAL flag over backed schemas of graphs due to
+     * side effects of other commands run by user, it is impossible to
+     * distinguish between this and drop_graph().
+     *
+     * The above applies to DROP TABLE command too.
+     */
+
+    if (class_id == NamespaceRelationId)
+    {
+        graph_cache_data *cache_data;
+
+        if (drop_arg->dropflags & PERFORM_DELETION_INTERNAL)
+            return;
+
+        cache_data = search_graph_namespace_cache(object_id);
+        if (cache_data)
+        {
+            char *nspname = get_namespace_name(object_id);
+
+            ereport(ERROR, (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+                            errmsg("schema \"%s\" is for graph \"%s\"",
+                                   nspname, NameStr(cache_data->name))));
+        }
+
+        return;
+    }
+
+    if (class_id == RelationRelationId)
+    {
+        label_cache_data *cache_data;
+
+        cache_data = search_label_relation_cache(object_id);
+
+        // We are interested in only tables that are labels.
+        if (!cache_data)
+            return;
+
+        if (drop_arg->dropflags & PERFORM_DELETION_INTERNAL)
+        {
+            /*
+             * Remove the corresponding ag_label entry here first. We don't
+             * know whether this operation is drop_label() or a part of
+             * drop_graph().
+             */
+            delete_label(object_id);
+        }
+        else
+        {
+            char *relname = get_rel_name(object_id);
+
+            ereport(ERROR, (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+                            errmsg("table \"%s\" is for label \"%s\"",
+                                   relname, NameStr(cache_data->name))));
+        }
+    }
+}
 
 Oid ag_relation_id(const char *name, const char *kind)
 {

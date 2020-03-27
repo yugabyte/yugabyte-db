@@ -19,6 +19,9 @@
 
 #include "postgres.h"
 
+void object_access_hook_init(void);
+void object_access_hook_fini(void);
+
 Oid ag_relation_id(const char *name, const char *kind);
 
 #endif

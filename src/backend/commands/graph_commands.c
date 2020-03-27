@@ -17,23 +17,34 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "catalog/dependency.h"
+#include "catalog/objectaddress.h"
 #include "commands/defrem.h"
 #include "commands/schemacmds.h"
 #include "commands/tablecmds.h"
 #include "fmgr.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
 #include "parser/parser.h"
+#include "utils/relcache.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "utils/graphid.h"
 
+/*
+ * Schema name doesn't have to be graph name but the same name is used so
+ * that users can find the backed schema for a graph only by its name.
+ */
+#define gen_graph_namespace_name(graph_name) (graph_name)
+
 static Oid create_schema_for_graph(const Name graph_name);
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade);
+static void remove_schema(Node *schema_name, DropBehavior behavior);
 static void rename_graph(const Name graph_name, const Name new_name);
 
 PG_FUNCTION_INFO_V1(create_graph);
@@ -90,7 +101,7 @@ static Oid create_schema_for_graph(const Name graph_name)
      * so the event trigger will not be fired.
      */
     schema_stmt = makeNode(CreateSchemaStmt);
-    schema_stmt->schemaname = get_graph_namespace_name(graph_name_str);
+    schema_stmt->schemaname = gen_graph_namespace_name(graph_name_str);
     schema_stmt->authrole = NULL;
     seq_stmt = makeNode(CreateSeqStmt);
     seq_stmt->sequence = makeRangeVar(graph_name_str, LABEL_ID_SEQ_NAME, -1);
@@ -140,8 +151,7 @@ Datum drop_graph(PG_FUNCTION_ARGS)
     delete_graph(graph_name);
     CommandCounterIncrement();
 
-    ereport(NOTICE,
-            (errmsg("graph \"%s\" has been dropped", NameStr(*graph_name))));
+    ereport(NOTICE, (errmsg("graph \"%s\" has been dropped", graph_name_str)));
 
     PG_RETURN_VOID();
 }
@@ -151,6 +161,7 @@ static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
     DropStmt *drop_stmt;
     Value *schema_name;
     List *label_id_seq_name;
+    DropBehavior behavior;
 
     /*
      * ProcessUtilityContext of commands below is PROCESS_UTILITY_SUBCOMMAND
@@ -171,15 +182,54 @@ static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
     // CommandCounterIncrement() is called in RemoveRelations()
 
     // DROP SCHEMA `graph_name_str` [ CASCADE ]
-    drop_stmt = makeNode(DropStmt);
-    drop_stmt->objects = list_make1(schema_name);
-    drop_stmt->removeType = OBJECT_SCHEMA;
-    drop_stmt->behavior = cascade ? DROP_CASCADE : DROP_RESTRICT;
-    drop_stmt->missing_ok = false;
-    drop_stmt->concurrent = false;
+    behavior = cascade ? DROP_CASCADE : DROP_RESTRICT;
+    remove_schema((Node *)schema_name, behavior);
+    // CommandCounterIncrement() is called in performDeletion()
+}
 
-    RemoveObjects(drop_stmt);
-    // CommandCounterIncrement() is called in RemoveObjects()
+// See RemoveObjects() for more details.
+static void remove_schema(Node *schema_name, DropBehavior behavior)
+{
+    ObjectAddress address;
+    Relation relation;
+
+    address = get_object_address(OBJECT_SCHEMA, schema_name, &relation,
+                                 AccessExclusiveLock, false);
+    // since the target object is always a schema, relation is NULL
+    Assert(!relation);
+
+    if (!OidIsValid(address.objectId))
+    {
+        // missing_ok is always false
+
+        /*
+         * before calling this function, this condition is already checked in
+         * drop_graph()
+         */
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                        errmsg("ag_graph catalog is corrupted"),
+                        errhint("Schema \"%s\" does not exist",
+                                strVal(schema_name))));
+    }
+
+    // removeType is always OBJECT_SCHEMA
+
+    /*
+     * Check permissions. Since the target object is always a schema, the
+     * original logic is simplified.
+     */
+    check_object_ownership(GetUserId(), OBJECT_SCHEMA, address, schema_name,
+                           NULL);
+
+    // the target schema is not temporary
+
+    // the target object is always a schema
+
+    /*
+     * set PERFORM_DELETION_INTERNAL flag so that object_access_hook can ignore
+     * this deletion
+     */
+    performDeletion(&address, behavior, PERFORM_DELETION_INTERNAL);
 }
 
 PG_FUNCTION_INFO_V1(alter_graph);
@@ -239,15 +289,19 @@ static void rename_graph(const Name graph_name, const Name new_name)
 {
     char *oldname = NameStr(*graph_name);
     char *newname = NameStr(*new_name);
+    char *schema_name;
 
     /*
      * ProcessUtilityContext of this command is PROCESS_UTILITY_SUBCOMMAND
      * so the event trigger will not be fired.
      *
      * CommandCounterIncrement() does not have to be called after this.
+     *
+     * NOTE: If graph_name and schema_name are decoupled, this operation does
+     *       not required.
      */
-    RenameSchema(get_graph_namespace_name(oldname),
-                 get_graph_namespace_name(newname));
+    schema_name = get_graph_namespace_name(oldname);
+    RenameSchema(schema_name, newname);
 
     update_graph_name(graph_name, new_name);
     CommandCounterIncrement();

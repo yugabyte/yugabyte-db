@@ -42,12 +42,12 @@ SELECT * FROM cypher('cypher_create', $$CREATE (:v {key: 'value'})$$) AS (a agty
 ---
 (0 rows)
 
-SELECT * FROM cypher_create.v;
-       id        |    properties    
------------------+------------------
- 281474976710657 | {}
- 281474976710658 | {}
- 281474976710659 | {"key": "value"}
+SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
+                                       n                                       
+-------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "v", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "v", "properties": {}}::vertex
+ {"id": 281474976710659, "label": "v", "properties": {"key": "value"}}::vertex
 (3 rows)
 
 -- for now, edges are not supported
