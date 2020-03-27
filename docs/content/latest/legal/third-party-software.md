@@ -20,7 +20,7 @@ Yugabyte proudly participates in the open source community and appreciates all o
 
 - PostgreSQL stateless language layer for implementing YSQL.
 - PostgreSQL scanner and parser modules (`.y` and `.l` files) were used as a starting point for implementing the YCQL scanner and parser in C++.
-- The DocDB document storage layer in YugabyteDB uses a customized and enhanced version of [RocksDB](https://github.com/facebook/rocksdb). Some of the customizations and enhancements are described in [DocDB store](https://docs.yugabyte.com/latest/architecture/docdb/).
+- The DocDB document store uses a customized and enhanced version of [RocksDB](https://github.com/facebook/rocksdb). Some of the customizations and enhancements are described in [DocDB store](https://docs.yugabyte.com/latest/architecture/docdb/).
 - The Apache Kudu Raft implementation and server framework were used as a starting point. Since then, we have implemented several enhancements, such as leader leases and pre-voting state during learner mode for correctness, improvements to the network stack, auto balancing of tablets on failures, zone/DC aware data placement, leader-balancing, ability to do full cluster moves in a online manner, and more.
 - Google libraries (`glog`, `gflags`, `protocol buffers`, `snappy`, `gperftools`, `gtest`, `gmock`).
 
@@ -83,7 +83,7 @@ Yugabyte products incorporate third party software, which includes the copyright
 |  sqlite | 3.21.0 | CC0-1.0 |
 |  unzip | 6.0.3 | Info-ZIP |
 |  zlib | 1.2.11 | Zlib |
-|  PostgreSQL | 10.4 (ab5e9caa4a3ec4765348a0482e88edcf3f6aab4a) | PostgreSQL |
+|  PostgreSQL | 11.2 | PostgreSQL |
 |  libcds | 2.3.3 | Boost Software License |
 |  Flask | 1.0.2 | BSD-3-Clause |
 |  Jinja2 | 2.10 | BSD-3-Clause |
