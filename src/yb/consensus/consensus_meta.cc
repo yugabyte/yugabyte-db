@@ -31,10 +31,12 @@
 //
 #include "yb/consensus/consensus_meta.h"
 
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/logging.h"
@@ -264,7 +266,7 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
 }
 
 std::string ConsensusMetadata::LogPrefix() const {
-  return Substitute("T $0 P $1: ", tablet_id_, peer_uuid_);
+  return MakeTabletLogPrefix(tablet_id_, peer_uuid_);
 }
 
 void ConsensusMetadata::UpdateActiveRole() {

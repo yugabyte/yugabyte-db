@@ -57,7 +57,8 @@ class OperationCompletionCallback;
 class OperationState;
 
 YB_DEFINE_ENUM(OperationType,
-               (kWrite)(kChangeMetadata)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty));
+               (kWrite)(kChangeMetadata)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty)
+               (kHistoryCutoff));
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
@@ -243,6 +244,45 @@ class OperationState {
 
   // Lock that protects access to operation state.
   mutable simple_spinlock mutex_;
+};
+
+template <class Request>
+class OperationStateBase : public OperationState {
+ public:
+  OperationStateBase(Tablet* tablet, const Request* request)
+      : OperationState(tablet), request_(request) {}
+
+  explicit OperationStateBase(Tablet* tablet)
+      : OperationStateBase(tablet, nullptr) {}
+
+  const Request* request() const override {
+    return request_.load(std::memory_order_acquire);
+  }
+
+  Request* AllocateRequest() {
+    request_holder_ = std::make_unique<Request>();
+    request_.store(request_holder_.get(), std::memory_order_release);
+    return request_holder_.get();
+  }
+
+  void TakeRequest(Request* request) {
+    request_holder_.reset(new Request);
+    request_.store(request_holder_.get(), std::memory_order_release);
+    request_holder_->Swap(request);
+  }
+
+  std::string ToString() const override {
+    return Format("{ request: $0 }", request_.load(std::memory_order_acquire));
+  }
+
+ protected:
+  void UseRequest(const Request* request) {
+    request_.store(request, std::memory_order_release);
+  }
+
+ private:
+  std::unique_ptr<Request> request_holder_;
+  std::atomic<const Request*> request_;
 };
 
 // A parent class for the callback that gets called when transactions complete.

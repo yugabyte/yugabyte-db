@@ -124,6 +124,8 @@ class TabletBootstrap {
 
   CHECKED_STATUS PlayTabletSnapshotOpRequest(consensus::ReplicateMsg* replicate_msg);
 
+  CHECKED_STATUS PlayHistoryCutoffRequest(consensus::ReplicateMsg* replicate_msg);
+
   void DumpReplayStateToLog(const ReplayState& state);
 
   // Handlers for each type of message seen in the log during replay.

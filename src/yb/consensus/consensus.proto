@@ -111,6 +111,7 @@ enum OperationType {
   UPDATE_TRANSACTION_OP = 6;
   SNAPSHOT_OP = 7;
   TRUNCATE_OP = 8;
+  HISTORY_CUTOFF_OP = 9;
 }
 
 // The transaction driver type: indicates whether a transaction is
@@ -186,6 +187,11 @@ message ChangeConfigResponsePB {
   optional fixed64 hybrid_time = 2;
 }
 
+// Required by HistoryCutoffOperation.
+message HistoryCutoffPB {
+  optional fixed64 history_cutoff = 1;
+}
+
 // A Replicate message, sent to replicas by leader to indicate this operation must be stored in the
 // write-ahead log.
 message ReplicateMsg {
@@ -206,6 +212,7 @@ message ReplicateMsg {
   optional tserver.TabletSnapshotOpRequestPB snapshot_request = 11;
   optional tserver.TruncateRequestPB truncate_request = 12;
   optional ChangeConfigRecordPB change_config_record = 7;
+  optional HistoryCutoffPB history_cutoff = 13;
 
   // The Raft operation ID known to the leader to be committed at the time this message was sent.
   // This is used during tablet bootstrap for RocksDB-backed tables.
@@ -369,7 +376,7 @@ message ConsensusRequestPB {
   // standpoint (not the last operation the leader applied).
   //
   // Raft calls this field 'leaderCommit'.
-  required OpIdPB committed_index = 5;
+  required OpIdPB committed_op_id = 5;
 
   // Sequence of operations to be replicated by this peer.
   // These will be committed when committed_index advances above their

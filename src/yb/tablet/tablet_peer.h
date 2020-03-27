@@ -439,7 +439,7 @@ class TabletPeer : public consensus::ConsensusContext,
   HybridTime ReportReadRestart() override;
 
   FixedHybridTimeLease HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
-  HybridTime PropagatedSafeTime() override;
+  HybridTime PreparePeerRequest() override;
   void MajorityReplicated() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;

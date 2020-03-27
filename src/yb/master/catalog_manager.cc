@@ -6427,9 +6427,11 @@ void CatalogManager::ReportMetrics() {
 
 std::string CatalogManager::LogPrefix() const {
   if (tablet_peer()) {
-    return Substitute("T $0 P $1: ", tablet_peer()->tablet_id(), tablet_peer()->permanent_uuid());
+    return consensus::MakeTabletLogPrefix(
+        tablet_peer()->tablet_id(), tablet_peer()->permanent_uuid());
   } else {
-    return Substitute("T $0 P $1: ", kSysCatalogTabletId, master_->fs_manager()->uuid());
+    return consensus::MakeTabletLogPrefix(
+        kSysCatalogTabletId, master_->fs_manager()->uuid());
   }
 }
 

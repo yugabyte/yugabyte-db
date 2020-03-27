@@ -33,6 +33,8 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/consensus/consensus_util.h"
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb.h"
 
@@ -1428,7 +1430,7 @@ std::string TransactionParticipant::DumpTransactions() const {
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {
-  return Format("T $0 P $1: ", tablet_id(), permanent_uuid());
+  return consensus::MakeTabletLogPrefix(tablet_id(), permanent_uuid());
 }
 
 } // namespace tablet

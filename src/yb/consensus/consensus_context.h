@@ -43,8 +43,11 @@ class ConsensusContext {
 
   virtual bool ShouldApplyWrite() = 0;
 
+  // Performs steps to prepare request for peer.
+  // For instance it could enqueue some operations to the Raft.
+  //
   // Returns the current safe time, so we can send it from leaders to followers.
-  virtual HybridTime PropagatedSafeTime() = 0;
+  virtual HybridTime PreparePeerRequest() = 0;
 
   // This is called every time majority-replicated watermarks (OpId / leader leases) change. This is
   // used for updating the "propagated safe time" value in MvccManager and unblocking readers

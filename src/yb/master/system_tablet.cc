@@ -41,14 +41,6 @@ const TabletId& SystemTablet::tablet_id() const {
   return tablet_id_;
 }
 
-Status SystemTablet::RegisterReaderTimestamp(HybridTime read_point) {
-  return Status::OK();
-}
-
-void SystemTablet::UnregisterReader(HybridTime read_point) {
-  // NOOP.
-}
-
 HybridTime SystemTablet::DoGetSafeTime(
     tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   // HybridTime doesn't matter for SystemTablets.

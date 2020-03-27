@@ -37,8 +37,10 @@
 #include <algorithm>
 #include <mutex>
 
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/util.h"
@@ -128,7 +130,7 @@ LogReader::LogReader(Env* env,
     : env_(env),
       log_index_(index),
       tablet_id_(std::move(tablet_id)),
-      log_prefix_(Format("T $0 P $1: ", tablet_id_, peer_uuid)),
+      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid)),
       state_(kLogReaderInitialized) {
   if (metric_entity) {
     bytes_read_ = METRIC_log_reader_bytes_read.Instantiate(metric_entity);
