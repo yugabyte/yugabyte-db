@@ -1,3 +1,17 @@
+---
+title: Build a YugabyteDB application using Java and YEDIS
+headerTitle: Build an application using Java
+linkTitle: Java
+description: Use Java to build a YugabyteDB application that interacts with YEDIS
+aliases:
+ - /latest/yedis/develop/client-drivers/java
+menu:
+  latest:
+    identifier: client-drivers-yedis-java
+    parent: develop-yedis
+isTocNested: true
+showAsideToc: true
+---
 
 ## Maven
 
@@ -74,7 +88,7 @@ Create a Maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-### Writing a HelloWorld Redis application
+### Write a HelloWorld Java application
 
 Create the appropriate directory structure as expected by Maven.
 
@@ -122,7 +136,7 @@ public class YBRedisHelloWorld {
 }
 ```
 
-### Building and running the application
+### Build and run the application
 
 To build the application, run the following command.
 

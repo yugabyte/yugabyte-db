@@ -1,3 +1,17 @@
+---
+title: Build a YugabyteDB application using Python and YEDIS
+headerTitle: Build an application using Python
+linkTitle: Python
+description: Use Python to build a YugabyteDB application that interacts with YEDIS
+aliases:
+ - /latest/yedis/develop/client-drivers/python
+menu:
+  latest:
+    identifier: client-drivers-yedis-python
+    parent: develop-yedis
+isTocNested: true
+showAsideToc: true
+---
 
 ## Installation
 
@@ -15,7 +29,7 @@ This tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/).
 
-### Writing the Python code
+### Write the HelloWorld Python application
 
 Create a file `yb-redis-helloworld.py` and add the following content to it.
 
@@ -35,7 +49,7 @@ print "Inserted userid=1, profile=%s" % user_profile
 print r.hgetall(userid)
 ```
 
-### Running the application
+### Run the application
 
 To run the application, type the following:
 
