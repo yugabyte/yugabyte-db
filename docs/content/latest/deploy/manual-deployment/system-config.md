@@ -1,7 +1,8 @@
 ---
 title: System configuration
+headerTitle: System configuration
 linkTitle: 1. System configuration
-description: System configuration
+description: Configure NTP and ulimits on your YugabyteDB cluster
 aliases:
   - /deploy/manual-deployment/system-config
 menu:
