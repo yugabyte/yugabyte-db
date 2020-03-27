@@ -1,6 +1,21 @@
+---
+title: Build a YugabyteDB application using NodeJS and YEDIS
+headerTitle: Build an application using NodeJS
+linkTitle: NodeJS
+description: Use NodeJS to build a YugabyteDB application that interacts with YEDIS
+aliases:
+ - /latest/yedis/develop/client-drivers/nodejs
+menu:
+  latest:
+    identifier: client-drivers-yedis-nodejs
+    parent: develop-yedis
+isTocNested: true
+showAsideToc: true
+---
+
 ## Installation
 
-Install the nodejs driver using the following command.
+Install the NodeJS driver using the following command.
 
 ```sh
 $ npm install redis
@@ -15,8 +30,7 @@ This tutorial assumes that you have:
 - installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/).
 - installed a recent version of `node`. If not, you can find install instructions [here](https://nodejs.org/en/download/).
 
-
-### Writing the js code
+### Write the HelloWorld NodeJS application
 
 Create a file `yb-redis-helloworld.js` and add the following content to it.
 
@@ -41,7 +55,7 @@ client.quit(function (err, res) {
 });
 ```
 
-### Running the application
+### Run the application
 
 To run the application, type the following:
 
