@@ -26,16 +26,47 @@ namespace tablet {
 // interval configured by the user.
 class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
-  explicit TabletRetentionPolicy(Tablet* tablet);
+  explicit TabletRetentionPolicy(server::ClockPtr clock, const RaftGroupMetadata* metadata);
 
   docdb::HistoryRetentionDirective GetRetentionDirective() override;
 
- private:
-  Tablet* tablet_;
+  // Tries to update history cutoff to proposed value, not allowing it to decrease.
+  // Returns new committed history cutoff value.
+  HybridTime UpdateCommittedHistoryCutoff(HybridTime new_value);
 
-  // The delta to be added to the current time to get the history cutoff timestamp. This is always
-  // a negative amount.
-  MonoDelta retention_delta_;
+  // Returns history cutoff for propagation.
+  // It is used at tablet leader while creating request for peer.
+  // Invalid hybrid time is returned when history cutoff should not be propagated.
+  // For instance it could happen if we already have big enough history cutoff or propagated it
+  // recently.
+  HybridTime HistoryCutoffToPropagate(HybridTime last_write_ht);
+
+  // Register/Unregister a read operation, with an associated timestamp, for the purpose of
+  // tracking the oldest read point.
+  CHECKED_STATUS RegisterReaderTimestamp(HybridTime timestamp);
+  void UnregisterReaderTimestamp(HybridTime timestamp);
+
+ private:
+  bool ShouldRetainDeleteMarkersInMajorCompaction() const;
+  HybridTime EffectiveHistoryCutoff() REQUIRES(mutex_);
+
+  // Check proposed history cutoff against other restrictions (for instance min reading timestamp),
+  // and returns most close value that satisfy them.
+  HybridTime SanitizeHistoryCutoff(HybridTime proposed_history_cutoff) REQUIRES(mutex_);
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  const server::ClockPtr clock_;
+  const RaftGroupMetadata& metadata_;
+  const std::string log_prefix_;
+
+  mutable std::mutex mutex_;
+  // Set of active read timestamps.
+  std::multiset<HybridTime> active_readers_ GUARDED_BY(mutex_);
+  HybridTime committed_history_cutoff_ GUARDED_BY(mutex_) = HybridTime::kMin;
+  CoarseTimePoint next_history_cutoff_propagation_ GUARDED_BY(mutex_) = CoarseTimePoint::min();
 };
 
 }  // namespace tablet

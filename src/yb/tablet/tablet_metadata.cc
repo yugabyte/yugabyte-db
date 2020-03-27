@@ -42,6 +42,7 @@
 #include "yb/rocksdb/options.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/atomicops.h"
@@ -381,7 +382,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
-  std::string log_prefix = Format("T $0 P $1: ", raft_group_id_, fs_manager_->uuid());
+  std::string log_prefix = consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid());
   docdb::InitRocksDBOptions(
       &rocksdb_options, log_prefix, nullptr /* statistics */, tablet_options);
 
@@ -776,7 +777,7 @@ void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
 }
 
 string RaftGroupMetadata::LogPrefix() const {
-  return Substitute("T $0 P $1: ", raft_group_id_, fs_manager_->uuid());
+  return consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid());
 }
 
 TabletDataState RaftGroupMetadata::tablet_data_state() const {

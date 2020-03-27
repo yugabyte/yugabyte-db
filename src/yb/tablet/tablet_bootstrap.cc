@@ -32,6 +32,7 @@
 #include "yb/tablet/tablet_bootstrap.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/retryable_requests.h"
@@ -41,10 +42,11 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/history_cutoff_operation.h"
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
-#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/opid.h"
@@ -715,6 +717,9 @@ Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
     case consensus::SNAPSHOT_OP:
       return PlayTabletSnapshotOpRequest(replicate);
 
+    case consensus::HISTORY_CUTOFF_OP:
+      return PlayHistoryCutoffRequest(replicate);
+
     // Unexpected cases:
     case consensus::UNKNOWN_OP:
       return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
@@ -729,6 +734,13 @@ Status TabletBootstrap::PlayTabletSnapshotOpRequest(ReplicateMsg* replicate_msg)
   SnapshotOperationState tx_state(/* tablet */ nullptr, snapshot);
 
   return tablet_->snapshots().Bootstrap(&tx_state);
+}
+
+Status TabletBootstrap::PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {
+  HistoryCutoffOperationState state(
+      tablet_.get(), replicate_msg->mutable_history_cutoff());
+
+  return state.Replicated(/* leader_term= */ yb::OpId::kUnknownTerm);
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.
@@ -858,11 +870,10 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       --iter;
       const scoped_refptr <ReadableLogSegment>& segment = *iter;
 
-      Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> res =
-              segment->ReadFirstEntryMetadata();
+      auto res = segment->ReadFirstEntryMetadata();
       if (res.ok()) {
-        yb::OpId op_id = res->first;
-        RestartSafeCoarseTimePoint time = res->second;
+        yb::OpId op_id = res->committed_op_id;
+        RestartSafeCoarseTimePoint time = res->mono_time;
 
         // This is the first entry
         if (!read_last_time) {
@@ -1132,7 +1143,7 @@ void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
 }
 
 string TabletBootstrap::LogPrefix() const {
-  return Substitute("T $0 P $1: ", meta_->raft_group_id(), meta_->fs_manager()->uuid());
+  return consensus::MakeTabletLogPrefix(meta_->raft_group_id(), meta_->fs_manager()->uuid());
 }
 
 Env* TabletBootstrap::GetEnv() {

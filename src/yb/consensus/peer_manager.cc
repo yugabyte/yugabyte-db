@@ -141,7 +141,7 @@ void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
 }
 
 std::string PeerManager::GetLogPrefix() const {
-  return Substitute("T $0 P $1: ", tablet_id_, local_uuid_);
+  return MakeTabletLogPrefix(tablet_id_, local_uuid_);
 }
 
 } // namespace consensus

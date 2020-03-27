@@ -1,4 +1,3 @@
-//
 // Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -11,47 +10,41 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-//
 
-#ifndef YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
-#define YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
-
-#include <yb/tserver/tserver_service.pb.h>
-#include "yb/tablet/transaction_coordinator.h"
+#ifndef YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H
+#define YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H
 
 #include "yb/tablet/operations/operation.h"
 
 namespace yb {
 namespace tablet {
 
-class TransactionCoordinator;
-
-class UpdateTxnOperationState : public OperationStateBase<tserver::TransactionStatePB> {
+class HistoryCutoffOperationState : public OperationStateBase<consensus::HistoryCutoffPB> {
  public:
   template <class... Args>
-  explicit UpdateTxnOperationState(Args&&... args)
+  explicit HistoryCutoffOperationState(Args&&... args)
       : OperationStateBase(std::forward<Args>(args)...) {}
+
+  CHECKED_STATUS Replicated(int64_t leader_term);
 
  private:
   void UpdateRequestFromConsensusRound() override;
 };
 
-class UpdateTxnOperation : public Operation {
+class HistoryCutoffOperation : public Operation {
  public:
-  explicit UpdateTxnOperation(std::unique_ptr<UpdateTxnOperationState> state)
-      : Operation(std::move(state), OperationType::kUpdateTransaction) {}
+  explicit HistoryCutoffOperation(std::unique_ptr<HistoryCutoffOperationState> state)
+      : Operation(std::move(state), OperationType::kHistoryCutoff) {}
 
-  UpdateTxnOperationState* state() override {
-    return down_cast<UpdateTxnOperationState*>(Operation::state());
+  HistoryCutoffOperationState* state() override {
+    return down_cast<HistoryCutoffOperationState*>(Operation::state());
   }
 
-  const UpdateTxnOperationState* state() const override {
-    return down_cast<const UpdateTxnOperationState*>(Operation::state());
+  const HistoryCutoffOperationState* state() const override {
+    return down_cast<const HistoryCutoffOperationState*>(Operation::state());
   }
 
  private:
-  TransactionCoordinator& transaction_coordinator() const;
-
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
   CHECKED_STATUS Prepare() override;
   void DoStart() override;
@@ -63,4 +56,4 @@ class UpdateTxnOperation : public Operation {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
+#endif // YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H

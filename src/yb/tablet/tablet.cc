@@ -373,7 +373,8 @@ Tablet::Tablet(const TabletInitData& data)
       local_tablet_filter_(data.local_tablet_filter),
       log_prefix_suffix_(data.log_prefix_suffix),
       is_sys_catalog_(data.is_sys_catalog),
-      txns_enabled_(data.txns_enabled) {
+      txns_enabled_(data.txns_enabled),
+      retention_policy_(std::make_shared<TabletRetentionPolicy>(clock_, metadata_.get())) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << " Schema version for  " << metadata_->table_name() << " is "
                         << metadata_->schema_version();
@@ -587,7 +588,7 @@ Status Tablet::OpenKeyValueTablet() {
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
   rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
-      make_shared<TabletRetentionPolicy>(this), &key_bounds_);
+      retention_policy_, &key_bounds_);
 
   rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     if (mem_table_flush_filter_factory_) {
@@ -654,12 +655,8 @@ Status Tablet::OpenKeyValueTablet() {
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
   auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
   if (regular_flushed_frontier) {
-    const auto& regular_flushed_largest =
-        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier);
-    if (regular_flushed_largest.history_cutoff()) {
-      std::lock_guard<std::mutex> lock(active_readers_mutex_);
-      earliest_read_time_allowed_ = regular_flushed_largest.history_cutoff();
-    }
+    retention_policy_->UpdateCommittedHistoryCutoff(
+        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier).history_cutoff());
   }
 
   LOG_WITH_PREFIX(INFO) << "Successfully opened a RocksDB database at " << db_dir
@@ -1830,12 +1827,6 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperationState* operation_sta
       operation_state->ToString());
 }
 
-bool Tablet::ShouldRetainDeleteMarkersInMajorCompaction() const {
-  // If the index table is in the process of being backfilled, then we
-  // want to retain delete markers until the backfill process is complete.
-  return !schema()->table_properties().IsBackfilling();
-}
-
 // Should backfill the index with the information contained in this tablet.
 // Assume that we are already in the Backfilling mode.
 Result<std::string> Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
@@ -2500,44 +2491,6 @@ HybridTime Tablet::DoGetSafeTime(
   return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
 
-HybridTime Tablet::UpdateHistoryCutoff(HybridTime proposed_cutoff) {
-  std::lock_guard<std::mutex> lock(active_readers_mutex_);
-  HybridTime allowed_cutoff;
-  if (active_readers_cnt_.empty()) {
-    // There are no readers restricting our garbage collection of old records.
-    allowed_cutoff = proposed_cutoff;
-  } else {
-    // Cannot garbage-collect any records that are still being read.
-    allowed_cutoff = std::min(proposed_cutoff, active_readers_cnt_.begin()->first);
-  }
-  earliest_read_time_allowed_ = std::max(earliest_read_time_allowed_, proposed_cutoff);
-  return allowed_cutoff;
-}
-
-Status Tablet::RegisterReaderTimestamp(HybridTime read_point) {
-  std::lock_guard<std::mutex> lock(active_readers_mutex_);
-  if (read_point < earliest_read_time_allowed_) {
-    return STATUS(
-        SnapshotTooOld,
-        Format(
-          "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2",
-          read_point,
-          earliest_read_time_allowed_,
-          earliest_read_time_allowed_.PhysicalDiff(read_point)),
-        TransactionError(TransactionErrorCode::kSnapshotTooOld));
-  }
-  active_readers_cnt_[read_point]++;
-  return Status::OK();
-}
-
-void Tablet::UnregisterReader(HybridTime timestamp) {
-  std::lock_guard<std::mutex> lock(active_readers_mutex_);
-  active_readers_cnt_[timestamp]--;
-  if (active_readers_cnt_[timestamp] == 0) {
-    active_readers_cnt_.erase(timestamp);
-  }
-}
-
 void Tablet::ForceRocksDBCompactInTest() {
   if (regular_db_) {
     docdb::ForceRocksDBCompact(regular_db_.get());
@@ -2767,7 +2720,10 @@ Result<ScopedReadOperation> ScopedReadOperation::Create(
   if (!read_time) {
     read_time = ReadHybridTime::SingleTime(tablet->SafeTime(require_lease));
   }
-  RETURN_NOT_OK(tablet->RegisterReaderTimestamp(read_time.read));
+  auto* retention_policy = tablet->RetentionPolicy();
+  if (retention_policy) {
+    RETURN_NOT_OK(retention_policy->RegisterReaderTimestamp(read_time.read));
+  }
   return ScopedReadOperation(tablet, require_lease, read_time);
 }
 
@@ -2778,7 +2734,10 @@ ScopedReadOperation::ScopedReadOperation(
 
 ScopedReadOperation::~ScopedReadOperation() {
   if (tablet_) {
-    tablet_->UnregisterReader(read_time_.read);
+    auto* retention_policy = tablet_->RetentionPolicy();
+    if (retention_policy) {
+      retention_policy->UnregisterReaderTimestamp(read_time_.read);
+    }
   }
 }
 
