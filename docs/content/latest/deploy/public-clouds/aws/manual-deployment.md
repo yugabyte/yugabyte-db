@@ -1,13 +1,15 @@
 ---
-title: Deploy YugabyteDB to Amazon Web Services with manual deployment
+title: Deploy YugabyteDB in Amazon Web Services with manual deployment
 headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
-description: Deploy a YugabyteDB cluster to Amazon Web Services with manual deployment
+description: Deploy a YugabyteDB cluster in Amazon Web Services with manual deployment
 menu:
   latest:
     identifier: deploy-in-aws-3-manual-deployment
     parent: public-clouds
     weight: 630
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

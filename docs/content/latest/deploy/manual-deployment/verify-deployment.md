@@ -1,7 +1,8 @@
 ---
 title: Verify deployment
+headerTitle: Verify deployment
 linkTitle: 5. Verify deployment
-description: Verify deployment
+description: Verify deployment of your YugabyteDB cluster
 aliases:
   - /deploy/manual-deployment/verify-deployment
 menu:
@@ -13,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-We now have a cluster/universe on 6 nodes with replication factor `3`. Assume their IP addresses are `172.151.17.130`, `172.151.17.220`, `172.151.17.140`, `172.151.17.150`, `172.151.17.160` and `172.151.17.170`. YB-Master servers are running on only the first 3 of these nodes.
+We now have a cluster/universe on six nodes with a replication factor of `3`. Assume their IP addresses are `172.151.17.130`, `172.151.17.220`, `172.151.17.140`, `172.151.17.150`, `172.151.17.160` and `172.151.17.170`. YB-Master servers are running on only the first three of these nodes.
 
 ## [Optional] Setup YEDIS API
 
