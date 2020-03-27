@@ -19,14 +19,14 @@ Source code in the [YugabyteDB repository](https://github.com/yugabyte/yugabyte-
 
 The build produces two sets of binaries:
 
-- The entire database with all its features (including the enterprise ones) are licensed under the [Apache License 2.0](./apache-license).
-- The binaries that contain `-managed` in the artifact and help run a managed service are licensed under the [Polyform Free Trial License 1.0.0](./polyform-license).
+- The entire database with all its features (including the enterprise ones) are licensed under the [Apache License 2.0](https://github.com/yugabyte/yugabyte-db/blob/master/licenses/APACHE-LICENSE-2.0.txt).
+- The binaries that contain `-managed` in the artifact and help run a managed service are licensed under the [Polyform Free Trial License 1.0.0](https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt).
 
 By default, the build options generate only the Apache License 2.0 binaries.
 
 ## Individual contributor license agreement (CLA)
 
-As an open source project with a strong focus on the user community, Yugabyte welcomes contributions as GitHub pull requests. Before someone can contribute to the YugabyteDB open source project, the online form [Yugabyte Individual Contributor License Agreement](https://docs.google.com/forms/d/11hn-vBGhOZRunclC3NKmSX1cvQVrU--r0ldDLqasRIo/viewform?edit_requested=true) must be completed. To see a copy of the complete agreement, go to [Yugabyte contributor license agreement (CLA)](./cla).
+As an open source project with a strong focus on the user community, Yugabyte welcomes contributions from individuals as GitHub pull requests. When a pull request is submitted for the first time, the contributor will be notified to sign the [YugabyteDB Individual Contributor License Agreement](https://cla-assistant.io/yugabyte/yugabyte-db).
 
 ## Third party software
 
