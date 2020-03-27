@@ -34,6 +34,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/pgsql_error.h"
 
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
 #include "yb/rpc/messenger.h"
@@ -820,7 +821,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
        Counter* expired_metric)
       : context_(*context),
         expired_metric_(*expired_metric),
-        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), permanent_uuid)) {
+        log_prefix_(consensus::MakeTabletLogPrefix(context->tablet_id(), permanent_uuid)) {
   }
 
   virtual ~Impl() {

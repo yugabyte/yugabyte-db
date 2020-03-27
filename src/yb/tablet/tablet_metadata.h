@@ -392,6 +392,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   bool colocated() const { return colocated_; }
 
+  // Return standard "T xxx P yyy" log prefix.
+  std::string LogPrefix() const;
+
  private:
   typedef simple_spinlock MutexType;
 
@@ -437,9 +440,6 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const;
-
-  // Return standard "T xxx P yyy" log prefix.
-  std::string LogPrefix() const;
 
   // Return a pointer to the primary table info. This pointer will be valid until the
   // RaftGroupMetadata is destructed, even if the schema is changed.

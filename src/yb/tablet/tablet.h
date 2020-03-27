@@ -115,13 +115,15 @@ namespace tablet {
 
 class ChangeMetadataOperationState;
 class ScopedReadOperation;
-struct TabletMetrics;
-struct TransactionApplyData;
+class TabletRetentionPolicy;
 class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
 class TruncateOperationState;
 class WriteOperationState;
+
+struct TabletMetrics;
+struct TransactionApplyData;
 
 using docdb::LockBatch;
 
@@ -200,8 +202,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
                                       const std::string& backfill_from,
                                       const CoarseTimePoint deadline,
                                       const HybridTime read_time);
-
-  bool ShouldRetainDeleteMarkersInMajorCompaction() const;
 
   CHECKED_STATUS UpdateIndexInBatches(
       const QLTableRow& row, const std::vector<IndexInfo>& indexes,
@@ -573,6 +573,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
 
+  TabletRetentionPolicy* RetentionPolicy() override {
+    return retention_policy_.get();
+  }
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -587,11 +591,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
 
   void DocDBDebugDump(std::vector<std::string> *lines);
-
-  // Register/Unregister a read operation, with an associated timestamp, for the purpose of
-  // tracking the oldest read point.
-  CHECKED_STATUS RegisterReaderTimestamp(HybridTime read_point) override;
-  void UnregisterReader(HybridTime read_point) override;
 
   CHECKED_STATUS PrepareTransactionWriteBatch(
       int64_t batch_idx, // index of this batch in its transaction
@@ -669,12 +668,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   MvccManager mvcc_;
 
-  // Maps a timestamp to the number active readers with that timestamp.
-  // TODO(ENG-961): Check if this is a point of contention. If so, shard it as suggested in D1219.
-  std::map<HybridTime, int64_t> active_readers_cnt_ GUARDED_BY(active_readers_mutex_);
-  HybridTime earliest_read_time_allowed_ GUARDED_BY(active_readers_mutex_) {HybridTime::kMin};
-  mutable std::mutex active_readers_mutex_;
-
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
 
@@ -728,8 +721,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // This is marked mutable because read path member functions (which are const) are using this.
   mutable PendingOperationCounter pending_op_counter_;
-
-  std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
 
   std::unique_ptr<TransactionCoordinator> transaction_coordinator_;
 
@@ -794,6 +785,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::mutex num_sst_files_changed_listener_mutex_;
   std::function<void()> num_sst_files_changed_listener_
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
+
+  std::shared_ptr<TabletRetentionPolicy> retention_policy_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

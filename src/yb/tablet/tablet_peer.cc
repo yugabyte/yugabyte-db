@@ -69,8 +69,10 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -94,6 +96,8 @@ DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
 DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
+
+DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
 namespace yb {
 namespace tablet {
@@ -153,7 +157,7 @@ TabletPeer::TabletPeer(
     tablet_id_(meta->raft_group_id()),
     local_peer_pb_(local_peer_pb),
     state_(RaftGroupStatePB::NOT_STARTED),
-    operation_tracker_(Format("T $0 P $1: ", tablet_id_, permanent_uuid)),
+    operation_tracker_(consensus::MakeTabletLogPrefix(tablet_id_, permanent_uuid)),
     status_listener_(new TabletStatusListener(meta)),
     clock_(clock),
     log_anchor_registry_(new LogAnchorRegistry()),
@@ -313,7 +317,29 @@ FixedHybridTimeLease TabletPeer::HybridTimeLease(MicrosTime min_allowed, CoarseT
   };
 }
 
-HybridTime TabletPeer::PropagatedSafeTime() {
+HybridTime TabletPeer::PreparePeerRequest() {
+  auto leader_term = consensus_->LeaderTerm();
+  if (leader_term >= 0) {
+    auto last_write_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
+    auto propagated_history_cutoff =
+        tablet_->RetentionPolicy()->HistoryCutoffToPropagate(last_write_ht);
+
+    if (propagated_history_cutoff) {
+      VLOG_WITH_PREFIX(2) << "Propagate history cutoff: " << propagated_history_cutoff;
+
+      auto state = std::make_unique<HistoryCutoffOperationState>(tablet_.get());
+      auto request = state->AllocateRequest();
+      request->set_history_cutoff(propagated_history_cutoff.ToUint64());
+
+      auto operation = std::make_unique<tablet::HistoryCutoffOperation>(std::move(state));
+      Submit(std::move(operation), leader_term);
+    }
+  }
+
+  if (!FLAGS_propagate_safe_time) {
+    return HybridTime::kInvalid;
+  }
+
   // Get the current majority-replicated HT leader lease without any waiting.
   auto ht_lease = HybridTimeLease(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
   if (!ht_lease.lease) {
@@ -707,6 +733,9 @@ consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
     case OperationType::kTruncate:
       return consensus::TRUNCATE_OP;
 
+    case OperationType::kHistoryCutoff:
+      return consensus::HISTORY_CUTOFF_OP;
+
     case OperationType::kEmpty:
       LOG(FATAL) << "OperationType::kEmpty cannot be converted to consensus::OperationType";
   }
@@ -938,6 +967,12 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
           " transaction must receive an TabletSnapshotOpRequestPB";
       return std::make_unique<SnapshotOperation>(
           std::make_unique<SnapshotOperationState>(tablet()));
+
+    case consensus::HISTORY_CUTOFF_OP:
+       DCHECK(replicate_msg->has_history_cutoff()) << "HISTORY_CUTOFF_OP replica"
+          " transaction must receive an HistoryCutoffPB";
+      return std::make_unique<HistoryCutoffOperation>(
+          std::make_unique<HistoryCutoffOperationState>(tablet()));
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;

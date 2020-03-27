@@ -278,7 +278,7 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
     // Helper to estimate request size so that we can set the max batch size appropriately.
     ConsensusRequestPB page_size_estimator;
     page_size_estimator.set_caller_term(14);
-    OpId* committed_index = page_size_estimator.mutable_committed_index();
+    OpId* committed_index = page_size_estimator.mutable_committed_op_id();
     OpId* preceding_id = page_size_estimator.mutable_preceding_id();
 
     // The actual leader lease duration does not matter here, we just want it to be set.
@@ -562,9 +562,9 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   // op, 2.15.
   CloseAndReopenQueue();
 
-  OpId committed_index = MakeOpId(2, 15);
+  OpId committed_op_id = MakeOpId(2, 15);
   queue_->Init(MakeOpId(2, 20));
-  queue_->SetLeaderMode(committed_index, committed_index.term(), BuildRaftConfigPBForTests(3));
+  queue_->SetLeaderMode(committed_op_id, committed_op_id.term(), BuildRaftConfigPBForTests(3));
 
   // Now get a request for a simulated old leader, which contains more operations
   // in term 1 than the new leader has.
@@ -584,7 +584,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   ASSERT_FALSE(needs_remote_bootstrap);
   ASSERT_EQ(request.ops_size(), 0);
   ASSERT_OPID_EQ(request.preceding_id(), MakeOpId(2, 20));
-  ASSERT_OPID_EQ(request.committed_index(), committed_index);
+  ASSERT_OPID_EQ(request.committed_op_id(), committed_op_id);
 
   // The old leader was still in term 1 but it increased its term with our request.
   response.set_responder_term(2);

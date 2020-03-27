@@ -112,17 +112,19 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
       return false;
     }
 
-    case consensus::OperationType::UNKNOWN_OP:
-      FALLTHROUGH_INTENDED;
-    case consensus::OperationType::NO_OP:
+    case consensus::OperationType::CHANGE_CONFIG_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::CHANGE_METADATA_OP:
       FALLTHROUGH_INTENDED;
-    case consensus::OperationType::CHANGE_CONFIG_OP:
+    case consensus::OperationType::HISTORY_CUTOFF_OP:
+      FALLTHROUGH_INTENDED;
+    case consensus::OperationType::NO_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::SNAPSHOT_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::TRUNCATE_OP:
+      FALLTHROUGH_INTENDED;
+    case consensus::OperationType::UNKNOWN_OP:
       return false;
   }
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, msg->op_type());

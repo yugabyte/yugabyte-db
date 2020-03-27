@@ -43,6 +43,8 @@
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
+#include "yb/consensus/consensus_util.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -444,9 +446,7 @@ std::string LogCache::ToStringUnlocked() const {
 }
 
 std::string LogCache::LogPrefixUnlocked() const {
-  return Substitute("T $0 P $1: ",
-                    tablet_id_,
-                    local_uuid_);
+  return MakeTabletLogPrefix(tablet_id_, local_uuid_);
 }
 
 void LogCache::DumpToLog() const {

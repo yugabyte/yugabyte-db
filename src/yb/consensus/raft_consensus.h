@@ -439,6 +439,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // - Set consensus_error.code to the given code.
   void FillVoteResponseVoteDenied(ConsensusErrorPB::Code error_code, VoteResponsePB* response);
 
+  void RequestVoteRespondVoteDenied(
+      ConsensusErrorPB::Code error_code, const std::string& message_suffix,
+      const VoteRequestPB& request, VoteResponsePB* response);
+
   // Respond to VoteRequest that the candidate has an old term.
   CHECKED_STATUS RequestVoteRespondInvalidTerm(const VoteRequestPB* request,
                                                VoteResponsePB* response);
@@ -453,8 +457,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Respond to VoteRequest that the candidate's last-logged OpId is too old.
   CHECKED_STATUS RequestVoteRespondLastOpIdTooOld(const OpId& local_last_opid,
-                                          const VoteRequestPB* request,
-                                          VoteResponsePB* response);
+                                                  const VoteRequestPB* request,
+                                                  VoteResponsePB* response);
 
   // Respond to VoteRequest that the vote was not granted because we believe
   // the leader to be alive.

@@ -671,7 +671,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
     replicate->set_hybrid_time(clock_->Now().ToUint64());
   }
 
-  request.mutable_committed_index()->CopyFrom(MakeOpId(3, 6));
+  request.mutable_committed_op_id()->CopyFrom(MakeOpId(3, 6));
 
   ConsensusResponsePB response;
   ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
@@ -687,7 +687,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
 
   request.mutable_ops()->Clear();
   request.mutable_preceding_id()->CopyFrom(MakeOpId(3, 9));
-  request.mutable_committed_index()->CopyFrom(MakeOpId(3, 9));
+  request.mutable_committed_op_id()->CopyFrom(MakeOpId(3, 9));
 
   ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.has_error());

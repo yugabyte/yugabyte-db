@@ -36,6 +36,7 @@
 #include "yb/master/master.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/server/skewed_clock.h"
 
@@ -72,6 +73,9 @@ DECLARE_int32(tablet_inject_latency_on_apply_write_txn_ms);
 DECLARE_bool(TEST_log_cache_skip_eviction);
 DECLARE_uint64(sst_files_hard_limit);
 DECLARE_uint64(sst_files_soft_limit);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
 
 namespace yb {
 namespace client {
@@ -1018,6 +1022,117 @@ TEST_F(QLTabletTest, OperationMemTracking) {
 
   ASSERT_TRUE(tracked_by_tablets);
   ASSERT_TRUE(tracked_by_log_cache);
+}
+
+// Checks history cutoff for cluster against previous state.
+// Committed history cutoff should not go backward.
+// Updates committed_history_cutoff with current state.
+void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
+                         const std::string& trace) {
+  SCOPED_TRACE(trace);
+  const auto base_delta_us =
+      -FLAGS_timestamp_history_retention_interval_sec * MonoTime::kMicrosecondsPerSecond;
+  constexpr auto kExtraDeltaMs = 200;
+  // Allow one 2 Raft rounds + processing delta to replicate operation, update committed and
+  // propagate it.
+  const auto committed_delta_us =
+      base_delta_us -
+      (FLAGS_raft_heartbeat_interval_ms * 2 + kExtraDeltaMs) * MonoTime::kMicrosecondsPerMillisecond
+          * kTimeMultiplier;
+
+  HybridTime committed = HybridTime::kMin;
+  auto deadline = CoarseMonoClock::now() + 5s * kTimeMultiplier;
+  for (;;) {
+    ASSERT_LE(CoarseMonoClock::now(), deadline);
+    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+    std::sort(peers.begin(), peers.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs->permanent_uuid() < rhs->permanent_uuid();
+    });
+    if (peers.size() != cluster->num_tablet_servers()) {
+      std::this_thread::sleep_for(100ms);
+      continue;
+    }
+    bool complete = false;
+    for (int i = 0; i < peers.size(); ++i) {
+      auto peer = peers[i];
+      SCOPED_TRACE(Format("Peer: $0", peer->permanent_uuid()));
+      if (peer->state() != tablet::RaftGroupStatePB::RUNNING) {
+        complete = false;
+        break;
+      }
+      auto peer_history_cutoff =
+          peer->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      committed = std::max(peer_history_cutoff, committed);
+      auto min_allowed = std::min(peer->clock_ptr()->Now().AddMicroseconds(committed_delta_us),
+                                  peer->tablet()->mvcc_manager()->LastReplicatedHybridTime());
+      if (peer_history_cutoff < min_allowed) {
+        LOG(INFO) << "Committed did not catch up for " << peer->permanent_uuid() << ": "
+                  << peer_history_cutoff << " vs " << min_allowed;
+        complete = false;
+        break;
+      }
+      if (peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+        complete = true;
+      }
+    }
+    if (complete) {
+      break;
+    }
+    std::this_thread::sleep_for(100ms);
+  }
+  ASSERT_GE(committed, *prev_committed);
+  *prev_committed = committed;
+}
+
+// Basic check for history cutoff evolution
+TEST_F(QLTabletTest, HistoryCutoff) {
+  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+  FLAGS_history_cutoff_propagation_interval_ms = 100;
+
+  CreateTable(kTable1Name, &table1_, /* num_tablets= */ 1);
+  HybridTime committed_history_cutoff = HybridTime::kMin;
+  FillTable(0, 10, &table1_);
+  ASSERT_NO_FATALS(VerifyHistoryCutoff(cluster_.get(), &committed_history_cutoff, "After write"));
+
+  // Check that we restore committed state after restart.
+  std::array<HybridTime, 3> peer_committed;
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
+    ASSERT_EQ(peers.size(), 1);
+    peer_committed[i] =
+        peers[0]->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    LOG(INFO) << "Peer: " << peers[0]->permanent_uuid() << ", index: " << i
+              << ", committed: " << peer_committed[i];
+    cluster_->mini_tablet_server(i)->Shutdown();
+  }
+
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    for (;;) {
+      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
+      ASSERT_LE(peers.size(), 1);
+      if (peers.empty() || peers[0]->state() != tablet::RaftGroupStatePB::RUNNING) {
+        std::this_thread::sleep_for(100ms);
+        continue;
+      }
+      SCOPED_TRACE(Format("Peer: $0, index: $1", peers[0]->permanent_uuid(), i));
+      ASSERT_GE(peers[0]->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff,
+                peer_committed[i]);
+      break;
+    }
+    cluster_->mini_tablet_server(i)->Shutdown();
+  }
+
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+  }
+  ASSERT_NO_FATALS(VerifyHistoryCutoff(cluster_.get(), &committed_history_cutoff, "After restart"));
+
+  // Wait to check history cutoff advance w/o operations.
+  std::this_thread::sleep_for(
+      FLAGS_timestamp_history_retention_interval_sec * 1s +
+      FLAGS_history_cutoff_propagation_interval_ms * 3ms);
+  ASSERT_NO_FATALS(VerifyHistoryCutoff(cluster_.get(), &committed_history_cutoff, "Final"));
 }
 
 } // namespace client

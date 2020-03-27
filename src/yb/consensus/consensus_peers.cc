@@ -202,14 +202,14 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   bool needs_remote_bootstrap = false;
   bool last_exchange_successful = false;
   RaftPeerPB::MemberType member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
-  int64_t commit_index_before = request_.has_committed_index() ?
-      request_.committed_index().index() : kMinimumOpIdIndex;
+  int64_t commit_index_before = request_.has_committed_op_id() ?
+      request_.committed_op_id().index() : kMinimumOpIdIndex;
   ReplicateMsgsHolder msgs_holder;
   Status s = queue_->RequestForPeer(
       peer_pb_.permanent_uuid(), &request_, &msgs_holder, &needs_remote_bootstrap,
       &member_type, &last_exchange_successful);
-  int64_t commit_index_after = request_.has_committed_index() ?
-      request_.committed_index().index() : kMinimumOpIdIndex;
+  int64_t commit_index_after = request_.has_committed_op_id() ?
+      request_.committed_op_id().index() : kMinimumOpIdIndex;
 
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(INFO) << "Could not obtain request from queue for peer: " << s;
@@ -275,9 +275,11 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     }
   }
 
-  request_.set_tablet_id(tablet_id_);
-  request_.set_caller_uuid(leader_uuid_);
-  request_.set_dest_uuid(peer_pb_.permanent_uuid());
+  if (request_.tablet_id().empty()) {
+    request_.set_tablet_id(tablet_id_);
+    request_.set_caller_uuid(leader_uuid_);
+    request_.set_dest_uuid(peer_pb_.permanent_uuid());
+  }
 
   const bool req_has_ops = (request_.ops_size() > 0) || (commit_index_after > commit_index_before);
 
