@@ -19,7 +19,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link active">
