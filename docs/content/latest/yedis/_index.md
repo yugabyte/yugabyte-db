@@ -8,10 +8,12 @@ image: /images/section_icons/api/yedis.png
 aliases:
   - /latest/api/yedis
   - /latest/api/redis
+type: page
+section: MISC
 menu:
   latest:
     identifier: yedis
-    weight: 2800
+    weight: 2900
 ---
 
 The YEDIS API allows YugabyteDB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library. A Redis client can connect, send requests, and receive results from this API.
