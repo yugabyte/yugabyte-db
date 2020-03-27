@@ -12,14 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-During YugabyteDB builds, two sets of binaries are produced. One set of binaries includes The binaries that contain -managed in the artifact and help run a managed service are licensed under the [Polyform Free Trial License 1.0.0](../polyform-license).
+During YugabyteDB builds, two sets of binaries are produced. One set of binaries include binaries that contain `-managed` in the artifact and help run a managed service and are licensed under the [Polyform Free Trial License 1.0.0](../polyform-license).
 
-Below is a plain text copy of the Apache License, Version 2.0. You can also obtain a copy of the Apache License, Version 2.0 at:
+Below is a copy of the PolyForm Free Trial License 1.0.0. You can also obtain a copy of the license at:
 
-   [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
-**[Official plain text of Polyform-Free-Trial-1.0.0](https://polyformproject.org/licenses/free-trial/1.0.0)**
-
-<https://polyformproject.org/licenses/free-trial/1.0.0>
+[Official plain text of Polyform Free Trial License 1.0.0](https://polyformproject.org/licenses/free-trial/1.0.0)
 
 ## Acceptance
 

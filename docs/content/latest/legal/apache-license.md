@@ -2,7 +2,7 @@
 title: Apache license 2.0
 headerTitle: Apache license 2.0
 linkTitle: Apache license
-description: Read the YugabyteDB open source license.
+description: Read the Apache 2.0 open source license.
 menu:
   latest:
     parent: legal
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-During YugabyteDB builds, two sets of binaries are produced. One set of binaries includes the entire database with all its features (including the enterprise ones) that are licensed under the Apache License 2.0.
+During YugabyteDB builds, two sets of binaries are produced. One set of binaries includes the entire database with all its features (including enterprise ones) that are licensed under Apache License 2.0. By default, the YugabyteDB build options generate only the Apache License 2.0 binaries.
 
 Below is a plain text copy of the Apache License, Version 2.0. You can also obtain a copy of the Apache License, Version 2.0 at:
 

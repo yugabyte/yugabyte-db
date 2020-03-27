@@ -7,7 +7,7 @@ aliases:
  - /latest/yedis/develop/client-drivers/go
 menu:
   latest:
-    identifier: client-drivers-yedis-csharp
+    identifier: client-drivers-yedis-go
     parent: develop-yedis
 isTocNested: true
 showAsideToc: true

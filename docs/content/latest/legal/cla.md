@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 
-Before your first contribution to the YugabyteDB project is accepted, you must complete and sign the [Yugabyte Individual Contributor License Agreement (CLA)](https://docs.google.com/forms/d/11hn-vBGhOZRunclC3NKmSX1cvQVrU--r0ldDLqasRIo/viewform?edit_requested=true). A plain text copy of the agreement is shown below. You can also obtain a copy of the Individual Contributor License Agreement - V.07/26/2018 at:
+Before individual contributions to the YugabyteDB project are accepted, the contributor must complete and sign the online [Yugabyte Individual Contributor License Agreement (CLA)](https://docs.google.com/forms/d/11hn-vBGhOZRunclC3NKmSX1cvQVrU--r0ldDLqasRIo/viewform?edit_requested=true) form. A plain text copy of the agreement is shown below. You can also obtain a copy of the Individual Contributor License Agreement - V.07/26/2018 at:
 
 [https://docs.google.com/document/d/1Yu_uCcAAPhrKAtq2Bb_qj_NbHMigaLEhbpFuFwP1azk/edit#](https://docs.google.com/document/d/1Yu_uCcAAPhrKAtq2Bb_qj_NbHMigaLEhbpFuFwP1azk/edit#)
 

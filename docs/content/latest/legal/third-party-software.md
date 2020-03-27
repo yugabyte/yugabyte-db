@@ -16,23 +16,19 @@ showAsideToc: true
 
 ## Acknowledgements
 
-Yugabyte loves open source community and the open source community for their contributions
-
-The YugabyteDB codebase has leveraged several open source projects as a starting point.
+Yugabyte proudly participates in the open source community and appreciates all open source contributions that have been incorporated into the YugabyteDB open source project. The YugabyteDB codebase has leveraged several open source projects as a starting point, including the following:
 
 - PostgreSQL stateless language layer for implementing YSQL.
-PostgreSQL’s scanner/parser modules (.y/.l files) were used as a starting point for implementing YCQL scanner/parser in C++.
-- DocDB’s document storage layer uses a highly customized/enhanced version of RocksDB. A sample of the customizations and enhancements we have done are described in this section.
-- We used Apache Kudu’s Raft implementation and the server framework as a starting point. Since then, we have implemented several enhancements such as leader leases & pre-voting state during learner mode for correctness, improvements to the network stack, auto balancing of tablets on failures, zone/DC aware data placement, leader-balancing, ability to do full cluster moves in a online manner, and more.
-- Google libraries (glog, gflags, protocol buffers, snappy, gperftools, gtest, gmock).
+- PostgreSQL scanner and parser modules (`.y` and `.l` files) were used as a starting point for implementing the YCQL scanner and parser in C++.
+- The DocDB document storage layer in YugabyteDB uses a customized and enhanced version of [RocksDB](https://github.com/facebook/rocksdb). Some of the customizations and enhancements are described in [DocDB store](https://docs.yugabyte.com/latest/architecture/docdb/).
+- The Apache Kudu Raft implementation and server framework were used as a starting point. Since then, we have implemented several enhancements, such as leader leases and pre-voting state during learner mode for correctness, improvements to the network stack, auto balancing of tablets on failures, zone/DC aware data placement, leader-balancing, ability to do full cluster moves in a online manner, and more.
+- Google libraries (`glog`, `gflags`, `protocol buffers`, `snappy`, `gperftools`, `gtest`, `gmock`).
 
-## Third party software
+## Third party software components
 
-Yugabyte products contain third party software, which means the copyrighted, patented, or otherwise legally protected software of third parties that is incorporated into Yugabyte products.
+Yugabyte products incorporate third party software, which includes the copyrighted, patented, or otherwise legally protected software of third parties. Included here is a list of the third party open source software components that are incorporated into YugabyteDB products.
 
-Third party suppliers make no representation nor warranty with respect to such third party software or any portion thereof. Third party suppliers assume no liability for any claim that might arise with respect to such third party software, nor for a customer’s use of or inability to use the third party software.
-
-|  **OSS Component Name** | **OSS Component Version** | **OSS License Name** |
+|  **Component Name** | **Version** | **License** |
 | :--- | :--- | :--- |
 |  AWS C++ SDK | 1.3.57 | Apache-2.0 |
 |  LOOK | 55f9b4c | MIT |
