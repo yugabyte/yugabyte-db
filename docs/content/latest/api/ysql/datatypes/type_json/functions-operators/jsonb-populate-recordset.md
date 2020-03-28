@@ -1,9 +1,9 @@
 ---
-title: jsonb_populate_recordset()
-linkTitle: jsonb_populate_recordset()
-summary: jsonb_populate_recordset() and json_populate_recordset()
+title: jsonb_populate_recordset() and json_populate_recordset() [JSON]
 headerTitle: jsonb_populate_recordset() and json_populate_recordset()
-description: jsonb_populate_recordset() and json_populate_recordset()
+linkTitle: jsonb_populate_recordset()
+description: Use this function to convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records.
+summary: jsonb_populate_recordset() and json_populate_recordset()
 menu:
   latest:
     identifier: jsonb-populate-recordset
@@ -13,17 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_.
+**Purpose:** Convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_.
 
-
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       anyelement, jsonb
 return value:      SETOF anyelement
 ```
 
-**Notes:** the functions in this pair and are a natural extension of the functionality of `jsonb_populate_record()`.
+**Notes:** The functions in this pair and are a natural extension of the functionality of `jsonb_populate_record()`.
 
 Each requires that the supplied JSON value is an _array_, each of whose values is an _object_ which is compatible with the specified SQL `record` which is defined as a `type` whose name is passed via the function's first formal parameter using the locution `null:type_identifier`. The JSON value is passed via the second formal parameter. The result is a set (i.e. a table) of `record`s of the specified type.
 

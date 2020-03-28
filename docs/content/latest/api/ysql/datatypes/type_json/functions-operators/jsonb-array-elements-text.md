@@ -1,9 +1,9 @@
 ---
-title: jsonb_array_elements_text()
+title: jsonb_array_elements_text() and json_array_elements_text() [JSON]
+headerTitle: jsonb_array_elements_text() and json_array_elements_text()
 linkTitle: jsonb_array_elements_text()
 summary: jsonb_array_elements_text() and json_array_elements_text()
-headerTitle: jsonb_array_elements_text() and json_array_elements_text()
-description: The function jsonb_array_elements_text() bears the same relationship to jsonb_array_elements() that the other *text() functions bear to their plain counterparts.
+description: Use these JSON functions to transform JSON values of an JSON array into a SQL table of text values.
 menu:
   latest:
     identifier: jsonb-array-elements-text
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** transform the JSON values of JSON _array_ into a SQL table of (i.e. `setof`) `text` values.
+**Purpose:** Transform the JSON values of JSON _array_ into a SQL table of (i.e., `setof`) `text` values.
 
-**Signature:** for the `jsonb` variant:
+**Signature:** For the `jsonb` variant:
 
 ```
 input value:       jsonb
