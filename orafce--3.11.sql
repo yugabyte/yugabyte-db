@@ -1740,37 +1740,37 @@ COMMENT ON FUNCTION utl_file.fclose_all() IS 'Close all open files.';
 CREATE FUNCTION utl_file.fremove(location text, filename text)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fremove'
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE SECURITY DEFINER;;
 COMMENT ON FUNCTION utl_file.fremove(text, text) IS 'Remove file.';
 
 CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text, overwrite boolean)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_frename'
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE SECURITY DEFINER;;
 COMMENT ON FUNCTION utl_file.frename(text, text, text, text, boolean) IS 'Rename file.';
 
 CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text)
 RETURNS void
 AS $$SELECT utl_file.frename($1, $2, $3, $4, false);$$
-LANGUAGE SQL VOLATILE;
+LANGUAGE SQL VOLATILE SECURITY DEFINER;
 COMMENT ON FUNCTION utl_file.frename(text, text, text, text) IS 'Rename file.';
 
 CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE SECURITY DEFINER;
 COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text) IS 'Copy a text file.';
 
 CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text, start_line integer)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE SECURITY DEFINER;
 COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text, integer) IS 'Copy a text file.';
 
 CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text, start_line integer, end_line integer)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE SECURITY DEFINER;
 COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text, integer, integer) IS 'Copy a text file.';
 
 CREATE FUNCTION utl_file.fgetattr(location text, filename text, OUT fexists boolean, OUT file_length bigint, OUT blocksize integer)
