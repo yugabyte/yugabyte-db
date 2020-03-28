@@ -4,11 +4,7 @@ Functions and operators that emulate a subset of functions and packages from the
 
 There is an associated Google group - https://groups.google.com/forum/?hl=en#!forum/orafce-general
 
-The Orafce is supported in “AWS Aurora with PostgreSQL Compatibility” and also in “Azure Database for PostgreSQL”
-
-* https://aws.amazon.com/about-aws/whats-new/2018/03/amazon-aurora-with-postgresql-compatibility-supports-minor-version-9-6-6/?nc1=h_ls
-* https://azure.microsoft.com/en-gb/updates/the-orafce-extension-on-azure-database-for-postgresql-is-now-available/
-
+The Orafce is supported in [AWS Aurora with PostgreSQL Compatibility](https://aws.amazon.com/about-aws/whats-new/2018/03/amazon-aurora-with-postgresql-compatibility-supports-minor-version-9-6-6/?nc1=h_ls) and also in [Azure Database for PostgreSQL](https://azure.microsoft.com/en-gb/updates/the-orafce-extension-on-azure-database-for-postgresql-is-now-available/)
 
 == Oracle functions and Oracle packages
 
