@@ -1,9 +1,9 @@
 ---
-title: jsonb_array_length
+title: jsonb_array_length() and json_array_length() [JSON]
 linkTitle: jsonb_array_length()
 summary: jsonb_array_length() and json_array_length()
 headerTitle: jsonb_array_length() and json_array_length()
-description: The functions in this pair require that the supplied JSON value and return the count of values in the array.
+description: Use these JSON functions return the count of values in an array.
 menu:
   latest:
     identifier: jsonb-array-length
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** return the count of values (primitive or compound) in the array. You can use this to iterate over the elements of a JSON _array_ using the  `->` operator.
+**Purpose:** Return the count of values (primitive or compound) in the array. You can use this to iterate over the elements of a JSON _array_ using the  `->` operator.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb

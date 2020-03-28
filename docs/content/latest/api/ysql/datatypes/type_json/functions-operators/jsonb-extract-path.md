@@ -1,9 +1,9 @@
 ---
-title: jsonb_extract_path()
-linkTitle: jsonb_extract_path()
-summary: jsonb_extract_path() and json_extract_path()
+title: jsonb_extract_path() and json_extract_path() [JSON]
 headerTitle: jsonb_extract_path() and json_extract_path()
-description: These are functionally identical to the \#> operator. The invocation of \#> can be mechanically transformed to use jsonb_extract_path() by these steps
+linkTitle: jsonb_extract_path()
+description: Use these JSON functions to provide the identical functionality to the "#>" operator.
+summary: jsonb_extract_path() and json_extract_path()
 menu:
   latest:
     identifier: jsonb-extract-path
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** provide the identical functionality to the `#>` operator.
+**Purpose:** Provide the identical functionality to the `#>` operator.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb, VARIADIC text

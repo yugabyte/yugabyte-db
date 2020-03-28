@@ -1,9 +1,9 @@
 ---
-title: Containment
-linkTitle: '@> and <@ (containment)'
+title: "@> and <@ (containment operators) [JSON]"
+headerTitle: "@> and <@ (containment operators)"
+linkTitle: "@> and <@ (containment)"
 summary: Containment (@> & <@)
-headerTitle: '@> and <@ (containment)'
-description: The @> operator tests if the left-hand JSON value contains the right-hand JSON value. And the <@ operator tests if the right-hand JSON value contains the left-hand JSON value. 
+description: Use the JSON containment operators (@> and <@) to test whether one jsonb value contains another jsonb value.
 menu:
   latest:
     identifier: containment-operators

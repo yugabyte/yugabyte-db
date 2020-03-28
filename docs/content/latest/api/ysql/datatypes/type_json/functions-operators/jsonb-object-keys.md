@@ -1,9 +1,9 @@
 ---
-title: jsonb_object_keys()
+title: jsonb_object_keys() and json_object_keys() [JSON]
+headerTitle: jsonb_object_keys() and json_object_keys()
 linkTitle: jsonb_object_keys() 
+description: Use these functions to transform the list of key names int the supplied JSON object into a set (i.e., table) of text values.
 summary: jsonb_object_keys() and json_object_keys()
-headerTitle: jsonb_object_keys()  and json_object_keys()
-description: The functions in this pair require that the supplied JSON value is an object and transform the list of key names into a set of text values.
 menu:
   latest:
     identifier: jsonb-object-keys
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** transform the list of key names int the supplied JSON _object_ into a set (i.e. table) of `text` values.
+**Purpose:** Transform the list of key names int the supplied JSON _object_ into a set (i.e. table) of `text` values.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb

@@ -1,9 +1,9 @@
 ---
-title: jsonb_build_array()
+title: jsonb_build_array() and json_build_array() [JSON]
+headerTitle: jsonb_build_array() and json_build_array()
 linkTitle: jsonb_build_array()
 summary: jsonb_build_array() and json_build_array()
-headerTitle: jsonb_build_array() and json_build_array()
-description: create a JSON array from a variadic list of array values of arbirary SQL data type.
+description: Use these JSON functions to create a JSON array from a variadic list of array values of arbitrary SQL data type.
 menu:
   latest:
     identifier: jsonb_build_array-each
@@ -14,16 +14,16 @@ showAsideToc: true
 ---
 
 
-**Purpose:** create a JSON _array_ from a variadic list of _array_ values of arbirary SQL data type.
+**Purpose:** Create a JSON _array_ from a variadic list of _array_ values of arbitrary SQL data type.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       VARIADIC "any"
 return value:      jsonb
 ```
 
-**Notes:** these two functions take an arbitrary number of actual arguments of mixed SQL data types. The data type of each argument must have a direct JSON equivalent or allow implicit conversion to such an equivalent.
+**Notes:** These two functions take an arbitrary number of actual arguments of mixed SQL data types. The data type of each argument must have a direct JSON equivalent or allow implicit conversion to such an equivalent.
 
 Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
 

@@ -1,8 +1,9 @@
 ---
-title: array_to_json()
+title: array_to_json() [JSON]
+headerTitle: array_to_json()
 linkTitle: array_to_json()
 summary: array_to_json()
-description: array_to_json()
+description: Use the JSON function array_to_json() to create a JSON array from a SQL array.
 menu:
   latest:
     identifier: array-to-json
@@ -12,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** create a JSON _array_ from a SQL _array_.
+**Purpose:** Create a JSON _array_ from a SQL _array_.
 
 **Signature:**
 
@@ -22,7 +23,7 @@ pretty:            boolean (optional)
 return value:      json
 ```
 
-**Notes:** this has only the `json` variant. The first (mandatory) formal parameter is any SQL `array` whose elements might be compound values. The second formal parameter is optional. When it is _true_, line feeds are added between dimension-1 elements.
+**Notes:** This has only the `json` variant. The first (mandatory) formal parameter is any SQL `array` whose elements might be compound values. The second formal parameter is optional. When it is _true_, line feeds are added between dimension-1 elements.
 
 ```postgresql
 do $body$
