@@ -1,9 +1,9 @@
 ---
-title: jsonb_object()
-linkTitle: jsonb_object() 
-summary: jsonb_object()  and json_object()
+title: jsonb_object()  and json_object() [JSON]
 headerTitle: jsonb_object() and json_object()
-description: jsonb_object() and json_object()
+linkTitle: jsonb_object() 
+description: Use these JSON functions to create a JSON object from SQL arrays that specify keys with their values of SQL data type text.
+summary: jsonb_object() and json_object()
 menu:
   latest:
     identifier: jsonb-object
@@ -13,16 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** create a JSON _object_ from SQL _array_(s) that specifiy keys with their values of SQL data type `text`.
+**Purpose:** Create a JSON _object_ from SQL _array_(s) that specifiy keys with their values of SQL data type `text`.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       [ text[] ]  |  [ text[][] ]  |  [ text[], text[] ]
 return value:      jsonb
 ```
 
-**Notes**: the `jsonb_object()` function achieves a similar effect to `jsonb_build_object()` but with significantly less verbose syntax.
+**Notes**: The `jsonb_object()` function achieves a similar effect to `jsonb_build_object()` but with significantly less verbose syntax.
 
 Precisely because you present a single `text` actual, you can avoid the fuss of dynamic invocation and of dealing with interior single quotes that this brings in its train. However, it has the limitation that the primitive values in the resulting JSON value can only be _string_. It has three overloads.
 
