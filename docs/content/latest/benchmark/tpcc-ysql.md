@@ -40,7 +40,7 @@ $ cd tpcc
 ```
 
 {{< note title="Note" >}}
-The binaries are compiled with JAVA 13.
+The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
 {{< /note >}}
 
 ## Step 2. Start your database
