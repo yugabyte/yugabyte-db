@@ -53,6 +53,10 @@ $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
 
+{{< note title="Note" >}}
+The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
+{{< /note >}}
+
 ## Step 2. Start YugabyteDB
 
 Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
