@@ -15,7 +15,7 @@ showAsideToc: true
 
 **Purpose:** Return the count of values (primitive or compound) in the array. You can use this to iterate over the elements of a JSON _array_ using the  `->` operator.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb

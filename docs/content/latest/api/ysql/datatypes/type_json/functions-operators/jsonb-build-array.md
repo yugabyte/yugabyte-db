@@ -16,7 +16,7 @@ showAsideToc: true
 
 **Purpose:** Create a JSON _array_ from a variadic list of _array_ values of arbitrary SQL data type.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       VARIADIC "any"

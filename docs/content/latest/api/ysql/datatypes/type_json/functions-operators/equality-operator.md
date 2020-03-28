@@ -1,9 +1,9 @@
 ---
 title: = (equality operator) [JSON]
-headerTitle: = (equality)
+headerTitle: = (equality operator)
 linkTitle: = (equality)
 summary: Equality - the `=` operator
-description: Use the JSON equality operator (=) to check if two jsonb values are equal.
+description: Use the JSON equality operator (=) to test if two jsonb values are equal.
 menu:
   latest:
     identifier: equality-operator
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** test if two `jsonb` values are equal.
+**Purpose:** Test if two `jsonb` values are equal.
 
 **Signature:**
 

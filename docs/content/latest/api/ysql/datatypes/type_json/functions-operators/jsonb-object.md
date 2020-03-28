@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** Create a JSON _object_ from SQL _array_(s) that specifiy keys with their values of SQL data type `text`.
+**Purpose:** Create a JSON _object_ from SQL _arrays_ that specify keys with their values of SQL data type `text`.
 
 **Signature** For the `jsonb` variant:
 

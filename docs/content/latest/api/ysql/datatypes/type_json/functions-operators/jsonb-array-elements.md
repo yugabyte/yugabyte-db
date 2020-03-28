@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 **Purpose:** Transform the JSON values of a JSON _array_ into a SQL table of (i.e., `setof`) `jsonb` values.
 
-**Signature:** for the `jsonb` variant:
+**Signature:** For the `jsonb` variant:
 
 ```
 input value:       jsonb
