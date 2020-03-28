@@ -191,7 +191,6 @@ def download_and_extract(url, dest_dir_parent, local_cache_dir, nfs_cache_dir):
             logging.info("Failed creating directory '%s': %s", local_cache_dir, ex)
 
     check_dir_exists_and_is_writable(local_cache_dir, "Local cache")
-    check_dir_exists_and_is_writable(nfs_cache_dir, "NFS cache")
 
     if not url.endswith(EXPECTED_ARCHIVE_EXTENSION):
         raise ValueError("Archive download URL is expected to end with %s, got: %s" % (
@@ -242,7 +241,8 @@ def download_and_extract(url, dest_dir_parent, local_cache_dir, nfs_cache_dir):
 
         nfs_tar_gz_path = os.path.join(nfs_cache_dir, tar_gz_name)
         nfs_checksum_file_path = os.path.join(nfs_cache_dir, checksum_file_name)
-        if not os.path.exists(nfs_tar_gz_path) or not os.path.exists(nfs_checksum_file_path):
+        if (os.access(dir_path, os.W_OK) and
+            (not os.path.exists(nfs_tar_gz_path) or not os.path.exists(nfs_checksum_file_path))):
             for file_name in file_names:
                 run_cmd(['cp',
                         os.path.join(local_cache_dir, file_name),
