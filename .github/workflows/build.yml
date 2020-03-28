@@ -1,0 +1,74 @@
+name: CI
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - README.md
+
+  pull_request:
+    branches:
+      - master
+    paths-ignore:
+      - README.md
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        name:
+          #- macOS
+          - "CentOS 7"
+          #- "Ubuntu 18.04"
+        include:
+          #- name: "macOS"
+          #  os: macos-latest
+          #  docker_image: none
+
+          - name: "CentOS 7"
+            os: ubuntu-latest
+            docker_image: yugabyteci/yb_build_infra_centos7:v2020-03-26T03_24_37
+
+          #- name: "Ubuntu 18.04"
+          #  os: ubuntu-latest
+          #  docker_image: yugabyteci/yb_build_infra_ubuntu1804:v2020-03-11T23_43_13
+
+    if: >
+      (github.event_name == 'push' &&
+       !contains(github.event.head_commit.message, 'skip ci') &&
+       !contains(github.event.head_commit.message, 'ci skip')) ||
+      github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Run tests
+        run: |
+          echo "OSTYPE (outside Docker): $OSTYPE"
+          echo "Build name: ${{ matrix.name }}"
+          echo "Docker image: ${{ matrix.docker_image }}"
+          if [[ $OSTYPE == linux* ]]; then
+            build_dir_in_container=/opt/yb-build/yugabyte-db
+            docker run \
+              -i \
+              --mount type=bind,source="$PWD",target="$build_dir_in_container" \
+              "${{ matrix.docker_image }}" \
+              bash -c "
+                set -euo pipefail -x
+                echo \"OSTYPE (inside Docker): \$OSTYPE\"
+                cd \"$build_dir_in_container\"
+                chown -R yugabyteci .
+                sudo -u yugabyteci ./yb_build.sh release
+              "
+          elif [[ $OSTYPE == darwin* ]]; then
+            system_profiler SPSoftwareDataType
+            sw_vers
+            ./yb_build.sh release
+          fi
