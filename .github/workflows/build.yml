@@ -65,7 +65,7 @@ jobs:
                 echo \"OSTYPE (inside Docker): \$OSTYPE\"
                 cd \"$build_dir_in_container\"
                 chown -R yugabyteci .
-                sudo -u yugabyteci ./yb_build.sh release
+                sudo -u yugabyteci ./yb_build.sh release --download-thirdparty
               "
           elif [[ $OSTYPE == darwin* ]]; then
             system_profiler SPSoftwareDataType
