@@ -153,6 +153,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   }
 
   void TransitionToTerminalState(MonitoredTaskState expected, MonitoredTaskState terminal_state);
+  bool TransitionToWaitingState(MonitoredTaskState expected);
 
   void AbortTask();
 

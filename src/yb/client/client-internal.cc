@@ -626,7 +626,7 @@ Status YBClient::Data::DeleteTable(YBClient* client,
     indexed_table_name->GetFromTableIdentifierPB(resp.indexed_table());
   }
 
-  LOG(INFO) << "Deleted table " << table_name.ToString();
+  LOG(INFO) << "Deleted table " << (!table_id.empty() ? table_id : table_name.ToString());
   return Status::OK();
 }
 
