@@ -34,7 +34,7 @@ jobs:
 
           - name: "CentOS 7"
             os: ubuntu-latest
-            docker_image: yugabyteci/yb_build_infra_centos7:v2020-03-28T04_39_36
+            docker_image: yugabyteci/yb_build_infra_centos7:v2020-03-28T07_29_17
 
           #- name: "Ubuntu 18.04"
           #  os: ubuntu-latest
@@ -72,7 +72,7 @@ jobs:
                 ( set -x; which cmake ) 
                 set -e
                 chown -R yugabyteci .
-                sudo -u yugabyteci bash -c "export PATH=/usr/local/bin:\$PATH && ./yb_build.sh release --download-thirdparty --ninja"
+                sudo -u yugabyteci bash -c "export PATH=/usr/local/bin:\$PATH && ./yb_build.sh release --download-thirdparty --ninja && ./yb_release --force"
               '
           elif [[ $OSTYPE == darwin* ]]; then
             system_profiler SPSoftwareDataType
