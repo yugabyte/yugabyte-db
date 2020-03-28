@@ -72,7 +72,7 @@ jobs:
                 ( set -x; which cmake ) 
                 set -e
                 chown -R yugabyteci .
-                sudo -u yugabyteci ./yb_build.sh release --download-thirdparty --ninja
+                sudo -u yugabyteci bash -c "export PATH=/usr/local/bin:\$PATH && ./yb_build.sh release --download-thirdparty --ninja"
               '
           elif [[ $OSTYPE == darwin* ]]; then
             system_profiler SPSoftwareDataType
