@@ -1,9 +1,9 @@
 ---
-title: jsonb_array_elements()
+title: jsonb_array_elements() and  json_array_elements() [JSON]
 linkTitle: jsonb_array_elements()
 summary: jsonb_array_elements() and json_array_elements()
 headerTitle: jsonb_array_elements() and json_array_elements()
-description: The functions in this pair require that the supplied JSON value is an array, and transform the list into a table.
+description: Use these JSON functions to transform JSON values of a JSON array into a SQL table of jsonb values.
 menu:
   latest:
     identifier: jsonb-array-elements
@@ -12,7 +12,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-**Purpose:** transform the JSON values of JSON _array_ into a SQL table of (i.e. `setof`) `jsonb` values.
+**Purpose:** Transform the JSON values of a JSON _array_ into a SQL table of (i.e., `setof`) `jsonb` values.
 
 **Signature:** for the `jsonb` variant:
 
@@ -21,7 +21,7 @@ input value:       jsonb
 return value:      SETOF jsonb
 ```
 
-**Notes:** the functions in this pair require that the supplied JSON value is an _array_, They are the counterparts, for an _array_, to `jsonb_populate_recordset()` for a JSON _object_.
+**Notes:** The functions in this pair require that the supplied JSON value is an _array_. They are the counterparts, for an _array_, to `jsonb_populate_recordset()` for a JSON _object_.
 
 ```postgresql
 do $body$

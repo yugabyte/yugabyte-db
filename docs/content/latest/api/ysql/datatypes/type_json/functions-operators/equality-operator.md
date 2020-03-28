@@ -1,9 +1,9 @@
 ---
-title: Equality
-linkTitle: '= (equality)'
-summary: Equality - the `=` operator
+title: = (equality operator) [JSON]
 headerTitle: = (equality)
-description: The = operator checks for equality and requires that the inputs are presented as jsonb values.
+linkTitle: = (equality)
+summary: Equality - the `=` operator
+description: Use the JSON equality operator (=) to check if two jsonb values are equal.
 menu:
   latest:
     identifier: equality-operator
@@ -16,16 +16,20 @@ showAsideToc: true
 **Purpose:** test if two `jsonb` values are equal.
 
 **Signature:**
+
 ```
 input values:       jsonb = jsonb
 return value:       boolean
 ```
 
-**Notes:** it doesn't have an overload for `json`.. If you want to test that two `json` values are equal, express the predicate thus:
+**Notes:** It doesn't have an overload for `json`. If you want to test that two `json` values are equal, express the predicate thus:
+
 ```
 lhs_json_value::text = rhs_json_value::text
 ```
+
 Example:
+
 ```postgresql
 do $body$
 declare

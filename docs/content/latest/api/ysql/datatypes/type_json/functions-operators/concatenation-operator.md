@@ -1,11 +1,11 @@
 ---
-title: Concatenation
-linkTitle: '|| (concatenation)'
-headerTitle:  '|| (concatenation)'
-description:  'The concatenation operator takes two values. If both sides of the operator are primitive JSON values, then the result is an array of these values'
+title: "|| (concatenation operator) [JSON]"
+headerTitle:  "|| (concatenation)"
+linkTitle: "|| (concatenation)"
+description: Use the JSON concatenation operator ("||") to concatenate two jsonb values.
 menu:
   latest:
-    identifier: concatentation-operator
+    identifier: concatenation-operator
     parent: functions-operators
     weight: 14
 isTocNested: true
