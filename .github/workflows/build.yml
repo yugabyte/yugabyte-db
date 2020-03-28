@@ -58,11 +58,12 @@ jobs:
             build_dir_in_container=/opt/yb-build/yugabyte-db
             docker run \
               -i \
+              "-w=$build_dir_in_container" \
               --mount type=bind,source="$PWD",target="$build_dir_in_container" \
               "${{ matrix.docker_image }}" \
-              bash -c "
+              bash -c '
                 set -euo pipefail -x
-                echo \"OSTYPE (inside Docker): \$OSTYPE\"
+                echo "OSTYPE (inside Docker): $OSTYPE"
                 echo "PATH: $PATH"
                 export PATH=/usr/local/bin:$PATH
                 ( set -x; ls -l /usr/local/bin )
@@ -70,10 +71,9 @@ jobs:
                 ( set -x; which ninja )
                 ( set -x; which cmake ) 
                 set -e
-                cd \"$build_dir_in_container\"
                 chown -R yugabyteci .
                 sudo -u yugabyteci ./yb_build.sh release --download-thirdparty --ninja
-              "
+              '
           elif [[ $OSTYPE == darwin* ]]; then
             system_profiler SPSoftwareDataType
             sw_vers
