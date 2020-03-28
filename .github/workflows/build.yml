@@ -73,20 +73,17 @@ jobs:
                 set -e
                 chown -R yugabyteci .
                 sudo -u yugabyteci bash -c "
-                  set -euo pipefail -x
+                  set -euo pipefail
                   export PATH=/usr/local/bin:\$PATH
                   df -H /
                   echo ::group::Building the code
-                  ./yb_build.sh release --download-thirdparty --ninja
-                  echo ::endgroup::
-                  df -H /
-                  echo ::group::Removing tests
-                  ( set -x; rm -rf build/*/tests-* )
+                  ./yb_build.sh release packaged --download-thirdparty --ninja
                   echo ::endgroup::
                   df -H /
                   echo ::group::Releasing
-                  ./yb_release --force
+                  ./yb_release --force --build_args=--ninja
                   echo ::endgroup::
+                  df -H /
                 "
               '
           elif [[ $OSTYPE == darwin* ]]; then
