@@ -72,7 +72,22 @@ jobs:
                 ( set -x; which cmake ) 
                 set -e
                 chown -R yugabyteci .
-                sudo -u yugabyteci bash -c "export PATH=/usr/local/bin:\$PATH && ./yb_build.sh release --download-thirdparty --ninja && ./yb_release --force"
+                sudo -u yugabyteci bash -c "
+                  set -euo pipefail -x
+                  export PATH=/usr/local/bin:\$PATH
+                  df -H /
+                  echo ::group::Building the code
+                  ./yb_build.sh release --download-thirdparty --ninja
+                  echo ::endgroup::
+                  df -H /
+                  echo ::group::Removing tests
+                  ( set -x; rm -rf build/*/tests-* )
+                  echo ::endgroup::
+                  df -H /
+                  echo ::group::Releasing
+                  ./yb_release --force
+                  echo ::endgroup::
+                "
               '
           elif [[ $OSTYPE == darwin* ]]; then
             system_profiler SPSoftwareDataType
