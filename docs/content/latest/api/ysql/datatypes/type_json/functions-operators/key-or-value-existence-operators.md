@@ -1,9 +1,9 @@
 ---
-title: Existence of keys or values
-linkTitle: '?, ?|, and ?& (key or value existence)'
-summary: Existence of keys or values
-headerTitle: '?, ?|, and ?& (key or value existence)'
+title: "?, ?|, and ?& (key or value existence operators) [JSON]"
+headerTitle: "?, ?|, and ?& (key or value existence)"
+linkTitle: "?, ?|, and ?& (key or value existence)"
 description: The ?, ?|, and ?& (key or value existence). Test if value(s) exist as key(s) in an object or as string value(s) in array. jsonb only.
+summary: Existence of keys or values
 menu:
   latest:
     identifier: key-or-value-existence-operators
