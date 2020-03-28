@@ -310,16 +310,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
       return false;
     }
 
-    if (!PerformStateTransition(MonitoredTaskState::kScheduling, MonitoredTaskState::kWaiting)) {
-      // The only valid reason for state not being MonitoredTaskState is because the task got
-      // aborted.
-      if (state() != MonitoredTaskState::kAborted) {
-        LOG_WITH_PREFIX(FATAL) << "Unable to mark task as MonitoredTaskState::kWaiting";
-      }
-      AbortIfScheduled();
-      return false;
-    }
-    return true;
+    return TransitionToWaitingState(MonitoredTaskState::kScheduling);
   }
   return false;
 }
@@ -397,6 +388,20 @@ void RetryingTSRpcTask::TransitionToTerminalState(MonitoredTaskState expected,
       LOG_WITH_PREFIX(DFATAL) << "State transition " << expected << " -> "
                               << terminal_state << " failed. Current task is in an invalid state";
     }
+  }
+}
+
+bool RetryingTSRpcTask::TransitionToWaitingState(MonitoredTaskState expected) {
+  if (!PerformStateTransition(expected, MonitoredTaskState::kWaiting)) {
+    // The only valid reason for state not being MonitoredTaskState is because the task got
+    // aborted.
+    if (state() != MonitoredTaskState::kAborted) {
+      LOG_WITH_PREFIX(FATAL) << "Unable to mark task as MonitoredTaskState::kWaiting";
+    }
+    AbortIfScheduled();
+    return false;
+  } else {
+    return true;
   }
 }
 
@@ -1039,7 +1044,21 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;
   }
-  TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+  if (resp_.has_error()) {
+    LOG(WARNING) << "AddTableToTablet() responded with error code "
+                 << TabletServerErrorPB_Code_Name(resp_.error().code());
+    switch (resp_.error().code()) {
+      case TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE: FALLTHROUGH_INTENDED;
+      case TabletServerErrorPB::NOT_THE_LEADER:
+        TransitionToWaitingState(MonitoredTaskState::kRunning);
+        break;
+      default:
+        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
+        break;
+    }
+  } else {
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+  }
 }
 
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
@@ -1075,7 +1094,21 @@ void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;
   }
-  TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+  if (resp_.has_error()) {
+    LOG(WARNING) << "RemoveTableFromTablet() responded with error code "
+                 << TabletServerErrorPB_Code_Name(resp_.error().code());
+    switch (resp_.error().code()) {
+      case TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE: FALLTHROUGH_INTENDED;
+      case TabletServerErrorPB::NOT_THE_LEADER:
+        TransitionToWaitingState(MonitoredTaskState::kRunning);
+        break;
+      default:
+        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
+        break;
+    }
+  } else {
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+  }
 }
 
 bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
