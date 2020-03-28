@@ -1,9 +1,9 @@
 ---
-title: Indexes and check constraints
+title: Indexes and check constraints on json and jsonb columns
+headerTitle: Create indexes and check constraints on JSON columns
 linkTitle: Indexes and check constraints
 summary: Create indexes and check constraints on JSON columns
-headerTitle: Create indexes and check constraints on JSON columns
-description: Create indexes and check constraints on JSON columns
+description: Create indexes and check constraints on "json" and "jsonb" columns in YugabyteDB
 menu:
   latest:
     identifier: create-indexes-check-constraints

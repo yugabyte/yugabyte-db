@@ -1,9 +1,9 @@
 ---
-title: jsonb_set(), jsonb_insert()
-linkTitle: jsonb_set(), jsonb_insert()
+title: jsonb_set() and jsonb_insert() [JSON]
+linkTitle: jsonb_set() and jsonb_insert()
 summary: jsonb_set() and jsonb_insert()
 headerTitle: jsonb_set() and jsonb_insert()
-description: jsonb_set() and jsonb_insert()
+description: Use jsonb_set() to change an existing JSON value and use jsonb_insert() to insert a new value.
 menu:
   latest:
     identifier: jsonb-set-jsonb-insert
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose**: use `jsonb_set()` to change an existing JSON value, i.e. the value of an existing key-value pair in a JSON _object_ or the value at an existing index in a JSON array. Use `jsonb_insert()` to insert a new value, either as the value for a key that doesn't yet exist in a JSON _object_ or beyond the end or before the start of the index range for a JSON _array_.
+**Purpose**: Use `jsonb_set()` to change an existing JSON value that is the value of an existing key-value pair in a JSON _object_ or the value at an existing index in a JSON array. Use `jsonb_insert()` to insert a new value, either as the value for a key that doesn't yet exist in a JSON _object_ or beyond the end or before the start of the index range, for a JSON _array_.
 
 **Signature:** For `jsonb_set()`:
 

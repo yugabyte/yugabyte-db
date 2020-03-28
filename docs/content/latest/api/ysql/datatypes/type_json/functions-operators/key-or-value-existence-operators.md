@@ -1,9 +1,9 @@
 ---
-title: Existence of keys or values
-linkTitle: '?, ?|, and ?& (key or value existence)'
-summary: Existence of keys or values
-headerTitle: '?, ?|, and ?& (key or value existence)'
+title: "?, ?|, and ?& (key or value existence operators) [JSON]"
+headerTitle: "?, ?|, and ?& (key or value existence operators)"
+linkTitle: "?, ?|, and ?& (key or value existence)"
 description: The ?, ?|, and ?& (key or value existence). Test if value(s) exist as key(s) in an object or as string value(s) in array. jsonb only.
+summary: Existence of keys or values
 menu:
   latest:
     identifier: key-or-value-existence-operators
@@ -15,7 +15,7 @@ showAsideToc: true
 
 **Purpose:** (1) If the left-hand JSON value is an _object_, test if the right-hand SQL text value(s) exist as key name(s) in the _object_. (2) If the left-hand JSON value is an _array_, test if the right-hand SQL text value(s) exist as JSON _string_ value(s) in the _array_.
 
-**Notes:** these operators require that the input is presented as `jsonb` value. They don't have overloads for `json`. The first variant allows a single `text` value to be provided. The second and third variants allow a list of `text` values to be provided. The second is the _or_ (any) flavor and the third is the _and_ (all) flavor.
+**Notes:** These operators require that the input is presented as `jsonb` value. They don't have overloads for `json`. The first variant allows a single `text` value to be provided. The second and third variants allow a list of `text` values to be provided. The second is the _or_ (any) flavor and the third is the _and_ (all) flavor.
 
 ### Existence of the provided single _text_ value as a _key_ of a key-value pair in an _object_ or as a _string_ value in an _array_: **?**
 

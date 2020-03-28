@@ -1,9 +1,9 @@
 ---
-title: jsonb_to_record()
-linkTitle: jsonb_to_record() 
-summary: jsonb_to_record() and json_to_record()
+title: jsonb_to_record() and json_to_record() [JSON]
 headerTitle: jsonb_to_record() and json_to_record()
-description: jsonb_to_record() and json_to_record()
+linkTitle: jsonb_to_record()
+description: Use these JSON functions to convert a JSON object into the equivalent SQL record.
+summary: jsonb_to_record() and json_to_record()
 menu:
   latest:
     identifier: jsonb-to-record
@@ -13,16 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** convert a JSON _object_ into the equivalent SQL `record`.
+**Purpose:** Convert a JSON _object_ into the equivalent SQL `record`.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb
 return value:      record
 ```
 
-**Notes:** the `jsonb_to_record()` function is a syntax variant of the same functionality that [`jsonb_populate_record`](../jsonb-populate-record/) provides. It doesn't need a schema-level type but, rather, uses the special SQL locution `select... as on_the_fly(<record definition>)`.
+**Notes:** The `jsonb_to_record()` function is a syntax variant of the same functionality that [`jsonb_populate_record`](../jsonb-populate-record/) provides. It doesn't need a schema-level type but, rather, uses the special SQL locution `select... as on_the_fly(<record definition>)`.
 
 Use this _ysqlsh_ script to create the  type `t` that just `jsonb_populate_record()` requires, to convert the input `jsonb` into a SQL `record` using each of  `jsonb_populate_record()` and `jsonb_to_record`, and then to execute the `assert`. Notice that `on_the_fly` is a nonce name, made up for this example. Anything will suffice.
 

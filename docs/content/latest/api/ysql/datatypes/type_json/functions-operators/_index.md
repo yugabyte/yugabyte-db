@@ -1,9 +1,9 @@
 ---
-title: Functions and operators
-linkTitle: Functions & operators
-summary: Functions and operators
+title: JSON functions and operators
 headerTitle: JSON functions and operators
-description: The JSON functions and operators available in YugabyteDB are categorized below by purpose, that is based upon the goals you want to accomplish.
+linkTitle: Functions and operators
+summary: Functions and operators
+description: Learn about JSON functions and operators categorized by the purpose (goal) you want to accomplish.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The JSON functions and operators available in YugabyteDB are categorized below by purpose, that is based upon the goals you want to accomplish. Click one of the following goals to jump to a table that includes relevant JSON functions and operators.
+The JSON functions and operators available in YugabyteDB are categorized by purpose (the goal you want to accomplish). Click one of the following goals to jump to a table that includes relevant JSON functions and operators.
 
 **What are you trying to do?**
 
@@ -23,7 +23,7 @@ The JSON functions and operators available in YugabyteDB are categorized below b
 - [**Convert a JSON value to a SQL value**](#convert-a-json-value-to-a-sql-value)
 - [**Get a property of a JSON value**](#get-a-property-of-a-json-value)
 
-**Notes:** for an alphabetical listing of the JSON functions and operators, see the listing in the navigation bar.
+**Note:** For an alphabetical listing of the JSON functions and operators, see the listing in the navigation bar.
 
 There are two trivial typecast operators for converting between a `text` value that conforms to [RFC 7159](https://tools.ietf.org/html/rfc7159) and a `jsonb` or `json` value, the ordinarily overloaded `=` operator, 12 dedicated JSON operators, and 23 dedicated JSON functions.
 
