@@ -1611,13 +1611,13 @@ CREATE DOMAIN utl_file.file_type integer;
 CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text, max_linesize integer, encoding name)
 RETURNS utl_file.file_type
 AS 'MODULE_PATHNAME','utl_file_fopen'
-LANGUAGE C VOLATILE SECURITY DEFINER;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer,name) IS 'The FOPEN function open file and return file handle';
 
 CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text, max_linesize integer)
 RETURNS utl_file.file_type
 AS 'MODULE_PATHNAME','utl_file_fopen'
-LANGUAGE C VOLATILE SECURITY DEFINER;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
 
 CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text)
@@ -1740,37 +1740,37 @@ COMMENT ON FUNCTION utl_file.fclose_all() IS 'Close all open files.';
 CREATE FUNCTION utl_file.fremove(location text, filename text)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fremove'
-LANGUAGE C VOLATILE SECURITY DEFINER;;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fremove(text, text) IS 'Remove file.';
 
 CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text, overwrite boolean)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_frename'
-LANGUAGE C VOLATILE SECURITY DEFINER;;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.frename(text, text, text, text, boolean) IS 'Rename file.';
 
 CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text)
 RETURNS void
 AS $$SELECT utl_file.frename($1, $2, $3, $4, false);$$
-LANGUAGE SQL VOLATILE SECURITY DEFINER;
+LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.frename(text, text, text, text) IS 'Rename file.';
 
 CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE SECURITY DEFINER;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text) IS 'Copy a text file.';
 
 CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text, start_line integer)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE SECURITY DEFINER;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text, integer) IS 'Copy a text file.';
 
 CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text, start_line integer, end_line integer)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE SECURITY DEFINER;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text, integer, integer) IS 'Copy a text file.';
 
 CREATE FUNCTION utl_file.fgetattr(location text, filename text, OUT fexists boolean, OUT file_length bigint, OUT blocksize integer)
@@ -1787,7 +1787,9 @@ COMMENT ON FUNCTION utl_file.tmpdir() IS 'Get temp directory path.';
 /* carry all safe directories */
 CREATE TABLE utl_file.utl_file_dir(dir text, dirname text unique);
 REVOKE ALL ON utl_file.utl_file_dir FROM PUBLIC;
-REVOKE ALL ON FUNCTION utl_file.tmpdir() FROM PUBLIC;
+
+/* allow only read on utl_file.utl_file_dir to unprivileged users */
+GRANT SELECT ON TABLE utl_file.utl_file_dir TO PUBLIC;
 
 -- dbms_assert
 

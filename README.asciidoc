@@ -329,6 +329,14 @@ The `location` parameter can be either the directory name or the dictionary path
 The location is first interpreted and checked as a directory name.
 If not found (in 2nd column), then the location is interpreted and checked as a path.
 
+Functions from utl_file package (schema on Postgres) requires a access to
+table utl_file.utl_file_dir. This fact can be used to control what users
+can use these functions or not. Default setting is READ for PUBLIC. INSERT, UPDATE can
+do only privileged user (super user). So unprivileged user can use functions
+from this package, but cannot to change list of safe directories (content of
+utl_file.utl_file_dir table). The content of this table is visible for PUBLIC
+(or should be visible for users who uses functions from this package).
+
 == Package dbms_pipe
 
 This package is an emulation of dbms_pipe Oracle package. It provides 
