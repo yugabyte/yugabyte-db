@@ -1,5 +1,5 @@
 \unset ECHO
-1..228
+1..243
 ok 1 - col_not_null( sch, tab, col, desc ) should pass
 ok 2 - col_not_null( sch, tab, col, desc ) should have the proper description
 ok 3 - col_not_null( sch, tab, col, desc ) should have the proper diagnostics
@@ -228,3 +228,18 @@ ok 225 - col_default_is( tab, col, SESSION_USER ) should have the proper diagnos
 ok 226 - col_default_is( tab, col, USER ) should pass
 ok 227 - col_default_is( tab, col, USER ) should have the proper description
 ok 228 - col_default_is( tab, col, USER ) should have the proper diagnostics
+ok 229 - col_default_is( tab, col, CURRENT_DATE ) should pass
+ok 230 - col_default_is( tab, col, CURRENT_DATE ) should have the proper description
+ok 231 - col_default_is( tab, col, CURRENT_DATE ) should have the proper diagnostics
+ok 232 - col_default_is( tab, col, CURRENT_TIME ) should pass
+ok 233 - col_default_is( tab, col, CURRENT_TIME ) should have the proper description
+ok 234 - col_default_is( tab, col, CURRENT_TIME ) should have the proper diagnostics
+ok 235 - col_default_is( tab, col, CURRENT_TIMESTAMP ) should pass
+ok 236 - col_default_is( tab, col, CURRENT_TIMESTAMP ) should have the proper description
+ok 237 - col_default_is( tab, col, CURRENT_TIMESTAMP ) should have the proper diagnostics
+ok 238 - col_default_is( tab, col, LOCALTIME ) should pass
+ok 239 - col_default_is( tab, col, LOCALTIME ) should have the proper description
+ok 240 - col_default_is( tab, col, LOCALTIME ) should have the proper diagnostics
+ok 241 - col_default_is( tab, col, LOCALTIMESTAMP ) should pass
+ok 242 - col_default_is( tab, col, LOCALTIMESTAMP ) should have the proper description
+ok 243 - col_default_is( tab, col, LOCALTIMESTAMP ) should have the proper diagnostics

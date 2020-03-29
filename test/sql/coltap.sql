@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(228);
+SELECT plan(243);
 --SELECT * from no_plan();
 
 CREATE TYPE public."myType" AS (
@@ -23,6 +23,11 @@ CREATE TABLE public.sometab(
     crole   TEXT DEFAULT CURRENT_ROLE,
     csch    TEXT DEFAULT CURRENT_SCHEMA,
     ccat    TEXT DEFAULT CURRENT_CATALOG,
+    cdate   DATE DEFAULT CURRENT_DATE,
+    ctime   TIMETZ DEFAULT CURRENT_TIME,
+    ctstz   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    ltime   TIME DEFAULT LOCALTIME,
+    ltstz   TIMESTAMPTZ DEFAULT LOCALTIMESTAMP,
     plain   INTEGER,
     camel   "myType"
 );
@@ -693,16 +698,16 @@ SELECT * FROM check_test(
 -- Make sure that it works when the default is a reserved SQL expression.
 CREATE OR REPLACE FUNCTION ckreserve() RETURNS SETOF TEXT LANGUAGE PLPGSQL AS $$
 DECLARE
-    funcs text[] := '{CURRENT_CATALOG,CURRENT_ROLE,CURRENT_SCHEMA,CURRENT_USER,SESSION_USER,USER}';
-    cols  TEXT[] := '{ccat,crole,csch,cuser,suser,auser}';
+    funcs text[] := '{CURRENT_CATALOG,CURRENT_ROLE,CURRENT_SCHEMA,CURRENT_USER,SESSION_USER,USER,CURRENT_DATE,CURRENT_TIME,CURRENT_TIMESTAMP,LOCALTIME,LOCALTIMESTAMP}';
+    cols  TEXT[] := '{ccat,crole,csch,cuser,suser,auser,cdate,ctime,ctstz,ltime,ltstz}';
     exp   TEXT[] := funcs;
     tap           record;
     last_index    INTEGER;
 BEGIN
     last_index := array_upper(funcs, 1);
     IF pg_version_num() < 100000 THEN
-       -- Prior to PostgreSQL 10, these wer functions rendered with paretheses.
-       exp := ARRAY['current_database()','"current_user"()','"current_schema"()','"current_user"()','"session_user"()','"current_user"()'];
+       -- Prior to PostgreSQL 10, these were functions rendered with paretheses or as casts.
+       exp := ARRAY['current_database()','"current_user"()','"current_schema"()','"current_user"()','"session_user"()','"current_user"()','(''now''::text)::date','(''now''::text)::time with time zone','now()','(''now''::text)::time without time zone','(''now''::text)::timestamp without time zone'];
     END IF;
 
     FOR i IN 1..last_index LOOP

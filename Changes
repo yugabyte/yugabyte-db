@@ -5,6 +5,9 @@ Revision history for pgTAP
 --------------------------
 * Make description field optional in has_view() and hasnt_view() when
   specifying schema (#230). Thanks to Godwottery for the patch!
+* Added support for the date and time keywords `CURRENT_DATE`, `CURRENT_TIME`,
+  `CURRENT_TIMESTAMP`, `LOCALTIME`, and `LOCALTIMESTAMP` to `col_default_is()`.
+  Thanks to Kevin Brannen for the report (#244)!
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
