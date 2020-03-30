@@ -208,9 +208,9 @@ Constants
 String
 """"""
 
-Both 'single-quoted' and "double-quoted" string formats are supported.
+Both ``'single-quoted'`` and ``"double-quoted"`` string formats are supported. Only UTF-8 encoding is allowed.
 
-The folowing escape sequences are defined. Other escape sequences will cause an parse error.
+The folowing escape sequences are defined. Other escape sequences will cause a parse error.
 
 +-----------------+-----------------------------------------------------+
 | Escape sequence | Character represented                               |
@@ -248,11 +248,10 @@ Float
 
 |project| stores floating-point numbers in IEEE 754 binary64 format.
 
-It support the following formats along with scientific notation.
+It supports the following formats along with scientific notation.
 
 - ``0.``
 - ``.0``
-- ``0.0``
 
 Also, the following values are supported.
 
@@ -275,22 +274,51 @@ Null
 List
 ~~~~
 
-``['l', 'i', 's', 't']``
+A list is an ordered collection of values. It can be built with list literal syntax as shown below.
+
+::
+
+  '[' expression [, ...] ']'
+
+The following simple example shows how a list value is be built using the above syntax.
+
+.. code-block:: psql
+
+  =# SELECT * FROM cypher('g', $$
+  $# RETURN [7, .7, true, null, ['nested'], {p: 'nested'}]
+  $# $$) AS (list agtype);
+                         list
+  ---------------------------------------------------
+   [7, 0.7, true, null, ["nested"], {"p": "nested"}]
+  (1 row)
 
 Map
 ~~~
 
-``{"key": "value", "m": {}, "a": [], "p": 0}``
+A list is a collection of key/value pairs. It can be built with map literal syntax as shown below.
+
+::
+
+  '{' ( identifier : expression ) [, ...] ']'
+
+The following simple example shows how a map value is be built using the above syntax.
+
+.. code-block:: psql
+
+  =# SELECT * FROM cypher('g', $$
+  $# RETURN {i: 7, f: .7, b: true, z: null, l: ['nested'], m: {p: 'nested'}}
+  $# $$) AS (map agtype);
+                                         map
+  ---------------------------------------------------------------------------------
+   {"b": true, "f": 0.7, "i": 7, "l": ["nested"], "m": {"p": "nested"}, "z": null}
+  (1 row)
 
 Variables
 ~~~~~~~~~
 
 All valid identifiers can be variable names except reserved keywords. (See :ref:`get_cypher_keywords`)
 
-An identifier
-
-- starts with an alphabet (``A-Z`` and ``a-z``) or an underscore (``_``).
-- can contain alphabets, underscores, dollar-signs (``$``), and digits (``0-9``).
+An identifier starts with an alphabet (``A-Z`` and ``a-z``) or an underscore (``_``) and can contain alphabets, underscores, dollar-signs (``$``), and digits (``0-9``).
 
 ```Backquote-quoted``` identifiers can have any character.
 

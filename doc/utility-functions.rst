@@ -1,6 +1,8 @@
 Utility Functions
 =================
 
+All utility functions reside in ``ag_catalog`` schema.
+
 create_graph()
 --------------
 

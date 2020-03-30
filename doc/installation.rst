@@ -46,4 +46,4 @@ Run the following statements in ``psql`` to create and load |project| in Postgre
 
 ..
 
-  When |project| is being loaded, it installs ``post_parse_analyze_hook`` and ``set_rel_pathlist_hook`` to analyze and execute Cypher queries.
+  When |project| is being loaded, it installs ``post_parse_analyze_hook``, ``set_rel_pathlist_hook``, and ``object_access_hook`` to analyze and execute Cypher queries.
