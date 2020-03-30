@@ -71,7 +71,10 @@ DEFINE_int32(load_balancer_num_idle_runs,
 
 DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false,
                  "Limit the functionality of the load balancer during tests so tests can make "
-                 "progress")
+                 "progress");
+
+DEFINE_bool(load_balancer_skip_leader_as_remove_victim, true,
+            "Should the LB skip a leader as a possible remove candidate.");
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
@@ -621,7 +624,7 @@ Result<bool> ClusterLoadBalancer::ShouldSkipLeaderAsVictim(const TabletId& table
 
   // If replication factor is > 1, skip picking the leader as the victim for the move.
   if (num_replicas > 1) {
-    return true;
+    return FLAGS_load_balancer_skip_leader_as_remove_victim;
   }
 
   return false;
@@ -653,6 +656,10 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
 
   bool same_placement = state_->per_ts_meta_[from_ts].descriptor->placement_id() ==
                         state_->per_ts_meta_[to_ts].descriptor->placement_id();
+  // This flag indicates whether we've found a load move operation from a leader. Since we want to
+  // prioritize moving from non-leaders, keep iterating until we find such a move. Otherwise,
+  // return the move from the leader.
+  bool found_tablet_move_from_leader = false;
   for (const auto& tablet_id : non_over_replicated_tablets) {
     const auto& placement_info = GetPlacementByTablet(tablet_id);
     // TODO(bogdan): this should be augmented as well to allow dropping by one replica, if still
@@ -663,20 +670,32 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
     if (!placement_info.placement_blocks().empty() && !same_placement) {
       continue;
     }
-    // Skip this tablet if we are trying to move away from the leader, as we would like to avoid
-    // extra leader stepdowns. If table is in RF > 1 universe only, we skip leader as victim here.
-    if (state_->per_tablet_meta_[tablet_id].leader_uuid == from_ts &&
-        VERIFY_RESULT(ShouldSkipLeaderAsVictim(tablet_id))) {
+    // If load_balancer_skip_leader_as_remove_victim=false or RF=1, then we allow moving load from
+    // leaders.
+    bool skip_leader = VERIFY_RESULT(ShouldSkipLeaderAsVictim(tablet_id));
+    bool moving_from_leader = state_->per_tablet_meta_[tablet_id].leader_uuid == from_ts;
+
+    if (!moving_from_leader) {
+      // If we're not moving from a leader, choose this tablet and return true.
+      *moving_tablet_id = tablet_id;
+      return true;
+    }
+
+    // We are trying to move a leader.
+    if (skip_leader) {
       continue;
     }
-    // If we got here, it means we either have no placement, in which case we can pick any TS, or
-    // we have placement and it's valid to move across these two tablet servers, so set the tablet
-    // and leave.
-    *moving_tablet_id = tablet_id;
-    return true;
+
+    if (!found_tablet_move_from_leader) {
+      // We haven't found a previous leader move, so this is our best move until we find a move
+      // from a non-leader.
+      *moving_tablet_id = tablet_id;
+      found_tablet_move_from_leader = true;
+    }
   }
-  // If we couldn't select a tablet above, we have to return failure.
-  return false;
+
+  // We couldn't find any moves from a non-leader, so return true if we found a move from a leader.
+  return found_tablet_move_from_leader;
 }
 
 Result<bool> ClusterLoadBalancer::GetLeaderToMove(
@@ -844,6 +863,7 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
         continue;
       }
     }
+
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;
     // Do force leader stepdown, as we are either not the leader or we are allowed to step down.
