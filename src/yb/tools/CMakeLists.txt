@@ -62,6 +62,11 @@ add_executable(yb-admin
 target_link_libraries(yb-admin
   ${LINK_LIBS})
 
+add_library(yb-admin_lib 
+  yb-admin_client.cc
+  ${YB_ADMIN_LIB_SRCS_EXTENSIONS})
+target_link_libraries(yb-admin_lib ${LINK_LIBS})
+
 add_executable(yb-ts-cli ts-cli.cc)
 target_link_libraries(yb-ts-cli
   ${LINK_LIBS})
