@@ -53,7 +53,7 @@ namespace yb {
 
 class HybridTime;
 class OneWayBitmap;
-class PendingOperationCounter;
+class RWOperationCounter;
 class TransactionMetadataPB;
 
 namespace tserver {
@@ -195,7 +195,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void SetDB(
       rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
-      PendingOperationCounter* pending_op_counter);
+      RWOperationCounter* pending_op_counter);
 
   CHECKED_STATUS CheckAborted(const TransactionId& id);
 

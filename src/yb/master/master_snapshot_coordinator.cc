@@ -17,10 +17,15 @@
 
 #include "yb/common/snapshot.h"
 
+#include "yb/docdb/doc_key.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
+#include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/snapshot_operation.h"
+
+#include "yb/util/pb_util.h"
 
 using namespace std::placeholders;
 
@@ -31,13 +36,28 @@ namespace {
 
 class StateWithTablets {
  public:
-  template <class TabletIds>
   StateWithTablets(
-      SnapshotCoordinatorContext* context, const TabletIds& tablet_ids,
-      SysSnapshotEntryPB::State initial_state)
+      SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state)
       : context_(*context), initial_state_(initial_state) {
+  }
+
+  // Initialize tablet states using tablet ids, i.e. put all tablets in initial state.
+  template <class TabletIds>
+  void InitTabletIds(const TabletIds& tablet_ids) {
     for (const auto& id : tablet_ids) {
-      tablets_.emplace(id, initial_state);
+      tablets_.emplace(id, initial_state_);
+    }
+    tablets_in_initial_state_number_ = tablet_ids.size();
+  }
+
+  // Initialize tablet states from serialized data.
+  void InitiTablets(
+      const google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>& tablets) {
+    for (const auto& tablet : tablets) {
+      tablets_.emplace(tablet.id(), tablet.state());
+      if (tablet.state() == initial_state_) {
+        ++tablets_in_initial_state_number_;
+      }
     }
   }
 
@@ -56,6 +76,10 @@ class StateWithTablets {
       }
     }
     return result;
+  }
+
+  bool AllTabletsDone() {
+    return tablets_in_initial_state_number_ == 0;
   }
 
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state) {
@@ -82,36 +106,35 @@ class StateWithTablets {
     }
   }
 
-  void Success(const TabletId& tablet_id) {
+  void Done(const TabletId& tablet_id, const Status& status) {
     auto it = tablets_.find(tablet_id);
     if (it == tablets_.end()) {
       LOG(DFATAL) << "Finished " << InitialStateName() <<  " snapshot at unknown tablet "
-                  << tablet_id;
+                  << tablet_id << ": " << status;
       return;
     }
     auto& state = it->second;
     if (state.ok() && *state == initial_state_) {
-      state = SysSnapshotEntryPB::COMPLETE;
+      if (status.ok()) {
+        state = SysSnapshotEntryPB::COMPLETE;
+      } else {
+        auto full_status = status.CloneAndPrepend(
+            Format("Failed to $0 snapshot at $1", InitialStateName(), tablet_id));
+        LOG(WARNING) << full_status;
+        state = full_status;
+      }
+      --tablets_in_initial_state_number_;
 
-      LOG(INFO) << "Finished " << InitialStateName() << " snapshot at " << tablet_id;
+      LOG(INFO) << "Finished " << InitialStateName() << " snapshot at " << tablet_id << ": "
+                << status;
     } else {
       LOG(DFATAL) << "Finished " << InitialStateName() << " snapshot at tablet " << tablet_id
-                  << " in a wrong state " << state;
+                  << " in a wrong state " << state << ": " << status;
     }
   }
 
-  void Failure(const TabletId& tablet_id, const Status& status) {
-    auto it = tablets_.find(tablet_id);
-    if (it == tablets_.end()) {
-      LOG(DFATAL) << "Failed " << InitialStateName() << " snapshot at unknown tablet "
-                  << tablet_id << ": " << status;
-    }
-
-    auto full_status = status.CloneAndPrepend(
-        Format("Failed to $0 snapshot at $1", InitialStateName(), tablet_id));
-    LOG(WARNING) << full_status;
-
-    it->second = full_status;
+  SnapshotCoordinatorContext& context() const {
+    return context_;
   }
 
  private:
@@ -122,6 +145,7 @@ class StateWithTablets {
   SnapshotCoordinatorContext& context_;
   const SysSnapshotEntryPB::State initial_state_;
   std::unordered_map<TabletId, Result<SysSnapshotEntryPB::State>> tablets_;
+  size_t tablets_in_initial_state_number_ = 0;
 };
 
 class SnapshotState : public StateWithTablets {
@@ -129,9 +153,19 @@ class SnapshotState : public StateWithTablets {
   SnapshotState(
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
       const tserver::TabletSnapshotOpRequestPB& request)
-      : StateWithTablets(context, request.tablet_id(), SysSnapshotEntryPB::CREATING),
+      : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
         id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()) {
+    InitTabletIds(request.tablet_id());
     request.extra_data().UnpackTo(&entries_);
+  }
+
+  SnapshotState(
+      SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
+      const SysSnapshotEntryPB& entry)
+      : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
+        id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()) {
+    InitiTablets(entry.tablet_snapshots());
+    *entries_.mutable_entries() = entry.entries();
   }
 
   HybridTime snapshot_hybrid_time() const {
@@ -140,18 +174,40 @@ class SnapshotState : public StateWithTablets {
 
   void ToPB(SnapshotInfoPB* out) {
     out->set_id(id_.data(), id_.size());
-    auto& entry = *out->mutable_entry();
+    ToEntryPB(out->mutable_entry());
+  }
+
+  void ToEntryPB(SysSnapshotEntryPB* out) {
     auto complete = Complete();
 
     if (complete.ok()) {
-      entry.set_state(*complete ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
+      out->set_state(*complete ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
     } else {
-      entry.set_state(SysSnapshotEntryPB::FAILED);
+      out->set_state(SysSnapshotEntryPB::FAILED);
     }
 
-    TabletsToPB(entry.mutable_tablet_snapshots());
+    out->set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
 
-    *entry.mutable_entries() = entries_.entries();
+    TabletsToPB(out->mutable_tablet_snapshots());
+
+    *out->mutable_entries() = entries_.entries();
+  }
+
+  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
+    docdb::DocKey doc_key({ docdb::PrimitiveValue::Int32(SysRowEntry::SNAPSHOT),
+                            docdb::PrimitiveValue(id_.AsSlice().ToBuffer()) });
+    docdb::SubDocKey sub_doc_key(
+        doc_key, docdb::PrimitiveValue(VERIFY_RESULT(context().MetadataColumnId())));
+    auto encoded_key = sub_doc_key.Encode();
+    auto pair = out->add_write_pairs();
+    pair->set_key(encoded_key.data());
+    faststring value;
+    value.push_back(docdb::ValueTypeAsChar::kString);
+    SysSnapshotEntryPB entry;
+    ToEntryPB(&entry);
+    pb_util::AppendToString(entry, &value);
+    pair->set_value(value.data(), value.size());
+    return Status::OK();
   }
 
  private:
@@ -165,9 +221,9 @@ class RestorationState : public StateWithTablets {
   RestorationState(
       SnapshotCoordinatorContext* context, const TxnSnapshotRestorationId& restoration_id,
       SnapshotState* snapshot)
-      : StateWithTablets(context, snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE),
-                         SysSnapshotEntryPB::RESTORING),
+      : StateWithTablets(context, SysSnapshotEntryPB::RESTORING),
         restoration_id_(restoration_id) {
+    InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
   }
 
   void ToPB(SnapshotInfoPB* out) {
@@ -188,29 +244,34 @@ class RestorationState : public StateWithTablets {
   TxnSnapshotRestorationId restoration_id_;
 };
 
-template <class Collection>
+struct NoOp {
+  template <class... Args>
+  void operator()(Args&&... args) const {}
+};
+
+// Utility to create callback that is invoked when operation done.
+// Finds appropriate entry in passed collection and invokes Done on it.
+template <class Collection, class PostProcess = NoOp>
 auto MakeDoneCallback(
     std::mutex* mutex, const Collection& collection, const typename Collection::key_type& key,
-    const TabletId& tablet_id) {
+    const TabletId& tablet_id, const PostProcess& post_process = PostProcess()) {
   struct DoneFunctor {
     std::mutex& mutex;
     const Collection& collection;
     typename Collection::key_type key;
     TabletId tablet_id;
+    PostProcess post_process;
 
     void operator()(Result<const tserver::TabletSnapshotOpResponsePB&> resp) const {
-      std::lock_guard<std::mutex> lock(mutex);
+      std::unique_lock<std::mutex> lock(mutex);
       auto it = collection.find(key);
       if (it == collection.end()) {
         LOG(DFATAL) << "Received reply for unknown " << key;
         return;
       }
 
-      if (!resp.ok()) {
-        it->second->Failure(tablet_id, resp.status());
-      } else {
-        it->second->Success(tablet_id);
-      }
+      it->second->Done(tablet_id, ResultToStatus(resp));
+      post_process(it->second.get(), &lock);
     }
   };
 
@@ -219,6 +280,7 @@ auto MakeDoneCallback(
     .collection = collection,
     .key = key,
     .tablet_id = tablet_id,
+    .post_process = post_process,
   };
 }
 
@@ -235,6 +297,8 @@ class MasterSnapshotCoordinator::Impl {
 
     TabletInfos tablet_infos;
     auto snapshot_hybrid_time = snapshot->snapshot_hybrid_time();
+    docdb::KeyValueWriteBatchPB write_batch;
+    RETURN_NOT_OK(snapshot->StoreToWriteBatch(&write_batch));
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto emplace_result = snapshots_.emplace(id, std::move(snapshot));
@@ -242,18 +306,45 @@ class MasterSnapshotCoordinator::Impl {
         return STATUS_FORMAT(IllegalState, "Duplicate snapshot id: $0", id);
       }
 
-      if (leader_term < 0) {
-        return Status::OK();
+      if (leader_term >= 0) {
+        tablet_infos = emplace_result.first->second->TabletInfosInState(
+            SysSnapshotEntryPB::CREATING);
       }
-
-      tablet_infos = emplace_result.first->second->TabletInfosInState(SysSnapshotEntryPB::CREATING);
     }
 
-    auto snapshot_id_str = id.AsSlice().ToBuffer();
-    for (const auto& tablet : tablet_infos) {
-      context_.SendCreateTabletSnapshotRequest(
-          tablet, snapshot_id_str, snapshot_hybrid_time,
-          MakeDoneCallback(&mutex_, snapshots_, id, tablet->tablet_id()));
+    RETURN_NOT_OK(context_.ApplyOperationState(state, /* batch_idx= */ -1, write_batch));
+
+    if (!tablet_infos.empty()) {
+      auto snapshot_id_str = id.AsSlice().ToBuffer();
+      for (const auto& tablet : tablet_infos) {
+        context_.SendCreateTabletSnapshotRequest(
+            tablet, snapshot_id_str, snapshot_hybrid_time,
+            MakeDoneCallback(&mutex_, snapshots_, id, tablet->tablet_id(),
+                             [this](SnapshotState* snapshot, std::unique_lock<std::mutex>* lock) {
+          if (snapshot->AllTabletsDone()) {
+            docdb::KeyValueWriteBatchPB write_batch;
+            auto status = snapshot->StoreToWriteBatch(&write_batch);
+            if (!status.ok()) {
+              LOG(DFATAL) << "Failed to prepare write batch for snapshot: " << status;
+              return;
+            }
+            lock->unlock();
+            context_.SubmitWrite(write_batch);
+          }
+        }));
+      }
+    }
+
+    return Status::OK();
+  }
+
+  CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data) {
+    auto snapshot = std::make_unique<SnapshotState>(&context_, snapshot_id, data);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto emplace_result = snapshots_.emplace(snapshot_id, std::move(snapshot));
+    if (!emplace_result.second) {
+      return STATUS_FORMAT(IllegalState, "Duplicate snapshot id: $0", snapshot_id);
     }
 
     return Status::OK();
@@ -365,6 +456,10 @@ Result<TxnSnapshotRestorationId> MasterSnapshotCoordinator::Restore(
 Status MasterSnapshotCoordinator::ListRestorations(
     const TxnSnapshotRestorationId& restoration_id, ListSnapshotRestorationsResponsePB* resp) {
   return impl_->ListRestorations(restoration_id, resp);
+}
+
+Status MasterSnapshotCoordinator::Load(const TxnSnapshotId& id, const SysSnapshotEntryPB& data) {
+  return impl_->Load(id, data);
 }
 
 } // namespace master

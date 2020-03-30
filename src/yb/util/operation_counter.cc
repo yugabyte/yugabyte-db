@@ -11,17 +11,54 @@
 // under the License.
 //
 
-#include "yb/util/pending_op_counter.h"
+#include "yb/util/operation_counter.h"
+
+#include <thread>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/logging.h"
+
 using strings::Substitute;
 
 namespace yb {
 
-uint64_t PendingOperationCounter::Update(uint64_t delta) {
+OperationCounter::OperationCounter(const std::string& log_prefix) : log_prefix_(log_prefix) {
+}
+
+void OperationCounter::Shutdown() {
+  auto wait_start = CoarseMonoClock::now();
+  auto last_report = wait_start;
+  for (;;) {
+    auto value = value_.load(std::memory_order_acquire);
+    if (value == 0) {
+      break;
+    }
+    auto now = CoarseMonoClock::now();
+    if (now > last_report + std::chrono::seconds(10)) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Long wait for scope counter shutdown " << value << ": " << AsString(now - wait_start);
+      last_report = now;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
+void OperationCounter::Release() {
+  value_.fetch_sub(1, std::memory_order_acq_rel);
+}
+
+void OperationCounter::Acquire() {
+  value_.fetch_add(1, std::memory_order_acq_rel);
+}
+
+ScopedOperation::ScopedOperation(OperationCounter* counter) : counter_(counter) {
+  counter->Acquire();
+}
+
+uint64_t RWOperationCounter::Update(uint64_t delta) {
   const uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_release);
   VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
   // Ensure that there is no underflow in either counter.
@@ -31,7 +68,7 @@ uint64_t PendingOperationCounter::Update(uint64_t delta) {
 }
 
 // The implementation is based on OperationTracker::WaitForAllToFinish.
-Status PendingOperationCounter::WaitForOpsToFinish(const MonoDelta& timeout) {
+Status RWOperationCounter::WaitForOpsToFinish(const MonoDelta& timeout) {
   const int complain_ms = 1000;
   const MonoTime start_time = MonoTime::Now();
   int64_t num_pending_ops = 0;

@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PENDING_OP_COUNTER_H_
-#define YB_UTIL_PENDING_OP_COUNTER_H_
+#ifndef YB_UTIL_OPERATION_COUNTER_H
+#define YB_UTIL_OPERATION_COUNTER_H
 
 #include <atomic>
 #include <mutex>
@@ -22,11 +22,47 @@
 
 namespace yb {
 
+class ScopedOperation;
+
+// Class that counts acquired tokens and don't shutdown until this count drops to zero.
+class OperationCounter {
+ public:
+  explicit OperationCounter(const std::string& log_prefix);
+
+  void Shutdown();
+
+  void Acquire();
+  void Release();
+
+ private:
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  std::string log_prefix_;
+  std::atomic<size_t> value_{0};
+};
+
+class ScopedOperation {
+ public:
+  ScopedOperation() = default;
+  explicit ScopedOperation(OperationCounter* counter);
+
+ private:
+  struct ScopedCounterDeleter {
+    void operator()(OperationCounter* counter) {
+      counter->Release();
+    }
+  };
+
+  std::unique_ptr<OperationCounter, ScopedCounterDeleter> counter_;
+};
+
 // This is used to track the number of pending operations using a certain resource (as of Apr 2018
 // just the RocksDB database within a tablet) so we can safely wait for all operations to complete
 // and destroy or replace the resource. This is similar to a shared mutex, but allows fine-grained
 // control, such as preventing new operations from being started.
-class PendingOperationCounter {
+class RWOperationCounter {
  public:
   // Using upper bits of counter as special flags.
   static constexpr uint64_t kDisabledDelta = 1ull << 48;
@@ -83,25 +119,25 @@ class PendingOperationCounter {
   std::timed_mutex disable_;
 };
 
-// A convenience class to automatically increment/decrement a PendingOperationCounter. This is used
+// A convenience class to automatically increment/decrement a RWOperationCounter. This is used
 // for regular RocksDB read/write operations that are allowed to proceed in parallel. Constructing
-// a ScopedPendingOperation might fail because the counter is in the disabled state. An instance
+// a ScopedRWOperation might fail because the counter is in the disabled state. An instance
 // of this class resembles a Result or a Status, because it can be used with the RETURN_NOT_OK
 // macro.
-class ScopedPendingOperation {
+class ScopedRWOperation {
  public:
   // Object is not copyable, but movable.
-  void operator=(const ScopedPendingOperation&) = delete;
-  ScopedPendingOperation(const ScopedPendingOperation&) = delete;
+  void operator=(const ScopedRWOperation&) = delete;
+  ScopedRWOperation(const ScopedRWOperation&) = delete;
 
-  explicit ScopedPendingOperation(PendingOperationCounter* counter)
+  explicit ScopedRWOperation(RWOperationCounter* counter)
       : counter_(counter), ok_(false) {
     if (counter != nullptr) {
       if (counter_->IsReady()) {
         // The race condition between IsReady() and Increment() is OK, because we are checking if
         // anyone has started an exclusive operation since we did the increment, and don't proceed
         // with this shared-ownership operation in that case.
-        ok_ = (counter->Increment() & PendingOperationCounter::kDisabledCounterMask) == 0;
+        ok_ = (counter->Increment() & RWOperationCounter::kDisabledCounterMask) == 0;
       } else {
         ok_ = false;
         counter_ = nullptr; // Avoid decrementing the counter.
@@ -109,12 +145,12 @@ class ScopedPendingOperation {
     }
   }
 
-  ScopedPendingOperation(ScopedPendingOperation&& op)
+  ScopedRWOperation(ScopedRWOperation&& op)
       : counter_(op.counter_), ok_(op.ok_) {
     op.counter_ = nullptr; // Moved ownership.
   }
 
-  ~ScopedPendingOperation() {
+  ~ScopedRWOperation() {
     if (counter_ != nullptr) {
       counter_->Decrement();
     }
@@ -125,7 +161,7 @@ class ScopedPendingOperation {
   }
 
  private:
-  PendingOperationCounter* counter_;
+  RWOperationCounter* counter_;
 
   bool ok_;
 };
@@ -133,18 +169,18 @@ class ScopedPendingOperation {
 // RETURN_NOT_OK macro support.
 // The error message currently mentions RocksDB because that is the only type of resource that
 // this framework is used to protect as of Apr 2018.
-inline Status MoveStatus(const ScopedPendingOperation& scoped) {
+inline Status MoveStatus(const ScopedRWOperation& scoped) {
   return scoped.ok() ? Status::OK() : STATUS(Busy, "RocksDB store is busy");
 }
 
-// A convenience class to automatically pause/resume a PendingOperationCounter.
+// A convenience class to automatically pause/resume a RWOperationCounter.
 class ScopedPendingOperationPause {
  public:
   // Object is not copyable, but movable.
   void operator=(const ScopedPendingOperationPause&) = delete;
   ScopedPendingOperationPause(const ScopedPendingOperationPause&) = delete;
 
-  ScopedPendingOperationPause(PendingOperationCounter* counter, const MonoDelta& timeout)
+  ScopedPendingOperationPause(RWOperationCounter* counter, const MonoDelta& timeout)
       : counter_(counter) {
     if (counter != nullptr) {
       status_ = counter->DisableAndWaitForOps(timeout);
@@ -168,7 +204,7 @@ class ScopedPendingOperationPause {
     counter_ = nullptr;
   }
 
-  // See PendingOperationCounter::Enable() for the thread restriction.
+  // See RWOperationCounter::Enable() for the thread restriction.
   ~ScopedPendingOperationPause() {
     if (counter_ != nullptr) {
       counter_->Enable(status_.IsOk());
@@ -184,7 +220,7 @@ class ScopedPendingOperationPause {
   }
 
  private:
-  PendingOperationCounter* counter_;
+  RWOperationCounter* counter_;
   Status status_;
 };
 
@@ -193,6 +229,6 @@ inline Status&& MoveStatus(ScopedPendingOperationPause&& p) {
   return std::move(p.status());
 }
 
-}  // namespace yb
+} // namespace yb
 
-#endif  // YB_UTIL_PENDING_OP_COUNTER_H_
+#endif // YB_UTIL_OPERATION_COUNTER_H

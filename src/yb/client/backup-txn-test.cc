@@ -13,7 +13,10 @@
 
 #include "yb/client/txn-test-base.h"
 
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/sys_catalog_constants.h"
 
 using namespace std::literals;
 
@@ -93,15 +96,67 @@ class BackupTxnTest : public TransactionTestBase {
     }
     return resp.restorations(0).entry().state() == master::SysSnapshotEntryPB::COMPLETE;
   }
+
+  CHECKED_STATUS VerifySnapshot(
+      const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state) {
+    master::ListSnapshotsRequestPB req;
+    master::ListSnapshotsResponsePB resp;
+
+    rpc::RpcController controller;
+    controller.set_timeout(60s);
+    RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshots(req, &resp, &controller));
+    LOG(INFO) << "Snapshots: " << resp.ShortDebugString();
+    SCHECK_EQ(resp.snapshots().size(), 1, IllegalState, "Wrong number of snapshots");
+    const auto& snapshot = resp.snapshots(0);
+    auto listed_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
+    if (listed_snapshot_id != snapshot_id) {
+      return STATUS_FORMAT(
+          IllegalState, "Wrong snapshot id returned $0, expected $1", listed_snapshot_id,
+          snapshot_id);
+    }
+    SCHECK_EQ(snapshot.entry().state(), state, IllegalState, "Wrong snapshot state");
+    size_t num_namespaces = 0, num_tables = 0, num_tablets = 0;
+    for (const auto& entry : snapshot.entry().entries()) {
+      switch (entry.type()) {
+        case master::SysRowEntry::TABLET:
+          ++num_tablets;
+          break;
+        case master::SysRowEntry::TABLE:
+          ++num_tables;
+          break;
+        case master::SysRowEntry::NAMESPACE:
+          ++num_namespaces;
+          break;
+        default:
+          return STATUS_FORMAT(
+              IllegalState, "Unexpected entry type: $0",
+              master::SysRowEntry::Type_Name(entry.type()));
+      }
+    }
+    SCHECK_EQ(num_namespaces, 1, IllegalState, "Wrong number of namespaces");
+    SCHECK_EQ(num_tables, 1, IllegalState, "Wrong number of tables");
+    SCHECK_EQ(num_tablets, table_.table()->GetPartitionCount(), IllegalState,
+              "Wrong number of tablets");
+
+    return Status::OK();
+  }
+
+  Result<TxnSnapshotId> CreateSnapshot() {
+    TxnSnapshotId snapshot_id = VERIFY_RESULT(StartSnapshot());
+
+    RETURN_NOT_OK(WaitFor([this, &snapshot_id]() {
+      return IsSnapshotDone(snapshot_id);
+    }, 5s * kTimeMultiplier, "Snapshot done"));
+
+    return snapshot_id;
+  }
 };
 
-TEST_F(BackupTxnTest, CreateSnapshot) {
+TEST_F(BackupTxnTest, Simple) {
   SetAtomicFlag(
       std::chrono::duration_cast<std::chrono::microseconds>(1s).count() * kTimeMultiplier,
       &FLAGS_max_clock_skew_usec);
   ASSERT_NO_FATALS(WriteData());
-
-  auto backup_service_proxy = MakeBackupServiceProxy();
 
   TxnSnapshotId snapshot_id = ASSERT_RESULT(StartSnapshot());
 
@@ -116,39 +171,7 @@ TEST_F(BackupTxnTest, CreateSnapshot) {
 
   ASSERT_TRUE(has_pending);
 
-  {
-    master::ListSnapshotsRequestPB req;
-    master::ListSnapshotsResponsePB resp;
-
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    ASSERT_OK(MakeBackupServiceProxy().ListSnapshots(req, &resp, &controller));
-    LOG(INFO) << "Snapshots: " << resp.ShortDebugString();
-    ASSERT_EQ(resp.snapshots().size(), 1);
-    const auto& snapshot = resp.snapshots(0);
-    auto listed_snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
-    ASSERT_EQ(listed_snapshot_id, snapshot_id);
-    size_t num_namespaces = 0, num_tables = 0, num_tablets = 0;
-    for (const auto& entry : snapshot.entry().entries()) {
-      switch (entry.type()) {
-        case master::SysRowEntry::TABLET:
-          ++num_tablets;
-          break;
-        case master::SysRowEntry::TABLE:
-          ++num_tables;
-          break;
-        case master::SysRowEntry::NAMESPACE:
-          ++num_namespaces;
-          break;
-        default:
-          FAIL() << "Unexpected entry type: " << master::SysRowEntry::Type_Name(entry.type());
-          break;
-      }
-    }
-    ASSERT_EQ(num_namespaces, 1);
-    ASSERT_EQ(num_tables, 1);
-    ASSERT_EQ(num_tablets, table_.table()->GetPartitionCount());
-  }
+  ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
 
   ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
   ASSERT_NO_FATALS(VerifyData(1, WriteOpType::UPDATE));
@@ -160,6 +183,43 @@ TEST_F(BackupTxnTest, CreateSnapshot) {
   }, 10s, "Restoration done"));
 
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
+}
+
+TEST_F(BackupTxnTest, Persistence) {
+  LOG(INFO) << "Write data";
+
+  ASSERT_NO_FATALS(WriteData());
+
+  LOG(INFO) << "Create snapshot";
+
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+
+  LOG(INFO) << "First restart";
+
+  ASSERT_OK(cluster_->leader_mini_master()->Restart());
+  ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
+
+  LOG(INFO) << "Create namespace";
+
+  // Create namespace and flush, to avoid replaying logs in the master tablet containing the
+  // CREATE_ON_MASTER operation for the snapshot.
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name() + "_Test",
+                                                kTableName.namespace_type()));
+
+  LOG(INFO) << "Flush";
+
+  auto catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+  tablet::TabletPeerPtr tablet_peer;
+  ASSERT_OK(catalog_manager->GetTabletPeer(master::kSysCatalogTabletId, &tablet_peer));
+  ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
+
+  LOG(INFO) << "Second restart";
+
+  ASSERT_OK(cluster_->leader_mini_master()->Restart());
+
+  LOG(INFO) << "Verify";
+
+  ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
 }
 
 } // namespace client

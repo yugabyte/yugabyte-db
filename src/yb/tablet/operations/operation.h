@@ -110,6 +110,8 @@ class Operation {
 
   std::string LogPrefix() const;
 
+  virtual void SubmittedToPreparer() {}
+
   virtual ~Operation() {}
 
  private:
@@ -202,6 +204,10 @@ class OperationState {
     std::lock_guard<simple_spinlock> l(mutex_);
     return hybrid_time_.is_valid();
   }
+
+  // Returns hybrid time that should be used for storing this operation result in RocksDB.
+  // For instance it could be different from hybrid_time() for CDC.
+  virtual HybridTime WriteHybridTime() const;
 
   consensus::OpId* mutable_op_id() {
     return &op_id_;

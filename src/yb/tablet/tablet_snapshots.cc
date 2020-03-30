@@ -29,7 +29,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
-#include "yb/util/pending_op_counter.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
 
@@ -53,59 +53,13 @@ bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
   return boost::ends_with(dir, kTempSnapshotDirSuffix);
 }
 
-Status TabletSnapshots::Bootstrap(SnapshotOperationState* tx_state) {
-  RETURN_NOT_OK(Prepare(tx_state));
-
-  return Apply(tx_state);
-}
-
-Status TabletSnapshots::Apply(SnapshotOperationState* tx_state) {
-  // Apply the snapshot operation to the tablet.
-  switch (tx_state->request()->operation()) {
-    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET: {
-      return Create(tx_state);
-    }
-    case tserver::TabletSnapshotOpRequestPB::RESTORE: {
-      return Restore(tx_state);
-    }
-    case tserver::TabletSnapshotOpRequestPB::DELETE: {
-      return Delete(tx_state);
-    }
-    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
-    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
-    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
-    case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-  }
-
-  FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation,
-                           tx_state->request()->operation());
-}
-
-Status TabletSnapshots::Replicated(SnapshotOperationState* tx_state) {
-  RETURN_NOT_OK(Apply(tx_state));
-
-  // The schema lock was acquired by Tablet::PrepareForCreateSnapshot.
-  // Normally, we would release it in tablet.cc after applying the operation,
-  // but currently we need to wait until after the COMMIT message is logged
-  // to release this lock as a workaround for KUDU-915. See the same TODO in
-  // AlterSchemaOperation().
-  tx_state->ReleaseSchemaLock();
-
-  // Now that all of the changes have been applied and the commit is durable
-  // make the changes visible to readers.
-  TRACE("SnapshotOperation: making snapshot visible");
-  tx_state->Finish();
-
-  return Status::OK();
-}
-
-Status TabletSnapshots::Prepare(SnapshotOperationState* tx_state) {
-  tx_state->AcquireSchemaLock(&schema_lock());
+Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
+  operation->AcquireSchemaLock(&schema_lock());
   return Status::OK();
 }
 
 Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter());
   RETURN_NOT_OK(scoped_read_operation);
 
   Status s = regular_db().Flush(rocksdb::FlushOptions());
@@ -339,7 +293,7 @@ Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
 }
 
 Status TabletSnapshots::CreateCheckpoint(const std::string& dir) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter());
   RETURN_NOT_OK(scoped_read_operation);
 
   auto temp_intents_dir = dir + kIntentsDBSuffix;

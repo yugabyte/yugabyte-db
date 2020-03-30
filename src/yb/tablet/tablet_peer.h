@@ -155,8 +155,6 @@ class TabletPeer : public consensus::ConsensusContext,
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
 
-  void Aborted(Operation* operation) override;
-
   HybridTime Now() override;
 
   void UpdateClock(HybridTime hybrid_time) override;
@@ -428,7 +426,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
 
-  std::atomic<size_t> preparing_operations_{0};
+  OperationCounter preparing_operations_counter_;
 
   // Serializes access to set_cdc_min_replicated_index and reset_cdc_min_replicated_index_if_stale
   // and protects cdc_min_replicated_index_refresh_time_ for reads and writes.

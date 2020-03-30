@@ -42,7 +42,7 @@ class TabletComponent {
 
   RaftGroupMetadata& metadata() const;
 
-  PendingOperationCounter& pending_op_counter() const;
+  RWOperationCounter& pending_op_counter() const;
 
   rocksdb::DB& regular_db() const;
 

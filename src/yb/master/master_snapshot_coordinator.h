@@ -14,12 +14,14 @@
 #ifndef YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 #define YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/master/master_fwd.h"
 
+#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 
 #include "yb/tserver/backup.pb.h"
@@ -48,6 +50,14 @@ class SnapshotCoordinatorContext {
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
       TabletSnapshotOperationCallback callback) = 0;
 
+  virtual Result<ColumnId> MetadataColumnId() = 0;
+
+  virtual CHECKED_STATUS ApplyOperationState(
+      const tablet::OperationState& operation_state, int64_t batch_idx,
+      const docdb::KeyValueWriteBatchPB& write_batch) = 0;
+
+  virtual void SubmitWrite(const docdb::KeyValueWriteBatchPB& write_batch) = 0;
+
   virtual ~SnapshotCoordinatorContext() = default;
 };
 
@@ -67,6 +77,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   CHECKED_STATUS ListRestorations(
       const TxnSnapshotRestorationId& snapshot_id, ListSnapshotRestorationsResponsePB* resp);
+
+  // Load snapshot data from system catalog RocksDB entry.
+  CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data);
 
  private:
   class Impl;

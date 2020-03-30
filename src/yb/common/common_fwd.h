@@ -32,11 +32,14 @@ class QLJsonColumnOperationsPB;
 class QLJsonOperationPB;
 class QLRSColDescPB;
 class QLRSRowDescPB;
+class QLTableRow;
 class QLType;
 class QLValue;
 class QLValuePB;
 
 class TableProperties;
+
+struct ColumnId;
 
 } // namespace yb
 

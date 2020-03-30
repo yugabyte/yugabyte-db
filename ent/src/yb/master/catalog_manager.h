@@ -201,6 +201,14 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
+  Result<ColumnId> MetadataColumnId() override;
+
+  CHECKED_STATUS ApplyOperationState(
+      const tablet::OperationState& operation_state, int64_t batch_idx,
+      const docdb::KeyValueWriteBatchPB& write_batch) override;
+
+  void SubmitWrite(const docdb::KeyValueWriteBatchPB& write_batch) override;
+
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id,
                                        HybridTime snapshot_hybrid_time,
@@ -282,7 +290,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS RestoreNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
-  typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo> > SnapshotInfoMap;
+  typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
   SnapshotInfoMap non_txn_snapshot_ids_map_;
   SnapshotId current_snapshot_id_;
 
