@@ -30,7 +30,7 @@
 #include "yb/docdb/value.h"
 #include "yb/docdb/deadline_info.h"
 #include "yb/util/status.h"
-#include "yb/util/pending_op_counter.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
 namespace docdb {
@@ -47,7 +47,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     PendingOperationCounter* pending_op_counter = nullptr);
+                     RWOperationCounter* pending_op_counter = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      const Schema &schema,
@@ -55,7 +55,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     PendingOperationCounter* pending_op_counter = nullptr)
+                     RWOperationCounter* pending_op_counter = nullptr)
       : DocRowwiseIterator(
             *projection, schema, txn_op_context, doc_db, deadline, read_time,
             pending_op_counter) {
@@ -186,7 +186,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
   // RocksDB does not get destroyed while the iterator is still in use.
-  ScopedPendingOperation pending_op_;
+  ScopedRWOperation pending_op_;
 
   // The mutable fields that follow are modified by HasNext, a const method.
 

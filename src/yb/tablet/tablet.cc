@@ -677,7 +677,7 @@ void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
 }
 
 void Tablet::CleanupIntentFiles() {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   if (!scoped_read_operation.ok() || state_ != State::kOpen || !FLAGS_delete_intents_sst_files ||
       !cleanup_intent_files_token_) {
     return;
@@ -694,7 +694,7 @@ void Tablet::DoCleanupIntentFiles() {
   // Stops when there are no more files to delete.
   std::string previous_name;
   while (GetAtomicFlag(&FLAGS_cleanup_intents_sst_files)) {
-    ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+    ScopedRWOperation scoped_read_operation(&pending_op_counter_);
     if (!scoped_read_operation.ok()) {
       break;
     }
@@ -748,7 +748,7 @@ void Tablet::DoCleanupIntentFiles() {
 
 Status Tablet::EnableCompactions(ScopedPendingOperationPause* pause_operation) {
   if (!pause_operation) {
-    ScopedPendingOperation operation(&pending_op_counter_);
+    ScopedRWOperation operation(&pending_op_counter_);
     RETURN_NOT_OK(operation);
     return DoEnableCompactions();
   }
@@ -897,7 +897,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     return STATUS_FORMAT(NotSupported, "Invalid table type: $0", table_type_);
   }
 
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   VLOG_WITH_PREFIX(2) << "Created new Iterator reading at " << read_hybrid_time.ToString();
@@ -948,20 +948,25 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
           : *operation_state->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
-    metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
+    metrics_->rows_inserted->IncrementBy(write_request.write_batch().write_pairs().size());
   }
 
-  docdb::ConsensusFrontiers frontiers;
-  set_op_id({operation_state->op_id().term(), operation_state->op_id().index()}, &frontiers);
+  return ApplyOperationState(*operation_state, write_request.batch_idx(), put_batch);
+}
 
-  auto hybrid_time = operation_state->request()->has_external_hybrid_time() ?
-      HybridTime(operation_state->request()->external_hybrid_time()) :
-      operation_state->hybrid_time();
+Status Tablet::ApplyOperationState(
+    const OperationState& operation_state, int64_t batch_idx,
+    const docdb::KeyValueWriteBatchPB& write_batch) {
+  docdb::ConsensusFrontiers frontiers;
+  set_op_id(yb::OpId::FromPB(operation_state.op_id()), &frontiers);
+
+  auto hybrid_time = operation_state.WriteHybridTime();
 
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
-  set_hybrid_time(operation_state->hybrid_time(), &frontiers);
-  return ApplyKeyValueRowOperations(write_request.batch_idx(), put_batch, &frontiers, hybrid_time);
+  set_hybrid_time(operation_state.hybrid_time(), &frontiers);
+  return ApplyKeyValueRowOperations(
+      batch_idx, write_batch, &frontiers, hybrid_time);
 }
 
 Status Tablet::PrepareTransactionWriteBatch(
@@ -1096,7 +1101,7 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
 //--------------------------------------------------------------------------------------------------
 // Redis Request Processing.
 Status Tablet::KeyValueBatchFromRedisWriteBatch(WriteOperation* operation) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
   docdb::DocOperations& doc_ops = operation->doc_ops();
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
@@ -1126,7 +1131,7 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   // TODO: move this locking to the top-level read request handler in TabletService.
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
@@ -1145,7 +1150,7 @@ Status Tablet::HandleQLReadRequest(
     const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     QLReadRequestResult* result) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
@@ -1208,7 +1213,7 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
 void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> operation) {
   DVLOG(2) << " Schema version for  " << metadata_->table_name() << " is "
            << metadata_->schema_version();
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   if (!scoped_read_operation.ok()) {
     WriteOperation::StartSynchronization(std::move(operation), MoveStatus(scoped_read_operation));
     return;
@@ -1434,7 +1439,7 @@ Status Tablet::HandlePgsqlReadRequest(
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     PgsqlReadRequestResult* result) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
   // TODO(neil) Work on metrics for PGSQL.
   // ScopedTabletMetricsTracker metrics_tracker(metrics_->pgsql_read_latency);
@@ -1495,7 +1500,7 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
 }
 
 Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
   docdb::DocOperations& doc_ops = operation->doc_ops();
   WriteRequestPB batch_request;
@@ -1586,7 +1591,7 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
   if (key_value_write_request->has_write_batch()) {
     Status status;
     if (!key_value_write_request->write_batch().read_pairs().empty()) {
-      ScopedPendingOperation scoped_operation(&pending_op_counter_);
+      ScopedRWOperation scoped_operation(&pending_op_counter_);
       if (!scoped_operation.ok()) {
         operation->state()->CompleteWithStatus(MoveStatus(scoped_operation));
         return;
@@ -1672,7 +1677,7 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
 
 template <class Ids>
 CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   rocksdb::WriteBatch intents_write_batch;
@@ -2180,7 +2185,7 @@ Result<bool> Tablet::HasSSTables() const {
     return false;
   }
 
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   std::vector<rocksdb::LiveFileMetaData> live_files_metadata;
@@ -2209,7 +2214,7 @@ yb::OpId MaxPersistentOpIdForDb(rocksdb::DB* db, bool invalid_if_no_new_data) {
 }
 
 Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   return DocDbOpIds{
@@ -2219,7 +2224,7 @@ Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const 
 }
 
 void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   if (!scoped_read_operation.ok()) {
     return;
   }
@@ -2253,7 +2258,7 @@ bool Tablet::IsTransactionalRequest(bool is_ysql_request) const {
 }
 
 Result<HybridTime> Tablet::MaxPersistentHybridTime() const {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   if (!regular_db_) {
@@ -2275,7 +2280,7 @@ Result<HybridTime> Tablet::MaxPersistentHybridTime() const {
 }
 
 Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   HybridTime result = HybridTime::kMax;
@@ -2312,7 +2317,7 @@ void Tablet::DocDBDebugDump(vector<string> *lines) {
 }
 
 Status Tablet::TEST_SwitchMemtable() {
-  ScopedPendingOperation scoped_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_operation);
 
   if (regular_db_) {
@@ -2542,7 +2547,7 @@ size_t Tablet::TEST_CountRegularDBRecords() {
 }
 
 uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
-  ScopedPendingOperation scoped_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
   // In order to get actual stats we would have to wait.
@@ -2554,7 +2559,7 @@ uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
 }
 
 uint64_t Tablet::GetCurrentVersionSstFilesUncompressedSize() const {
-  ScopedPendingOperation scoped_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
   // In order to get actual stats we would have to wait.
@@ -2566,7 +2571,7 @@ uint64_t Tablet::GetCurrentVersionSstFilesUncompressedSize() const {
 }
 
 uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
-  ScopedPendingOperation scoped_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
   // In order to get actual stats we would have to wait.
@@ -2582,7 +2587,7 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
   int regular_num_memtables = 0;
 
   {
-    ScopedPendingOperation scoped_operation(&pending_op_counter_);
+    ScopedRWOperation scoped_operation(&pending_op_counter_);
     std::lock_guard<rw_spinlock> lock(component_lock_);
     if (intents_db_) {
       // NOTE: 1 is added on behalf of cfd->mem().
@@ -2656,7 +2661,7 @@ Status Tablet::CreateReadIntents(
 }
 
 bool Tablet::ShouldApplyWrite() {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
   if (!scoped_read_operation.ok()) {
     return false;
   }
@@ -2680,7 +2685,7 @@ Status Tablet::CreateSubtablet(
 }
 
 Result<int64_t> Tablet::CountIntents() {
-  ScopedPendingOperation pending_op(&pending_op_counter_);
+  ScopedRWOperation pending_op(&pending_op_counter_);
   RETURN_NOT_OK(pending_op);
 
   if (!intents_db_) {

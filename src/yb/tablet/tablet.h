@@ -73,7 +73,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
-#include "yb/util/pending_op_counter.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -270,6 +270,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Apply all of the row operations associated with this transaction.
   CHECKED_STATUS ApplyRowOperations(WriteOperationState* operation_state);
+
+  CHECKED_STATUS ApplyOperationState(
+      const OperationState& operation_state, int64_t batch_idx,
+      const docdb::KeyValueWriteBatchPB& write_batch);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
@@ -720,7 +724,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // RocksDB.
   //
   // This is marked mutable because read path member functions (which are const) are using this.
-  mutable PendingOperationCounter pending_op_counter_;
+  mutable RWOperationCounter pending_op_counter_;
 
   std::unique_ptr<TransactionCoordinator> transaction_coordinator_;
 

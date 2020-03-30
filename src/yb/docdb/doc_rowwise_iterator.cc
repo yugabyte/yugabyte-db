@@ -469,7 +469,7 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    PendingOperationCounter* pending_op_counter)
+    RWOperationCounter* pending_op_counter)
     : projection_(projection),
       schema_(schema),
       txn_op_context_(txn_op_context),

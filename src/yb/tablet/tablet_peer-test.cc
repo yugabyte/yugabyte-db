@@ -291,8 +291,8 @@ class DelayedApplyOperation : public WriteOperation {
   DelayedApplyOperation(CountDownLatch* apply_started,
                         CountDownLatch* apply_continue,
                         std::unique_ptr<WriteOperationState> state)
-      : WriteOperation(std::move(state), consensus::LEADER, CoarseTimePoint::max() /* deadline */,
-                       nullptr /* context */),
+      : WriteOperation(std::move(state), consensus::LEADER, ScopedOperation(),
+                       CoarseTimePoint::max() /* deadline */, nullptr /* context */),
         apply_started_(DCHECK_NOTNULL(apply_started)),
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }
