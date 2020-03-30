@@ -4619,7 +4619,6 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
 
 Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
                                       ListNamespacesResponsePB* resp) {
-
   RETURN_NOT_OK(CheckOnline());
 
   SharedLock<LockType> l(lock_);
@@ -4637,6 +4636,27 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
     ns->set_name(namespace_info.name());
     ns->set_database_type(namespace_info.database_type());
   }
+  return Status::OK();
+}
+
+Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
+                                        GetNamespaceInfoResponsePB* resp,
+                                        rpc::RpcContext* rpc) {
+  LOG(INFO) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<NamespaceInfo> ns;
+
+  // Look up the namespace and verify if it exists.
+  if (req->has_namespace_()) {
+    TRACE("Looking up namespace");
+    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
+  }
+
+  resp->mutable_namespace_()->set_id(ns->id());
+  resp->mutable_namespace_()->set_name(ns->name());
+  resp->mutable_namespace_()->set_database_type(ns->database_type());
+  resp->set_colocated(ns->colocated());
   return Status::OK();
 }
 

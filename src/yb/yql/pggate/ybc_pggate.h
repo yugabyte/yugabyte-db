@@ -63,6 +63,9 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 // Connect database. Switch the connected database to the given "database_name".
 YBCStatus YBCPgConnectDatabase(const char *database_name);
 
+// Get whether the given database is colocated.
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated);
+
 YBCStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,

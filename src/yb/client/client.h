@@ -321,7 +321,7 @@ class YBClient {
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
                                  const boost::optional<uint32_t>& next_pg_oid = boost::none,
-                                 bool colocated = false);
+                                 const bool colocated = false);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -334,7 +334,8 @@ class YBClient {
                                             const std::string& namespace_id = "",
                                             const std::string& source_namespace_id = "",
                                             const boost::optional<uint32_t>& next_pg_oid =
-                                            boost::none);
+                                            boost::none,
+                                            const bool colocated = false);
 
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
@@ -367,6 +368,12 @@ class YBClient {
 
   Result<vector<master::NamespaceIdentifierPB>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
+
+  // Get namespace information.
+  CHECKED_STATUS GetNamespaceInfo(const std::string& namespace_id,
+                                  const std::string& namespace_name,
+                                  const boost::optional<YQLDatabase>& database_type,
+                                  master::GetNamespaceInfoResponsePB* ret);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.

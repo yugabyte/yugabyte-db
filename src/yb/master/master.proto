@@ -1323,6 +1323,18 @@ message ListNamespacesResponsePB {
   repeated NamespaceIdentifierPB namespaces = 2;
 }
 
+message GetNamespaceInfoRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+}
+
+message GetNamespaceInfoResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  optional NamespaceIdentifierPB namespace = 2;
+  optional bool colocated = 3;
+}
+
 // ============================================================================
 //  Authentication and Authorization
 // ============================================================================
@@ -1712,6 +1724,7 @@ service MasterService {
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
+  rpc GetNamespaceInfo(GetNamespaceInfoRequestPB) returns (GetNamespaceInfoResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);

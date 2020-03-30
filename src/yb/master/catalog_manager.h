@@ -329,6 +329,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                                 ListNamespacesResponsePB* resp);
 
+  // Get information about a namespace.
+  CHECKED_STATUS GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
+                                  GetNamespaceInfoResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
   // Set Redis Config
   CHECKED_STATUS RedisConfigSet(const RedisConfigSetRequestPB* req,
                                 RedisConfigSetResponsePB* resp,
