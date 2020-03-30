@@ -11,6 +11,7 @@
 - [What is YugabyteDB?](#what-is-yugabytedb)
 - [Get Started](#get-started)
 - [Build Apps](#build-apps)
+- [What's being worked on?](#whats-being-worked-on)
 - [Architecture](#architecture)
 - [Need Help?](#need-help)
 - [Contribute](#contribute)
@@ -34,9 +35,7 @@ The core features of YugabyteDB include:
 
 * **Geo-distributed, multi-cloud** YugabyteDB can be deployed in public clouds and natively inside Kubernetes. It supports deployments that span three or more fault domains, such as multi-zone, multi-region and multi-cloud deployments. It also supports two region deployments with asynchronous master-slave replication and bidirectional, multi-master replication. To serve (stale) data with low latencies, read replicas are also a supported feature.
 
-* **Multi API design** The query layer of YugabyteDB is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs:
-    * **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)** - Fully relational API that re-uses query layer of PostgreSQL
-    * **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)** - Semi-relational SQL-like API with documents/indexing support and Apache Cassandra QL roots 
+* **Multi API design** The query layer of YugabyteDB is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs **[Yugabyte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)** (fully relational API that re-uses query layer of PostgreSQL) and **[Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)** (semi-relational SQL-like API with documents/indexing support and Apache Cassandra QL roots).
 
 * **100% open source** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features distributed backups, encryption of data at-rest, in-flight TLS encryption, change data capture, read replicas and others.
 
@@ -71,10 +70,9 @@ YugabyteDB supports a number of languages and client drivers. Below is a brief l
 
 # What's being worked on?
 
-Here is a list of some of the key features being worked on for the upcoming v2.2 release around July 2020, along with the recently completed features.
-
 > This section has been updated on Mar 29, 2020.
 
+Here is a list of some of the key features being worked on for the upcoming v2.2 release around July 2020, along with the recently completed features.
 
 | Feature                                         | Status    | Release Target | Details         |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
@@ -88,9 +86,6 @@ Here is a list of some of the key features being worked on for the upcoming v2.2
 | [Change data capture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md) | ✅ *BETA* |   |  | This feature is currently available but in beta. |
 | [Two datacenter (2DC) deployments](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | ✅ *DONE* | v2.1 | [Docs](https://docs.yugabyte.com/latest/deploy/multi-dc/2dc-deployment/) |  |
 | [Encryption of data at rest](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md) | ✅ *DONE* | v2.1 | [Docs](https://docs.yugabyte.com/latest/secure/encryption-at-rest/) |  |
-
-
-## Recently completed features ![Generic badge](https://img.shields.io/badge/Released-v2.1-green.svg)
 
 
 # Architecture
