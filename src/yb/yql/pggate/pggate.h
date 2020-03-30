@@ -128,6 +128,9 @@ class PgApiImpl {
   // Connect database. Switch the connected database to the given "database_name".
   CHECKED_STATUS ConnectDatabase(const char *database_name);
 
+  // Determine whether the given database is colocated.
+  CHECKED_STATUS IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+
   // Create database.
   CHECKED_STATUS NewCreateDatabase(const char *database_name,
                                    PgOid database_oid,

@@ -114,6 +114,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS ConnectDatabase(const std::string& database_name);
 
+  CHECKED_STATUS IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+
   //------------------------------------------------------------------------------------------------
   // Operations on Database Objects.
   //------------------------------------------------------------------------------------------------

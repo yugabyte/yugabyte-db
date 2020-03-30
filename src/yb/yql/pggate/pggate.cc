@@ -270,6 +270,10 @@ Status PgApiImpl::ConnectDatabase(const char *database_name) {
   return pg_session_->ConnectDatabase(database_name);
 }
 
+Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated) {
+  return pg_session_->IsDatabaseColocated(database_oid, colocated);
+}
+
 Status PgApiImpl::NewCreateDatabase(const char *database_name,
                                     const PgOid database_oid,
                                     const PgOid source_database_oid,

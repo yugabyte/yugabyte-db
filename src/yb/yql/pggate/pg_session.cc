@@ -63,6 +63,7 @@ using client::YBTable;
 using client::YBTableName;
 using client::YBTableType;
 
+using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::IsInitDbDoneRequestPB;
 using yb::master::IsInitDbDoneResponsePB;
 using yb::master::MasterServiceProxy;
@@ -411,6 +412,14 @@ PgSession::~PgSession() {
 
 Status PgSession::ConnectDatabase(const string& database_name) {
   connected_database_ = database_name;
+  return Status::OK();
+}
+
+Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated) {
+  GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(client_->GetNamespaceInfo(
+      GetPgsqlNamespaceId(database_oid), "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  *colocated = resp.colocated();
   return Status::OK();
 }
 

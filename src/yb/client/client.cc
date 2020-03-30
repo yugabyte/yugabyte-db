@@ -80,6 +80,8 @@ using yb::master::CreateTableRequestPB;
 using yb::master::CreateTableResponsePB;
 using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
+using yb::master::GetNamespaceInfoRequestPB;
+using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
@@ -556,7 +558,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const std::string& namespace_id,
                                  const std::string& source_namespace_id,
                                  const boost::optional<uint32_t>& next_pg_oid,
-                                 bool colocated) {
+                                 const bool colocated) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
@@ -585,7 +587,8 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const std::string& creator_role_name,
                                             const std::string& namespace_id,
                                             const std::string& source_namespace_id,
-                                            const boost::optional<uint32_t>& next_pg_oid) {
+                                            const boost::optional<uint32_t>& next_pg_oid,
+                                            const bool colocated) {
   Result<bool> namespace_exists = (!namespace_id.empty() ? NamespaceIdExists(namespace_id)
                                                          : NamespaceExists(namespace_name));
   if (VERIFY_RESULT(namespace_exists)) {
@@ -593,7 +596,7 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
   }
 
   return CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                         source_namespace_id, next_pg_oid);
+                         source_namespace_id, next_pg_oid, colocated);
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
@@ -633,6 +636,28 @@ Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
     result.push_back(std::move(ns));
   }
   return result;
+}
+
+Status YBClient::GetNamespaceInfo(const std::string& namespace_id,
+                                  const std::string& namespace_name,
+                                  const boost::optional<YQLDatabase>& database_type,
+                                  master::GetNamespaceInfoResponsePB* ret) {
+  GetNamespaceInfoRequestPB req;
+  GetNamespaceInfoResponsePB resp;
+
+  if (!namespace_id.empty()) {
+    req.mutable_namespace_()->set_id(namespace_id);
+  }
+  if (!namespace_name.empty()) {
+    req.mutable_namespace_()->set_name(namespace_name);
+  }
+  if (database_type) {
+    req.mutable_namespace_()->set_database_type(*database_type);
+  }
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetNamespaceInfo);
+  ret->Swap(&resp);
+  return Status::OK();
 }
 
 Status YBClient::ReservePgsqlOids(const std::string& namespace_id,

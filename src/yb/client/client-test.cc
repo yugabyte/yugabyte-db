@@ -130,6 +130,7 @@ using base::subtle::NoBarrier_AtomicIncrement;
 using base::subtle::NoBarrier_Load;
 using base::subtle::NoBarrier_Store;
 using master::CatalogManager;
+using master::GetNamespaceInfoResponsePB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TabletLocationsPB;
@@ -2209,6 +2210,36 @@ TEST_F(ClientTest, FlushTable) {
       "bad table name"));
 }
 #endif  // !defined(__clang__)
+
+TEST_F(ClientTest, GetNamespaceInfo) {
+  const std::string kPgsqlKeyspaceID = "1234";
+  const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
+  GetNamespaceInfoResponsePB resp;
+
+  // Setup.
+  ASSERT_OK(client_->CreateNamespace(kPgsqlKeyspaceName,
+                                     YQLDatabase::YQL_DATABASE_PGSQL,
+                                     "" /* creator_role_name */,
+                                     kPgsqlKeyspaceID,
+                                     "" /* source_namespace_id */,
+                                     boost::none /* next_pg_oid */,
+                                     true /* colocated */));
+
+  // CQL non-colocated.
+  ASSERT_OK(client_->GetNamespaceInfo(
+        "" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
+  ASSERT_EQ(resp.namespace_().name(), kKeyspaceName);
+  ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_CQL);
+  ASSERT_FALSE(resp.colocated());
+
+  // SQL colocated.
+  ASSERT_OK(client_->GetNamespaceInfo(
+        kPgsqlKeyspaceID, "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_EQ(resp.namespace_().id(), kPgsqlKeyspaceID);
+  ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
+  ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
+  ASSERT_TRUE(resp.colocated());
+}
 
 }  // namespace client
 }  // namespace yb

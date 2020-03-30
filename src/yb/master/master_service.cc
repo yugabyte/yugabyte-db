@@ -351,6 +351,12 @@ void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::ListNamespaces);
 }
 
+void MasterServiceImpl::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
+                                         GetNamespaceInfoResponsePB* resp,
+                                         RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GetNamespaceInfo);
+}
+
 void MasterServiceImpl::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                                          ReservePgsqlOidsResponsePB* resp,
                                          rpc::RpcContext rpc) {
