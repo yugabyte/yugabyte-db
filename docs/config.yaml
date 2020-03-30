@@ -41,6 +41,8 @@ menu:
       identifier: intro
 markup:
   goldmark:
+    extensions:
+      typographer: false
     renderer:
       unsafe: true
   tableOfContents:
