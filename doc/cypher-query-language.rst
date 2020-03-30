@@ -280,7 +280,7 @@ A list is an ordered collection of values. It can be built with list literal syn
 
   '[' expression [, ...] ']'
 
-The following simple example shows how a list value is be built using the above syntax.
+The following simple example shows how a list value is to be built using the above syntax.
 
 .. code-block:: psql
 
@@ -295,13 +295,13 @@ The following simple example shows how a list value is be built using the above 
 Map
 ~~~
 
-A list is a collection of key/value pairs. It can be built with map literal syntax as shown below.
+A map is a collection of key/value pairs. It can be built with map literal syntax as shown below.
 
 ::
 
   '{' ( identifier : expression ) [, ...] ']'
 
-The following simple example shows how a map value is be built using the above syntax.
+The following simple example shows how a map value is to be built using the above syntax.
 
 .. code-block:: psql
 
