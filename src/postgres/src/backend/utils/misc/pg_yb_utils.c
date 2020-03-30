@@ -236,8 +236,8 @@ void
 HandleYBStatus(YBCStatus status)
 {
 	if (!status) {
-    return;
-  }
+		return;
+	}
 	/* Copy the message to the current memory context and free the YBCStatus. */
 	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
 	char* msg_buf = DupYBStatusMessage(status, pg_err_code == ERRCODE_UNIQUE_VIOLATION);

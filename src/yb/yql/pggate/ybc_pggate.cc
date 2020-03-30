@@ -128,6 +128,10 @@ YBCStatus YBCPgConnectDatabase(const char *database_name) {
   return ToYBCStatus(pgapi->ConnectDatabase(database_name));
 }
 
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated) {
+  return ToYBCStatus(pgapi->IsDatabaseColocated(database_oid, colocated));
+}
+
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  const YBCPgOid database_oid,
                                  const YBCPgOid source_database_oid,
