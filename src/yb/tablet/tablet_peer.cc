@@ -163,6 +163,7 @@ TabletPeer::TabletPeer(
     log_anchor_registry_(new LogAnchorRegistry()),
     mark_dirty_clbk_(std::move(mark_dirty_clbk)),
     permanent_uuid_(permanent_uuid),
+    preparing_operations_counter_(operation_tracker_.LogPrefix()),
     metric_registry_(metric_registry) {}
 
 TabletPeer::~TabletPeer() {
@@ -444,17 +445,7 @@ bool TabletPeer::StartShutdown() {
 }
 
 void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
-  auto wait_start = CoarseMonoClock::now();
-  auto last_report = wait_start;
-  while (preparing_operations_.load(std::memory_order_acquire) != 0) {
-    auto now = CoarseMonoClock::now();
-    if (now > last_report + 10s) {
-      LOG_WITH_PREFIX(WARNING)
-          << "Long wait for finish of preparing operations: " << yb::ToString(now - wait_start);
-      last_report = now;
-    }
-    std::this_thread::sleep_for(100ms);
-  }
+  preparing_operations_counter_.Shutdown();
 
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
   LOG_SLOW_EXECUTION(WARNING, 1000,
@@ -587,15 +578,15 @@ void TabletPeer::WriteAsync(
     return;
   }
 
-  preparing_operations_.fetch_add(1, std::memory_order_acq_rel);
+  ScopedOperation preparing_token(&preparing_operations_counter_);
   auto status = CheckRunning();
   if (!status.ok()) {
-    preparing_operations_.fetch_sub(1, std::memory_order_acq_rel);
     state->CompleteWithStatus(status);
     return;
   }
 
-  auto operation = std::make_unique<WriteOperation>(std::move(state), term, deadline, this);
+  auto operation = std::make_unique<WriteOperation>(
+      std::move(state), term, std::move(preparing_token), deadline, this);
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 }
 
@@ -604,14 +595,9 @@ HybridTime TabletPeer::ReportReadRestart() {
   return tablet_->SafeTime(RequireLease::kTrue);
 }
 
-void TabletPeer::Aborted(Operation* operation) {
-  preparing_operations_.fetch_sub(1, std::memory_order_acq_rel);
-}
-
 void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   auto status = CheckRunning();
 
-  auto operation_type = operation->operation_type();
   if (status.ok()) {
     auto driver = NewLeaderOperationDriver(&operation, term);
     if (driver.ok()) {
@@ -622,10 +608,6 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   }
   if (!status.ok()) {
     operation->Aborted(status);
-  }
-
-  if (operation_type == OperationType::kWrite) {
-    preparing_operations_.fetch_sub(1, std::memory_order_acq_rel);
   }
 }
 
@@ -940,9 +922,10 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
     case consensus::WRITE_OP:
       DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
+      // We use separate preparing token only on leader, so here it could be empty.
       return std::make_unique<WriteOperation>(
           std::make_unique<WriteOperationState>(tablet()), yb::OpId::kUnknownTerm,
-          CoarseTimePoint::max(), this);
+          ScopedOperation(), CoarseTimePoint::max(), this);
 
     case consensus::CHANGE_METADATA_OP:
       DCHECK(replicate_msg->has_change_metadata_request()) << "CHANGE_METADATA_OP replica"

@@ -41,18 +41,6 @@ string SnapshotOperationState::ToString() const {
                     request_ == nullptr ? "(none)" : request_->ShortDebugString());
 }
 
-void SnapshotOperationState::AcquireSchemaLock(rw_semaphore* l) {
-  TRACE("Acquiring schema lock in exclusive mode");
-  schema_lock_ = std::unique_lock<rw_semaphore>(*l);
-  TRACE("Acquired schema lock");
-}
-
-void SnapshotOperationState::ReleaseSchemaLock() {
-  CHECK(schema_lock_.owns_lock());
-  schema_lock_ = std::unique_lock<rw_semaphore>();
-  TRACE("Released schema lock");
-}
-
 std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_dir) const {
   if (!request_->snapshot_dir_override().empty()) {
     return request_->snapshot_dir_override();
@@ -72,6 +60,32 @@ tserver::TabletSnapshotOpRequestPB* SnapshotOperationState::AllocateRequest() {
   request_holder_ = std::make_unique<tserver::TabletSnapshotOpRequestPB>();
   request_ = request_holder_.get();
   return request_holder_.get();
+}
+
+Status SnapshotOperationState::Apply(int64_t leader_term) {
+  TRACE("APPLY SNAPSHOT: Starting");
+  auto operation = request()->operation();
+  switch (operation) {
+    case TabletSnapshotOpRequestPB::CREATE_ON_MASTER: {
+      auto snapshot_coordinator = tablet()->snapshot_coordinator();
+      if (!snapshot_coordinator) {
+        return STATUS_FORMAT(IllegalState, "Replicated $0 to tablet without snapshot coordinator",
+                             TabletSnapshotOpRequestPB::Operation_Name(operation));
+      }
+      return snapshot_coordinator->Replicated(leader_term, *this);
+    }
+    case TabletSnapshotOpRequestPB::CREATE_ON_TABLET:
+      return tablet()->snapshots().Create(this);
+    case TabletSnapshotOpRequestPB::RESTORE:
+      return tablet()->snapshots().Restore(this);
+    case TabletSnapshotOpRequestPB::DELETE:
+      return tablet()->snapshots().Delete(this);
+    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
+    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
+    case TabletSnapshotOpRequestPB::UNKNOWN:
+      break;
+  }
+  FATAL_INVALID_ENUM_VALUE(TabletSnapshotOpRequestPB::Operation, operation);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -94,7 +108,7 @@ consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
 
 Status SnapshotOperation::Prepare() {
   TRACE("PREPARE SNAPSHOT: Starting");
-  RETURN_NOT_OK(state()->tablet()->snapshots().Prepare(state()));
+  RETURN_NOT_OK(state()->tablet()->snapshots().Prepare(this));
 
   TRACE("PREPARE SNAPSHOT: finished");
   return Status::OK();
@@ -114,27 +128,24 @@ Status SnapshotOperation::DoAborted(const Status& status) {
 }
 
 Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
-  TRACE("APPLY SNAPSHOT: Starting");
-  auto operation = state()->request()->operation();
-  switch (operation) {
-    case TabletSnapshotOpRequestPB::CREATE_ON_MASTER: {
-      auto snapshot_coordinator = state()->tablet()->snapshot_coordinator();
-      if (!snapshot_coordinator) {
-        return STATUS_FORMAT(IllegalState, "Replicated $0 to tablet without snapshot coordinator",
-                             TabletSnapshotOpRequestPB::Operation_Name(operation));
-      }
-      return snapshot_coordinator->Replicated(leader_term, *state());
-    }
-    case TabletSnapshotOpRequestPB::CREATE_ON_TABLET: FALLTHROUGH_INTENDED;
-    case TabletSnapshotOpRequestPB::RESTORE: FALLTHROUGH_INTENDED;
-    case TabletSnapshotOpRequestPB::DELETE:
-      return state()->tablet()->snapshots().Replicated(state());
-    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
-    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
-    case TabletSnapshotOpRequestPB::UNKNOWN:
-      break;
-  }
-  FATAL_INVALID_ENUM_VALUE(TabletSnapshotOpRequestPB::Operation, operation);
+  RETURN_NOT_OK(state()->Apply(leader_term));
+
+  ReleaseSchemaLock();
+  state()->Finish();
+
+  return Status::OK();
+}
+
+void SnapshotOperation::AcquireSchemaLock(rw_semaphore* l) {
+  TRACE("Acquiring schema lock in exclusive mode");
+  schema_lock_ = std::unique_lock<rw_semaphore>(*l);
+  TRACE("Acquired schema lock");
+}
+
+void SnapshotOperation::ReleaseSchemaLock() {
+  CHECK(schema_lock_.owns_lock());
+  schema_lock_ = std::unique_lock<rw_semaphore>();
+  TRACE("Released schema lock");
 }
 
 string SnapshotOperation::ToString() const {

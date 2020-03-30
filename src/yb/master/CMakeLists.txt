@@ -83,6 +83,7 @@ set(MASTER_SRCS
   master_snapshot_coordinator.cc
   sys_catalog.cc
   sys_catalog_initialization.cc
+  sys_catalog_writer.cc
   system_tablet.cc
   tasks_tracker.cc
   ts_descriptor.cc

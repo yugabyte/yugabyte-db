@@ -731,9 +731,9 @@ Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
 Status TabletBootstrap::PlayTabletSnapshotOpRequest(ReplicateMsg* replicate_msg) {
   TabletSnapshotOpRequestPB* const snapshot = replicate_msg->mutable_snapshot_request();
 
-  SnapshotOperationState tx_state(/* tablet */ nullptr, snapshot);
+  SnapshotOperationState tx_state(tablet_.get(), snapshot);
 
-  return tablet_->snapshots().Bootstrap(&tx_state);
+  return tx_state.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
 }
 
 Status TabletBootstrap::PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {

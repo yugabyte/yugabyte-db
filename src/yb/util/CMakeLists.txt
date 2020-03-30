@@ -207,12 +207,12 @@ set(UTIL_SRCS
   ntp_clock.cc
   oid_generator.cc
   once.cc
+  operation_counter.cc
   opid.cc
   os-util.cc
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
-  pending_op_counter.cc
   physical_time.cc
   port_picker.cc
   priority_thread_pool.cc

@@ -109,6 +109,8 @@ DECLARE_int32(master_discovery_timeout_ms);
 
 DEFINE_int32(copy_table_batch_size, -1, "Batch size for copy pg sql tables");
 
+DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
+
 namespace yb {
 namespace master {
 
@@ -596,15 +598,17 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
 
   {
     int num_iterations = 0;
+    auto time = CoarseMonoClock::now();
+    auto deadline = time + FLAGS_sys_catalog_write_timeout_ms * 1ms;
     static constexpr auto kWarningInterval = 5s;
-    static constexpr int kMaxNumIterations = 12;
-    while (!latch->WaitFor(kWarningInterval)) {
+    while (!latch->WaitUntil(std::min(deadline, time + kWarningInterval))) {
       ++num_iterations;
       const auto waited_so_far = num_iterations * kWarningInterval;
       LOG(WARNING) << "Waited for "
                    << waited_so_far << " for synchronous write to complete. "
                    << "Continuing to wait.";
-      if (num_iterations >= kMaxNumIterations) {
+      time = CoarseMonoClock::now();
+      if (time >= deadline) {
         LOG(ERROR) << "Already waited for a total of " << waited_so_far << ". "
                    << "Returning a timeout from SyncWrite.";
         return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
@@ -787,6 +791,10 @@ Status SysCatalogTable::CopyPgsqlTables(
 Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
   tablet_peer()->tablet_metadata()->RemoveTable(table_id);
   return Status::OK();
+}
+
+Result<ColumnId> SysCatalogTable::MetadataColumnId() {
+  return schema_with_ids_.ColumnIdByName(kSysCatalogTableColMetadata);
 }
 
 } // namespace master

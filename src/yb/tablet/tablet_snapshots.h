@@ -29,7 +29,7 @@ class DB;
 
 namespace yb {
 
-class PendingOperationCounter;
+class RWOperationCounter;
 class rw_semaphore;
 
 namespace tablet {
@@ -38,18 +38,18 @@ class TabletSnapshots : public TabletComponent {
  public:
   explicit TabletSnapshots(Tablet* tablet);
 
+  // Create snapshot for this tablet.
+  CHECKED_STATUS Create(SnapshotOperationState* tx_state);
+
   // Restore snapshot for this tablet. In addition to backup/restore, this is used for initial
   // syscatalog RocksDB creation without the initdb overhead.
   CHECKED_STATUS Restore(SnapshotOperationState* tx_state);
 
-  // Perform necessary steps during snapshot operation bootstrap.
-  CHECKED_STATUS Bootstrap(SnapshotOperationState* tx_state);
-
-  // Perform necessary steps when snapshot operation replicated.
-  CHECKED_STATUS Replicated(SnapshotOperationState* tx_state);
+  // Delete snapshot for this tablet.
+  CHECKED_STATUS Delete(SnapshotOperationState* tx_state);
 
   // Prepares the operation context for a snapshot operation.
-  CHECKED_STATUS Prepare(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Prepare(SnapshotOperation* operation);
 
   //------------------------------------------------------------------------------------------------
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
@@ -58,9 +58,6 @@ class TabletSnapshots : public TabletComponent {
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return TEST_last_rocksdb_checkpoint_dir_; }
-
-  // Create snapshot for this tablet.
-  CHECKED_STATUS Create(SnapshotOperationState* tx_state);
 
   CHECKED_STATUS CreateDirectories(const std::string& rocksdb_dir, FsManager* fs);
 
@@ -73,9 +70,6 @@ class TabletSnapshots : public TabletComponent {
   // Only used when table_type_ == YQL_TABLE_TYPE.
   CHECKED_STATUS RestoreCheckpoint(
       const std::string& dir, const docdb::ConsensusFrontier& frontier);
-
-  // Delete snapshot for this tablet.
-  CHECKED_STATUS Delete(SnapshotOperationState* tx_state);
 
   // Applies specified snapshot operation.
   CHECKED_STATUS Apply(SnapshotOperationState* tx_state);

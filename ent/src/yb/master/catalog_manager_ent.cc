@@ -27,6 +27,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/common.pb.h"
+#include "yb/consensus/consensus.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -48,6 +49,8 @@
 #include "yb/util/random_util.h"
 #include "yb/cdc/cdc_consumer.pb.h"
 
+using namespace std::literals;
+
 using std::string;
 using std::unique_ptr;
 
@@ -63,6 +66,8 @@ DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
              "WAL retention time in seconds to be used for tables for which a CDC stream was "
              "created.");
 DECLARE_int32(master_rpc_timeout_ms);
+
+DECLARE_int32(sys_catalog_write_timeout_ms);
 
 namespace yb {
 
@@ -80,20 +85,29 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
  public:
   explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  Status Visit(const SnapshotId& ss_id, const SysSnapshotEntryPB& metadata) override {
-    CHECK(!ContainsKey(catalog_manager_->non_txn_snapshot_ids_map_, ss_id))
-      << "Snapshot already exists: " << ss_id;
+  CHECKED_STATUS Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
+    auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
+    if (!txn_snapshot_id.IsNil()) {
+      return catalog_manager_->snapshot_coordinator_.Load(txn_snapshot_id, metadata);
+    }
+    return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
+  }
+
+  CHECKED_STATUS VisitNonTransactionAwareSnapshot(
+      const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) {
 
     // Setup the snapshot info.
-    SnapshotInfo *const ss = new SnapshotInfo(ss_id);
-    auto l = ss->LockForWrite();
+    auto snapshot_info = make_scoped_refptr<SnapshotInfo>(snapshot_id);
+    auto l = snapshot_info->LockForWrite();
     l->mutable_data()->pb.CopyFrom(metadata);
 
     // Add the snapshot to the IDs map (if the snapshot is not deleted).
-    catalog_manager_->non_txn_snapshot_ids_map_[ss_id] = ss;
+    auto emplace_result = catalog_manager_->non_txn_snapshot_ids_map_.emplace(
+        snapshot_id, std::move(snapshot_info));
+    CHECK(emplace_result.second) << "Snapshot already exists: " << snapshot_id;
 
-    LOG(INFO) << "Loaded metadata for snapshot (id=" << ss_id << "): "
-              << ss->ToString() << ": " << metadata.ShortDebugString();
+    LOG(INFO) << "Loaded metadata for snapshot (id=" << snapshot_id << "): "
+              << emplace_result.first->second->ToString() << ": " << metadata.ShortDebugString();
     l->Commit();
     return Status::OK();
   }
@@ -995,6 +1009,30 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   pair->set_old_id(entry.id());
   pair->set_new_id(it->second);
   return Status::OK();
+}
+
+Result<ColumnId> CatalogManager::MetadataColumnId() {
+  return sys_catalog()->MetadataColumnId();
+}
+
+Status CatalogManager::ApplyOperationState(
+    const tablet::OperationState& operation_state, int64_t batch_idx,
+    const docdb::KeyValueWriteBatchPB& write_batch) {
+  return tablet_peer()->tablet()->ApplyOperationState(operation_state, batch_idx, write_batch);
+}
+
+void CatalogManager::SubmitWrite(const docdb::KeyValueWriteBatchPB& write_batch) {
+  auto term = tablet_peer()->consensus()->LeaderTerm();
+  tserver::WriteRequestPB empty_write_request;
+  auto state = std::make_unique<tablet::WriteOperationState>(
+      tablet_peer()->tablet(), &empty_write_request);
+  auto& request = *state->mutable_request();
+  request.set_tablet_id(tablet_peer()->tablet_id());
+  *request.mutable_write_batch() = write_batch;
+  auto operation = std::make_unique<tablet::WriteOperation>(
+      std::move(state), term, ScopedOperation(),
+      CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms, tablet_peer().get());
+  tablet_peer()->Submit(std::move(operation), term);
 }
 
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {

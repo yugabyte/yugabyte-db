@@ -699,6 +699,8 @@ class Schema {
     }
   }
 
+  Result<ColumnId> ColumnIdByName(const std::string& name) const;
+
   // Returns true if the schema contains nullable columns
   bool has_nullables() const {
     return has_nullables_;
