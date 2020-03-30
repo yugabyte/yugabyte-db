@@ -241,7 +241,7 @@ Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWN
 
 Show help about `ysql_dump` command line arguments and then exit.
 
-## Connection options
+## Database connection options
 
 The following command line options control the database connection parameters.
 
