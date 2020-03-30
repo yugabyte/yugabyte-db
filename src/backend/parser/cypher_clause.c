@@ -621,6 +621,7 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
     Expr *id, *properties;
     Relation label_relation;
     RangeVar *rv;
+    RangeTblEntry *rte;
     TargetEntry *te;
 
     if (!node->label)
@@ -639,9 +640,8 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
     // Store the relid
     rel->relid = RelationGetRelid(label_relation);
 
-
-
-    RangeTblEntry *rte = addRangeTableEntryForRelation(cpstate, label_relation, NULL, false, false);
+    rte = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
+                                        NULL, false, false);
     rte->requiredPerms = ACL_INSERT;
 
     // Store the relid
