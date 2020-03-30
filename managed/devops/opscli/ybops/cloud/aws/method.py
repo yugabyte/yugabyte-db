@@ -42,7 +42,8 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
         super(AwsCreateInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--key_pair_name", default=os.environ.get("YB_EC2_KEY_PAIR_NAME"),
                                  help="AWS Key Pair name")
-        self.parser.add_argument("--security_group_id", default=None, help="AWS security group ID.")
+        self.parser.add_argument("--security_group_id", default=None,
+                                 help="AWS comma delimited security group IDs.")
         self.parser.add_argument("--volume_type", choices=["gp2", "io1"], default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--spot_price", default=None,
