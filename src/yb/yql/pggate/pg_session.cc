@@ -263,8 +263,7 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
                                    bool force_non_bufferable) {
   auto& buffered_keys = pg_session_.buffered_keys_;
   if (pg_session_.buffering_enabled_ && !force_non_bufferable &&
-      op->type() == YBOperation::Type::PGSQL_WRITE &&
-      (!op->IsYsqlCatalogOp() || YBCIsInitDbModeEnvVarSet())) {
+      op->type() == YBOperation::Type::PGSQL_WRITE) {
     const auto& wop = *down_cast<client::YBPgsqlWriteOp*>(op.get());
     // Check for buffered operation related to same row.
     // If multiple operations are performed in context of single RPC second operation will not
@@ -841,8 +840,6 @@ Status PgSession::FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool tra
         << ", table is transactional: "
         << op->table()->schema().table_properties().is_transactional()
         << ", initdb mode: " << YBCIsInitDbModeEnvVarSet();
-    // Catalog operations can be buffered only in InitDb mode
-    DCHECK(!op->IsYsqlCatalogOp() || YBCIsInitDbModeEnvVarSet());
     RETURN_NOT_OK(session->Apply(op));
   }
   const auto status = session->FlushFuture().get();
