@@ -654,6 +654,11 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid #DEE0EA;
     line-height: 1;
   }
+
+  a > code {
+    /* Prevent underscore from being hidden by codeblock */
+    margin-bottom: 2px;
+  }
   h1, h2, h3, h4, h5, h6 {
     code {
       font-size: inherit;
