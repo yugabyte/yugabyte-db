@@ -101,7 +101,7 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 					 errmsg("invalid parameter"),
 					 errdetail("Array of arguments has wrong dimension: %d", ndims)));
 
-		p = ARR_DATA_PTR(v);
+		p = (char *) ARR_DATA_PTR(v);
 		dims = ARR_DIMS(v);
 		nitems = ArrayGetNItems(ndims, dims);
 		bitmap = ARR_NULLBITMAP(v);

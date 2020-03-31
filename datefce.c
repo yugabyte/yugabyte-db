@@ -36,7 +36,7 @@ static const WeekDays WEEKDAYS[] =
 static const WeekDays *mru_weekdays = NULL;
 
 static int
-weekday_search(const WeekDays *weekdays, const char *str, int len)
+weekday_search(const WeekDays *weekdays, const char *str, size_t len)
 {
 	int		i;
 
@@ -114,7 +114,7 @@ PG_FUNCTION_INFO_V1(orafce_dbtimezone);
  */
 
 int
-ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max)
+ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], size_t max)
 {
 	int		i;
 
@@ -195,7 +195,7 @@ next_day(PG_FUNCTION_ARGS)
 		int		i;
 		int		encoding = GetDatabaseEncoding();
 
-		for (i = 0; i < lengthof(WEEKDAYS); i++)
+		for (i = 0; i < (int) lengthof(WEEKDAYS); i++)
 		{
 			if (encoding == WEEKDAYS[i].encoding)
 			{

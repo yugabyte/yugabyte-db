@@ -32,7 +32,7 @@ typedef struct {
 } alert_event;
 
 typedef struct {
-	unsigned int sid;
+	int sid;
 	message_echo *echo;
 } alert_lock;
 

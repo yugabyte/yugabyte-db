@@ -134,7 +134,7 @@ typedef struct
 	alert_event *events;
 	alert_lock *locks;
 	size_t size;
-	unsigned int sid;
+	int sid;
 	vardata data[1]; /* flexible array member */
 } sh_memory;
 
@@ -149,7 +149,7 @@ pipe* pipes = NULL;
 
 LWLockId shmem_lockid = NOT_INITIALIZED;;
 
-unsigned int sid;                                 /* session id */
+int sid;                                 /* session id */
 
 extern alert_event *events;
 extern alert_lock  *locks;

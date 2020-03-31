@@ -75,7 +75,6 @@ PG_FUNCTION_INFO_V1(utl_file_tmpdir);
 #define STRERROR_EXCEPTION(msg) \
 	do { char *strerr = strerror(errno); CUSTOM_EXCEPTION(msg, strerr); } while(0);
 
-
 #define INVALID_FILEHANDLE_EXCEPTION()	CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "Used file handle isn't valid.")
 
 #define CHECK_FILE_HANDLE() \
@@ -152,7 +151,7 @@ get_descriptor(FILE *file, int max_linesize, int encoding)
 
 /* return stored pointer to FILE */
 static FILE *
-get_stream(int d, int *max_linesize, int *encoding)
+get_stream(int d, size_t *max_linesize, int *encoding)
 {
 	int i;
 
@@ -332,12 +331,12 @@ utl_file_is_open(PG_FUNCTION_ARGS)
 /* read line from file. set eof if is EOF */
 
 static text *
-get_line(FILE *f, int max_linesize, int encoding, bool *iseof)
+get_line(FILE *f, size_t max_linesize, int encoding, bool *iseof)
 {
 	int c;
 	char *buffer = NULL;
 	char *bpt;
-	int csize = 0;
+	size_t csize = 0;
 	text *result = NULL;
 	bool eof = true;
 #ifdef _MSC_VER
@@ -427,7 +426,7 @@ get_line(FILE *f, int max_linesize, int encoding, bool *iseof)
 Datum
 utl_file_get_line(PG_FUNCTION_ARGS)
 {
-	int		max_linesize = 0;	/* keep compiler quiet */
+	size_t	max_linesize = 0;	/* keep compiler quiet */
 	int		encoding = 0;		/* keep compiler quiet */
 	FILE   *f;
 	text   *result;
@@ -445,7 +444,7 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 	/* 'len' overwrites max_linesize, but must be smaller than max_linesize */
 	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
 	{
-		int	len = PG_GETARG_INT32(1);
+		size_t	len = (size_t) PG_GETARG_INT32(1);
 		CHECK_LINESIZE(len);
 		if (max_linesize > len)
 			max_linesize = len;
@@ -475,7 +474,7 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 Datum
 utl_file_get_nextline(PG_FUNCTION_ARGS)
 {
-	int		max_linesize = 0;		/* keep compiler quiet */
+	size_t	max_linesize = 0;		/* keep compiler quiet */
 	int		encoding = 0;			/* keep compiler quiet */
 	FILE   *f;
 	text   *result;
@@ -572,7 +571,7 @@ static FILE *
 do_put(PG_FUNCTION_ARGS)
 {
 	FILE   *f;
-	int		max_linesize = 0;		/* keep compiler quiet */
+	size_t	max_linesize = 0;		/* keep compiler quiet */
 	int		encoding = 0;			/* keep compiler quiet */
 
 	CHECK_FILE_HANDLE();
@@ -677,12 +676,12 @@ utl_file_putf(PG_FUNCTION_ARGS)
 {
 	FILE   *f;
 	char   *format;
-	int		max_linesize;
+	size_t	max_linesize;
 	int		encoding;
-	size_t		format_length;
+	size_t	format_length;
 	char   *fpt;
 	int		cur_par = 0;
-	size_t		cur_len = 0;
+	size_t	cur_len = 0;
 
 #ifdef _MSC_VER
 
