@@ -386,17 +386,13 @@ class YBTransaction::Impl final {
       }
       state_.store(TransactionState::kAborted, std::memory_order_release);
       if (!ready_) {
-        waiters_.emplace_back([this, deadline, transaction](const Status& status) {
-          if (!status.ok()) {
-            // We already stopped to send heartbeats, so transaction would be aborted anyway.
-            LOG_WITH_PREFIX(WARNING) << "Failed to abort transaction: " << status;
-            return;
-          }
-
-          DoAbort(deadline, transaction);
-        });
+        std::vector<Waiter> waiters;
+        waiters_.swap(waiters);
         lock.unlock();
-        RequestStatusTablet(deadline);
+        const auto aborted_status = STATUS(Aborted, "Transaction aborted");
+        for(const auto& waiter : waiters) {
+          waiter(aborted_status);
+        }
         return;
       }
     }
