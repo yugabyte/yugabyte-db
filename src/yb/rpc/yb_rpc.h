@@ -123,14 +123,12 @@ class YBInboundCall : public InboundCall {
   }
 
   // See RpcContext::AddRpcSidecar()
-  CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
-
-  int RpcSidecarsSize() const;
-
-  const RefCntBuffer& RpcSidecar(int idx);
+  virtual size_t AddRpcSidecar(Slice car);
 
   // See RpcContext::ResetRpcSidecars()
   void ResetRpcSidecars();
+
+  void ReserveSidecarSpace(size_t space);
 
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
@@ -188,9 +186,12 @@ class YBInboundCall : public InboundCall {
   }
 
  protected:
-  // Vector of additional sidecars that are tacked on to the call's response
-  // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.
-  boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecars_;
+  // Fields to store sidecars state. See rpc/rpc_sidecar.h for more info.
+  size_t num_sidecars_ = 0;
+  size_t filled_bytes_in_last_sidecar_buffer_ = 0;
+  size_t total_sidecars_size_ = 0;
+  boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecar_buffers_;
+  google::protobuf::RepeatedField<uint32_t> sidecar_offsets_;
 
   // Serialize and queue the response.
   virtual void Respond(const google::protobuf::MessageLite& response, bool is_success);
@@ -201,6 +202,10 @@ class YBInboundCall : public InboundCall {
   // failure, 'response' should be an ErrorStatusPB instance.
   CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                          bool is_success);
+
+  // Returns number of bytes copied.
+  size_t CopyToLastSidecarBuffer(const Slice& slice);
+  void AllocateSidecarBuffer(size_t size);
 
   // The header of the incoming call. Set by ParseFrom()
   RequestHeader header_;

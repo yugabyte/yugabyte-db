@@ -28,8 +28,9 @@ DocExprExecutor::DocExprExecutor() {}
 DocExprExecutor::~DocExprExecutor() {}
 
 CHECKED_STATUS DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                              const QLTableRow::SharedPtrConst& table_row,
-                                              QLValue *result) {
+                                              const QLTableRow* table_row,
+                                              QLValue *result,
+                                              const QLValuePB** direct_value) {
   // Return NULL value if row is not provided.
   if (table_row == nullptr) {
     result->SetNull();
@@ -38,7 +39,7 @@ CHECKED_STATUS DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
 
   // Read value from given row.
   if (col_id >= 0) {
-    return table_row->ReadColumn(col_id, result);
+    return table_row->ReadColumn(col_id, result, direct_value);
   }
 
   // Read key of the given row.
@@ -168,7 +169,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
 }
 
 CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
-                                           const QLTableRow::SharedPtrConst& table_row,
+                                           const QLTableRow& table_row,
                                            QLValue *result,
                                            const Schema *schema) {
   bfpg::TSOpcode tsopcode = static_cast<bfpg::TSOpcode>(tscall.opcode());

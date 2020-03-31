@@ -169,20 +169,16 @@ void RpcContext::RespondApplicationError(int error_ext_id, const std::string& me
   responded_ = true;
 }
 
-Status RpcContext::AddRpcSidecar(RefCntBuffer car, int* idx) {
-  return call_->AddRpcSidecar(car, idx);
-}
-
-int RpcContext::RpcSidecarsSize() const {
-  return call_->RpcSidecarsSize();
-}
-
-const RefCntBuffer& RpcContext::RpcSidecar(int idx) const {
-  return call_->RpcSidecar(idx);
+size_t RpcContext::AddRpcSidecar(const Slice& car) {
+  return call_->AddRpcSidecar(car);
 }
 
 void RpcContext::ResetRpcSidecars() {
   call_->ResetRpcSidecars();
+}
+
+void RpcContext::ReserveSidecarSpace(size_t space) {
+  call_->ReserveSidecarSpace(space);
 }
 
 const Endpoint& RpcContext::remote_address() const {

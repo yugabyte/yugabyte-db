@@ -149,13 +149,7 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
   for (auto size : req.sizes()) {
     auto sidecar = RefCntBuffer(size);
     RandomString(sidecar.udata(), size, &r);
-    int idx = 0;
-    auto status = down_cast<YBInboundCall*>(incoming)->AddRpcSidecar(sidecar, &idx);
-    if (!status.ok()) {
-      incoming->RespondFailure(ErrorStatusPB::ERROR_APPLICATION, status);
-      return;
-    }
-    resp.add_sidecars(idx);
+    resp.add_sidecars(down_cast<YBInboundCall*>(incoming)->AddRpcSidecar(sidecar.as_slice()));
   }
 
   down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
