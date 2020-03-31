@@ -418,13 +418,13 @@ CREATE TABLE tbl12 (
 	primary key (b desc)
 ) SPLIT AT VALUES (('bienvenidos'), ('goodbye'), ('hello'), ('hola'));
 
-CREATE TABLE tbl12 (
+CREATE TABLE tbl13 (
 	a			text,
 	b			date,
 	c			time
 ) SPLIT INTO 9 TABLETS;
 
-CREATE TABLE tbl13 (
+CREATE TABLE tbl14 (
 	a			int4,
 	primary key (a asc)
 ) SPLIT AT VALUES ((MINVALUE), (0), (MAXVALUE));
