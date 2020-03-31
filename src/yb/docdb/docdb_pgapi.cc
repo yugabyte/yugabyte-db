@@ -86,7 +86,7 @@ Status DocPgEvalExpr(const std::string& expr_str,
                      int32_t col_attrno,
                      int32_t ret_typeid,
                      int32_t ret_typemod,
-                     const QLTableRow::SharedPtrConst& table_row,
+                     const QLTableRow& table_row,
                      const Schema *schema,
                      QLValue* result) {
   PG_RETURN_NOT_OK(YbgPrepareMemoryContext());
@@ -109,7 +109,7 @@ Status DocPgEvalExpr(const std::string& expr_str,
     SCHECK(column.ok(), InternalError, "Invalid Schema");
 
     if (column->order() == col_attrno) {
-      const QLValuePB* val = table_row->GetColumn(col_id.rep());
+      const QLValuePB* val = table_row.GetColumn(col_id.rep());
       bool is_null = false;
       uint64_t datum = 0;
       RETURN_NOT_OK(PgValueFromPB(ret_type, type_attrs, *val, &datum, &is_null));

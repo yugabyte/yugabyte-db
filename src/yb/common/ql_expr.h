@@ -143,7 +143,8 @@ class QLTableRow {
   }
 
   // Get the column value in PB format.
-  CHECKED_STATUS ReadColumn(ColumnIdRep col_id, QLValue *col_value) const;
+  CHECKED_STATUS ReadColumn(
+      ColumnIdRep col_id, QLValue *col_value, const QLValuePB** direct_value) const;
   const QLValuePB* GetColumn(ColumnIdRep col_id) const;
   CHECKED_STATUS ReadSubscriptedColumn(const QLSubscriptedColPB& subcol,
                                        const QLValue& index,
@@ -204,8 +205,9 @@ class QLExprExecutor {
 
   // Evaluate column reference.
   virtual CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,
-                                       const QLTableRow::SharedPtrConst& table_row,
-                                       QLValue *result);
+                                       const QLTableRow* table_row,
+                                       QLValue *result,
+                                       const QLValuePB** direct_value);
 
   // Evaluate call to regular builtin operator.
   virtual CHECKED_STATUS EvalBFCall(const QLBCallPB& ql_expr,
@@ -238,36 +240,50 @@ class QLExprExecutor {
 
   // Evaluate the given QLExpressionPB.
   CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
-                          const QLTableRow::SharedPtrConst& table_row,
+                          const QLTableRow* table_row,
                           QLValue *result,
+                          const Schema *schema = nullptr,
+                          const QLValuePB** direct_value = nullptr);
+
+  CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
+                          const QLTableRow& table_row,
+                          QLValue *result,
+                          const Schema *schema = nullptr,
+                          const QLValuePB** direct_value = nullptr) {
+    return EvalExpr(ql_expr, &table_row, result, schema, direct_value);
+  }
+
+  CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
+                          const QLTableRow& table_row,
+                          QLValuePB* result,
                           const Schema *schema = nullptr);
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
   CHECKED_STATUS ReadExprValue(const PgsqlExpressionPB& ql_expr,
-                               const QLTableRow::SharedPtrConst& table_row,
+                               const QLTableRow& table_row,
                                QLValue *result);
 
   // Evaluate call to regular builtin operator.
   virtual CHECKED_STATUS EvalBFCall(const PgsqlBCallPB& ql_expr,
-                                    const QLTableRow::SharedPtrConst& table_row,
+                                    const QLTableRow& table_row,
                                     QLValue *result);
 
   // Evaluate call to tablet-server builtin operator.
   virtual CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
-                                    const QLTableRow::SharedPtrConst& table_row,
+                                    const QLTableRow& table_row,
                                     QLValue *result,
                                     const Schema *schema = nullptr);
 
   virtual CHECKED_STATUS ReadTSCallValue(const PgsqlBCallPB& ql_expr,
-                                         const QLTableRow::SharedPtrConst& table_row,
+                                         const QLTableRow& table_row,
                                          QLValue *result);
 
   // Evaluate a boolean condition for the given row.
   virtual CHECKED_STATUS EvalCondition(const PgsqlConditionPB& condition,
-                                       const QLTableRow::SharedPtrConst& table_row,
+                                       const QLTableRow& table_row,
                                        bool* result);
   virtual CHECKED_STATUS EvalCondition(const PgsqlConditionPB& condition,
-                                       const QLTableRow::SharedPtrConst& table_row,
+                                       const QLTableRow& table_row,
                                        QLValue *result);
 };
 

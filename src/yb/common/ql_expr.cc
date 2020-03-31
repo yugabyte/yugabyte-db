@@ -41,14 +41,14 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
           result->SetNull();
         }
       } else {
-        RETURN_NOT_OK(table_row.ReadColumn(ql_expr.column_id(), result));
+        RETURN_NOT_OK(table_row.ReadColumn(ql_expr.column_id(), result, result_ptr));
       }
       break;
 
     case QLExpressionPB::ExprCase::kJsonColumn: {
       QLValue ql_value;
       const QLJsonColumnOperationsPB& json_ops = ql_expr.json_column();
-      RETURN_NOT_OK(table_row.ReadColumn(json_ops.column_id(), &ql_value));
+      RETURN_NOT_OK(table_row.ReadColumn(json_ops.column_id(), &ql_value, nullptr));
       common::Jsonb jsonb(std::move(ql_value.jsonb_value()));
       RETURN_NOT_OK(jsonb.ApplyJsonbOperators(json_ops, result));
       break;
@@ -360,25 +360,30 @@ bfpg::TSOpcode QLExprExecutor::GetTSWriteInstruction(const PgsqlExpressionPB& ql
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
-                                        const QLTableRow::SharedPtrConst& table_row,
+                                        const QLTableRow* table_row,
                                         QLValue *result,
-                                        const Schema *schema) {
+                                        const Schema *schema,
+                                        const QLValuePB** direct_value) {
   switch (ql_expr.expr_case()) {
     case PgsqlExpressionPB::ExprCase::kValue:
-      *result = ql_expr.value();
+      if (direct_value) {
+        *direct_value = &ql_expr.value();
+      } else {
+        *result = ql_expr.value();
+      }
       break;
 
     case PgsqlExpressionPB::ExprCase::kColumnId:
-      return EvalColumnRef(ql_expr.column_id(), table_row, result);
+      return EvalColumnRef(ql_expr.column_id(), table_row, result, direct_value);
 
     case PgsqlExpressionPB::ExprCase::kBfcall:
-      return EvalBFCall(ql_expr.bfcall(), table_row, result);
+      return EvalBFCall(ql_expr.bfcall(), *table_row, result);
 
     case PgsqlExpressionPB::ExprCase::kTscall:
-      return EvalTSCall(ql_expr.tscall(), table_row, result, schema);
+      return EvalTSCall(ql_expr.tscall(), *table_row, result, schema);
 
     case PgsqlExpressionPB::ExprCase::kCondition:
-      return EvalCondition(ql_expr.condition(), table_row, result);
+      return EvalCondition(ql_expr.condition(), *table_row, result);
 
     case PgsqlExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
     case PgsqlExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
@@ -392,7 +397,7 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::ReadExprValue(const PgsqlExpressionPB& ql_expr,
-                                             const QLTableRow::SharedPtrConst& table_row,
+                                             const QLTableRow& table_row,
                                              QLValue *result) {
   if (ql_expr.expr_case() == PgsqlExpressionPB::ExprCase::kTscall) {
     return ReadTSCallValue(ql_expr.tscall(), table_row, result);
@@ -404,12 +409,13 @@ CHECKED_STATUS QLExprExecutor::ReadExprValue(const PgsqlExpressionPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                             const QLTableRow::SharedPtrConst& table_row,
-                                             QLValue *result) {
+                                             const QLTableRow* table_row,
+                                             QLValue *result,
+                                             const QLValuePB** direct_value) {
   if (table_row == nullptr) {
     result->SetNull();
   } else {
-    RETURN_NOT_OK(table_row->ReadColumn(col_id, result));
+    RETURN_NOT_OK(table_row->ReadColumn(col_id, result, direct_value));
   }
   return Status::OK();
 }
@@ -417,7 +423,7 @@ CHECKED_STATUS QLExprExecutor::EvalColumnRef(ColumnIdRep col_id,
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::EvalBFCall(const PgsqlBCallPB& bfcall,
-                                          const QLTableRow::SharedPtrConst& table_row,
+                                          const QLTableRow& table_row,
                                           QLValue *result) {
   // TODO(neil)
   // - Use TSOpode for collection expression if only TabletServer can execute.
@@ -429,7 +435,7 @@ CHECKED_STATUS QLExprExecutor::EvalBFCall(const PgsqlBCallPB& bfcall,
   vector<QLValue> args(bfcall.operands().size());
   int arg_index = 0;
   for (auto operand : bfcall.operands()) {
-    RETURN_NOT_OK(EvalExpr(operand, table_row, &args[arg_index]));
+    RETURN_NOT_OK(EvalExpr(operand, &table_row, &args[arg_index]));
     arg_index++;
   }
 
@@ -440,7 +446,7 @@ CHECKED_STATUS QLExprExecutor::EvalBFCall(const PgsqlBCallPB& bfcall,
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
-                                          const QLTableRow::SharedPtrConst& table_row,
+                                          const QLTableRow& table_row,
                                           QLValue *result,
                                           const Schema *schema) {
   result->SetNull();
@@ -448,7 +454,7 @@ CHECKED_STATUS QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
 }
 
 CHECKED_STATUS QLExprExecutor::ReadTSCallValue(const PgsqlBCallPB& ql_expr,
-                                               const QLTableRow::SharedPtrConst& table_row,
+                                               const QLTableRow& table_row,
                                                QLValue *result) {
   result->SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
@@ -457,7 +463,7 @@ CHECKED_STATUS QLExprExecutor::ReadTSCallValue(const PgsqlBCallPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
-                                             const QLTableRow::SharedPtrConst& table_row,
+                                             const QLTableRow& table_row,
                                              bool* result) {
   QLValue result_pb;
   RETURN_NOT_OK(EvalCondition(condition, table_row, &result_pb));
@@ -466,7 +472,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
 }
 
 CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
-                                             const QLTableRow::SharedPtrConst& table_row,
+                                             const QLTableRow& table_row,
                                              QLValue *result) {
 #define QL_EVALUATE_RELATIONAL_OP(op)                                                              \
   do {                                                                                             \
@@ -583,11 +589,11 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
       // DocRowwiseIterator and only when it exists. Therefore, the row exists if and only if
       // the row (value-map) is not empty.
     case QL_OP_EXISTS:
-      result->set_bool_value(!table_row->IsEmpty());
+      result->set_bool_value(!table_row.IsEmpty());
       return Status::OK();
 
     case QL_OP_NOT_EXISTS:
-      result->set_bool_value(table_row->IsEmpty());
+      result->set_bool_value(table_row.IsEmpty());
       return Status::OK();
 
     case QL_OP_IN: {
@@ -655,14 +661,19 @@ const QLValuePB* QLTableRow::GetColumn(ColumnIdRep col_id) const {
   return &col_iter->second.value;
 }
 
-CHECKED_STATUS QLTableRow::ReadColumn(ColumnIdRep col_id, QLValue *col_value) const {
+CHECKED_STATUS QLTableRow::ReadColumn(
+    ColumnIdRep col_id, QLValue *col_value, const QLValuePB** direct_value) const {
   auto value = GetColumn(col_id);
   if (value == nullptr) {
     col_value->SetNull();
     return Status::OK();
   }
 
-  *col_value = *value;
+  if (direct_value) {
+    *direct_value = value;
+  } else {
+    *col_value = *value;
+  }
   return Status::OK();
 }
 

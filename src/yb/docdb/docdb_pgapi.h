@@ -47,7 +47,7 @@ Status DocPgEvalExpr(const std::string& expr_str,
                      int32_t col_attrno,
                      int32_t ret_typeid,
                      int32_t ret_typemod,
-                     const QLTableRow::SharedPtrConst& table_row,
+                     const QLTableRow& table_row,
                      const Schema *schema,
                      QLValue* result);
 

@@ -379,34 +379,35 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
 
     // Retrieve the rowblocks returned from the QL write operations and return them as RPC
     // sidecars. Populate the row schema also.
+    faststring rows_data;
     for (const auto& ql_write_op : *state_->ql_write_ops()) {
       const auto& ql_write_req = ql_write_op->request();
       auto* ql_write_resp = ql_write_op->response();
       const QLRowBlock* rowblock = ql_write_op->rowblock();
       SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
-      faststring rows_data;
+      rows_data.clear();
       rowblock->Serialize(ql_write_req.client(), &rows_data);
-      int rows_data_sidecar_idx = 0;
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
-          response_, context_.get());
-      ql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+      ql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(rows_data));
     }
 
-    // Retrieve the resultset returned from the PGSQL write operations and return them as RPC
-    // sidecars.
-    for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
-      auto* pgsql_write_resp = pgsql_write_op->response();
-      const PgsqlResultSet& resultset = pgsql_write_op->resultset();
-      if (resultset.rsrow_count() > 0) {
-        faststring rows_data;
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            pggate::PgDocData::WriteTuples(resultset, &rows_data), response_, context_.get());
-        int rows_data_sidecar_idx = 0;
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
-            response_, context_.get());
-        pgsql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+    if (!state_->pgsql_write_ops()->empty()) {
+      // Retrieve the resultset returned from the PGSQL write operations and return them as RPC
+      // sidecars.
+
+      size_t sidecars_size = 0;
+      for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
+        sidecars_size += pgsql_write_op->result_buffer().size();
+      }
+
+      if (sidecars_size != 0) {
+        context_->ReserveSidecarSpace(sidecars_size);
+        for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
+          auto* pgsql_write_resp = pgsql_write_op->response();
+          const faststring& result_buffer = pgsql_write_op->result_buffer();
+          if (!result_buffer.empty()) {
+            pgsql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(result_buffer));
+          }
+        }
       }
     }
 
@@ -1884,10 +1885,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
         read_context->read_time.local_limit = read_context->safe_ht_to_read;
         return read_context->read_time;
       }
-      int rows_data_sidecar_idx = 0;
-      RETURN_NOT_OK(read_context->context->AddRpcSidecar(
-          RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
-      result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
+      result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_ql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();
@@ -1908,10 +1906,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
         read_context->read_time.local_limit = read_context->safe_ht_to_read;
         return read_context->read_time;
       }
-      int rows_data_sidecar_idx = 0;
-      RETURN_NOT_OK(read_context->context->AddRpcSidecar(
-          RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
-      result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
+      result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_pgsql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();

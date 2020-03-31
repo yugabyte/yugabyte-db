@@ -537,7 +537,7 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   using common::Jsonb;
   // Read the json column value inorder to perform a read modify write.
   QLValue ql_value;
-  RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), &ql_value));
+  RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), &ql_value, nullptr));
   if (ql_value.IsNull()) {
     return STATUS_SUBSTITUTE(QLError, "Invalid Json value: ", column_value.ShortDebugString());
   }
