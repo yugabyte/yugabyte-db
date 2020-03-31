@@ -483,18 +483,29 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 		}
 	}
 
-	ListCell	*opt_cell;
-	// Set the default option to true so that tables created in a colocated database will be
-	// colocated by default. For regular database, this argument will be ignored.
-	bool		colocated = true;
-	/* Scan list to see if colocated was included */
+	/* By default, inherit the colocated option from the database */
+	bool colocated = MyDatabaseColocated;
+
+	/* Handle user-supplied colocated reloption */
+	ListCell *opt_cell;
 	foreach(opt_cell, stmt->options)
 	{
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 
 		if (strcmp(def->defname, "colocated") == 0)
 		{
-			colocated = defGetBoolean(def);
+			bool colocated_relopt = defGetBoolean(def);
+			if (MyDatabaseColocated)
+				colocated = colocated_relopt;
+			else if (colocated_relopt)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot set colocated true on a non-colocated"
+								" database")));
+			/* The following break is fine because there should only be one
+			 * colocated reloption at this point due to checks in
+			 * parseRelOptions */
+			break;
 		}
 	}
 
