@@ -74,11 +74,11 @@ YugabyteDB supports a number of languages and client drivers. Below is a brief l
 
 Here is a list of some of the key features being worked on for the upcoming v2.2 release around July 2020, along with the recently completed features.
 
-| Feature                                         | Status    | Release Target | Details         |  Comments     |
+| Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
 | [Online rebuild of indexes](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)  | PROGRESS  | v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/448) | Available in beta for YCQL (docs coming soon), in progress for YSQL |
 | [Distributed backups for transactional tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md)    | PROGRESS  | v2.2  |  | Distributed backups for non-transactional tables in YCQL is already GA |
-| [Automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.2 |  |  |
+| [Automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.2 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |  |
 | Improve YSQL performance and support for benchmarks | PROGRESS  | v2.2  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
 | [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) | PROGRESS  |   |  |  |
 | [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |   |  | This feature will be done in two phases: supporting PostgreSQL partitions followed by geo-placement support for partitions |
