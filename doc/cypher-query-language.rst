@@ -4,7 +4,7 @@ Cypher Query Language
 MATCH
 -----
 
-Is used to search for the pattern described in it.
+Searches for the pattern described in it.
 
 Synopsis
 ~~~~~~~~
@@ -21,7 +21,7 @@ Description
 RETURN
 ------
 
-Defines what to include in the query result set.
+Defines what to include in the query's result set.
 
 Synopsis
 ~~~~~~~~
@@ -83,7 +83,7 @@ Description
 ORDER BY
 --------
 
-Is a sub-clause following ``RETURN`` or ``WITH``, and it specifies that the output should be sorted and how.
+An optional sub-clause following ``RETURN`` or ``WITH`` that specifies how the output should be sorted.
 
 Synopsis
 ~~~~~~~~
@@ -134,7 +134,7 @@ Description
 CREATE
 ------
 
-Is used to create nodes and relationships.
+Creates nodes and relationships.
 
 Synopsis
 ~~~~~~~~

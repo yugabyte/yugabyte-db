@@ -1,7 +1,7 @@
 Installation
 ============
 
-Installtaion from Source Code
+Installation from Source Code
 -----------------------------
 
 Requirements
