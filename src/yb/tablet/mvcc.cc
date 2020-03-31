@@ -34,10 +34,180 @@
 
 #include <sstream>
 
+#include <boost/circular_buffer.hpp>
+#include <boost/circular_buffer/space_optimized.hpp>
+#include <boost/variant.hpp>
+
+#include "yb/gutil/macros.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/enums.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
+
+DEFINE_test_flag(int64, mvcc_op_trace_num_items, 0,
+                 "Number of items to keep in an MvccManager operation trace. Set to 0 to disable "
+                 "MVCC operation tracing.");
 
 namespace yb {
 namespace tablet {
+
+namespace {
+
+YB_DEFINE_ENUM(
+    MvccOpType,
+    (kInvalid)
+    (kSetLeaderOnlyMode)
+    (kSetLastReplicated)
+    (kSetPropagatedSafeTimeOnFollower)
+    (kSetPropagatedSafeTimeOnLeader)
+    (kUpdatePropagatedSafeTimeOnLeader)
+    (kAddPending)
+    (kReplicated)
+    (kAborted)
+    (kSafeTime)
+    (kSafeTimeForFollower)
+    (kLastReplicatedHybridTime));
+
+struct SetLeaderOnlyModeTraceItem {
+  bool leader_only;
+
+  std::string ToString() const {
+    return Format("SetLeaderOnlyMode $0", YB_STRUCT_TO_STRING(leader_only));
+  }
+};
+
+struct SetLastReplicatedTraceItem {
+  HybridTime ht;
+
+  std::string ToString() const {
+    return Format("SetLastReplicated $0", YB_STRUCT_TO_STRING(ht));
+  }
+};
+
+struct SetPropagatedSafeTimeOnFollowerTraceItem {
+  HybridTime ht;
+
+  std::string ToString() const {
+    return Format("SetPropagatedSafeTimeOnFollower $0", YB_STRUCT_TO_STRING(ht));
+  }
+};
+
+struct UpdatePropagatedSafeTimeOnLeaderTraceItem {
+  FixedHybridTimeLease ht_lease;
+  HybridTime safe_time;
+
+  std::string ToString() const {
+    return Format("UpdatePropagatedSafeTimeOnLeader $0",
+                  YB_STRUCT_TO_STRING(ht_lease, safe_time));
+  }
+};
+
+struct AddPendingTraceItem {
+  HybridTime provided_ht;
+  HybridTime final_ht;
+
+  std::string ToString() const {
+    return Format("AddPending $0", YB_STRUCT_TO_STRING(provided_ht, final_ht));
+  }
+};
+
+struct ReplicatedTraceItem {
+  HybridTime ht;
+
+  std::string ToString() const {
+    return Format("Replicated $0", YB_STRUCT_TO_STRING(ht));
+  }
+};
+
+struct AbortedTraceItem {
+  HybridTime ht;
+
+  std::string ToString() const {
+    return Format("Aborted $0", YB_STRUCT_TO_STRING(ht));
+  }
+};
+
+struct SafeTimeTraceItem {
+  HybridTime min_allowed;
+  CoarseTimePoint deadline;
+  FixedHybridTimeLease ht_lease;
+  HybridTime safe_time;
+
+  std::string ToString() const {
+    return Format("SafeTime $0", YB_STRUCT_TO_STRING(min_allowed, deadline, ht_lease, safe_time));
+  }
+};
+
+struct SafeTimeForFollowerTraceItem {
+  HybridTime min_allowed;
+  CoarseTimePoint deadline;
+  SafeTimeWithSource safe_time_with_source;
+
+  std::string ToString() const {
+    return Format("SafeTimeForFollower $0",
+                  YB_STRUCT_TO_STRING(min_allowed, deadline, safe_time_with_source));
+  }
+};
+
+struct LastReplicatedHybridTimeTraceItem {
+  HybridTime last_replicated;
+
+  std::string ToString() const {
+    return Format("LastReplicatedHybridTime $0", YB_STRUCT_TO_STRING(last_replicated));
+  }
+};
+
+typedef boost::variant<
+    SetLeaderOnlyModeTraceItem,
+    SetLastReplicatedTraceItem,
+    SetPropagatedSafeTimeOnFollowerTraceItem,
+    UpdatePropagatedSafeTimeOnLeaderTraceItem,
+    AddPendingTraceItem,
+    ReplicatedTraceItem,
+    AbortedTraceItem,
+    SafeTimeTraceItem,
+    SafeTimeForFollowerTraceItem,
+    LastReplicatedHybridTimeTraceItem
+    > TraceItemVariant;
+
+class ItemPrintingVisitor : public boost::static_visitor<>{
+ public:
+  explicit ItemPrintingVisitor(size_t index) : index_(index) {}
+
+  template<typename T> void operator()(const T& t) const {
+    LOG(WARNING) << index_ << ". " << t.ToString();
+  }
+
+ private:
+  size_t index_;
+};
+
+}  // namespace
+
+class MvccManager::MvccOpTrace {
+ public:
+  explicit MvccOpTrace(size_t capacity) : items_(capacity) {}
+  ~MvccOpTrace() = default;
+
+  void Add(TraceItemVariant v) {
+    items_.push_back(std::move(v));
+  }
+
+  void DebugDumpToLog() {
+    LOG(WARNING) << "Recent " << items_.size() << " MVCC operations:";
+    size_t i = 1;
+    for (const auto& item : items_) {
+      boost::apply_visitor(ItemPrintingVisitor(i), item);
+      ++i;
+    }
+  }
+
+ private:
+  boost::circular_buffer_space_optimized<TraceItemVariant, std::allocator<TraceItemVariant>> items_;
+};
 
 // ------------------------------------------------------------------------------------------------
 // SafeTimeWithSource
@@ -53,13 +223,24 @@ std::string SafeTimeWithSource::ToString() const {
 
 MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
     : prefix_(std::move(prefix)),
-      clock_(std::move(clock)) {}
+      clock_(std::move(clock)) {
+  auto op_trace_num_items = GetAtomicFlag(&FLAGS_mvcc_op_trace_num_items);
+  if (op_trace_num_items > 0) {
+    op_trace_ = std::make_unique<MvccManager::MvccOpTrace>(op_trace_num_items);
+  }
+}
+
+MvccManager::~MvccManager() {
+}
 
 void MvccManager::Replicated(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (op_trace_) {
+      op_trace_->Add(ReplicatedTraceItem { .ht = ht });
+    }
     CHECK(!queue_.empty()) << LogPrefix();
     CHECK_EQ(queue_.front(), ht) << LogPrefix();
     PopFront(&lock);
@@ -73,6 +254,9 @@ void MvccManager::Aborted(HybridTime ht) {
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (op_trace_) {
+      op_trace_->Add(AbortedTraceItem { .ht = ht });
+    }
     CHECK(!queue_.empty()) << LogPrefix();
     if (queue_.front() == ht) {
       PopFront(&lock);
@@ -99,7 +283,10 @@ void MvccManager::PopFront(std::lock_guard<std::mutex>* lock) {
 
 void MvccManager::AddPending(HybridTime* ht) {
   const bool is_follower_side = ht->is_valid();
+  HybridTime provided_ht = *ht;
+
   std::lock_guard<std::mutex> lock(mutex_);
+
   if (is_follower_side) {
     // This must be a follower-side transaction with already known hybrid time.
     VLOG_WITH_PREFIX(1) << "AddPending(" << *ht << ")";
@@ -187,8 +374,17 @@ void MvccManager::AddPending(HybridTime* ht) {
 #endif
 
     if (*ht <= sanity_check_lower_bound) {
+      if (op_trace_) {
+        op_trace_->DebugDumpToLog();
+      }
       LOG_WITH_PREFIX(FATAL) << get_details_msg(/* drain_aborted */ true);
     }
+  }
+  if (op_trace_) {
+    op_trace_->Add(AddPendingTraceItem {
+      .provided_ht = provided_ht,
+      .final_ht = *ht
+    });
   }
   queue_.push_back(*ht);
 }
@@ -198,6 +394,9 @@ void MvccManager::SetLastReplicated(HybridTime ht) {
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (op_trace_) {
+      op_trace_->Add(SetLastReplicatedTraceItem { .ht = ht });
+    }
     last_replicated_ = ht;
   }
   cond_.notify_all();
@@ -208,6 +407,9 @@ void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (op_trace_) {
+      op_trace_->Add(SetPropagatedSafeTimeOnFollowerTraceItem { .ht = ht });
+    }
     if (ht >= propagated_safe_time_) {
       propagated_safe_time_ = ht;
     } else {
@@ -220,46 +422,61 @@ void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
   cond_.notify_all();
 }
 
-void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& ht_lease) {
+// NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.
+void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& ht_lease)
+    NO_THREAD_SAFETY_ANALYSIS {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht_lease << ")";
 
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto ht = DoGetSafeTime(HybridTime::kMin,       // min_allowed
-                            CoarseTimePoint::max(), // deadline
-                            ht_lease,
-                            &lock);
+    auto safe_time = DoGetSafeTime(HybridTime::kMin,       // min_allowed
+                                   CoarseTimePoint::max(), // deadline
+                                   ht_lease,
+                                   &lock);
 #ifndef NDEBUG
     // This should only be called from RaftConsensus::UpdateMajorityReplicated, and ht_lease passed
     // in here should keep increasing, so we should not see propagated_safe_time_ going backwards.
-    CHECK_GE(ht, propagated_safe_time_) << LogPrefix() << "ht_lease: " << ht_lease;
-    propagated_safe_time_ = ht;
+    CHECK_GE(safe_time, propagated_safe_time_) << LogPrefix() << "ht_lease: " << ht_lease;
+    propagated_safe_time_ = safe_time;
 #else
     // Do not crash in production.
-    if (ht < propagated_safe_time_) {
+    if (safe_time < propagated_safe_time_) {
       YB_LOG_EVERY_N_SECS(ERROR, 5) << LogPrefix()
           << "Previously saw " << EXPR_VALUE_FOR_LOG(propagated_safe_time_)
-          << ", but now safe time is " << ht;
+          << ", but now safe time is " << safe_time;
     } else {
-      propagated_safe_time_ = ht;
+      propagated_safe_time_ = safe_time;
     }
 #endif
+
+    if (op_trace_) {
+      op_trace_->Add(UpdatePropagatedSafeTimeOnLeaderTraceItem {
+        .ht_lease = ht_lease,
+        .safe_time = safe_time
+      });
+    }
   }
   cond_.notify_all();
 }
 
 void MvccManager::SetLeaderOnlyMode(bool leader_only) {
-  std::unique_lock<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (op_trace_) {
+    op_trace_->Add(SetLeaderOnlyModeTraceItem {
+      .leader_only = leader_only
+    });
+  }
   leader_only_mode_ = leader_only;
 }
 
+// NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.
 HybridTime MvccManager::SafeTimeForFollower(
-    HybridTime min_allowed, CoarseTimePoint deadline) const {
+    HybridTime min_allowed, CoarseTimePoint deadline) const NO_THREAD_SAFETY_ANALYSIS {
   std::unique_lock<std::mutex> lock(mutex_);
 
   if (leader_only_mode_) {
-    // If there are no followers (RF == 1), use SafeTime()
-    // because propagated_safe_time_ can be not updated.
+    // If there are no followers (RF == 1), use SafeTime() because propagated_safe_time_ might not
+    // have a valid value.
     return DoGetSafeTime(min_allowed, deadline, FixedHybridTimeLease(), &lock);
   }
 
@@ -293,14 +510,32 @@ HybridTime MvccManager::SafeTimeForFollower(
       << ", max_safe_time_returned_for_follower_: "
       << max_safe_time_returned_for_follower_.ToString();
   max_safe_time_returned_for_follower_ = result;
+  if (op_trace_) {
+    op_trace_->Add(SafeTimeForFollowerTraceItem {
+      .min_allowed = min_allowed,
+      .deadline = deadline,
+      .safe_time_with_source = result
+    });
+  }
   return result.safe_time;
 }
 
-HybridTime MvccManager::SafeTime(HybridTime min_allowed,
-                                 CoarseTimePoint deadline,
-                                 const FixedHybridTimeLease& ht_lease) const {
+// NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.
+HybridTime MvccManager::SafeTime(
+    HybridTime min_allowed,
+    CoarseTimePoint deadline,
+    const FixedHybridTimeLease& ht_lease) const NO_THREAD_SAFETY_ANALYSIS {
   std::unique_lock<std::mutex> lock(mutex_);
-  return DoGetSafeTime(min_allowed, deadline, ht_lease, &lock);
+  auto safe_time = DoGetSafeTime(min_allowed, deadline, ht_lease, &lock);
+  if (op_trace_) {
+    op_trace_->Add(SafeTimeTraceItem {
+      .min_allowed = min_allowed,
+      .deadline = deadline,
+      .ht_lease = ht_lease,
+      .safe_time = safe_time
+    });
+  }
+  return safe_time;
 }
 
 HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
@@ -377,6 +612,11 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
 HybridTime MvccManager::LastReplicatedHybridTime() const {
   std::lock_guard<std::mutex> lock(mutex_);
   VLOG_WITH_PREFIX(1) << __func__ << "(), result = " << last_replicated_;
+  if (op_trace_) {
+    op_trace_->Add(LastReplicatedHybridTimeTraceItem {
+      .last_replicated = last_replicated_
+    });
+  }
   return last_replicated_;
 }
 
