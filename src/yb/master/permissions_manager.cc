@@ -411,6 +411,12 @@ Status PermissionsManager::AlterRole(
     l->mutable_data()->pb.set_salted_hash(req->salted_hash());
   }
 
+  s = catalog_manager_->sys_catalog_->UpdateItem(role.get(),
+                                                 catalog_manager_->leader_ready_term_);
+  if (!s.ok()) {
+    LOG(ERROR) << "Unable to alter role " << req->name() << ": " << s;
+    return s;
+  }
   l->Commit();
   VLOG(1) << "Altered role with request: " << req->ShortDebugString();
   if (req->has_superuser()) {
