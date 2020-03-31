@@ -1,3 +1,5 @@
+Tracking GitHub Issue: https://github.com/yugabyte/yugabyte-db/issues/1004
+
 # Automatic Re-sharding of Data with Tablet Splitting
 
 Automatic tablet splitting enables changing the number of tablets (which are splits of data) at runtime. There are a number of scenarios where this is useful:
