@@ -58,7 +58,6 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void SetUp() override {
-    constexpr int kNumTabletServers = 3;
     constexpr int kNumMasters = 1;
 
     FLAGS_client_read_write_timeout_ms = 120000;
@@ -73,7 +72,7 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     master::SetDefaultInitialSysCatalogSnapshotFlags();
     YBMiniClusterTestBase::SetUp();
 
-    MiniClusterOptions mini_cluster_opt(kNumMasters, kNumTabletServers);
+    MiniClusterOptions mini_cluster_opt(kNumMasters, NumTabletServers());
     cluster_ = std::make_unique<MiniCluster>(env_.get(), mini_cluster_opt);
     ASSERT_OK(cluster_->Start());
 
@@ -99,6 +98,10 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
 
     DontVerifyClusterBeforeNextTearDown();
+  }
+
+  virtual int NumTabletServers() {
+    return 3;
   }
 
   void DoTearDown() override {
@@ -936,6 +939,45 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
     num_tables_after = tablet_lock->data().pb.table_ids_size();
   }
   ASSERT_EQ(num_tables_before, num_tables_after);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+
+  constexpr size_t kRows = 400;
+  constexpr size_t kValueSize = RegularBuildVsSanitizers(256_KB, 4_KB);
+
+  for (size_t i = 0; i != kRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t VALUES ($0, '$1')", i, RandomHumanReadableString(kValueSize)));
+  }
+
+  auto start = MonoTime::Now();
+  auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(DISTINCT(value)) FROM t"));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time: " << finish - start;
+  ASSERT_EQ(res, kRows);
+}
+
+class PgMiniSingleTServerTest : public PgMiniTest {
+ public:
+  int NumTabletServers() override {
+    return 1;
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert), PgMiniSingleTServerTest) {
+  constexpr int kRows = 100000;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+
+  auto start = MonoTime::Now();
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0)", kRows));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time: " << finish - start;
 }
 
 } // namespace pgwrapper

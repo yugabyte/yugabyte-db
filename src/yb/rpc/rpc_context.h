@@ -171,17 +171,15 @@ class RpcContext {
   //
   // Assumes no changes to the sidecar's data are made after insertion.
   //
-  // Upon success, writes the index of the sidecar (necessary to be retrieved
-  // later) to 'idx'. Call may fail if all sidecars have already been used
-  // by the RPC response.
-  CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
-
-  int RpcSidecarsSize() const;
-
-  const RefCntBuffer& RpcSidecar(int idx) const;
+  // Returns the index of the sidecar.
+  size_t AddRpcSidecar(const Slice& car);
 
   // Removes all RpcSidecars.
   void ResetRpcSidecars();
+
+  // Like in STL reserve preallocates buffer, so adding new sidecars would not allocate memory
+  // up to space bytes.
+  void ReserveSidecarSpace(size_t space);
 
   // Return the remote endpoint which sent the current RPC call.
   const Endpoint& remote_address() const;

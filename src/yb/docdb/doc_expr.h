@@ -26,20 +26,21 @@ class DocExprExecutor : public QLExprExecutor {
   virtual ~DocExprExecutor();
 
   // Evaluate column reference.
-  virtual CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,
-                                       const QLTableRow::SharedPtrConst& table_row,
-                                       QLValue *result) override;
+  CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,
+                               const QLTableRow* table_row,
+                               QLValue *result,
+                               const QLValuePB** direct_value) override;
 
   // Evaluate call to tablet-server builtin operator.
-  virtual CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
-                                    const QLTableRow& table_row,
-                                    QLValue *result,
-                                    const Schema *schema = nullptr) override;
+  CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
+                            const QLTableRow& table_row,
+                            QLValue *result,
+                            const Schema *schema = nullptr) override;
 
-  virtual CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
-                                    const QLTableRow::SharedPtrConst& table_row,
-                                    QLValue *result,
-                                    const Schema *schema) override;
+  CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
+                            const QLTableRow& table_row,
+                            QLValue *result,
+                            const Schema *schema) override;
 
   // Evaluate aggregate functions for each row.
   CHECKED_STATUS EvalCount(QLValue *aggr_count);
