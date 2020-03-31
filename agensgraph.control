@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-default_version = '0.0.0'
+default_version = '0.1.0'
 comment = 'AgensGraph graph database extension'
 module_pathname = '$libdir/agensgraph'
 

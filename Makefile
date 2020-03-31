@@ -48,7 +48,7 @@ OBJS = src/backend/agensgraph.o \
 
 EXTENSION = agensgraph
 
-DATA = agensgraph--0.0.0.sql
+DATA = agensgraph--0.1.0.sql
 
 # sorted in dependency order
 REGRESS = scan \

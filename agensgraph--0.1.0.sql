@@ -712,7 +712,3 @@ PARALLEL SAFE
 COST 10
 ROWS 60
 AS 'MODULE_PATHNAME';
-
---
--- End of agensgraph--0.0.0.sql
---
