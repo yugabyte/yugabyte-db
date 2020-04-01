@@ -262,7 +262,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     if (!lock_and_iterator.found()) {
       return STATUS(TryAgain,
                     Format("Unknown transaction, could be recently aborted: $0", id), Slice(),
-                    PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
+                    PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
     }
     RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();

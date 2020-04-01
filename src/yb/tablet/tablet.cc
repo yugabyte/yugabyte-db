@@ -998,7 +998,7 @@ Status Tablet::PrepareTransactionWriteBatch(
     if (!transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch)) {
       return STATUS(TryAgain,
                     Format("Transaction was recently aborted: $0", transaction_id), Slice(),
-                    PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
+                    PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
     }
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
@@ -1010,7 +1010,7 @@ Status Tablet::PrepareTransactionWriteBatch(
     return STATUS(TryAgain,
                   Format("Transaction metadata missing: $0, looks like it was just aborted",
                          transaction_id), Slice(),
-                         PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
+                         PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
   }
 
   auto isolation_level = prepare_batch_data->first;
