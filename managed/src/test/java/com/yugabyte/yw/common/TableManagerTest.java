@@ -175,15 +175,15 @@ import static org.mockito.Mockito.when;
       namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(pi,
           testUniverse.getUniverseDetails().nodePrefix, testProvider);
     }
-    
+
     List<String> cmd = new LinkedList<>();
     cmd.add(PY_WRAPPER);
     cmd.add(BACKUP.getScript());
     cmd.add("--masters");
     // TODO(bogdan): we do not have nodes to test this?
-    
+
     cmd.add(testUniverse.getMasterAddresses());
-    
+
     cmd.add("--table");
     cmd.add(backupTableParams.tableName);
     cmd.add("--keyspace");
@@ -199,7 +199,7 @@ import static org.mockito.Mockito.when;
       cmd.add("--ssh_key_path");
       cmd.add(pkPath);
     }
-    cmd.add("--s3bucket");
+    cmd.add("--backup_location");
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
     cmd.add(storageType);
@@ -324,6 +324,19 @@ import static org.mockito.Mockito.when;
   }
 
   @Test
+  public void testCreateGcsBackup() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
+    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);;
+    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "gcs");
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    tableManager.createBackup(backupTableParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
   public void testRestoreS3Backup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
@@ -340,10 +353,25 @@ import static org.mockito.Mockito.when;
   public void testRestoreNfsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
-    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.RESTORE);
+    BackupTableParams backupTableParams = getBackupTableParams(
+      BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    tableManager.createBackup(backupTableParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testRestoreGcsBackup() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
+    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);;
+    BackupTableParams backupTableParams = getBackupTableParams(
+      BackupTableParams.ActionType.RESTORE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "gcs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);

@@ -178,6 +178,17 @@
     retries: "{{ yum_retry_count }}"
     when: ansible_os_family != "RedHat"
 
+  - name: Install backup roles - gsutil
+    become: yes
+    become_method: sudo
+    include_role:
+      name: role-install-gcloud
+    vars:
+      gcloud_archive_name: "{{ backup_gcloud_package }}"
+      gcloud_override_components: "{{ backup_gcloud_components }}"
+      gcloud_install_path: "/usr"
+    when: install_backup_packages and cloud_type != "gcp"
+
   when: not air_gap
 
 - name: Register our custom SSH port "{{ custom_ssh_port }}" with SELinux
