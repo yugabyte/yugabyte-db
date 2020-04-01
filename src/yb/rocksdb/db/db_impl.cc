@@ -3238,7 +3238,7 @@ void DBImpl::BackgroundJobComplete(
 
   // delete unnecessary files if any, this is done outside the mutex
   if (job_context->HaveSomethingToDelete() || !log_buffer->IsEmpty() ||
-      !task_priority_updater.Empty() || files_changed_listener_) {
+      !task_priority_updater.Empty() || HasFilesChangedListener()) {
     mutex_.Unlock();
     // Have to flush the info logs before bg_flush_scheduled_--
     // because if bg_flush_scheduled_ becomes 0 and the lock is
@@ -4331,13 +4331,25 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
 }
 #endif  // ROCKSDB_LITE
 
+std::function<void()> DBImpl::GetFilesChangedListener() const {
+  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
+  return files_changed_listener_;
+}
+
+bool DBImpl::HasFilesChangedListener() const {
+  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
+  return files_changed_listener_ != nullptr;
+}
+
 void DBImpl::ListenFilesChanged(std::function<void()> files_changed_listener) {
+  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
   files_changed_listener_ = std::move(files_changed_listener);
 }
 
 void DBImpl::FilesChanged() {
-  if (files_changed_listener_) {
-    files_changed_listener_();
+  auto files_changed_listener = GetFilesChangedListener();
+  if (files_changed_listener) {
+    files_changed_listener();
   }
 }
 
