@@ -17,6 +17,10 @@ linux_packages: []
 backup_packages:
   - s3cmd
 
+backup_gcloud_package: google-cloud-sdk-286.0.0-linux-x86_64.tar.gz
+backup_gcloud_components:
+  - gsutil
+
 dev_packages:
   - emacs
   - gdb
