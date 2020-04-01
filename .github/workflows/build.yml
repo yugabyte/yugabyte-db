@@ -25,21 +25,11 @@ jobs:
     strategy:
       matrix:
         name:
-          #- macOS
           - "CentOS 7"
-          #- "Ubuntu 18.04"
         include:
-          #- name: "macOS"
-          #  os: macos-latest
-          #  docker_image: none
-
           - name: "CentOS 7"
             os: ubuntu-latest
             docker_image: yugabyteci/yb_build_infra_centos7:v2020-03-28T07_29_17
-
-          #- name: "Ubuntu 18.04"
-          #  os: ubuntu-latest
-          #  docker_image: yugabyteci/yb_build_infra_ubuntu1804:v2020-03-11T23_43_13
 
     if: >
       (github.event_name == 'push' &&
