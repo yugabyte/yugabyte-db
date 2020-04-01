@@ -26,7 +26,7 @@ const storageConfigTypes = {
       label: "Access Secret",
       placeHolder: "AWS Access Secret"
     }, {
-      id: "S3_BUCKET",
+      id: "BACKUP_LOCATION",
       label: "S3 Bucket",
       placeHolder: "S3 Bucket"
     }]
@@ -34,9 +34,21 @@ const storageConfigTypes = {
   NFS: {
     title: "NFS Storage",
     fields: [{
-      id: "NFS_PATH",
+      id: "BACKUP_LOCATION",
       label: "NFS Storage Path",
       placeHolder: "NFS Storage Path"
+    }]
+  },
+  GCS: {
+    title: "GCS Storage",
+    fields: [{
+      id: "BACKUP_LOCATION",
+      label: "GCS Bucket",
+      placeHolder: "GCS Bucket"
+    }, {
+      id: "GCS_CREDENTIALS_JSON",
+      label: "GCS Credentials",
+      placeHolder: "GCS Credentials JSON"
     }]
   }
 };
@@ -47,6 +59,8 @@ class StorageConfiguration extends Component {
     switch (configName) {
       case "S3":
         return <img src={awss3Logo} alt="AWS S3" className="aws-logo" />;
+      case "GCS":
+        return <h3><i className="fa fa-database"></i>GCS</h3>;
       default:
         return <h3><i className="fa fa-database"></i>NFS</h3>;
     }
@@ -130,7 +144,7 @@ class StorageConfiguration extends Component {
               );
             }
           }
-          
+
           const configFields = [];
           const configTemplate = storageConfigTypes[configName];
           configTemplate.fields.forEach((field)=> {
@@ -141,8 +155,9 @@ class StorageConfiguration extends Component {
                   <div className="form-item-custom-label">{field.label}</div>
                 </Col>
                 <Col lg={10}>
-                  <Field name={field.id} placeHolder={field.placeHolder} input={{value: value, disabled: isDefinedNotNull(value)}} 
-                        component={YBTextInput} className={"data-cell-input"}/>
+                  <Field name={field.id} placeHolder={field.placeHolder}
+                         input={{value: value, disabled: isDefinedNotNull(value)}}
+                         component={YBTextInput} className={"data-cell-input"}/>
                 </Col>
               </Row>
             );
@@ -160,14 +175,14 @@ class StorageConfiguration extends Component {
               Are you sure you want to delete {config.name} Storage Configuration?
             </YBConfirmModal>}
           </div>);
-      
+
 
           configs.push(
             this.wrapFields(configFields, configName, configControls)
           );
 
         } else {
-          
+
           const configFields = [];
           const config = storageConfigTypes[configName];
           config.fields.forEach((field)=> {
@@ -197,10 +212,10 @@ class StorageConfiguration extends Component {
         <div className="provider-config-container">
           <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
             { error && <Alert bsStyle="danger">{error}</Alert> }
-            <YBTabsPanel 
-                defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()} 
-                activeTab={activeTab} id="storage-config-tab-panel" 
-                className="config-tabs" routePrefix="/config/backup/"> 
+            <YBTabsPanel
+                defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
+                activeTab={activeTab} id="storage-config-tab-panel"
+                className="config-tabs" routePrefix="/config/backup/">
               { configs }
             </YBTabsPanel>
 

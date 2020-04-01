@@ -85,7 +85,7 @@ public class CustomerConfig extends Model {
     JsonNode maskedData = data.deepCopy();
     for (Iterator<String> it = maskedData.fieldNames(); it.hasNext(); ) {
       String key = it.next();
-      if (key.contains("KEY") || key.contains("SECRET")) {
+      if (key.contains("KEY") || key.contains("SECRET") || key.contains("CREDENTIALS")) {
         ((ObjectNode) maskedData).put(key, maskedData.get(key).asText().replaceAll("(?<!^.?).(?!.?$)", "*"));
       }
     }

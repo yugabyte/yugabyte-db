@@ -96,13 +96,8 @@ public class Backup extends Model {
       );
     }
     if (customerConfig != null) {
-      JsonNode storageNode = null;
       // TODO: These values, S3 vs NFS / S3_BUCKET vs NFS_PATH come from UI right now...
-      if (customerConfig.name.equals("S3")) {
-        storageNode = customerConfig.getData().get("S3_BUCKET");
-      } else if (customerConfig.name.equals("NFS")) {
-        storageNode = customerConfig.getData().get("NFS_PATH");
-      }
+      JsonNode storageNode = customerConfig.getData().get("BACKUP_LOCATION");
       if (storageNode != null) {
         String storagePath = storageNode.asText();
         if (storagePath != null && !storagePath.isEmpty()) {
