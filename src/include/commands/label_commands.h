@@ -19,6 +19,9 @@
 
 #include "postgres.h"
 
-Oid create_vertex_label(char *graph_name, char *label_name);
+#define LABEL_TYPE_VERTEX 'v'
+#define LABEL_TYPE_EDGE 'e'
+
+Oid create_label(char *graph_name, char *label_name, char label_type);
 
 #endif

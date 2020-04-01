@@ -54,11 +54,17 @@
  */
 #define gen_label_relation_name(label_name) (label_name)
 
-static void create_table_for_vertex_label(char *graph_name, char *label_name,
-                                          char *schema_name, char *rel_name,
-                                          char *seq_name);
+static void create_table_for_label(char *graph_name, char *label_name,
+                                   char *schema_name, char *rel_name,
+                                   char *seq_name, char label_type);
 
 // common
+static List *create_edge_table_elements(char *graph_name, char *label_name,
+                                        char *schema_name, char *rel_name,
+                                        char *seq_name);
+static List *create_vertex_table_elements(char *graph_name, char *label_name,
+                                          char *schema_name, char *rel_name,
+                                          char *seq_name);
 static void create_sequence_for_label(RangeVar *seq_range_var);
 static Constraint *build_pk_constraint(void);
 static Constraint *build_id_default(char *graph_name, char *label_name,
@@ -76,7 +82,7 @@ static void range_var_callback_for_remove_relation(const RangeVar *rel,
                                                    Oid odl_rel_oid,
                                                    void *arg);
 
-Oid create_vertex_label(char *graph_name, char *label_name)
+Oid create_label(char *graph_name, char *label_name, char label_type)
 {
     graph_cache_data *cache_data;
     Oid graph_oid;
@@ -106,8 +112,8 @@ Oid create_vertex_label(char *graph_name, char *label_name)
     create_sequence_for_label(seq_range_var);
 
     // create a table for the new label
-    create_table_for_vertex_label(graph_name, label_name, schema_name,
-                                  rel_name, seq_name);
+    create_table_for_label(graph_name, label_name, schema_name, rel_name,
+                           seq_name, label_type);
 
     // associate the sequence with the "id" column
     alter_sequence_owned_by_for_label(seq_range_var, rel_name);
@@ -117,8 +123,10 @@ Oid create_vertex_label(char *graph_name, char *label_name)
 
     // record the new label in ag_label
     relation_id = get_relname_relid(rel_name, nsp_id);
-    label_oid = insert_label(label_name, graph_oid, label_id,
-                             LABEL_KIND_VERTEX, relation_id);
+
+    label_oid = insert_label(label_name, graph_oid, label_id, label_type,
+                             relation_id);
+
     CommandCounterIncrement();
 
     return label_oid;
@@ -126,15 +134,15 @@ Oid create_vertex_label(char *graph_name, char *label_name)
 
 // CREATE TABLE `schema_name`.`rel_name` (
 //   "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
+//   "start_id" graphid NOT NULL note: only for edge labels
+//   "end_id" graphid NOT NULL  note: only for edge labels
 //   "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
 // )
-static void create_table_for_vertex_label(char *graph_name, char *label_name,
-                                          char *schema_name, char *rel_name,
-                                          char *seq_name)
+static void create_table_for_label(char *graph_name, char *label_name,
+                                   char *schema_name, char *rel_name,
+                                   char *seq_name, char label_type)
 {
     CreateStmt *create_stmt;
-    ColumnDef *id;
-    ColumnDef *props;
     PlannedStmt *wrapper;
 
     create_stmt = makeNode(CreateStmt);
@@ -142,18 +150,16 @@ static void create_table_for_vertex_label(char *graph_name, char *label_name,
     // relpersistence is set to RELPERSISTENCE_PERMANENT by makeRangeVar()
     create_stmt->relation = makeRangeVar(schema_name, rel_name, -1);
 
-    // "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...)
-    id = makeColumnDef("id", GRAPHIDOID, -1, InvalidOid);
-    id->constraints = list_make2(build_pk_constraint(),
-                                 build_id_default(graph_name, label_name,
-                                                  schema_name, seq_name));
+    if (label_type == 'e')
+        create_stmt->tableElts = create_edge_table_elements(
+            graph_name, label_name, schema_name, rel_name, seq_name);
+    else if (label_type == 'v')
+        create_stmt->tableElts = create_vertex_table_elements(
+            graph_name, label_name, schema_name, rel_name, seq_name);
+    else
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                        errmsg("undefined label type \'%c\'", label_type)));
 
-    // "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
-    props = makeColumnDef("properties", AGTYPEOID, -1, InvalidOid);
-    props->constraints = list_make2(build_not_null_constraint(),
-                                    build_properties_default());
-
-    create_stmt->tableElts = list_make2(id, props);
 
     create_stmt->inhRelations = NIL;
     create_stmt->partbound = NULL;
@@ -175,6 +181,68 @@ static void create_table_for_vertex_label(char *graph_name, char *label_name,
                    PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
                    NULL);
     // CommandCounterIncrement() is called in ProcessUtility()
+}
+
+// CREATE TABLE `schema_name`.`rel_name` (
+//   "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
+//   "start_id" graphid NOT NULL
+//   "end_id" graphid NOT NULL
+//   "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
+// )
+static List *create_edge_table_elements(char *graph_name, char *label_name,
+                                        char *schema_name, char *rel_name,
+                                        char *seq_name)
+{
+    ColumnDef *id;
+    ColumnDef *start_id;
+    ColumnDef *end_id;
+    ColumnDef *props;
+
+    // "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...)
+    id = makeColumnDef("id", GRAPHIDOID, -1, InvalidOid);
+    id->constraints = list_make2(build_pk_constraint(),
+                                 build_id_default(graph_name, label_name,
+                                                  schema_name, seq_name));
+
+    // "start_id" graphid NOT NULL
+    start_id = makeColumnDef("start_id", GRAPHIDOID, -1, InvalidOid);
+    start_id->constraints = list_make1(build_not_null_constraint());
+
+    // "end_id" graphid NOT NULL
+    end_id = makeColumnDef("end_id", GRAPHIDOID, -1, InvalidOid);
+    end_id->constraints = list_make1(build_not_null_constraint());
+
+    // "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
+    props = makeColumnDef("properties", AGTYPEOID, -1, InvalidOid);
+    props->constraints = list_make2(build_not_null_constraint(),
+                                    build_properties_default());
+
+    return list_make4(id, start_id, end_id, props);
+}
+
+// CREATE TABLE `schema_name`.`rel_name` (
+//   "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
+//   "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
+// )
+static List *create_vertex_table_elements(char *graph_name, char *label_name,
+                                          char *schema_name, char *rel_name,
+                                          char *seq_name)
+{
+    ColumnDef *id;
+    ColumnDef *props;
+
+    // "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...)
+    id = makeColumnDef("id", GRAPHIDOID, -1, InvalidOid);
+    id->constraints = list_make2(build_pk_constraint(),
+                                 build_id_default(graph_name, label_name,
+                                                  schema_name, seq_name));
+
+    // "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
+    props = makeColumnDef("properties", AGTYPEOID, -1, InvalidOid);
+    props->constraints = list_make2(build_not_null_constraint(),
+                                    build_properties_default());
+
+    return list_make2(id, props);
 }
 
 // CREATE SEQUENCE `seq_range_var` MAXVALUE `LOCAL_ID_MAX`

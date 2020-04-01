@@ -121,6 +121,7 @@ typedef struct cypher_relationship
     char *label;
     Node *props; // map or parameter
     cypher_rel_dir dir;
+    int location;
 } cypher_relationship;
 
 /*

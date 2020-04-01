@@ -599,9 +599,19 @@ static List *transform_cypher_create_path(cypher_parsestate *cpstate,
         }
         else if (is_ag_node(lfirst(lc), cypher_relationship))
         {
-            ereport(ERROR,
-                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("edges are not supported in CREATE clause")));
+            cypher_relationship *edge = lfirst(lc);
+
+            if (!edge->label)
+                ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("cannot create a edge without a label"),
+                        parser_errposition(&cpstate->pstate, edge->location)));
+
+            // create the label entry if it does not exist
+            if (!label_exists(edge->label, cpstate->graph_oid))
+                create_label(cpstate->graph_name, edge->label, LABEL_TYPE_EDGE);
+
+            //exit, only create the first vertex for now
+            return transformed_path;
         }
         else
         {
@@ -631,7 +641,7 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
 
     // create the label entry if it does not exist
     if (!label_exists(node->label, cpstate->graph_oid))
-        create_vertex_label(cpstate->graph_name, node->label);
+        create_label(cpstate->graph_name, node->label, LABEL_TYPE_VERTEX);
 
     // lock the relation of the label
     rv = makeRangeVar(cpstate->graph_name, node->label, -1);

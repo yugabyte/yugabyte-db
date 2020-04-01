@@ -726,6 +726,7 @@ path_relationship:
             cypher_relationship *n = (cypher_relationship *)$2;
 
             n->dir = CYPHER_REL_DIR_NONE;
+            n->location = @2;
 
             $$ = $2;
         }
@@ -734,6 +735,7 @@ path_relationship:
             cypher_relationship *n = (cypher_relationship *)$2;
 
             n->dir = CYPHER_REL_DIR_RIGHT;
+            n->location = @2;
 
             $$ = $2;
         }
@@ -742,6 +744,7 @@ path_relationship:
             cypher_relationship *n = (cypher_relationship *)$3;
 
             n->dir = CYPHER_REL_DIR_LEFT;
+            n->location = @3;
 
             $$ = $3;
         }

@@ -50,11 +50,33 @@ SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
  {"id": 281474976710659, "label": "v", "properties": {"key": "value"}}::vertex
 (3 rows)
 
--- for now, edges are not supported
+--edges without labels are not supported
 SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) AS (a agtype);
-ERROR:  edges are not supported in CREATE clause
-LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$)...
-                                               ^
+ERROR:  cannot create a edge without a label
+LINE 1: ...LECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) A...
+                                                             ^
+--paths will only create the first vertex
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[:e]-(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Validate only the first vertex was created
+SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
+                                       n                                       
+-------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "v", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "v", "properties": {}}::vertex
+ {"id": 281474976710659, "label": "v", "properties": {"key": "value"}}::vertex
+ {"id": 281474976710660, "label": "v", "properties": {}}::vertex
+(4 rows)
+
+--MATCH does not support edges
+SELECT * FROM cypher_create.e;
+ id | start_id | end_id | properties 
+----+----------+--------+------------
+(0 rows)
+
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a int);
@@ -68,7 +90,9 @@ LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a a...
                       ^
 HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to table cypher_create.v
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table cypher_create.v
+drop cascades to table cypher_create.e
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------

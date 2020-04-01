@@ -30,8 +30,17 @@ SELECT * FROM cypher('cypher_create', $$CREATE (:v {key: 'value'})$$) AS (a agty
 
 SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
 
--- for now, edges are not supported
+--edges without labels are not supported
 SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) AS (a agtype);
+
+--paths will only create the first vertex
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[:e]-(:v)$$) AS (a agtype);
+
+--Validate only the first vertex was created
+SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
+
+--MATCH does not support edges
+SELECT * FROM cypher_create.e;
 
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
