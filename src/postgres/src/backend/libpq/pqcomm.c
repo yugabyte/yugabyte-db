@@ -143,6 +143,9 @@ static int	PqSendBufferSize;	/* Size send buffer */
 static int	PqSendPointer;		/* Next index to store a byte in PqSendBuffer */
 static int	PqSendStart;		/* Next index to send a byte in PqSendBuffer */
 static int	PqSendYbSavedBufPos;/* Value of PqSendPointer to restore during statement restart */
+static bool PqSendYbNonRestartableData;	/* Indicates whether data sent to user should be treated as
+										 * preventing transparent restarts.
+										 * This should be false e.g. for BEGIN statement. */
 
 static char PqRecvBuffer[PQ_RECV_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */
@@ -203,6 +206,7 @@ pq_init(void)
 	PqSendBuffer = MemoryContextAlloc(TopMemoryContext, PqSendBufferSize);
 	PqSendPointer = PqSendStart = PqRecvPointer = PqRecvLength = 0;
 	PqSendYbSavedBufPos = 0;
+	PqSendYbNonRestartableData = true;
 	PqCommBusy = false;
 	PqCommReadingMsg = false;
 	DoingCopyOut = false;
@@ -314,11 +318,17 @@ socket_close(int code, Datum arg)
  * yb_pqcomm_extensions.h
  */
 
-/* Save current output buffer position, allowing for rollback if needed. */
+/*
+ * Save current output buffer position, allowing for rollback if needed.
+ *
+ * sending_non_restartable_data controls whether internal_flush should mark data as sent.
+ * Disabling this is used specifically for BEGIN statement to not prevent transaction restart.
+ */
 void
-YBSaveOutputBufferPosition(void)
+YBSaveOutputBufferPosition(bool sending_non_restartable_data)
 {
 	PqSendYbSavedBufPos = PqSendPointer;
+	PqSendYbNonRestartableData = sending_non_restartable_data;
 }
 
 /*
@@ -1452,7 +1462,9 @@ socket_flush(void)
 static int
 internal_flush(void)
 {
-	YBMarkDataSent();
+	if (PqSendYbNonRestartableData) {
+		YBMarkDataSent();
+	}
 
 	static int	last_reported_send_errno = 0;
 

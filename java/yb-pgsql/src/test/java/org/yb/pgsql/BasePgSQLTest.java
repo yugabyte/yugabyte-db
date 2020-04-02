@@ -52,6 +52,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeMap;
@@ -1270,7 +1271,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
 
-  public static class ConnectionBuilder {
+  // TODO(alex): This should be reworked and made immutable.
+  public static class ConnectionBuilder implements Cloneable {
     private static final int MAX_CONNECTION_ATTEMPTS = 15;
     private static final int INITIAL_CONNECTION_DELAY_MS = 500;
 
@@ -1280,6 +1282,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     private String database = DEFAULT_PG_DATABASE;
     private String user = TEST_PG_USER;
     private String password = null;
+    private String preferQueryMode = null;
     private IsolationLevel isolationLevel = IsolationLevel.DEFAULT;
     private AutoCommit autoCommit = AutoCommit.DEFAULT;
 
@@ -1317,14 +1320,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return this;
     }
 
+    ConnectionBuilder setPreferQueryMode(String preferQueryMode) {
+      this.preferQueryMode = preferQueryMode;
+      return this;
+    }
+
     ConnectionBuilder newBuilder() {
-      return new ConnectionBuilder(miniCluster)
-          .setTServer(tserverIndex)
-          .setDatabase(database)
-          .setUser(user)
-          .setPassword(password)
-          .setIsolationLevel(isolationLevel)
-          .setAutoCommit(autoCommit);
+      return clone();
+    }
+
+    @Override
+    protected ConnectionBuilder clone() {
+      try {
+        return (ConnectionBuilder) super.clone();
+      } catch (CloneNotSupportedException ex) {
+        throw new RuntimeException("This can't happen, but to keep compiler happy", ex);
+      }
     }
 
     Connection connect() throws Exception {
@@ -1336,15 +1347,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           postgresAddress.getPort(),
           database
       );
+
+      Properties props = new Properties();
+      props.setProperty("user", user);
+      if (password != null) {
+        props.setProperty("password", password);
+      }
+      if (preferQueryMode != null) {
+        props.setProperty("preferQueryMode", preferQueryMode);
+      }
       if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
-        url += "?loggerLevel=TRACE";
+        props.setProperty("loggerLevel", "TRACE");
       }
 
       int delayMs = INITIAL_CONNECTION_DELAY_MS;
       for (int attempt = 1; attempt <= MAX_CONNECTION_ATTEMPTS; ++attempt) {
         Connection connection = null;
         try {
-          connection = checkNotNull(DriverManager.getConnection(url, user, password));
+          connection = checkNotNull(DriverManager.getConnection(url, props));
 
           if (isolationLevel != null) {
             connection.setTransactionIsolation(isolationLevel.pgIsolationLevel);
