@@ -117,10 +117,11 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     return PGConn::Connect(pg_host_port_, dbname);
   }
 
-  // Have several threads doing updates and several threads doing large scans in parallel.  If
-  // deferrable is true, then the scans are in deferrable transactions, so no read restarts are
-  // expected.  Otherwise, the scans are in transactions with snapshot isolation, so read restarts
-  // are expected.
+  // Have several threads doing updates and several threads doing large scans in parallel.
+  // If deferrable is true, then the scans are in deferrable transactions, so no read restarts are
+  // expected.
+  // Otherwise, the scans are in transactions with snapshot isolation, but we still don't expect any
+  // read restarts to be observer because they should be transparently handled on the postgres side.
   void TestReadRestart(bool deferrable = true);
 
   // Run interleaved INSERT, SELECT with specified isolation level and row mark.  Possible isolation
@@ -199,7 +200,6 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(With)) {
 
 void PgMiniTest::TestReadRestart(const bool deferrable) {
   constexpr CoarseDuration kWaitTime = 60s;
-  constexpr float kRequiredReadRestartRate = 0.5;
   constexpr int kKeys = 100;
   constexpr int kNumReadThreads = 8;
   constexpr int kNumUpdateThreads = 8;
@@ -272,20 +272,15 @@ void PgMiniTest::TestReadRestart(const bool deferrable) {
                    + num_read_successes.load(std::memory_order_acquire));
   LOG(INFO) << "Successful reads: " << num_read_successes.load(std::memory_order_acquire) << "/"
       << num_reads;
-  if (deferrable) {
-    ASSERT_EQ(num_read_restarts.load(std::memory_order_acquire), 0);
-    ASSERT_GT(num_read_successes.load(std::memory_order_acquire), kRequiredNumReads);
-  } else {
-    ASSERT_GT(static_cast<float>(num_read_restarts.load(std::memory_order_acquire)) / num_reads,
-              kRequiredReadRestartRate);
-  }
+  ASSERT_EQ(num_read_restarts.load(std::memory_order_acquire), 0);
+  ASSERT_GT(num_read_successes.load(std::memory_order_acquire), kRequiredNumReads);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(Deferrable)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSerializableDeferrable)) {
   TestReadRestart(true /* deferrable */);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestart)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot)) {
   TestReadRestart(false /* deferrable */);
 }
 

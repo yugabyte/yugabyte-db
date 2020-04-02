@@ -1011,7 +1011,8 @@ bool YBIsDataSent(void)
 	// Note: we don't support nested transactions (savepoints) yet,
 	// but once we do - we have to make sure this works as intended.
 	TransactionState s = CurrentTransactionState;
-	return s->ybDataSent;
+	// Ignoring "idle" transaction state, a leftover from a previous transaction
+	return s->blockState != TBLOCK_DEFAULT && s->ybDataSent;
 }
 
 /* ----------------------------------------------------------------
@@ -2878,10 +2879,10 @@ YBCCommitTransactionAndUpdateBlockState() {
 		CommitTransaction();
 		s->blockState = TBLOCK_DEFAULT;
 	} else {
-    /*
-     * TBLOCK_STARTED means that we aren't in a transaction block, so should switch to
-     * default state in this case.
-     */
+		/*
+		 * TBLOCK_STARTED means that we aren't in a transaction block, so should switch to
+		 * default state in this case.
+		 */
 		s->blockState = s->blockState == TBLOCK_STARTED ? TBLOCK_DEFAULT : TBLOCK_ABORT;
 		YBCHandleCommitError();
 	}
@@ -5273,11 +5274,13 @@ ShowTransactionStateRec(const char *str, TransactionState s)
 
 	/* use ereport to suppress computation if msg will not be printed */
 	ereport(DEBUG5,
-			(errmsg_internal("%s(%d) name: %s; blockState: %s; state: %s, xid/subid/cid: %u/%u/%u%s%s",
+			(errmsg_internal("%s(%d) name: %s; blockState: %s; "
+							 "state: %s, ybDataSent: %s, xid/subid/cid: %u/%u/%u%s%s",
 							 str, s->nestingLevel,
 							 PointerIsValid(s->name) ? s->name : "unnamed",
 							 BlockStateAsString(s->blockState),
 							 TransStateAsString(s->state),
+							 s->ybDataSent ? "Y" : "N",
 							 (unsigned int) s->transactionId,
 							 (unsigned int) s->subTransactionId,
 							 (unsigned int) currentCommandId,
