@@ -1,22 +1,12 @@
 ## Maven
 
-Add the following snippet to your `pom.xml` for Scala 2.10:
-
-```xml
-<dependency>
-  <groupId>com.yugabyte.spark</groupId>
-  <artifactId>spark-cassandra-connector_2.10</artifactId>
-  <version>2.0.5-yb-2</version>
-</dependency>
-```
-
-For Scala 2.11:
+To build your Java application using the YugabyteDB Spark Connector for YCQL, add the following snippet to your `pom.xml` for Scala 2.11:
 
 ```xml
 <dependency>
   <groupId>com.yugabyte.spark</groupId>
   <artifactId>spark-cassandra-connector_2.11</artifactId>
-  <version>2.0.5-yb-2</version>
+  <version>2.4-yb</version>
 </dependency>
 ```
 
