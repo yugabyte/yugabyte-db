@@ -1,3 +1,40 @@
+---
+title: Build a Python application using Apache Spark and YugabyteDB
+headerTitle: Apache Spark
+linkTitle: Apache Spark
+description: Build a Python application using Apache Spark and YugabyteDB
+menu:
+  latest:
+    identifier: apache-spark-3-python
+    parent: ecosystem-integrations
+    weight: 572
+
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/scala" class="nav-link">
+      <i class="icon-scala" aria-hidden="true"></i>
+      Scala
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/java" class="nav-link">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      Java
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/python" class="nav-link active">
+      <i class="icon-python" aria-hidden="true"></i>
+      Python
+    </a>
+  </li>
+
+</ul>
 
 ## PySpark
 
