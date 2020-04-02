@@ -552,3 +552,70 @@ SELECT * FROM single_row_col_order ORDER BY d, b;
 
 DELETE FROM single_row_col_order WHERE b = 2 and d = 4;
 SELECT * FROM single_row_col_order ORDER BY d, b;
+
+--
+-- Test single-row with default values
+--
+
+CREATE TABLE single_row_default_col(k int PRIMARY KEY, a int default 10, b int default 20 not null, c int);
+
+------------------
+-- Test Planning
+
+EXPLAIN (COSTS FALSE) UPDATE single_row_default_col SET a = 3 WHERE k = 2;
+EXPLAIN (COSTS FALSE) UPDATE single_row_default_col SET b = 3 WHERE k = 2;
+EXPLAIN (COSTS FALSE) UPDATE single_row_default_col SET a = 3, c = 4 WHERE k = 2;
+EXPLAIN (COSTS FALSE) UPDATE single_row_default_col SET b = NULL, c = 5 WHERE k = 3;
+EXPLAIN (COSTS FALSE) UPDATE single_row_default_col SET a = 3, b = 3, c = 3 WHERE k = 2;
+
+------------------
+-- Test Execution
+
+-- Insert should use defaults for missing columns.
+INSERT INTO single_row_default_col(k, a, b, c) VALUES (1, 1, 1, 1);
+INSERT INTO single_row_default_col(k, c) VALUES (2, 2);
+INSERT INTO single_row_default_col(k, a, c) VALUES (3, NULL, 3);
+INSERT INTO single_row_default_col(k, a, c) VALUES (4, NULL, 4);
+
+-- Setting b to null should not be allowed.
+INSERT INTO single_row_default_col(k, a, b, c) VALUES (5, 5, NULL, 5);
+
+SELECT * FROM single_row_default_col ORDER BY k;
+
+-- Updates should not modify the existing (non-updated) values.
+UPDATE single_row_default_col SET b = 3 WHERE k = 2;
+SELECT * FROM single_row_default_col ORDER BY k;
+
+UPDATE single_row_default_col SET a = 3, c = 4 WHERE k = 2;
+SELECT * FROM single_row_default_col ORDER BY k;
+
+-- a should stay null (because it was explicitly set).
+UPDATE single_row_default_col SET b = 4, c = 5 WHERE k = 3;
+SELECT * FROM single_row_default_col ORDER BY k;
+
+UPDATE single_row_default_col SET a = 4 WHERE k = 3;
+SELECT * FROM single_row_default_col ORDER BY k;
+
+-- Setting b to null should not be allowed.
+UPDATE single_row_default_col SET b = NULL, c = 5 WHERE k = 3;
+SELECT * FROM single_row_default_col ORDER BY k;
+
+ALTER TABLE single_row_default_col ALTER COLUMN a SET DEFAULT 30;
+
+-- Insert should use the new default.
+INSERT INTO single_row_default_col(k, c) VALUES (5, 5);
+SELECT * FROM single_row_default_col ORDER BY k;
+
+-- Updates should not modify the existing (non-updated) values.
+UPDATE single_row_default_col SET a = 4 WHERE k = 4;
+SELECT * FROM single_row_default_col ORDER BY k;
+
+UPDATE single_row_default_col SET c = 6, b = 5 WHERE k = 5;
+SELECT * FROM single_row_default_col ORDER BY k;
+
+UPDATE single_row_default_col SET c = 7, b = 7, a = 7 WHERE k = 5;
+SELECT * FROM single_row_default_col ORDER BY k;
+
+-- Setting b to null should not be allowed.
+UPDATE single_row_default_col SET b = NULL, c = 5 WHERE k = 3;
+SELECT * FROM single_row_default_col ORDER BY k;
