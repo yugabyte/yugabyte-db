@@ -688,7 +688,6 @@ bool YBCExecuteUpdate(Relation rel,
 		FormData_pg_attribute *att_desc = TupleDescAttr(tupleDesc, idx);
 
 		AttrNumber attnum = att_desc->attnum;
-		bool has_default = att_desc->atthasdef;
 		int32_t type_id = att_desc->atttypid;
 		int32_t type_mod = att_desc->atttypmod;
 
@@ -696,9 +695,14 @@ bool YBCExecuteUpdate(Relation rel,
 		if (!IsRealYBColumn(rel, attnum))
 			continue;
 
-		/* Skip unmodified columns */
+		/*
+		 * Skip unmodified columns if possible.
+		 * Note: we only do this for the single-row case, as otherwise there
+		 * might be triggers that modify the heap tuple to set (other) columns
+		 * (e.g. using the SPI module functions).
+		 */
 		int bms_idx = attnum - YBGetFirstLowInvalidAttributeNumber(rel);
-		if (!whole_row && !bms_is_member(bms_idx, updatedCols) && !has_default)
+		if (isSingleRow && !whole_row && !bms_is_member(bms_idx, updatedCols))
 			continue;
 
 		/* Assign this attr's value, handle expression pushdown if needed. */
