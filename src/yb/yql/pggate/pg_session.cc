@@ -32,6 +32,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_error.h"
@@ -211,10 +212,10 @@ void InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       QLExprExecutor executor;
-      QLValue result;
-      auto s = executor.EvalExpr(column_value, nullptr, &result);
+      QLExprResult result;
+      auto s = executor.EvalExpr(column_value, nullptr, result.Writer());
 
-      components->push_back(docdb::PrimitiveValue::FromQLValuePB(result.value(), sorting_type));
+      components->push_back(docdb::PrimitiveValue::FromQLValuePB(result.Value(), sorting_type));
     }
     ++column_idx;
   }

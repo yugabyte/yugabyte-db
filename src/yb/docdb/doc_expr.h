@@ -28,8 +28,7 @@ class DocExprExecutor : public QLExprExecutor {
   // Evaluate column reference.
   CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,
                                const QLTableRow* table_row,
-                               QLValue *result,
-                               const QLValuePB** direct_value) override;
+                               QLExprResultWriter result_writer) override;
 
   // Evaluate call to tablet-server builtin operator.
   CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
@@ -44,16 +43,18 @@ class DocExprExecutor : public QLExprExecutor {
 
   // Evaluate aggregate functions for each row.
   CHECKED_STATUS EvalCount(QLValue *aggr_count);
-  CHECKED_STATUS EvalSum(const QLValue& val, QLValue *aggr_sum);
-  CHECKED_STATUS EvalSumInt8(const QLValue& val, QLValue *aggr_sum);
-  CHECKED_STATUS EvalSumInt16(const QLValue& val, QLValue *aggr_sum);
-  CHECKED_STATUS EvalSumInt32(const QLValue& val, QLValue *aggr_sum);
-  CHECKED_STATUS EvalSumInt64(const QLValue& val, QLValue *aggr_sum);
-  CHECKED_STATUS EvalSumFloat(const QLValue& val, QLValue *aggr_sum);
-  CHECKED_STATUS EvalSumDouble(const QLValue& val, QLValue *aggr_sum);
-  CHECKED_STATUS EvalMax(const QLValue& val, QLValue *aggr_max);
-  CHECKED_STATUS EvalMin(const QLValue& val, QLValue *aggr_min);
-  CHECKED_STATUS EvalAvg(const QLValue& val, QLValue *aggr_avg);
+  CHECKED_STATUS EvalSum(const QLValuePB& val, QLValue *aggr_sum);
+  template <class Extractor>
+  CHECKED_STATUS EvalSumInt(
+      const PgsqlExpressionPB& expr, const QLTableRow& table_row, QLValue *aggr_sum,
+      const Extractor& extractor);
+  template <class Extractor, class Setter>
+  CHECKED_STATUS EvalSumReal(
+      const PgsqlExpressionPB& expr, const QLTableRow& table_row, QLValue *aggr_sum,
+      const Extractor& extractor, const Setter& setter);
+  CHECKED_STATUS EvalMax(const QLValuePB& val, QLValue *aggr_max);
+  CHECKED_STATUS EvalMin(const QLValuePB& val, QLValue *aggr_min);
+  CHECKED_STATUS EvalAvg(const QLValuePB& val, QLValue *aggr_avg);
 
   CHECKED_STATUS EvalParametricToJson(const QLExpressionPB& operand,
                                       const QLTableRow& table_row,
@@ -62,7 +63,7 @@ class DocExprExecutor : public QLExprExecutor {
 
  protected:
   virtual CHECKED_STATUS GetTupleId(QLValue *result) const;
-  vector<QLValue> aggr_result_;
+  std::vector<QLExprResult> aggr_result_;
 };
 
 } // namespace docdb
