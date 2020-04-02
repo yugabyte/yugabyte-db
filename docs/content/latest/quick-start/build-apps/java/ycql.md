@@ -1,5 +1,6 @@
 ---
 title: Use Java to build a YugabyteDB application
+headerTitle: Build a Java app
 linkTitle: Build a Java app
 description: Follow this tutorial to use Java and YCQL to build a simple YugabyteDB application.
 menu:
@@ -52,7 +53,7 @@ To build your Java application using the YugabyteDB Cassandra driver, add the fo
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
 - installed JDK version 1.8+ and maven 3.3+
 
 ### Create the Maven build file
