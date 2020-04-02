@@ -59,6 +59,7 @@ def generate_ts():
 
 class EntryType:
     NODE = "node"
+    NODE_NAME = "node_name"
     TIMESTAMP = "timestamp"
     MESSAGE = "message"
     DETAILS = "details"
@@ -67,10 +68,11 @@ class EntryType:
 
 
 class Entry:
-    def __init__(self, message, node, process=None):
+    def __init__(self, message, node, process=None, node_name=None):
         self.timestamp = generate_ts()
         self.message = message
         self.node = node
+        self.node_name = node_name
         self.process = process
         # To be filled in.
         self.details = None
@@ -84,6 +86,7 @@ class Entry:
     def as_json(self):
         j = {
             EntryType.NODE: self.node,
+            EntryType.NODE_NAME: self.node_name or "",
             EntryType.TIMESTAMP: self.timestamp,
             EntryType.MESSAGE: self.message,
             EntryType.DETAILS: self.details,
@@ -165,9 +168,10 @@ class KubernetesDetails():
 
 class NodeChecker():
 
-    def __init__(self, node, identity_file, ssh_port, start_time_ms,
+    def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, enable_tls_client):
         self.node = node
+        self.node_name = node_name
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
@@ -184,7 +188,7 @@ class NodeChecker():
         self.ysql_port = ysql_port
 
     def _new_entry(self, message, process=None):
-        return Entry(message, self.node, process)
+        return Entry(message, self.node, process, self.node_name)
 
     def _remote_check_output(self, command):
         cmd_to_run = []
@@ -476,12 +480,14 @@ def send_mail(report, subject, destination, nodes, universe_name, report_only_er
         node_has_error = False
         is_first_check = True
         node_content_data = []
+        node_name = ''
         for node_check_data_row in json_object["data"]:
             if node == node_check_data_row["node"]:
                 if node_check_data_row["has_error"]:
                     node_has_error = True
                 elif report_only_errors:
                     continue
+                node_name = node_check_data_row["node_name"]
                 node_content_data.append(assemble_mail_row(
                     node_check_data_row,
                     is_first_check,
@@ -515,7 +521,8 @@ def send_mail(report, subject, destination, nodes, universe_name, report_only_er
             {}
             border-radius:4px;
             padding:2px 6px;"'''.format(node_header_style_colors)
-        node_header_title = str(node)+'<span {}>{}</span>'.format(badge_style, badge_caption)
+        node_header_title = str(node_name) + '<br>' + str(node) + \
+            '<span {}>{}</span>'.format(badge_style, badge_caption)
         h2_style = '''font-weight:700;
             line-height:1em;
             color:#202951;
@@ -713,15 +720,16 @@ def main():
     universe_version = universe.clusters[0].yb_version if universe.clusters else None
     report = Report(universe_version)
     coordinator = CheckCoordinator(args.retry_interval_secs)
-    summary_nodes = []
+    summary_nodes = {}
     for c in universe.clusters:
         master_nodes = c.master_nodes
         tserver_nodes = c.tserver_nodes
-        all_nodes = set(master_nodes + tserver_nodes)
-        summary_nodes += all_nodes
-        for node in all_nodes:
+        all_nodes = dict(master_nodes)
+        all_nodes.update(dict(tserver_nodes))
+        summary_nodes.update(dict(all_nodes))
+        for (node, node_name) in all_nodes.items():
             checker = NodeChecker(
-                    node, c.identity_file, c.ssh_port,
+                    node, node_name, c.identity_file, c.ssh_port,
                     args.start_time_ms, c.namespace_to_config, c.ysql_port,
                     c.enable_tls_client)
             # TODO: use paramiko to establish ssh connection to the nodes.
@@ -755,7 +763,7 @@ def main():
     if args.destination and (args.send_status or report.has_errors()):
         try:
             send_mail(
-                report, subject, args.destination, summary_nodes,
+                report, subject, args.destination, summary_nodes.keys(),
                 args.universe_name, args.report_only_errors
             )
         except Exception as e:
