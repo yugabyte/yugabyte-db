@@ -40,21 +40,19 @@ namespace bfpg {
 
 //--------------------------------------------------------------------------------------------------
 // Dummy function for minimum opcode.
-template<typename PTypePtr, typename RTypePtr>
-Status NoOp() {
+inline CHECKED_STATUS NoOp() {
   return Status::OK();
 }
 
 // ServerOperator that takes no argument and has no return value.
-template<typename PTypePtr, typename RTypePtr>
-Status ServerOperator() {
+inline CHECKED_STATUS ServerOperator() {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
 
 // ServerOperator that takes 1 argument and has a return value.
 template<typename PTypePtr, typename RTypePtr>
-Status ServerOperator(PTypePtr arg1, RTypePtr result) {
+CHECKED_STATUS ServerOperator(PTypePtr arg1, RTypePtr result) {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
@@ -62,7 +60,7 @@ Status ServerOperator(PTypePtr arg1, RTypePtr result) {
 // This is not used but implemented as an example for future coding.
 // ServerOperator that takes 2 arguments and has a return value.
 template<typename PTypePtr, typename RTypePtr>
-Status ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
+CHECKED_STATUS ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
@@ -154,7 +152,7 @@ Status Equal(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 //--------------------------------------------------------------------------------------------------
 // Now().
-template<typename PTypePtr, typename RTypePtr>
+template<typename RTypePtr>
 Status NowTimeUuid(RTypePtr result) {
   uuid_t linux_time_uuid;
   uuid_generate_time(linux_time_uuid);

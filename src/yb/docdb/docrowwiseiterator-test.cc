@@ -14,6 +14,7 @@
 #include <memory>
 #include <string>
 
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 

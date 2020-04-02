@@ -57,13 +57,15 @@ using JEntry = JsonbMetadata;
 // 4. We store information about whether a container is an array or an object in the JEntry.
 class Jsonb {
  public:
-
   Jsonb();
 
   // Creates an object from a serialized jsonb payload.
   explicit Jsonb(const std::string& jsonb);
 
   explicit Jsonb(std::string&& jsonb);
+
+  void Assign(const std::string& jsonb);
+  void Assign(std::string&& jsonb);
 
   // Creates a serialized jsonb string from plaintext json.
   CHECKED_STATUS FromString(const std::string& json);

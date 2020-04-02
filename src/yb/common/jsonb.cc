@@ -37,12 +37,20 @@ size_t Jsonb::ComputeDataOffset(const size_t num_entries, const uint32_t contain
 Jsonb::Jsonb() {
 }
 
-Jsonb::Jsonb(const std::string& jsonb) :
-  serialized_jsonb_(jsonb) {
+Jsonb::Jsonb(const std::string& jsonb)
+    : serialized_jsonb_(jsonb) {
 }
 
-Jsonb::Jsonb(std::string&& jsonb) :
-    serialized_jsonb_(std::move(jsonb)) {
+Jsonb::Jsonb(std::string&& jsonb)
+    : serialized_jsonb_(std::move(jsonb)) {
+}
+
+void Jsonb::Assign(const std::string& jsonb) {
+  serialized_jsonb_ = jsonb;
+}
+
+void Jsonb::Assign(std::string&& jsonb) {
+  serialized_jsonb_ = std::move(jsonb);
 }
 
 std::string&& Jsonb::MoveSerializedJsonb() {

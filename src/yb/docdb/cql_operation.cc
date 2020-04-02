@@ -583,9 +583,10 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
                                                bool is_insert) {
   using common::Jsonb;
   // Read the json column value inorder to perform a read modify write.
-  QLValue ql_value;
-  RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), &ql_value, nullptr));
-  if (ql_value.IsNull()) {
+  QLExprResult temp;
+  RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), temp.Writer()));
+  const auto& ql_value = temp.Value();
+  if (IsNull(ql_value)) {
     return STATUS_SUBSTITUTE(QLError, "Invalid Json value: ", column_value.ShortDebugString());
   }
   Jsonb jsonb(std::move(ql_value.jsonb_value()));
@@ -659,11 +660,11 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
                                                const UserTimeMicros& user_timestamp,
                                                const ColumnSchema& column,
                                                DocPath* sub_path) {
-  QLValue expr_result;
-  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, &expr_result));
+  QLExprResult expr_result;
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   const yb::bfql::TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
   const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
+      SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type(), write_instr);
   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
 
   // Setting the value for a sub-column
@@ -714,11 +715,11 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   using yb::bfql::TSOpcode;
 
   // Typical case, setting a columns value
-  QLValue expr_result;
-  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, &expr_result));
+  QLExprResult expr_result;
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
   const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
+      SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type(), write_instr);
   switch (write_instr) {
     case TSOpcode::kToJson: FALLTHROUGH_INTENDED;
     case TSOpcode::kScalarInsert:
@@ -758,7 +759,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   }
 
   if (update_indexes_) {
-    new_row->AllocColumn(column_id, expr_result);
+    new_row->AllocColumn(column_id, expr_result.Value());
   }
   return Status::OK();
 }
@@ -1108,9 +1109,9 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         // For new message expr_case == kColumnId when indexing expression is a column-ref.
         if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::EXPR_NOT_SET &&
             index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
-          QLValue result;
-          RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, &result));
-          key_column->mutable_value()->CopyFrom(result.value());
+          QLExprResult result;
+          RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, result.Writer()));
+          result.MoveTo(key_column->mutable_value());
         } else {
           auto result = existing_row.GetValue(index_column.indexed_column_id);
           if (result) {
@@ -1156,24 +1157,25 @@ Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
         key_column->mutable_value()->CopyFrom(*result);
       }
     } else {
-      QLValue result;
+      QLExprResult result;
       if (existing_row.IsEmpty()) {
-        RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, &result));
+        RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, result.Writer()));
       } else {
         // The following code needs to be updated to support various expression including JSONB.
         // For each column in the index key, if there is a new value, see if the value is
         // specified in the new value. Otherwise, use the current value.
         if (new_row.IsColumnSpecified(index_column.indexed_column_id)) {
-          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, &result));
+          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, result.Writer()));
           if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
             index_key_changed = true;
           }
         } else {
-          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, existing_row, &result));
+          RETURN_NOT_OK(expr_executor->EvalExpr(
+              index_column.colexpr, existing_row, result.Writer()));
         }
       }
       if (key_column) {
-        key_column->mutable_value()->CopyFrom(result.value());
+        result.MoveTo(key_column->mutable_value());
       }
     }
   }
@@ -1424,14 +1426,9 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<common::QLScanSp
   resultset->AllocateRow();
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
-    QLValue value;
-    const QLValuePB* value_ptr = nullptr;
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &value, spec->schema(), &value_ptr));
-    if (value_ptr) {
-      resultset->AppendColumn(rscol_index, *value_ptr);
-    } else {
-      resultset->AppendColumn(rscol_index, value);
-    }
+    QLExprResult value;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer(), spec->schema()));
+    resultset->AppendColumn(rscol_index, value.Value());
     rscol_index++;
   }
 
@@ -1446,8 +1443,7 @@ Status QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
 
   int aggr_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &aggr_result_[aggr_index]));
-    aggr_index++;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, aggr_result_[aggr_index++].Writer()));
   }
   return Status::OK();
 }
@@ -1456,7 +1452,7 @@ Status QLReadOperation::PopulateAggregate(const QLTableRow& table_row, QLResultS
   resultset->AllocateRow();
   int column_count = request_.selected_exprs().size();
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
-    resultset->AppendColumn(rscol_index, aggr_result_[rscol_index]);
+    resultset->AppendColumn(rscol_index, aggr_result_[rscol_index].Value());
   }
   return Status::OK();
 }

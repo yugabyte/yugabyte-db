@@ -2617,4 +2617,34 @@ TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
   LOG(INFO) << "Max pending writes: " << max_pending_writes.load();
 }
 
+TEST_F(CppCassandraDriverTest, BigQueryExpr) {
+  const std::string kTableName = "test.key_value";
+  typedef TestTable<std::string> MyTable;
+  MyTable table;
+  ASSERT_OK(table.CreateTable(&session_, kTableName, {"key"}, {"(key)"}));
+
+  constexpr size_t kRows = 400;
+  constexpr size_t kValueSize = RegularBuildVsSanitizers(256_KB, 4_KB);
+
+  auto prepared = ASSERT_RESULT(session_.Prepare(
+      Format("INSERT INTO $0 (key) VALUES (?);", kTableName)));
+
+  for (int32_t i = 0; i != kRows; ++i) {
+    auto statement = prepared.Bind();
+    statement.Bind(0, RandomHumanReadableString(kValueSize));
+    ASSERT_OK(session_.Execute(statement));
+  }
+
+  auto start = MonoTime::Now();
+  auto result = ASSERT_RESULT(session_.ExecuteWithResult(Format(
+      "SELECT MAX(key) FROM $0", kTableName)));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time: " << finish - start;
+
+  auto iterator = result.CreateIterator();
+  ASSERT_TRUE(iterator.Next());
+  LOG(INFO) << "Result: " << iterator.Row().Value(0).ToString();
+  ASSERT_FALSE(iterator.Next());
+}
+
 }  // namespace yb

@@ -20,7 +20,6 @@
 
 #include "yb/yql/pggate/pg_coldesc.h"
 #include "yb/yql/pggate/pg_expr.h"
-#include "yb/common/ql_expr.h"
 
 namespace yb {
 namespace pggate {

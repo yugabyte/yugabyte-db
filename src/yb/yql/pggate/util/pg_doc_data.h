@@ -24,8 +24,6 @@ CHECKED_STATUS WriteColumn(const QLValuePB& col_value, faststring *buffer);
 
 class PgDocData : public PgWire {
  public:
-  static CHECKED_STATUS WriteColumn(const QLValue& col_value, faststring *buffer);
-
   static void LoadCache(const string& data, int64_t *total_row_count, Slice *cursor);
 
   static PgWireDataHeader ReadDataHeader(Slice *cursor);

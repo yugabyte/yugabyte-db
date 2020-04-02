@@ -24,10 +24,6 @@
 namespace yb {
 namespace pggate {
 
-Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
-  return pggate::WriteColumn(col_value.value(), buffer);
-}
-
 Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
   // Write data header.
   bool has_data = true;
