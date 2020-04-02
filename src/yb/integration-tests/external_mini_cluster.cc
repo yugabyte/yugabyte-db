@@ -147,7 +147,7 @@ DEFINE_bool(external_daemon_safe_shutdown, false,
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
 
-DEFINE_int64(external_mini_cluster_max_log_bytes, 50_MB,
+DEFINE_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
              "Max total size of log bytes produced by all external mini-cluster daemons. "
              "The test is shut down if this limit is exceeded.");
 

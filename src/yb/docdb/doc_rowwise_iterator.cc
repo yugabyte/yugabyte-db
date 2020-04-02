@@ -15,6 +15,7 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_value.h"
 

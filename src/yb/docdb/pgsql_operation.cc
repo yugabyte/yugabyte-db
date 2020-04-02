@@ -18,6 +18,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/pg_system_attr.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -159,10 +160,10 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       << "Illegal write instruction";
 
     // Evaluate column value.
-    QLValue expr_result;
-    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+    QLExprResult expr_result;
+    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
     const SubDocument sub_doc =
-        SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
+        SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
 
     // Inserting into specified column.
     DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
@@ -204,12 +205,12 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
              "Unsupported DocDB Expression");
 
       // Evaluate column value.
-      QLValue expr_result;
-      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result, &schema_));
+      QLExprResult expr_result;
+      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer(), &schema_));
 
       // Inserting into specified column.
       const SubDocument sub_doc =
-          SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
+          SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
 
       DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
@@ -224,9 +225,9 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     // table.
     bool is_match = true;
     if (request_.has_where_expr()) {
-      QLValue match;
-      RETURN_NOT_OK(EvalExpr(request_.where_expr(), table_row, &match));
-      is_match = match.bool_value();
+      QLExprResult match;
+      RETURN_NOT_OK(EvalExpr(request_.where_expr(), table_row, match.Writer()));
+      is_match = match.Value().bool_value();
     }
 
     if (is_match) {
@@ -243,11 +244,11 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         << "Illegal write instruction";
 
         // Evaluate column value.
-        QLValue expr_result;
-        RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+        QLExprResult expr_result;
+        RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
         const SubDocument sub_doc =
-            SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
+            SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
 
         // Inserting into specified column.
         DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
@@ -333,7 +334,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
   int rscol_index = 0;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
-      QLValue value;
+      QLExprResult value;
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
         // Strip cotable id / pgtable id from the serialized DocKey before returning it as ybctid.
         Slice tuple_id = encoded_doc_key_.as_slice();
@@ -342,11 +343,11 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
         } else if (tuple_id.starts_with(ValueTypeAsChar::kPgTableOid)) {
           tuple_id.remove_prefix(1 + sizeof(PgTableOid));
         }
-        value.set_binary_value(tuple_id.data(), tuple_id.size());
+        value.Writer().NewValue().set_binary_value(tuple_id.data(), tuple_id.size());
       } else {
-        RETURN_NOT_OK(EvalExpr(expr, table_row, &value));
+        RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer()));
       }
-      RETURN_NOT_OK(pggate::PgDocData::WriteColumn(value, &result_buffer_));
+      RETURN_NOT_OK(pggate::WriteColumn(value.Value(), &result_buffer_));
     }
     rscol_index++;
   }
@@ -497,9 +498,9 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
     if (request_.has_where_expr()) {
-      QLValue match;
-      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, &match));
-      is_match = match.bool_value();
+      QLExprResult match;
+      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, match.Writer()));
+      is_match = match.Value().bool_value();
     }
     if (is_match) {
       match_count++;
@@ -597,17 +598,10 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
 
 Status PgsqlReadOperation::PopulateResultSet(const QLTableRow& table_row,
                                              faststring *result_buffer) {
-  int rscol_index = 0;
-  QLValue value;
+  QLExprResult result;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
-    const QLValuePB* direct_value = nullptr;
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &value, nullptr, &direct_value));
-    if (direct_value) {
-      RETURN_NOT_OK(pggate::WriteColumn(*direct_value, result_buffer));
-    } else {
-      RETURN_NOT_OK(pggate::PgDocData::WriteColumn(value, result_buffer));
-    }
-    rscol_index++;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, result.Writer()));
+    RETURN_NOT_OK(pggate::WriteColumn(result.Value(), result_buffer));
   }
   return Status::OK();
 }
@@ -630,8 +624,7 @@ Status PgsqlReadOperation::EvalAggregate(const QLTableRow& table_row) {
 
   int aggr_index = 0;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &aggr_result_[aggr_index]));
-    aggr_index++;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, aggr_result_[aggr_index++].Writer()));
   }
   return Status::OK();
 }
@@ -640,7 +633,7 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
                                              faststring *result_buffer) {
   int column_count = request_.targets().size();
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
-    RETURN_NOT_OK(pggate::PgDocData::WriteColumn(aggr_result_[rscol_index], result_buffer));
+    RETURN_NOT_OK(pggate::WriteColumn(aggr_result_[rscol_index].Value(), result_buffer));
   }
   return Status::OK();
 }

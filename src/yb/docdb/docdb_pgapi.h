@@ -28,7 +28,6 @@
 
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_expr.h"
 
 namespace yb {
 namespace docdb {

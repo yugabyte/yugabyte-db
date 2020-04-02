@@ -33,6 +33,7 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_expr.h"
 #include "yb/common/schema.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-base.h"

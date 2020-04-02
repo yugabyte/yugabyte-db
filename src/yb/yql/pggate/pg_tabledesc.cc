@@ -17,6 +17,8 @@
 
 #include "yb/client/table.h"
 
+#include "yb/common/pg_system_attr.h"
+
 namespace yb {
 namespace pggate {
 

@@ -14,6 +14,8 @@
 #ifndef YB_COMMON_COMMON_FWD_H
 #define YB_COMMON_COMMON_FWD_H
 
+#include <memory>
+
 namespace yb {
 
 class ClockBase;
@@ -28,6 +30,9 @@ class PgsqlExpressionPB;
 class PgsqlRSRowDescPB;
 class PgsqlWriteRequestPB;
 
+class QLExprExecutor;
+typedef std::shared_ptr<QLExprExecutor> QLExprExecutorPtr;
+
 class QLJsonColumnOperationsPB;
 class QLJsonOperationPB;
 class QLRSColDescPB;
@@ -36,10 +41,18 @@ class QLTableRow;
 class QLType;
 class QLValue;
 class QLValuePB;
-
 class TableProperties;
 
 struct ColumnId;
+struct QLTableColumn;
+
+enum class PgSystemAttrNum : int;
+
+namespace common {
+
+class Jsonb;
+
+} // namespace common
 
 } // namespace yb
 

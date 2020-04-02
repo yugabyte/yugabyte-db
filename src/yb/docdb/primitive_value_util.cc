@@ -13,6 +13,7 @@
 
 #include <iostream>
 
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/docdb/primitive_value_util.h"
 
@@ -84,10 +85,10 @@ Status InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       QLExprExecutor executor;
-      QLValue result;
-      RETURN_NOT_OK(executor.EvalExpr(column_value, nullptr, &result, &schema));
+      QLExprResult result;
+      RETURN_NOT_OK(executor.EvalExpr(column_value, nullptr, result.Writer(), &schema));
 
-      components->push_back(PrimitiveValue::FromQLValuePB(result.value(), sorting_type));
+      components->push_back(PrimitiveValue::FromQLValuePB(result.Value(), sorting_type));
     }
     column_idx++;
   }

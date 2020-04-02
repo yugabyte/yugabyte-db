@@ -16,6 +16,7 @@
 #include <unordered_map>
 
 #include "yb/client/schema.h"
+#include "yb/common/pg_system_attr.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/util/string_util.h"
@@ -643,6 +644,10 @@ PgColumnRef::PgColumnRef(int attr_num,
 }
 
 PgColumnRef::~PgColumnRef() {
+}
+
+bool PgColumnRef::is_ybbasetid() const {
+  return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
 }
 
 Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
