@@ -1,3 +1,45 @@
+---
+title: Build a Scala application using Apache Spark and YugabyteDB
+headerTitle: Apache Spark
+linkTitle: Apache Spark
+description: Build a Scala application using Apache Spark and YugabyteDB
+aliases:
+  - /develop/ecosystem-integrations/apache-spark/
+  - /latest/develop/ecosystem-integrations/apache-spark/
+menu:
+  latest:
+    identifier: apache-spark-1-scala
+    parent: ecosystem-integrations
+    weight: 572
+showAsideToc: true
+isTocNested: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/scala" class="nav-link active">
+      <i class="icon-scala" aria-hidden="true"></i>
+      Scala
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/java" class="nav-link">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      Java
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/python" class="nav-link">
+      <i class="icon-python" aria-hidden="true"></i>
+      Python
+    </a>
+  </li>
+
+</ul>
+
 ## sbt
 
 To build your Scala application using the YugabyteDB Spark Connector for YCQL, add the following sbt dependency to your application:
@@ -10,18 +52,19 @@ libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`cqlsh`). If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
 
-- installed Scala version 2.12+ and sbt 1.3.8+
+- installed Scala version 2.12 or later and sbt 1.3.8 or later/
 
 - installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project as shown below.
+
 ```sh
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
 ```
 
 ### Create the sbt build file
 
-Create a sbt build file `build.sbt` and add the following content into it.
+Create an sbt build file (`build.sbt`) and add the following content into it.
 
 ```sbt
 name := "CassandraSparkWordCount"
@@ -41,7 +84,7 @@ libraryDependencies += "org.apache.spark" %% "spark-core" % sparkVersion % Provi
 libraryDependencies += "org.apache.spark" %% "spark-sql" % sparkVersion % Provided
 ```
 
-### Writing a sample app
+### Write a sample application
 
 Copy the following contents into the file `CassandraSparkWordCount.scala`.
 
@@ -129,7 +172,7 @@ object CassandraSparkWordCount {
     }
 
 
-    //------------- Setting Output location (Cassandra table) --------------\\
+    //------------- Setting output location (Cassandra table) --------------\\
 
     val outTable = DEFAULT_KEYSPACE + "." + DEFAULT_OUTPUT_TABLENAME
 
@@ -245,7 +288,7 @@ object CassandraSparkWordCount {
 
 ### Build and run the application
 
-To build the JAR, run the following command.
+To build the JAR file, run the following command.
 
 ```sh
 $ sbt assembly
@@ -276,6 +319,3 @@ You should see a table similar to the following as the output.
 | five|    5|
 +-----+-----+
 ```
-
-
-
