@@ -2,6 +2,7 @@
 title: Verify Deployment
 linkTitle: 5. Verify Deployment
 description: Verify Deployment
+block_indexing: true
 menu:
   v1.1:
     identifier: deploy-manual-deployment-verify-deployment

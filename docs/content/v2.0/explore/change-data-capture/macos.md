@@ -3,6 +3,7 @@ title: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Change data capture (CDC)
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v2.0:
     identifier: change-data-capture-1-macos

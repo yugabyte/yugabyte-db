@@ -3,6 +3,7 @@ title: JSON data types
 linktitle: Json
 summary: JSON data types
 description: JSON data types
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-datatypes-json

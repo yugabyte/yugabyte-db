@@ -3,6 +3,7 @@ title: CREATE POLICY
 linkTitle: CREATE POLICY
 description: CREATE POLICY
 summary: Create row level security policy
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-policy

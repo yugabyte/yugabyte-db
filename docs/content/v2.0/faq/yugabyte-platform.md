@@ -2,6 +2,7 @@
 title: Yugabyte Platform FAQ
 linkTitle: Yugabyte Platform FAQ
 description: Yugabyte Platform FAQ
+block_indexing: true
 menu:
   v2.0:
     identifier: faq-yugabyte-platform

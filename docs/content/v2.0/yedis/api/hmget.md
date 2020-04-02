@@ -2,6 +2,7 @@
 title: HMGET
 linkTitle: HMGET
 description: HMGET
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

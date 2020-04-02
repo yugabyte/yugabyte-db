@@ -3,6 +3,7 @@ title: ALTER DATABASE
 linkTitle: ALTER DATABASE
 summary: Alter database
 description: ALTER DATABASE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-alter-db

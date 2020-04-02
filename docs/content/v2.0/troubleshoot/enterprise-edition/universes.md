@@ -2,6 +2,7 @@
 title: Troubleshoot universes
 linkTitle: Troubleshoot universes
 description: Troubleshoot universes
+block_indexing: true
 menu:
   v2.0:
     identifier: troubleshoot-universes

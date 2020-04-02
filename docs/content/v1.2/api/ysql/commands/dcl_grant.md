@@ -2,6 +2,7 @@
 title: GRANT
 description: GRANT Command
 summary: GRANT Command
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-grant

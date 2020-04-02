@@ -3,6 +3,7 @@ title: BOOLEAN Datatypes
 linktitle: Boolean
 summary: BOOLEAN Datatypes
 description: BOOLEAN Datatypes
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-datatypes-bool

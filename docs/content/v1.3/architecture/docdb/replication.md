@@ -2,6 +2,7 @@
 title: Replication
 linkTitle: Replication
 description: Replication with Raft consensus
+block_indexing: true
 menu:
   v1.3:
     identifier: docdb-replication

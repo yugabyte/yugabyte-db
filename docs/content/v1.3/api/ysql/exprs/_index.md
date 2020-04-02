@@ -3,6 +3,7 @@ title: Expressions
 description: Expressions
 summary: Expressions
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-exprs

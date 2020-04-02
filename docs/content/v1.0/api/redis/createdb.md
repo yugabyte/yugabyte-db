@@ -2,6 +2,7 @@
 title: CREATEDB
 linkTitle: CREATEDB
 description: CREATEDB
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

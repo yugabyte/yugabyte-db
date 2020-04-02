@@ -3,6 +3,7 @@ title: ALTER ROLE
 linkTitle: ALTER ROLE
 description: ALTER ROLE
 summary: Roles (users and groups)
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-alter-role

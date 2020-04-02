@@ -4,6 +4,7 @@ linkTitle: Keywords
 description: List of YSQL Keywords
 summary: Reference for YSQL API
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-keywords

@@ -2,6 +2,7 @@
 title: STRLEN
 linkTitle: STRLEN
 description: STRLEN
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

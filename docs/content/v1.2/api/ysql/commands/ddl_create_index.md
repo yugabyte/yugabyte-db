@@ -3,6 +3,7 @@ title: CREATE INDEX
 linkTitle: CREATE INDEX
 summary: Create index on a table in a database
 description: CREATE INDEX
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-create-index

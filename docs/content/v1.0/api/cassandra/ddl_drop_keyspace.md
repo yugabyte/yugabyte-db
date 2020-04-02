@@ -2,6 +2,7 @@
 title: DROP KEYSPACE
 summary: Removes a keyspace and all of its database objects
 description: DROP KEYSPACE
+block_indexing: true
 menu:
   v1.0:
     parent: api-cassandra

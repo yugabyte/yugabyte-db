@@ -2,6 +2,7 @@
 title: HEXISTS
 linkTitle: HEXISTS
 description: HEXISTS
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

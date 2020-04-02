@@ -3,6 +3,7 @@ title: CREATE USER
 linkTitle: CREATE USER
 description: CREATE USER
 summary: CREATE USER
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-user

@@ -2,6 +2,7 @@
 title: Docker Swarm
 linkTitle: Docker Swarm
 description: Docker Swarm
+block_indexing: true
 menu:
   v1.1:
     identifier: docker-swarm

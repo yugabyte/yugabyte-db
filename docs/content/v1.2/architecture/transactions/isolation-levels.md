@@ -2,6 +2,7 @@
 title: Isolation Levels
 linkTitle: Isolation Levels
 description: Isolation Levels
+block_indexing: true
 menu:
   v1.2:
     identifier: architecture-isolation-levels

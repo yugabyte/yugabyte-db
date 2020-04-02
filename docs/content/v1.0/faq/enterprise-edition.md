@@ -2,6 +2,7 @@
 title: Enterprise Edition
 linkTitle: Enterprise Edition
 description: Enterprise Edition
+block_indexing: true
 menu:
   v1.0:
     identifier: enterprise-edition

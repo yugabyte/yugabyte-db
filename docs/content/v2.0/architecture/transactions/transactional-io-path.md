@@ -2,6 +2,7 @@
 title: Transactional IO path
 linkTitle: Transactional IO path
 description: Transactional IO path
+block_indexing: true
 menu:
   v2.0:
     identifier: architecture-transactional-io-path

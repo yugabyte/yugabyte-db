@@ -2,6 +2,7 @@
 title: Amazon DynamoDB
 linkTitle: Amazon DynamoDB
 description: Amazon DynamoDB
+block_indexing: true
 menu:
   v1.1:
     parent: comparisons

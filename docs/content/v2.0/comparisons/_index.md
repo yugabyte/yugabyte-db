@@ -5,6 +5,7 @@ description: Compare YugabyteDB to other databases
 image: /images/section_icons/index/comparisons.png
 headcontent: See how YugabyteDB compares against other operational databases in the distributed SQL and NoSQL categories. Click the database name in the table header to see a more detailed comparison.
 section: FAQ
+block_indexing: true
 menu:
   v2.0:
     identifier: comparisons

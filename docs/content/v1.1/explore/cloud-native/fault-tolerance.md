@@ -2,6 +2,7 @@
 title: Fault Tolerance
 linkTitle: 2. Fault Tolerance
 description: Fault Tolerance
+block_indexing: true
 menu:
   v1.1:
     identifier: fault-tolerance

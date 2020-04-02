@@ -2,6 +2,7 @@
 title: yb-master
 linkTitle: yb-master
 description: yb-master
+block_indexing: true
 menu:
   v1.3:
     identifier: yb-master

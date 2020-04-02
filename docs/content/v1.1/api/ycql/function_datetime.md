@@ -2,6 +2,7 @@
 title: Date & Time Functions
 summary: Functions that work on data types related to date and time.
 description: Date & Time Functions
+block_indexing: true
 menu:
   v1.1:
     parent: api-cassandra

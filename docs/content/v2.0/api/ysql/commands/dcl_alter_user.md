@@ -3,6 +3,7 @@ title: ALTER USER
 linkTitle: ALTER USER
 description: Users and roles
 summary: Users and roles
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-alter-user

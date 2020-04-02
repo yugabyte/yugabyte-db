@@ -2,6 +2,7 @@
 title: PTTL
 linkTitle: PTTL
 description: PTTL
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

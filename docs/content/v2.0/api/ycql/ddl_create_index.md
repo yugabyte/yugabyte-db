@@ -2,6 +2,7 @@
 title: CREATE INDEX
 summary: Create a new index on a table
 description: CREATE INDEX
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

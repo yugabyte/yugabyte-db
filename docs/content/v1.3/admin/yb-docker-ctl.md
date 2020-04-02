@@ -2,6 +2,7 @@
 title: yb-docker-ctl
 linkTitle: yb-docker-ctl
 description: yb-docker-ctl
+block_indexing: true
 menu:
   v1.3:
     identifier: yb-docker-ctl

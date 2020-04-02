@@ -3,6 +3,7 @@ title: SET CONSTRAINTS
 linkTitle: SET CONSTRAINTS
 summary: SET CONSTRAINTS
 description: SET CONSTRAINTS
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-set-constraints

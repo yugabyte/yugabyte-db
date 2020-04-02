@@ -3,6 +3,7 @@ title: 5. Test PostgreSQL API
 linkTitle: 5. Test PostgreSQL API
 description: Test PostgreSQL API
 beta: /latest/faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v1.0:
     parent: quick-start

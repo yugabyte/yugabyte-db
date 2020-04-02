@@ -2,6 +2,7 @@
 title: Helm Configuration
 linkTitle: Helm Configuration
 description: Helm Configuration
+block_indexing: true
 menu:
   v1.2:
     identifier: helm-configuration

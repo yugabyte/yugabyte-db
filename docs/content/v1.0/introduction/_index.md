@@ -4,6 +4,7 @@ linkTitle: Introduction
 description: Introduction
 image: /images/section_icons/index/introduction.png
 headcontent:
+block_indexing: true
 menu:
   v1.0:
     identifier: introduction

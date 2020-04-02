@@ -2,6 +2,7 @@
 title: SCARD
 linkTitle: SCARD
 description: SCARD
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

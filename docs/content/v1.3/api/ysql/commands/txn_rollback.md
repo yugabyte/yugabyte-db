@@ -3,6 +3,7 @@ title: ROLLBACK
 linkTitle: ROLLBACK
 description: ROLLBACK
 summary: ROLLBACK
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-txn-rollback

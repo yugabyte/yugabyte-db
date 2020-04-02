@@ -2,6 +2,7 @@
 title: Go
 linkTitle: Go
 description: Develop Go Apps
+block_indexing: true
 menu:
   v2.0:
     parent: client-drivers-yedis

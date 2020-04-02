@@ -2,6 +2,7 @@
 title: Start YB-Masters
 linkTitle: 3. Start YB-Masters
 description: Start YB-Masters
+block_indexing: true
 menu:
   v1.0:
     identifier: deploy-manual-deployment-start-masters

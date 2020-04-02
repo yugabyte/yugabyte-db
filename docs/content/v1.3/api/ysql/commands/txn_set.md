@@ -3,6 +3,7 @@ title: SET TRANSACTION
 linkTitle: SET TRANSACTION
 description: SET TRANSACTION
 summary: SET TRANSACTION
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-txn-set

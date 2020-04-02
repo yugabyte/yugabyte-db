@@ -2,6 +2,7 @@
 title: CREATE TABLE
 summary: Create a new table in a keyspace
 description: CREATE TABLE
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

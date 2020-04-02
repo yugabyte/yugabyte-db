@@ -2,6 +2,7 @@
 title: Presto
 linkTitle: Presto
 description: Presto
+block_indexing: true
 menu:
   v2.0:
     identifier: presto

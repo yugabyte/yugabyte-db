@@ -2,6 +2,7 @@
 title: FROZEN
 summary: Binary format for complex data types.
 description: FROZEN data types
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

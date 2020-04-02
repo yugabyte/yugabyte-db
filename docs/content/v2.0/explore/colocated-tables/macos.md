@@ -3,6 +3,7 @@ title: Colocated tables
 linkTitle: Colocated tables
 description: Colocated tables
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v2.0:
     identifier: colocated-tables-1-macos

@@ -2,6 +2,7 @@
 title: Grant privileges
 linkTitle: Grant privileges
 description: Grant privileges
+block_indexing: true
 menu:
   v2.0:
     name: Grant privileges

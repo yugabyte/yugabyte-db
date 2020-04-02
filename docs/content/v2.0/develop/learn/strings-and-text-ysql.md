@@ -2,6 +2,7 @@
 title: 8. Strings and text
 linkTitle: 8. Strings and text
 description: String and text data types
+block_indexing: true
 menu:
   v2.0:
     identifier: strings-and-text-1-ysql

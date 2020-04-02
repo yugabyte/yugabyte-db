@@ -2,6 +2,7 @@
 title: cqlsh
 linkTitle: cqlsh
 description: cqlsh
+block_indexing: true
 menu:
   v1.1:
     identifier: cqlsh

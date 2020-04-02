@@ -4,6 +4,7 @@ linkTitle: Restore data
 description: Restore data
 image: /images/section_icons/manage/enterprise.png
 headcontent: Restore data in YugabyteDB.
+block_indexing: true
 menu:
   v2.0:
     identifier: restore-data

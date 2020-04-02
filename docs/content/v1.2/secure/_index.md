@@ -5,6 +5,7 @@ description: Secure YugabyteDB
 headcontent: Secure your deployment of YugabyteDB.
 image: /images/section_icons/index/secure.png
 section: USER GUIDES
+block_indexing: true
 menu:
   v1.2:
     identifier: secure

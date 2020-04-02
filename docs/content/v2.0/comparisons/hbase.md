@@ -2,6 +2,7 @@
 title: Apache HBase
 linkTitle: Apache HBase
 description: Apache HBase
+block_indexing: true
 menu:
   v2.0:
     parent: comparisons

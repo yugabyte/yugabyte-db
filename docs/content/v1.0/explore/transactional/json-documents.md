@@ -3,6 +3,7 @@ title: 3. JSON Documents
 linkTitle: 3. JSON Documents
 description: JSON Documents
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v1.0:
     identifier: json-documents

@@ -2,6 +2,7 @@
 title: Distributed transactions
 linkTitle: Distributed transactions
 description: Distributed ACID transactions
+block_indexing: true
 menu:
   v1.3:
     identifier: architecture-distributed-acid-transactions

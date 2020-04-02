@@ -2,6 +2,7 @@
 title: DROP DOMAIN
 summary: Remove a domain
 description: DROP DOMAIN
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-drop-domain

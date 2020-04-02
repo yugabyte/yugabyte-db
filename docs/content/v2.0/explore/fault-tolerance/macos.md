@@ -2,6 +2,7 @@
 title: Fault tolerance
 linkTitle: Fault tolerance
 description: Fault tolerance
+block_indexing: true
 menu:
   v2.0:
     identifier: fault-tolerance-1-macos

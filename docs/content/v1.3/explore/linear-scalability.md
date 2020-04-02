@@ -2,6 +2,7 @@
 title: Linear scalability
 linkTitle: 1. Linear scalability
 description: Linear scalability
+block_indexing: true
 menu:
   v1.3:
     identifier: linear-scalability

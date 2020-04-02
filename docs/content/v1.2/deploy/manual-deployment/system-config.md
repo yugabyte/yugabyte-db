@@ -2,6 +2,7 @@
 title: System Configuration
 linkTitle: 1. System Configuration
 description: System Configuration
+block_indexing: true
 menu:
   v1.2:
     identifier: deploy-manual-deployment-system-config

@@ -2,6 +2,7 @@
 title: Auto sharding
 linkTitle: Auto sharding
 description: Auto sharding
+block_indexing: true
 menu:
   v2.0:
     identifier: auto-sharding-1-macos

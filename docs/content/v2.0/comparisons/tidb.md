@@ -2,6 +2,7 @@
 title: TiDB
 linkTitle: TiDB
 description: TiDB
+block_indexing: true
 menu:
   v2.0:
     parent: comparisons

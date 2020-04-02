@@ -2,6 +2,7 @@
 title: CockroachDB
 linkTitle: CockroachDB
 description: CockroachDB
+block_indexing: true
 menu:
   v1.3:
     parent: comparisons

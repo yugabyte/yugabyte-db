@@ -2,6 +2,7 @@
 title: Observability with Prometheus
 linkTitle: 3. Observability 
 description: Observability with Prometheus
+block_indexing: true
 menu:
   v1.0:
     identifier: observability

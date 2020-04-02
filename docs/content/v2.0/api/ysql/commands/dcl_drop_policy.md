@@ -3,6 +3,7 @@ title: DROP POLICY
 linkTitle: DROP POLICY
 description: DROP POLICY
 summary: Drop row level security policy
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-policy

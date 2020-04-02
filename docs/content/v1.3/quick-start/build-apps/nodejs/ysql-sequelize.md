@@ -2,6 +2,7 @@
 title: Build a NodeJS application
 linkTitle: Build a NodeJS application
 description: Build a NodeJS application
+block_indexing: true
 menu:
   v1.3:
     parent: build-apps

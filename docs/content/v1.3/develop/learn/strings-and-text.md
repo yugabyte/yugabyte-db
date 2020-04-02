@@ -2,6 +2,7 @@
 title: 8. Strings and text
 linkTitle: 8. Strings and text
 description: Work with strings and text
+block_indexing: true
 menu:
   v1.3:
     identifier: strings-and-text

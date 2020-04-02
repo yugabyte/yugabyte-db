@@ -4,6 +4,7 @@ linkTitle: Resilience
 description: Resilience
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmarking the ability to withstand component failure.
+block_indexing: true
 menu:
   v2.0:
     identifier: resilience

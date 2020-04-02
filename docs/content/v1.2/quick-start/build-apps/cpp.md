@@ -2,6 +2,7 @@
 title: C++
 linkTitle: C++
 description: Build a C++ App
+block_indexing: true
 menu:
   v1.2:
     identifier: build-apps-cpp

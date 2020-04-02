@@ -2,6 +2,7 @@
 title: NodeJS
 linkTitle: NodeJS
 description: Develop NodeJS Apps
+block_indexing: true
 menu:
   v1.3:
     parent: client-drivers-yedis

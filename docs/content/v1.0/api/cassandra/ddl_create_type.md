@@ -2,6 +2,7 @@
 title: CREATE TYPE
 summary: Create a new datatype
 description: CREATE TYPE
+block_indexing: true
 menu:
   v1.0:
     parent: api-cassandra

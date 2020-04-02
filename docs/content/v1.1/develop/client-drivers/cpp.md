@@ -2,6 +2,7 @@
 title: C/C++
 linkTitle: C/C++
 description: Develop C/C++ Apps
+block_indexing: true
 menu:
   v1.1:
     identifier: client-drivers-cpp

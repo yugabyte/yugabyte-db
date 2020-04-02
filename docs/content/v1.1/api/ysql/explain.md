@@ -2,6 +2,7 @@
 title: Explain Statement
 description: Explain Statement
 summary: EXPLAIN
+block_indexing: true
 menu:
   v1.1:
     identifier: api-postgresql-explain

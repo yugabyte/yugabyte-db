@@ -2,6 +2,7 @@
 title: Edit config flags
 linkTitle: Edit config flags
 description: Edit config flags
+block_indexing: true
 menu:
   v1.3:
     identifier: manage-edit-flags

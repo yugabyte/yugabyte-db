@@ -2,6 +2,7 @@
 title: DELETE
 summary: Deletes rows from a table.
 description: DELETE
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

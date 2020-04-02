@@ -17,9 +17,8 @@
     <meta name="author" content="{{ . }}">
     {{ end }}
 
-    {{ with .Site.Params.block_indexing }}
-    <meta name="robots" content="noindex">
-    <meta name="googlebot" content="noindex">
+    {{ with .Params.block_indexing }}
+    <meta name="robots" content="noindex, nofollow">
     {{ end }}
 
     <meta name="twitter:card" content="summary_large_image" />

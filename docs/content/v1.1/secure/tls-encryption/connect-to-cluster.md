@@ -4,6 +4,7 @@ linkTitle: 4. Connect to Cluster
 description: 4. Connect to Cluster
 headcontent: Connect to YugabyteDB cluster using cqlsh.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
+block_indexing: true
 menu:
   v1.1:
     identifier: secure-tls-encryption-connect-to-cluster

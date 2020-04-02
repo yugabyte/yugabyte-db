@@ -3,6 +3,7 @@ title: CREATE FUNCTION
 linkTitle: CREATE FUNCTION
 summary: Create a new function in a database
 description: CREATE FUNCTION
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-function
