@@ -345,10 +345,10 @@ public class HealthChecker {
       }
       // TODO: we do not have a good way of marking the whole universe as k8s only.
       if (nd.isMaster) {
-        info.masterNodes.add(nd.cloudInfo.private_ip);
+        info.masterNodes.put(nd.cloudInfo.private_ip, nd.nodeName);
       }
       if (nd.isTserver) {
-        info.tserverNodes.add(nd.cloudInfo.private_ip);
+        info.tserverNodes.put(nd.cloudInfo.private_ip, nd.nodeName);
       }
     }
     // If any nodes were invalid, abort for this universe.
