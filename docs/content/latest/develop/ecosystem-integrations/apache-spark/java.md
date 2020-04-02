@@ -37,7 +37,9 @@ isTocNested: true
 
 </ul>
 
-## Maven
+## Before you begin
+
+### Maven
 
 To build your Java application using the YugabyteDB Spark Connector for YCQL, add the following snippet to your `pom.xml` for Scala 2.11:
 
@@ -49,7 +51,7 @@ To build your Java application using the YugabyteDB Spark Connector for YCQL, ad
 </dependency>
 ```
 
-## Sample application
+## Run a sample application
 
 ### Run the Spark word-count sample application
 

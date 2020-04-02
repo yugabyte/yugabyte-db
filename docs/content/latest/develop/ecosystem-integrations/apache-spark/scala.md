@@ -40,7 +40,9 @@ isTocNested: true
 
 </ul>
 
-## sbt
+## Before you begin
+
+### sbt
 
 To build your Scala application using the YugabyteDB Spark Connector for YCQL, add the following sbt dependency to your application:
 
@@ -48,7 +50,7 @@ To build your Scala application using the YugabyteDB Spark Connector for YCQL, a
 libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.4-yb"
 ```
 
-## Sample application
+## Build a sample application
 
 This tutorial assumes that you have:
 
