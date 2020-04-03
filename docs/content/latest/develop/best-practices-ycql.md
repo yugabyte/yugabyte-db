@@ -66,6 +66,12 @@ primitive columns.
 {{< /note >}}
 
 
+### Incrementing numeric types
+We've extend Apache Cassandra to support increment and decrement operators for integer data types.
+[Integers](../../api/ycql/type_int) can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. 
+YugabyteDB implements CAS(compare and swap) operations in one round trip, compared to 4 for Apache Cassandra.
+
+
 ### Expire older records automatically with TTL
 YCQL supports automatic expiry of data using the [`TTL feature`](../api/ycql/ddl_create_table.md#use-table-property-to-define-the-default-expiration-time-for-rows). 
 You can set a retention policy for data at table/row/column level and the older data is automatically purged from the DB.
