@@ -1,3 +1,2 @@
 
-
-Refer the [AKS deployment](../../kubernetes/aks/) instructions in the Kubernetes section.
+See [AKS deployment](../../kubernetes/aks/) in the Kubernetes section.

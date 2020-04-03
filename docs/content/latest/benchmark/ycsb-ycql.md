@@ -1,5 +1,5 @@
 ---
-title: Benchmark YugabyteDB YCQL performance using YCSB
+title: Benchmark YCQL performance using YCSB
 headerTitle: YCSB
 linkTitle: YCSB
 description: YCSB

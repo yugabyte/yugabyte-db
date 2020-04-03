@@ -1,8 +1,8 @@
 ---
-title: Use NodeJS to build a YugabyteDB application
+title: Build a NodeJS application that uses YCQL
 headerTitle: Build a NodeJS application
 linkTitle: Build a NodeJS application
-description: Build a NodeJS application
+description: Build a NodeJS application that uses YCQL
 menu:
   latest:
     parent: build-apps

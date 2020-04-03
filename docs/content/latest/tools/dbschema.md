@@ -1,5 +1,5 @@
 ---
-title: Use DbSchema with YugabyteDB
+title: Use DbSchema with YugabyteDB YSQL
 headerTitle: DbSchema
 linkTitle: DbSchema
 description: Use DbSchema to work with distributed SQL databases in YugabyteDB.

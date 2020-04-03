@@ -2,7 +2,7 @@
 title: Create a local YugabyteDB cluster on Docker
 headerTitle: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
-description: Create a local cluster on Docker in less than five minutes
+description: Create a local YugabyteDB cluster on Docker in less than five minutes
 menu:
   latest:
     parent: quick-start

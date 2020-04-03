@@ -1,5 +1,5 @@
 ---
-title: Key-value workload benchmarking for YCQL
+title: Benchmark YCQL performance using key-value workloads
 headerTitle: Key-value workload
 linkTitle: Key-value workload
 description: Benchmark YugabyteDB YCQL performance using key-value workloads.

@@ -2,8 +2,6 @@
 title: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local cluster
-aliases:
-  - /v2.0/quick-start/create-local-cluster/
 block_indexing: true
 menu:
   v2.0:
