@@ -1,6 +1,6 @@
 ---
-title: Use Java to build a YugabyteDB application
-headerTitle: Build a Java app
+title: Build a Java application that uses YSQL and Spring Boot
+headerTitle: Build a Java application
 linkTitle: Build a Java app
 description: Use Java and Spring Boot to build a simple YugabyteDB e-commerce application.
 menu:

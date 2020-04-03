@@ -1,5 +1,5 @@
 ---
-title: Scaling YCQL queries
+title: Benchmark scaling YCQL queries
 headerTitle: Scaling YCQL queries
 linkTitle: Scaling queries
 description: Benchmark scaling YCQL queries in YugabyteDB.

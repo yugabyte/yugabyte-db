@@ -1,8 +1,8 @@
 ---
-title: Deploy YugabyteDB in Amazon Web Services with Terraform
+title: Deploy on Amazon Web Services using Terraform
 headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
-description: Deploy YugabyteDB in Amazon Web Services with Terraform.
+description: Deploy YugabyteDB clusters on Amazon Web Services using Terraform.
 menu:
   latest:
     identifier: deploy-in-aws-2-terraform

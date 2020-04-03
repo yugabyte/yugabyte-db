@@ -1,8 +1,8 @@
 ---
-title: Three+ data center (3DC) deployments
+title: Deploy to three or more data centers
 headerTitle: Three+ data center (3DC)
 linkTitle: Three+ data center (3DC)
-description: Three or more (3DC) deployments
+description: Deploy YugabyteDB clusters to three or more data centers.
 menu:
   latest:
     parent: multi-dc

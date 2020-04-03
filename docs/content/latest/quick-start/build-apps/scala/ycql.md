@@ -1,6 +1,6 @@
 ---
-title: Use Scala to build a YugabyteDB application
-headerTitle: Build a Scala app
+title: Build a Scala application that uses YCQL
+headerTitle: Build a Scala application
 linkTitle: Build a Scala app
 description: Follow this tutorial to use Scala and YCQL to build a simple YugabyteDB application.
 menu:

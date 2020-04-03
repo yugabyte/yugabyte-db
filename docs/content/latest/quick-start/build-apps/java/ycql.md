@@ -1,8 +1,8 @@
 ---
-title: Use Java to build a YugabyteDB application
-headerTitle: Build a Java app
+title: Build a Java application that uses YCQL
+headerTitle: Build a Java application
 linkTitle: Build a Java app
-description: Follow this tutorial to use Java and YCQL to build a simple YugabyteDB application.
+description: Follow this tutorial to build a Java application that uses YugabyteDB and YCQL.
 menu:
   latest:
     parent: build-apps
