@@ -1,6 +1,6 @@
 ---
-title: Use Python to build a YugabyteDB application
-headerTitle: Build a Python app
+title: Build a Python application that uses YCQL
+headerTitle: Build a Python application
 linkTitle: Build a Python app
 description: Use Python and YCQL to build a YugabyteDB application.
 menu:
