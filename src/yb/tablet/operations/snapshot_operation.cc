@@ -47,7 +47,7 @@ std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_d
   }
   std::string snapshot_id_str;
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(request_->snapshot_id());
-  if (!txn_snapshot_id.IsNil()) {
+  if (txn_snapshot_id) {
     snapshot_id_str = txn_snapshot_id.ToString();
   } else {
     snapshot_id_str = request_->snapshot_id();
@@ -62,23 +62,28 @@ tserver::TabletSnapshotOpRequestPB* SnapshotOperationState::AllocateRequest() {
   return request_holder_.get();
 }
 
+Result<SnapshotCoordinator&> GetSnapshotCoordinator(SnapshotOperationState* state) {
+  auto snapshot_coordinator = state->tablet()->snapshot_coordinator();
+  if (!snapshot_coordinator) {
+    return STATUS_FORMAT(IllegalState, "Replicated $0 to tablet without snapshot coordinator",
+                         TabletSnapshotOpRequestPB::Operation_Name(state->request()->operation()));
+  }
+  return *snapshot_coordinator;
+}
+
 Status SnapshotOperationState::Apply(int64_t leader_term) {
   TRACE("APPLY SNAPSHOT: Starting");
   auto operation = request()->operation();
   switch (operation) {
-    case TabletSnapshotOpRequestPB::CREATE_ON_MASTER: {
-      auto snapshot_coordinator = tablet()->snapshot_coordinator();
-      if (!snapshot_coordinator) {
-        return STATUS_FORMAT(IllegalState, "Replicated $0 to tablet without snapshot coordinator",
-                             TabletSnapshotOpRequestPB::Operation_Name(operation));
-      }
-      return snapshot_coordinator->Replicated(leader_term, *this);
-    }
+    case TabletSnapshotOpRequestPB::CREATE_ON_MASTER:
+      return VERIFY_RESULT(GetSnapshotCoordinator(this)).get().CreateReplicated(leader_term, *this);
+    case TabletSnapshotOpRequestPB::DELETE_ON_MASTER:
+      return VERIFY_RESULT(GetSnapshotCoordinator(this)).get().DeleteReplicated(leader_term, *this);
     case TabletSnapshotOpRequestPB::CREATE_ON_TABLET:
       return tablet()->snapshots().Create(this);
     case TabletSnapshotOpRequestPB::RESTORE:
       return tablet()->snapshots().Restore(this);
-    case TabletSnapshotOpRequestPB::DELETE:
+    case TabletSnapshotOpRequestPB::DELETE_ON_TABLET:
       return tablet()->snapshots().Delete(this);
     case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32max: FALLTHROUGH_INTENDED;

@@ -18,12 +18,16 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tablet/tablet_snapshots.h"
+
 using namespace std::literals;
 
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 namespace client {
+
+typedef google::protobuf::RepeatedPtrField<master::SnapshotInfoPB> Snapshots;
 
 class BackupTxnTest : public TransactionTestBase {
  protected:
@@ -50,22 +54,13 @@ class BackupTxnTest : public TransactionTestBase {
   }
 
   Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id) {
-    master::ListSnapshotsRequestPB req;
-    master::ListSnapshotsResponsePB resp;
-
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-    RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshots(req, &resp, &controller));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-    LOG(INFO) << "Snapshot state: " << resp.snapshots(0).ShortDebugString();
-    if (resp.snapshots().size() != 1) {
+    auto snapshots = VERIFY_RESULT(ListSnapshots(snapshot_id));
+    if (snapshots.size() != 1) {
       return STATUS_FORMAT(RuntimeError, "Wrong number of snapshots, one expected but $0 found",
-                           resp.snapshots().size());
+                           snapshots.size());
     }
-    return resp.snapshots(0).entry().state() == master::SysSnapshotEntryPB::COMPLETE;
+    LOG(INFO) << "Snapshot state: " << snapshots[0].ShortDebugString();
+    return snapshots[0].entry().state() == master::SysSnapshotEntryPB::COMPLETE;
   }
 
   Result<TxnSnapshotRestorationId> StartRestoration(const TxnSnapshotId& snapshot_id) {
@@ -97,17 +92,30 @@ class BackupTxnTest : public TransactionTestBase {
     return resp.restorations(0).entry().state() == master::SysSnapshotEntryPB::COMPLETE;
   }
 
-  CHECKED_STATUS VerifySnapshot(
-      const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state) {
+  Result<Snapshots> ListSnapshots(
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil()) {
     master::ListSnapshotsRequestPB req;
     master::ListSnapshotsResponsePB resp;
+
+    if (!snapshot_id.IsNil()) {
+      req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    }
 
     rpc::RpcController controller;
     controller.set_timeout(60s);
     RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshots(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
     LOG(INFO) << "Snapshots: " << resp.ShortDebugString();
-    SCHECK_EQ(resp.snapshots().size(), 1, IllegalState, "Wrong number of snapshots");
-    const auto& snapshot = resp.snapshots(0);
+    return std::move(resp.snapshots());
+  }
+
+  CHECKED_STATUS VerifySnapshot(
+      const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state) {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
+    const auto& snapshot = snapshots[0];
     auto listed_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
     if (listed_snapshot_id != snapshot_id) {
       return STATUS_FORMAT(
@@ -149,6 +157,20 @@ class BackupTxnTest : public TransactionTestBase {
     }, 5s * kTimeMultiplier, "Snapshot done"));
 
     return snapshot_id;
+  }
+
+  CHECKED_STATUS DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
+    master::DeleteSnapshotRequestPB req;
+    master::DeleteSnapshotResponsePB resp;
+
+    rpc::RpcController controller;
+    controller.set_timeout(60s);
+    req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    RETURN_NOT_OK(MakeBackupServiceProxy().DeleteSnapshot(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
   }
 };
 
@@ -220,6 +242,41 @@ TEST_F(BackupTxnTest, Persistence) {
   LOG(INFO) << "Verify";
 
   ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
+}
+
+TEST_F(BackupTxnTest, Delete) {
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(DeleteSnapshot(snapshot_id));
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
+    if (snapshots[0].entry().state() == master::SysSnapshotEntryPB::DELETED) {
+      return true;
+    }
+    SCHECK_EQ(snapshots[0].entry().state(), master::SysSnapshotEntryPB::DELETING, IllegalState,
+              "Wrong snapshot state");
+    return false;
+  }, 10s * kTimeMultiplier, "Complete delete snapshot"));
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      auto db = peer->tablet()->doc_db().regular;
+      if (!db) {
+        continue;
+      }
+      auto dir = tablet::TabletSnapshots::SnapshotsDirName(db->GetName());
+      auto children = VERIFY_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
+      if (!children.empty()) {
+        LOG(INFO) << peer->LogPrefix() << "Children: " << AsString(children);
+        return false;
+      }
+    }
+    return true;
+  }, 10s * kTimeMultiplier, "Delete on tablets"));
 }
 
 } // namespace client
