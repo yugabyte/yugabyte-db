@@ -42,6 +42,13 @@ RowMarkType GetStrongestRowMarkType(std::initializer_list<RowMarkType> row_mark_
 // Determine whether a row mark type is valid.
 bool IsValidRowMarkType(RowMarkType row_mark_type);
 
+/*
+ * Returns whether an operation with this row mark should try to use pessimistic locking.
+ * Currently txn layer will use a best-effort approach, by setting the txn priority to highest if
+ * this is a new txn (first operation within a transaction).
+ */
+bool RowMarkNeedsPessimisticLock(RowMarkType row_mark_type);
+
 // Convert a row mark type to a string to use in a PostgreSQL query.
 std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type);
 
