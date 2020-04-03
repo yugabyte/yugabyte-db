@@ -1,5 +1,5 @@
 ---
-title: Benchmark YugabyteDB YSQL performance with large datasets
+title: Benchmark YSQL performance with large datasets
 headerTitle: Large datasets
 linkTitle: Large datasets
 description: Benchmark YugabyteDB YSQL performance with large datasets

@@ -1,8 +1,8 @@
 ---
-title: Use Python to build a YugabyteDB application
+title: Build a Python application that uses YSQL and Psycopg
 headerTitle: Build a Python application
 linkTitle: Build a Python application
-description: Use Python and YSQL to build a YugabyteDB application
+description: Build a Python application that uses YSQL and Psycopg
 aliases:
   - /develop/client-drivers/python/
   - /latest/develop/client-drivers/python/

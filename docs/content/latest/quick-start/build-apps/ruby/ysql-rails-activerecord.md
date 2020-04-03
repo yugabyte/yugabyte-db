@@ -1,7 +1,7 @@
 ---
-title: Build a Ruby application
+title: Build a Ruby application that uses YSQL
 linkTitle: Build a Ruby application
-description: Build a Ruby application
+description: Build a Ruby application that uses the YSQL API
 menu:
   latest:
     parent: build-apps

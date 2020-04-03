@@ -1,5 +1,6 @@
 ---
-title: Build a Ruby application
+title: Build a Ruby application that uses YCQL
+headerTitle: Build a Ruby application
 linkTitle: Build a Ruby application
 description: Build a Ruby application
 menu:

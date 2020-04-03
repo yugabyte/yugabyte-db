@@ -1,5 +1,5 @@
 ---
-title: Use C# to build a YugabyteDB YSQL application 
+title: Build a C# application that uses YSQL
 headerTitle: Build a C# application
 linkTitle: C#
 description: Use C# to build a YugabyteDB application that uses YSQL

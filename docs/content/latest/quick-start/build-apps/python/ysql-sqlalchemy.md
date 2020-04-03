@@ -1,6 +1,6 @@
 ---
-title: Use Python and SQLAlchemy to build a YugabyteDB application
-headerTitle: Build a Python app
+title: Build a Python application that uses YSQL and SQLAlchemy
+headerTitle: Build a Python application
 linkTitle: Build a Python app
 description: Use Python and SQLAlchemy to build a YugabyteDB e-commerce application.
 menu:
