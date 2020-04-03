@@ -2,6 +2,7 @@
 title: CREATE VIEW
 summary: Create a new view in a database
 description: CREATE VIEW
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-create-view

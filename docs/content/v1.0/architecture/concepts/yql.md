@@ -2,6 +2,7 @@
 title: Query Layer
 linkTitle: Query Layer
 description: Yugabyte Query Layer (YQL)
+block_indexing: true
 menu:
   v1.0:
     identifier: architecture-yql

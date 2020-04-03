@@ -2,6 +2,7 @@
 title: nextval()
 summary: Get the next value from the session's sequence cache
 description: nextval()
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-exprs-nextval

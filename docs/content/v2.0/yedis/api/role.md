@@ -2,6 +2,7 @@
 title: ROLE
 linkTitle: ROLE
 description: ROLE
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

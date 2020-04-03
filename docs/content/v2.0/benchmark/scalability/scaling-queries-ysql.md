@@ -4,6 +4,7 @@ linkTitle: Scaling queries
 description: Scaling queries
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmark YugabyteDB using different queries
+block_indexing: true
 menu:
   v2.0:
     identifier: scaling-queries-1-ysql

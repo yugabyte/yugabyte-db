@@ -3,6 +3,7 @@ title: DROP TYPE
 linkTitle: DROP TYPE
 summary: Remove a type
 description: DROP TYPE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-type

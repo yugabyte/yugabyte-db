@@ -2,6 +2,7 @@
 title: Security checklist
 linkTitle: Security checklist
 description: Security checklist
+block_indexing: true
 menu:
   v1.3:
     identifier: security-checklist

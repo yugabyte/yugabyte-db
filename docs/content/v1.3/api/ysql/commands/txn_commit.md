@@ -3,6 +3,7 @@ title: COMMIT
 linkTitle: COMMIT
 description: COMMIT
 summary: COMMIT
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-txn-commit

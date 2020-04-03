@@ -2,6 +2,7 @@
 title: TTL
 linkTitle: TTL
 description: TTL
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

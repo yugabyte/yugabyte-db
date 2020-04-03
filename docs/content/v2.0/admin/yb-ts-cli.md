@@ -2,6 +2,7 @@
 title: yb-ts-cli
 linkTitle: yb-ts-cli
 description: yb-ts-cli
+block_indexing: true
 menu:
   v2.0:
     identifier: yb-ts-cli

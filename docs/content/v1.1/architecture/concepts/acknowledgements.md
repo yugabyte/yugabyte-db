@@ -2,6 +2,7 @@
 title: Acknowledgements
 linkTitle: Acknowledgements
 description: Acknowledgements
+block_indexing: true
 menu:
   v1.1:
     identifier: architecture-acknowledgements

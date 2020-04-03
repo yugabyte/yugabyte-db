@@ -4,6 +4,7 @@ linkTitle: YEDIS
 description: Yugabyte Dictionary Service (YEDIS) 
 headcontent: 
 image: /images/section_icons/api/yedis.png
+block_indexing: true
 menu:
   v1.3:
     identifier: yedis

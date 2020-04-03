@@ -5,6 +5,7 @@ description: Benchmark YugabyteDB
 image: /images/section_icons/explore/high_performance.png
 headcontent:
 section: USER GUIDES
+block_indexing: true
 menu:
   v1.3:
     identifier: benchmark

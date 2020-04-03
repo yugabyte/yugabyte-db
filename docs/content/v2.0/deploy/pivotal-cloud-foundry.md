@@ -2,6 +2,7 @@
 title: Pivotal Cloud Foundry
 linkTitle: Pivotal Cloud Foundry
 description: Pivotal Cloud Foundry
+block_indexing: true
 menu:
   v2.0:
     identifier: pivotal-cloud-foundry

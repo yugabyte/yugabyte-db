@@ -2,6 +2,7 @@
 title: YB-Master
 linkTitle: YB-Master
 description: YB-Master
+block_indexing: true
 menu:
   v1.3:
     identifier: architecture-concepts-yb-master

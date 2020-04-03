@@ -2,6 +2,7 @@
 title: Transactions
 description: Transactions
 summary: Overview of transaction-related commands.
+block_indexing: true
 menu:
   v1.1:
     identifier: api-postgresql-transactions

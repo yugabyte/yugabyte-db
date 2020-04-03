@@ -2,6 +2,7 @@
 title: TEXT
 summary: String of Unicode characters
 description: Character Types
+block_indexing: true
 menu:
   v1.0:
     identifier: api-postgresql-text

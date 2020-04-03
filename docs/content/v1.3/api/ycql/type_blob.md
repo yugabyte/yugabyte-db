@@ -2,6 +2,7 @@
 title: BLOB
 summary: Binary strings of variable length
 description: BLOB Type
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

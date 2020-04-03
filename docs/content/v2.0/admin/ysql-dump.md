@@ -3,6 +3,7 @@ title: ysql_dump
 linkTitle: ysql_dump
 description: ysql_dump
 headcontent: Extract a YugabyteDB database into a SQL script file.
+block_indexing: true
 menu:
   v2.0:
     identifier: ysql-dump

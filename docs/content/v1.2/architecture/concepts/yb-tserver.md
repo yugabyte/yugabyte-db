@@ -2,6 +2,7 @@
 title: YB-TServer
 linkTitle: YB-TServer
 description: YB-TServer
+block_indexing: true
 menu:
   v1.2:
     identifier: architecture-concepts-yb-tserver

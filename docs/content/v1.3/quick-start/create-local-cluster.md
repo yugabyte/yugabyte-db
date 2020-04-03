@@ -2,6 +2,7 @@
 title: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local cluster
+block_indexing: true
 menu:
   v1.3:
     parent: quick-start

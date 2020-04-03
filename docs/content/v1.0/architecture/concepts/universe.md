@@ -2,6 +2,7 @@
 title: Universe, Cluster, YB-TServer, YB-Master
 linkTitle: Universe, Cluster, YB-TServer, YB-Master
 description: Universe, Cluster, YB-TServer, YB-Master
+block_indexing: true
 menu:
   v1.0:
     identifier: architecture-universe

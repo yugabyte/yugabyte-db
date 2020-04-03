@@ -2,6 +2,7 @@
 title: Apache Cassandra
 linkTitle: Apache Cassandra
 description: Apache Cassandra
+block_indexing: true
 menu:
   v1.2:
     parent: comparisons

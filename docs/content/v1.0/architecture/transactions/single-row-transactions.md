@@ -2,6 +2,7 @@
 title: Single Row Transactions
 linkTitle: Single Row Transactions
 description: Single Row ACID Transactions
+block_indexing: true
 menu:
   v1.0:
     identifier: architecture-single-row-transactions

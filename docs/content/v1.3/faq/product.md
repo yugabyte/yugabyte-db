@@ -2,6 +2,7 @@
 title: Product
 linkTitle: Product
 description: Product
+block_indexing: true
 menu:
   v1.3:
     identifier: product

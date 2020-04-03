@@ -2,6 +2,7 @@
 title: REVOKE ROLE
 summary: Revoke a role to another role
 description: REVOKE ROLE
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

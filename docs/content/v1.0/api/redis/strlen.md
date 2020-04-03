@@ -2,6 +2,7 @@
 title: STRLEN
 linkTitle: STRLEN
 description: STRLEN
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

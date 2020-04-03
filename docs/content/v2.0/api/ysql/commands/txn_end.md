@@ -3,6 +3,7 @@ title: END
 linkTitle: END
 description: END
 summary: END
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-txn-end

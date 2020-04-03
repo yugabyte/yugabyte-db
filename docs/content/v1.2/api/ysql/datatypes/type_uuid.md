@@ -3,6 +3,7 @@ title: UUID Datatypes
 linktitle: UUID
 summary: UUID Datatypes
 description: UUID Datatypes
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-datatypes-uuid

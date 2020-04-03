@@ -2,6 +2,7 @@
 title: CREATE DATABASE
 summary: Create a new database
 description: CREATE DATABASE
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-create-db

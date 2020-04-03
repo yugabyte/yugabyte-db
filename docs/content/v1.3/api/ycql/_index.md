@@ -5,6 +5,7 @@ description: Yugabyte Cloud Query Language (YCQL)
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent:
+block_indexing: true
 menu:
   v1.3:
     identifier: api-cassandra

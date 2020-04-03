@@ -3,6 +3,7 @@ title: Quick start YCQL
 linkTitle: Quick start YCQL
 description: Quick start YCQL
 image: /images/section_icons/quick_start/explore_ycql.png
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

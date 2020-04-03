@@ -3,6 +3,7 @@ title: PREPARE
 linkTitle: PREPARE
 description: PREPARE
 summary: PREPARE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-prepare

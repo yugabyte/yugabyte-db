@@ -3,6 +3,7 @@ title: DROP PROCEDURE
 linkTitle: DROP PROCEDURE
 summary: Remove a procedure
 description: DROP PROCEDURE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-procedure

@@ -2,6 +2,7 @@
 title: Delete universe
 linkTitle: Delete universe
 description: Delete universe
+block_indexing: true
 menu:
   v1.3:
     identifier: manage-delete-universe

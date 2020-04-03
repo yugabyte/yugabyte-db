@@ -2,6 +2,7 @@
 title: Initial Setup
 linkTitle: 1. Initial Setup
 description: Initial Setup
+block_indexing: true
 menu:
   v1.0:
     identifier: prepare-cloud-environment

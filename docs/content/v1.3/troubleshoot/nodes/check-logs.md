@@ -2,6 +2,7 @@
 title: Inspect logs
 linkTitle: Inspect logs
 description: Inspect YugabyteDB logs
+block_indexing: true
 menu:
   v1.3:
     parent: troubleshoot-nodes

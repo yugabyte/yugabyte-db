@@ -2,6 +2,7 @@
 title: HMGET
 linkTitle: HMGET
 description: HMGET
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

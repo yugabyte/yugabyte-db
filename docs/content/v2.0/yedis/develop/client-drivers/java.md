@@ -2,6 +2,7 @@
 title: Java
 linkTitle: Java
 description: Develop Java Apps
+block_indexing: true
 menu:
   v2.0:
     parent: client-drivers-yedis

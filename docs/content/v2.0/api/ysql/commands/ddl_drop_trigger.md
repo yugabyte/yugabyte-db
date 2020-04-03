@@ -3,6 +3,7 @@ title: DROP TRIGGER
 linkTitle: DROP TRIGGER
 summary: Remove a trigger
 description: DROP TRIGGER
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-trigger

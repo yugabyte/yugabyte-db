@@ -2,6 +2,7 @@
 title: Chinook sample database
 linkTitle: Chinook
 description: Chinook sample database
+block_indexing: true
 menu:
   v2.0:
     identifier: chinook

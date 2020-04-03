@@ -2,6 +2,7 @@
 title: C#
 linkTitle: C#
 description: Develop C# Apps
+block_indexing: true
 menu:
   v2.0:
     parent: client-drivers-yedis

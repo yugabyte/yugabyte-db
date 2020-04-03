@@ -2,6 +2,7 @@
 title: Docker
 linkTitle: Docker
 description: Docker
+block_indexing: true
 menu:
   v1.3:
     parent: deploy

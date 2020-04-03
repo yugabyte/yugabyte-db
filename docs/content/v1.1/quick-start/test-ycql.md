@@ -2,6 +2,7 @@
 title: 3. Test YCQL API
 linkTitle: 3. Test YCQL API
 description: Test Yugabyte Cloud QL (YCQL) API
+block_indexing: true
 menu:
   v1.1:
     parent: quick-start

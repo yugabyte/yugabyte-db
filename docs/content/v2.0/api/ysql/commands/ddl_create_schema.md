@@ -3,6 +3,7 @@ title: CREATE SCHEMA
 linkTitle: CREATE SCHEMA
 summary: Create schema
 description: CREATE SCHEMA
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-schema

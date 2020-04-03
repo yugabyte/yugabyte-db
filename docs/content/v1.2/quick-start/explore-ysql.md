@@ -3,6 +3,7 @@ title: 3. Explore YSQL
 linkTitle: 3. Explore YSQL 
 description: Explore Yugabyte SQL (YSQL)
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v1.2:
     parent: quick-start

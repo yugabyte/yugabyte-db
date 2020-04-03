@@ -2,6 +2,7 @@
 title: Open Source Kubernetes 
 linkTitle: Open Source Kubernetes
 description: Open Source Kubernetes 
+block_indexing: true
 menu:
   v2.0:
     parent: deploy-kubernetes

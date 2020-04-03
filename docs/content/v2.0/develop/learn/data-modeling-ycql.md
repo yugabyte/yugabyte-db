@@ -2,6 +2,7 @@
 title: 2. Data modeling
 linkTitle: 2. Data modeling
 description: Data modeling
+block_indexing: true
 menu:
   v2.0:
     identifier: data-modeling-1-ycql

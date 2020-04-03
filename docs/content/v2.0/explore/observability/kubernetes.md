@@ -2,6 +2,7 @@
 title: Observability with Prometheus
 linkTitle: Observability 
 description: Observability with Prometheus
+block_indexing: true
 menu:
   v2.0:
     identifier: observability-4-kubernetes

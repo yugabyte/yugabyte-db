@@ -4,6 +4,7 @@ linkTitle: Bulk Import
 description: Bulk Import
 image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk import data into YugabyteDB.
+block_indexing: true
 menu:
   v1.2:
     identifier: manage-bulk-import

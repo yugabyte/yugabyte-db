@@ -2,6 +2,7 @@
 title: GRANT PERMISSION
 summary: Grant a permission to a role
 description: GRANT PERMISSION
+block_indexing: true
 menu:
   v1.1:
     parent: api-cassandra

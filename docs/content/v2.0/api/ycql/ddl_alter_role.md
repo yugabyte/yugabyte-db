@@ -2,6 +2,7 @@
 title: ALTER ROLE
 summary: Change the properties of a role
 description: ALTER ROLE
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

@@ -2,6 +2,7 @@
 title: Tunable Reads
 linkTitle: Tunable Reads
 description: Tunable Read Latency
+block_indexing: true
 menu:
   v1.1:
     identifier: tunable-reads

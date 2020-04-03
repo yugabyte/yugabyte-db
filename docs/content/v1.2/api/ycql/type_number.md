@@ -2,6 +2,7 @@
 title: Non-Integer
 summary: FLOAT, DOUBLE, and DECIMAL
 description: Non-Integer Numbers
+block_indexing: true
 menu:
   v1.2:
     parent: api-cassandra

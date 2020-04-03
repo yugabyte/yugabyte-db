@@ -2,6 +2,7 @@
 title: Prepare Cloud Environment
 linkTitle: 1. Prepare Cloud Env
 description: Prepare Cloud Environment
+block_indexing: true
 menu:
   v1.1:
     identifier: prepare-cloud-environment

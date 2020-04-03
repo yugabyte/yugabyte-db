@@ -4,6 +4,7 @@ linkTitle: 3. Client-server encryption
 description: 3. Client-server encryption
 headcontent: Enable client to server encryption.
 image: /images/section_icons/secure/tls-encryption/client-to-server.png
+block_indexing: true
 menu:
   v1.3:
     identifier: secure-tls-encryption-client-to-server

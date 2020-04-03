@@ -2,6 +2,7 @@
 title: Change Cluster Config
 linkTitle: Change Cluster Config
 description: Change Cluster Config
+block_indexing: true
 menu:
   v1.1:
     identifier: manage-change-cluster-config

@@ -3,6 +3,7 @@ title: DROP OPERATOR
 linkTitle: DROP OPERATOR
 summary: Remove an operator
 description: DROP OPERATOR
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-operator

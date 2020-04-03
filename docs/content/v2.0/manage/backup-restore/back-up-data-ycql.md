@@ -4,6 +4,7 @@ linkTitle: Back up data
 description: Back up data
 image: /images/section_icons/manage/enterprise.png
 headcontent: Back up data in YugabyteDB.
+block_indexing: true
 menu:
   v2.0:
     identifier: back-up-data-ycql

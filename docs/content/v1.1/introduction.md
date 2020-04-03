@@ -3,6 +3,7 @@ title: Introduction
 linkTitle: Introduction
 description: Introduction
 image: /images/section_icons/index/introduction.png
+block_indexing: true
 menu:
   v1.1:
     identifier: introduction

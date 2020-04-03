@@ -2,6 +2,7 @@
 title: ysqlsh
 linkTitle: ysqlsh
 description: ysqlsh CLI for YSQL
+block_indexing: true
 menu:
   v1.3:
     identifier: ysqlsh

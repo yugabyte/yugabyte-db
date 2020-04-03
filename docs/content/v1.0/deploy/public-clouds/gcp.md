@@ -2,6 +2,7 @@
 title: Google Cloud Platform
 linkTitle: Google Cloud Platform
 description: Google Cloud Platform
+block_indexing: true
 menu:
   v1.0:
     identifier: deploy-in-gcp

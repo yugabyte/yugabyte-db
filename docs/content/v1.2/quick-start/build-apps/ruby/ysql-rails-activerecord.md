@@ -2,6 +2,7 @@
 title: Build a Ruby App
 linkTitle: Build a Ruby App
 description: Build a Ruby App
+block_indexing: true
 menu:
   v1.2:
     parent: build-apps

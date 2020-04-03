@@ -2,6 +2,7 @@
 title: HSTRLEN
 linkTitle: HSTRLEN
 description: HSTRLEN
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

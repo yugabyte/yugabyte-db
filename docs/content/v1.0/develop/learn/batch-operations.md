@@ -2,6 +2,7 @@
 title: 5. Batch Operations
 linkTitle: 5. Batch Operations
 description: Batch Operations
+block_indexing: true
 menu:
   v1.0:
     identifier: batch-operations

@@ -4,6 +4,7 @@ linkTitle: Create roles
 description: Create roles
 headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
+block_indexing: true
 menu:
   v2.0:
     identifier: create-roles

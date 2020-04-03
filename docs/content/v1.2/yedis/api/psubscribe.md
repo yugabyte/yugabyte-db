@@ -2,6 +2,7 @@
 title: PSUBSCRIBE
 linkTitle: PSUBSCRIBE
 description: PSUBSCRIBE
+block_indexing: true
 menu:
   v1.2:
     parent: api-yedis

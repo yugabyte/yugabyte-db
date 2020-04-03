@@ -4,6 +4,7 @@ linkTitle: Performance
 description: Performance
 image: /images/section_icons/architecture/concepts.png
 headcontent: Test the performance of YugabyteDB for various workloads.
+block_indexing: true
 menu:
   v1.2:
     identifier: benchmark-performance

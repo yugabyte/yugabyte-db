@@ -2,6 +2,7 @@
 title: Subscript
 summary: Subscripted Columns
 description: Subscripted Expressions
+block_indexing: true
 menu:
   v1.0:
     parent: api-cassandra

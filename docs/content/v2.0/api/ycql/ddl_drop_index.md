@@ -2,6 +2,7 @@
 title: DROP INDEX
 summary: Remove an index
 description: DROP INDEX
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

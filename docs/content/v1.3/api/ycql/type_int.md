@@ -2,6 +2,7 @@
 title: Integer & Counter
 summary: Signed integers of different ranges
 description: Integer & Counter Types
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra
