@@ -259,6 +259,18 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
 }
 
+void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
+  CHECK(metrics);
+  SharedLock<decltype(lock_)> l(lock_);
+  metrics->set_total_ram_usage(ts_metrics_.total_memory_usage);
+  metrics->set_total_sst_file_size(ts_metrics_.total_sst_file_size);
+  metrics->set_uncompressed_sst_file_size(ts_metrics_.uncompressed_sst_file_size);
+  metrics->set_num_sst_files(ts_metrics_.num_sst_files);
+  metrics->set_read_ops_per_sec(ts_metrics_.read_ops_per_sec);
+  metrics->set_write_ops_per_sec(ts_metrics_.write_ops_per_sec);
+  metrics->set_uptime_seconds(ts_metrics_.uptime_seconds);
+}
+
 bool TSDescriptor::HasTabletDeletePending() const {
   SharedLock<decltype(lock_)> l(lock_);
   return !tablets_pending_delete_.empty();

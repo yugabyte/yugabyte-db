@@ -374,21 +374,40 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     return Status::OK();
   }
 
-  // ENG-285: Hold on to the shared pointer while iterating over master addresses. Previously, we
-  // would iterate over *opts_.GetMasterAddresses() directly without bumping the refcount, and the
-  // vector would sometimes get deallocated by another thread in the middle of that iteration.
-  auto master_addresses_shared_ptr = opts_.GetMasterAddresses();
+  consensus::ConsensusStatePB cpb;
+  RETURN_NOT_OK(catalog_manager_->GetCurrentConfig(&cpb));
+  if (!cpb.has_config()) {
+      return STATUS(NotFound, "No raft config found.");
+  }
 
-  for (const auto& peer_addr : *master_addresses_shared_ptr) {
+  for (const RaftPeerPB& peer : cpb.config().peers()) {
+    // Get all network addresses associated with this peer master
+    std::vector<HostPort> addrs;
+    for (const auto& hp : peer.last_known_private_addr()) {
+      addrs.push_back(HostPortFromPB(hp));
+    }
+    for (const auto& hp : peer.last_known_broadcast_addr()) {
+      addrs.push_back(HostPortFromPB(hp));
+    }
+
+    // Make GetMasterRegistration calls for peer master info.
     ServerEntryPB peer_entry;
     Status s = GetMasterEntryForHosts(
-        proxy_cache_.get(), peer_addr, MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms),
+        proxy_cache_.get(), addrs, MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms),
         &peer_entry);
     if (!s.ok()) {
+      // In case of errors talking to the peer master,
+      // fill in fields from our catalog best as we can.
       s = s.CloneAndPrepend(
-        Format("Unable to get registration information for peer ($0)", peer_addr));
-      LOG(WARNING) << s;
+        Format("Unable to get registration information for peer ($0) id ($1)",
+              addrs, peer.permanent_uuid()));
+      LOG(WARNING) << "ListMasters: " << s;
       StatusToPB(s, peer_entry.mutable_error());
+      peer_entry.mutable_instance_id()->set_permanent_uuid(peer.permanent_uuid());
+      peer_entry.mutable_instance_id()->set_instance_seqno(0);
+      auto reg = peer_entry.mutable_registration();
+      reg->mutable_private_rpc_addresses()->CopyFrom(peer.last_known_private_addr());
+      reg->mutable_broadcast_addresses()->CopyFrom(peer.last_known_broadcast_addr());
     }
     masters->push_back(peer_entry);
   }
