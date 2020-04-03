@@ -59,7 +59,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // API to delete a snapshot.
   CHECKED_STATUS DeleteSnapshot(const DeleteSnapshotRequestPB* req,
-                                DeleteSnapshotResponsePB* resp);
+                                DeleteSnapshotResponsePB* resp,
+                                rpc::RpcContext* rpc);
 
   CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
                                     ImportSnapshotMetaResponsePB* resp);
@@ -207,7 +208,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const tablet::OperationState& operation_state, int64_t batch_idx,
       const docdb::KeyValueWriteBatchPB& write_batch) override;
 
-  void SubmitWrite(const docdb::KeyValueWriteBatchPB& write_batch) override;
+  void Submit(std::unique_ptr<tablet::Operation> operation) override;
 
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id,
@@ -219,7 +220,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                         TabletSnapshotOperationCallback callback) override;
 
   void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                       const std::string& snapshot_id);
+                                       const std::string& snapshot_id,
+                                       TabletSnapshotOperationCallback callback) override;
 
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);
@@ -288,6 +290,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Result<bool> IsNonTransactionAwareSnapshotDone(const SnapshotId& snapshot_id);
 
   CHECKED_STATUS RestoreNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
+
+  CHECKED_STATUS DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;

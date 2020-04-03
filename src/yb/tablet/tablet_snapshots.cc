@@ -258,8 +258,10 @@ Status TabletSnapshots::RestoreCheckpoint(
 
 Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
   const std::string top_snapshots_dir = SnapshotsDirName(metadata().rocksdb_dir());
-  const std::string snapshot_dir =
-      JoinPathSegments(top_snapshots_dir, tx_state->request()->snapshot_id());
+  const auto& snapshot_id = tx_state->request()->snapshot_id();
+  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  const std::string snapshot_dir = JoinPathSegments(
+      top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();

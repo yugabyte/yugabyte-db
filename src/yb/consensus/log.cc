@@ -551,7 +551,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
                      bool caller_owns_operation,
                      bool skip_wal_write) {
   if (!skip_wal_write) {
-        RETURN_NOT_OK(entry_batch->Serialize());
+    RETURN_NOT_OK(entry_batch->Serialize());
     Slice entry_batch_data = entry_batch->data();
     LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->flush_marker())
         << "Cannot call DoAppend() with no data";
