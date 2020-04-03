@@ -243,6 +243,7 @@ class YBClient::Data {
   // Works with both a distributed and non-distributed configuration.
   void SetMasterServerProxyAsync(CoarseTimePoint deadline,
                                  bool skip_resolution,
+                                 bool wait_for_leader_election,
                                  const StatusCallback& cb);
 
   // Synchronous version of SetMasterServerProxyAsync method above.
@@ -253,7 +254,8 @@ class YBClient::Data {
   // TODO (KUDU-492): Get rid of this method and re-factor the client
   // to lazily initialize 'master_proxy_'.
   CHECKED_STATUS SetMasterServerProxy(CoarseTimePoint deadline,
-                                      bool skip_resolution = false);
+                                      bool skip_resolution = false,
+                                      bool wait_for_leader_election = true);
 
   std::shared_ptr<master::MasterServiceProxy> master_proxy() const;
 
@@ -326,6 +328,11 @@ class YBClient::Data {
   mutable simple_spinlock master_server_addrs_lock_;
 
   bool skip_master_flagfile_ = false;
+
+  // If all masters are available but no leader is present on client init,
+  // this flag determines if the client returns failure right away
+  // or waits for a leader to be elected.
+  bool wait_for_leader_election_on_init_ = true;
 
   MonoDelta default_admin_operation_timeout_;
   MonoDelta default_rpc_timeout_;

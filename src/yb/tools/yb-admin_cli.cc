@@ -160,9 +160,9 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   Status s = client->Init();
 
   if (PREDICT_FALSE(!s.ok())) {
-    cerr << s.CloneAndPrepend("Unable to establish connection to master at [" + addrs + "]."
+    cerr << s.CloneAndPrepend("Unable to establish connection to leader master at [" + addrs + "]."
                               " Please verify the addresses.\n\n").ToString() << endl;
-    return ClusterAdminCli::kInvalidArguments;
+    return STATUS(RuntimeError, "Error connecting to cluster");
   }
 
   // Run found command.
