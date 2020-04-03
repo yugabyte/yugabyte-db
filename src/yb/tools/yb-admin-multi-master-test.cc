@@ -79,14 +79,16 @@ TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
 
   output1.clear();
   output2.clear();
+
   ASSERT_OK(Subprocess::Call(ToStringVector(
       admin_path, "-init_master_addrs", non_leader_hp.ToString(),
-      "list_all_tablet_servers"), &output1));
-  LOG(INFO) << "init_master_addrs: list_all_tablet_servers: " << output1;
+      "get_universe_config"), &output1));
+  // Remove the time output from list_all_tablet_servers since it doesn't match
+  LOG(INFO) << "init_master_addrs: get_universe_config: " << output1;
   ASSERT_OK(Subprocess::Call(ToStringVector(
       admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
-      "list_all_tablet_servers"), &output2));
-  LOG(INFO) << "full master_addresses: list_all_tablet_servers: " << output2;
+      "get_universe_config"), &output2));
+  LOG(INFO) << "full master_addresses: get_universe_config: " << output2;
   ASSERT_EQ(output1, output2);
 }
 

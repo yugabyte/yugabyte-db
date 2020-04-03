@@ -63,13 +63,6 @@ vector<string> StringSplit(const string& arg, char delim) {
   return splits;
 }
 
-std::string RightPadToWidth(const string& s, int w) {
-  int padding = w - s.size();
-  if (padding <= 0)
-    return s;
-  return s + string(padding, ' ');
-}
-
 bool StringEndsWith(const string& s, const char* end, size_t end_len, string* left) {
   // For our purpose, s should always have at least one character before the string we are looking
   // for.

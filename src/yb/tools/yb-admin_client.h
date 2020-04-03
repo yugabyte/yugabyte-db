@@ -136,7 +136,7 @@ class ClusterAdminClient {
   CHECKED_STATUS DeleteNamespaceById(const NamespaceId& namespace_id);
 
   // List all tablet servers known to master
-  CHECKED_STATUS ListAllTabletServers();
+  CHECKED_STATUS ListAllTabletServers(bool exclude_dead = false);
 
   // List all masters
   CHECKED_STATUS ListAllMasters();

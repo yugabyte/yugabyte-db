@@ -1078,6 +1078,8 @@ message ListTabletServersResponsePB {
     required NodeInstancePB instance_id = 1;
     optional TSRegistrationPB registration = 2;
     optional int32 millis_since_heartbeat = 3;
+    optional bool alive = 4;
+    optional TServerMetricsPB metrics = 5;
   }
   repeated Entry servers = 2;
 }
