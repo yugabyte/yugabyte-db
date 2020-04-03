@@ -2,7 +2,7 @@
 title: Default ports reference
 headerTitle: Default ports
 linkTitle: Default ports
-description: Default ports for YugabyteDB APIs, client APIs, servers, monitoring, and monitoring.
+description: Default ports for YugabyteDB including client APIs, RPC communication, monitoring
 section: REFERENCE
 menu:
   latest:
@@ -34,24 +34,26 @@ Internode (server-to-server or node-to-node) communication is managed using RPC 
 | yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
 | yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
 
+If you want to log into the machines running these servers, then the ssh port `22` should be opened as well.
+
 ## Admin web server
 
 Admin web server UI can be viewed at these addresses.
 
 | Server    | Port  | Configuration setting (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
-| yb-master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 7000`](../yb-master/#webserver-port) |
-| yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 9000`](../yb-master/#webserver-port) |
+| yb-master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 7000`](../yb-master/#webserver-port) |
+| yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
 
-## Monitoring with Prometheus
+## Prometheus monitoring
 
-Use the following targets to configure [Prometheus](https://prometheus.io/) to scrape available metrics (in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format)) from the YugabyteDB HTTP endpoint:
+YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints. These endpoints have the following structure.
 
 ```
-/prometheus-metrics
+<target>/prometheus-metrics
 ```
 
-For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
+Following is the list of targets available.
 
 ### Servers
 
@@ -59,33 +61,18 @@ Use the following targets to monitor `yb-tserver` and `yb-master` server metrics
 
 | Server     | Target                     |
 | ---------- | -------------------------- |
-| yb-master  | `<master-address>:7100` |  
-| yb-tserver | `<tserver-address>:9100`   |
+| yb-master  | `<yb-master-address>:7100` 	  |  
+| yb-tserver | `<yb-tserver-address>:9100`   |
 
 ### APIs
 
-Use the following `yb-tserver` targets to more API metrics.
+Use the following `yb-tserver` targets for the various API metrics.
 
 | API     | Target
 | ------- | ------------------------- |
-| ysql    | `<tserver-address>:13000` |
-| ycql    | `<tserver-address>:12000` |
-| yedis   | `<tserver-address>:11000` |
+| ysql    | `<yb-tserver-address>:13000` |
+| ycql    | `<yb-tserver-address>:12000` |
+| yedis   | `<yb-tserver-address>:11000` |
 
-## Internode RPC communication
 
-Internode (server-to-server or node-to-node) communication is managed using RPC calls on these addresses.
-
-| Server    | Port | Configuration setting (default)                              |
-| ---------- | ---- | ------------------------------------------------------------ |
-| yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
-| yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
-
-## Admin web server
-
-Admin web server UI can be viewed at these addresses.
-
-| Server    | Port  | Configuration setting (default)                             |
-| ---------- | ----- | ------------------------------------------------------------ |
-| yb-master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 7000`](../yb-master/#webserver-port) |
-| yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br >[`--webserver_port 9000`](../yb-master/#webserver-port) |
+For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
