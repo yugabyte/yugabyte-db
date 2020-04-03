@@ -5,6 +5,7 @@ linkTitle: Microsoft Azure
 description: Deploy YugabyteDB on Microsoft Azure using Azure Resource Manager (ARM).
 aliases:
   - /deploy/public-clouds/azure/
+  - /latest/deploy/public-clouds/azure
 menu:
   latest:
     identifier: deploy-on-azure-1-azure-arm
@@ -34,6 +35,8 @@ showAsideToc: true
     </a>
   </li>
 </ul>
+
+<br/>
 
 <a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fyugabyte%2Fazure-resource-manager%2Fmaster%2Fyugabyte_deployment.json" target="_blank">
     <img src="https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.png"/>
@@ -99,24 +102,24 @@ showAsideToc: true
 
 ## Deploy using Azure Cloud Shell
 
-- Launch Cloud Shell
+- Launch Cloud Shell.
 <a href="https://shell.azure.com" target="_blank">
     <img src="https://shell.azure.com/images/launchcloudshell.png"/>
 </a>
 
-- Clone this repo.
+- Clone this repository.
 
     ```
     $ git clone https://github.com/yugabyte/azure-resource-manager.git
     ```
 
-- Change current directory to cloned git repo directory
+- Change the current directory to the cloned GitHub repository directory
 
     ```
       $ cd azure-resource-manager
     ```
 
-- Use Azure CLI command to create deployments <br/>
+- Use Azure CLI command to create deployments. <br/>
 
     ```
      $ az group deployment create --resource-group <Your-Azure-Resource-Group> --template-file yugabyte_deployment.json --parameters ClusterName='<Your-Cluster-Name>'  SshUser='<Your-SSH-USER>' YBVersion='2.0.6.0' SshKeypair='<Your-SSH-USER-PublicKey-File-Contents>'
@@ -127,12 +130,12 @@ showAsideToc: true
     ```
     $ az group deployment show -g <Your-Azure-Resource-Group> -n <Your-Deployment-Name> --query properties.outputs
     ```
-
+    
     In the output, you will get the YugabyteDB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugabyteDB admin URL to access admin portal.
 
 ## Deploy using Azure Portal
 
-- Clone this repo locally.
+- Clone this repository locally.
 
     ```
     $ git clone https://github.com/yugabyte/azure-resource-manager.git

@@ -35,4 +35,4 @@ showAsideToc: true
   </li>
 </ul>
 
-See [AKS deployment](../../kubernetes/aks/) in the Kubernetes section.
+To deploy Kubernetes clusters, see [Azure Kubernetes Service (AKS)](../../../kubernetes/single-zone/aks/helm-chart/).
