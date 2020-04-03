@@ -49,6 +49,7 @@ DEFINE_string(init_master_addrs, "",
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 DEFINE_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
+DEFINE_bool(exclude_dead, false, "Exclude dead tservers from output");
 
 namespace yb {
 namespace tools {
@@ -455,7 +456,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "list_all_tablet_servers", "",
       [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->ListAllTabletServers(),
+        RETURN_NOT_OK_PREPEND(client->ListAllTabletServers(FLAGS_exclude_dead),
                               "Unable to list tablet servers");
         return Status::OK();
       });

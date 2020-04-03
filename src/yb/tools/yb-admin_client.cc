@@ -32,6 +32,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include <array>
+#include <sstream>
 #include <type_traits>
 
 #include <boost/tti/has_member_function.hpp>
@@ -42,6 +43,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/string_case.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/string_util.h"
@@ -49,6 +51,7 @@
 #include "yb/util/random_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -129,6 +132,8 @@ const int kPartitionRangeColWidth = 56;
 const int kHostPortColWidth = 20;
 const int kTableNameColWidth = 48;
 const int kNumCharactersInUuid = 32;
+const int kLongColWidth = 15;
+const int kSmallColWidth = 8;
 const int kSleepTimeSec = 1;
 const int kNumberOfTryouts = 30;
 
@@ -728,17 +733,48 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
       NotFound, "Server with UUID $0 has no RPC address registered with the Master", uuid);
 }
 
-Status ClusterAdminClient::ListAllTabletServers() {
+Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  char kSpaceSep = ' ';
 
-  if (!servers.empty()) {
-    cout << RightPadToUuidWidth("Tablet Server UUID") << kColumnSep
-         << kRpcHostPortHeading << endl;
-  }
+  cout << RightPadToUuidWidth("Tablet Server UUID") << kSpaceSep
+        << kRpcHostPortHeading << kSpaceSep
+        << RightPadToWidth("Heartbeat delay", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("Status", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Reads/s", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Writes/s", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Uptime", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("SST total size", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("SST uncomp size", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("SST #files", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("Memory", kSmallColWidth) << kSpaceSep
+        << endl;
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    cout << server.instance_id().permanent_uuid() << kColumnSep
+    if (exclude_dead && server.has_alive() && !server.alive()) {
+      continue;
+    }
+    std::stringstream time_str;
+    auto heartbeat_delay_ms = server.has_millis_since_heartbeat() ?
+                               server.millis_since_heartbeat() : 0;
+    time_str << std::fixed << std::setprecision(2) << (heartbeat_delay_ms/1000.0) << "s";
+    auto status_str = server.has_alive() ? (server.alive() ? "ALIVE" : "DEAD") : "UNKNOWN";
+    cout << server.instance_id().permanent_uuid() << kSpaceSep
          << FormatFirstHostPort(server.registration().common().private_rpc_addresses())
+         << kSpaceSep
+         << RightPadToWidth(time_str.str(), kLongColWidth) << kSpaceSep
+         << RightPadToWidth(status_str, kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(server.metrics().read_ops_per_sec(), kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(server.metrics().write_ops_per_sec(), kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(server.metrics().uptime_seconds(), kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().total_sst_file_size()), kLongColWidth)
+         << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().uncompressed_sst_file_size()),
+                            kLongColWidth)
+         << kSpaceSep
+         << RightPadToWidth(server.metrics().num_sst_files(), kLongColWidth) << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().total_ram_usage()), kSmallColWidth)
+         << kSpaceSep
          << endl;
   }
 
@@ -748,50 +784,31 @@ Status ClusterAdminClient::ListAllTabletServers() {
 Status ClusterAdminClient::ListAllMasters() {
   const auto lresp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
       master_proxy_.get(), ListMastersRequestPB()));
-  if (!lresp.masters().empty()) {
-    cout << RightPadToUuidWidth("Master UUID") << kColumnSep
-         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth)<< kColumnSep
-         << "State" << kColumnSep
-         << "Role" << endl;
+
+  if (lresp.has_error()) {
+    LOG(ERROR) << "Error: querying leader master for live master info : "
+               << lresp.error().DebugString() << endl;
+    return STATUS(RemoteError, lresp.error().DebugString());
   }
-  int i = 0;
+
+  cout << RightPadToUuidWidth("Master UUID") << kColumnSep
+        << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
+        << "State" << kColumnSep
+        << "Role" << endl;
+
   for (const auto& master : lresp.masters()) {
-    if (master.role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
       const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
-      cout << (master_reg ? master.instance_id().permanent_uuid()
+      cout << (master.has_instance_id() ? master.instance_id().permanent_uuid()
                           : RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep;
-      cout << RightPadToWidth(master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
-                                         : "UNKNOWN", kHostPortColWidth) << kColumnSep;
-      cout << (master.has_error() ? PBEnumToString(master.error().code()) : "ALIVE") << kColumnSep;
-      cout << PBEnumToString(master.role()) << endl;
-    } else {
-      cout << "UNREACHABLE MASTER at index " << i << "." << endl;
-    }
-    ++i;
-  }
-
-  const auto r_resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
-      &MasterServiceProxy::ListMasterRaftPeers, master_proxy_.get(),
-      ListMasterRaftPeersRequestPB()));
-  if (r_resp.has_error()) {
-    return STATUS_FORMAT(RuntimeError, "List Raft Masters RPC response hit error: $0",
-        r_resp.error().ShortDebugString());
-  }
-
-  if (r_resp.masters_size() != lresp.masters_size()) {
-    cout << "WARNING: Mismatch in in-memory masters and raft peers info."
-         << "Raft peer info from master leader dumped below." << endl;
-    int i = 0;
-    for (const auto& master : r_resp.masters()) {
-      if (master.member_type() != consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE) {
-        cout << master.permanent_uuid() << "  "
-             << master.last_known_private_addr(0).host() << "/"
-             << master.last_known_private_addr(0).port() << endl;
-      } else {
-        cout << "UNREACHABLE MASTER at index " << i << "." << endl;
-      }
-      ++i;
-    }
+      cout << RightPadToWidth(
+                master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
+                            : "UNKNOWN", kHostPortColWidth)
+            << kColumnSep;
+      cout << RightPadToWidth((master.has_error() ?
+                                PBEnumToString(master.error().code()) : "ALIVE"),
+                              kSmallColWidth)
+            << kColumnSep;
+      cout << (master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN") << endl;
   }
 
   return Status::OK();
