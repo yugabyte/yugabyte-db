@@ -598,6 +598,7 @@ void LookupRpc::ResetMasterLeaderAndRetry() {
   client()->data_->SetMasterServerProxyAsync(
       retrier().deadline(),
       false /* skip_resolution */,
+      true /* wait for leader election */,
       Bind(&LookupRpc::NewLeaderMasterDeterminedCb,
            Unretained(this)));
 }

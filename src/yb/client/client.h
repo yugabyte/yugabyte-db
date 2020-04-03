@@ -197,6 +197,8 @@ class YBClientBuilder {
   // Sets the size of the threadpool for calling callbacks.
   YBClientBuilder& set_callback_threadpool_size(size_t size);
 
+  YBClientBuilder& wait_for_leader_election_on_init(bool should_wait = true);
+
   // Sets skip master leader resolution.
   // Used in tests, when we do not have real master.
   YBClientBuilder& set_skip_master_leader_resolution(bool value);
