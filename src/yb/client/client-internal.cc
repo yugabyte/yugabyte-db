@@ -1040,6 +1040,7 @@ void ClientMasterRpc::ResetLeaderMasterAndRetry() {
   client_->data_->SetMasterServerProxyAsync(
       retrier().deadline(),
       false /* skip_resolution */,
+      true, /* wait for leader election */
       Bind(&ClientMasterRpc::NewLeaderMasterDeterminedCb,
            Unretained(this)));
 }
@@ -1577,7 +1578,9 @@ void YBClient::Data::GetCDCStream(
 void YBClient::Data::LeaderMasterDetermined(const Status& status,
                                             const HostPort& host_port) {
   Status new_status = status;
-
+  VLOG(4) << "YBClient: Leader master determined: status="
+          << status.ToString() << ", host port ="
+          << host_port.ToString();
   std::vector<StatusCallback> cbs;
   {
     std::lock_guard<simple_spinlock> l(leader_master_lock_);
@@ -1597,14 +1600,18 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
 }
 
 Status YBClient::Data::SetMasterServerProxy(CoarseTimePoint deadline,
-                                            bool skip_resolution) {
+                                            bool skip_resolution,
+                                            bool wait_for_leader_election) {
+
   Synchronizer sync;
-  SetMasterServerProxyAsync(deadline, skip_resolution, sync.AsStatusCallback());
+  SetMasterServerProxyAsync(deadline, skip_resolution,
+      wait_for_leader_election, sync.AsStatusCallback());
   return sync.Wait();
 }
 
 void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
                                                bool skip_resolution,
+                                               bool wait_for_leader_election,
                                                const StatusCallback& cb) {
   DCHECK(deadline != CoarseTimePoint::max());
 
@@ -1664,7 +1671,9 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
             actual_deadline,
             messenger_,
             proxy_cache_.get(),
-            &rpcs_),
+            &rpcs_,
+            false /*should timeout to follower*/,
+            wait_for_leader_election),
         &leader_master_rpc_);
     l.unlock();
     (**leader_master_rpc_).SendRpc();

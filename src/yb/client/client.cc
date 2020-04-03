@@ -278,6 +278,11 @@ YBClientBuilder& YBClientBuilder::skip_master_flagfile(bool should_skip) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::wait_for_leader_election_on_init(bool should_wait) {
+  data_->wait_for_leader_election_on_init_ = should_wait;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::default_admin_operation_timeout(const MonoDelta& timeout) {
   data_->default_admin_operation_timeout_ = timeout;
   return *this;
@@ -353,12 +358,15 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->skip_master_flagfile_ = data_->skip_master_flagfile_;
   c->data_->default_admin_operation_timeout_ = data_->default_admin_operation_timeout_;
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;
+  c->data_->wait_for_leader_election_on_init_ = data_->wait_for_leader_election_on_init_;
 
   // Let's allow for plenty of time for discovering the master the first
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
   RETURN_NOT_OK_PREPEND(
-      c->data_->SetMasterServerProxy(deadline, data_->skip_master_leader_resolution_),
+      c->data_->SetMasterServerProxy(deadline,
+          data_->skip_master_leader_resolution_,
+          data_->wait_for_leader_election_on_init_),
       "Could not locate the leader master");
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));

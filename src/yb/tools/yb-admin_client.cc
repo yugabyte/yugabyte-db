@@ -53,6 +53,11 @@
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+DEFINE_bool(wait_if_no_leader_master, false,
+            "When yb-admin connects to the cluster and no leader master is present, "
+            "this flag determines if yb-admin should wait for the entire duration of timeout or"
+            "in case a leader master appears in that duration or return error immediately.");
+
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
 
@@ -231,6 +236,7 @@ Status ClusterAdminClient::Init() {
     yb_client_ = VERIFY_RESULT(YBClientBuilder()
     .add_master_server_addr(master_addr_list_)
     .default_admin_operation_timeout(timeout_)
+    .wait_for_leader_election_on_init(FLAGS_wait_if_no_leader_master)
     .Build(messenger_.get()));
 
     // Find the leader master's socket info to set up the master proxy.
