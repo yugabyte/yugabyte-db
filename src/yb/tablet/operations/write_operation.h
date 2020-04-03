@@ -160,6 +160,8 @@ class WriteOperationState : public OperationState {
     return force_txn_path_;
   }
 
+  void SetTablet(Tablet* tablet) override;
+
  private:
   // Reset the response, and row_ops_ (which refers to data
   // from the request). Request is owned by WriteOperation using a unique_ptr.
@@ -308,7 +310,7 @@ class WriteOperation : public Operation {
   const int64_t term_;
   ScopedOperation preparing_token_;
   const CoarseTimePoint deadline_;
-  WriteOperationContext& context_;
+  WriteOperationContext* const context_;
 
   // this transaction's start time
   MonoTime start_time_;

@@ -42,6 +42,8 @@
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/tserver/backup.proxy.h"
+#include "yb/tserver/service_util.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/service_util.h"
 #include "yb/util/tostring.h"
@@ -67,8 +69,6 @@ DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
              "created.");
 DECLARE_int32(master_rpc_timeout_ms);
 
-DECLARE_int32(sys_catalog_write_timeout_ms);
-
 namespace yb {
 
 using rpc::RpcContext;
@@ -87,7 +87,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
 
   CHECKED_STATUS Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
     auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
-    if (!txn_snapshot_id.IsNil()) {
+    if (txn_snapshot_id) {
       return catalog_manager_->snapshot_coordinator_.Load(txn_snapshot_id, metadata);
     }
     return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
@@ -358,17 +358,13 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   return Status::OK();
 }
 
+void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation) {
+  operation->state()->SetTablet(tablet_peer()->tablet());
+  tablet_peer()->Submit(std::move(operation), leader_ready_term_);
+}
+
 Status CatalogManager::CreateTransactionAwareSnapshot(
     const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
-  auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation_state = std::make_unique<tablet::SnapshotOperationState>(tablet_peer()->tablet());
-  auto request = operation_state->AllocateRequest();
-
-  request->set_snapshot_hybrid_time(master_->clock()->MaxGlobalNow().ToUint64());
-  request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
-  auto snapshot_id = TxnSnapshotId::GenerateRandom();
-  request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-
   SysRowEntries entries;
   for (const auto& table_id : req.tables()) {
     // TODO(txn_snapshot) use single lock to resolve all tables to tablets
@@ -379,24 +375,15 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
 
     SnapshotInfo::AddEntries(*table_description, entries.mutable_entries(),
                              /* tablet_infos= */ nullptr);
-
-    for (const auto& tablet : table_description->tablet_infos) {
-      request->add_tablet_id(tablet->id());
-    }
   }
 
-  request->mutable_extra_data()->PackFrom(entries);
-
-  operation_state->set_completion_callback(
-      tablet::MakeLatchOperationCompletionCallback(latch, resp));
-  auto operation = std::make_unique<tablet::SnapshotOperation>(std::move(operation_state));
-
-  tablet_peer()->Submit(std::move(operation), leader_ready_term_);
-  if (!latch->WaitUntil(rpc->GetClientDeadline())) {
-    return STATUS(TimedOut, "Replication timed out");
+  auto snapshot_id = snapshot_coordinator_.Create(
+      entries, master_->clock()->MaxGlobalNow(), rpc->GetClientDeadline());
+  if (!snapshot_id.ok()) {
+    return SetupError(resp->mutable_error(), snapshot_id.status());
   }
-  resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
 
+  resp->set_snapshot_id(snapshot_id->data(), snapshot_id->size());
   return Status::OK();
 }
 
@@ -467,7 +454,7 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
     };
 
     if (req->has_snapshot_id()) {
-      if (txn_snapshot_id.IsNil()) {
+      if (!txn_snapshot_id) {
         TRACE("Looking up snapshot");
         scoped_refptr<SnapshotInfo> snapshot_info =
             FindPtrOrNull(non_txn_snapshot_ids_map_, req->snapshot_id());
@@ -652,31 +639,47 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 }
 
 Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
-                                      DeleteSnapshotResponsePB* resp) {
+                                      DeleteSnapshotResponsePB* resp,
+                                      RpcContext* rpc) {
   LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
-  RETURN_NOT_OK(CheckOnline());
+      RETURN_NOT_OK(CheckOnline());
 
+  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
+  Status status;
+  if (txn_snapshot_id) {
+    status = snapshot_coordinator_.Delete(txn_snapshot_id, rpc->GetClientDeadline());
+  } else {
+    status = DeleteNonTransactionAwareSnapshot(req->snapshot_id());
+  }
+
+  if (!status.ok()) {
+    return SetupError(resp->mutable_error(), status);
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id) {
   std::lock_guard<LockType> l(lock_);
   TRACE("Acquired catalog manager lock");
 
   TRACE("Looking up snapshot");
   scoped_refptr<SnapshotInfo> snapshot = FindPtrOrNull(
-      non_txn_snapshot_ids_map_, req->snapshot_id());
+      non_txn_snapshot_ids_map_, snapshot_id);
   if (snapshot == nullptr) {
-    const Status s = STATUS(InvalidArgument, "Could not find snapshot", req->snapshot_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+    return STATUS(InvalidArgument, "Could not find snapshot", snapshot_id,
+                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
   auto snapshot_lock = snapshot->LockForWrite();
 
   if (snapshot_lock->data().started_deleting()) {
-    Status s = STATUS(NotFound, "The snapshot was deleted", req->snapshot_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+    return STATUS(NotFound, "The snapshot was deleted", snapshot_id,
+                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
   if (snapshot_lock->data().is_restoring()) {
-    Status s = STATUS(InvalidArgument, "The snapshot is being restored now", req->snapshot_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION, s);
+    return STATUS(InvalidArgument, "The snapshot is being restored now", snapshot_id,
+                  MasterError(MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION));
   }
 
   TRACE("Updating snapshot metadata on disk");
@@ -693,7 +696,7 @@ Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
     s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
                                      s.ToString()));
     LOG(WARNING) << s.ToString();
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    return s;
   }
 
   // Send DeleteSnapshot requests to all TServers (one tablet - one request).
@@ -709,7 +712,7 @@ Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
 
         LOG(INFO) << "Sending DeleteTabletSnapshot to tablet: " << tablet->ToString();
         // Send DeleteSnapshot requests to all TServers (one tablet - one request).
-        SendDeleteTabletSnapshotRequest(tablet, req->snapshot_id());
+        SendDeleteTabletSnapshotRequest(tablet, snapshot_id, TabletSnapshotOperationCallback());
       }
     }
   }
@@ -1021,20 +1024,6 @@ Status CatalogManager::ApplyOperationState(
   return tablet_peer()->tablet()->ApplyOperationState(operation_state, batch_idx, write_batch);
 }
 
-void CatalogManager::SubmitWrite(const docdb::KeyValueWriteBatchPB& write_batch) {
-  auto term = tablet_peer()->consensus()->LeaderTerm();
-  tserver::WriteRequestPB empty_write_request;
-  auto state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &empty_write_request);
-  auto& request = *state->mutable_request();
-  request.set_tablet_id(tablet_peer()->tablet_id());
-  *request.mutable_write_batch() = write_batch;
-  auto operation = std::make_unique<tablet::WriteOperation>(
-      std::move(state), term, ScopedOperation(),
-      CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms, tablet_peer().get());
-  tablet_peer()->Submit(std::move(operation), term);
-}
-
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
   TabletInfos result;
   result.reserve(ids.size());
@@ -1071,10 +1060,12 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(
 }
 
 void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
-                                                     const string& snapshot_id) {
+                                                     const string& snapshot_id,
+                                                     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
       master_, worker_pool_.get(), tablet, snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::DELETE);
+      tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET);
+  call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(call->Run(), "Failed to send delete snapshot request");
 }

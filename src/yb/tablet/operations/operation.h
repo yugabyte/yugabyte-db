@@ -158,7 +158,7 @@ class OperationState {
     return tablet_;
   }
 
-  void SetTablet(Tablet* tablet) {
+  virtual void SetTablet(Tablet* tablet) {
     tablet_ = tablet;
   }
 
@@ -375,6 +375,22 @@ class SynchronizerOperationCompletionCallback : public OperationCompletionCallba
 
  private:
   Synchronizer* synchronizer_;
+};
+
+class WeakSynchronizerOperationCompletionCallback : public OperationCompletionCallback {
+ public:
+  explicit WeakSynchronizerOperationCompletionCallback(std::weak_ptr<Synchronizer> synchronizer)
+      : synchronizer_(std::move(synchronizer)) {}
+
+  void OperationCompleted() override {
+    auto synchronizer = synchronizer_.lock();
+    if (synchronizer) {
+      synchronizer->StatusCB(status());
+    }
+  }
+
+ private:
+  std::weak_ptr<Synchronizer> synchronizer_;
 };
 
 }  // namespace tablet

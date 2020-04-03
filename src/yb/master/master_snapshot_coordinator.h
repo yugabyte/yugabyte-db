@@ -50,13 +50,17 @@ class SnapshotCoordinatorContext {
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
       TabletSnapshotOperationCallback callback) = 0;
 
+  virtual void SendDeleteTabletSnapshotRequest(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
+      TabletSnapshotOperationCallback callback) = 0;
+
   virtual Result<ColumnId> MetadataColumnId() = 0;
 
   virtual CHECKED_STATUS ApplyOperationState(
       const tablet::OperationState& operation_state, int64_t batch_idx,
       const docdb::KeyValueWriteBatchPB& write_batch) = 0;
 
-  virtual void SubmitWrite(const docdb::KeyValueWriteBatchPB& write_batch) = 0;
+  virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
 };
@@ -67,8 +71,16 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context);
   ~MasterSnapshotCoordinator();
 
+  Result<TxnSnapshotId> Create(
+      const SysRowEntries& entries, HybridTime snapshot_hybrid_time, CoarseTimePoint deadline);
+
+  CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
+
   // As usual negative leader_term means that this operation was replicated at the follower.
-  CHECKED_STATUS Replicated(
+  CHECKED_STATUS CreateReplicated(
+      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+
+  CHECKED_STATUS DeleteReplicated(
       int64_t leader_term, const tablet::SnapshotOperationState& state) override;
 
   CHECKED_STATUS ListSnapshots(const TxnSnapshotId& snapshot_id, ListSnapshotsResponsePB* resp);

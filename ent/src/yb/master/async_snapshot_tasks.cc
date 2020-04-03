@@ -114,7 +114,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
           tablet_.get(), resp_.has_error());
       return;
     }
-    case tserver::TabletSnapshotOpRequestPB::DELETE: {
+    case tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET: {
       // TODO: this class should not know CatalogManager API,
       //       remove circular dependency between classes.
       master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
@@ -122,6 +122,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
       return;
     }
     case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
+    case tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.

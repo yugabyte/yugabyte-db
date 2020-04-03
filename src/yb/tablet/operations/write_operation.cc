@@ -83,7 +83,7 @@ WriteOperation::WriteOperation(
     WriteOperationContext* context)
     : Operation(std::move(state), OperationType::kWrite),
       term_(term), preparing_token_(std::move(preparing_token)), deadline_(deadline),
-      context_(*context), start_time_(MonoTime::Now()) {
+      context_(context), start_time_(MonoTime::Now()) {
 }
 
 consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
@@ -160,7 +160,7 @@ void WriteOperation::DoStartSynchronization(const Status& status) {
   if (restart_read_ht_.is_valid()) {
     auto restart_time = state()->response()->mutable_restart_read_time();
     restart_time->set_read_ht(restart_read_ht_.ToUint64());
-    auto local_limit = context_.ReportReadRestart();
+    auto local_limit = context_->ReportReadRestart();
     restart_time->set_local_limit_ht(local_limit.ToUint64());
     // Global limit is ignored by caller, so we don't set it.
     state()->CompleteWithStatus(Status::OK());
@@ -172,7 +172,7 @@ void WriteOperation::DoStartSynchronization(const Status& status) {
     return;
   }
 
-  context_.Submit(std::move(self), term_);
+  context_->Submit(std::move(self), term_);
 }
 
 WriteOperationState::WriteOperationState(Tablet* tablet,
@@ -253,6 +253,13 @@ HybridTime WriteOperationState::WriteHybridTime() const {
     return HybridTime(request_->external_hybrid_time());
   }
   return OperationState::WriteHybridTime();
+}
+
+void WriteOperationState::SetTablet(Tablet* tablet) {
+  OperationState::SetTablet(tablet);
+  if (!request_->has_tablet_id()) {
+    request_->set_tablet_id(tablet->tablet_id());
+  }
 }
 
 }  // namespace tablet
