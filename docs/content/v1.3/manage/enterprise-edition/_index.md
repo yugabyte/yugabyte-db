@@ -4,6 +4,7 @@ linkTitle: Yugabyte Platform
 description: Yugabyte Platform
 image: /images/section_icons/manage/enterprise.png
 headcontent: Manage YugabyteDB without any downtime using the Yugabyte Platform's built-in orchestration and monitoring.
+block_indexing: true
 menu:
   v1.3:
     identifier: manage-enterprise-edition

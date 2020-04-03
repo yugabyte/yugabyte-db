@@ -3,6 +3,7 @@ title: DELETE
 linkTitle: DELETE
 summary: DELETE
 description: DELETE
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-delete

@@ -2,6 +2,7 @@
 title: Layered architecture
 linkTitle: Layered architecture
 description: Layered architecture
+block_indexing: true
 menu:
   v1.3:
     identifier: architecture-layered-architecture

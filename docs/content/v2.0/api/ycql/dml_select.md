@@ -2,6 +2,7 @@
 title: SELECT
 summary: Retrieves rows from a table
 description: SELECT
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

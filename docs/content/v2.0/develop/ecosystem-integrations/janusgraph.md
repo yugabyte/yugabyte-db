@@ -2,6 +2,7 @@
 title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
+block_indexing: true
 menu:
   v2.0:
     identifier: janusgraph

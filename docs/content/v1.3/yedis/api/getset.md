@@ -2,6 +2,7 @@
 title: GETSET
 linkTitle: GETSET
 description: GETSET
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

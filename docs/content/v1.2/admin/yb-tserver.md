@@ -2,6 +2,7 @@
 title: yb-tserver
 linkTitle: yb-tserver
 description: yb-tserver
+block_indexing: true
 menu:
   v1.2:
     identifier: yb-tserver

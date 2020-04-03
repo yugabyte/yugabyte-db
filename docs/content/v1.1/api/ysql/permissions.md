@@ -2,6 +2,7 @@
 title: Roles and Permissions
 description: Roles and Permissions
 summary: Roles and Permissions
+block_indexing: true
 menu:
   v1.1:
     identifier: api-postgresql-permissions

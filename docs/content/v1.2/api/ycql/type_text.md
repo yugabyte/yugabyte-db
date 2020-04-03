@@ -2,6 +2,7 @@
 title: TEXT
 summary: String of Unicode characters
 description: TEXT Type
+block_indexing: true
 menu:
   v1.2:
     parent: api-cassandra

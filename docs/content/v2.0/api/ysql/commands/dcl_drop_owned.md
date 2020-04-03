@@ -3,6 +3,7 @@ title: DROP OWNED
 linkTitle: DROP OWNED
 description: DROP OWNED
 summary: Roles (users and groups)
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-owned

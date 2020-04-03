@@ -4,6 +4,7 @@ linkTitle: FAQs
 description: Frequently Asked Questions
 image: /images/section_icons/index/faq.png
 headcontent:
+block_indexing: true
 menu:
   v1.0:
     identifier: faq

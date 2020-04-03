@@ -3,6 +3,7 @@ title: SERIAL data types
 linktitle: Serial
 summary: SERIAL data types
 description: SERIAL data types
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-datatypes-serial

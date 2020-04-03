@@ -2,6 +2,7 @@
 title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
+block_indexing: true
 menu:
   v1.3:
     identifier: apache-kafka

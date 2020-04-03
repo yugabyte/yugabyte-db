@@ -4,6 +4,7 @@ linkTitle: Troubleshoot
 description: Troubleshoot YugabyteDB
 image: /images/section_icons/index/troubleshoot.png
 headcontent:
+block_indexing: true
 menu:
   v1.1:
     identifier: troubleshoot

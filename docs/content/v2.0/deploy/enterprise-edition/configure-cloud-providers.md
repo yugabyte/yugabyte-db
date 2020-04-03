@@ -2,6 +2,7 @@
 title: Configure cloud providers
 linkTitle: 4. Configure cloud providers
 description: Configure cloud providers
+block_indexing: true
 menu:
   v2.0:
     identifier: configure-cloud-providers

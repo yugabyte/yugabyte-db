@@ -2,6 +2,7 @@
 title: DML Statements
 description: PostgreSQL DML Statements
 summary: DML overview and specification.
+block_indexing: true
 menu:
   v1.0:
     identifier: api-postgresql-dml

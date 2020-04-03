@@ -3,6 +3,7 @@ title: ALTER DOMAIN
 linkTitle: ALTER DOMAIN
 summary: Alter a domain in a database
 description: ALTER DOMAIN
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-alter-domain

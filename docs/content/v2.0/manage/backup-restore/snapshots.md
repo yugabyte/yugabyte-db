@@ -3,6 +3,7 @@ title: Snapshot and restore data
 linkTitle: Snapshot and restore data
 description: Snapshot and restore data
 image: /images/section_icons/manage/enterprise.png
+block_indexing: true
 menu:
   v2.0:
     identifier: snapshots-ycql

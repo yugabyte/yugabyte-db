@@ -2,6 +2,7 @@
 title: Isolation Levels
 linkTitle: Isolation Levels
 description: Transaction isolation Levels
+block_indexing: true
 menu:
   v2.0:
     identifier: architecture-isolation-levels

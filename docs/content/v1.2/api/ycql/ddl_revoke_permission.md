@@ -3,6 +3,7 @@
 title: REVOKE PERMISSION
 summary: Revoke a permission from a role
 description: REVOKE PERMISSION
+block_indexing: true
 menu:
   v1.2:
     parent: api-cassandra

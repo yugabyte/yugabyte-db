@@ -2,6 +2,7 @@
 title: Configure Admin Console
 linkTitle: 3. Configure Admin Console
 description: Configure Admin Console
+block_indexing: true
 menu:
   v1.0:
     identifier: configure-admin-console

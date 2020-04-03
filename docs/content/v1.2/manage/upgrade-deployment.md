@@ -2,6 +2,7 @@
 title: Upgrade Deployment
 linkTitle: Upgrade Deployment
 description: Upgrade Deployment
+block_indexing: true
 menu:
   v1.2:
     identifier: manage-upgrade-deployment

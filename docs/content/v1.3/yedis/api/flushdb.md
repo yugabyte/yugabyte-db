@@ -2,6 +2,7 @@
 title: FLUSHDB
 linkTitle: FLUSHDB
 description: FLUSHDB
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

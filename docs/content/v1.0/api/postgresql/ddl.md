@@ -2,6 +2,7 @@
 title: DDL Statements
 description: PostgreSQL DDL Statements
 summary: DDL overview and specification.
+block_indexing: true
 menu:
   v1.0:
     identifier: api-postgresql-ddl

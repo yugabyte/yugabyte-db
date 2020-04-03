@@ -2,6 +2,7 @@
 title: SportsDB sample database 
 linkTitle: SportsDB
 description: SportsDB sample database
+block_indexing: true
 menu:
   v2.0:
     identifier: sportsdb

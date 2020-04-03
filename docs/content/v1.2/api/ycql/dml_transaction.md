@@ -2,6 +2,7 @@
 title: TRANSACTION
 summary: Make changes to multiple rows in a transaction
 description: TRANSACTION
+block_indexing: true
 menu:
   v1.2:
     parent: api-cassandra

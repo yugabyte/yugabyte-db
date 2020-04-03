@@ -2,6 +2,7 @@
 title: JOINs
 linkTitle: 3. JOINs
 description: JOINs
+block_indexing: true
 menu:
   v1.1:
     identifier: pgsql-joins

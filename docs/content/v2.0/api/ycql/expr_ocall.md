@@ -2,6 +2,7 @@
 title: Operator call
 summary: Compounding expression using operators.
 description: Built-in operator call
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

@@ -2,6 +2,7 @@
 title: HINCRBY
 linkTitle: HINCRBY
 description: HINCRBY
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

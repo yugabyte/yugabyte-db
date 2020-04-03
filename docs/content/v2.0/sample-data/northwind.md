@@ -2,6 +2,7 @@
 title: Northwind sample database
 linkTitle: Northwind
 description: Northwind sample database
+block_indexing: true
 menu:
   v2.0:
     identifier: northwind

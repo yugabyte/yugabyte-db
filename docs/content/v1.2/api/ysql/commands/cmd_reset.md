@@ -3,6 +3,7 @@ title: RESET
 linkTitle: RESET
 summary: Reset a system or session variable to factory settings.
 description: RESET
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-reset

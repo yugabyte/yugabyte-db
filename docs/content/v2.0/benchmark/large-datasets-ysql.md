@@ -4,6 +4,7 @@ linkTitle: Large datasets
 description: Large datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Testing YugabyteDB with large data sets.
+block_indexing: true
 menu:
   v2.0:
     identifier: large-datasets-2-ysql

@@ -2,6 +2,7 @@
 title: Global distribution
 linkTitle: 3. Global distribution
 description: Global distribution
+block_indexing: true
 menu:
   v1.3:
     identifier: global-distribution

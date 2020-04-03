@@ -3,6 +3,7 @@ title: EXECUTE
 linkTitle: EXECUTE
 description: EXECUTE
 summary: EXECUTE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-execute

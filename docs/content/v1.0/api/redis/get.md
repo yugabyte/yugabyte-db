@@ -2,6 +2,7 @@
 title: GET
 linkTitle: GET
 description: GET
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

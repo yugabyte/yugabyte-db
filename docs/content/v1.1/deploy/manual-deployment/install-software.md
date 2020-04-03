@@ -2,6 +2,7 @@
 title: Install Software
 linkTitle: 2. Install Software
 description: Install Software
+block_indexing: true
 menu:
   v1.1:
     identifier: deploy-manual-deployment-install-software

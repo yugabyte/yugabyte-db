@@ -2,6 +2,7 @@
 title: Metabase
 linkTitle: Metabase
 description: Metabase
+block_indexing: true
 menu:
   v2.0:
     identifier: metabase

@@ -2,6 +2,7 @@
 title: CREATE DATABASE
 summary: Create a new database
 description: CREATE DATABASE
+block_indexing: true
 menu:
   v1.0:
     identifier: api-postgresql-create-db

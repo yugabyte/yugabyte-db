@@ -2,6 +2,7 @@
 title: TSRANGEBYTIME
 linkTitle: TSRANGEBYTIME
 description: TSRANGEBYTIME
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

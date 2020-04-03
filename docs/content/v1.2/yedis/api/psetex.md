@@ -2,6 +2,7 @@
 title: PSETEX
 linkTitle: PSETEX
 description: PSETEX
+block_indexing: true
 menu:
   v1.2:
     parent: api-yedis

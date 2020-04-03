@@ -2,6 +2,7 @@
 title: ABORT
 description: ABORT Command
 summary: Overview of ABORT commands.
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-txn-abort

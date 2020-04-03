@@ -2,6 +2,7 @@
 title: Prepared Statements
 description: Prepared Statements.
 summary: Prepare and execute statements.
+block_indexing: true
 menu:
   v1.1:
     identifier: api-postgresql-prepare

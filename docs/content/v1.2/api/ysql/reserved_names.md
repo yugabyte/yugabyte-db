@@ -4,6 +4,7 @@ linkTitle: Reserved Names
 description: List of reserved names
 summary: List of reserved names
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-reserved-names

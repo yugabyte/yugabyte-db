@@ -3,6 +3,7 @@ title: ALTER SEQUENCE
 linkTitle: ALTER SEQUENCE
 summary: Alter a sequence in a schema
 description: ALTER SEQUENCE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-alter-sequence

@@ -2,6 +2,7 @@
 title: ZADD
 linkTitle: ZADD
 description: ZADD
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

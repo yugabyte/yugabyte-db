@@ -2,6 +2,7 @@
 title: Install Admin Console
 linkTitle: 2. Install Admin Console
 description: Install Admin Console
+block_indexing: true
 menu:
   v1.3:
     identifier: install-admin-console

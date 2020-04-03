@@ -3,6 +3,7 @@ title: 1. ACID Transactions
 linkTitle: 1. ACID Transactions
 description: Distributed ACID Transactions
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v1.0:
     identifier: transactions

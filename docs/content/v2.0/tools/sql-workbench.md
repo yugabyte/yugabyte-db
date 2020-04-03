@@ -2,6 +2,7 @@
 title: SQL Workbench/J
 linkTitle: SQL Workbench/J
 description: SQL Workbench/J
+block_indexing: true
 menu:
   v2.0:
     identifier: sql-workbench

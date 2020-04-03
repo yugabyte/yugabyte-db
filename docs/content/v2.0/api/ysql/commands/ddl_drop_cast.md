@@ -3,6 +3,7 @@ title: DROP CAST
 linkTitle: DROP CAST
 summary: Remove a cast
 description: DROP CAST
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-cast

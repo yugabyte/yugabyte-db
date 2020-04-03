@@ -2,6 +2,7 @@
 title: Health checking and alerts
 linkTitle: Health checking and alerts
 description: Health checking and alerts
+block_indexing: true
 menu:
   v2.0:
     identifier: cluster-health

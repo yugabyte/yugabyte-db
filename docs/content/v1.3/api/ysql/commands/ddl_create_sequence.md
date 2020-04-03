@@ -3,6 +3,7 @@ title: CREATE SEQUENCE
 linkTitle: CREATE SEQUENCE
 summary: Create a sequence in the current schema
 description: CREATE SEQUENCE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-create-sequence

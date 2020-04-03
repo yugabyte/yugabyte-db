@@ -2,6 +2,7 @@
 title: MAP, SET, LIST
 summary: MAP, SET and LIST types
 description: Collection Types
+block_indexing: true
 menu:
   v1.2:
     parent: api-cassandra

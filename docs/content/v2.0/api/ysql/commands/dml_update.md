@@ -3,6 +3,7 @@ title: UPDATE
 linkTitle: UPDATE
 summary: Update table data
 description: UPDATE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-update

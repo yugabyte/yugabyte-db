@@ -4,6 +4,7 @@ linkTitle: Create server certificates
 description: Create server certificates
 headcontent: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption.
 image: /images/section_icons/secure/prepare-nodes.png
+block_indexing: true
 menu:
   v2.0:
     identifier: prepare-nodes

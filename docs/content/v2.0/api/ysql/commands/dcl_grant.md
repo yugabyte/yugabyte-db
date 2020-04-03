@@ -3,6 +3,7 @@ title: GRANT
 linkTitle: GRANT
 description: GRANT
 summary: GRANT statement
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-grant

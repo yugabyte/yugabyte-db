@@ -2,6 +2,7 @@
 title: cqlsh
 linkTitle: cqlsh
 description: cqlsh shell for YCQL
+block_indexing: true
 menu:
   v2.0:
     identifier: cqlsh
@@ -9,6 +10,7 @@ menu:
     weight: 2460
 isTocNested: true
 showAsideToc: true
+block_indexing: true
 ---
 
 ## Overview

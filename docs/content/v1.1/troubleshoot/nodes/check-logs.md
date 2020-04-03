@@ -2,6 +2,7 @@
 title: Inspect Logs
 linkTitle: Inspect Logs
 description: Inspect Logs
+block_indexing: true
 menu:
   v1.1:
     parent: troubleshoot-nodes

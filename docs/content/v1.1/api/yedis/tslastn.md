@@ -2,6 +2,7 @@
 title: TSLASTN
 linkTitle: TSLASTN
 description: TSLASTN
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

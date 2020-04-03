@@ -2,6 +2,7 @@
 title: yb-ctl
 linkTitle: yb-ctl
 description: yb-ctl
+block_indexing: true
 menu:
   v1.2:
     identifier: yb-ctl

@@ -2,6 +2,7 @@
 title: Persistence
 linkTitle: Persistence
 description: Persistence on top of RocksDB
+block_indexing: true
 menu:
   v1.2:
     identifier: docdb-persistence

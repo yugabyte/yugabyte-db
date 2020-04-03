@@ -2,6 +2,7 @@
 title: YCQL connection issues
 linkTitle: YCQL connection issues
 description: Cannot connect to YCQL API
+block_indexing: true
 menu:
   v2.0:
     parent: troubleshoot-cluster

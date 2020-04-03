@@ -3,6 +3,7 @@ title: TPC-C
 linkTitle: TPC-C
 description: TPC-C
 headcontent: Benchmark YugabyteDB using TPC-C
+block_indexing: true
 menu:
   v2.0:
     identifier: tpcc-ysql

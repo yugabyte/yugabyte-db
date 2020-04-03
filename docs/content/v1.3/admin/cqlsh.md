@@ -2,6 +2,7 @@
 title: cqlsh
 linkTitle: cqlsh
 description: cqlsh CLI for YCQL
+block_indexing: true
 menu:
   v1.3:
     identifier: cqlsh
