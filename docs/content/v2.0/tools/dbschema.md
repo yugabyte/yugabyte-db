@@ -2,6 +2,7 @@
 title: DbSchema
 linkTitle: DbSchema
 description: DbSchema
+block_indexing: true
 menu:
   v2.0:
     identifier: dbschema

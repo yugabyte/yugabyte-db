@@ -2,6 +2,7 @@
 title: CREATE TABLE
 summary: Create a new table in a database
 description: CREATE TABLE
+block_indexing: true
 menu:
   v1.1:
     identifier: api-postgresql-create-table

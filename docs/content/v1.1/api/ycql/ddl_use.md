@@ -2,6 +2,7 @@
 title: USE
 summary: Create a new database
 description: USE
+block_indexing: true
 menu:
   v1.1:
     parent: api-cassandra

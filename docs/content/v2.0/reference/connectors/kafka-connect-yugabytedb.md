@@ -3,6 +3,7 @@ title: Kafka Connect YugabyteDB
 linkTitle: Kafka Connect YugabyteDB
 description: Kafka Connect YugabyteDB
 section: REFERENCE
+block_indexing: true
 menu:
   v2.0:
     identifier: kafka-connect-yugabytedb

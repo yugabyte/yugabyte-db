@@ -2,6 +2,7 @@
 title: PUBLISH
 linkTitle: PUBLISH
 description: PUBLISH
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

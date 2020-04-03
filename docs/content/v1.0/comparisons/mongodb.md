@@ -2,6 +2,7 @@
 title: MongoDB
 linkTitle: MongoDB
 description: MongoDB
+block_indexing: true
 menu:
   v1.0:
     parent: comparisons

@@ -3,6 +3,7 @@ title: TEXT
 linktitle: Character
 description: Character Types
 summary: String of Unicode characters
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-datatypes-character

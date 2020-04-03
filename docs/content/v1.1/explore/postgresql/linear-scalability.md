@@ -2,6 +2,7 @@
 title: Linear Scalability
 linkTitle: 1. Linear Scalability
 description: Linear Scalability
+block_indexing: true
 menu:
   v1.1:
     identifier: pgsql-linear-scalability

@@ -3,6 +3,7 @@ title: SHOW
 linkTitle: SHOW
 summary: Display the value of a run-time parameter.
 description: SHOW
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-show

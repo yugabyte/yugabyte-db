@@ -2,6 +2,7 @@
 title: Python
 linkTitle: Python
 description: Develop Python Apps
+block_indexing: true
 menu:
   v1.0:
     identifier: client-drivers-python

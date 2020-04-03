@@ -2,6 +2,7 @@
 title: Check processes
 linkTitle: Check processes
 description: Check YugabyteDB processes
+block_indexing: true
 menu:
   v2.0:
     parent: troubleshoot-nodes

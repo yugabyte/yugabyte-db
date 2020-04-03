@@ -5,6 +5,7 @@ description: Release history
 headcontent: History of important YugabyteDB releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
+block_indexing: true
 menu:
   v1.3:
     identifier: releases

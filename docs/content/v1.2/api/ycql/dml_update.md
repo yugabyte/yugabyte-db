@@ -2,6 +2,7 @@
 title: UPDATE
 summary: Change values of a row in a table
 description: UPDATE
+block_indexing: true
 menu:
   v1.2:
     parent: api-cassandra

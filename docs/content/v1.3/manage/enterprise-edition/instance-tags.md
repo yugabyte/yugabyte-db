@@ -2,6 +2,7 @@
 title: Create and edit instance tags
 linkTitle: Create and edit instance tags
 description: Create and edit instance tags
+block_indexing: true
 menu:
   v1.3:
     identifier: manage-instance-tags

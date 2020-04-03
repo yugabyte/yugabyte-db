@@ -3,6 +3,7 @@ title: DROP AGGREGATE
 linkTitle: DROP AGGREGATE
 summary: Remove an aggregate
 description: DROP AGGREGATE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-aggregate

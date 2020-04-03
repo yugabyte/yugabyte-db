@@ -2,6 +2,7 @@
 title: SMEMBERS
 linkTitle: SMEMBERS
 description: SMEMBERS
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

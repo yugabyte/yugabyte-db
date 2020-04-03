@@ -2,6 +2,7 @@
 title: INSERT
 summary: Add a new row to a table
 description: INSERT
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

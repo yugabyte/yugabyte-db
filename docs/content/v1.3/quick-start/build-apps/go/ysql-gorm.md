@@ -2,6 +2,7 @@
 title: Build a Go App
 linkTitle: Build a Go App
 description: Build a Go App
+block_indexing: true
 menu:
   v1.3:
     parent: build-apps

@@ -3,6 +3,7 @@ title: ysql_dumpall
 linkTitle: ysql_dumpall
 description: ysql_dumpall
 headcontent: Extract all YugabyteDB databases and roles into a SQL script file.
+block_indexing: true
 menu:
   v2.0:
     identifier: ysql-dumpall

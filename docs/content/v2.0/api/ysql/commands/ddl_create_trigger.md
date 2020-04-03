@@ -3,6 +3,7 @@ title: CREATE TRIGGER
 linkTitle: CREATE TRIGGER
 summary: CREATE TRIGGER
 description: CREATE TRIGGER
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-trigger

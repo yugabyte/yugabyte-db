@@ -3,6 +3,7 @@ title: CREATE TABLE
 linkTitle: CREATE TABLE
 summary: Create a new table in a database
 description: CREATE TABLE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-create-table

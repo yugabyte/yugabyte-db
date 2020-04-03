@@ -2,6 +2,7 @@
 title: C#
 linkTitle: C#
 description: Build a C# application
+block_indexing: true
 menu:
   v1.3:
     identifier: build-apps-csharp

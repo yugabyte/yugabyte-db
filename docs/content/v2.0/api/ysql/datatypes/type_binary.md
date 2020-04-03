@@ -3,6 +3,7 @@ title: Binary data types
 linktitle: Binary
 summary: Binary data types
 description: Binary data types
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-datatypes-binary

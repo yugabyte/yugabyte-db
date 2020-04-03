@@ -2,6 +2,7 @@
 title: Date & Time
 summary: DATE, TIME and TIMESTAMP
 description: DateTime Types
+block_indexing: true
 menu:
   v1.0:
     parent: api-cassandra

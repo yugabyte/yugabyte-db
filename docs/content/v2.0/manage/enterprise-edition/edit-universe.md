@@ -2,6 +2,7 @@
 title: Edit universe
 linkTitle: Edit universe
 description: Edit universe
+block_indexing: true
 menu:
   v2.0:
     identifier: manage-edit-universe

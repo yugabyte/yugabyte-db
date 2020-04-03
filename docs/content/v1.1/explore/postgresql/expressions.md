@@ -2,6 +2,7 @@
 title: Expressions
 linkTitle: 5. Expressions
 description: Expressions
+block_indexing: true
 menu:
   v1.1:
     identifier: pgsql-exp

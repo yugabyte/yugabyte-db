@@ -4,6 +4,7 @@ linkTitle: Large datasets
 description: Large datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Testing YugabyteDB with large data sets.
+block_indexing: true
 menu:
   v1.3:
     identifier: benchmark-large-datasets

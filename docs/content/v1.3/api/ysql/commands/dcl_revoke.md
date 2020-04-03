@@ -3,6 +3,7 @@ title: REVOKE
 linkTitle: REVOKE
 description: REVOKE
 summary: REVOKE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-revoke

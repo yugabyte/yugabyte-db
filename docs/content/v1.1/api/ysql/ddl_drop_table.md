@@ -2,6 +2,7 @@
 title: DROP TABLE
 summary: Remove a table
 description: DROP TABLE
+block_indexing: true
 menu:
   v1.1:
     identifier: api-postgresql-drop-table

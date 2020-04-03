@@ -2,12 +2,16 @@
 title: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local cluster
+block_indexing: true
 menu:
   v2.0:
     parent: quick-start
     name: 2. Create a local cluster
     identifier: create-local-cluster-1-macos
     weight: 120
+aliases:
+  - /quick-start/create-local-cluster/
+  - /v2.0/quick-start/create-local-cluster/
 type: page
 isTocNested: true
 showAsideToc: true

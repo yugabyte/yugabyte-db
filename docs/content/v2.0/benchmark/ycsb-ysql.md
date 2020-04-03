@@ -3,6 +3,7 @@ title: YCSB
 linkTitle: YCSB
 description: YCSB
 headcontent: Benchmark YugabyteDB using YCSB.
+block_indexing: true
 menu:
   v2.0:
     identifier: ycsb-2-ysql

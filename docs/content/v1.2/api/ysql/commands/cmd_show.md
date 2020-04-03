@@ -3,6 +3,7 @@ title: SHOW
 linkTitle: SHOW
 summary: Display values of a system or session variable
 description: SHOW
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-show

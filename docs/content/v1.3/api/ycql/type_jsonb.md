@@ -2,6 +2,7 @@
 title: JSONB
 summary: JSONB types
 description: JSONB
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

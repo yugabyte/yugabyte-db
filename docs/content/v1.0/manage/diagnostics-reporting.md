@@ -2,6 +2,7 @@
 title: Diagnostics Reporting
 linkTitle: Diagnostics Reporting
 description: Diagnostics Reporting
+block_indexing: true
 menu:
   v1.0:
     identifier: diagnostics-reporting

@@ -2,6 +2,7 @@
 title: UNSUBSCRIBE
 linkTitle: UNSUBSCRIBE
 description: UNSUBSCRIBE
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

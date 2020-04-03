@@ -4,6 +4,7 @@ linkTitle: Back up and restore
 description: Back up and restore
 image: /images/section_icons/manage/enterprise.png
 headcontent: Create backups and restore your data.
+block_indexing: true
 menu:
   v2.0:
     identifier: backup-restore

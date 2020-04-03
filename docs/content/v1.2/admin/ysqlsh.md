@@ -2,6 +2,7 @@
 title: ysqlsh
 linkTitle: ysqlsh
 description: ysqlsh
+block_indexing: true
 menu:
   v1.2:
     identifier: ysqlsh

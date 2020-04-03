@@ -2,6 +2,7 @@
 title: Helm Chart
 linkTitle: Helm Chart
 description: Helm Chart
+block_indexing: true
 menu:
   v1.2:
     identifier: helm-chart

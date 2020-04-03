@@ -2,6 +2,7 @@
 title: Deploy checklist
 linkTitle: Deployment checklist
 description: Deployment checklist
+block_indexing: true
 menu:
   v2.0:
     identifier: checklist

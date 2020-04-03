@@ -2,6 +2,7 @@
 title: Amazon Aurora
 linkTitle: Amazon Aurora
 description: Amazon Aurora
+block_indexing: true
 menu:
   v2.0:
     parent: comparisons

@@ -3,6 +3,7 @@ title: MONEY Datatypes
 linktitle: Money
 summary: MONEY Datatypes
 description: MONEY Datatypes
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-datatypes-money

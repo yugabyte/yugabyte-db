@@ -2,6 +2,7 @@
 title: Start YB-TServers
 linkTitle: 4. Start YB-TServers
 description: Start YB-TServers
+block_indexing: true
 menu:
   v1.3:
     identifier: deploy-manual-deployment-start-tservers

@@ -4,6 +4,7 @@ linkTitle: Connect to clusters
 description: Connect to clusters
 headcontent: Connect to clusters
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
+block_indexing: true
 menu:
   v2.0:
     identifier: connect-to-cluster

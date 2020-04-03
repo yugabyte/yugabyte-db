@@ -3,6 +3,7 @@ title: ALTER DEFAULT PRIVILEGES
 linkTitle: ALTER DEFAULT PRIVILEGES
 description: ALTER DEFAULT PRIVILEGES
 summary: Roles (users and groups)
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-alter-default-privileges

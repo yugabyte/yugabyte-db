@@ -4,6 +4,7 @@ linkTitle: YCSB
 description: YCSB
 image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YugabyteDB using YCSB.
+block_indexing: true
 menu:
   v1.3:
     identifier: benchmark-ycsb

@@ -2,6 +2,7 @@
 title: HVALS
 linkTitle: HVALS
 description: HVALS
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

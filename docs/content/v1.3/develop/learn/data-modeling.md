@@ -2,6 +2,7 @@
 title: 2. Data modeling
 linkTitle: 2. Data modeling
 description: Data modeling
+block_indexing: true
 menu:
   v1.3:
     identifier: data-modeling

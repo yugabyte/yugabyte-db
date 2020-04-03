@@ -3,6 +3,7 @@ title: ALTER TABLE
 linkTitle: ALTER TABLE
 summary: Alter a table in a database
 description: ALTER TABLE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-alter-table

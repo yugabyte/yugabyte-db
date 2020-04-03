@@ -2,6 +2,7 @@
 title: Edit configuration options
 linkTitle: Edit configuration options
 description: Edit configuration options
+block_indexing: true
 menu:
   v2.0:
     identifier: manage-edit-flags

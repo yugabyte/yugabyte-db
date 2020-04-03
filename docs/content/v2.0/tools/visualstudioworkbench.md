@@ -2,6 +2,7 @@
 title: Visual Studio Code
 linkTitle: Visual Studio Code
 description: Visual Studio Code 
+block_indexing: true
 menu:
   v2.0:
     identifier: visualstudioworkbench

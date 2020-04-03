@@ -2,6 +2,7 @@
 title: SREM
 linkTitle: SREM
 description: SREM
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

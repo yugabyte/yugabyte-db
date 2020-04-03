@@ -2,6 +2,7 @@
 title: BEGIN TRANSACTION
 description: BEGIN TRANSACTION
 summary: BEGIN TRANSACTION
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-txn-begin
