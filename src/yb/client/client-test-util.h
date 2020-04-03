@@ -70,6 +70,10 @@ std::vector<std::string> ScanToStrings(const TableRange& range);
 // Convert a yb::Schema to a yb::client::YBSchema.
 YBSchema YBSchemaFromSchema(const Schema& schema);
 
+// Creates an operation to read value from `value_column` for hashed key `key` for the `table`.
+std::shared_ptr<YBqlReadOp> CreateReadOp(
+    int32_t key, const TableHandle& table, const std::string& value_column);
+
 }  // namespace client
 }  // namespace yb
 
