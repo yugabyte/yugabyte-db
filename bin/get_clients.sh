@@ -3,10 +3,11 @@
 
 set -e
 
-VERSION=2.1.1.0
+VERSION=2.1
+PKG_PREFIX=yugabyte-client
 
 uname=$(uname | tr '[:upper:]' '[:lower:]')
-pkg="yugabyte-client-${VERSION}-$uname.tar.gz"
+pkg="${PKG_PREFIX}-${VERSION}-$uname.tar.gz"
 
 printf "Downloading %s ... \r" "$pkg"
 wget -q "https://downloads.yugabyte.com/${pkg}" -O "$pkg"
@@ -16,10 +17,10 @@ tar -zxf "$pkg"
 
 if test "$uname" = "linux"; then
    printf "Setting up %s ... \r" $pkg
-  "yugabyte-${VERSION}/bin/post_install.sh" > /dev/null 2>&1
+  "${PKG_PREFIX}-${VERSION}/bin/post_install.sh" > /dev/null 2>&1
 fi
 
-echo "ysqlsh is at yugabyte-${VERSION}/bin/ysqlsh                                      "
-echo "csqlsh is at yugabyte-${VERSION}/bin/cqlsh"
+echo "ysqlsh is at ${PKG_PREFIX}-${VERSION}/bin/ysqlsh                                      "
+echo "csqlsh is at ${PKG_PREFIX}-${VERSION}/bin/cqlsh"
 echo You may want to run
-echo " sudo mv yugabyte-${VERSION}/bin/ysqlsh /usr/local/bin/"
+echo " sudo mv ${PKG_PREFIX}-${VERSION}/bin/ysqlsh /usr/local/bin/"
