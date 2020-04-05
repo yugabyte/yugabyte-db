@@ -529,6 +529,12 @@ class YBClient {
   CHECKED_STATUS OpenTable(const YBTableName& table_name, std::shared_ptr<YBTable>* table);
   CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table);
 
+  Result<YBTablePtr> OpenTable(const TableId& table_id) {
+    YBTablePtr result;
+    RETURN_NOT_OK(OpenTable(table_id, &result));
+    return result;
+  }
+
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
