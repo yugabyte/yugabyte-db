@@ -26,7 +26,7 @@
 </tr>
 </thead>
 <tbody>
-<tr><td rowspan="10" nowrap>Scan method</td>
+<tr><td rowspan="11" nowrap>Scan method</td>
   <td nowrap>SeqScan(table)</td>
   <td>Forces sequential scan on the table</td></tr>
 <tr><td>TidScan(table)</td>
@@ -37,6 +37,8 @@
   <td>Forces index only scan on the table. Rstricts to specfied indexes if any. Index scan may be used if index only scan is not available. Available for PostgreSQL 9.2 and later.</td></tr>
 <tr><td nowrap>BitmapScan(table[ index...])</td>
   <td>Forces bitmap scan on the table. Restoricts to specfied indexes if any.</td></tr>
+<tr><td nowrap>IndexScanRegexp(table[ POSIX Regexp...])</br>IndexOnlyScanRegexp(table[ POSIX Regexp...])</br>BitmapScanRegexp(table[ POSIX Regexp...])</td>
+  <td>Forces index scan or index only scan (For PostgreSQL 9.2 and later) or bitmap scan on the table. Restricts to indexes that matches the specified <a href="https://www.postgresql.org/docs/11/functions-matching.html#FUNCTIONS-POSIX-REGEXP">POSIX regular expression</a> pattern</td></tr>
 <tr><td nowrap>NoSeqScan(table)</td>
   <td>Forces not to do sequential scan on the table.</td></tr>
 <tr><td nowrap>NoTidScan(table)</td>
