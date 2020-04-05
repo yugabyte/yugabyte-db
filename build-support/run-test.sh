@@ -112,7 +112,7 @@ if [[ -z ${BUILD_ROOT:-} ]]; then
   handle_build_root_from_current_dir
 fi
 
-yb_ninja_not_needed=true
+yb_ninja_executable_not_needed=true
 if [[ -z ${BUILD_ROOT:-} ]]; then
   set_build_root
 else
