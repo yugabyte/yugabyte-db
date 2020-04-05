@@ -27,7 +27,9 @@ DECLARE_uint64(max_clock_skew_usec);
 namespace yb {
 namespace client {
 
-typedef google::protobuf::RepeatedPtrField<master::SnapshotInfoPB> Snapshots;
+using Snapshots = google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>;
+using ImportedSnapshotData = google::protobuf::RepeatedPtrField<
+    master::ImportSnapshotMetaResponsePB::TableMetaPB>;
 
 class BackupTxnTest : public TransactionTestBase {
  protected:
@@ -172,6 +174,32 @@ class BackupTxnTest : public TransactionTestBase {
     }
     return Status::OK();
   }
+
+  Result<ImportedSnapshotData> StartImportSnapshot(const master::SnapshotInfoPB& snapshot) {
+    master::ImportSnapshotMetaRequestPB req;
+    master::ImportSnapshotMetaResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(60s);
+
+    *req.mutable_snapshot() = snapshot;
+
+    RETURN_NOT_OK(MakeBackupServiceProxy().ImportSnapshotMeta(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    LOG(INFO) << "Imported snapshot metadata: " << resp.DebugString();
+
+    return resp.tables_meta();
+  }
+
+  Result<bool> IsSnapshotImportDone(const ImportedSnapshotData& data) {
+    for (const auto& table : data) {
+      RETURN_NOT_OK(client_->OpenTable(table.table_ids().new_id()));
+    }
+
+    return true;
+  }
 };
 
 TEST_F(BackupTxnTest, Simple) {
@@ -277,6 +305,28 @@ TEST_F(BackupTxnTest, Delete) {
     }
     return true;
   }, 10s * kTimeMultiplier, "Delete on tablets"));
+}
+
+TEST_F(BackupTxnTest, ImportMeta) {
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
+
+  ASSERT_OK(client_->DeleteTable(kTableName));
+  ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
+
+  auto snapshots = ASSERT_RESULT(ListSnapshots());
+  ASSERT_EQ(snapshots.size(), 1);
+
+  auto import_data = ASSERT_RESULT(StartImportSnapshot(snapshots[0]));
+
+  ASSERT_OK(WaitFor([this, import_data] {
+    return IsSnapshotImportDone(import_data);
+  }, 10s * kTimeMultiplier, "Complete import snapshot"));
+
+  ASSERT_OK(table_.Open(kTableName, client_.get()));
+
+  ASSERT_NO_FATALS(WriteData());
 }
 
 } // namespace client

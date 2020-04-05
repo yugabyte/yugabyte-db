@@ -522,11 +522,13 @@ class RocksDBPatcher::Impl {
     for (int level = 0; level < cfd->NumberLevels(); level++) {
       for (const auto* file : cfd->current()->storage_info()->LevelFiles(level)) {
         rocksdb::FileMetaData fmd = *file;
-        auto& consensus_frontier = down_cast<ConsensusFrontier&>(*fmd.largest.user_frontier);
-        if (consensus_frontier.hybrid_time() > value) {
-          consensus_frontier.set_hybrid_time_filter(value);
-          delete_edit.DeleteFile(level, fmd.fd.GetNumber());
-          add_edit.AddCleanedFile(level, fmd);
+        if (fmd.largest.user_frontier) {
+          auto& consensus_frontier = down_cast<ConsensusFrontier&>(*fmd.largest.user_frontier);
+          if (consensus_frontier.hybrid_time() > value) {
+            consensus_frontier.set_hybrid_time_filter(value);
+            delete_edit.DeleteFile(level, fmd.fd.GetNumber());
+            add_edit.AddCleanedFile(level, fmd);
+          }
         }
       }
     }
