@@ -287,7 +287,7 @@ set_build_root() {
 
   export BUILD_ROOT
   export YB_BUILD_ROOT=$BUILD_ROOT
-  set_use_ninja
+  decide_whether_to_use_ninja
 }
 
 # Resolve the BUILD_ROOT symlink and save the result to the real_build_root_path variable.
@@ -576,25 +576,8 @@ set_cmake_build_type_and_compiler_type() {
 find_make_or_ninja_and_update_cmake_opts() {
   if using_ninja; then
     cmake_opts+=( -G Ninja )
-    make_program=ninja
-    if [[ -z ${YB_NINJA_PATH:-} ]]; then
-      local which_ninja=$( which ninja 2>/dev/null )
-      if [[ -f $which_ninja ]]; then
-        YB_NINJA_PATH=$which_ninja
-      elif using_linuxbrew; then
-        export YB_NINJA_PATH=$YB_LINUXBREW_DIR/bin/ninja
-        make_program=$YB_NINJA_PATH
-      elif using_custom_homebrew; then
-        export YB_NINJA_PATH=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
-        make_program=$YB_NINJA_PATH
-      else
-        fatal "Ninja not found"
-      fi
-    fi
-    if [[ ! -x $YB_NINJA_PATH ]]; then
-      fatal "Ninja path $YB_NINJA_PATH does not exist or is not executable"
-    fi
-    export YB_NINJA_PATH
+    find_ninja_executable
+    make_program=$YB_NINJA_PATH
     make_file=build.ninja
   else
     make_program=make
@@ -1392,49 +1375,85 @@ using_custom_homebrew() {
   return 1  # false in bash
 }
 
-set_use_ninja() {
+decide_whether_to_use_ninja() {
   if [[ -z ${YB_USE_NINJA:-} ]]; then
+    # Autodetect whether we need to use Ninja at all, based on whether it is available.
+    export YB_USE_NINJA=0
     if [[ -n ${BUILD_ROOT:-} ]]; then
       if [[ $BUILD_ROOT == *-ninja ]]; then
         export YB_USE_NINJA=1
-      else
-        export YB_USE_NINJA=0
       fi
-    else
-      if which ninja &>/dev/null; then
+    elif command -v ninja || [[ -x /usr/local/bin/ninja ]]; then
+      export YB_USE_NINJA=1
+    elif using_linuxbrew; then
+      local yb_ninja_path_candidate=$YB_LINUXBREW_DIR/bin/ninja
+      if [[ -x $yb_ninja_path_candidate ]]; then
         export YB_USE_NINJA=1
-      elif using_linuxbrew; then
-        local yb_ninja_path=$YB_LINUXBREW_DIR/bin/ninja
-        if [[ -f $yb_ninja_path ]]; then
-          export YB_USE_NINJA=1
-          export YB_NINJA_PATH=$yb_ninja_path
-        fi
       fi
-    fi
-
-    if using_ninja && [[ -z ${yb_ninja_path:-} && "${yb_ninja_not_needed:-}" != "true" ]]; then
-      set +e
-      local which_ninja=$( which ninja 2>/dev/null )
-      set -e
-      if using_linuxbrew; then
-        local yb_ninja_path=$YB_LINUXBREW_DIR/bin/ninja
-        if [[ ! -f $yb_ninja_path ]]; then
-          fatal "When using Linuxbrew, Ninja must be installed as part of Linuxbrew, but this" \
-                "file does not exist: $yb_ninja_path"
-        fi
-      elif using_custom_homebrew; then
-        local yb_ninja_path=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
-        if [[ ! -f $yb_ninja_path ]]; then
-          fatal "When using custom Homebrew, Ninja must be installed as part of Linuxbrew, but" \
-                "this file does not exist: $yb_ninja_path"
-        fi
-      elif [[ -f $which_ninja ]]; then
-        local yb_ninja_path=$which_ninja
-      else
-        fatal "Could not set yb_ninja_path, ninja not found on PATH: $PATH"
+    elif using_custom_homebrew; then
+      local yb_ninja_path_candidate=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
+      if [[ -x $yb_ninja_path_candidate ]]; then
+        export YB_USE_NINJA=1
       fi
     fi
   fi
+
+  find_ninja_executable
+}
+
+find_ninja_executable() {
+  if ! using_ninja || [[ -n ${YB_NINJA_PATH:-} ]] ||
+     [[ ${yb_ninja_executable_not_needed:-} == "true" ]]; then
+    return
+  fi
+
+  if using_custom_homebrew; then
+    # On macOS, prefer to use Ninja from the custom Homebrew directory. That will change as we move
+    # away from Homebrew and Linuxbrew.
+    local yb_ninja_path_candidate=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
+    if [[ -x $yb_ninja_path_candidate ]]; then
+      export YB_NINJA_PATH=$yb_ninja_path_candidate
+      return
+    fi
+  fi
+
+  if [[ -x /usr/local/bin/ninja ]]; then
+    # This will eventually be the preferred Ninja executable on all platforms in our build
+    # environment.
+    export YB_NINJA_PATH=/usr/local/bin/ninja
+    return
+  fi
+
+  set +e
+  local which_ninja=$( command -v ninja )
+  set -e
+  if [[ -x $which_ninja ]]; then
+    export YB_NINJA_PATH=$which_ninja
+    return
+  fi
+
+  if using_linuxbrew; then
+    # On Linux, try to use Linux from Linuxbrew as a last resort.
+    local yb_ninja_path_candidate=$YB_LINUXBREW_DIR/bin/ninja
+    if [[ -x $yb_ninja_path_candidate ]]; then
+      export YB_NINJA_PATH=$yb_ninja_path_candidate
+      return
+    fi
+  fi
+
+  # -----------------------------------------------------------------------------------------------
+  # Ninja not found
+  # -----------------------------------------------------------------------------------------------
+
+  log "PATH: $PATH"
+  if is_linux; then
+    log "YB_LINUXBREW_DIR: ${YB_LINUXBREW_DIR:-undefined}"
+  fi
+  if is_mac; then
+    log "YB_CUSTOM_HOMEBREW_DIR: ${YB_CUSTOM_HOMEBREW_DIR:-undefined}"
+  fi
+
+  fatal "ninja executable not found"
 }
 
 using_ninja() {
@@ -1887,7 +1906,7 @@ handle_predefined_build_root() {
           "of the YB_USE_NINJA env var ('$YB_USE_NINJA')"
   fi
 
-  set_use_ninja
+  decide_whether_to_use_ninja
 }
 
 # Remove the build/latest symlink to prevent Jenkins from showing every test twice in test results.
