@@ -97,6 +97,7 @@ class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWith
 namespace tablet {
 
 struct TableInfo;
+enum RaftGroupStatePB;
 
 }
 
@@ -794,36 +795,26 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                          TabletLocationsPB* locs_pb);
 
-  // Handle one of the tablets in a tablet reported.
-  // Requires that the lock is already held.
-  CHECKED_STATUS HandleReportedTablet(TSDescriptor* ts_desc,
-                                      const ReportedTabletPB& report,
-                                      ReportedTabletUpdatesPB* report_updates,
-                                      bool is_incremental);
-
-  CHECKED_STATUS ResetTabletReplicasFromReportedConfig(
-      const ReportedTabletPB& report, const scoped_refptr<TabletInfo>& tablet,
+  void ReconcileTabletReplicasInLocalMemoryWithReport(
+      const scoped_refptr<TabletInfo>& tablet,
       const std::string& sender_uuid,
-      TabletInfo::lock_type* tablet_lock, TableInfo::lock_type* table_lock);
+      const consensus::ConsensusStatePB& consensus_state,
+      const tablet::RaftGroupStatePB& replica_state);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
   // server that is part of a consensus configuration has not heartbeated to the Master yet, we
   // leave it out of the consensus configuration reported to clients.
   // TODO: See if we can remove this logic, as it seems confusing.
-  void UpdateTabletReplica(TSDescriptor* ts_desc,
-                           const ReportedTabletPB& report,
-                           const scoped_refptr<TabletInfo>& tablet);
+  void UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
+                                        const consensus::ConsensusStatePB* consensus_state,
+                                        const tablet::RaftGroupStatePB& replica_state,
+                                        const scoped_refptr<TabletInfo>& tablet_to_update);
 
-  // It works as AddReplicaToTabletIfNotFound if the replica is not in the tablet map.
-  // If it already exists, it replaces the existing replica with a new replica created from the
-  // report.
-  void UpdateReplicaInTablet(TSDescriptor* ts_desc,
-                             const ReportedTabletPB& report,
-                             const scoped_refptr<TabletInfo>& tablet);
-
-  static void NewReplica(
-      TSDescriptor* ts_desc, const ReportedTabletPB& report, TabletReplica* replica);
+  static void CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
+                                             const consensus::ConsensusStatePB* consensus_state,
+                                             const tablet::RaftGroupStatePB& replica_state,
+                                             TabletReplica* new_replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
   // that must be processed because not running yet.
@@ -900,10 +891,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // all the tablets have completed backfilling, the index will be updated
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
   void SendAlterTableRequest(const scoped_refptr<TableInfo>& table);
-
-  // Start the background task to send the AlterTable() RPC to the leader for this
-  // tablet.
-  void SendAlterTabletRequest(const scoped_refptr<TabletInfo>& tablet);
 
   // Start the background task to send the CopartitionTable() RPC to the leader for this
   // tablet.

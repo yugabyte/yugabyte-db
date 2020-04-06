@@ -77,7 +77,7 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
       String masters = client.getMasterAddresses(hp);
       // Assert each tserver knows about the final list of 3 masters.
-      assertEquals(3, masters.split(",").length);
+      assertEquals("Masters: " + masters, 3, masters.split(",").length);
       // Ensure old masters not present and new masters are present.
       for (HostAndPort master : newMasters) {
         assertTrue(masters.contains(master.getHostText()));

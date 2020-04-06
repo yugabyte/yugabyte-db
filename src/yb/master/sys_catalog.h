@@ -166,6 +166,8 @@ class SysCatalogTable {
 
   Result<ColumnId> MetadataColumnId();
 
+  const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
+
  private:
   friend class CatalogManager;
 
@@ -245,6 +247,8 @@ class SysCatalogTable {
   consensus::RaftPeerPB local_peer_pb_;
 
   scoped_refptr<Histogram> setup_config_dns_histogram_;
+
+  scoped_refptr<Counter> peer_write_count;
 
   std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
 

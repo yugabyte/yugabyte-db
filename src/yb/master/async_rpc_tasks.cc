@@ -588,7 +588,7 @@ void AsyncAlterTable::HandleResponse(int attempt) {
   server::UpdateClock(resp_, master_->clock());
 
   if (state() == MonitoredTaskState::kComplete) {
-    // TODO: proper error handling here.
+    // TODO: proper error handling here. Not critical, since TSHeartbeat will retry on failure.
     auto s = (master_->catalog_manager()->HandleTabletSchemaVersionReport(
         tablet_.get(), schema_version_));
     if (!s.ok()) {

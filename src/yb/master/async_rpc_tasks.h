@@ -124,6 +124,7 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   MonoTime start_timestamp() const override { return start_ts_; }
   MonoTime completion_timestamp() const override { return end_ts_; }
+  const scoped_refptr<TableInfo>& table() const { return table_ ; }
 
  protected:
   // Send an RPC request and register a callback.
