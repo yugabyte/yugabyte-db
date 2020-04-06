@@ -196,7 +196,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Upon completion, the tablet enters the kBootstrapping state.
   CHECKED_STATUS Open();
 
-  CHECKED_STATUS EnableCompactions(ScopedPendingOperationPause* operation_pause);
+  CHECKED_STATUS EnableCompactions(ScopedRWOperationPause* operation_pause);
 
   Result<std::string> BackfillIndexes(const std::vector<IndexInfo>& indexes,
                                       const std::string& backfill_from,
@@ -611,7 +611,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       bool is_ysql_catalog_table) const;
 
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
-  ScopedPendingOperationPause PauseReadWriteOperations();
+  ScopedRWOperationPause PauseReadWriteOperations(Stop stop = Stop::kFalse);
 
   CHECKED_STATUS ResetRocksDBs(bool destroy = false);
 
@@ -746,7 +746,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
+  using IndexOps = std::vector<std::pair<
+      std::shared_ptr<client::YBqlWriteOp>, docdb::QLWriteOperation*>>;
   void UpdateQLIndexes(std::unique_ptr<WriteOperation> operation);
+  void UpdateQLIndexesFlushed(
+      WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
+      const IndexOps& index_ops, const Status& status);
+
   void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);
 
   Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
@@ -765,6 +771,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void MinRunningHybridTimeSatisfied() override {
     CleanupIntentFiles();
   }
+
+  template <class Functor>
+  uint64_t GetRegularDbStat(const Functor& functor) const;
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 

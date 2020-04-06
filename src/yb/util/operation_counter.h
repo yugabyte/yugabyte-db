@@ -16,13 +16,19 @@
 
 #include <atomic>
 #include <mutex>
+#include <unordered_map>
 
+#include "yb/util/debug-util.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
+YB_STRONGLY_TYPED_BOOL(Stop);
+YB_STRONGLY_TYPED_BOOL(Unlock);
+
 class ScopedOperation;
+class ScopedRWOperation;
 
 // Class that counts acquired tokens and don't shutdown until this count drops to zero.
 class OperationCounter {
@@ -64,47 +70,32 @@ class ScopedOperation {
 // control, such as preventing new operations from being started.
 class RWOperationCounter {
  public:
-  // Using upper bits of counter as special flags.
-  static constexpr uint64_t kDisabledDelta = 1ull << 48;
-  static constexpr uint64_t kOpCounterMask = kDisabledDelta - 1;
-  static constexpr uint64_t kDisabledCounterMask = ~kOpCounterMask;
-
-  CHECKED_STATUS DisableAndWaitForOps(const MonoDelta& timeout) {
-    Update(kDisabledDelta);
-    return WaitForOpsToFinish(timeout);
-  }
+  CHECKED_STATUS DisableAndWaitForOps(const MonoDelta& timeout, Stop stop);
 
   // Due to the thread restriction of "timed_mutex::unlock()", this Unlock method must be called
   // in the same thread that invoked DisableAndWaitForOps(). This is fine for truncate, snapshot
   // restore, and tablet shutdown operations.
-  void Enable(const bool unlock) {
-    Update(-kDisabledDelta);
-    if (unlock) {
-      UnlockExclusiveOpMutex();
-    }
-  }
+  void Enable(Unlock unlock, Stop was_stop);
 
   void UnlockExclusiveOpMutex() {
     disable_.unlock();
   }
 
-  uint64_t Increment() { return Update(1); }
+  bool Increment();
+
   void Decrement() { Update(-1); }
   uint64_t Get() const {
     return counters_.load(std::memory_order::memory_order_acquire);
   }
 
   // Return pending operations counter value only.
-  uint64_t GetOpCounter() const {
-    return Get() & kOpCounterMask;
-  }
+  uint64_t GetOpCounter() const;
 
-  bool IsReady() const {
-    return (Get() & kDisabledCounterMask) == 0;
-  }
+  bool WaitMutexAndIncrement(CoarseTimePoint deadline);
 
  private:
-  CHECKED_STATUS WaitForOpsToFinish(const MonoDelta& timeout);
+  CHECKED_STATUS WaitForOpsToFinish(
+      const CoarseTimePoint& start_time, const CoarseTimePoint& deadline);
 
   uint64_t Update(uint64_t delta);
 
@@ -130,40 +121,24 @@ class ScopedRWOperation {
   void operator=(const ScopedRWOperation&) = delete;
   ScopedRWOperation(const ScopedRWOperation&) = delete;
 
-  explicit ScopedRWOperation(RWOperationCounter* counter)
-      : counter_(counter), ok_(false) {
-    if (counter != nullptr) {
-      if (counter_->IsReady()) {
-        // The race condition between IsReady() and Increment() is OK, because we are checking if
-        // anyone has started an exclusive operation since we did the increment, and don't proceed
-        // with this shared-ownership operation in that case.
-        ok_ = (counter->Increment() & RWOperationCounter::kDisabledCounterMask) == 0;
-      } else {
-        ok_ = false;
-        counter_ = nullptr; // Avoid decrementing the counter.
-      }
-    }
-  }
+  explicit ScopedRWOperation(RWOperationCounter* counter = nullptr,
+                             const CoarseTimePoint& deadline = CoarseTimePoint());
 
   ScopedRWOperation(ScopedRWOperation&& op)
-      : counter_(op.counter_), ok_(op.ok_) {
+      : counter_(op.counter_) {
     op.counter_ = nullptr; // Moved ownership.
   }
 
-  ~ScopedRWOperation() {
-    if (counter_ != nullptr) {
-      counter_->Decrement();
-    }
-  }
+  ~ScopedRWOperation();
 
   bool ok() const {
-    return ok_;
+    return counter_ != nullptr;
   }
 
- private:
-  RWOperationCounter* counter_;
+  void Reset();
 
-  bool ok_;
+ private:
+  RWOperationCounter* counter_ = nullptr;
 };
 
 // RETURN_NOT_OK macro support.
@@ -174,21 +149,16 @@ inline Status MoveStatus(const ScopedRWOperation& scoped) {
 }
 
 // A convenience class to automatically pause/resume a RWOperationCounter.
-class ScopedPendingOperationPause {
+class ScopedRWOperationPause {
  public:
   // Object is not copyable, but movable.
-  void operator=(const ScopedPendingOperationPause&) = delete;
-  ScopedPendingOperationPause(const ScopedPendingOperationPause&) = delete;
+  void operator=(const ScopedRWOperationPause&) = delete;
+  ScopedRWOperationPause(const ScopedRWOperationPause&) = delete;
 
-  ScopedPendingOperationPause(RWOperationCounter* counter, const MonoDelta& timeout)
-      : counter_(counter) {
-    if (counter != nullptr) {
-      status_ = counter->DisableAndWaitForOps(timeout);
-    }
-  }
+  ScopedRWOperationPause(RWOperationCounter* counter, const MonoDelta& timeout, Stop stop);
 
-  ScopedPendingOperationPause(ScopedPendingOperationPause&& p)
-      : counter_(p.counter_), status_(std::move(p.status_)) {
+  ScopedRWOperationPause(ScopedRWOperationPause&& p)
+      : counter_(p.counter_), status_(std::move(p.status_)), was_stop_(p.was_stop_) {
     p.counter_ = nullptr; // Moved ownership.
   }
 
@@ -196,23 +166,17 @@ class ScopedPendingOperationPause {
   // exclusive-ownership operations on the RocksDB instance, such as truncation and snapshot
   // restoration. It is fine to release the mutex because these exclusive operations are not allowed
   // to happen after tablet shutdown anyway.
-  void ReleaseMutexButKeepDisabled() {
-    CHECK_OK(status_);
-    CHECK_NOTNULL(counter_);
-    counter_->UnlockExclusiveOpMutex();
-    // Make sure the destructor has no effect when it runs.
-    counter_ = nullptr;
-  }
+  void ReleaseMutexButKeepDisabled();
 
   // See RWOperationCounter::Enable() for the thread restriction.
-  ~ScopedPendingOperationPause() {
+  ~ScopedRWOperationPause() {
     if (counter_ != nullptr) {
-      counter_->Enable(status_.IsOk());
+      counter_->Enable(Unlock(status_.ok()), was_stop_);
     }
   }
 
   bool ok() const {
-    return status_.IsOk();
+    return status_.ok();
   }
 
   Status&& status() {
@@ -220,12 +184,13 @@ class ScopedPendingOperationPause {
   }
 
  private:
-  RWOperationCounter* counter_;
+  RWOperationCounter* counter_ = nullptr;
   Status status_;
+  Stop was_stop_;
 };
 
 // RETURN_NOT_OK macro support.
-inline Status&& MoveStatus(ScopedPendingOperationPause&& p) {
+inline Status&& MoveStatus(ScopedRWOperationPause&& p) {
   return std::move(p.status());
 }
 

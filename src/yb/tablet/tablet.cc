@@ -746,7 +746,7 @@ void Tablet::DoCleanupIntentFiles() {
   }
 }
 
-Status Tablet::EnableCompactions(ScopedPendingOperationPause* pause_operation) {
+Status Tablet::EnableCompactions(ScopedRWOperationPause* pause_operation) {
   if (!pause_operation) {
     ScopedRWOperation operation(&pending_op_counter_);
     RETURN_NOT_OK(operation);
@@ -822,7 +822,7 @@ void Tablet::PreventCallbacksFromRocksDBs(bool disable_flush_on_shutdown) {
 void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
   StartShutdown();
 
-  auto op_pause = PauseReadWriteOperations();
+  auto op_pause = PauseReadWriteOperations(Stop::kTrue);
   if (!op_pause.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to shut down: " << op_pause.status();
     return;
@@ -1131,7 +1131,7 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   // TODO: move this locking to the top-level read request handler in TabletService.
-  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_, deadline);
   RETURN_NOT_OK(scoped_read_operation);
 
   ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
@@ -1150,7 +1150,7 @@ Status Tablet::HandleQLReadRequest(
     const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     QLReadRequestResult* result) {
-  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_, deadline);
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
@@ -1265,6 +1265,8 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
   }
 
   auto status = StartDocWriteOperation(operation.get());
+  scoped_read_operation.Reset();
+
   if (operation->restart_read_ht().is_valid()) {
     WriteOperation::StartSynchronization(std::move(operation), Status::OK());
     return;
@@ -1310,7 +1312,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
   client::YBClient* client = nullptr;
   client::YBSessionPtr session;
   client::YBTransactionPtr txn;
-  std::vector<std::pair<std::shared_ptr<client::YBqlWriteOp>, QLWriteOperation*>> index_ops;
+  IndexOps index_ops;
   const ChildTransactionDataPB* child_transaction_data = nullptr;
   for (auto& doc_op : operation->doc_ops()) {
     auto* write_op = static_cast<QLWriteOperation*>(doc_op.get());
@@ -1323,14 +1325,15 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       if (write_op->request().has_child_transaction_data()) {
         child_transaction_data = &write_op->request().child_transaction_data();
         if (!transaction_manager_) {
-          auto status = STATUS(Corruption, "Transaction manager is not present for index update");
-          operation->state()->CompleteWithStatus(status);
+          WriteOperation::StartSynchronization(
+              std::move(operation),
+              STATUS(Corruption, "Transaction manager is not present for index update"));
           return;
         }
         auto child_data = ChildTransactionData::FromPB(
             write_op->request().child_transaction_data());
         if (!child_data.ok()) {
-          operation->state()->CompleteWithStatus(child_data.status());
+          WriteOperation::StartSynchronization(std::move(operation), child_data.status());
           return;
         }
         txn = std::make_shared<YBTransaction>(&transaction_manager_.get(), *child_data);
@@ -1352,8 +1355,9 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       client::YBTablePtr index_table;
       bool cache_used_ignored = false;
       if (!metadata_cache_) {
-        auto status = STATUS(Corruption, "Table metadata cache is not present for index update");
-        operation->state()->CompleteWithStatus(status);
+        WriteOperation::StartSynchronization(
+            std::move(operation),
+            STATUS(Corruption, "Table metadata cache is not present for index update"));
         return;
       }
       // TODO create async version of GetTable.
@@ -1361,7 +1365,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       auto status = metadata_cache_->GetTable(pair.first->table_id(), &index_table,
                                               &cache_used_ignored);
       if (!status.ok()) {
-        operation->state()->CompleteWithStatus(status);
+        WriteOperation::StartSynchronization(std::move(operation), status);
         return;
       }
       shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
@@ -1369,7 +1373,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       index_op->mutable_request()->MergeFrom(pair.second);
       status = session->Apply(index_op);
       if (!status.ok()) {
-        operation->state()->CompleteWithStatus(status);
+        WriteOperation::StartSynchronization(std::move(operation), status);
         return;
       }
       index_ops.emplace_back(std::move(index_op), write_op);
@@ -1381,54 +1385,58 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
     return;
   }
 
-  session->FlushAsync(
-      [this, op = operation.release(), session, txn, index_ops = std::move(index_ops)]
-          (const Status& status) {
-    std::unique_ptr<WriteOperation> operation(op);
+  session->FlushAsync(std::bind(
+      &Tablet::UpdateQLIndexesFlushed, this, operation.release(), session, txn,
+      std::move(index_ops), _1));
+}
 
-    if (PREDICT_FALSE(!status.ok())) {
-      // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
-      // returns IOError. When it happens, retrieves the errors and discard the IOError.
-      if (status.IsIOError()) {
-        for (const auto& error : session->GetPendingErrors()) {
-          // return just the first error seen.
-          operation->state()->CompleteWithStatus(error->status());
-          return;
-        }
-      }
-      operation->state()->CompleteWithStatus(status);
-      return;
-    }
+void Tablet::UpdateQLIndexesFlushed(
+    WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
+    const IndexOps& index_ops, const Status& status) {
+  std::unique_ptr<WriteOperation> operation(op);
 
-    ChildTransactionResultPB child_result;
-    if (txn) {
-      auto finish_result = txn->FinishChild();
-      if (!finish_result.ok()) {
-        operation->state()->CompleteWithStatus(finish_result.status());
+  if (PREDICT_FALSE(!status.ok())) {
+    // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
+    // returns IOError. When it happens, retrieves the errors and discard the IOError.
+    if (status.IsIOError()) {
+      for (const auto& error : session->GetPendingErrors()) {
+        // return just the first error seen.
+        operation->state()->CompleteWithStatus(error->status());
         return;
       }
-      child_result = std::move(*finish_result);
     }
+    operation->state()->CompleteWithStatus(status);
+    return;
+  }
 
-    // Check the responses of the index write ops.
-    for (const auto& pair : index_ops) {
-      shared_ptr<client::YBqlWriteOp> index_op = pair.first;
-      auto* response = pair.second->response();
-      DCHECK_ONLY_NOTNULL(response);
-      auto* index_response = index_op->mutable_response();
-
-      if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
-        DVLOG(1) << "Got status " << index_response->status() << " for " << yb::ToString(index_op);
-        response->set_status(index_response->status());
-        response->set_error_message(std::move(*index_response->mutable_error_message()));
-      }
-      if (txn) {
-        *response->mutable_child_transaction_result() = child_result;
-      }
+  ChildTransactionResultPB child_result;
+  if (txn) {
+    auto finish_result = txn->FinishChild();
+    if (!finish_result.ok()) {
+      operation->state()->CompleteWithStatus(finish_result.status());
+      return;
     }
+    child_result = std::move(*finish_result);
+  }
 
-    CompleteQLWriteBatch(std::move(operation), Status::OK());
-  });
+  // Check the responses of the index write ops.
+  for (const auto& pair : index_ops) {
+    shared_ptr<client::YBqlWriteOp> index_op = pair.first;
+    auto* response = pair.second->response();
+    DCHECK_ONLY_NOTNULL(response);
+    auto* index_response = index_op->mutable_response();
+
+    if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
+      DVLOG(1) << "Got status " << index_response->status() << " for " << yb::ToString(index_op);
+      response->set_status(index_response->status());
+      response->set_error_message(std::move(*index_response->mutable_error_message()));
+    }
+    if (txn) {
+      *response->mutable_child_transaction_result() = child_result;
+    }
+  }
+
+  CompleteQLWriteBatch(std::move(operation), Status::OK());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1439,7 +1447,7 @@ Status Tablet::HandlePgsqlReadRequest(
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     PgsqlReadRequestResult* result) {
-  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_, deadline);
   RETURN_NOT_OK(scoped_read_operation);
   // TODO(neil) Work on metrics for PGSQL.
   // ScopedTabletMetricsTracker metrics_tracker(metrics_->pgsql_read_latency);
@@ -1770,6 +1778,9 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
       << "Schema keys cannot be altered";
 
+  auto op_pause = PauseReadWriteOperations();
+  RETURN_NOT_OK(op_pause);
+
   // If the current version >= new version, there is nothing to do.
   if (metadata_->schema_version() >= operation_state->schema_version()) {
     LOG_WITH_PREFIX(INFO)
@@ -2053,12 +2064,13 @@ Status Tablet::FlushWithRetries(
       failed_ops.size(), num_retries);
 }
 
-ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
+ScopedRWOperationPause Tablet::PauseReadWriteOperations(Stop stop) {
   LOG_SLOW_EXECUTION(WARNING, 1000,
                      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
-    return ScopedPendingOperationPause(
+    return ScopedRWOperationPause(
         &pending_op_counter_,
-        MonoDelta::FromMilliseconds(FLAGS_tablet_rocksdb_ops_quiet_down_timeout_ms));
+        MonoDelta::FromMilliseconds(FLAGS_tablet_rocksdb_ops_quiet_down_timeout_ms),
+        stop);
   }
   FATAL_ERROR("Unreachable code -- the previous block must always return");
 }
@@ -2546,40 +2558,36 @@ size_t Tablet::TEST_CountRegularDBRecords() {
   return result;
 }
 
-uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
+template <class Functor>
+uint64_t Tablet::GetRegularDbStat(const Functor& functor) const {
   ScopedRWOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
   // In order to get actual stats we would have to wait.
   // This would give us correct stats but would make this request slower.
-  if (!pending_op_counter_.IsReady() || !regular_db_) {
+  if (!scoped_operation.ok() || !regular_db_) {
     return 0;
   }
-  return regular_db_->GetCurrentVersionSstFilesSize();
+  return functor();
+}
+
+
+uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
+  return GetRegularDbStat([this] {
+    return regular_db_->GetCurrentVersionSstFilesSize();
+  });
 }
 
 uint64_t Tablet::GetCurrentVersionSstFilesUncompressedSize() const {
-  ScopedRWOperation scoped_operation(&pending_op_counter_);
-  std::lock_guard<rw_spinlock> lock(component_lock_);
-
-  // In order to get actual stats we would have to wait.
-  // This would give us correct stats but would make this request slower.
-  if (!pending_op_counter_.IsReady() || !regular_db_) {
-    return 0;
-  }
-  return regular_db_->GetCurrentVersionSstFilesUncompressedSize();
+  return GetRegularDbStat([this] {
+    return regular_db_->GetCurrentVersionSstFilesUncompressedSize();
+  });
 }
 
 uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
-  ScopedRWOperation scoped_operation(&pending_op_counter_);
-  std::lock_guard<rw_spinlock> lock(component_lock_);
-
-  // In order to get actual stats we would have to wait.
-  // This would give us correct stats but would make this request slower.
-  if (!pending_op_counter_.IsReady() || !regular_db_) {
-    return 0;
-  }
-  return regular_db_->GetCurrentVersionNumSSTFiles();
+  return GetRegularDbStat([this] {
+    return regular_db_->GetCurrentVersionNumSSTFiles();
+  });
 }
 
 std::pair<int, int> Tablet::GetNumMemtables() const {

@@ -846,7 +846,7 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
 Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
   auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
 
-  for (int i = 1; CoarseMonoClock::Now() < deadline; i++) {
+  for (int i = 1;; i++) {
     vector<consensus::OpId> ids;
     Status s = GetLastOpIdForEachMasterPeer(opts_.timeout, consensus::COMMITTED_OPID, &ids);
 
@@ -866,13 +866,19 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
       LOG(WARNING) << "Got error getting last opid for each replica: " << s.ToString();
     }
 
+    if (CoarseMonoClock::Now() >= deadline) {
+      if (!s.ok()) {
+        return s;
+      }
+
+      return STATUS_FORMAT(TimedOut,
+                           "Index $0 not available on all replicas after $1. ",
+                           target_index,
+                           opts_.timeout);
+    }
+
     SleepFor(MonoDelta::FromMilliseconds(min(i * 100, 1000)));
   }
-
-  return STATUS_FORMAT(TimedOut,
-                       "Index $0 not available on all replicas after $1. ",
-                       target_index,
-                       opts_.timeout);
 }
 
 Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master) {

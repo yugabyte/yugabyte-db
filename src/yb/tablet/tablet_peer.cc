@@ -319,7 +319,7 @@ FixedHybridTimeLease TabletPeer::HybridTimeLease(MicrosTime min_allowed, CoarseT
 }
 
 HybridTime TabletPeer::PreparePeerRequest() {
-  auto leader_term = consensus_->LeaderTerm();
+  auto leader_term = consensus_->GetLeaderState(/* allow_stale= */ true).term;
   if (leader_term >= 0) {
     auto last_write_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
     auto propagated_history_cutoff =
