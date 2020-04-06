@@ -1260,6 +1260,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     table_alterer->DropColumn("int_val")
       ->AddColumn("new_col")->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
+    // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
   }
 
@@ -1269,6 +1270,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
               ->Alter());
+    // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
     ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
 

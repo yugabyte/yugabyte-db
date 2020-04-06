@@ -104,6 +104,11 @@ METRIC_DEFINE_histogram(
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
   60000000LU, 2);
+METRIC_DEFINE_counter(
+  server, sys_catalog_peer_write_count,
+  "yb.master.SysCatalogTable Count of Writes",
+  yb::MetricUnit::kRequests,
+  "Number of writes to disk handled by the system catalog.");
 
 DECLARE_int32(master_discovery_timeout_ms);
 
@@ -133,6 +138,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
 
   setup_config_dns_histogram_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
       metric_entity_);
+  peer_write_count = METRIC_sys_catalog_peer_write_count.Instantiate(metric_entity_);
 }
 
 SysCatalogTable::~SysCatalogTable() {
@@ -595,6 +601,7 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
 
   tablet_peer()->WriteAsync(
       std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
+  peer_write_count->Increment();
 
   {
     int num_iterations = 0;

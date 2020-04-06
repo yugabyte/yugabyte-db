@@ -189,6 +189,10 @@ void ConsensusMetadata::set_leader_uuid(const string& uuid) {
   UpdateActiveRole();
 }
 
+void ConsensusMetadata::clear_leader_uuid() {
+  set_leader_uuid("");
+}
+
 RaftPeerPB::Role ConsensusMetadata::active_role() const {
   return active_role_;
 }

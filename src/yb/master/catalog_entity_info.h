@@ -659,8 +659,9 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
 };
 
 // Convenience typedefs.
-typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
-typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
+// Table(t)InfoMap ordered for deterministic locking.
+typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
+typedef std::map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
