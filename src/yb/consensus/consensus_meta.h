@@ -124,6 +124,7 @@ class ConsensusMetadata {
   // Accessors for setting the active leader.
   const std::string& leader_uuid() const;
   void set_leader_uuid(const std::string& uuid);
+  void clear_leader_uuid();
 
   // Returns the currently active role of the current node.
   RaftPeerPB::Role active_role() const;
