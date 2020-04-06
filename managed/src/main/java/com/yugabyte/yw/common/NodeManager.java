@@ -183,6 +183,7 @@ public class NodeManager extends DevopsBase {
   }
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
+    UserIntent userIntent = getUserIntentFromParams(taskParam);
     List<String> subcommand = new ArrayList<String>();
     Universe universe = Universe.get(taskParam.universeUUID);
     String masterAddresses = universe.getMasterAddresses(false);
@@ -208,7 +209,7 @@ public class NodeManager extends DevopsBase {
     }
 
     if (!taskParam.itestS3PackagePath.isEmpty()
-        && getUserIntentFromParams(taskParam).providerType.equals(Common.CloudType.aws)) {
+        && userIntent.providerType.equals(Common.CloudType.aws)) {
       subcommand.add("--itest_s3_package_path");
       subcommand.add(taskParam.itestS3PackagePath);
     }
@@ -225,11 +226,7 @@ public class NodeManager extends DevopsBase {
         extra_gflags.put("undefok", "enable_ysql");
         if (taskParam.isMaster) {
           extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
-          if (taskParam.enableYSQL) {
-            extra_gflags.put("enable_ysql", "true");
-          } else {
-            extra_gflags.put("enable_ysql", "false");
-          }
+          extra_gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
         }
         extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
         // Add in the nodeName during configure.
@@ -342,13 +339,13 @@ public class NodeManager extends DevopsBase {
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
+    UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     switch (type) {
       case Provision: {
         if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
         }
         AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
-        UserIntent userIntent = getUserIntentFromParams(taskParam);
         Common.CloudType cloudType = userIntent.providerType;
         if (!cloudType.equals(Common.CloudType.onprem)) {
           commandArgs.add("--instance_type");
@@ -454,7 +451,6 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
         }
         InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-        UserIntent userIntent = getUserIntentFromParams(taskParam);
         if (userIntent.providerType.equals(Common.CloudType.aws)) {
           if (userIntent.instanceTags == null || userIntent.instanceTags.isEmpty()) {
             throw new RuntimeException("Invalid instance tags");
