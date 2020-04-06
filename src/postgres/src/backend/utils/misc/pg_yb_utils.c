@@ -255,6 +255,42 @@ HandleYBStatus(YBCStatus status)
 }
 
 void
+HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
+{
+	if (!status) {
+		return;
+	}
+	if (YBCStatusIsNotFound(status)) {
+		*not_found = true;
+		YBCFreeStatus(status);
+		return;
+	}
+	*not_found = false;
+
+	HandleYBStatus(status);
+}
+
+void
+HandleYBStmtStatusIgnoreNotFound(YBCStatus status, YBCPgStatement ybc_stmt, bool *not_found)
+{
+	if (!status) {
+		return;
+	}
+	if (YBCStatusIsNotFound(status)) {
+		*not_found = true;
+		YBCFreeStatus(status);
+		return;
+	}
+	*not_found = false;
+
+	if (ybc_stmt)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+	}
+	HandleYBStatus(status);
+}
+
+void
 HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt)
 {
 	if (!status)

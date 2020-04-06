@@ -544,23 +544,39 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 void
 YBCDropTable(Oid relationId)
 {
-	YBCPgStatement handle;
-
+	YBCPgStatement handle = NULL;
 	/* Create table-level tombstone */
-	/* TODO(jason): do this only for colocated tables (issue #3387) */
-	HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId, relationId, false, &handle));
-	HandleYBStmtStatus(YBCPgDmlBindTable(handle), handle);
-	int rows_affected_count = 0;
-	HandleYBStmtStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
-					   handle);
-	HandleYBStatus(YBCPgDeleteStatement(handle));
+	{
+		/* TODO(jason): do this only for colocated tables (issue #3387) */
+		bool not_found = false;
+		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(MyDatabaseId, relationId, false,
+															   &handle),
+								&not_found);
+		/* Since the creation of the handle could return a 'NotFound' error, execute the statement
+		 * only if the handle is valid. */
+		const bool valid_handle = !not_found;
+		if (valid_handle) {
+			HandleYBStmtStatusIgnoreNotFound(YBCPgDmlBindTable(handle), handle, &not_found);
+			int rows_affected_count = 0;
+			HandleYBStmtStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
+											 handle, &not_found);
+			HandleYBStatus(YBCPgDeleteStatement(handle));
+		}
+	}
+
 	/* Drop the table */
-	HandleYBStatus(YBCPgNewDropTable(MyDatabaseId,
-									 relationId,
-									 false,    /* if_exists */
-									 &handle));
-	HandleYBStmtStatus(YBCPgExecDropTable(handle), handle);
-	HandleYBStatus(YBCPgDeleteStatement(handle));
+	{
+		bool not_found = false;
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(MyDatabaseId,
+												  relationId,
+												  false,    /* if_exists */
+												  &handle), &not_found);
+		const bool valid_handle = !not_found;
+		if (valid_handle) {
+			HandleYBStmtStatusIgnoreNotFound(YBCPgExecDropTable(handle), handle, &not_found);
+			HandleYBStatus(YBCPgDeleteStatement(handle));
+		}
+	}
 }
 
 void
