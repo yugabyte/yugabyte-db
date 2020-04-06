@@ -30,7 +30,7 @@ class TabletComponent {
   }
 
  protected:
-  ScopedPendingOperationPause PauseReadWriteOperations();
+  ScopedRWOperationPause PauseReadWriteOperations();
 
   CHECKED_STATUS ResetRocksDBs(bool destroy = false);
 
