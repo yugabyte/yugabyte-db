@@ -19,6 +19,7 @@
 #include "yb/master/master_service_base.h"
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -91,6 +92,8 @@ void MasterServiceBase::HandleIn(const ReqType* req,
                                  rpc::RpcContext* rpc,
                                  Status (HandlerType::*f)(const ReqType*, RespType*),
                                  HoldCatalogLock hold_catalog_lock) {
+  LongOperationTracker long_operation_tracker("HandleIn", std::chrono::seconds(10));
+
   HandleOnLeader(req, resp, rpc, [=]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp); },
       hold_catalog_lock);
