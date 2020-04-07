@@ -1,8 +1,8 @@
 ---
 title: Build a NodeJS application that uses YSQL
 headerTitle: Build a NodeJS application
-linkTitle: Build a NodeJS app
-description: Use NodeJS and YSQL to build a YugabyteDB application.
+linkTitle: NodeJS
+description: Build a NodeJS application that uses the pg driver and YSQL.
 aliases:
   - /develop/client-drivers/nodejs/
   - /latest/develop/client-drivers/nodejs/
