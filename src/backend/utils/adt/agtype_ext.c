@@ -26,8 +26,10 @@
 #define AGT_HEADER_INTEGER 0x00000000
 #define AGT_HEADER_FLOAT 0x00000001
 #define AGT_HEADER_VERTEX 0x00000002
+#define AGT_HEADER_EDGE 0x00000003
 
-static void ag_deserialize_vertex(char *base_addr, agtype_value *result);
+static void ag_deserialize_composite(char *base, enum agtype_value_type type,
+                                     agtype_value *result);
 
 static short ag_serialize_header(StringInfo buffer, uint32 type)
 {
@@ -80,12 +82,24 @@ bool ag_serialize_extended_type(StringInfo buffer, agtentry *agtentry,
     {
         uint32 object_ae = 0;
         padlen = ag_serialize_header(buffer, AGT_HEADER_VERTEX);
-        convert_vertex_object(buffer, &object_ae, scalar_val);
+        convert_extended_object(buffer, &object_ae, scalar_val);
 
         *agtentry = AGTENTRY_IS_AGTYPE |
                     ((AGTENTRY_OFFLENMASK & (int)object_ae) + AGT_HEADER_SIZE);
         break;
     }
+
+    case AGTV_EDGE:
+    {
+        uint32 object_ae = 0;
+        padlen = ag_serialize_header(buffer, AGT_HEADER_EDGE);
+        convert_extended_object(buffer, &object_ae, scalar_val);
+
+        *agtentry = AGTENTRY_IS_AGTYPE |
+                    ((AGTENTRY_OFFLENMASK & (int)object_ae) + AGT_HEADER_SIZE);
+        break;
+    }
+
     default:
         return false;
     }
@@ -116,14 +130,21 @@ void ag_deserialize_extended_type(char *base_addr, uint32 offset,
         break;
 
     case AGT_HEADER_VERTEX:
-        ag_deserialize_vertex(base, result);
+        ag_deserialize_composite(base, AGTV_VERTEX, result);
+        break;
+    case AGT_HEADER_EDGE:
+        ag_deserialize_composite(base, AGTV_EDGE, result);
         break;
     default:
         elog(ERROR, "Invalid AGT header value.");
     }
 }
 
-static void ag_deserialize_vertex(char *base, agtype_value *result)
+/*
+ * Deserializes a composite type.
+ */
+static void ag_deserialize_composite(char *base, enum agtype_value_type type,
+                                     agtype_value *result)
 {
     agtype_iterator *it;
     agtype_iterator_token tok;
@@ -140,9 +161,8 @@ static void ag_deserialize_vertex(char *base, agtype_value *result)
     {
         parsed_agtype_value = push_agtype_value(
             &parse_state, tok, tok < WAGT_BEGIN_ARRAY ? r : NULL);
-
     }
 
-    result->type = AGTV_VERTEX;
+    result->type = type;
     result->val = parsed_agtype_value->val;
 }

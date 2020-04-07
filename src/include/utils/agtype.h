@@ -267,6 +267,7 @@ enum agtype_value_type
     AGTV_FLOAT,
     AGTV_BOOL,
     AGTV_VERTEX,
+    AGTV_EDGE,
     /* Composite types */
     AGTV_ARRAY = 0x10,
     AGTV_OBJECT,
@@ -415,8 +416,8 @@ bool agtype_deep_contains(agtype_iterator **val,
 void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash);
 void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
                                        uint64 *hash, uint64 seed);
-void convert_vertex_object(StringInfo buffer, agtentry *pheader,
-                           agtype_value *val);
+void convert_extended_object(StringInfo buffer, agtentry *pheader,
+                             agtype_value *val);
 Datum get_numeric_datum_from_agtype_value(agtype_value *agtv);
 bool is_numeric_result(agtype_value *lhs, agtype_value *rhs);
 

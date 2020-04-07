@@ -554,6 +554,17 @@ CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+--
+-- agtype - edge
+--
+CREATE FUNCTION _agtype_build_edge(graphid, graphid, graphid, cstring, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 
 --
 -- agtype - map literal (`{key: expr, ...}`)

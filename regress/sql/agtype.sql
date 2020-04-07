@@ -376,6 +376,55 @@ SELECT agtype_access_operator(
                                      agtype_build_map('id', 4))), '0');
 
 --
+-- Edge
+--
+--Basic Edge Creation
+SELECT _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label_name$$, agtype_build_map());
+
+SELECT _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2));
+
+--Null properties
+SELECT _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label_name$$, NULL);
+
+--Test access operator
+SELECT agtype_access_operator(_agtype_build_edge('1'::graphid, '2'::graphid,
+			      '3'::graphid, $$label$$, agtype_build_map('id', 2)),'"id"');
+
+
+
+--Edge in a map
+SELECT agtype_build_map(
+	'edge',
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			   $$label_name$$, agtype_build_map()));
+
+
+SELECT agtype_access_operator(
+        agtype_build_map(
+            'edge', _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+				       $$label_name$$, agtype_build_map('key', 'value')),
+            'other_edge', _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+					     $$label_name$$, agtype_build_map('key', 'other_value'))),
+        '"edge"');
+
+--Edge in a list
+SELECT agtype_build_list(
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid, 
+			   $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('2'::graphid, '2'::graphid, '3'::graphid,
+			   $$label_name$$, agtype_build_map()));
+
+SELECT agtype_access_operator(
+	agtype_build_list(
+		_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid, $$label_name$$,
+                                     agtype_build_map('id', 3)),
+		_agtype_build_edge('2'::graphid, '2'::graphid, '3'::graphid, $$label_name$$,
+                                     agtype_build_map('id', 4))), '0');
+
+--
 -- Test STARTS WITH, ENDS WITH, and CONTAINS
 --
 SELECT agtype_string_match_starts_with('"abcdefghijklmnopqrstuvwxyz"', '"abcd"');

@@ -270,6 +270,7 @@ int compare_agtype_containers_orderability(agtype_container *a,
                 case AGTV_BOOL:
                 case AGTV_INTEGER:
                 case AGTV_FLOAT:
+                case AGTV_EDGE:
                 case AGTV_VERTEX:
                     res = compare_agtype_scalar_values(&va, &vb);
                     break;
@@ -1403,13 +1404,21 @@ void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
             UInt64GetDatum(seed)));
         break;
     case AGTV_VERTEX:
-        {
-            graphid id;
-            id = scalar_val->val.object.pairs[0].value.val.int_value;
-            tmp = DatumGetUInt64(DirectFunctionCall2(
-                hashfloat8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
-            break;
-        }
+    {
+        graphid id;
+        id = scalar_val->val.object.pairs[0].value.val.int_value;
+        tmp = DatumGetUInt64(DirectFunctionCall2(
+            hashfloat8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
+        break;
+    }
+    case AGTV_EDGE:
+    {
+        graphid id;
+        id = scalar_val->val.object.pairs[0].value.val.int_value;
+        tmp = DatumGetUInt64(DirectFunctionCall2(
+            hashfloat8extended, Float8GetDatum(id), UInt64GetDatum(seed)));
+        break;
+    }
     default:
         ereport(
             ERROR,
@@ -1823,8 +1832,8 @@ static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
     *pheader = AGTENTRY_IS_CONTAINER | totallen;
 }
 
-void convert_vertex_object(StringInfo buffer, agtentry *pheader,
-                           agtype_value *val)
+void convert_extended_object(StringInfo buffer, agtentry *pheader,
+                             agtype_value *val)
 {
     convert_agtype_object(buffer, pheader, val, 0);
 }
