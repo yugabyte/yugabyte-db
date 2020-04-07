@@ -2,7 +2,7 @@
 title: yb-tserver configuration
 headerTitle: yb-tserver
 linkTitle: yb-tserver
-description: Use the YugabyteDB tablet server (yb-tserver) binary and configuration options to store and manages data for client applications.
+description: Use the YugabyteDB Tablet Server (yb-tserver) binary and configuration options to store and manage data for client applications.
 menu:
   latest:
     identifier: yb-tserver
@@ -180,7 +180,7 @@ Default: `999`
 
 The mailer used to send logging email messages.
 
-Default: `"/bin/mail"
+Default: `"/bin/mail"`
 
 ##### --logtostderr
 
@@ -388,7 +388,7 @@ Enables YSQL authentication.
 
 **Release 2.0:** Assign a password for the default `yugabyte` user to be able to sign in after enabling YSQL authentication.
 
-**Release 2.0.1:** When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte".
+**Release 2.0.1:** When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte`.
 
 {{< /note >}}
 

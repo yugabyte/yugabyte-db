@@ -1,8 +1,8 @@
 ---
-title: Deploy checklist for YugabyteDB clusters
+title: Deployment checklist for YugabyteDB clusters
 headerTitle: Deployment checklist
 linkTitle: Deployment checklist
-description: Deployment checklist for multi-node YugabyteDB clusters for production and performance testing
+description: Deployment checklist for multi-node YugabyteDB clusters used for production and performance testing
 aliases:
   - /deploy/checklist/
 menu:
