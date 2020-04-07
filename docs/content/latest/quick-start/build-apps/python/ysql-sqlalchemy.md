@@ -18,7 +18,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
+      YSQL - Psycopg2
     </a>
   </li>
   <li >
