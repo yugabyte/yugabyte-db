@@ -295,7 +295,6 @@ set_build_root() {
 
   export BUILD_ROOT
   export YB_BUILD_ROOT=$BUILD_ROOT
-  decide_whether_to_use_ninja
 }
 
 # Resolve the BUILD_ROOT symlink and save the result to the real_build_root_path variable.
@@ -1913,8 +1912,6 @@ handle_predefined_build_root() {
     fatal "The use of ninja from build root ('$predefined_build_root') does not match that" \
           "of the YB_USE_NINJA env var ('$YB_USE_NINJA')"
   fi
-
-  decide_whether_to_use_ninja
 }
 
 # Remove the build/latest symlink to prevent Jenkins from showing every test twice in test results.
