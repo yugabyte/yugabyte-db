@@ -1,8 +1,8 @@
 ---
 title: Build a Python application that uses YCQL
 headerTitle: Build a Python application
-linkTitle: Build a Python app
-description: Use Python and YCQL to build a YugabyteDB application.
+linkTitle: Python
+description: Build a Python application that uses YCQL.
 menu:
   latest:
     parent: build-apps

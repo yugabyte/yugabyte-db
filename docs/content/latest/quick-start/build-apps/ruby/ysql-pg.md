@@ -1,7 +1,7 @@
 ---
 title: Build a Ruby application that uses YSQL
 headerTitle: Build a Ruby application
-linkTitle: Build a Ruby application
+linkTitle: Ruby
 description: Build a Ruby application that uses the YSQL API.
 aliases:
   - /develop/client-drivers/ruby/

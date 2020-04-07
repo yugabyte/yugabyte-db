@@ -1,8 +1,8 @@
 ---
-title: Build a Python application that uses YSQL and SQLAlchemy
+title: Build a Python application that uses SQLAlchemy and YSQL
 headerTitle: Build a Python application
-linkTitle: Build a Python app
-description: Use Python and SQLAlchemy to build a YugabyteDB e-commerce application.
+linkTitle: Python
+description: Build a Python e-commerce application that uses SQLAlchemy and YSQL.
 menu:
   latest:
     parent: build-apps
@@ -13,7 +13,6 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >

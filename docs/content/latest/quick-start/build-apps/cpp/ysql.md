@@ -1,3 +1,38 @@
+---
+title: Build a C++ application that uses YSQL
+headerTitle: Build a C++ application
+linkTitle: C++
+description: Build a C++ application that uses the YSQL API.
+aliases:
+  - /develop/client-drivers/cpp/
+  - /latest/develop/client-drivers/cpp/
+  - /latest/quick-start/build-apps/cpp/
+menu:
+  latest:
+    identifier: build-apps-cpp-1-ysql
+    parent: build-apps
+    weight: 556
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/quick-start/build-apps/cpp/ysql" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li>
+    <a href="/latest/quick-start/build-apps/cpp/ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
 
 ## Prerequisites
 
@@ -7,7 +42,7 @@ The tutorial assumes that you have:
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2+, clang 3.4+ installed.
 
-## Installing the C++ driver (libpqxx)
+## Install the C++ driver (libpqxx)
 
 Download the source from [here](https://github.com/jtv/libpqxx) and build the binaries as follows. Detailed instructions are provided [here](https://github.com/jtv/libpqxx).
 
@@ -25,7 +60,7 @@ Note that this package depends on PostgreSQL binaries. Make sure that the Postgr
 export PATH=$PATH:<yugabyte-install-dir>/postgres/bin
 ```
 
-### Build and Install
+### Build and install
 
 ```sh
 $ cd libpqxx

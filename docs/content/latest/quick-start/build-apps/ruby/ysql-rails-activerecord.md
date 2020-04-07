@@ -1,6 +1,7 @@
 ---
 title: Build a Ruby application that uses YSQL
-linkTitle: Build a Ruby application
+headerTitle: Build a Ruby application
+linkTitle: Ruby
 description: Build a Ruby application that uses the YSQL API
 menu:
   latest:
