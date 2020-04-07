@@ -2,7 +2,7 @@
 title: Build a C# application that uses YCQL
 headerTitle: Build a C# application
 linkTitle: C#
-description: Use C# to build a YugabyteDB application that uses YCQL.
+description: Build a C# application that uses YCQL.
 menu:
   latest:
     identifier: build-apps-csharp-2-ycql

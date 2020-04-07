@@ -1,8 +1,8 @@
 ---
 title: Build a Go application that uses YCQL
 headerTitle: Build a Go application
-linkTitle: Build a Go application
-description: Follow this tutorial to build a YugabyteDB application using Go
+linkTitle: Go
+description: Build a Go application that uses YCQL.
 menu:
   latest:
     parent: build-apps

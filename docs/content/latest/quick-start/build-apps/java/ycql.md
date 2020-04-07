@@ -1,8 +1,8 @@
 ---
 title: Build a Java application that uses YCQL
 headerTitle: Build a Java application
-linkTitle: Build a Java app
-description: Follow this tutorial to build a Java application that uses YugabyteDB and YCQL.
+linkTitle: Java
+description: Build a Java application that uses YCQL.
 menu:
   latest:
     parent: build-apps
@@ -108,9 +108,9 @@ Create a maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-### Writing a sample app
+### Write a sample application
 
-Create the appropriate directory structure as expected by maven.
+Create the appropriate directory structure as expected by Maven.
 
 ```sh
 $ mkdir -p src/main/java/com/yugabyte/sample/apps
