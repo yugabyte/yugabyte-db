@@ -50,18 +50,6 @@ The YugabyteDB APIs are currently isolated and independent from one another. Dat
 
 Allowing YCQL tables to be accessed from the PostgreSQL-compatible YSQL API as foreign tables using foreign data wrappers (FDW) is on the roadmap. You can comment or increase the priority of the associated [GitHub](https://github.com/yugabyte/yugabyte-db/issues/830) issue.
 
-## When should I pick YCQL over YSQL?
-
-You should pick YCQL over YSQL if your application:
-
-- Does not require fully-relational data modeling constructs, such as foreign keys and JOINs. Note that strongly-consistent secondary indexes and unique constraints are supported by YCQL.
-- Requires storing large amounts of data (for example, 10TB or more).
-- Needs to serve low-latency (sub-millisecond) queries.
-- Needs TTL-driven automatic data expiration.
-- Needs to integrate with stream processors, such as Apache Spark and KSQL.
-
-If you have a specific use case in mind, share it in our [Slack community](https://www.yugabyte.com/slack) and the community can help you decide the best approach.
-
 ## YCQL compatibility with Apache Cassandra QL
 
 YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions highlight how YCQL differs from CQL.
