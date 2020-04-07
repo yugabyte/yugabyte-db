@@ -1035,7 +1035,6 @@ if [[ -n $YB_GTEST_FILTER && -z $cxx_test_name ]]; then
   set_cxx_test_name "GTEST_${test_name,,}"
 fi
 
-decide_whether_to_use_ninja
 handle_predefined_build_root
 
 unset cmake_opts
@@ -1180,6 +1179,7 @@ fi
 set_build_root
 find_or_download_thirdparty
 detect_brew
+decide_whether_to_use_ninja
 find_make_or_ninja_and_update_cmake_opts
 
 if ! using_default_thirdparty_dir && [[ ${NO_REBUILD_THIRDPARTY:-0} != "1" ]]; then
