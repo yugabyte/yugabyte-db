@@ -73,12 +73,13 @@ YugabyteDB explicitly manages a block cache, and doesn't need the entire data se
 
 - SSDs (solid state disks) are required. 
 - Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
-- Multi-disk nodes
-      - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
+- Multi-disk nodes  
+      - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).  
       - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver servers via the `--fs_data_dirs` flag.
-- Mount settings
-      - XFS is the recommended filesystem.
-      - Use the `noatime` setting when mounting the data drives.
+- Mount settings  
+      - XFS is the recommended filesystem.  
+      - Use the `noatime` setting when mounting the data drives.  
+      - ZFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).
 
 YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup. 
 It can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
