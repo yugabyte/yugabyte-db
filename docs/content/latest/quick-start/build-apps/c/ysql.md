@@ -1,15 +1,43 @@
+---
+title: Build a C application that uses YSQL
+headerTitle: Build a C application
+linkTitle: C
+description: Build a C application that uses YSQL.
+aliases:
+  - /develop/client-drivers/c/
+  - /latest/develop/client-drivers/c/
+  - /latest/quick-start/build-apps/c/
+menu:
+  latest:
+    identifier: build-apps-c-1-ysql
+    parent: build-apps
+    weight: 557
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/quick-start/build-apps/c/ysql" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+</ul>
 
 ## Prerequisites
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB, and created a universe. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql).
+- installed YugabyteDB and created a universe. If not, follow the steps in the [Quick Start guide](../../../quick-start/explore-ysql).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
-- have gcc 4.1.2+, clang 3.4+ installed.
+- have gcc 4.1.2 or later, clang 3.4 or later installed.
 
 ## Install the C driver (libpq)
 
-The C driver is already available as part of the YugabyteDB installation. You can use it by setting the LD_LIBRARY_PATH as follows :- 
+The C driver is already available as part of the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows :
   
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
