@@ -46,6 +46,7 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(cdc_min_replicated_index_considered_stale_secs);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 DECLARE_int32(log_max_seconds_to_retain);
 DECLARE_int32(log_min_seconds_to_retain);
@@ -1408,11 +1409,12 @@ class CDCServiceTestThreeServers : public CDCServiceTest {
     FLAGS_leader_failure_max_missed_heartbeat_periods = 12.0;
     FLAGS_update_min_cdc_indices_interval_secs = 5;
     FLAGS_enable_log_retention_by_op_idx = true;
+    FLAGS_client_read_write_timeout_ms = 20 * 1000 * kTimeMultiplier;
 
     // Always update cdc_state table.
     FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
 
-    FLAGS_follower_unavailable_considered_failed_sec = 20;
+    FLAGS_follower_unavailable_considered_failed_sec = 20 * kTimeMultiplier;
 
     CDCServiceTest::SetUp();
   }
@@ -1549,6 +1551,7 @@ TEST_F_EX(CDCServiceTest, TestNewLeaderUpdatesLogCDCAppliedIndex, CDCServiceTest
   ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(), 5);
 
   ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->WaitStarted());
 }
 
 } // namespace cdc

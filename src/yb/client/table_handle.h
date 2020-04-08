@@ -177,7 +177,7 @@ class TableIterator : public std::iterator<
   }
 
  private:
-  void ExecuteOps();
+  bool ExecuteOps();
   void Move();
   void HandleError(const Status& status);
 
