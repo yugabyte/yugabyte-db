@@ -180,12 +180,17 @@ TableIterator::TableIterator() : table_(nullptr) {}
     if (!status.ok()) { HandleError(MoveStatus(status)); return; } \
   } while (false) \
 
+#define REPORT_AND_RETURN_FALSE_IF_NOT_OK(expr) \
+  do { \
+    auto&& status = (expr); \
+    if (!status.ok()) { HandleError(MoveStatus(status)); return false; } \
+  } while (false) \
+
 TableIterator::TableIterator(const TableHandle* table, const TableIteratorOptions& options)
     : table_(table), error_handler_(options.error_handler) {
   auto client = (*table)->client();
 
   session_ = client->NewSession();
-  session_->SetTimeout(60s);
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(table->name(), 0, &tablets));
@@ -223,18 +228,19 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
     partition_key_ends_.push_back(tablet.partition().partition_key_end());
   }
 
-  ExecuteOps();
-  Move();
+  if (ExecuteOps()) {
+    Move();
+  }
 }
 
-void TableIterator::ExecuteOps() {
+bool TableIterator::ExecuteOps() {
   constexpr size_t kMaxConcurrentOps = 5;
   const size_t new_executed_ops = std::min(ops_.size(), executed_ops_ + kMaxConcurrentOps);
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
-    REPORT_AND_RETURN_IF_NOT_OK(session_->Apply(ops_[i]));
+    REPORT_AND_RETURN_FALSE_IF_NOT_OK(session_->Apply(ops_[i]));
   }
 
-  REPORT_AND_RETURN_IF_NOT_OK(session_->Flush());
+  REPORT_AND_RETURN_FALSE_IF_NOT_OK(session_->Flush());
 
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
     const auto& op = ops_[i];
@@ -244,6 +250,7 @@ void TableIterator::ExecuteOps() {
   }
 
   executed_ops_ = new_executed_ops;
+  return true;
 }
 
 bool TableIterator::Equals(const TableIterator& rhs) const {
@@ -273,7 +280,10 @@ void TableIterator::Move() {
       } else {
         ++ops_index_;
         if (ops_index_ >= executed_ops_ && executed_ops_ < ops_.size()) {
-          ExecuteOps();
+          if (!ExecuteOps()) {
+            // Error occurred. exit out early.
+            return;
+          }
         }
       }
     }
@@ -309,6 +319,8 @@ void TableIterator::HandleError(const Status& status) {
 
     LOG(FATAL) << "Failed: " << status;
   }
+  // Makes this iterator == end().
+  table_ = nullptr;
 }
 
 template <>
