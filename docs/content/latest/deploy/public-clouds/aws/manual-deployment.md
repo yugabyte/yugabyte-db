@@ -45,17 +45,17 @@ Create AWS EC2 instances with the following characteristics.
 
 - Operating System: CentOS 7 VMs of above type. You can use Ubuntu as well, but then some of the specific steps in terms of setting up ulimits etc. could be slightly different.
 
-- Ports: Make sure to bring these VMs up in a Security Group where communication between instances is enabled on these ports (and not locked down by security settings). Our checklist has a [reference port list](../../checklist/#default-ports-reference).
+- Ports: Make sure to bring these VMs up in a Security Group where communication between instances is enabled on these ports (and not locked down by security settings). For a listing of these ports, see [Default ports reference](../../../../reference/configuration/default-ports).
 
 We now have 2 VMs each in Availability Zones `us-west-2a`, `us-west-2b`, `us-west-2c` respectively.
 
 ### Set environment variables
 
-Now that the six nodes have been prepared, the yb-master process will be run on three of these nodes (because RF=3) and yb-tserver will be run on all six nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../architecture/concepts/universe/).
+Now that the six nodes have been prepared, the yb-master process will be run on three of these nodes (because RF=3) and yb-tserver will be run on all six nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../../architecture/concepts/universe/).
 
-These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above 6 VMs over “ssh”.
+These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above six VMs over `ssh`.
 
-These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the 6 YB nodes.
+These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the six nodes.
 
 ```sh
 # Suppose these are the IP addresses of your 6 machines
@@ -216,7 +216,7 @@ done
 
 ### Verify system configuration
 
-Below is an example of setting up these prerequisites in CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. For details, see [System configuration](../../manual-deployment/system-config/).
+Below is an example of setting up these prerequisites in CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. For details, see [System configuration](../../../manual-deployment/system-config/).
 
 #### Install ntp and other optional packages
 
@@ -257,7 +257,7 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-Make sure the above is not overriden by files in `limits.d` directory. For example, if `20-nproc.conf` file on the nodes has a different value, then update the file as below.
+Make sure the above is not overridden by files in `limits.d` directory. For example, if `20-nproc.conf` file on the nodes has a different value, then update the file as below.
 
 ```sh
 $ cat /etc/security/limits.d/20-nproc.conf
@@ -659,8 +659,8 @@ replication_info {
 
 ## 8. Test PostgreSQL-compatible YSQL API
 
-Connect to the cluster using the `ysqlsh` utility that comes pre-bundled in the `bin` directory. 
-If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../admin/ysqlsh/).
+Connect to the cluster using the YSQL shell (`ysqlsh`) that comes pre-bundled in the `bin` directory.
+If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../../admin/ysqlsh/).
 
 From any node, execute the following command.
 
@@ -698,7 +698,7 @@ Output should be the following:
 
 ### Using cqlsh
 
-Connect to the cluster using the `cqlsh` utility that comes pre-bundled in the `bin` directory. If you need to try cqlsh from a different node, you can download cqlsh using instructions documented [here](../../../admin/cqlsh/).
+Connect to the cluster using the YCQL shell (`cqlsh`) that comes pre-bundled in the `bin` directory. If you need to try `cqlsh` from a different node, you can download `cqlsh` using instructions documented [here](../../../../admin/cqlsh/).
 
 From any node, execute the following command.
 
@@ -776,7 +776,7 @@ When workload is running, verify activity across various tablet-servers in the M
 http://<master-ip>:7000/tablet-servers
 ```
 
-When workload is running, verify active YCQL or YEDIS RPCs from this links on the “utilz” page.
+When workload is running, verify active YCQL or YEDIS RPC calls from this links on the “utilz” page.
 
 ```
 http://<any-tserver-ip>:9000/utilz
@@ -786,7 +786,7 @@ http://<any-tserver-ip>:9000/utilz
 
 ### Prerequisite
 
-Create the YugabyteDB `system_redis.redis` (which is the default Redis database 0) table using `yb-admin` or using `redis-cli`.
+Create the YugabyteDB `system_redis.redis` (which is the default Redis database `0`) table using `yb-admin` or using `redis-cli`.
 
 - Using `yb-admin`
 
