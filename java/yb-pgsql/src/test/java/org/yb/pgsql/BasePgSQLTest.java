@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -40,6 +41,7 @@ import org.yb.master.Master;
 import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.URL;
+import java.net.URLConnection;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -48,6 +50,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -59,6 +62,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.yb.AssertionWrappers.assertArrayEquals;
@@ -529,22 +533,41 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     assertEquals(oldValue + stmtMetricDelta, newValue);
   }
 
+  private JsonArray[] getRawMetric(
+      Function<MiniYBDaemon, Integer> portFetcher) throws Exception {
+    Collection<MiniYBDaemon> servers = miniCluster.getTabletServers().values();
+    JsonArray[] result = new JsonArray[servers.size()];
+    int index = 0;
+    for (MiniYBDaemon ts : servers) {
+      URLConnection connection = new URL(String.format("http://%s:%d/metrics",
+          ts.getLocalhostIP(),
+          portFetcher.apply(ts))).openConnection();
+      connection.setUseCaches(false);
+      Scanner scanner = new Scanner(connection.getInputStream());
+      result[index++] =
+          new JsonParser().parse(scanner.useDelimiter("\\A").next()).getAsJsonArray();
+      scanner.close();
+    }
+    return result;
+  }
+
+  protected JsonArray[] getRawTSMetric() throws Exception {
+    return getRawMetric((ts) -> ts.getWebPort());
+  }
+
+  protected JsonArray[] getRawYSQLMetric() throws Exception {
+    return getRawMetric((ts) -> ts.getPgsqlWebPort());
+  }
+
   protected AgregatedValue getMetric(String metricName) throws Exception {
     AgregatedValue value = new AgregatedValue();
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      URL url = new URL(String.format("http://%s:%d/metrics",
-                                      ts.getLocalhostIP(),
-                                      ts.getPgsqlWebPort()));
-      Scanner scanner = new Scanner(url.openConnection().getInputStream());
-      JsonParser parser = new JsonParser();
-      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
-      JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
+    for (JsonArray rawMetric : getRawYSQLMetric()) {
+      JsonObject obj = rawMetric.get(0).getAsJsonObject();
       assertEquals(obj.get("type").getAsString(), "server");
       assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
       Metrics.YSQLMetric metric = new Metrics(obj).getYSQLMetric(metricName);
       value.count += metric.count;
       value.value += metric.sum;
-      scanner.close();
     }
     return value;
   }

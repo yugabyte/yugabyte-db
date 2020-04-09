@@ -65,10 +65,6 @@ class PgSelectIndex : public PgDmlRead {
   // Collect ybctids from IndexTable.
   CHECKED_STATUS FetchYbctids();
 
-  // Result buffers that hold ybctid values. This field cannot be destroyed while the associated
-  // ybctid values are in used.
-  PgDocResult::SharedPtr ybctid_batch_;
-
   // This secondary query should be executed just one time.
   bool is_executed_ = false;
 };
