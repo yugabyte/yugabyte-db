@@ -95,7 +95,7 @@ In order to successfully snapshot data at a given hybrid time denoted by `snapsh
 * The tablet leader is the primary authority over assigning `flashback-read-cutoff-timestamp`. No tablet follower should start a compaction with a higher `flashback-read-cutoff-timestamp` than the committed `flashback-read-cutoff-timestamp`.
 * The `flashback-read-cutoff-timestamp` value is recorded in the Raft log.
 
-### 6. Marking the snapshot ads complete
+### 6. Marking the snapshot as complete
 
 One the YB-Master hears from all the tablets with a success message for their snapshots, it marks the overall snapshot as a success in the system catalog. The snapshot is now ready to use.
 
