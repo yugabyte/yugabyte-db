@@ -625,9 +625,9 @@ YBCCreateIndex(const char *indexName,
 			   IndexInfo *indexInfo,
 			   TupleDesc indexTupleDesc,
 			   int16 *coloptions,
+			   Datum reloptions,
 			   Oid indexId,
-			   Relation rel,
-			   List *index_options)
+			   Relation rel)
 {
 	char *db_name	  = get_database_name(MyDatabaseId);
 	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
@@ -640,7 +640,7 @@ YBCCreateIndex(const char *indexName,
 
 	/* Check reloptions. */
 	ListCell	*opt_cell;
-	foreach(opt_cell, index_options)
+	foreach(opt_cell, untransformRelOptions(reloptions))
 	{
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 
