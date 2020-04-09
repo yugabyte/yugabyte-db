@@ -190,7 +190,7 @@ class PgDml : public PgStatement {
 
   //------------------------------------------------------------------------------------------------
   // Data members for navigating the output / result-set from either seleted or returned targets.
-  std::list<PgDocResult::SharedPtr> rowsets_;
+  std::list<PgDocResult> rowsets_;
   int64_t current_row_order_ = 0;
 
   //------------------------------------------------------------------------------------------------
