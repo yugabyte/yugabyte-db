@@ -765,7 +765,6 @@ index_create(Relation heapRelation,
 			 Oid *classObjectId,
 			 int16 *coloptions,
 			 Datum reloptions,
-			 List *index_options,
 			 bits16 flags,
 			 bits16 constr_flags,
 			 bool allow_system_table_mods,
@@ -968,9 +967,9 @@ index_create(Relation heapRelation,
 					   indexInfo,
 					   indexTupDesc,
 					   coloptions,
+					   reloptions,
 					   indexRelationId,
-					   heapRelation,
-					   index_options);
+					   heapRelation);
 	}
 
 	/*

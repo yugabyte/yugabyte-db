@@ -890,7 +890,7 @@ DefineIndex(Oid relationId,
 					 stmt->oldNode, indexInfo, indexColNames,
 					 accessMethodId, tablespaceId,
 					 collationObjectId, classObjectId,
-					 coloptions, reloptions, stmt->options,
+					 coloptions, reloptions,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId);
