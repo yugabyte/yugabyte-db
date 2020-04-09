@@ -70,10 +70,10 @@ class RaftConsensusStateTest : public YBTest {
     std::unique_ptr<ConsensusMetadata> cmeta;
     ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),
                                         config_, kMinimumTerm, &cmeta));
-    state_.reset(new ReplicaState(ConsensusOptions(), fs_manager_.uuid(), std::move(cmeta),
-                                  operation_factory_.get(), nullptr /* safe_op_id_waiter */,
-                                  nullptr /* retryable_requests */,
-                                  [](const OpIds&) {} /* applied_ops_tracker */));
+    state_.reset(new ReplicaState(
+        ConsensusOptions(), fs_manager_.uuid(), std::move(cmeta), operation_factory_.get(),
+        nullptr /* safe_op_id_waiter */, nullptr /* retryable_requests */,
+        yb::OpId() /* split_op_id */, [](const OpIds&) {} /* applied_ops_tracker */));
 
     // Start up the ReplicaState.
     ReplicaState::UniqueLock lock;

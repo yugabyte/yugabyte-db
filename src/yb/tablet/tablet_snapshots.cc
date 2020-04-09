@@ -209,8 +209,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   // TODO: snapshot current DB and try to restore it in case of failure.
   RETURN_NOT_OK(ResetRocksDBs(/* destroy= */ true));
 
-  auto s = rocksdb::CopyDirectory(
-      &rocksdb_env(), dir, db_dir, rocksdb::CreateIfMissing::kTrue);
+  auto s = CopyDirectory(&rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
     return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());

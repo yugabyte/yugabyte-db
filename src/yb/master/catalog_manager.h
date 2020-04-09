@@ -628,6 +628,23 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return *encryption_manager_;
   }
 
+  // Registers new tablet with `partition` for the same table as `source_tablet_id` tablet.
+  // Does not change any other tablets and their partitions.
+  // Returns TabetInfo for registered tablet.
+  Result<TabletInfo*> TEST_RegisterNewTablet(
+      const TabletId& source_tablet_id, const PartitionPB& partition);
+
+  scoped_refptr<TabletInfo> TEST_GetTabletInfo(const TabletId& tablet_id) {
+    boost::shared_lock<LockType> l(lock_);
+    return FindPtrOrNull(*tablet_map_, tablet_id);
+  }
+
+  // Test wrapper for protected SelectReplicasForTablet method.
+  CHECKED_STATUS TEST_SelectReplicasForTablet(
+      const TSDescriptorVector& ts_descs, TabletInfo* tablet) {
+    return SelectReplicasForTablet(ts_descs, tablet);
+  }
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

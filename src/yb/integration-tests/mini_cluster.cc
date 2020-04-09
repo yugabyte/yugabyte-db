@@ -417,11 +417,11 @@ MiniTabletServer* MiniCluster::find_tablet_server(const std::string& uuid) {
 }
 
 string MiniCluster::GetMasterFsRoot(int idx) {
-  return JoinPathSegments(fs_root_, Substitute("master-$0-root", idx));
+  return JoinPathSegments(fs_root_, Substitute("master-$0-root", idx + 1));
 }
 
 string MiniCluster::GetTabletServerFsRoot(int idx) {
-  return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx));
+  return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx + 1));
 }
 
 tserver::TSTabletManager* MiniCluster::GetTabletManager(int idx) {

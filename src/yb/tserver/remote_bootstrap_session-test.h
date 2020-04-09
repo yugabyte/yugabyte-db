@@ -135,16 +135,13 @@ class RemoteBootstrapTest : public YBTabletTest {
     hp->set_host("fake-host");
     hp->set_port(0);
 
-    tablet_peer_.reset(
-        new TabletPeer(
-            tablet()->metadata(),
-            config_peer,
-            clock(),
-            fs_manager()->uuid(),
-            Bind(
-                &RemoteBootstrapTest::TabletPeerStateChangedCallback,
-                Unretained(this),
-                tablet()->tablet_id()), &metric_registry_));
+    tablet_peer_.reset(new TabletPeer(
+        tablet()->metadata(), config_peer, clock(), fs_manager()->uuid(),
+        Bind(
+            &RemoteBootstrapTest::TabletPeerStateChangedCallback,
+            Unretained(this),
+            tablet()->tablet_id()),
+        &metric_registry_, nullptr /* tablet_splitter */));
 
     // TODO similar to code in tablet_peer-test, consider refactor.
     RaftConfigPB config;
@@ -162,16 +159,18 @@ class RemoteBootstrapTest : public YBTabletTest {
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
     ASSERT_OK(tablet_peer_->SetBootstrapping());
-    ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                           std::shared_future<client::YBClient*>(),
-                                           nullptr /* server_mem_tracker */,
-                                           messenger_.get(),
-                                           proxy_cache_.get(),
-                                           log,
-                                           metric_entity,
-                                           raft_pool_.get(),
-                                           tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */));
+    ASSERT_OK(tablet_peer_->InitTabletPeer(
+        tablet(),
+        std::shared_future<client::YBClient*>(),
+        nullptr /* server_mem_tracker */,
+        messenger_.get(),
+        proxy_cache_.get(),
+        log,
+        metric_entity,
+        raft_pool_.get(),
+        tablet_prepare_pool_.get(),
+        nullptr /* retryable_requests */,
+        yb::OpId() /* split_op_id */));
     consensus::ConsensusBootstrapInfo boot_info;
     ASSERT_OK(tablet_peer_->Start(boot_info));
 

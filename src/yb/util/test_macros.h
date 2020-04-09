@@ -195,6 +195,18 @@
   } while (false) \
   /**/
 
+// Asserts that expr is not null, returns expr in case of success.
+#define ASSERT_NOTNULL(expr) \
+  __extension__ ({ \
+    auto&& result = (expr); \
+    if (result == nullptr) { \
+      FAIL() << "Unexpected nullptr"; \
+    } \
+    std::move(result); \
+  }) \
+  /**/
+
+
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
 

@@ -218,6 +218,8 @@ class RemoteBootstrapClient {
   gscoped_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
   tablet::RaftGroupReplicaSuperBlockPB new_superblock_;
   gscoped_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
+  tablet::TabletDataState remote_tablet_data_state_;
+
   std::vector<uint64_t> wal_seqnos_;
 
   // Components of this remote bootstrap client.

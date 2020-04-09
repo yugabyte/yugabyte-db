@@ -1105,12 +1105,10 @@ Status ExternalMiniCluster::AddTabletServer(
   flags.insert(flags.end(), extra_flags.begin(), extra_flags.end());
 
   scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
-      idx, messenger_, proxy_cache_.get(),
-      exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
-      ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port,
-      cql_rpc_port, cql_http_port,
-      pgsql_rpc_port, pgsql_http_port,
-      master_hostports, SubstituteInFlags(flags, idx));
+      idx, messenger_, proxy_cache_.get(), exe, GetDataPath(Substitute("ts-$0", idx + 1)),
+      GetBindIpForTabletServer(idx), ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port,
+      cql_rpc_port, cql_http_port, pgsql_rpc_port, pgsql_http_port, master_hostports,
+      SubstituteInFlags(flags, idx));
   RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();

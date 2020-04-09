@@ -223,6 +223,14 @@ void KvStoreInfo::ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const {
   }
 }
 
+namespace {
+
+std::string MakeTabletDirName(const TabletId& tablet_id) {
+  return Format("tablet-$0", tablet_id);
+}
+
+} // namespace
+
 // ============================================================================
 
 Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
@@ -264,7 +272,7 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
   }
 
   const string table_dir_name = Substitute("table-$0", table_id);
-  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
+  const string tablet_dir_name = MakeTabletDirName(raft_group_id);
   const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
   const string rocksdb_dir = JoinPathSegments(
       data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
@@ -785,6 +793,14 @@ TabletDataState RaftGroupMetadata::tablet_data_state() const {
   return tablet_data_state_;
 }
 
+std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
+  return JoinPathSegments(DirName(wal_dir_), MakeTabletDirName(raft_group_id));
+}
+
+std::string RaftGroupMetadata::GetSubRaftGroupDataDir(const RaftGroupId& raft_group_id) const {
+  return JoinPathSegments(DirName(kv_store_.rocksdb_dir), MakeTabletDirName(raft_group_id));
+}
+
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
     const RaftGroupId& raft_group_id, const Partition& partition,
     const std::string& lower_bound_key, const std::string& upper_bound_key) const {
@@ -794,13 +810,13 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock));
   metadata->raft_group_id_ = raft_group_id;
-  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
-  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir_name);
+  metadata->wal_dir_ = GetSubRaftGroupWalDir(raft_group_id);
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
-  metadata->kv_store_.rocksdb_dir = JoinPathSegments(
-      DirName(kv_store_.rocksdb_dir), tablet_dir_name);
+  metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
   metadata->partition_ = partition;
+  metadata->state_ = kInitialized;
+  metadata->tablet_data_state_ = TABLET_DATA_UNKNOWN;
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
 }
