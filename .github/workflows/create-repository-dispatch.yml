@@ -1,0 +1,72 @@
+name: Create Repository Dispatch
+on:
+  release:
+    types:
+      published
+jobs:
+  createRepositoryDispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository Dispatch for terraform-gcp-yugabyte
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: yugabyte/terraform-gcp-yugabyte
+          event-type: update-on-release
+          client-payload: '{  "prerelease": "${{ github.event.release.prerelease }}","tag": "${{ github.event.release.tag_name }}"}'
+     
+      - name: Repository Dispatch for terraform-azure-yugabyte
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: yugabyte/terraform-azure-yugabyte
+          event-type: update-on-release
+          client-payload: '{  "prerelease": "${{ github.event.release.prerelease }}","tag": "${{ github.event.release.tag_name }}"}'
+     
+      - name: Repository Dispatch for terraform-aws-yugabyte
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: yugabyte/terraform-aws-yugabyte
+          event-type: update-on-release
+          client-payload: '{  "prerelease": "${{ github.event.release.prerelease }}","tag": "${{ github.event.release.tag_name }}"}'    
+      
+      - name: Repository Dispatch for azure-resource-manager
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: yugabyte/azure-resource-manager
+          event-type: update-on-release
+          client-payload: '{  "prerelease": "${{ github.event.release.prerelease }}","tag": "${{ github.event.release.tag_name }}"}'          
+      
+      - name: Repository Dispatch for gcp-deployment-manager
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: yugabyte/gcp-deployment-manager
+          event-type: update-on-release
+          client-payload: '{  "prerelease": "${{ github.event.release.prerelease }}","tag": "${{ github.event.release.tag_name }}"}'
+
+      - name: Repository Dispatch for aws-cloudformation
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: yugabyte/aws-cloudformation
+          event-type: update-on-release
+          client-payload: '{  "prerelease": "${{ github.event.release.prerelease }}","tag": "${{ github.event.release.tag_name }}"}'
+      
+      - name: Repository Dispatch for homebrew-yugabytedb
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: yugabyte/homebrew-yugabytedb
+          event-type: update-on-release
+          client-payload: '{  "prerelease": "${{ github.event.release.prerelease }}","tag": "${{ github.event.release.tag_name }}"}'
+      
+      - name: Repository Dispatch for utilities
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: yugabyte/utilities
+          event-type: update-on-release
+          client-payload: '{  "prerelease": "${{ github.event.release.prerelease }}","tag": "${{ github.event.release.tag_name }}"}'            
