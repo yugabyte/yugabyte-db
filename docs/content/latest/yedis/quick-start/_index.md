@@ -1,7 +1,8 @@
 ---
-title: Quick start
+title: Quick start for YEDIS
+headerTitle: Quick start
 linkTitle: Quick start
-description: Quick start
+description: Follow the steps to quickly get started using YEDIS (Redis-compatible) in YugabyteDB.
 image: /images/section_icons/quick_start/explore_yedis.png
 aliases:
   - /quick-start/test-redis/
@@ -18,10 +19,9 @@ type: page
 
 After [creating a local cluster](../../quick-start/create-local-cluster/), follow the instructions below to test YugabyteDB's Redis-compatible [YEDIS](../api/) API.
 
-[**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugabyteDB ships with the 4.0.1 version of redis-cli in its bin directory.
+[**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugabyteDB ships with the 4.0.1 version of redis-cli in its `bin` directory.
 
-
-## 1. Initialize YEDIS API & Connect with redis-cli
+## 1. Initialize YEDIS API and connect with redis-cli
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
@@ -65,7 +65,6 @@ After [creating a local cluster](../../quick-start/create-local-cluster/), follo
   </div>
 </div>
 
-
 ## 2. Simple key-value types
 
 Insert a key and a value.
@@ -97,7 +96,6 @@ Check if the key exists.
 ```
 (integer) 1
 ```
-
 
 If the value is a number, it can be incremented.
 
@@ -132,7 +130,6 @@ If the value is a number, it can be incremented.
 ```
 "102"
 ```
-
 
 ## 3. Hash data types
 
