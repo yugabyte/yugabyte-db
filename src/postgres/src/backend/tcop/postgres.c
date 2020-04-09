@@ -41,6 +41,7 @@
 #include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "commands/async.h"
+#include "commands/portalcmds.h"
 #include "commands/prepare.h"
 #include "executor/spi.h"
 #include "jit/jit.h"
@@ -3906,9 +3907,22 @@ yb_is_read_restart_nedeed(const ErrorData* edata)
 	return YBCIsRestartReadError(edata->yb_txn_errcode);
 }
 
-/* Whether we are allowed to restart current query/txn in case of "restart read" error. */
+/*
+ * Data needed to restart a query (plaintext or portal) after its execution failed.
+ *
+ * Note that in case of a portal query, it refers to values from portal's memory context,
+ * so it's only valid as long as the portal exists.
+ */
+typedef struct YBQueryRestartData
+{
+	const char*	portal_name;	/* '\0' for unnamed portal, NULL if not a portal */
+	const char*	query_string;
+	const char*	command_tag;
+} YBQueryRestartData;
+
+/* Whether we are allowed to restart current query/txn in case of "read restart" error. */
 static bool
-yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
+yb_is_read_restart_possible(int attempt, const YBQueryRestartData* restart_data)
 {
 	if (!IsYugaByteEnabled())
 		return false;
@@ -3922,18 +3936,16 @@ yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
 	if (!restart_data)
 		return false;
 
-	// Can't currently restart named statements
-	if (restart_data->portal_name[0] != '\0')
-		return false;
-
-	// Can only restart SELECT queries
+	/* can only restart SELECT queries */
 	if (!restart_data->query_string)
 		return false;
 
 	const char* command_tag = restart_data->command_tag;
 
-	// If we're executing a prepared statement, we're interested in the command tag of the
-	// underlying statment.
+	/*
+	 * If we're executing a prepared statement, we're interested in the command tag of the
+	 * underlying statment.
+	 */
 	if (strncmp(command_tag, "EXECUTE", 7) == 0)
 	{
 		List* parsetree_list = yb_parse_query_silently(restart_data->query_string);
@@ -3961,7 +3973,7 @@ yb_copy_param_list(ParamListInfo source)
 	size_t alloc_size = offsetof(ParamListInfoData, params) +
 	                    source->numParams * sizeof(ParamExternData);
 	ParamListInfo result = (ParamListInfo) palloc(alloc_size);
-	// No allocated data structure pointers within ParamListInfo so we use a simple memcpy
+	/* no allocated data structure pointers within ParamListInfo so we use a simple memcpy */
 	memcpy(result, source, alloc_size);
 	return result;
 }
@@ -3969,95 +3981,197 @@ yb_copy_param_list(ParamListInfo source)
 /*
  * Collect data necessary for yb_restart_portal invocation.
  */
-static PortalRestartData*
+static YBQueryRestartData*
 yb_collect_portal_restart_data(const char* portal_name)
 {
 	Portal portal = GetPortalByName(portal_name);
+	Assert(portal);
 
-	if (portal == NULL)
-		return NULL;
-
-	PortalRestartData* result = (PortalRestartData*) palloc(sizeof(PortalRestartData));
-
-	result->portal_name  = pstrdup(portal_name);
-	result->query_string = pstrdup(portal->sourceText);
-	result->command_tag  = portal->commandTag ? pstrdup(portal->commandTag) : NULL;
-
-	result->params      = yb_copy_param_list(portal->portalParams);
-	result->num_params  = result->params ? result->params->numParams : 0;
-	result->param_types = NULL;
-	if (result->num_params > 0)
-	{
-		result->param_types = (Oid*) palloc(result->num_params * sizeof(Oid));
-		for (int i = 0; i < result->num_params; ++i)
-		{
-			result->param_types[i] = result->params->params[i].ptype;
-		}
-	}
-
-	result->num_formats = 0;
-	result->formats     = NULL;
-	if (portal->formats)
-	{
-		result->num_formats = portal->tupDesc->natts;
-		size_t alloc_size   = result->num_formats * sizeof(int16);
-		result->formats     = (int16*) palloc(alloc_size);
-		memcpy(result->formats, portal->formats, alloc_size);
-	}
-
+	YBQueryRestartData* result = (YBQueryRestartData*) palloc(sizeof(YBQueryRestartData));
+	result->portal_name  = portal->name;
+	result->query_string = portal->sourceText;
+	result->command_tag  = portal->commandTag;
 	return result;
 }
 
 /*
- * Create a new portal to replace one that might've been partially processed.
- * Can only restart unnamed portal.
+ * Restart a portal, preparing it for re-execution.
+ *
+ * This allows us to reuse portal's MemoryContext, which contains, among other things,
+ * bound variables.
+ * Some of them might be pointers to a memory within the same context (e.g. arrays),
+ * so it's important to preserve the context as-is instead of e.g. copying it into a fresh portal.
  */
 static void
-yb_restart_portal(const PortalRestartData* rd)
+yb_restart_portal(const char* portal_name)
 {
+	Portal portal = GetPortalByName(portal_name);
+	Assert(portal);
+	Assert(portal->status == PORTAL_FAILED);
 
-	/* 1. Redo Parse: Create Cached stmt (no output) */
-	exec_parse_message(rd->query_string,
-	                   rd->portal_name,
-	                   rd->param_types,
-	                   rd->num_params,
-	                   DestNone);
+	/*
+	 * Here our goal is to emulate what would PortalDrop + CreatePortal do, but instead of actually
+	 * destroying/creating a portal, we're going to reuse an existing one.
+	 *
+	 * The following code is a selective copy-paste from PortalDrop routine.
+	 * Original comments are preserved, even though some of the described use cases
+	 * are not applicable here.
+	 */
 
-	/* 2. Redo the Bind step */
+	/*
+	 * Allow portalcmds.c to clean up the state it knows about, in particular
+	 * shutting down the executor if still active.  This step potentially runs
+	 * user-defined code so failure has to be expected.  It's the cleanup
+	 * hook's responsibility to not try to do that more than once, in the case
+	 * that failure occurs and then we come back to drop the portal again
+	 * during transaction abort.
+	 *
+	 * Note: in most paths of control, this will have been done already in
+	 * MarkPortalDone or MarkPortalFailed.  We're just making sure.
+	 */
+	if (PointerIsValid(portal->cleanup))
+	{
+		portal->cleanup(portal);
+		portal->cleanup = NULL;
+	}
 
-	/* Create portal */
-	bool no_portal_name = rd->portal_name[0] == '\0';
-	Portal portal = CreatePortal(rd->portal_name,
-	                             no_portal_name /* allowDup */,
-	                             no_portal_name /* dupSilent */);
+	/*
+	 * If portal has a snapshot protecting its data, release that.  This needs
+	 * a little care since the registration will be attached to the portal's
+	 * resowner; if the portal failed, we will already have released the
+	 * resowner (and the snapshot) during transaction abort.
+	 */
+	if (portal->holdSnapshot)
+	{
+		if (portal->resowner)
+			UnregisterSnapshotFromOwner(portal->holdSnapshot,
+										portal->resowner);
+		portal->holdSnapshot = NULL;
+	}
 
-	/* Store portal data */
-	MemoryContext oldContext = MemoryContextSwitchTo(portal->portalContext);
+	/*
+	 * Release any resources still attached to the portal.  There are several
+	 * cases being covered here:
+	 *
+	 * Top transaction commit (indicated by isTopCommit): normally we should
+	 * do nothing here and let the regular end-of-transaction resource
+	 * releasing mechanism handle these resources too.  However, if we have a
+	 * FAILED portal (eg, a cursor that got an error), we'd better clean up
+	 * its resources to avoid resource-leakage warning messages.
+	 *
+	 * Sub transaction commit: never comes here at all, since we don't kill
+	 * any portals in AtSubCommit_Portals().
+	 *
+	 * Main or sub transaction abort: we will do nothing here because
+	 * portal->resowner was already set NULL; the resources were already
+	 * cleaned up in transaction abort.
+	 *
+	 * Ordinary portal drop: must release resources.  However, if the portal
+	 * is not FAILED then we do not release its locks.  The locks become the
+	 * responsibility of the transaction's ResourceOwner (since it is the
+	 * parent of the portal's owner) and will be released when the transaction
+	 * eventually ends.
+	 */
+	if (portal->resowner)
+	{
+		bool		isCommit = (portal->status != PORTAL_FAILED);
 
-	const char*   stmt_name    = no_portal_name ? NULL : pstrdup(rd->portal_name);
-	const char*   query_string = pstrdup(rd->query_string);
-	const char*   command_tag  = pstrdup(rd->command_tag);
-	ParamListInfo params       = yb_copy_param_list(rd->params);
+		ResourceOwnerRelease(portal->resowner,
+							 RESOURCE_RELEASE_BEFORE_LOCKS,
+							 isCommit, false);
+		ResourceOwnerRelease(portal->resowner,
+							 RESOURCE_RELEASE_LOCKS,
+							 isCommit, false);
+		ResourceOwnerRelease(portal->resowner,
+							 RESOURCE_RELEASE_AFTER_LOCKS,
+							 isCommit, false);
+		ResourceOwnerDelete(portal->resowner);
+	}
+	portal->resowner = NULL;
 
-	MemoryContextSwitchTo(oldContext);
+	/*
+	 * Delete tuplestore if present.  We should do this even under error
+	 * conditions; since the tuplestore would have been using cross-
+	 * transaction storage, its temp files need to be explicitly deleted.
+	 */
+	if (portal->holdStore)
+	{
+		MemoryContext oldcontext;
 
-	CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
-	                                  params,
-	                                  false /* useResOwner */,
-	                                  NULL /* queryEnv */);
+		oldcontext = MemoryContextSwitchTo(portal->holdContext);
+		tuplestore_end(portal->holdStore);
+		MemoryContextSwitchTo(oldcontext);
+		portal->holdStore = NULL;
+	}
 
-	PortalDefineQuery(portal,
-	                  stmt_name,
-	                  query_string,
-	                  command_tag,
-	                  cplan->stmt_list,
-	                  cplan);
+	/* delete tuplestore storage, if any */
+	if (portal->holdContext)
+		MemoryContextDelete(portal->holdContext);
 
-	/* Start portal */
-	PortalStart(portal, params, 0 /* eflags */, InvalidSnapshot);
 
-	/* Set the output format */
-	PortalSetResultFormat(portal, rd->num_formats, rd->formats);
+	/* ---------------------------------------------------------------------------------------------
+	 * YB NOTE:
+	 *
+	 * The following code is a selective copy-paste from CreatePortal routine.
+	 */
+
+	/* create a resource owner for the portal */
+	portal->resowner = ResourceOwnerCreate(CurTransactionResourceOwner,
+										   "Portal");
+
+	/* initialize portal fields that don't start off zero */
+	portal->status = PORTAL_NEW;
+	portal->cleanup = PortalCleanup;
+	portal->createSubid = GetCurrentSubTransactionId();
+	portal->activeSubid = portal->createSubid;
+	portal->strategy = PORTAL_MULTI_QUERY;
+	portal->cursorOptions = CURSOR_OPT_NO_SCROLL;
+	portal->atStart = true;
+	portal->atEnd = true;		/* disallow fetches until query is set */
+	portal->visible = true;
+	portal->creation_time = GetCurrentStatementStartTimestamp();
+
+	/* ---------------------------------------------------------------------------------------------
+	 * YB NOTE:
+	 *
+	 * Now that our portal looks like a fresh one, time to prepare and start it.
+	 */
+
+	/* no need for GetCachedPlan + PortalDefineQuery routine, everything is in place already */
+	portal->status = PORTAL_DEFINED;
+	PortalStart(portal, portal->portalParams, 0 /* eflags */, InvalidSnapshot);
+
+	/* no need to call PortalSetResultFormat either - formats array is already set */
+}
+
+/*
+ * Process an error that happened during execution with expected read restart errors.
+ * Prepares the re-execution if an error is restartable, otherwise - rethrows an error.
+ */
+static void
+yb_attempt_to_restart_on_error(int attempt,
+                               YBQueryRestartData* restart_data,
+                               MemoryContext exec_context)
+{
+	/* switch the context back to the original one when server started processing user request */
+	MemoryContext error_context = MemoryContextSwitchTo(exec_context);
+	ErrorData*    edata         = CopyErrorData();
+
+	if (yb_is_read_restart_nedeed(edata) &&
+	    yb_is_read_restart_possible(attempt, restart_data)) {
+		/* cleanup the error, restart portal, restart txn and let the control flow continue */
+		FlushErrorState();
+		PopActiveSnapshot(); /* restart read error occurrs after portal snapshot is pushed */
+		if (restart_data->portal_name) {
+			yb_restart_portal(restart_data->portal_name);
+		}
+		YBRestoreOutputBufferPosition();
+		YBCRestartTransaction();
+	} else {
+		/* if we shouldn't restart - propagate the error */
+		MemoryContextSwitchTo(error_context);
+		PG_RE_THROW();
+	}
 }
 
 /*
@@ -4068,15 +4182,10 @@ static void
 yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
                                                 MemoryContext exec_context)
 {
-	PortalRestartData restart_data  = {
-	    .portal_name  = "",
+	YBQueryRestartData restart_data  = {
+	    .portal_name  = NULL,
 	    .query_string = query_string,
-	    .command_tag  = yb_parse_command_tag(query_string),
-	    .num_params   = 0,
-	    .param_types  = NULL,
-	    .params       = NULL,
-	    .num_formats  = 0,
-	    .formats      = NULL
+	    .command_tag  = yb_parse_command_tag(query_string)
 	};
 	for (int attempt = 0;; ++attempt) {
 		PG_TRY();
@@ -4087,23 +4196,7 @@ yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
 		}
 		PG_CATCH();
 		{
-			// Switch the context from the current execution back to the original context
-			// when server started processing user request.
-			MemoryContext     error_context = MemoryContextSwitchTo(exec_context);
-			ErrorData*        edata         = CopyErrorData();
-
-			if (yb_is_read_restart_nedeed(edata) &&
-			   yb_is_read_restart_possible(attempt, &restart_data)) {
-				/* Cleanup the error, signal txn restart and let the loop continue. */
-				FlushErrorState();
-				PopActiveSnapshot(); // Restart read error occurrs after portal snapshot is pushed.
-				YBRestoreOutputBufferPosition();
-				YBCRestartTransaction();
-			} else {
-				/* If we shouldn't restart - propagate the error. */
-				MemoryContextSwitchTo(error_context);
-				PG_RE_THROW();
-			}
+			yb_attempt_to_restart_on_error(attempt, &restart_data, exec_context);
 		}
 		PG_END_TRY();
 	}
@@ -4116,9 +4209,9 @@ yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
 static void
 yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
                                                    long max_rows,
+                                                   YBQueryRestartData* restart_data,
                                                    MemoryContext exec_context)
 {
-	PortalRestartData* restart_data = yb_collect_portal_restart_data(portal_name);
 	for (int attempt = 0;; ++attempt) {
 		PG_TRY();
 		{
@@ -4128,24 +4221,7 @@ yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
 		}
 		PG_CATCH();
 		{
-			// Switch the context from the current execution back to the original context
-			// when server started processing user request.
-			MemoryContext      error_context = MemoryContextSwitchTo(exec_context);
-			ErrorData*         edata         = CopyErrorData();
-
-			if (yb_is_read_restart_nedeed(edata) &&
-			    yb_is_read_restart_possible(attempt, restart_data)) {
-				/* Cleanup the error, signal txn restart, recreate portal and let the loop continue. */
-				FlushErrorState();
-				PopActiveSnapshot(); // Restart read error occurrs after portal snapshot is pushed.
-				yb_restart_portal(restart_data);
-				YBRestoreOutputBufferPosition();
-				YBCRestartTransaction();
-			} else {
-				/* If we shouldn't restart - propagate the error. */
-				MemoryContextSwitchTo(error_context);
-				PG_RE_THROW();
-			}
+			yb_attempt_to_restart_on_error(attempt, restart_data, exec_context);
 		}
 		PG_END_TRY();
 	}
@@ -4821,28 +4897,19 @@ PostgresMain(int argc, char *argv[],
 					pq_getmsgend(&input_message);
 
 					MemoryContext oldcontext = GetCurrentMemoryContext();
+					YBQueryRestartData* restart_data = yb_collect_portal_restart_data(portal_name);
 
 					PG_TRY();
 					{
-                      yb_exec_execute_message_attempting_to_restart_read(portal_name,
-                                                                         max_rows,
-                                                                         oldcontext);
+						yb_exec_execute_message_attempting_to_restart_read(portal_name,
+						                                                   max_rows,
+						                                                   restart_data,
+						                                                   oldcontext);
 					}
 					PG_CATCH();
 					{
-
-						PortalRestartData* restart_data =
-                            yb_collect_portal_restart_data(portal_name);
-
-						/*
-						 * TODO Do not support retrying for prepared statements
-						 * yet. (i.e. if portal is named or has params).
-						 */
 						bool can_retry =
 						    IsYugaByteEnabled() &&
-						    restart_data &&
-						    restart_data->portal_name[0] == '\0' &&
-						    restart_data->num_params == 0 &&
 						    unnamed_stmt_psrc &&
 						    yb_check_retry_allowed(unnamed_stmt_psrc->query_string);
 
@@ -4857,12 +4924,13 @@ PostgresMain(int argc, char *argv[],
 
 						if (need_retry && can_retry)
 						{
-                          yb_restart_portal(restart_data);
+							yb_restart_portal(portal_name);
 
 							/* Now ready to retry the execute step. */
-                          yb_exec_execute_message_attempting_to_restart_read(portal_name,
-                                                                             max_rows,
-                                                                             GetCurrentMemoryContext());
+							yb_exec_execute_message_attempting_to_restart_read(portal_name,
+							                                                   max_rows,
+							                                                   restart_data,
+							                                                   GetCurrentMemoryContext());
 						}
 						else
 						{

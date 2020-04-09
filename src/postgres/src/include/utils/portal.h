@@ -195,24 +195,6 @@ typedef struct PortalData
 }			PortalData;
 
 /*
- * Data needed to restart a Portal after its execution failed.
- * Note that stuff to be stored in the portal needs to be copied to the portal context.
- */
-typedef struct PortalRestartData
-{
-	const char		*portal_name;	/* portal's name ('\0' for unnamed portal, never NULL) */
-	const char		*query_string;	/* text of query (as of 8.4, never NULL) */
-	const char		*command_tag;	/* command tag for original query */
-
-	int				num_params;		/* number of params */
-	Oid				*param_types;	/* array of parameter type OIDs, or NULL */
-	ParamListInfo	params;			/* params to pass to query */
-
-	int				num_formats;	/* length of formats array  */
-	int16			*formats;		/* array of format codes, one for each column */
-} PortalRestartData;
-
-/*
  * PortalIsValid
  *		True iff portal is valid.
  */

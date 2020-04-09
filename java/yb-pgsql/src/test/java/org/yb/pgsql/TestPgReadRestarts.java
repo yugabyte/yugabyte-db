@@ -209,6 +209,29 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   }
 
   /**
+   * Same as the previous test but uses an array bindvar (via {@code UNNEST} function).
+   * <p>
+   * This is a separate case because postgres code binds an array as a pointer to a location within
+   * a portal memory context.
+   */
+  @Test
+  public void selectShortPreparedParameterizedArray() throws Exception {
+    new PreparedStatementTester(
+        newConnectionBuilder(),
+        "SELECT unnest(?::int[]), * FROM test_rr LIMIT 10",
+        getShortString(),
+        false /* expectRestartErrors */) {
+
+      @Override
+      public PreparedStatement createStatement(Connection conn) throws Exception {
+        PreparedStatement pstmt = super.createStatement(conn);
+        pstmt.setArray(1, conn.createArrayOf("int", new Object[] { 1 }));
+        return pstmt;
+      }
+    }.runTest();
+  }
+
+  /**
    * Same as {@link #selectStarShort()} but uses YSQL connections in "simple" mode.
    */
   @Test
