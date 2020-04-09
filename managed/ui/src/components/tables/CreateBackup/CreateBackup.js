@@ -5,6 +5,7 @@ import PropTypes from 'prop-types';
 import { components } from 'react-select';
 import { browserHistory } from 'react-router';
 import { YBFormSelect, YBFormToggle, YBFormInput } from '../../common/forms/fields';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { Row, Col } from 'react-bootstrap';
 import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray, isEmptyString, isNonEmptyString } from 'utils/ObjectUtils';
 import { Field } from 'formik';
@@ -73,7 +74,7 @@ export default class CreateBackup extends Component {
   }
 
   render() {
-    const { visible, onHide, tableInfo, storageConfigs, universeTables } = this.props;
+    const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
     const storageOptions = storageConfigs.map((config) => {
       return {value: config.configUUID, label: config.name + " Storage"};
     });
@@ -159,6 +160,46 @@ export default class CreateBackup extends Component {
             // params for backupTableUUID <Field>
             // NOTE: No entire keyspace selection implemented
             return (<Fragment>
+              {isScheduled &&
+                <div className="backup-frequency-control">                  
+                  <Row>
+                    <Col xs={6}>
+                      <Field
+                        name="schedulingFrequency"
+                        component={YBFormInput}
+                        readOnly={isSchedulingFrequencyReadOnly}
+                        type={"number"}
+                        label={"Backup frequency"}
+                        placeholder={"Interval in ms"}
+                      />
+                    </Col>
+                  </Row>
+                  <div className="separating-text">OR</div>
+                  <Row>
+                    <Col xs={6}>
+                      <Field
+                        name="cronExpression"
+                        component={YBFormInput}
+                        readOnly={isCronExpressionReadOnly}
+                        placeholder={"Cron expression"}
+                        label={"Cron expression"}
+                      />
+                    </Col>
+                    <Col lg={1} className="cron-expr-tooltip">
+                      <YBInfoTip title="Cron Expression Format"
+                        content={<div><code>Min&nbsp; Hour&nbsp; Day&nbsp; Mon&nbsp; Weekday</code>
+                          <pre><code>*    *    *    *    *  command to be executed</code></pre>
+                          <pre><code>┬    ┬    ┬    ┬    ┬<br />
+│    │    │    │    └─  Weekday  (0=Sun .. 6=Sat)<br />
+│    │    │    └──────  Month    (1..12)<br />
+│    │    └───────────  Day      (1..31)<br />
+│    └────────────────  Hour     (0..23)<br />
+└─────────────────────  Minute   (0..59)</code></pre>
+                        </div>} />  
+                    </Col>
+                  </Row>
+                </div>
+              }
               <Field
                 name="storageConfigUUID"
                 component={YBFormSelect}
@@ -183,31 +224,7 @@ export default class CreateBackup extends Component {
                 name="enableSSE"
                 component={YBFormToggle}
                 label={"Enable Server-Side Encryption"}
-              />
-              <div className="backup-frequency-control">
-                <span>or</span>
-                <Row>
-                  <Col xs={6}>
-                    <Field
-                      name="schedulingFrequency"
-                      component={YBFormInput}
-                      readOnly={isSchedulingFrequencyReadOnly}
-                      type={"number"}
-                      label={"Backup frequency"}
-                      placeholder={"Interval in ms"}
-                    />
-                  </Col>
-                  <Col xs={6}>
-                    <Field
-                      name="cronExpression"
-                      component={YBFormInput}
-                      readOnly={isCronExpressionReadOnly}
-                      label={" "}
-                      placeholder={"Cron expression"}
-                    />
-                  </Col>
-                </Row>
-              </div>
+              />              
             </Fragment>);
           }}
         />

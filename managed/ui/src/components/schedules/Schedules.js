@@ -8,7 +8,9 @@ import pluralize from 'pluralize';
 import cronstrue from 'cronstrue';
 import { DescriptionItem } from 'components/common/descriptors';
 import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isAvailable, isNonAvailable } from 'utils/LayoutUtils';
 import { YBModalForm } from '../common/forms';
+import { TableAction } from '../tables';
 
 import './schedules.scss';
 
@@ -19,7 +21,8 @@ class ScheduleDisplayItem extends Component {
   render() {
     const {
       name,
-      idx
+      idx,
+      readOnly,
     } = this.props;
     const schedule = _.cloneDeep(this.props.schedule);
 
@@ -76,6 +79,7 @@ class ScheduleDisplayItem extends Component {
     return (
       <Col xs={12} sm={6} md={6} lg={4}>
         <div className="schedule-display-item-container">
+          {!readOnly &&
           <div className="status-icon">
             <DropdownButton
               bsStyle={"default"}
@@ -93,7 +97,7 @@ class ScheduleDisplayItem extends Component {
                 <span className="fa fa-trash"/>Delete schedule
               </MenuItem>
             </DropdownButton>
-          </div>
+          </div>}
           <div className="display-name">
             {name}
           </div>
@@ -148,14 +152,14 @@ class Schedules extends Component {
 
   render() {
     const {
-      customer: { schedules, deleteSchedule },
-      universe: { universeList },
+      customer: { schedules, deleteSchedule, currentCustomer },
+      universe: { universeList, currentUniverse },
       closeModal,
       modal,
       modal: {
         visibleModal,
         showModal
-      }
+      },
     } = this.props;
 
     const findUniverseName = (uuid) => {
@@ -168,22 +172,28 @@ class Schedules extends Component {
       return null;
     };
 
-    let schedulesList = <span>There is no data to display</span>;
+    let schedulesList = <span style={{padding: '10px 15px'}}>There is no data to display</span>;
     if (getPromiseState(schedules).isSuccess() && isNonEmptyArray(schedules.data) && getPromiseState(universeList).isSuccess()) {
-      schedulesList = schedules.data.map((scheduleItem, idx) => {
-        const universeName = findUniverseName(scheduleItem.taskParams.universeUUID);
-        if (universeName) {
-          return (<ScheduleDisplayItem
-            key={scheduleItem.name + scheduleItem.taskType + idx}
-            idx={idx}
-            modal={modal}
-            handleDeleteAction={this.handleDeleteAction}
-            name={universeName}
-            schedule={scheduleItem}
-          />);
-        }
-        return null;
+      const filteredSchedules = schedules.data.filter((item) => {
+        return item.taskParams.universeUUID === currentUniverse.data.universeUUID;
       });
+      if (filteredSchedules.length) {
+        schedulesList = filteredSchedules.map((scheduleItem, idx) => {
+          const universeName = findUniverseName(scheduleItem.taskParams.universeUUID);
+          if (universeName) {
+            return (<ScheduleDisplayItem
+              key={scheduleItem.name + scheduleItem.taskType + idx}
+              idx={idx}
+              modal={modal}
+              handleDeleteAction={this.handleDeleteAction}
+              name={universeName}
+              schedule={scheduleItem}
+              readOnly={isNonAvailable(currentCustomer.data.features, "universes.backup")}
+            />);
+          }
+          return null;
+        });
+      }
     }
 
     return (
@@ -192,11 +202,22 @@ class Schedules extends Component {
           className={"schedules-panel"}
           noBackground={true}
           header={
-            <h2 className="content-title">Schedules</h2>
+            <div className="container-title clearfix">
+              <div className="pull-left">
+                <h2 className="task-list-header content-title pull-left">Scheduled Backups</h2>
+              </div>
+              <div className="pull-right">
+                {isAvailable(currentCustomer.data.features, "universes.backup") &&
+                  <div className="backup-action-btn-group">
+                    <TableAction className="table-action" btnClass={"btn-orange"}
+                                actionType="create-scheduled-backup" isMenuItem={false} />
+                  </div>
+                }
+              </div>
+            </div>
           }
           body={
             <Fragment>
-
               <YBModalForm
                 title={"Confirm Delete Schedule"}
                 visible={showModal && visibleModal === "deleteScheduleModal"}
