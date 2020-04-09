@@ -303,6 +303,50 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateProviderWithHostVpcGcp() {
+    String providerName = "gcp-Provider";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "gcp");
+    bodyJson.put("name", providerName);
+    ObjectNode configJson = Json.newObject();
+    configJson.put("use_host_vpc", true);
+    configJson.put("project_id", "project");
+    bodyJson.set("config", configJson);
+    Result result = createProvider(bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "name", providerName);
+    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    Map<String, String> config = provider.getConfig();
+    assertTrue(config.isEmpty());
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCreateProviderWithHostCredentialsGcp() {
+    String providerName = "gcp-Provider";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "gcp");
+    bodyJson.put("name", providerName);
+    ObjectNode configJson = Json.newObject();
+    ObjectNode configFileJson = Json.newObject();
+    configFileJson.put("client_email", "email");
+    configFileJson.put("project_id", "project");
+    configFileJson.put("GOOGLE_APPLICATION_CREDENTIALS", "credentials");
+    configJson.put("config_file_contents", configFileJson);
+    configJson.put("use_host_credentials", true);
+    bodyJson.set("config", configJson);
+    Result result = createProvider(bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "name", providerName);
+    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    Map<String, String> config = provider.getConfig();
+    assertTrue(config.isEmpty());
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
   public void testCreateKubernetesMultiRegionProvider() {
     ObjectMapper mapper = new ObjectMapper();
 
@@ -314,7 +358,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     configJson.put("KUBECONFIG_NAME", "test");
     configJson.put("KUBECONFIG_CONTENT", "test");
     bodyJson.set("config", configJson);
-    
+
     ArrayNode regions = mapper.createArrayNode();
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "US-West");
@@ -326,9 +370,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     azs.add(azJson);
     regionJson.putArray("zoneList").addAll(azs);
     regions.add(regionJson);
-    
+
     bodyJson.putArray("regionList").addAll(regions);
-    
+
     Result result = createKubernetesProvider(bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -356,7 +400,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     configJson.put("KUBECONFIG_NAME", "test");
     configJson.put("KUBECONFIG_CONTENT", "test");
     bodyJson.set("config", configJson);
-    
+
     ArrayNode regions = mapper.createArrayNode();
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "US-West");
@@ -369,9 +413,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     azs.add(azJson);
     regionJson.putArray("zoneList").addAll(azs);
     regions.add(regionJson);
-    
+
     bodyJson.putArray("regionList").addAll(regions);
-    
+
     Result result = createKubernetesProvider(bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertBadRequest(result, "Kubeconfig can't be at two levels");
@@ -472,11 +516,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     config.put("KUBECONFIG_STORAGE_CLASSES", "");
     config.put("KUBECONFIG", "test.conf");
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
-    
+
     ObjectNode bodyJson = Json.newObject();
     config.put("KUBECONFIG_STORAGE_CLASSES", "slow");
     bodyJson.put("config", Json.toJson(config));
-    
+
     Result result = editProvider(bodyJson, p.uuid);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));

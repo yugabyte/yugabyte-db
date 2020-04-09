@@ -79,7 +79,7 @@ class GCPProviderInitView extends Component {
     if (isNonEmptyString(vals.gcpProjectName)) {
       gcpCreateConfig["project_id"] = vals.gcpProjectName;
     }
-    if (vals.network_setup === "existing_vpc") {
+    if (vals.network_setup !== "new_vpc") {
       vals.regionMapping.forEach((item) =>
         perRegionMetadata[item.region] = { "subnetId": item.subnet}
       );
@@ -87,8 +87,10 @@ class GCPProviderInitView extends Component {
     const providerName = vals.accountName;
     const configText = vals.gcpConfig;
     if (vals.credential_input === "local_service_account") {
+      gcpCreateConfig["use_host_credentials"] = true;
       return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata);
     } else if (vals.credential_input === "upload_service_account_json" && isNonEmptyObject(configText)) {
+      gcpCreateConfig["use_host_credentials"] = false;
       const reader = new FileReader();
       reader.readAsText(configText);
       // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
