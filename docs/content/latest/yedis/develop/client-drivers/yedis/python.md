@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Installation
+## Install the Python driver
 
 Install the Python driver using the following command.
 
@@ -27,7 +27,7 @@ $ sudo pip install yedis
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, follow the steps in [Quick start](../../../../quick-start/).
 
 ### Write the HelloWorld Python application
 

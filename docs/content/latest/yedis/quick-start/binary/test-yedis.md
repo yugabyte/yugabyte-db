@@ -1,7 +1,8 @@
 
 * Initialize the YEDIS API.
 
-Setup the redis_keyspace keyspace and the .redis table so that this cluster becomes ready for redis clients. Detailed output for the setup_redis command is available in the [yb-ctl Reference](../../admin/yb-ctl/#setup-redis).
+Setup the `redis_keyspace` keyspace and the `.redis` table so that this cluster becomes ready for Redis clients. Detailed output for the `setup_redis` command is available in the [yb-ctl Reference](../../admin/yb-ctl/#setup-redis).
+
 ```sh
 $ ./bin/yb-ctl setup_redis
 ```

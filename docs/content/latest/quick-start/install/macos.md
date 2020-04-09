@@ -1,7 +1,8 @@
 ---
-title: 1. Install YugabyteDB
+title: Install YugabyteDB for macOS [Quick start]
+headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
-description: Install YugabyteDB
+description: Install YugabyteDB for macOS
 aliases:
   - /quick-start/install/
   - /latest/quick-start/install/
