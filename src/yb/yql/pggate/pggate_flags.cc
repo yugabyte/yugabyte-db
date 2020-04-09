@@ -61,7 +61,7 @@ DEFINE_int32(ysql_session_max_batch_size, 512,
 DEFINE_bool(ysql_non_txn_copy, false,
             "Execute COPY inserts non-transactionally.");
 
-DEFINE_int32(ysql_max_read_restart_attempts, 10,
+DEFINE_int32(ysql_max_read_restart_attempts, 20,
              "How many read restarts can we try transparently before giving up");
 
 DEFINE_int32(ysql_output_buffer_size, 262144,

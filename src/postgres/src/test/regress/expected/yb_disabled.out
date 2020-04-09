@@ -14,7 +14,7 @@ WARNING:  NOTIFY not supported yet and will be ignored
 LINE 1: NOTIFY channel, 'message';
         ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1872. Click '+' on the description to raise its priority
-SELECT pg_notify('channel', 'text'); -- emits warning, not an error
+SELECT pg_notify('channel', 'text');
 WARNING:  NOTIFY not supported yet and will be ignored
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1872. Click '+' on the description to raise its priority
  pg_notify
