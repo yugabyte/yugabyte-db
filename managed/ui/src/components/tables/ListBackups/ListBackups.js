@@ -10,6 +10,7 @@ import { isAvailable } from 'utils/LayoutUtils';
 import { timeFormatter, successStringFormatter } from 'utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
+import SchedulesContainer from '../../schedules/SchedulesContainer';
 
 import './ListBackups.scss';
 
@@ -33,7 +34,12 @@ export default class ListBackups extends Component {
   }
 
   render() {
-    const { currentCustomer, universeBackupList, universeTableTypes, title } = this.props;
+    const {
+      currentCustomer,
+      universeBackupList,
+      universeTableTypes,
+      title,
+    } = this.props;
     if (getPromiseState(universeBackupList).isLoading() ||
         getPromiseState(universeBackupList).isInit()) {
       return <YBLoadingCircleIcon size="medium" />;
@@ -64,61 +70,64 @@ export default class ListBackups extends Component {
       }
     };
     return (
-      <YBPanelItem
-        header={
-          <div className="container-title clearfix">
-            <div className="pull-left">
-              <h2 className="task-list-header content-title pull-left">{title}</h2>
+      <div>
+        <SchedulesContainer />
+        <YBPanelItem
+          header={
+            <div className="container-title clearfix spacing-top">
+              <div className="pull-left">
+                <h2 className="task-list-header content-title pull-left">{title}</h2>
+              </div>
+              <div className="pull-right">
+                {isAvailable(currentCustomer.data.features, "universes.backup") &&
+                  <div className="backup-action-btn-group">
+                    <TableAction className="table-action" btnClass={"btn-orange"}
+                                actionType="create-backup" isMenuItem={false} />
+                    <TableAction className="table-action" btnClass={"btn-default"}
+                                actionType="restore-backup" isMenuItem={false} />
+                  </div>
+                }
+              </div>
             </div>
-            <div className="pull-right">
-              {isAvailable(currentCustomer.data.features, "universes.backup") &&
-                <div className="backup-action-btn-group">
-                  <TableAction className="table-action" btnClass={"btn-orange"}
-                              actionType="create-backup" isMenuItem={false} />
-                  <TableAction className="table-action" btnClass={"btn-default"}
-                              actionType="restore-backup" isMenuItem={false} />
-                </div>
-              }
-            </div>
-          </div>
-        }
-        body={
-          <BootstrapTable data={backupInfos} pagination={true} className="backup-list-table">
-            <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true}/>
-            <TableHeaderColumn dataField="keyspace" dataSort
-                              columnClassName="no-border name-column" className="no-border">
-              Keyspace
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="tableName" dataSort
-                              columnClassName="no-border name-column" className="no-border">
-              Table Name
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="tableType" dataSort
-                              columnClassName="no-border name-column" className="no-border">
-              Table Type
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
-                              columnClassName="no-border " className="no-border"
-                              dataAlign="left">
-              Created At
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="status" dataSort
-                              columnClassName="no-border name-column" className="no-border"
-                              dataFormat={successStringFormatter} >
-              Status
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="storageLocation"
-                              columnClassName="no-border storage-cell"
-                              className="no-border storage-cell" >
-              Storage Location
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField={"actions"} columnClassName={"no-border yb-actions-cell"} className={"no-border yb-actions-cell"}
-                               dataFormat={formatActionButtons} headerAlign='center' dataAlign='center' >
-              Actions
-            </TableHeaderColumn>
-          </BootstrapTable>
-        }
-      />
+          }
+          body={
+            <BootstrapTable data={backupInfos} pagination={true} className="backup-list-table">
+              <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true}/>
+              <TableHeaderColumn dataField="keyspace" dataSort
+                                columnClassName="no-border name-column" className="no-border">
+                Keyspace
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="tableName" dataSort
+                                columnClassName="no-border name-column" className="no-border">
+                Table Name
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="tableType" dataSort
+                                columnClassName="no-border name-column" className="no-border">
+                Table Type
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
+                                columnClassName="no-border " className="no-border"
+                                dataAlign="left">
+                Created At
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="status" dataSort
+                                columnClassName="no-border name-column" className="no-border"
+                                dataFormat={successStringFormatter} >
+                Status
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="storageLocation"
+                                columnClassName="no-border storage-cell"
+                                className="no-border storage-cell" >
+                Storage Location
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField={"actions"} columnClassName={"no-border yb-actions-cell"} className={"no-border yb-actions-cell"}
+                                dataFormat={formatActionButtons} headerAlign='center' dataAlign='center' >
+                Actions
+              </TableHeaderColumn>
+            </BootstrapTable>
+          }
+        />
+      </div>
     );
   }
 

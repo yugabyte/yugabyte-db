@@ -1,8 +1,7 @@
 {
   "universe": {
       "import": "disabled",
-      "create": "disabled",
-      "backup": "hidden"
+      "create": "disabled"
   },
   "config": {
     "infra": "disabled",
@@ -29,6 +28,7 @@
       "universeStatus": "hidden"
     },
     "proxyIp": "hidden",
-    "tableActions": "disabled"
+    "tableActions": "disabled",
+    "backup": "hidden"
   }
 }
