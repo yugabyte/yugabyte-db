@@ -615,14 +615,11 @@ void AsyncAlterTable::HandleResponse(int attempt) {
 
   if (state() == MonitoredTaskState::kComplete) {
     // TODO: proper error handling here. Not critical, since TSHeartbeat will retry on failure.
-    auto s = (master_->catalog_manager()->HandleTabletSchemaVersionReport(
-        tablet_.get(), schema_version_));
-    if (!s.ok()) {
-      LOG_WITH_PREFIX(FATAL) << "Check failed " << s << " failed for "
-                             << tablet_->ToString() << " while running "
-                             << "AsyncAlterTable::HandleResponse"
-                             << " with response " << resp_.DebugString();
-    }
+    WARN_NOT_OK(master_->catalog_manager()->HandleTabletSchemaVersionReport(
+        tablet_.get(), schema_version_),
+        yb::Format(
+            "$0 for $1 failed while running AsyncAlterTable::HandleResponse. response $2",
+            description(), tablet_->ToString(), resp_.DebugString()));
   } else {
     VLOG_WITH_PREFIX(1) << "Task is not completed" << tablet_->ToString() << " for version "
                         << schema_version_;
