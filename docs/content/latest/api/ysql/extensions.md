@@ -219,20 +219,20 @@ $ cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" &&
 
 This might take a couple of minutes.
 
-<h4> Example </h4>
+#### Example
 
 1. Get a sample [postgis dataset](https://data.edmonton.ca/Geospatial-Boundaries/City-of-Edmonton-Neighbourhood-Boundaries/jfvj-x253):
 
-    ```sh
-    $ wget -O edmonton.zip "https://data.edmonton.ca/api/geospatial/jfvj-x253?method=export&format=Shapefile" && unzip edmonton.zip
-    ```
+```sh
+$ wget -O edmonton.zip "https://data.edmonton.ca/api/geospatial/jfvj-x253?method=export&format=Shapefile" && unzip edmonton.zip
+```
 
 2. Extract the dataset using the `shp2pgsql` tool.
     This should come with your PostgreSQL installation, it is not yet packaged with YSQL.
 
-    ```sh
-    $ shp2pgsql geo_export_*.shp > edmonton.sql
-    ```
+```sh
+$ shp2pgsql geo_export_*.shp > edmonton.sql
+```
 
 3. Edit the generated `edmonton.sql` for YSQL compatibility.
     First inline the `PRIMARY KEY` declaration for `gid` as YSQL does not yet support adding primary key contraints after the table creation.
@@ -320,5 +320,55 @@ SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
            uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
 --------------------------------------+--------------------------------------+--------------------------------------
  69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
+(1 row)
+```
+
+### Postgresql Hyperloglog
+
+The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces a new data type `hll` which is a HyperLogLog data structure. 
+HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision. 
+
+The first step is to install postgres-hll [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in Postgresql. 
+It is best to use the same Postgresql version as YugabyteDB. We can easilty get the version with ysqlsh:
+```sh
+$ ./bin/ysqlsh --port=5432
+ysqlsh (11.2-YB-2.1.2.0-b0)
+Type "help" for help.
+
+yugabyte=# select version();
+                                                  version                                                   
+------------------------------------------------------------------------------------------------------------
+ PostgreSQL 11.2-YB-2.1.2.0-b0 on x86_64-pc-linux-gnu, compiled by gcc (Homebrew gcc 5.5.0_4) 5.5.0, 64-bit
+(1 row)
+```
+Above we use Postgresl 11.2. After installing the extension we copy the files to YugabyteDB:
+
+```sh
+$ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" && 
+  cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension && 
+  cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
+  ./bin/ysqlsh -c "CREATE EXTENSION \"hll\"";
+```
+
+#### Example
+
+We can run a quick example for the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repo:
+```postgresql
+yugabyte=# CREATE TABLE helloworld (id integer, set hll);
+CREATE TABLE
+--- Insert an empty HLL
+yugabyte=# INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
+INSERT 0 1
+--- Add a hashed integer to the HLL
+yugabyte=# UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
+UPDATE 1
+--- Or add a hashed string to the HLL
+yugabyte=# UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
+UPDATE 1
+--- Get the cardinality of the HLL
+yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
+ hll_cardinality 
+-----------------
+               2
 (1 row)
 ```
