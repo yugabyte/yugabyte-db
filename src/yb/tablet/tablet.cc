@@ -42,6 +42,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/container/static_vector.hpp>
 #include <boost/optional.hpp>
 
 #include "yb/rocksdb/db.h"
@@ -357,6 +358,15 @@ string DocDbOpIds::ToString() const {
   return Format("{ regular: $0 intents: $1 }", regular, intents);
 }
 
+namespace {
+
+std::string MakeTabletLogPrefix(
+    const TabletId& tablet_id, const std::string& log_prefix_suffix) {
+  return Format("T $0$1", tablet_id, log_prefix_suffix);
+}
+
+} // namespace
+
 Tablet::Tablet(const TabletInitData& data)
     : key_schema_(data.metadata->schema().CreateKeyProjection()),
       metadata_(data.metadata),
@@ -367,7 +377,8 @@ Tablet::Tablet(const TabletInitData& data)
           CreateMetrics::kFalse)),
       block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
       clock_(data.clock),
-      mvcc_(Format("T $0$1: ", data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
+      mvcc_(
+          MakeTabletLogPrefix(data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
       tablet_options_(data.tablet_options),
       client_future_(data.client_future),
       local_tablet_filter_(data.local_tablet_filter),
@@ -545,7 +556,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
 }
 
 std::string Tablet::LogPrefix() const {
-  return Format("T $0$1: ", tablet_id(), log_prefix_suffix_);
+  return MakeTabletLogPrefix(tablet_id(), log_prefix_suffix_);
 }
 
 namespace {
@@ -563,7 +574,8 @@ std::string LogDbTypePrefix(docdb::StorageDbType db_type) {
 } // namespace
 
 std::string Tablet::LogPrefix(docdb::StorageDbType db_type) const {
-  return Format("T $0$1 [$2]: ", tablet_id(), log_prefix_suffix_, LogDbTypePrefix(db_type));
+  return Format(
+      "$0 [$1]: ", MakeTabletLogPrefix(tablet_id(), log_prefix_suffix_), LogDbTypePrefix(db_type));
 }
 
 Status Tablet::OpenKeyValueTablet() {
@@ -2684,12 +2696,41 @@ Result<IsolationLevel> Tablet::GetIsolationLevel(const TransactionMetadataPB& tr
   return VERIFY_RESULT(transaction_participant_->PrepareMetadata(transaction)).isolation;
 }
 
-Status Tablet::CreateSubtablet(
-    const TabletId& tablet_id, const Partition& partition,
-    const docdb::KeyBounds& key_bounds) {
+Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
+    const TabletId& tablet_id, const Partition& partition, const docdb::KeyBounds& key_bounds,
+    const yb::OpId& split_op_id, const HybridTime& split_op_hybrid_time) {
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
+  RETURN_NOT_OK(Flush(FlushMode::kSync));
+
   auto metadata = VERIFY_RESULT(metadata_->CreateSubtabletMetadata(
       tablet_id, partition, key_bounds.lower.data(), key_bounds.upper.data()));
-  return snapshots_->CreateCheckpoint(metadata->rocksdb_dir());
+
+  RETURN_NOT_OK(snapshots_->CreateCheckpoint(metadata->rocksdb_dir()));
+
+  // We want flushed frontier to cover split_op_id, so during bootstrap of after-split tablets
+  // we don't replay split operation.
+  docdb::ConsensusFrontier frontier;
+  frontier.set_op_id(split_op_id);
+  frontier.set_hybrid_time(split_op_hybrid_time);
+
+  boost::container::static_vector<std::string, 2> subtablet_rocksdb_dirs({metadata->rocksdb_dir()});
+  if (intents_db_) {
+    subtablet_rocksdb_dirs.push_back(metadata->intents_rocksdb_dir());
+  }
+  for (auto rocksdb_dir : subtablet_rocksdb_dirs) {
+    rocksdb::Options rocksdb_options;
+    docdb::InitRocksDBOptions(
+        &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_),
+        /* statistics */ nullptr, tablet_options_);
+    rocksdb_options.create_if_missing = false;
+    std::unique_ptr<rocksdb::DB> db =
+        VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, rocksdb_dir));
+    RETURN_NOT_OK(
+        db->ModifyFlushedFrontier(frontier.Clone(), rocksdb::FrontierModificationMode::kUpdate));
+  }
+  return metadata;
 }
 
 Result<int64_t> Tablet::CountIntents() {

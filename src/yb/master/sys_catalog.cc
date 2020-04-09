@@ -474,7 +474,7 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
       metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_);
+      metric_registry_, nullptr /* tablet_splitter */);
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
@@ -518,6 +518,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .txns_enabled = tablet::TransactionsEnabled(!FLAGS_create_initial_sys_catalog_snapshot),
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
+      .tablet_splitter = nullptr,
   };
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -530,7 +531,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   // TODO: Do we have a setSplittable(false) or something from the outside is
   // handling split in the TS?
 
-  RETURN_NOT_OK_PREPEND(tablet_peer()->InitTabletPeer(
+  RETURN_NOT_OK_PREPEND(
+      tablet_peer()->InitTabletPeer(
           tablet,
           master_->async_client_initializer().get_client_future(),
           master_->mem_tracker(),
@@ -540,7 +542,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetMetricEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests */),
+          nullptr /* retryable_requests */,
+          yb::OpId() /* split_op_id */),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),

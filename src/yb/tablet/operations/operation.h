@@ -56,9 +56,10 @@ class Tablet;
 class OperationCompletionCallback;
 class OperationState;
 
-YB_DEFINE_ENUM(OperationType,
-               (kWrite)(kChangeMetadata)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty)
-               (kHistoryCutoff));
+YB_DEFINE_ENUM(
+    OperationType,
+    (kWrite)(kChangeMetadata)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty)(kHistoryCutoff)
+    (kSplit));
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute

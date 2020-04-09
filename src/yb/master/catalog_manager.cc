@@ -3519,6 +3519,31 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
+Result<TabletInfo*> CatalogManager::TEST_RegisterNewTablet(
+    const TabletId& source_tablet_id, const PartitionPB& partition) {
+  std::lock_guard<LockType> l(lock_);
+
+  scoped_refptr<TabletInfo> source_tablet = FindPtrOrNull(*tablet_map_, source_tablet_id);
+  if (!source_tablet) {
+    return STATUS(NotFound, "Tablet $0 not found", source_tablet_id);
+  }
+
+  const auto& table = source_tablet->table();
+  TabletInfo* new_tablet = CreateTabletInfo(table.get(), partition);
+  new_tablet->mutable_metadata()->mutable_dirty()->pb.set_state(SysTabletsEntryPB::CREATING);
+
+  table->AddTablet(new_tablet);
+  {
+    auto tablet_map_checkout = tablet_map_.CheckOut();
+    (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
+  }
+  new_tablet->mutable_metadata()->CommitMutation();
+  LOG(INFO) << "TEST: Registered new tablet: " << new_tablet->ToString() << " for table "
+            << table->ToString();
+
+  return new_tablet;
+}
+
 Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
                                       GetTableSchemaResponsePB* resp) {
   VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
@@ -5973,6 +5998,7 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   // Select the set of replicas for the tablet.
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
           ->pb.mutable_committed_consensus_state();
+  VLOG_WITH_FUNC(3) << "Committed consensus state: " << AsString(cstate);
   cstate->set_current_term(kMinimumTerm);
   consensus::RaftConfigPB *config = cstate->mutable_config();
   config->set_opid_index(consensus::kInvalidOpIdIndex);
@@ -5994,6 +6020,8 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   if (VLOG_IS_ON(0)) {
     out.str();
   }
+
+  VLOG_WITH_FUNC(3) << "Committed consensus state has been updated to: " << AsString(cstate);
 
   return Status::OK();
 }

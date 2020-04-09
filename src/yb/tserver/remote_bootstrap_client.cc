@@ -216,7 +216,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     return status;
   }
 
-  if (resp.superblock().tablet_data_state() != tablet::TABLET_DATA_READY) {
+  remote_tablet_data_state_ = resp.superblock().tablet_data_state();
+  if (!CanServeTabletData(remote_tablet_data_state_)) {
     Status s = STATUS(IllegalState, "Remote peer (" + bootstrap_peer_uuid + ")" +
                                     " is currently remotely bootstrapping itself!",
                                     resp.superblock().ShortDebugString());
@@ -312,7 +313,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       ts_manager->RegisterDataAndWalDir(&fs_manager(),
                                         table_id,
                                         meta_->raft_group_id(),
-                                        meta_->table_type(),
                                         data_root_dir,
                                         wal_root_dir);
     }
@@ -326,7 +326,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       ts_manager->GetAndRegisterDataAndWalDir(&fs_manager(),
                                               table_id,
                                               tablet_id_,
-                                              table.table_type(),
                                               &data_root_dir,
                                               &wal_root_dir);
     }
@@ -350,7 +349,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     if (ts_manager != nullptr && !create_status.ok()) {
       ts_manager->UnregisterDataWalDir(table_id,
                                        tablet_id_,
-                                       table.table_type(),
                                        data_root_dir,
                                        wal_root_dir);
     }
@@ -422,11 +420,10 @@ Status RemoteBootstrapClient::Finish() {
   RETURN_NOT_OK(WriteConsensusMetadata());
 
   // Replace tablet metadata superblock. This will set the tablet metadata state
-  // to TABLET_DATA_READY, since we checked above that the response
-  // superblock is in a valid state to bootstrap from.
+  // to remote_tablet_data_state_.
   LOG_WITH_PREFIX(INFO) << "Remote bootstrap complete. Replacing tablet superblock.";
   UpdateStatusMessage("Replacing tablet superblock");
-  new_superblock_.set_tablet_data_state(tablet::TABLET_DATA_READY);
+  new_superblock_.set_tablet_data_state(remote_tablet_data_state_);
   RETURN_NOT_OK(meta_->ReplaceSuperBlock(new_superblock_));
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {

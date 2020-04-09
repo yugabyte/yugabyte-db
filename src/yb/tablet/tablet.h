@@ -539,10 +539,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // records RocksDB.
   Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override;
 
-  // Create an on-disk sub tablet of this tablet with specified ID, partition and key bounds.
-  CHECKED_STATUS CreateSubtablet(
-      const TabletId& tablet_id, const Partition& partition,
-      const docdb::KeyBounds& key_bounds);
+  // Creates an on-disk sub tablet of this tablet with specified ID, partition and key bounds.
+  // Flushes this tablet data onto disk before creating sub tablet.
+  // Also updates flushed frontier for regular and intents DBs to match split_op_id and
+  // split_op_hybrid_time.
+  // In case of error sub-tablet could be partially persisted on disk.
+  Result<RaftGroupMetadataPtr> CreateSubtablet(
+      const TabletId& tablet_id, const Partition& partition, const docdb::KeyBounds& key_bounds,
+      const yb::OpId& split_op_id, const HybridTime& split_op_hybrid_time);
 
   // Scans the intent db. Potentially takes a long time. Used for testing/debugging.
   Result<int64_t> CountIntents();
