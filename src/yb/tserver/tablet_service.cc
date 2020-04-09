@@ -66,6 +66,7 @@
 #include "yb/tablet/tablet_metrics.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -1181,6 +1182,32 @@ void TabletServiceAdminImpl::RemoveTableFromTablet(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::SplitTablet(
+    const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
+    return;
+  }
+  TRACE_EVENT1("tserver", "SplitTablet", "tablet_id", req->tablet_id());
+
+  server::UpdateClock(*req, server_->Clock());
+
+  auto leader_tablet_peer =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!leader_tablet_peer) {
+    return;
+  }
+
+  auto state = std::make_unique<tablet::SplitOperationState>(
+      leader_tablet_peer.peer->tablet(), leader_tablet_peer.peer->raft_consensus(),
+      server_->tablet_manager(), req);
+
+  state->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+
+  leader_tablet_peer.peer->Submit(
+      std::make_unique<tablet::SplitOperation>(std::move(state)), leader_tablet_peer.leader_term);
+}
+
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
@@ -1302,6 +1329,18 @@ Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
   Status s = tablet_peer.CheckRunning();
   if (!s.ok()) {
     return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
+  }
+  if (tablet_peer.tablet()->metadata()->tablet_data_state() ==
+      tablet::TabletDataState::TABLET_DATA_SPLIT) {
+    return STATUS(
+        IllegalState,
+        Format(
+            "The tablet $0 is in process of splitting or already split.", tablet_peer.tablet_id()),
+        TabletServerError(TabletServerErrorPB::TABLET_SPLIT));
+    // TODO(tsplit): If we get FS corruption on 1 node, we can just delete that tablet copy and
+    // bootstrap from a good leader. If there's a way that all peers replicated the SPLIT and
+    // modified their data state, but all had some failures (code bug?).
+    // Perhaps we should consider a tool for editing the data state?
   }
   return Status::OK();
 }

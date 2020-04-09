@@ -112,6 +112,7 @@ enum OperationType {
   SNAPSHOT_OP = 7;
   TRUNCATE_OP = 8;
   HISTORY_CUTOFF_OP = 9;
+  SPLIT_OP = 10;
 }
 
 // The transaction driver type: indicates whether a transaction is
@@ -211,6 +212,7 @@ message ReplicateMsg {
   optional tserver.TransactionStatePB transaction_state = 10;
   optional tserver.TabletSnapshotOpRequestPB snapshot_request = 11;
   optional tserver.TruncateRequestPB truncate_request = 12;
+  optional tserver.SplitTabletRequestPB split_request = 14;
   optional ChangeConfigRecordPB change_config_record = 7;
   optional HistoryCutoffPB history_cutoff = 13;
 

@@ -225,7 +225,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests) {
+    RetryableRequests* retryable_requests,
+    const yb::OpId& split_op_id) {
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
       messenger, proxy_cache, local_peer_pb.cloud_info());
 
@@ -277,7 +278,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       parent_mem_tracker,
       mark_dirty_clbk,
       table_type,
-      retryable_requests);
+      retryable_requests,
+      split_op_id);
 }
 
 RaftConsensus::RaftConsensus(
@@ -292,7 +294,8 @@ RaftConsensus::RaftConsensus(
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests)
+    RetryableRequests* retryable_requests,
+    const yb::OpId& split_op_id)
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
@@ -325,6 +328,7 @@ RaftConsensus::RaftConsensus(
       DCHECK_NOTNULL(consensus_context),
       this,
       retryable_requests,
+      split_op_id,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
@@ -2802,6 +2806,18 @@ yb::OpId RaftConsensus::GetLastReceivedOpId() {
 yb::OpId RaftConsensus::GetLastCommittedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetCommittedOpIdUnlocked();
+}
+
+yb::OpId RaftConsensus::GetSplitOpId() {
+  auto lock = state_->LockForRead();
+  return state_->GetSplitOpIdUnlocked();
+}
+
+Status RaftConsensus::ResetSplitOpId() {
+  ReplicaState::UniqueLock lock;
+  RETURN_NOT_OK(state_->LockForUpdate(&lock));
+  state_->ResetSplitOpIdUnlocked();
+  return Status::OK();
 }
 
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {

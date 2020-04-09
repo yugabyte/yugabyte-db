@@ -610,7 +610,7 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   EasyCurl c;
   faststring buf;
   ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/jsonmetricz",
-                                           ToString(mini_server_->bound_http_addr())),
+                                           AsString(mini_server_->bound_http_addr())),
                                            &buf));
 
   // Verify that after restarting the TS, the tablet is still not in the tablet manager.

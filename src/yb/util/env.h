@@ -270,6 +270,9 @@ class Env {
   // Returns true iff the named file exists.
   virtual bool FileExists(const std::string& fname) = 0;
 
+  // Returns true if the named directory exists and is a directory.
+  virtual bool DirExists(const std::string& dname) = 0;
+
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
   // Original contents of *results are dropped.
@@ -710,6 +713,7 @@ class EnvWrapper : public Env {
     return target_->NewRWFile(o, f, r);
   }
   bool FileExists(const std::string& f) override { return target_->FileExists(f); }
+  bool DirExists(const std::string& d) override { return target_->DirExists(d); }
   CHECKED_STATUS GetChildren(
       const std::string& dir, ExcludeDots exclude_dots, std::vector<std::string>* r) override {
     return target_->GetChildren(dir, exclude_dots, r);
