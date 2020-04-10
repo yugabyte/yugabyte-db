@@ -31,14 +31,14 @@ NON_GTEST_TESTS=(
   db_sanity_test
   merge_test
 )
+make_regex_from_list NON_GTEST_TESTS "${NON_GTEST_TESTS[@]}"
 
 # There gtest suites have internal dependencies between tests, so those tests can't be run
 # separately.
 TEST_BINARIES_TO_RUN_AT_ONCE=(
   tests-rocksdb/thread_local_test
 )
-
-make_regexes_from_lists NON_GTEST_TESTS TEST_BINARIES_TO_RUN_AT_ONCE
+make_regex_from_list TEST_BINARIES_TO_RUN_AT_ONCE "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}"
 
 VALID_TEST_BINARY_DIRS_PREFIX="tests"
 VALID_TEST_BINARY_DIRS_RE="^${VALID_TEST_BINARY_DIRS_PREFIX}-[0-9a-zA-Z\-]+"
