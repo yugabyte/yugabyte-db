@@ -1180,12 +1180,17 @@ Status TSTabletManager::DeleteTablet(
   TabletDataState data_state = tablet_peer->tablet_metadata()->tablet_data_state();
   bool tablet_deleted = (data_state == TABLET_DATA_DELETED || data_state == TABLET_DATA_TOMBSTONED);
 
+  // If a tablet peer is in the FAILED state, then we need to be able to tombstone or delete this
+  // tablet. If the tablet is tombstoned, then this TS can be remote bootstrapped with the same
+  // tablet.
+  bool tablet_failed = tablet_peer->state() == RaftGroupStatePB::FAILED;
+
   // They specified an "atomic" delete. Check the committed config's opid_index.
   // TODO: There's actually a race here between the check and shutdown, but
   // it's tricky to fix. We could try checking again after the shutdown and
   // restarting the tablet if the local replica committed a higher config
   // change op during that time, or potentially something else more invasive.
-  if (cas_config_opid_index_less_or_equal && !tablet_deleted) {
+  if (cas_config_opid_index_less_or_equal && !tablet_deleted && !tablet_failed) {
     shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
     if (!consensus) {
       *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
