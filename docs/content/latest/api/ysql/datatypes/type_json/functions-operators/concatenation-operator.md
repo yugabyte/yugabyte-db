@@ -2,7 +2,7 @@
 title: "|| (concatenation operator) [JSON]"
 headerTitle:  "|| (concatenation)"
 linkTitle: "|| (concatenation)"
-description: Use the JSON concatenation operator ("||") to concatenate two jsonb values.
+description: Concatenate two jsonb values using the JSON concatenation operator ("||").
 menu:
   latest:
     identifier: concatenation-operator
@@ -12,9 +12,10 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** concatenate two `jsonb` values. The rule for deriving the output value depends upon the JSON data types of the operands. 
+**Purpose:** Concatenate two `jsonb` values. The rule for deriving the output value depends upon the JSON data types of the operands.
 
 **Signature:**
+
 ```
 input values:       jsonb || jsonb
 return value:       jsonb

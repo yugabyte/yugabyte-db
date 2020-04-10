@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB API reference (for YSQL and YCQL)
+title: API reference (for YSQL and YCQL)
 headerTitle: APIs
 linkTitle: APIs
 description: YugabyteDB API reference for YSQL (PostgreSQL-compatible SQL) and YCQL (Cassandra-compatible query language)
@@ -16,6 +16,7 @@ menu:
 
 
 <div class="row">
+
  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./ysql/">
       <div class="head">
@@ -23,10 +24,11 @@ menu:
         <div class="title">YSQL</div>
       </div>
       <div class="body">
-        Complete reference for Yugabyte Structured Query Language (YSQL) API.
+        API reference for Yugabyte Structured Query Language (YSQL).
       </div>
     </a>
   </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./ycql/">
       <div class="head">
@@ -34,8 +36,9 @@ menu:
         <div class="title">YCQL</div>
       </div>
       <div class="body">
-        Complete reference for Yugabyte Cloud Query Language (YCQL) API.
+        API reference for Yugabyte Cloud Query Language (YCQL).
       </div>
     </a>
-  </div> 
+  </div>
+
 </div>

@@ -21,7 +21,7 @@ Compare this with SQL and PL/pgSQL. SQL establishes the data type of a value fro
 
 Notice that JSON cannot represent a date-time value except as a conventionally formatted _string_ value.
 
-The two compound data types are _object_, and _array_.
+The two compound data types are _object_ and _array_.
 
 A manifest constant JSON value is represented in a SQL statement or a PL/pgSQL program by the `::json` or `::jsonb` typecast of a `text` value that conforms to RFC 7159.
 

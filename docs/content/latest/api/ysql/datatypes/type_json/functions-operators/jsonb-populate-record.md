@@ -1,9 +1,8 @@
 ---
-title: jsonb_populate_record()
-linkTitle: jsonb_populate_record()
-summary: jsonb_populate_record() and json_populate_record() 
+title: jsonb_populate_record() and json_populate_record() 
 headerTitle: jsonb_populate_record() and json_populate_record()
-description: jsonb_populate_record()  and json_populate_record() 
+linkTitle: jsonb_populate_record()
+description: Convert a JSON object into the equivalent SQL record.
 menu:
   latest:
     identifier: jsonb-populate-record

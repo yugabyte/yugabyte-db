@@ -1,7 +1,7 @@
 ---
 title: jsonb_extract_path_text() and json_extract_path_text() [JSON]
 headerTitle: jsonb_extract_path_text() and json_extract_path_text()
-description: Use these JSON functions to provide the identical functionality to the "#>>" operator.
+description: Provide identical functionality to the "#>>" operator.
 menu:
   latest:
     identifier: jsonb-extract-path-text
