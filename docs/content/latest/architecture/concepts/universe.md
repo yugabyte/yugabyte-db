@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: architecture-concepts-universe
-    parent: architecture-concepts
+    parent: key-concepts
     weight: 1122
 isTocNested: true
 showAsideToc: true
@@ -26,7 +26,7 @@ In most of the docs, the term `cluster` and `universe` are used interchangeably.
 The universe can be deployed in a variety of configurations depending on business requirements, and latency considerations. Some examples:
 
 - Single availability zone (AZ/rack/failure domain)
-- Multiple AZs in a region
+- Multiple availability zones (AZs) in a region
 - Multiple regions (with synchronous and asynchronous replication choices)
 
 ## Organization of user data
