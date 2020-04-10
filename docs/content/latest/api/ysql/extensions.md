@@ -296,33 +296,6 @@ YSQL does not yet support GiST indexes. This is tracked in [this GitHub issue](h
 
 {{< /note >}}
 
-
-### uuid-ossp
-
-The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extension provides functions to generate 
-universally unique identifiers (UUIDs) and also functions to produce certain special UUID constants.
-
-The easiest way to install it is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
-
-```sh
-$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" && 
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension && 
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.control "$(yb_pg_config --sharedir)"/extension &&
-  ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\"";
-```
-
-#### Example
-
-Connect with `ysqlsh` and run:
-
-```postgresql
-SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
-           uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
---------------------------------------+--------------------------------------+--------------------------------------
- 69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
-(1 row)
-```
-
 ### Postgresql Hyperloglog
 
 The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces a new data type `hll` which is a HyperLogLog data structure. 
@@ -366,3 +339,31 @@ yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
                2
 (1 row)
 ```
+
+
+### uuid-ossp
+
+The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extension provides functions to generate 
+universally unique identifiers (UUIDs) and also functions to produce certain special UUID constants.
+
+The easiest way to install it is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
+
+```sh
+$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" && 
+  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension && 
+  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.control "$(yb_pg_config --sharedir)"/extension &&
+  ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\"";
+```
+
+#### Example
+
+Connect with `ysqlsh` and run:
+
+```postgresql
+SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
+           uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
+--------------------------------------+--------------------------------------+--------------------------------------
+ 69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
+(1 row)
+```
+
