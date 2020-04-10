@@ -404,6 +404,11 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG(INFO) << "Successfully destroyed regular DB at: " << rocksdb_dir;
   }
 
+  if (fs_manager_->env()->FileExists(rocksdb_dir)) {
+    auto s = fs_manager_->env()->DeleteRecursively(rocksdb_dir);
+    LOG_IF(WARNING, !s.ok()) << "Unable to delete rocksdb data directory " << rocksdb_dir;
+  }
+
   const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
   if (fs_manager_->env()->FileExists(intents_dir)) {
     status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
@@ -416,6 +421,11 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     }
   }
 
+  if (fs_manager_->env()->FileExists(intents_dir)) {
+    auto s = fs_manager_->env()->DeleteRecursively(intents_dir);
+    LOG_IF(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
+  }
+
   // Flushing will sync the new tablet_data_state_ to disk and will now also
   // delete all the data.
   RETURN_NOT_OK(Flush());
@@ -425,6 +435,15 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   // (unless deleting any orphans failed during the last Flush()), so that we
   // don't try to re-delete the deleted orphaned blocks on every startup.
   return Flush();
+}
+
+bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  const auto& rocksdb_dir = kv_store_.rocksdb_dir;
+  const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
+  return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
+      !fs_manager_->env()->FileExists(rocksdb_dir) &&
+      !fs_manager_->env()->FileExists(intents_dir);
 }
 
 Status RaftGroupMetadata::DeleteSuperBlock() {

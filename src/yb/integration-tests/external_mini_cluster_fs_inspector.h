@@ -88,8 +88,17 @@ class ExternalMiniClusterFsInspector {
 
   CHECKED_STATUS ReadTabletSuperBlockOnTS(int index, const std::string& tablet_id,
                                   tablet::RaftGroupReplicaSuperBlockPB* sb);
+
+  // Get the modification time (in micros) of the tablet superblock for the given tablet
+  // server index and tablet ID.
+  int64_t GetTabletSuperBlockMTimeOrDie(int ts_index, const std::string& tablet_id);
+
   CHECKED_STATUS ReadConsensusMetadataOnTS(int index, const std::string& tablet_id,
                                    consensus::ConsensusMetadataPB* cmeta_pb);
+
+  std::string GetTabletSuperBlockPathOnTS(int ts_index,
+                                          const std::string& tablet_id) const;
+
   CHECKED_STATUS CheckTabletDataStateOnTS(int index,
                                   const std::string& tablet_id,
                                   tablet::TabletDataState state);
