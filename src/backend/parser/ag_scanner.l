@@ -230,6 +230,7 @@ gt_eq    ">="
 dot_dot  ".."
 plus_eq  "+="
 eq_tilde "=~"
+typecast "::"
 self     [%()*+,\-./:;<=>[\]^{|}]
 
 other .
@@ -682,6 +683,14 @@ ag_token token;
 {eq_tilde} {
     update_location();
     token.type = AG_TOKEN_EQ_TILDE;
+    token.value.s = yytext;
+    token.location = get_location();
+    return token;
+}
+
+{typecast} {
+    update_location();
+    token.type = AG_TOKEN_TYPECAST;
     token.value.s = yytext;
     token.location = get_location();
     return token;

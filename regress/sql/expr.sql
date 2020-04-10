@@ -352,6 +352,39 @@ SELECT * FROM cypher('expr', $$
 RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS "klmo"
 $$) AS r(result agtype);
 
+--
+-- Test typecast "::" for numeric transform and execution
+--
+SELECT * FROM cypher('expr', $$
+RETURN 0::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 2.71::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN (2.71::numeric)::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ((1 + 2.71) * 3)::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].pie)::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].e)
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].e)::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::numeric
+$$) AS r(result agtype);
+SELECT agtype_typecast_numeric('null'::agtype);
+SELECT agtype_typecast_numeric(null);
+
+--
+-- Cleanup
+--
 SELECT * FROM drop_graph('expr', true);
 
 --

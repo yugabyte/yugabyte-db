@@ -661,6 +661,88 @@ $$) AS r(result agtype);
  false
 (1 row)
 
+--
+-- Test typecast "::" for numeric transform and execution
+--
+SELECT * FROM cypher('expr', $$
+RETURN 0::numeric
+$$) AS r(result agtype);
+   result   
+------------
+ 0::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN 2.71::numeric
+$$) AS r(result agtype);
+    result     
+---------------
+ 2.71::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN (2.71::numeric)::numeric
+$$) AS r(result agtype);
+    result     
+---------------
+ 2.71::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ((1 + 2.71) * 3)::numeric
+$$) AS r(result agtype);
+     result     
+----------------
+ 11.13::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].pie)::numeric
+$$) AS r(result agtype);
+       result       
+--------------------
+ 3.1415927::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].e)
+$$) AS r(result agtype);
+      result       
+-------------------
+ 2.718281::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].e)::numeric
+$$) AS r(result agtype);
+      result       
+-------------------
+ 2.718281::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::numeric
+$$) AS r(result agtype);
+ result 
+--------
+ 
+(1 row)
+
+SELECT agtype_typecast_numeric('null'::agtype);
+ agtype_typecast_numeric 
+-------------------------
+ 
+(1 row)
+
+SELECT agtype_typecast_numeric(null);
+ agtype_typecast_numeric 
+-------------------------
+ 
+(1 row)
+
+--
+-- Cleanup
+--
 SELECT * FROM drop_graph('expr', true);
 NOTICE:  graph "expr" has been dropped
  drop_graph 

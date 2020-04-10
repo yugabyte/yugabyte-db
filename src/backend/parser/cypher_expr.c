@@ -56,6 +56,8 @@ static Node *transform_cypher_list(cypher_parsestate *cpstate,
                                    cypher_list *cl);
 static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
                                            cypher_string_match *csm_node);
+static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
+                                       cypher_typecast *ctypecast);
 
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -122,34 +124,25 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
     }
     case T_ExtensibleNode:
         if (is_ag_node(expr, cypher_bool_const))
-        {
             return transform_cypher_bool_const(cpstate,
                                                (cypher_bool_const *)expr);
-        }
-        else if (is_ag_node(expr, cypher_param))
-        {
+        if (is_ag_node(expr, cypher_param))
             return transform_cypher_param(cpstate, (cypher_param *)expr);
-        }
-        else if (is_ag_node(expr, cypher_map))
-        {
+        if (is_ag_node(expr, cypher_map))
             return transform_cypher_map(cpstate, (cypher_map *)expr);
-        }
-        else if (is_ag_node(expr, cypher_list))
-        {
+        if (is_ag_node(expr, cypher_list))
             return transform_cypher_list(cpstate, (cypher_list *)expr);
-        }
-        else if (is_ag_node(expr, cypher_string_match))
-        {
+        if (is_ag_node(expr, cypher_string_match))
             return transform_cypher_string_match(cpstate,
                                                  (cypher_string_match *)expr);
-        }
-        else
-        {
-            ereport(ERROR,
-                    (errmsg_internal("unrecognized ExtensibleNode: %s",
-                                     ((ExtensibleNode *)expr)->extnodename)));
-            return NULL;
-        }
+        if (is_ag_node(expr, cypher_typecast))
+            return transform_cypher_typecast(cpstate,
+                                             (cypher_typecast *)expr);
+
+        ereport(ERROR,
+                (errmsg_internal("unrecognized ExtensibleNode: %s",
+                                 ((ExtensibleNode *)expr)->extnodename)));
+        return NULL;
     default:
         ereport(ERROR, (errmsg_internal("unrecognized node type: %d",
                                         nodeTag(expr))));
@@ -580,6 +573,42 @@ static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
     func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
                              InvalidOid, COERCE_EXPLICIT_CALL);
     func_expr->location = csm_node->location;
+
+    return (Node *)func_expr;
+}
+
+static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
+                                       cypher_typecast *ctypecast)
+{
+    Node *expr;
+    FuncExpr *func_expr;
+    List *func_args = NIL;
+    Oid func_agtype_typecast_operator_oid = InvalidOid;
+    int len;
+
+    Assert (cpstate != NULL);
+    Assert (ctypecast != NULL);
+
+    len = strlen(ctypecast->typecast);
+    if (len == 7 && pg_strncasecmp(ctypecast->typecast, "numeric", 7) == 0)
+    {
+        func_agtype_typecast_operator_oid = get_ag_func_oid("agtype_typecast_numeric",
+                                                        1, AGTYPEOID);
+    }
+    else
+    {
+        ereport(ERROR,
+                (errmsg_internal("typecast \'%s\' not supported",
+                                 ctypecast->typecast)));
+    }
+
+    expr = transform_cypher_expr_recurse(cpstate, ctypecast->expr);
+
+    func_args = lappend(func_args, expr);
+    func_expr = makeFuncExpr(func_agtype_typecast_operator_oid, AGTYPEOID,
+                             func_args, InvalidOid, InvalidOid,
+                             COERCE_EXPLICIT_CALL);
+    func_expr->location = ctypecast->location;
 
     return (Node *)func_expr;
 }

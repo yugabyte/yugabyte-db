@@ -2101,3 +2101,58 @@ Datum agtype_string_match_contains(PG_FUNCTION_ARGS)
     ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                     errmsg("agtype string values expected")));
 }
+
+PG_FUNCTION_INFO_V1(agtype_typecast_numeric);
+/*
+ * Execute function for :: operator
+ */
+Datum agtype_typecast_numeric(PG_FUNCTION_ARGS)
+{
+    agtype *arg_agt;
+    agtype_value *arg_value;
+    agtype_value result_value;
+    Datum numd;
+
+    /* return null if arg is null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    arg_agt = AG_GET_ARG_AGTYPE_P(0);
+    if (!AGT_ROOT_IS_SCALAR(arg_agt))
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("typecast argument must resolve to a scalar value")));
+
+    /* get the arg parameter */
+    arg_value = get_ith_agtype_value_from_container(&arg_agt->root, 0);
+    /* check for agtype null */
+    if (arg_value->type == AGTV_NULL)
+        PG_RETURN_NULL();
+
+    switch(arg_value->type)
+    {
+    case AGTV_INTEGER:
+        numd = DirectFunctionCall1(int8_numeric,
+                                   Int64GetDatum(arg_value->val.int_value));
+        break;
+    case AGTV_FLOAT:
+        numd = DirectFunctionCall1(float8_numeric,
+                                   Float8GetDatum(arg_value->val.float_value));
+        break;
+    case AGTV_NUMERIC:
+        /* it is already a numeric so just return it */
+        PG_RETURN_POINTER(agtype_value_to_agtype(arg_value));
+        break;
+    default:
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("expression to typecast must resolve to a number")));
+        break;
+    }
+
+    /* fill in and return our result */
+    result_value.type = AGTV_NUMERIC;
+    result_value.val.numeric = DatumGetNumeric(numd);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&result_value));
+}

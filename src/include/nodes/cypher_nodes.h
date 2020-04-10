@@ -181,6 +181,14 @@ typedef struct cypher_target_node
     List *expr_states;
 } cypher_target_node;
 
+typedef struct cypher_typecast
+{
+    ExtensibleNode extensible;
+    Node *expr;
+    char *typecast;
+    int location;
+} cypher_typecast;
+
 /* clauses */
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);

@@ -42,6 +42,7 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
         LT_EQ,
         GT_EQ,
         DOT_DOT,
+        TYPECAST,
         PLUS_EQ,
         EQ_TILDE
     };
@@ -93,6 +94,8 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
     case AG_TOKEN_DOT_DOT:
     case AG_TOKEN_PLUS_EQ:
     case AG_TOKEN_EQ_TILDE:
+        break;
+    case AG_TOKEN_TYPECAST:
         break;
     case AG_TOKEN_CHAR:
         *llocp = token.location;

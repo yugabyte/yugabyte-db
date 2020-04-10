@@ -43,7 +43,8 @@ const char *node_names[] = {
     "cypher_param",
     "cypher_map",
     "cypher_list",
-    "cypher_string_match"
+    "cypher_string_match",
+    "cypher_typecast"
 };
 
 #define DEFINE_NODE_METHODS(type) \

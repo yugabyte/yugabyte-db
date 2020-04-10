@@ -71,7 +71,7 @@
 %token <string> PARAMETER
 
 /* operators that have more than 1 character */
-%token NOT_EQ LT_EQ GT_EQ DOT_DOT PLUS_EQ EQ_TILDE
+%token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ EQ_TILDE
 
 /* keywords in alphabetical order */
 %token <keyword> AND AS ASC ASCENDING
@@ -147,6 +147,7 @@
 %nonassoc STARTS ENDS CONTAINS
 %left '[' ']' '(' ')'
 %left '.'
+%left TYPECAST
 
 %{
 // logical operators
@@ -167,6 +168,9 @@ static Node *make_float_const(char *s, int location);
 static Node *make_string_const(char *s, int location);
 static Node *make_bool_const(bool b, int location);
 static Node *make_null_const(int location);
+
+// typecast
+static Node *make_typecast_expr(Node *expr, char *typecast, int location);
 %}
 
 %%
@@ -940,6 +944,10 @@ expr:
         {
             $$ = append_indirection($1, (Node *)makeString($3));
         }
+    | expr TYPECAST symbolic_name
+        {
+            $$ = make_typecast_expr($1, $3, @2);
+        }
     | atom
     ;
 
@@ -1314,3 +1322,19 @@ static Node *make_null_const(int location)
 
     return (Node *)n;
 }
+
+/*
+ * typecast
+ */
+static Node *make_typecast_expr(Node *expr, char *typecast, int location)
+{
+    cypher_typecast *node;
+
+    node = make_ag_node(cypher_typecast);
+    node->expr = expr;
+    node->typecast = typecast;
+    node->location = location;
+
+    return (Node *)node;
+}
+
