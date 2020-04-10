@@ -2,7 +2,7 @@
 title: PgExercises sample database
 headerTitle: PgExercises
 linkTitle: PgExercises
-description: Use the PgExercises sample database on YugabyteDB to learn SQL or test your knowledge.
+description: Learn and test your SQL skills on YugabyteDB using this popular PostgreSQL-compatible sample database.
 image: /images/sample-data/pgexercises/pgsql.png
 menu:
   latest:

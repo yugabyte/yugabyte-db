@@ -1,8 +1,8 @@
 ---
-title: Use SQL Workbench/J with YugabyteDB YSQL
+title: Configure SQL Workbench/J for YugabyteDB YSQL
 headerTitle: SQL Workbench/J
 linkTitle: SQL Workbench/J
-description: Query distributed SQL databases using SQL Workbench/J.
+description: Configure SQL Workbench/J to query distributed SQL databases on PostgreSQL-compatible YugabyteDB.
 menu:
   latest:
     identifier: sql-workbench

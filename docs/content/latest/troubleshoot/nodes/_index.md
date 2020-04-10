@@ -1,7 +1,8 @@
 ---
-title: Node level issues
+title: Troubleshoot node level issues
+headerTitle: Node level issues
 linkTitle: Node level issues
-description: Node level issues
+description: Diagnose and solve issues on YugabyteDB nodes.
 image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Diagnose and solve issues on an individual YugabyteDB node.
 aliases:
@@ -50,10 +51,10 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link glyphicon-floppy-disk" href="check-stats">
+    <a class="section-link glyphicon-floppy-disk" href="recover-disk">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Disk failure</div>
+        <div class="title">Recover disk</div>
       </div>
       <div class="body">
         How to recover a YB-TServer from disk failure

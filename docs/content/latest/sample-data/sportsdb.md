@@ -2,7 +2,7 @@
 title: SportsDB sample database
 headerTitle: SportsDB sample database
 linkTitle: SportsDB
-description: Use the SportsDB to query sports statistics while learning YugabyteDB.
+description: Explore and learn YugabyteDB using this PostgreSQL-compatible SportsDB sports statistics database.
 menu:
   latest:
     identifier: sportsdb

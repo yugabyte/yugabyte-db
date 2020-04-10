@@ -23,7 +23,7 @@ showAsideToc: true
   </li>
 </ul>
 
-## Core Features
+## Core features
 
 ### Global secondary indexes
 

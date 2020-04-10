@@ -1,7 +1,8 @@
 ---
-title: Prisma
+title: Use GraphQL to add data and run queries with Prisma
+headerTitle: Prisma
 linkTitle: Prisma
-description: Prisma
+description: Follow this tutorial to quickly integrate Prisma with YugabyteDB and use GraphQL to add data and run queries.
 menu:
   latest:
     identifier: prisma
@@ -11,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Explore how you can use Prisma, and its GraphQL support, to interact with YugabyteDB. You will quickly build a GraphQL server and then use the Prisma client to write data to and run queries on a YugabyteDB database. Also, you'll get a taste of Prisma's ORM functionality.
+Explore how you can use Prisma, with its GraphQL support, to interact with YugabyteDB. You will quickly build a GraphQL server and then use the Prisma client to write data to and run queries on a YugabyteDB database. Also, you'll get a taste of Prisma's ORM functionality.
 
 [Prisma](https://prisma.io) is an [open source](https://github.com/prisma/prisma) suite of database tools that simplify database workflows by easing database access, migrations, and data management. Prisma replaces traditional ORMs and can be used to build GraphQL servers, REST APIs, microservices, and more. For an overview, see [Prisma Basics: Datamodel, Prisma Client & Server](https://www.prisma.io/docs/understand-prisma/prisma-basics-datamodel-client-and-server-fgz4/).
 

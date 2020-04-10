@@ -13,7 +13,7 @@ menu:
     parent: develop
     weight: 580
 ---
-The following examples illustrate how real-world, end-to-end applications can be built using YugabyteDB and it's ecosystem integrations with Apache Spark, Apache Kafka, Spring Boot and KairosDB, just to name a few.
+Check out these real-world, end-to-end example applications built using YugabyteDB and ecosystem integrations.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -35,7 +35,7 @@ The following examples illustrate how real-world, end-to-end applications can be
         <div class="title">IoT Fleet Management</div>
       </div>
       <div class="body">
-          A real-time fleet-management app using Confluent Kafka, KSQL, Apache Spark, Spring Boot and YugabyteDB's YCQL API.
+          Real-time fleet-management using Kafka, Apache Spark, Spring Boot and YugabyteDB's YCQL API.
       </div>
     </a>
   </div>

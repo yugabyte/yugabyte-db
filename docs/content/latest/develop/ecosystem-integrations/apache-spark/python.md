@@ -8,7 +8,8 @@ menu:
     identifier: apache-spark-3-python
     parent: ecosystem-integrations
     weight: 572
-
+showAsideToc: true
+isTocNested: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -1,7 +1,7 @@
 ---
-title: System statistics
-linkTitle: System statistics
+title: Check system statistics
 headerTitle: Check system statistics
+linkTitle: System statistics
 description: How to check system statistics on your YugabyteDB cluster
 aliases:
   - /troubleshoot/nodes/check-stats/

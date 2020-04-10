@@ -1,5 +1,5 @@
 ---
-title: Authorization in YugabyteDB
+title: Authorization
 headerTitle: Authorization
 linkTitle: Authorization
 description: Enable authorization using role-based access control in YugabyteDB.

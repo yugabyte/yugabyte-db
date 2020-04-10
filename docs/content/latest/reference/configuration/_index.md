@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB configuration
+title: Configuration reference
 headerTitle: Configuration
 linkTitle: Configuration
-description: Configuration
-headcontent: Configuration of the core database services.
+description: Configuration reference for core YugabyteDB services, including yt-tserver, yb-master, and yugabyted.
+headcontent: Configuration reference for the core database services.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
 menu:

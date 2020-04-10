@@ -1,8 +1,8 @@
 ---
-title: Use pgAdmin with YugabyteDB YSQL
+title: Configure pgAdmin for YugabyteDB YSQL
 headerTitle: pgAdmin
 linkTitle: pgAdmin
-description: Administer and manage YugabyteDB distributed SQL databases using pgAdmin.
+description: Configure pgAdmin to administer and manage distributed SQL databases on PostgreSQL-compatible YugabyteDB.
 menu:
   latest:
     identifier: pgadmin

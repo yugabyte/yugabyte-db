@@ -1,5 +1,5 @@
 ---
-title: Enable encryption at rest in YugabyteDB clusters
+title: Enable encryption at rest
 headerTitle: Encryption at rest
 linkTitle: Encryption at rest
 description: Enable encryption at rest in a YugabyteDB cluster with a user-generated key.

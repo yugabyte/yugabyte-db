@@ -1,7 +1,8 @@
 ---
 title: Sample datasets
+headerTitle: Sample datasets
 linkTitle: Sample datasets
-description: Sample datasets
+description: Use these popular PostgreSQL-compatible sample datasets to explore and learn YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
 menu:

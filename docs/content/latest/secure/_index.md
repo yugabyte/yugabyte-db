@@ -1,8 +1,8 @@
 ---
-title: Secure
+title: Secure deployments
 headerTitle: Secure
 linkTitle: Secure
-description: Secure your deployment of YugabyteDB.
+description: Use authentication, authorization, and TLS-based encryption for data in transit or at rest.
 headcontent: Secure your deployment of YugabyteDB.
 image: /images/section_icons/index/secure.png
 aliases:

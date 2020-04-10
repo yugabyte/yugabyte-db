@@ -1,7 +1,8 @@
 ---
-title: Cluster level issues
+title: Troubleshoot cluster level issues
+headerTitle: Cluster level issues
 linkTitle: Cluster level issues
-description: Cluster level issues
+description: Diagnose and solve common YugabyteDB cluster level issues.
 image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Diagnostics and solutions for typical YugabyteDB cluster issues.
 aliases:

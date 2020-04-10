@@ -1,8 +1,8 @@
 ---
-title: Troubleshooting
-linkTitle: Troubleshooting
+title: Troubleshooting overview
+linkTitle: Troubleshooting overview
 headerTitle: Troubleshooting overview
-description: Troubleshooting overview
+description: Steps to troubleshoot YugabyteDB clusters
 aliases:
   - /troubleshoot/overview/
 menu:
