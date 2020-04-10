@@ -540,6 +540,7 @@ Status TSTabletManager::Init() {
   // First, load all of the tablet metadata. We do this before we start
   // submitting the actual OpenTablet() tasks so that we don't have to compete
   // for disk resources, etc, with bootstrap processes and running tablets.
+  MonoTime start(MonoTime::Now());
   for (const string& tablet_id : tablet_ids) {
     RaftGroupMetadataPtr meta;
     RETURN_NOT_OK_PREPEND(OpenTabletMeta(tablet_id, &meta),
@@ -553,6 +554,9 @@ Status TSTabletManager::Init() {
         meta->wal_root_dir());
     metas.push_back(meta);
   }
+  MonoDelta elapsed = MonoTime::Now().GetDeltaSince(start);
+  LOG(INFO) << "Loaded metadata for " << tablet_ids.size() << " tablet in "
+            << elapsed.ToMilliseconds() << " ms";
 
   // Now submit the "Open" task for each.
   for (const RaftGroupMetadataPtr& meta : metas) {
@@ -1846,11 +1850,19 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(
 
   const string kLogPrefix = TabletLogPrefix(tablet_id);
 
-  // Roll forward deletions, as needed.
-  LOG(INFO) << kLogPrefix << "Tablet Manager startup: Rolling forward tablet deletion "
-            << "of type " << TabletDataState_Name(data_state);
-  // Passing no OpId will retain the last_logged_opid that was previously in the metadata.
-  RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
+  // If the tablet is already fully tombstoned with no remaining data or WAL,
+  // then no need to roll anything forward.
+  bool skip_deletion = meta->IsTombstonedWithNoRocksDBData() &&
+                       !Log::HasOnDiskData(meta->fs_manager(), meta->wal_dir());
+
+  LOG_IF(WARNING, !skip_deletion)
+      << kLogPrefix << "Tablet Manager startup: Rolling forward tablet deletion "
+      << "of type " << TabletDataState_Name(data_state);
+
+  if (!skip_deletion) {
+    // Passing no OpId will retain the last_logged_opid that was previously in the metadata.
+    RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
+  }
 
   // We only delete the actual superblock of a TABLET_DATA_DELETED tablet on startup.
   // TODO: Consider doing this after a fixed delay, instead of waiting for a restart.

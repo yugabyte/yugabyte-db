@@ -1030,6 +1030,10 @@ scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) c
   return reader_->GetSegmentBySequenceNumber(seq);
 }
 
+bool Log::HasOnDiskData(FsManager* fs_manager, const string& tablet_wal_path) {
+  return fs_manager->env()->FileExists(tablet_wal_path);
+}
+
 Status Log::DeleteOnDiskData(Env* env,
                              const string& tablet_id,
                              const string& tablet_wal_path,
