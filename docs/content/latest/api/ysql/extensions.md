@@ -352,7 +352,8 @@ $ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
 
 #### Example
 
-We can run a quick example for the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repo:
+We can run a quick example for the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repo. 
+Connect with ysqlsh and run:
 ```postgresql
 yugabyte=# CREATE TABLE helloworld (id integer, set hll);
 CREATE TABLE
