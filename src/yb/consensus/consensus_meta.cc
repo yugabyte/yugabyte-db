@@ -106,6 +106,7 @@ Status ConsensusMetadata::DeleteOnDiskData(FsManager* fs_manager, const string& 
   if (!env->FileExists(cmeta_path)) {
     return Status::OK();
   }
+  LOG(INFO) << "T " << tablet_id << " Deleting consensus metadata";
   RETURN_NOT_OK_PREPEND(env->DeleteFile(cmeta_path),
                         "Unable to delete consensus metadata file for tablet " + tablet_id);
   return Status::OK();

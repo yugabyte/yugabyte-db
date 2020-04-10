@@ -55,6 +55,7 @@ class BlockIdPB;
 class Env;
 class FsManager;
 class HostPort;
+class RemoteBootstrapITest;
 
 namespace consensus {
 class ConsensusMetadata;
@@ -144,6 +145,7 @@ class RemoteBootstrapClient {
 
  private:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
+  friend class yb::RemoteBootstrapITest;
 
   template <class Component>
   void AddComponent() {

@@ -46,6 +46,7 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/fs/fs_manager.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/util/async_util.h"
@@ -160,6 +161,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Syncs all state and closes the log.
   CHECKED_STATUS Close();
+
+  // Return true if there is any on-disk data for the given tablet.
+  static bool HasOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
 
   // Delete all WAL data from the log associated with this tablet.
   // REQUIRES: The Log must be closed.

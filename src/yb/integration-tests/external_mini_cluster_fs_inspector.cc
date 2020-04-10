@@ -32,6 +32,10 @@
 
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <set>
 
@@ -203,13 +207,30 @@ Status ExternalMiniClusterFsInspector::CheckNoData() {
   return Status::OK();;
 }
 
+std::string ExternalMiniClusterFsInspector::GetTabletSuperBlockPathOnTS(
+    int ts_index, const string& tablet_id) const {
+  string data_dir = cluster_->tablet_server(ts_index)->GetFullDataDir();
+  std::string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
+  return JoinPathSegments(meta_dir, tablet_id);
+}
+
 Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(int index,
                                                                 const string& tablet_id,
                                                                 RaftGroupReplicaSuperBlockPB* sb) {
-  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
-  string superblock_path = JoinPathSegments(meta_dir, tablet_id);
-  return pb_util::ReadPBContainerFromPath(env_, superblock_path, sb);
+  const auto& sb_path = GetTabletSuperBlockPathOnTS(index, tablet_id);
+  return pb_util::ReadPBContainerFromPath(env_, sb_path, sb);
+}
+
+int64_t ExternalMiniClusterFsInspector::GetTabletSuperBlockMTimeOrDie(
+    int ts_index, const std::string& tablet_id) {
+  const auto& sb_path = GetTabletSuperBlockPathOnTS(ts_index, tablet_id);
+  struct stat s;
+  CHECK_ERR(stat(sb_path.c_str(), &s)) << "failed to stat: " << sb_path;
+#ifdef __APPLE__
+  return s.st_mtimespec.tv_sec * 1e6 + s.st_mtimespec.tv_nsec / 1000;
+#else
+  return s.st_mtim.tv_sec * 1e6 + s.st_mtim.tv_nsec / 1000;
+#endif
 }
 
 Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,

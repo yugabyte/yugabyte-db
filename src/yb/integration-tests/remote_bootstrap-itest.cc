@@ -485,6 +485,10 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
 // the relevant files are either read or opened, meaning that an in-progress
 // remote bootstrap can complete even after a tablet is officially "deleted" on
 // the source server. This is also a regression test for KUDU-1009.
+
+// For yugbayteDB we have modified this test. We no longer expect the remote bootstrap
+// to finish successfully after the tablet has been deleted in the leader, but we do
+// expect the leader to not crash.
 void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_type) {
   MonoDelta timeout = MonoDelta::FromSeconds(10);
   const int kTsIndex = 0; // We'll test with the first TS.
@@ -532,9 +536,11 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
 
   // Now finish bootstrapping!
   tablet::TabletStatusListener listener(meta);
-  ASSERT_OK(rb_client.FetchAll(&listener));
-  // Call Finish, which closes the remote session.
-  ASSERT_OK(rb_client.Finish());
+
+  // This will fail because the leader won't have any rocksdb files since they were deleted when
+  // we called DeleteTablet.
+  ASSERT_NOK(rb_client.FetchAll(&listener));
+  ASSERT_OK(rb_client.EndRemoteSession());
   ASSERT_OK(rb_client.Remove());
 
   SleepFor(MonoDelta::FromMilliseconds(500));  // Give a little time for a crash (KUDU-1009).

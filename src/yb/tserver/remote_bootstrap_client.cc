@@ -415,7 +415,7 @@ Status RemoteBootstrapClient::Finish() {
   CHECK(started_);
 
   CHECK(downloaded_wal_);
-  CHECK(downloaded_rocksdb_files_);
+  CHECK(downloaded_rocksdb_files_) << "files not downloaded";;
 
   RETURN_NOT_OK(WriteConsensusMetadata());
 

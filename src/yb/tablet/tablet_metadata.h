@@ -367,6 +367,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // in such a case, 'was_deleted' will be set to FALSE.
   CHECKED_STATUS DeleteTabletData(TabletDataState delete_type, const yb::OpId& last_logged_opid);
 
+  // Return true if this metadata references no regular data DB nor intents DB and is
+  // already marked as tombstoned. If this is the case, then calling DeleteTabletData
+  // would be a no-op.
+  bool IsTombstonedWithNoRocksDBData() const;
+
   // Permanently deletes the superblock from the disk.
   // DeleteTabletData() must first be called and the tablet data state must be
   // TABLET_DATA_DELETED.
