@@ -19,6 +19,24 @@ This page documents how to install and use PostgreSQL extensions that are tested
 
 These are extensions that are included in the standard YugabyteDB distribution and can be enabled in YSQL by simply running the `CREATE EXTENSION` statement.
 
+### fuzzystrmatch
+
+The `fuzzystrmatch` extension provides several functions to determine similarities and distance between strings.
+
+#### Example
+
+```postgresql
+CREATE EXTENSION fuzzystrmatch;
+SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
+ levenshtein | metaphone
+-------------+-----------
+           2 | YKBT
+(1 row)
+```
+
+For more information see [`fuzzystrmatch`](https://www.postgresql.org/docs/11/fuzzystrmatch.html) in the PostgreSQL Docs.
+
+
 ### pgcrypto
 
 The `pgcrypto` extension provides various cryptographic functions.
@@ -38,23 +56,6 @@ SELECT * FROM pgcrypto_example;
 
 For more information see [`pgcrypto`](https://www.postgresql.org/docs/current/pgcrypto.html) in the PostgreSQL Docs.
 
-
-### fuzzystrmatch
-
-The `fuzzystrmatch` extension provides several functions to determine similarities and distance between strings.
-
-#### Example
-
-```postgresql
-CREATE EXTENSION fuzzystrmatch;
-SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
- levenshtein | metaphone
--------------+-----------
-           2 | YKBT
-(1 row)
-```
-
-For more information see [`fuzzystrmatch`](https://www.postgresql.org/docs/11/fuzzystrmatch.html) in the PostgreSQL Docs.
 
 ### spi module
 
