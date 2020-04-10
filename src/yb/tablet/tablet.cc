@@ -362,7 +362,7 @@ namespace {
 
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
-  return Format("T $0$1", tablet_id, log_prefix_suffix);
+  return Format("T $0$1: ", tablet_id, log_prefix_suffix);
 }
 
 } // namespace
@@ -571,11 +571,16 @@ std::string LogDbTypePrefix(docdb::StorageDbType db_type) {
   FATAL_INVALID_ENUM_VALUE(docdb::StorageDbType, db_type);
 }
 
+std::string MakeTabletLogPrefix(
+    const TabletId& tablet_id, const std::string& log_prefix_suffix, docdb::StorageDbType db_type) {
+  return MakeTabletLogPrefix(
+      tablet_id, Format("$0 [$1]", log_prefix_suffix, LogDbTypePrefix(db_type)));
+}
+
 } // namespace
 
 std::string Tablet::LogPrefix(docdb::StorageDbType db_type) const {
-  return Format(
-      "$0 [$1]: ", MakeTabletLogPrefix(tablet_id(), log_prefix_suffix_), LogDbTypePrefix(db_type));
+  return MakeTabletLogPrefix(tablet_id(), log_prefix_suffix_, db_type);
 }
 
 Status Tablet::OpenKeyValueTablet() {
@@ -2717,18 +2722,24 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
   frontier.set_op_id(split_op_id);
   frontier.set_hybrid_time(split_op_hybrid_time);
 
-  boost::container::static_vector<std::string, 2> subtablet_rocksdb_dirs({metadata->rocksdb_dir()});
+  struct RocksDbDirWithType {
+    std::string db_dir;
+    docdb::StorageDbType db_type;
+  };
+  boost::container::static_vector<RocksDbDirWithType, 2> subtablet_rocksdbs(
+      {{ metadata->rocksdb_dir(), docdb::StorageDbType::kRegular }});
   if (intents_db_) {
-    subtablet_rocksdb_dirs.push_back(metadata->intents_rocksdb_dir());
+    subtablet_rocksdbs.push_back(
+        { metadata->intents_rocksdb_dir(), docdb::StorageDbType::kIntents });
   }
-  for (auto rocksdb_dir : subtablet_rocksdb_dirs) {
+  for (auto rocksdb : subtablet_rocksdbs) {
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
-        &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_),
+        &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, rocksdb.db_type),
         /* statistics */ nullptr, tablet_options_);
     rocksdb_options.create_if_missing = false;
     std::unique_ptr<rocksdb::DB> db =
-        VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, rocksdb_dir));
+        VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, rocksdb.db_dir));
     RETURN_NOT_OK(
         db->ModifyFlushedFrontier(frontier.Clone(), rocksdb::FrontierModificationMode::kUpdate));
   }
