@@ -1,7 +1,8 @@
 ---
-title: Snapshot and restore data
+title: Snapshot and restore data for YCQL
+headerTitle: Snapshot and restore data
 linkTitle: Snapshot and restore data
-description: Snapshot and restore data
+description: Snapshot and restore data in YugabyteDB for YCQL.
 image: /images/section_icons/manage/enterprise.png
 aliases:
   - manage/backup-restore/manage-snapshots

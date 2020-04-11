@@ -1,8 +1,8 @@
 ---
-title: yugabyted
+title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
-description: Get started with YugabyteDB by using yugabyted to simplify creating, running, and managing yb-tserver and yb-master servers.
+description: Use yugabyted to simplify creating, running, and managing yb-tserver and yb-master servers.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:

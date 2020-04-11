@@ -1,5 +1,5 @@
 ---
-title: E-commerce sample application using YugabyteDB
+title: E-commerce sample application
 headerTitle: E-Commerce app
 linkTitle: E-Commerce app
 description: Run an e-commerce sample application built on YugabyteDB.

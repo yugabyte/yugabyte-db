@@ -1,5 +1,5 @@
 ---
-title: Explore colocated tables in YugabyteDB using Linux
+title: Explore colocated tables [Linux]
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Create and use colocated tables in a local YugabyteDB cluster.
