@@ -219,7 +219,7 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     case MetadataChange::BACKFILL_DONE:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->MarkBackfillDone(state()->request()->is_backfilling()));
+      RETURN_NOT_OK(tablet->MarkBackfillDone());
       break;
   }
 

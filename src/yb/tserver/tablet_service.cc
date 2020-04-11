@@ -171,7 +171,7 @@ DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
 
-DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 2 * 500,
+DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 5000,
              "Operations that are received by the tserver, and have decided how "
              "the indexes need to be updated (based on the IndexPermission), will "
              "not be added to the list of current transactions until they are "
@@ -554,8 +554,9 @@ void TabletServiceAdminImpl::GetSafeTime(
     } else {
       // Add some extra delay to wait for operations being replicated to be
       // applied.
-      min_hybrid_time = min_hybrid_time.AddMilliseconds(
-          FLAGS_index_backfill_additional_delay_before_backfilling_ms);
+      SleepFor(MonoDelta::FromMilliseconds(
+          FLAGS_index_backfill_additional_delay_before_backfilling_ms));
+
       auto txn_particpant = tablet.peer->tablet()->transaction_participant();
       HybridTime min_running_ht;
       while ((min_running_ht = txn_particpant->MinRunningHybridTime()) <
@@ -586,6 +587,8 @@ void TabletServiceAdminImpl::GetSafeTime(
         SleepFor(MonoDelta::FromMilliseconds(
             FLAGS_transaction_min_running_check_interval_ms));
       }
+      VLOG(2) << "Finally MinRunningHybridTime is " << min_running_ht
+              << " waited for " << min_hybrid_time;
     }
   }
 
