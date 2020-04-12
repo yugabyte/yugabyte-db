@@ -52,10 +52,9 @@ varchar2_input(const char *s, size_t len, int32 atttypmod)
 	 * Perform the typmod check; error out if value too long for VARCHAR2
 	 */
 	if (atttypmod >= (int32) VARHDRSZ && len > maxlen)
-		if (len > maxlen)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("input value length is %zd; too long for type varchar2(%zd)", len , maxlen)));
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("input value length is %zd; too long for type varchar2(%zd)", len , maxlen)));
 
 	result = (VarChar *) cstring_to_text_with_len(s, len);
 	return  result;
