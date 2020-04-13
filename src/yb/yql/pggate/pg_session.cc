@@ -725,6 +725,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
 
   auto cached_yb_table = table_cache_.find(yb_table_id);
   if (cached_yb_table == table_cache_.end()) {
+    VLOG(4) << "Table cache MISS: " << table_id;
     Status s = client_->OpenTable(yb_table_id, &table);
     if (!s.ok()) {
       VLOG(3) << "LoadTable: Server returns an error: " << s;
@@ -734,6 +735,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
     }
     table_cache_[yb_table_id] = table;
   } else {
+    VLOG(4) << "Table cache HIT: " << table_id;
     table = cached_yb_table->second;
   }
 

@@ -1540,11 +1540,10 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
   for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
     PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
     PgsqlResponsePB* resp = operation->response()->add_pgsql_response_batch();
-    // Don't create a table-level tombstone for non-colocated tables.
-    // TODO(jason): prevent this code path by skipping earlier, up to
-    // postgres/src/backend/commands/ybccmds.c (issue #3387).
+    // Table-level tombstones should not be requested for non-colocated tables.
     if ((req->stmt_type() == PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED) &&
         !metadata_->colocated()) {
+      LOG(WARNING) << "cannot create table-level tombstone for a non-colocated table";
       resp->set_skipped(true);
       continue;
     }

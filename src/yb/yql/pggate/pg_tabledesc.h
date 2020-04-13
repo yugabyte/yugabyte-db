@@ -71,6 +71,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   size_t FindPartitionStartIndex(const std::string& partition_key) const;
 
   bool IsTransactional() const;
+  bool IsColocated() const;
 
  private:
   std::shared_ptr<client::YBTable> table_;

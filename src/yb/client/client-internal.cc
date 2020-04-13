@@ -1200,6 +1200,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
         info_->index_info.emplace(resp_.index_info());
       }
       CHECK_GT(info_->table_id.size(), 0) << "Running against a too-old master";
+      info_->colocated = resp_.colocated();
     }
   }
   if (!new_status.ok()) {
