@@ -75,7 +75,7 @@ https://raw.githubusercontent.com/Homebrew/homebrew-core/ee89a1d59df03f495a85c15
 
 {{< note title="Note" >}}
 
-YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/usr/local/bin/bash` before proceeding. You may need to put `/usr/local/bin` as the first directory on PATH in your `~/.bashrc` to achieve that.
+YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/usr/local/bin/bash` before proceeding. You may need to put `/usr/local/bin` as the first directory on `PATH` in your `~/.bashrc` to achieve that.
 
 {{< /note >}}
 
