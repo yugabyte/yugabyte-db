@@ -73,7 +73,7 @@ DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false
                  "Limit the functionality of the load balancer during tests so tests can make "
                  "progress");
 
-DEFINE_bool(load_balancer_skip_leader_as_remove_victim, true,
+DEFINE_bool(load_balancer_skip_leader_as_remove_victim, false,
             "Should the LB skip a leader as a possible remove candidate.");
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
