@@ -1099,12 +1099,6 @@ Result<ColumnId> CatalogManager::MetadataColumnId() {
   return sys_catalog()->MetadataColumnId();
 }
 
-Status CatalogManager::ApplyOperationState(
-    const tablet::OperationState& operation_state, int64_t batch_idx,
-    const docdb::KeyValueWriteBatchPB& write_batch) {
-  return tablet_peer()->tablet()->ApplyOperationState(operation_state, batch_idx, write_batch);
-}
-
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
   TabletInfos result;
   result.reserve(ids.size());

@@ -228,10 +228,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Result<ColumnId> MetadataColumnId() override;
 
-  CHECKED_STATUS ApplyOperationState(const tablet::OperationState& operation_state,
-                                     int64_t batch_idx,
-                                     const docdb::KeyValueWriteBatchPB& write_batch) override;
-
   void Submit(std::unique_ptr<tablet::Operation> operation) override;
 
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
