@@ -300,6 +300,9 @@ message SysTabletsEntryPB {
   // of how far along backfill has completed. Encoded as the DocKey for
   // the next row to be backfilled.
   optional bytes backfilled_until = 10;
+
+  // For tablets which are results of splitting we set this to split parent split_depth + 1.
+  optional uint64 split_depth = 11;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -1699,6 +1702,14 @@ message GetUniverseReplicationResponsePB {
   optional SysUniverseReplicationEntryPB entry = 2;
 }
 
+message SplitTabletRequestPB {
+  required bytes tablet_id = 1;
+}
+
+message SplitTabletResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -1816,4 +1827,6 @@ service MasterService {
       returns (GetUniverseKeyRegistryResponsePB);
   rpc HasUniverseKeyInMemory(HasUniverseKeyInMemoryRequestPB)
       returns (HasUniverseKeyInMemoryResponsePB);
+
+  rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
 }

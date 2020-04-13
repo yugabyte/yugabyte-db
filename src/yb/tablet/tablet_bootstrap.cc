@@ -286,10 +286,9 @@ Status ReplayState::UpdateSplitOpId(const ReplicateMsg& msg, const TabletId& tab
   SCHECK_EQ(
       msg.op_type(), consensus::SPLIT_OP, IllegalState,
       Format("Unexpected operation $0 instead of SPLIT_OP", msg));
-  const auto is_split_op_id_set = !OpIdEquals(split_op_id, consensus::OpId());
   const auto tablet_id_to_split = msg.split_request().tablet_id();
 
-  if (is_split_op_id_set) {
+  if (split_op_id.IsInitialized()) {
     if (tablet_id_to_split == tablet_id) {
       return STATUS_FORMAT(
           IllegalState,

@@ -1331,6 +1331,15 @@ Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterCl
                    "MasterServiceImpl::GetMasterClusterConfig call failed.");
 }
 
+CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+  const auto resp = VERIFY_RESULT(
+      InvokeRpc(&MasterServiceProxy::SplitTablet, master_proxy_.get(), req));
+  std::cout << "Response: " << AsString(resp) << std::endl;
+  return Status::OK();
+}
+
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
