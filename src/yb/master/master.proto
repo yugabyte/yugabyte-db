@@ -1063,6 +1063,9 @@ message GetTableSchemaResponsePB {
 
   // For index table: information about this index.
   optional IndexInfoPB index_info = 12;
+
+  // True if table is colocated.
+  optional bool colocated = 13;
 }
 
 // ============================================================================

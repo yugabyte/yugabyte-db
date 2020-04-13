@@ -44,6 +44,7 @@ struct YBTableInfo {
   IndexMap index_map;
   boost::optional<IndexInfo> index_info;
   YBTableType table_type;
+  bool colocated;
 };
 
 // A YBTable represents a table on a particular cluster. It holds the current
@@ -92,6 +93,9 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   // For index table: information about this index.
   const IndexInfo& index_info() const;
+
+  // Is the table colocated?
+  const bool colocated() const;
 
   std::string ToString() const;
   //------------------------------------------------------------------------------------------------

@@ -162,6 +162,9 @@ class PgApiImpl {
 
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
+  // Load table.
+  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
+
   //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
   CHECKED_STATUS NewCreateTable(const char *database_name,
