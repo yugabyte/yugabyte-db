@@ -128,7 +128,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
 
   // If the hash key is fixed and we have range columns with IN condition, try to construct the
   // exact list of range options to scan for.
-  if (!hashed_components_->empty() && schema_.num_range_key_columns() > 0 &&
+  if ((!hashed_components_->empty() || schema_.num_hash_key_columns() == 0) &&
+      schema_.num_range_key_columns() > 0 &&
       range_bounds_ && range_bounds_->has_in_range_options()) {
     DCHECK(condition);
     range_options_ =
@@ -211,8 +212,9 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   KeyBytes result;
   auto encoder = DocKeyEncoder(&result).Schema(schema);
 
-  // If no hashed_component use hash lower/upper bounds if set.
-  if (hashed_components_->empty()) {
+  bool has_hash_columns = schema_.num_hash_key_columns() > 0;
+  bool hash_components_unset = has_hash_columns && hashed_components_->empty();
+  if (hash_components_unset) {
     // use lower bound hash code if set in request (for scans using token)
     if (lower_bound && hash_code_) {
       encoder.HashAndRange(*hash_code_, { PrimitiveValue(ValueType::kLowest) }, {});
@@ -228,15 +230,19 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
     return result;
   }
 
-  DocKeyHash min_hash = hash_code_ ?
-      static_cast<DocKeyHash> (*hash_code_) : std::numeric_limits<DocKeyHash>::min();
-  DocKeyHash max_hash = max_hash_code_ ?
-      static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
+  if (has_hash_columns) {
+    DocKeyHash min_hash = hash_code_ ?
+        static_cast<DocKeyHash> (*hash_code_) : std::numeric_limits<DocKeyHash>::min();
+    DocKeyHash max_hash = max_hash_code_ ?
+        static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
 
-  encoder.HashAndRange(lower_bound ? min_hash : max_hash,
-                       *hashed_components_,
-                       range_components(lower_bound));
-
+    encoder.HashAndRange(lower_bound ? min_hash : max_hash,
+                         *hashed_components_,
+                         range_components(lower_bound));
+  } else {
+    // If no hash columns use default hash code (0).
+    encoder.Hash(false, 0, *hashed_components_).Range(range_components(lower_bound));
+  }
   return result;
 }
 
