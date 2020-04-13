@@ -1,5 +1,5 @@
 ---
-title: Explore observability with Prometheus in YugabyteDB using Linux
+title: Explore observability with Prometheus using Linux
 headerTitle: Observability with Prometheus
 linkTitle: Observability 
 description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster.

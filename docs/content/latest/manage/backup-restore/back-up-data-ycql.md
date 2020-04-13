@@ -1,9 +1,8 @@
 ---
-title: Back up data
+title: Back up data for YCQL
+headerTitle: Back up data
 linkTitle: Back up data
-description: Back up data
-image: /images/section_icons/manage/enterprise.png
-headcontent: Back up data in YugabyteDB.
+description: Back up data in YugabyteDB for YCQL.
 aliases:
   - /manage/backup-restore/backing-up-data
 menu:
@@ -11,6 +10,8 @@ menu:
     identifier: back-up-data-ycql
     parent: backup-restore
     weight: 703
+isTocNested: true
+showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

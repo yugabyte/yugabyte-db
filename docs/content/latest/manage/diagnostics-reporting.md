@@ -2,7 +2,7 @@
 title: Diagnostics reporting
 headerTitle: Diagnostics reporting
 linkTitle: Diagnostics reporting
-description: Diagnostics reporting
+description: Enable diagnostics reporting and set collection levels on YB-Master and YB-TServer nodes.
 aliases:
   - /manage/diagnostics-reporting/
 menu:
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to Yugabyte's diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in YugabyteDB as well as any personally identifiable information regarding the user is never collected or reported.
+The [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to the YugabyteDB diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in YugabyteDB as well as any personally identifiable information regarding the user is never collected or reported.
 
 ## Data collected
 
@@ -45,6 +45,7 @@ RPC metrics
 ```
 
 ### Collection level: high
+
 Same as `medium` level. In other words, no extra information is collected for this level. It will be used in the future to collect additional dianostics information such as error logs.
 
 #### Example of metrics collected
@@ -109,7 +110,7 @@ Same as `medium` level. In other words, no extra information is collected for th
 
 ## Configuration options
 
-You can add the following configuration options, or flags, while starting the [YB-Mster](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes to configure the diagnostics reporting behavior of YugabyteDB.
+You can add the following configuration options, or flags, while starting the [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes to configure the diagnostics reporting behavior of YugabyteDB.
 
 Flag | Default | Description
 ----------------------|---------|------------------------
