@@ -1,6 +1,6 @@
 ---
-title: Best practices for YCQL
-headerTitle: Best practices for YCQL
+title: Best practices for YCQL applications
+headerTitle: Best practices
 linkTitle: Best practices
 description: Learn best practices for developing YCQL applications.
 menu:

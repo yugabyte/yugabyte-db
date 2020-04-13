@@ -2,16 +2,16 @@
 title: Key concepts
 headerTitle: Key concepts
 linkTitle: Key concepts
-description: Learn about the query, sharding, replication, and persistence layers in YugabyteDB.
+description: Learn about the YugabyteDB query, sharding, replication, and persistence layers.
 image: /images/section_icons/architecture/concepts.png
-headcontent: Learn about the query, sharding, replication, and persistence layers in YugabyteDB.
-menu:
-  latest:
-    identifier: architecture-concepts
-    parent: architecture
-    weight: 1106
+headcontent: Learn about the YugabyteDB query, sharding, replication, and persistence layers.
 aliases:
   - /architecture/concepts/
+menu:
+  latest:
+    identifier: key-concepts
+    parent: architecture
+    weight: 1106
 ---
 
 <div class="row">
@@ -52,15 +52,4 @@ aliases:
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="acknowledgements/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts/acknowledgements.png" aria-hidden="true" />
-        <div class="title">Acknowledgements</div>
-      </div>
-      <div class="body">
-      </div>
-    </a>
-  </div>
-</div>
-  
+</div>  

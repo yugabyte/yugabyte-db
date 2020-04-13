@@ -1,9 +1,9 @@
 ---
-title: jsonb_set() and jsonb_insert() [JSON]
+title: jsonb_set() and jsonb_insert()
 linkTitle: jsonb_set() and jsonb_insert()
 summary: jsonb_set() and jsonb_insert()
 headerTitle: jsonb_set() and jsonb_insert()
-description: Use jsonb_set() to change an existing JSON value and use jsonb_insert() to insert a new value.
+description: Change an existing JSON value using jsonb_set() and insert a new value using jsonb_insert().
 menu:
   latest:
     identifier: jsonb-set-jsonb-insert

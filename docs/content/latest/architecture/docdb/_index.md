@@ -7,7 +7,7 @@ image: /images/section_icons/architecture/concepts.png
 aliases:
   - /architecture/concepts/docdb/
   - /latest/architecture/concepts/docdb/
-headcontent: YugabyteDB's distributed document store responsible for sharding, replication, transactions, and persistence.
+headcontent: YugabyteDB distributed document store responsible for sharding, replication, transactions, and persistence.
 menu:
   latest:
     identifier: docdb

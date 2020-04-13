@@ -1,9 +1,8 @@
 ---
-title: Restore data
+title: Restore data for YSQL
+headerTitle: Restore data
 linkTitle: Restore data
-description: Restore data
-image: /images/section_icons/manage/enterprise.png
-headcontent: Restore data in YugabyteDB.
+description: Restore data in YugabyteDB for YSQL
 aliases:
   - /manage/backup-restore/backing-up-data
 menu:

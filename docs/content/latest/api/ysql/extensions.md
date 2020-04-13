@@ -1,9 +1,9 @@
 ---
-title: Extensions
+title: Extensions [YSQL]
+headerTitle: Install and use extensions
 linkTitle: Extensions
-headerTitle: Install and use Extensions
-description: This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL.
-summary: Reference for YSQL Extensions
+description: Install and use extensions with PostgreSQL-compatible YSQL.
+summary: Reference for YSQL extensions
 menu:
   latest:
     identifier: api-ysql-extensions
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since YugabyteDB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions especially those that interact with the storage layer are not expected to work as-is on YugabyteDB. We intend to incrementally develop support for as many extensions as possible. 
+This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since YugabyteDB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions, especially those that interact with the storage layer, are not expected to work as-is on YugabyteDB. We intend to incrementally develop support for as many extensions as possible.
 
 ## Use Included Extensions
 

@@ -1,9 +1,8 @@
 ---
-title: TEXT
+title: Character data types [YSQL]
+headerTitle: Character data types
 linkTitle: Character
-headerTitle: Character Types
-description: Character-based data types are used to specify data of a string of Unicode characters.
-summary: String of Unicode characters
+description: Use character-based data types to specify data of a string of Unicode characters.
 menu:
   latest:
     identifier: api-ysql-datatypes-character

@@ -1,5 +1,6 @@
 ---
 title: Explore fault tolerance in YugabyteDB using Linux
+headerTitle: Fault tolerance
 linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster using Linux.
 aliases:

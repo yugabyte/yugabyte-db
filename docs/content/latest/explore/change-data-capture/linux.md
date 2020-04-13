@@ -1,5 +1,5 @@
 ---
-title: Explore change data capture (CDC) using Linux
+title: Explore change data capture (CDC) [Linux]
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Use a local YugabyteDB cluster to stream data changes to stdout using the CDC API.

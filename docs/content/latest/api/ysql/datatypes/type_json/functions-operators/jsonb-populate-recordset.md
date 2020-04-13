@@ -1,9 +1,8 @@
 ---
-title: jsonb_populate_recordset() and json_populate_recordset() [JSON]
+title: jsonb_populate_recordset() and json_populate_recordset()
 headerTitle: jsonb_populate_recordset() and json_populate_recordset()
 linkTitle: jsonb_populate_recordset()
-description: Use this function to convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records.
-summary: jsonb_populate_recordset() and json_populate_recordset()
+description: Convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records.
 menu:
   latest:
     identifier: jsonb-populate-recordset

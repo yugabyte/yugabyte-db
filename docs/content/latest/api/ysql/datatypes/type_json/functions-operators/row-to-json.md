@@ -1,8 +1,8 @@
 ---
-title: row_to_json() [JSON]
+title: row_to_json()
 headerTitle: row_to_json()
 linkTitle: row_to_json()
-description: Use the row_to_json() function to create a JSON object from a SQL record.
+description: Create a JSON object from a SQL record.
 summary: row_to_json()
 menu:
   latest:
