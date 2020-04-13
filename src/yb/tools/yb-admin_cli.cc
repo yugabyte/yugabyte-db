@@ -616,6 +616,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "leader_stepdown", " tablet_id dest_ts_uuid",
       std::bind(&LeaderStepDown, client, _1));
+
+  Register(
+      "split_tablet", " <tablet_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string tablet_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->SplitTablet(tablet_id),
+                              Format("Unable to start split of tablet $0", tablet_id));
+        return Status::OK();
+      });
 }
 
 Result<YBTableName> ResolveTableName(ClusterAdminClientClass* client,

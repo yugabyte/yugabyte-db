@@ -282,6 +282,9 @@ class MasterServiceImpl : public MasterServiceIf,
                               GetUniverseReplicationResponsePB* resp,
                               rpc::RpcContext rpc) override;
 
+  void SplitTablet(
+      const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
+
  private:
 };
 

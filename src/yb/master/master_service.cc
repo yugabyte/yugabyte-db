@@ -781,5 +781,10 @@ void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationReque
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetUniverseReplication);
 }
 
+void MasterServiceImpl::SplitTablet(
+    const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::SplitTablet);
+}
+
 } // namespace master
 } // namespace yb

@@ -149,86 +149,6 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> TabletSplitITest::WriteR
   return std::make_pair(min_hash_code, max_hash_code);
 }
 
-namespace {
-
-// Registers two new tablets for splitting in `leader_master`. Gets replicas for source tablet from
-// `source_tablet_leader` and uses the same replicas for two new tablets.
-// `new_tablets_partition` is used to set a partition mapping for new tablets.
-std::vector<TabletId> RegisterNewTabletsForSplit(
-    const master::Master& leader_master,
-    const tablet::TabletPeer& source_tablet_leader,
-    const std::vector<PartitionPB>& new_tablets_partition) {
-  auto* catalog_mgr = leader_master.catalog_manager();
-  auto* ts_manager = leader_master.ts_manager();
-  master::TSDescriptorVector replicas;
-  const auto raft_config = source_tablet_leader.RaftConfig();
-  LOG(INFO) << "Source tablet peers: " << AsString(raft_config.peers());
-  for (const auto& peer : raft_config.peers()) {
-    master::TSDescriptorPtr ts_desc;
-    EXPECT_TRUE(ts_manager->LookupTSByUUID(peer.permanent_uuid(), &ts_desc));
-    replicas.push_back(ts_desc);
-  }
-
-  std::vector<TabletId> new_tablet_ids;
-  // TODO(tsplit): this (and some other) logic will be moved to master side as a part of
-  // https://github.com/yugabyte/yugabyte-db/issues/1461 and test will be reworked.
-  for (const auto& new_tablet_partition : new_tablets_partition) {
-    auto* new_tablet_info = EXPECT_RESULT(catalog_mgr->TEST_RegisterNewTablet(
-        source_tablet_leader.tablet_id(), new_tablet_partition));
-    auto lock = new_tablet_info->LockForWrite();
-    EXPECT_OK(catalog_mgr->TEST_SelectReplicasForTablet(replicas, new_tablet_info));
-    lock->Commit();
-    new_tablet_ids.push_back(new_tablet_info->id());
-  }
-  EXPECT_EQ(new_tablet_ids.size(), 2);
-  return new_tablet_ids;
-}
-
-// Invoke SplitTablet RPC for `source_tablet_id` on `mini_ts` tablet server using.
-// `split_hash_code` and `split_partition_key` are passed inside request to define new key
-// boundaries for new tablets.
-bool InvokeSplitTablet(
-    rpc::ProxyCache* proxy_cache,
-    tserver::MiniTabletServer* mini_ts,
-    const TabletId& source_tablet_id,
-    const std::vector<TabletId>& new_tablet_ids,
-    const docdb::DocKeyHash& split_hash_code,
-    const std::string& split_partition_key) {
-  docdb::KeyBytes split_encoded_key;
-  docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
-      .Hash(split_hash_code, std::vector<docdb::PrimitiveValue>());
-
-  auto* ts = mini_ts->server();
-
-  tserver::SplitTabletRequestPB req;
-  req.set_dest_uuid(ts->permanent_uuid());
-  req.set_tablet_id(source_tablet_id);
-  req.set_new_tablet1_id(new_tablet_ids[0]);
-  req.set_new_tablet2_id(new_tablet_ids[1]);
-  req.set_split_partition_key(split_partition_key);
-  req.set_split_encoded_key(split_encoded_key.data());
-
-  tserver::SplitTabletResponsePB resp;
-
-  auto ts_admin_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
-      proxy_cache, HostPort::FromBoundEndpoint(mini_ts->bound_rpc_addr()));
-
-  LOG(INFO) << "Invoking SplitTablet, source tablet: " << source_tablet_id
-            << ", split tablets: " << AsString(new_tablet_ids);
-  rpc::RpcController rpc;
-  rpc.set_timeout(5s * kTimeMultiplier);
-  ts_admin_proxy->SplitTablet(req, &resp, &rpc);
-
-  if (resp.has_error()) {
-    LOG(WARNING) << AsString(resp.error());
-    return false;
-  } else {
-    return true;
-  }
-}
-
-}  // namespace
-
 void TabletSplitITest::WaitForTabletSplitCompletion() {
   ASSERT_OK(WaitFor([this] {
       auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
@@ -357,25 +277,6 @@ Result<scoped_refptr<master::TabletInfo>> TabletSplitITest::GetSingleTestTabletI
   return tablet_infos.front();
 }
 
-namespace {
-
-std::vector<PartitionPB> CreateNewTabletsPartition(
-    master::TabletInfo* tablet_info, const std::string split_partition_key) {
-  const auto& source_partition = tablet_info->LockForRead()->data().pb.partition();
-
-  std::vector<PartitionPB> new_tablets_partition;
-
-  new_tablets_partition.push_back(source_partition);
-  new_tablets_partition.back().set_partition_key_end(split_partition_key);
-
-  new_tablets_partition.push_back(source_partition);
-  new_tablets_partition.back().set_partition_key_start(split_partition_key);
-
-  return new_tablets_partition;
-}
-
-} // namespace
-
 // Tests splitting of the single tablet in following steps:
 // 1. Creates single-tablet table and populates it with specified number of rows.
 // 2. Send SplitTablet RPC to the tablet leader.
@@ -390,40 +291,14 @@ TEST_F(TabletSplitITest, SplitSingleTablet) {
   const auto split_hash_code = (min_max_hash_code.first + min_max_hash_code.second) / 2;
   LOG(INFO) << "Split hash code: " << split_hash_code;
 
-  const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
-
   auto& leader_master = *ASSERT_NOTNULL(cluster_->leader_mini_master()->master());
 
   auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(leader_master));
   const auto source_tablet_id = source_tablet_info->id();
 
-  auto new_tablets_partition =
-      CreateNewTabletsPartition(source_tablet_info.get(), split_partition_key);
+  auto* catalog_mgr = leader_master.catalog_manager();
 
-  for (;;) {
-    auto* mini_ts = FindTabletLeader(cluster_.get(), source_tablet_id);
-    if (!mini_ts) {
-      std::this_thread::sleep_for(500ms);
-      continue;
-    }
-    LOG(INFO) << Format(
-        "Found leader ts $0 for source tablet $1", mini_ts->server()->permanent_uuid(),
-        source_tablet_id);
-
-    auto* ts = mini_ts->server();
-    std::shared_ptr<tablet::TabletPeer> tablet_peer;
-    ASSERT_OK(ts->tablet_manager()->GetTabletPeer(source_tablet_id, &tablet_peer));
-
-    std::vector<TabletId> new_tablet_ids =
-        RegisterNewTabletsForSplit(leader_master, *tablet_peer, new_tablets_partition);
-    NO_PENDING_FATALS();
-
-    if (InvokeSplitTablet(
-            proxy_cache_.get(), mini_ts, source_tablet_id, new_tablet_ids, split_hash_code,
-            split_partition_key)) {
-      break;
-    }
-  }
+  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
 
   WaitForTabletSplitCompletion();
 

@@ -634,22 +634,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return *encryption_manager_;
   }
 
-  // Registers new tablet with `partition` for the same table as `source_tablet_id` tablet.
-  // Does not change any other tablets and their partitions.
-  // Returns TabetInfo for registered tablet.
-  Result<TabletInfo*> TEST_RegisterNewTablet(
-      const TabletId& source_tablet_id, const PartitionPB& partition);
+  // Splits tablet specified in the request using middle of the partition as a split point.
+  CHECKED_STATUS SplitTablet(
+      const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc);
 
-  scoped_refptr<TabletInfo> TEST_GetTabletInfo(const TabletId& tablet_id) {
-    boost::shared_lock<LockType> l(lock_);
-    return FindPtrOrNull(*tablet_map_, tablet_id);
-  }
-
-  // Test wrapper for protected SelectReplicasForTablet method.
-  CHECKED_STATUS TEST_SelectReplicasForTablet(
-      const TSDescriptorVector& ts_descs, TabletInfo* tablet) {
-    return SelectReplicasForTablet(ts_descs, tablet);
-  }
+  // Test wrapper around protected DoSplitTablet method.
+  CHECKED_STATUS TEST_SplitTablet(
+      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -923,6 +914,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
                                     const scoped_refptr<TableInfo>& table);
 
+  // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
+  void SendSplitTabletRequest(
+      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, 2> new_tablet_ids,
+      const std::string& split_encoded_key, const std::string& split_partition_key);
+
   // Send the "truncate table request" to all tablets of the specified table.
   void SendTruncateTableRequest(const scoped_refptr<TableInfo>& table);
 
@@ -1021,6 +1017,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // for the blacklist.
   CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist);
   CHECKED_STATUS SetLeaderBlacklist(const BlacklistPB& leader_blacklist);
+
+  // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
+  // Does not change any other tablets and their partitions.
+  // Returns TabletInfo for registered tablet.
+  Result<TabletInfo*> RegisterNewTabletForSplit(
+      const TabletInfo& source_tablet_info, const PartitionPB& partition);
+
+  // Splits tablet using specified split_hash_code as a split point.
+  CHECKED_STATUS DoSplitTablet(
+      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
 
   // Calculate the total number of replicas which are being handled by servers in state.
   int64_t GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only);

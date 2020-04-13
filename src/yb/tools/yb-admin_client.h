@@ -195,6 +195,8 @@ class ClusterAdminClient {
       const std::string& tablet_id,
       const std::string& dest_ts_uuid);
 
+  CHECKED_STATUS SplitTablet(const std::string& tablet_id);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
