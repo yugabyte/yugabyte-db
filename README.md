@@ -9,15 +9,22 @@ Introduction
 
 **format version 2** produces a JSON object per tuple. Optional JSON object for beginning and end of transaction. Also, there are a variety of options to include properties.
 
-Requirements
-============
-
-* PostgreSQL 9.4+
-
 Build and Install
 =================
 
-This extension is supported on [those platforms](http://www.postgresql.org/docs/current/static/supported-platforms.html) that PostgreSQL is. The installation steps depend on your operating system.
+This extension is supported on [those platforms](http://www.postgresql.org/docs/current/static/supported-platforms.html) that PostgreSQL is. The installation steps depend on your operating system. [PostgreSQL yum repository](https://yum.postgresql.org) and [PostgreSQL apt repository](https://wiki.postgresql.org/wiki/Apt) provide wal2json packages.
+
+In Red Hat/CentOS:
+
+```
+$ sudo yum install wal2json12
+```
+
+In Debian/Ubuntu:
+
+```
+$ sudo apt-get install postgresql12-wal2json
+```
 
 You can also keep up with the latest fixes and features cloning the Git repository.
 
@@ -28,15 +35,38 @@ $ git clone https://github.com/eulerto/wal2json.git
 Unix based Operating Systems
 ----------------------------
 
-Before use this extension, you should build it and load it at the desirable database.
+Before installing **wal2json**, you should have PostgreSQL 9.4+ installed (including the header files). If PostgreSQL is not in your search path, add it. If you are using [PostgreSQL yum repository](https://yum.postgresql.org), install `postgresql12-devel` and add `/usr/pgsql-12/bin` to your search path (yum uses `12, 11, 10, 96, 95 or 94`). If you are using [PostgreSQL apt repository](https://wiki.postgresql.org/wiki/Apt), install `postgresql-server-dev-12` and add `/usr/lib/postgresql/12/bin` to your search path. (apt uses `12, 11, 10, 9.6, 9.5 or 9.4`).
+
+If you compile PostgreSQL by yourself and install it in `/home/euler/pg12`:
 
 ```
-$ git clone https://github.com/eulerto/wal2json.git
-$ cd wal2json
-# Make sure your path includes the bin directory that contains the correct `pg_config`
-$ PATH=/path/to/pg/bin:$PATH
-$ USE_PGXS=1 make
-$ USE_PGXS=1 make install
+$ tar -zxf wal2json-wal2json_2_2.tar.gz
+$ cd wal2json-wal2json_2_2
+$ export PATH=/home/euler/pg12/bin:$PATH
+$ make
+$ make install
+```
+
+If you are using [PostgreSQL yum repository](https://yum.postgresql.org):
+
+```
+$ sudo yum install postgresql12-devel
+$ tar -zxf wal2json-wal2json_2_2.tar.gz
+$ cd wal2json-wal2json_2_2
+$ export PATH=/usr/pgsql-12/bin:$PATH
+$ make
+$ make install
+```
+
+If you are using [PostgreSQL apt repository](https://wiki.postgresql.org/wiki/Apt):
+
+```
+$ sudo apt-get install postgresql-server-dev-12
+$ tar -zxf wal2json-wal2json_2_2.tar.gz
+$ cd wal2json-wal2json_2_2
+$ export PATH=/usr/lib/postgresql/12/bin:$PATH
+$ make
+$ make install
 ```
 
 Windows
