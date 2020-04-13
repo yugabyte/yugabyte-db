@@ -1,8 +1,8 @@
 ---
-title: Build a C++ application
+title: Build a C++ application using YCQL
 headerTitle: Build a C++ application
 linkTitle: C++
-description: Build a C++ application
+description: Build a C++ application that uses the YCQL API.
 menu:
   latest:
     identifier: build-apps-cpp-2-ycql

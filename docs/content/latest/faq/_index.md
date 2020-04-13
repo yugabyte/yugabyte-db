@@ -1,5 +1,6 @@
 ---
-title: FAQs
+title: Frequently asked questions (FAQs)
+headerTitle: FAQs
 linkTitle: FAQs
 description: FAQs
 image: /images/section_icons/index/faq.png

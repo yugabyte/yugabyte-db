@@ -2,7 +2,7 @@
 title: Default ports reference
 headerTitle: Default ports
 linkTitle: Default ports
-description: Default ports for YugabyteDB including client APIs, RPC communication, monitoring
+description: Default ports for YugabyteDB including client APIs, RPC communication, and monitoring.
 section: REFERENCE
 menu:
   latest:

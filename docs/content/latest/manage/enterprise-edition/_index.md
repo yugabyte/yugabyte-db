@@ -14,7 +14,7 @@ menu:
     weight: 707
 ---
 
-YugabyteDB creates a `universe` with a bunch of instances (VMs, pods, machines etc provided by IaaS) logically grouped together to form one logical distributed database. Each such universe can be made up of one or more clusters. These are comprised of one `Primary` cluster and zero or more `Read Replica` clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
+YugabyteDB creates a universe with many instances (VMs, pods, machines, etc., provided by IaaS) logically grouped together to form one logical distributed database. Each such universe can be made up of one or more clusters. These are comprised of one primary cluster and zero or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

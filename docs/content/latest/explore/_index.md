@@ -1,5 +1,5 @@
 ---
-title: Explore core features of YugabyteDB
+title: Explore core features
 headerTitle: Explore core features
 linkTitle: Explore core features
 description: Explore linear scalability, fault tolerance, global distribution, auto-sharding, follower leads, observability, colocated tables, and change data capture (CDC).

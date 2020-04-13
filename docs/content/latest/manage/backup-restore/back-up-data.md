@@ -1,9 +1,8 @@
 ---
-title: Back up data
+title: Back up data for YSQL
+headerTitle: Back up data
 linkTitle: Back up data
-description: Back up data
-image: /images/section_icons/manage/enterprise.png
-headcontent: Back up data in YugabyteDB.
+description: Back up data in YugabyteDB for YSQL.
 aliases:
   - /manage/backup-restore/backing-up-data
 menu:

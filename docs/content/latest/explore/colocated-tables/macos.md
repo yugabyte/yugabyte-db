@@ -1,5 +1,5 @@
 ---
-title: Explore colocated tables in YugabyteDB using macOS
+title: Explore colocated tables in YugabyteDB [macOS]
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Create and use colocated tables in a local YugabyteDB cluster.

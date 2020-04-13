@@ -1,8 +1,8 @@
 ---
-title: "::jsonb, ::json, and ::text (typecast operators) [JSON]"
+title: "::jsonb, ::json, and ::text (JSON typecast operators)"
 headerTitle: "::jsonb, ::json, and ::text (typecast operators)"
 linkTitle: "::jsonb, ::json, and ::text (typecast operators)"
-description: Use these JSON typecast operators to typecast between any pair of text, json, and jsonb.
+description: Typecast between any pair of text, json, and jsonb.
 summary: Typecast operators - `::jsonb`, `::json`, and `::text`
 menu:
   latest:

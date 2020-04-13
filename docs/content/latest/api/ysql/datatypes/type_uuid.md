@@ -1,8 +1,8 @@
 ---
-title: UUID data types
+title: UUID data type [YSQL]
+headerTitle: UUID data type
 linkTitle: UUID
-summary: UUID data types
-description: UUID data types
+description: Represents Universally Unique Identifiers (UUIDs).
 menu:
   latest:
     identifier: api-ysql-datatypes-uuid

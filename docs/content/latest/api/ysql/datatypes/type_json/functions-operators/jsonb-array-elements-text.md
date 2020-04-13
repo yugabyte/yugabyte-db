@@ -3,7 +3,7 @@ title: jsonb_array_elements_text() and json_array_elements_text() [JSON]
 headerTitle: jsonb_array_elements_text() and json_array_elements_text()
 linkTitle: jsonb_array_elements_text()
 summary: jsonb_array_elements_text() and json_array_elements_text()
-description: Use these JSON functions to transform JSON values of an JSON array into a SQL table of text values.
+description: Transform JSON values of an JSON array into a SQL table of text values using jsonb_array_elements_text() and json_array_elements_text().
 menu:
   latest:
     identifier: jsonb-array-elements-text

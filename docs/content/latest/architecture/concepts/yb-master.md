@@ -8,13 +8,13 @@ aliases:
 menu:
   latest:
     identifier: architecture-concepts-yb-master
-    parent: architecture-concepts
+    parent: key-concepts
     weight: 1126
 isTocNested: true
 showAsideToc: true
 ---
 
-The YB-Master is the keeper of system metadata and records such as what tables exist in the system, where their tablets live, what users and roles exist, the permissions associated with them, and so on.
+The YB-Master Service is the keeper of system metadata and records such as what tables exist in the system, where their tablets live, what users and roles exist, the permissions associated with them, and so on.
 
 It is also responsible for coordinating background operations (such as load-balancing or initiating re-replication of under-replicated data) and performing a variety of administrative operations such as creating, altering, and dropping tables.
 

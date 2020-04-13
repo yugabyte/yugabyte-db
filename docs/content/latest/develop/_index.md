@@ -1,8 +1,8 @@
 ---
-title: Develop YugabyteDB applications
+title: Develop applications
 headerTitle: Develop
 linkTitle: Develop
-description: Learn to build YugabyteDB application with GraphQL and ecosystem integrations.
+description: Build YugabyteDB application that use ecosystem integrations and GraphQL.
 headcontent: Get started building applications based on YugabyteDB.
 image: /images/section_icons/index/develop.png
 aliases:
