@@ -45,13 +45,15 @@ Status  |  Allowed Actions | Description
 To Be Added | Delete | This action can be taken if a universe create fails and node is stuck in 'To Be Added'. Once this action is performed, the node (and its underlying instance) will be removed from this universe.
 Live |  Stop Processes, Remove Node | The server processes on the node will be stopped, node status becomes 'Stopped'. A Live node can be also marked as 'Removed', which moves the data out of it along with stopping the server processes running on that node. Note that the backing instance is still under the control of the universe. This removes the MASTER/TSERVER setting of the node on the UI.
 Stopped | Start Processes, Release Instance | The server processes that are stopped on that node can be restarted using the 'Start Processes' pulldown option. The other option for a 'Stopped' node is to release the backing instance to IaaS and that will stop tracking the ip of this node in the universe.
-Removed | Add Node, Release Instance | A removed node can be added back - this restarts the processes on that node and move data onto it from other nodes, and marks it 'Live'. The other option is to release the backing instance to IaaS, and this will stop tracking the ip of this node in the universe and the node will be marked 'Decomissioned'.
+Removed | Add Node, Release Instance | A removed node can be added back - this restarts the processes on that node and move data onto it from other nodes, and marks it 'Live'. The other option is to release the backing instance to IaaS, and this will stop tracking the ip of this node in the universe and the node will be marked 'Decommissioned'.
 Decommissioned | Add Node | A new instance will be used or spawned to replace the released instance, server processes restarted and data load balanced onto this node. It will become 'Live' after this operation.
 
 Rest of the status types do not have any user actions, as they are mostly transient and will end up in one of the above statuses.
 
 {{< note title="Note" >}}
+
 **Add Node** just recreates a new backing instance for an existing node in the universe or cluster. To add a completely new node (as in, increase the number of nodes in the universe), one can use the **Edit Universe** option to expand the universe.
+
 {{< /note >}}
 
 The rest of this page describes how to modify the state of each node in a universe/cluster. The UI provides different actions that can be taken against each node under the **ACTION** column drop down.
@@ -80,7 +82,7 @@ Since we know that the instance is dead, we can go ahead and release the ip as w
 
 ![Release Node Actions](/images/ee/node-actions-released.png)
 
-### Add Node
+### Add node
 
 The node can brought back to life on a new backing instance using the **Add Node** option from the dropdown for the `Decomissioned` node. For IaaS, like AWS and GCP, YugaWare will spawn with the existing instance type in the correct/existing region and zone of that node. After the end of this operation, the node will have `yb-master` and `yb-tserver` processes running along with some data that is load balanced onto this node and status will be marked `Live`. Note that the node name is reused and is part of the healthy cluster now.
 
