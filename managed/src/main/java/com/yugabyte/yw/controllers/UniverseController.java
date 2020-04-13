@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
+import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -1434,6 +1436,93 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  public Result updateDiskSize(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Disk Size Increase {} for {}.", customerUUID, universeUUID);
+
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    // Get the universe. This makes sure that a universe of this name does exist
+    // for this customer id.
+    Universe universe = null;
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Check the universe belongs to the Customer.
+    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+      return ApiResponse.error(BAD_REQUEST,
+          String.format("Universe UUID: %s doesn't belong " +
+              "to Customer UUID: %s", universeUUID, customerUUID));
+    }
+
+    // Bind disk size increase data.
+    DiskIncreaseFormData taskParams;
+    ObjectNode formData = null;
+    try {
+      formData = (ObjectNode) request().body().asJson();
+      taskParams = (DiskIncreaseFormData) bindFormDataToTaskParams(formData, false, true);
+
+      if (taskParams.size == 0) {
+        return ApiResponse.error(BAD_REQUEST, "Size cannot be 0.");
+      }
+    } catch (Throwable t) {
+      return ApiResponse.error(BAD_REQUEST, t.getMessage());
+    }
+
+    try {
+      UserIntent primaryIntent = taskParams.getPrimaryCluster().userIntent;
+      if (taskParams.size <= primaryIntent.deviceInfo.volumeSize) {
+        return ApiResponse.error(BAD_REQUEST, "Size can only be increased.");
+      }
+      if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
+        return ApiResponse.error(BAD_REQUEST, "Scratch type disk cannot be modified.");
+      }
+      if (primaryIntent.instanceType.startsWith("i3")) {
+        return ApiResponse.error(BAD_REQUEST, "Cannot modify i3 instance volumes.");
+      }
+
+      primaryIntent.deviceInfo.volumeSize = taskParams.size;
+      taskParams.universeUUID = universe.universeUUID;
+      taskParams.expectedUniverseVersion = universe.version;
+      LOG.info("Found universe {} : name={} at version={}.",
+        universe.universeUUID, universe.name, universe.version);
+
+      TaskType taskType = TaskType.UpdateDiskSize;
+      if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
+        return ApiResponse.error(BAD_REQUEST, "Kubernetes disk size increase not yet supported.");
+      }
+
+      UUID taskUUID = commissioner.submit(taskType, taskParams);
+      LOG.info("Submitted update disk universe for {} : {}, task uuid = {}.",
+        universe.universeUUID, universe.name, taskUUID);
+
+      CustomerTask.TaskType customerTaskType = CustomerTask.TaskType.UpdateDiskSize;
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        customerTaskType,
+        universe.name);
+      LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
+        universe.universeUUID, universe.name);
+      ObjectNode resultNode = Json.newObject();
+      resultNode.put("taskUUID", taskUUID.toString());
+      Audit.createAuditEntry(ctx(), request(), formData, taskUUID);
+      return Results.status(OK, resultNode);
+    } catch (Throwable t) {
+      LOG.error("Error updating disk for universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
   private void markAllUniverseTasksAsCompleted(UUID universeUUID) {
     List<CustomerTask> existingTasks = CustomerTask.findIncompleteByTargetUUID(universeUUID);
     if (existingTasks == null) {
@@ -1453,6 +1542,12 @@ public class UniverseController extends AuthenticatedController {
   }
 
   private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData, boolean isRolling) throws Exception {
+    return bindFormDataToTaskParams(formData, isRolling, false);
+  }
+
+  private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData,
+                                                                boolean isRolling,
+                                                                boolean isDisk) throws Exception {
     ObjectMapper mapper = new ObjectMapper();
     ArrayNode nodeSetArray = null;
     EncryptionAtRestConfig encryptionConfig = new EncryptionAtRestConfig();
@@ -1481,6 +1576,8 @@ public class UniverseController extends AuthenticatedController {
     List<Cluster> clusters = mapClustersInParams(formData);
     if (isRolling) {
       taskParams = mapper.treeToValue(formData, RollingRestartParams.class);
+    } else if (isDisk){
+      taskParams = mapper.treeToValue(formData, DiskIncreaseFormData.class);
     } else {
       taskParams = mapper.treeToValue(formData, UniverseDefinitionTaskParams.class);
     }
