@@ -127,7 +127,8 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
-    : metric_registry_(metrics),
+    : schema_(BuildTableSchema()),
+      metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master),
       leader_cb_(std::move(leader_cb)) {
@@ -207,7 +208,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   RETURN_NOT_OK(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
 
   // Verify that the schema is the current one
-  if (!metadata->schema().Equals(BuildTableSchema())) {
+  if (!metadata->schema().Equals(schema_)) {
     // TODO: In this case we probably should execute the migration step.
     return(STATUS(Corruption, "Unexpected schema", metadata->schema().ToString()));
   }
@@ -551,9 +552,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   tablet_peer()->RegisterMaintenanceOps(master_->maintenance_manager());
 
-  const Schema* schema = tablet->schema();
-  schema_ = SchemaBuilder(*schema).BuildWithoutIds();
-  schema_with_ids_ = SchemaBuilder(*schema).Build();
+  if (!tablet->schema()->Equals(schema_)) {
+    return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
+  }
   return Status::OK();
 }
 
@@ -683,16 +684,15 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
-  auto iter = tablet->NewRowIterator(schema_, boost::none);
-  RETURN_NOT_OK(iter);
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema_.CopyWithoutColumnIds(), boost::none));
 
-  auto doc_iter = dynamic_cast<yb::docdb::DocRowwiseIterator*>(iter->get());
+  auto doc_iter = dynamic_cast<yb::docdb::DocRowwiseIterator*>(iter.get());
   CHECK(doc_iter != nullptr);
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
-  QLAddInt8Condition(&cond, schema_with_ids_.column_id(type_col_idx), QL_OP_EQUAL, tables_entry);
+  QLAddInt8Condition(&cond, schema_.column_id(type_col_idx), QL_OP_EQUAL, tables_entry);
   yb::docdb::DocQLScanSpec spec(
-      schema_with_ids_, boost::none /* hash_code */, boost::none /* max_hash_code */,
+      schema_, boost::none /* hash_code */, boost::none /* max_hash_code */,
       {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
@@ -700,13 +700,13 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   QLValue entry_type, entry_id, metadata;
   uint64_t count = 0;
   auto start = CoarseMonoClock::Now();
-  while (VERIFY_RESULT((**iter).HasNext())) {
+  while (VERIFY_RESULT(iter->HasNext())) {
     ++count;
-    RETURN_NOT_OK((**iter).NextRow(&value_map));
-    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(type_col_idx), &entry_type));
+    RETURN_NOT_OK(iter->NextRow(&value_map));
+    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(type_col_idx), &entry_type));
     CHECK_EQ(entry_type.int8_value(), tables_entry);
-    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(entry_id_col_idx), &entry_id));
-    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(metadata_col_idx), &metadata));
+    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(entry_id_col_idx), &entry_id));
+    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(metadata_col_idx), &metadata));
     RETURN_NOT_OK(visitor->Visit(entry_id.binary_value(), metadata.binary_value()));
   }
   auto duration = CoarseMonoClock::Now() - start;
@@ -804,7 +804,7 @@ Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
 }
 
 Result<ColumnId> SysCatalogTable::MetadataColumnId() {
-  return schema_with_ids_.ColumnIdByName(kSysCatalogTableColMetadata);
+  return schema_.ColumnIdByName(kSysCatalogTableColMetadata);
 }
 
 } // namespace master

@@ -217,11 +217,8 @@ class SysCatalogTable {
   // Crashes due to an invariant check if the rpc server is not running.
   void InitLocalRaftPeerPB();
 
-  // Table schema, without IDs, used to send messages to the TabletPeer
-  Schema schema_;
-
   // Table schema, with IDs, used for the YQL write path.
-  Schema schema_with_ids_;
+  Schema schema_;
 
   MetricRegistry* metric_registry_;
 
