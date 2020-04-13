@@ -106,7 +106,7 @@ Enables YugabyteDB support for the Redis-compatible YEDIS API.
 
 For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-api).
 
-## Optional flags
+## Flags
 
 ##### --help, -h
 
