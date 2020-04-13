@@ -51,7 +51,7 @@ Status PgDmlWrite::Prepare() {
   // Setup descriptors for target and bind columns.
   target_desc_ = bind_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
 
-  // Allocate either INSERT, UPDATE, or DELETE request.
+  // Allocate either INSERT, UPDATE, DELETE, or TRUNCATE_COLOCATED request.
   AllocWriteRequest();
   PrepareColumns();
   return Status::OK();

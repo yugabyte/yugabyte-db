@@ -2925,12 +2925,9 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   auto l = table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
-  // Exit early if the table is colocated because it should be handled by a write DML.
-  // TODO(jason): prevent this code path by checking earlier, up to
-  // postgres/src/backend/commands/ybccmds.c (issue #3387).
-  if (IsColocatedUserTable(*table)) {
-    return Status::OK();
-  }
+  // Truncate on a colocated table should not hit master because it should be handled by a write
+  // DML that creates a table-level tombstone.
+  LOG_IF(WARNING, IsColocatedUserTable(*table)) << "cannot truncate a colocated table on master";
 
   // Send a Truncate() request to each tablet in the table.
   SendTruncateTableRequest(table);
@@ -3709,8 +3706,8 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     resp->set_version(l->data().pb.fully_applied_schema_version());
     resp->mutable_indexes()->CopyFrom(l->data().pb.fully_applied_indexes());
     if (l->data().pb.has_fully_applied_index_info()) {
-      *resp->mutable_index_info() = l->data().pb.fully_applied_index_info();
       resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
+      *resp->mutable_index_info() = l->data().pb.fully_applied_index_info();
     }
     VLOG(1) << " Returning "
             << " fully_applied_schema with version " << l->data().pb.fully_applied_schema_version()
@@ -3724,13 +3721,13 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     resp->set_version(l->data().pb.version());
     resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
     if (l->data().pb.has_index_info()) {
-      *resp->mutable_index_info() = l->data().pb.index_info();
       resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
+      *resp->mutable_index_info() = l->data().pb.index_info();
     }
     VLOG(1) << " Returning pb.schema() ";
   }
-  // TODO(bogdan): add back in replication_info once we allow overrides!
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
+  // TODO(bogdan): add back in replication_info once we allow overrides!
   resp->set_create_table_done(!table->IsCreateInProgress());
   resp->set_table_type(table->metadata().state().pb.table_type());
   resp->mutable_identifier()->set_table_name(l->data().pb.name());
@@ -3756,6 +3753,9 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   }
 
   resp->mutable_identifier()->mutable_namespace_()->set_name(ns->name());
+
+  resp->set_colocated(table->colocated());
+
   VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "
           << yb::ToString(*resp);
   return Status::OK();

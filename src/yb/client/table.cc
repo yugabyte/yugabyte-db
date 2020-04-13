@@ -126,6 +126,10 @@ const IndexInfo& YBTable::index_info() const {
   return kEmptyIndexInfo;
 }
 
+const bool YBTable::colocated() const {
+  return info_.colocated;
+}
+
 std::string YBTable::ToString() const {
   return strings::Substitute(
       "$0 $1 IndexInfo: $2 IndexMap $3", (IsIndex() ? "Index Table" : "Normal Table"), id(),

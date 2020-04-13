@@ -80,6 +80,10 @@ bool PgTableDesc::IsTransactional() const {
   return table_->schema().table_properties().is_transactional();
 }
 
+bool PgTableDesc::IsColocated() const {
+  return table_->colocated();
+}
+
 const std::vector<std::string>& PgTableDesc::GetPartitions() const {
   return table_->GetPartitions();
 }
