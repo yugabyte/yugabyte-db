@@ -51,7 +51,7 @@ The sections below cover the experimental setup and the details of the read and 
   - 60 GB RAM
   - 2 x 375 GB direct attached SSD
 - Replication factor (RF) = `3`
-- YugabyteDB version: `0.9.1.0`. All configuration options are default on the YugabyteDB nodes.
+- YugabyteDB version: `0.9.1.0`. All configuration flags are default on the YugabyteDB nodes.
 
 The workload was generated using a multi-threaded Cassandra key-value sample application that was run from `n1-highcpu-32` machines. The key and value sizes used were 40 and 16 bytes, respectively.
 

@@ -19,16 +19,16 @@ showAsideToc: true
 ## Syntax
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] <command> <options>
+yb-ts-cli [ --server_address=<host>:<port> ] <command> <flags>
 ```
 
 - *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 - *command*: The operation to be performed. See [Commands](#commands) below.
-- *options*: The options to be applied to the command. See [Options](#options).
+- *flags*: The flags to be applied to the command. See [Flags](#flags).
 
 ## Command line help
 
-To display the available online help, run `yb-ts-cli` without any commands or options (flags) at the YugabyteDB home directory.
+To display the available online help, run `yb-ts-cli` without any commands or flags at the YugabyteDB home directory.
 
 ```sh
 $ ./bin/yb-ts-cli
@@ -113,7 +113,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] list_tablets
 
 ##### set_flag
 
-Sets the specified configuration option (flag) for the tablet server.
+Sets the specified configuration flag for the tablet server.
 
 **Syntax**
 
@@ -122,15 +122,15 @@ $ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag>
 ```
 
 - *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-- --force: Flag to to allow a change to a flag (option) that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided. See [--force](#force).
-- *flag*: The `yb-tserver` configuration option (without the `--` prefix) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-options)
+- --force: Flag to to allow a change to a flag that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided. See [--force](#force).
+- *flag*: The `yb-tserver` configuration flag (without the `--` prefix) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-flags)
 - *value*: The value to be applied.
 
 {{< note title="Important" >}}
 
 The `set_flag` command changes the in-memory value of the specified flag, atomically, for a running process and can alter its behavior.  **The change does NOT persist across restarts.**
 
-In practice, there are some flags (options) that are runtime safe to change (runtime-settable) and some that are not. For example, the bind address of the server cannot be changed at runtime, since the server binds just once at startup. While most of the flags are probably runtime-settable, we need to review the flags and note in the configuration pages which flags are not runtime-settable. (See GitHub issue [#3534](https://github.com/yugabyte/yugabyte-db/issues/3534)).
+In practice, there are some flags that are runtime safe to change (runtime-settable) and some that are not. For example, the bind address of the server cannot be changed at runtime, since the server binds just once at startup. While most of the flags are probably runtime-settable, we need to review the flags and note in the configuration pages which flags are not runtime-settable. (See GitHub issue [#3534](https://github.com/yugabyte/yugabyte-db/issues/3534)).
 
 One typical operational flow is that you can use this to modify runtime flags in memory and then out of band also modify the configuration file that the server uses to start. This allows for flags to be changed on running processes, without executing a restart of the process.
 
@@ -150,13 +150,13 @@ $ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] status
 
 For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
 
-## Options
+## Flags
 
-The following options (or flags) can be used, when specified, with the commands above.
+The following flags can be used, when specified, with the commands above.
 
 ##### --force
 
-Use this flag with the [`set_flag`](#set-flag) command to allow a change to a flag (option) that is not explicitly marked as runtime-settable. TNote that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided.
+Use this flag with the [`set_flag`](#set-flag) command to allow a change to a flag that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided.
 
 Default: `false`
 

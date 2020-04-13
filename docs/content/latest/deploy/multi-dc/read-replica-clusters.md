@@ -44,16 +44,16 @@ Follow the steps here to deploy a read replica cluster that will asynchronously 
     - *replication_factor*: The total number of read replicas.
     - *placement_uuid*: The identifier for the read replica cluster, using a meaningful string.
 
-4. Start the primary `yb-tserver` services, including the following configuration options (flags):
+4. Start the primary `yb-tserver` services, including the following configuration flags:
 
    - [--placement_cloud *placement_cloud*](../../../reference/configuration/yb-tserver/#placement-cloud)
    - [--placement_region *placement_region*](../../../reference/configuration/yb-tserver/#placement-region)
    - [--placement_zone *placement_zone*](../../../reference/configuration/yb-tserver/#placement-zone)
    - [--placement_uuid *live_id*](../../../reference/configuration/yb-tserver/#placement-uuid)
 
-    **Note:** The placements should match the information in step 2. You do not need to add these configuration options to your `yb-master` configurations.
+    **Note:** The placements should match the information in step 2. You do not need to add these configuration flags to your `yb-master` configurations.
 
-5. Start the read replica `yb-tserver` services, including the following configuration options (flags):
+5. Start the read replica `yb-tserver` services, including the following configuration flags:
 
    - [--placement_cloud *placement_cloud*](../../../reference/configuration/yb-tserver/#placement-cloud)
    - [--placement_region *placement_region*](../../../reference/configuration/yb-tserver/#placement-region)

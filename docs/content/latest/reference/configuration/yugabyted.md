@@ -30,11 +30,11 @@ yugabyted currently supports creating a 1-node cluster only. Ability to create m
 ## Syntax
 
 ```sh
-yugabyted [-h] [ <command> ] [ <options> ]
+yugabyted [-h] [ <command> ] [ <flags> ]
 ```
 
 - *command*: command to run
-- *options*: one or more options, separated by spaces.
+- *flags*: one or more flags, separated by spaces.
 
 ### Example 
 
@@ -97,7 +97,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your
    [ --ui <bool> ]
 ```
 
-#### Options
+#### Flags
 
 ##### -h, --help
 
@@ -170,7 +170,7 @@ Use the `yugabted stop` command to stop a YugabyteDB cluster.
 yugabyted stop [ -h ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
-#### Options
+#### Flags
 
 ##### -h | --help
 
@@ -196,7 +196,7 @@ Use the `yugabyted status` command to check the status.
 yugabyted status [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
-#### Options
+#### Flags
 
 ##### -h --help
 
@@ -222,7 +222,7 @@ Use the `yugabyted version` command to check the version number.
 yugabyted version [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
-#### Options
+#### Flags
 
 ##### -h | --help
 
@@ -254,7 +254,7 @@ When you quit the demo instance, the retail demo database is deleted and any cha
 yugabyted demo [ -h | -help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
-#### Options
+#### Flags
 
 ##### -h | --help
 
