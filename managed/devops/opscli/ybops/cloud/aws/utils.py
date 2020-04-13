@@ -976,6 +976,22 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
     instance.create_tags(Tags=customer_tags)
 
 
+def update_disk(args, instance_id):
+    ec2_client = boto3.client('ec2', region_name=args.region)
+    device_names = set(get_device_names(args.instance_type, args.num_volumes))
+    instance = get_client(args.region).Instance(instance_id)
+    vol_ids = list()
+    for volume in instance.volumes.all():
+        for attachment in volume.attachments:
+            # Format of device name is /dev/xvd{} or /dev/nvme{}n1
+            if attachment['Device'].replace('/dev/', '') in device_names:
+                print("Updating volume {}".format(volume.id))
+                vol_ids.append(volume.id)
+                ec2_client.modify_volume(VolumeId=volume.id, Size=args.volume_size)
+    # Wait for volumes to be ready.
+    _wait_for_disk_modifications(ec2_client, vol_ids)
+
+
 def delete_route(rt, cidr):
     route = get_route_by_cidr(rt, cidr)
     if route is not None:
@@ -1035,3 +1051,24 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
           'Delay': 10,
           'MaxAttempts': 60
         })
+
+
+def _wait_for_disk_modifications(ec2_client, vol_ids):
+    num_vols_completed = 0
+    num_vols_to_modify = len(vol_ids)
+    # Loop till the progress is at 100
+    while True:
+        response = ec2_client.describe_volumes_modifications(VolumeIds=vol_ids)
+        # The response format can be found here:
+        # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_volumes_modifications
+        for entry in response['VolumesModifications']:
+            if entry['Progress'] == 100:
+                if entry['ModificationState'] != 'completed':
+                    raise YBOpsRuntimeError(("Disk {} could not be modified.").format(
+                        entry['VolumeId']))
+                else:
+                    num_vols_completed += 1
+        # This means all volumes have completed modification.
+        if num_vols_completed == num_vols_to_modify:
+            break
+        time.sleep(WAIT_TIME_BETWEEN_RETRIES)

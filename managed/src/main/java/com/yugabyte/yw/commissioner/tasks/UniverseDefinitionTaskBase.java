@@ -465,6 +465,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates a task list to update the disk size of the nodes.
+   *
+   * @param nodes : a collection of nodes that need to be updated.
+   */
+  public void createUpdateDiskSizeTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
+    for (NodeDetails node : nodes) {
+      InstanceActions.Params params = new InstanceActions.Params();
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add device info.
+      params.deviceInfo = userIntent.deviceInfo;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
+      // Create and add a task for this node.
+      InstanceActions task = new InstanceActions(NodeManager.NodeCommandType.Disk_Update);
+      task.initialize(params);
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    subTaskGroupQueue.add(subTaskGroup);
+  }
+
+  /**
    * Creates a task list to start the tservers on the set of passed in nodes and adds it to the task
    * queue.
    *

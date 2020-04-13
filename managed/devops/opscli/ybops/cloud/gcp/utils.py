@@ -530,6 +530,27 @@ class GoogleCloudAdmin():
                                                         body=body).execute()
         self.waiter.wait(operation, zone)
 
+    def update_disk(self, args, instance):
+        zone = args.zone
+        instance_info = self.compute.instances().get(project=self.project, zone=zone,
+                                                     instance=instance).execute()
+        body = {
+            "sizeGb": args.volume_size
+        }
+        print ("Got instance info: " + str(instance_info))
+        for disk in instance_info['disks']:
+            # Bootdisk should be ignored.
+            if disk['index'] != 0:
+                # The source is the complete URL of the disk, with the last
+                # component being the name.
+                disk_name = disk['source'].split('/')[-1]
+                print("Updating disk " + disk_name)
+                operation = self.compute.disks().resize(project=self.project,
+                                                        zone=zone,
+                                                        disk=disk_name,
+                                                        body=body).execute()
+                self.waiter.wait(operation, zone=zone)
+
     def delete_instance(self, zone, instance_name):
         operation = self.compute.instances().delete(project=self.project,
                                                     zone=zone,

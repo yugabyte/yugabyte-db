@@ -388,6 +388,11 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
         break;
+      case Disk_Update:
+        InstanceActions.Params taskParam = (InstanceActions.Params) params;
+        expectedCommand.add("--instance_type");
+        expectedCommand.add(taskParam.instanceType);
+        break;
     }
     if (params.deviceInfo != null) {
       DeviceInfo deviceInfo = params.deviceInfo;
@@ -1224,6 +1229,22 @@ public class NodeManagerTest extends FakeDBApplication {
                 re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
           }
         }
+    }
+  }
+
+  @Test
+  public void testDiskUpdate() {
+    for (TestData t : testData) {
+      InstanceActions.Params params = new InstanceActions.Params();
+      UUID univUUID = createUniverse().universeUUID;
+      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      buildValidParams(t, params, universe);
+      addValidDeviceInfo(t, params);
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Disk_Update, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Disk_Update, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 }

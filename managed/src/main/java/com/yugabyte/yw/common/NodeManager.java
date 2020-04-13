@@ -66,7 +66,8 @@ public class NodeManager extends DevopsBase {
     List,
     Control,
     Tags,
-    InitYSQL
+    InitYSQL,
+    Disk_Update
   }
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -471,6 +472,19 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--remove_tags");
             commandArgs.add(taskParam.deleteTags);
           }
+        }
+        break;
+      }
+      case Disk_Update: {
+        if (!(nodeTaskParam instanceof InstanceActions.Params)) {
+          throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
+        }
+        InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
+        commandArgs.add("--instance_type");
+        commandArgs.add(taskParam.instanceType);
+        if (taskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(taskParam));
         }
         break;
       }

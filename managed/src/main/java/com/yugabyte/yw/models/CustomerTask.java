@@ -75,6 +75,9 @@ public class CustomerTask extends Model {
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 
+    @EnumValue("UpdateDiskSize")
+    UpdateDiskSize,
+
     @EnumValue("UpgradeGflags")
     UpgradeGflags,
 
