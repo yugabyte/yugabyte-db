@@ -97,9 +97,9 @@ yb-tserver-1   1/1     Running   0          3m31s
 yb-tserver-2   1/1     Running   0          3m31s
 ```
 
-## Configuration options
+## Configuration flags
 
-For configuration options, see [Configuration options](../yugabyte-operator/#configuration-options).
+For configuration flags, see [Configuration flags](../yugabyte-operator/#configuration-flags).
 
 ## Use YugabyteDB
 

@@ -18,7 +18,7 @@ The [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../..
 
 ## Data collected
 
-The data collected depends on the collection level set. See [Configuration options](#configuration-options) below on how to change the collection level.
+The data collected depends on the collection level set. See [Configuration flags](#configuration-flags) below on how to change the collection level.
 
 ### Collection level: low
 
@@ -46,7 +46,7 @@ RPC metrics
 
 ### Collection level: high
 
-Same as `medium` level. In other words, no extra information is collected for this level. It will be used in the future to collect additional dianostics information such as error logs.
+Same as `medium` level. In other words, no extra information is collected for this level. It will be used in the future to collect additional diagnostics information such as error logs.
 
 #### Example of metrics collected
 
@@ -108,9 +108,9 @@ Same as `medium` level. In other words, no extra information is collected for th
 }
 ```
 
-## Configuration options
+## Configuration flags
 
-You can add the following configuration options, or flags, while starting the [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes to configure the diagnostics reporting behavior of YugabyteDB.
+You can add the following configuration flags while starting the [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes to configure the diagnostics reporting behavior of YugabyteDB.
 
 Flag | Default | Description
 ----------------------|---------|------------------------

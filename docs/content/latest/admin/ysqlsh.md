@@ -47,9 +47,9 @@ Run `ysqlsh --help` to display the online help.
 ysqlsh [ <option>...] [ <dbname> [ <username> ]]
 ```
 
-### Default options
+### Default flags
 
-When you open `ysqlsh`, the following default options (aka flags) are set so that the user does not have to specify them.
+When you open `ysqlsh`, the following default flags (aka flags) are set so that the user does not have to specify them.
 
 - host: `-h 127.0.0.1`
 - port: `-p 5433`
@@ -63,7 +63,7 @@ For v2.0.0 users, the default user `yugabyte` has no password. If you do not wan
 
 {{< /note >}}
 
-## Options
+## Flags
 
 ##### -a, --echo-all
 
@@ -79,9 +79,9 @@ Print failed SQL statements to standard error output. This is equivalent to sett
 
 ##### -c *command*, --command=*command*
 
-Specifies that `ysqlsh` is to execute the given command string, *command*. This option can be repeated and combined in any order with the `-f` option. When either `-c` or `-f` is specified, `ysqlsh` does not read commands from standard input; instead it terminates after processing all the `-c` and `-f` options in sequence.
+Specifies that `ysqlsh` is to execute the given command string, *command*. This flag can be repeated and combined in any order with the `-f` flag. When either `-c` or `-f` is specified, `ysqlsh` does not read commands from standard input; instead it terminates after processing all the `-c` and `-f` flags in sequence.
 
-The command (*command*) must be either a command string that is completely parsable by the server (that is, it contains no `ysqlsh`-specific features), or a single backslash (`\`) command. Thus, you cannot mix SQL and `ysqlsh` meta-commands within a `-c` option. To achieve that, you could use repeated `-c` options or pipe the string into `ysqlsh`, for example:
+The command (*command*) must be either a command string that is completely parsable by the server (that is, it contains no `ysqlsh`-specific features), or a single backslash (`\`) command. Thus, you cannot mix SQL and `ysqlsh` meta-commands within a `-c` flag. To achieve that, you could use repeated `-c` flags or pipe the string into `ysqlsh`, for example:
 
 ```postgresql
 ysqlsh -c '\x' -c 'SELECT * FROM foo;'

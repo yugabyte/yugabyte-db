@@ -42,7 +42,7 @@ Operational characteristics can be defined as the runtime concerns that arise wh
 | Operational characteristics  | SQL | NoSQL | YugabyteDB |
 | --------------- | ---------------- | ------------------ | ------------------ |
 | Automatic sharding | No | Sometimes | Yes
-| Linear scalability | No | Yes | Yes 
+| Linear scalability | No | Yes | Yes
 | Fault tolerance | No - manual setup | Yes - smart client detects failed nodes | Yes - smart client detects failed nodes
 | Data resilience | No | Yes - but rebuilds cause high latencies | Yes - automatic, efficient data rebuilds
 | Geo-distributed | No - manual setup | Sometimes | Yes
@@ -54,7 +54,7 @@ Operational characteristics can be defined as the runtime concerns that arise wh
 
 ## Core features
 
-Applications and cloud services depend on databases for a variety of built-in features. These can include the ability to perform multi-row transactions, JSON or document support, secondary indexes, automatic data expiry with TTLs, and so on.
+Applications and cloud services depend on databases for a variety of built-in features. These can include the ability to perform multi-row transactions, JSON or document support, secondary indexes, automatic data expiration with TTLs, and so on.
 
 Here is a table that lists some of the important features that YugabyteDB supports, and which of YugabyteDB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
 

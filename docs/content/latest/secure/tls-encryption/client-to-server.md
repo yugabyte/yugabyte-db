@@ -24,23 +24,23 @@ Before you can enable client-to-server encryption, you first must [enable server
 
 ## Configure YB-TServer nodes
 
-To enable client-to-server encryption for YSQL and YCQL, start your YB-TServer services with the required options described below. Your YB-Master services do not require additional configuration.
+To enable client-to-server encryption for YSQL and YCQL, start your YB-TServer services with the required flags described below. Your YB-Master services do not require additional configuration.
 
-Configuration option (flag)          | Process    | Description                  |
+Configuration flag                   | Process    | Description                  |
 -------------------------------------|------------|------------------------------|
 [`--use_client_to_server_encryption`](../../../admin/yb-tserver/#use-client-to-server-encryption)  | YB-TServer | Set to `true` to enable encryption between the various YugabyteDB clients and the database cluster. Default value is `false`. |
-[`--allow_insecure_connections`](../../../admin/yb-tserver/#allow-insecure-connections)         | YB-TServer | Set to `false` to disallow any client with unencrypted communication from joining this cluster. Default value is `true`. Note that this option requires `--use_client_to_server_encryption` to be enabled. |
+[`--allow_insecure_connections`](../../../admin/yb-tserver/#allow-insecure-connections)         | YB-TServer | Set to `false` to disallow any client with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires `--use_client_to_server_encryption` to be enabled. |
 [`--certs_for_client_dir`](../../../admin/yb-tserver/#certs-for-client-dir)               | YB-TServer | Optional. Defaults to the same directory as the server-to-server encryption. This directory should contain the configuration for the client to perform TLS communication with the cluster. Default value for YB-TServer is `<data drive>/yb-data/tserver/data/certs`  |
 
-To enable access control, follow these steps, start the `yb-tserver` services with the following option (described above):
+To enable access control, follow these steps, start the `yb-tserver` services with the following flag (described above):
   
 ```
 --use_client_to_server_encryption=true`
 ```
 
-This option enables both encrypted and unencrypted clients to connect to the cluster.
+This flag enables both encrypted and unencrypted clients to connect to the cluster.
 
-To prevent clients without the appropriate encryption from connecting, you must add the following option:
+To prevent clients without the appropriate encryption from connecting, you must add the following flag:
 
 ```
 --allow_insecure_connections=false`

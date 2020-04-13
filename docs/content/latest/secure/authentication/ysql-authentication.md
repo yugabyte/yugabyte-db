@@ -66,7 +66,7 @@ Assuming that you've successfully added a password for the `yugabyte` user, you 
 
 ### Start local clusters
 
-To enable YSQL authentication in your local YugabyteDB clusters, you can add the add the [--ysql_enable_auth option](../../../reference/configuration/yb-tserver/#ysql-options) via the [--tserver_flags option](../../../admin/yb-ctl/#create-a-cluster-with-custom-flags) with the `yb-ctl create`, `yb-ctl start`, and `yb-ctl restart`.
+To enable YSQL authentication in your local YugabyteDB clusters, you can add the add the [--ysql_enable_auth flag](../../../reference/configuration/yb-tserver/#ysql-flags) via the [--tserver_flags flag](../../../admin/yb-ctl/#create-a-cluster-with-custom-flags) with the `yb-ctl create`, `yb-ctl start`, and `yb-ctl restart`.
 
 When you create a local cluster, you can run the `yb-ctl create` command like this to enable YSQL authentication in the newly-created cluster.
 
@@ -80,7 +80,7 @@ After your local cluster has been created, you can enable YSQL authentication wh
 ./bin/yb-ctl start --tserver_flags "ysql_enable_auth=true"
 ```
 
-To restart your cluster, you can run the `yb-ctl restart` command with  the `--tserver_flags` option to restart your cluster, like this:
+To restart your cluster, you can run the `yb-ctl restart` command with  the `--tserver_flags` flag to restart your cluster, like this:
 
 ```sh
 ./bin/yb-ctl restart --tserver_flags "ysql_enable_auth=true"
@@ -88,7 +88,7 @@ To restart your cluster, you can run the `yb-ctl restart` command with  the `--t
 
 ### Start YB-TServer services
 
-To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [`--ysql_enable_auth` option](../../../reference/configuration/yb-tserver#ysql-enable-auth). Your command should look similar to this command:
+To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [`--ysql_enable_auth` flag](../../../reference/configuration/yb-tserver#ysql-enable-auth). Your command should look similar to this command:
 
 ```sh
 ./bin/yb-tserver \
