@@ -1552,6 +1552,89 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
 
 namespace {
 
+std::array<PartitionPB, 2> CreateNewTabletsPartition(
+    const TabletInfo& tablet_info, const std::string& split_partition_key) {
+  const auto& source_partition = tablet_info.LockForRead()->data().pb.partition();
+
+  std::array<PartitionPB, 2> new_tablets_partition;
+
+  new_tablets_partition.fill(source_partition);
+
+  new_tablets_partition[0].set_partition_key_end(split_partition_key);
+  new_tablets_partition[1].set_partition_key_start(split_partition_key);
+
+  return new_tablets_partition;
+}
+
+}  // namespace
+
+Status CatalogManager::TEST_SplitTablet(
+    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
+  RETURN_NOT_OK(CheckOnline());
+  return DoSplitTablet(source_tablet_info, split_hash_code);
+}
+
+Status CatalogManager::DoSplitTablet(
+    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
+  const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
+
+  constexpr auto kNumSplitParts = 2;
+
+  std::array<PartitionPB, kNumSplitParts> new_tablets_partition = CreateNewTabletsPartition(
+      *source_tablet_info, split_partition_key);
+
+  std::array<TabletId, kNumSplitParts> new_tablet_ids;
+  for (int i = 0; i < kNumSplitParts; ++i) {
+    auto* new_tablet_info = VERIFY_RESULT(
+        RegisterNewTabletForSplit(*source_tablet_info, new_tablets_partition[i]));
+    new_tablet_ids[i] = new_tablet_info->id();
+  }
+
+  docdb::KeyBytes split_encoded_key;
+  docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
+      .Hash(split_hash_code, std::vector<docdb::PrimitiveValue>());
+
+  // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
+  // split? Add unit-test.
+  SendSplitTabletRequest(
+      source_tablet_info, new_tablet_ids, split_encoded_key.data(), split_partition_key);
+
+  return Status::OK();
+}
+
+Status CatalogManager::SplitTablet(
+    const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+
+  const auto source_tablet_id = req->tablet_id();
+
+  scoped_refptr<TabletInfo> source_tablet_info;
+  {
+    std::lock_guard<LockType> l(lock_);
+    TRACE("Acquired catalog manager lock");
+
+    source_tablet_info = FindPtrOrNull(*tablet_map_, source_tablet_id);
+    SCHECK(
+        source_tablet_info != nullptr, NotFound, Format("Tablet $0 not found", source_tablet_id));
+  }
+
+  const auto source_partition = source_tablet_info->LockForRead()->data().pb.partition();
+
+  const auto start_hash_code = source_partition.partition_key_start().empty()
+      ? 0
+      : PartitionSchema::DecodeMultiColumnHashValue(source_partition.partition_key_start());
+
+  const auto end_hash_code = source_partition.partition_key_end().empty()
+      ? std::numeric_limits<docdb::DocKeyHash>::max()
+      : PartitionSchema::DecodeMultiColumnHashValue(source_partition.partition_key_end());
+
+  const auto split_hash_code = (start_hash_code + end_hash_code) / 2;
+
+  return DoSplitTablet(source_tablet_info, split_hash_code);
+}
+
+namespace {
+
 CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {
   if (schema.has_column_ids()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
@@ -1570,7 +1653,7 @@ CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableRespon
   return Status::OK();
 }
 
-} // namespace
+}  // namespace
 
 Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
                                            CreateTableResponsePB* resp,
@@ -3573,27 +3656,27 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
-Result<TabletInfo*> CatalogManager::TEST_RegisterNewTablet(
-    const TabletId& source_tablet_id, const PartitionPB& partition) {
-  std::lock_guard<LockType> l(lock_);
+Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
+    const TabletInfo& source_tablet_info, const PartitionPB& partition) {
+  const auto table_lock = source_tablet_info.LockForRead();
 
-  scoped_refptr<TabletInfo> source_tablet = FindPtrOrNull(*tablet_map_, source_tablet_id);
-  if (!source_tablet) {
-    return STATUS(NotFound, "Tablet $0 not found", source_tablet_id);
-  }
-
-  const auto& table = source_tablet->table();
+  const auto& table = source_tablet_info.table();
   TabletInfo* new_tablet = CreateTabletInfo(table.get(), partition);
-  new_tablet->mutable_metadata()->mutable_dirty()->pb.set_state(SysTabletsEntryPB::CREATING);
+  const auto& source_tablet_meta = table_lock->data().pb;
 
-  table->AddTablet(new_tablet);
+  auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
+  new_tablet_meta.set_state(SysTabletsEntryPB::CREATING);
+  new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
+      source_tablet_meta.committed_consensus_state());
+  new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
+  new_tablet->mutable_metadata()->CommitMutation();
   {
+    std::lock_guard<LockType> l(lock_);
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
-  new_tablet->mutable_metadata()->CommitMutation();
-  LOG(INFO) << "TEST: Registered new tablet: " << new_tablet->ToString() << " for table "
-            << table->ToString();
+  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " to split the tablet "
+            << source_tablet_info.tablet_id() << " for table " << table->ToString();
 
   return new_tablet;
 }
@@ -4181,6 +4264,11 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
           VLOG(1) << "Tablet " << tablet->ToString() << " is now online";
           tablet_lock->mutable_data()->set_state(SysTabletsEntryPB::RUNNING,
               "Tablet reported with an active leader");
+          // TODO(tsplit): consider and handle failure scenarios, for example:
+          // - Crash or leader failover before sending out the split tasks.
+          // - Long enough partition while trying to send out the splits so that they timeout and
+          //   not get executed.
+          tablet->table()->MaybeAddTabletForSplit(tablet.get(), tablet_lock.get());
           tablet_was_mutated = true;
         }
 
@@ -5552,6 +5640,19 @@ void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo
   auto call = std::make_shared<AsyncCopartitionTable>(master_, worker_pool_.get(), tablet, table);
   table->AddTask(call);
   WARN_NOT_OK(call->Run(), "Failed to send copartition table request");
+}
+
+void CatalogManager::SendSplitTabletRequest(
+    const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, 2> new_tablet_ids,
+    const std::string& split_encoded_key, const std::string& split_partition_key) {
+  VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
+          << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
+  auto call = std::make_shared<AsyncSplitTablet>(
+      master_, worker_pool_.get(), tablet, new_tablet_ids, split_encoded_key, split_partition_key);
+  tablet->table()->AddTask(call);
+  WARN_NOT_OK(
+      call->Run(),
+      Format("Failed to send split tablet request for tablet $0", tablet->tablet_id()));
 }
 
 void CatalogManager::DeleteTabletReplicas(

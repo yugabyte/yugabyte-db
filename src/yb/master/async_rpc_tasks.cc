@@ -406,6 +406,29 @@ bool RetryingTSRpcTask::TransitionToWaitingState(MonitoredTaskState expected) {
 }
 
 // ============================================================================
+//  Class AsyncTabletLeaderTask.
+// ============================================================================
+AsyncTabletLeaderTask::AsyncTabletLeaderTask(
+    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
+    : RetryingTSRpcTask(
+          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+          tablet->table().get()),
+      tablet_(tablet) {
+}
+
+std::string AsyncTabletLeaderTask::description() const {
+  return type_name() + " RPC for " + tablet_->ToString();
+}
+
+TabletId AsyncTabletLeaderTask::tablet_id() const {
+  return tablet_->tablet_id();
+}
+
+TabletServerId AsyncTabletLeaderTask::permanent_uuid() const {
+  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
+}
+
+// ============================================================================
 //  Class AsyncCreateReplica.
 // ============================================================================
 AsyncCreateReplica::AsyncCreateReplica(Master *master,
@@ -537,28 +560,6 @@ void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
 // ============================================================================
 //  Class AsyncAlterTable.
 // ============================================================================
-AsyncAlterTable::AsyncAlterTable(Master *master,
-                                 ThreadPool* callback_pool,
-                                 const scoped_refptr<TabletInfo>& tablet)
-  : RetryingTSRpcTask(master,
-                      callback_pool,
-                      gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-                      tablet->table().get()),
-    tablet_(tablet) {
-}
-
-string AsyncAlterTable::description() const {
-  return type_name() + " RPC for " + tablet_->ToString();
-}
-
-TabletId AsyncAlterTable::tablet_id() const {
-  return tablet_->tablet_id();
-}
-
-TabletServerId AsyncAlterTable::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
-}
-
 void AsyncAlterTable::HandleResponse(int attempt) {
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
@@ -709,28 +710,6 @@ void AsyncCopartitionTable::HandleResponse(int attempt) {
 // ============================================================================
 //  Class AsyncTruncate.
 // ============================================================================
-AsyncTruncate::AsyncTruncate(Master *master,
-                             ThreadPool* callback_pool,
-                             const scoped_refptr<TabletInfo>& tablet)
-    : RetryingTSRpcTask(master,
-                        callback_pool,
-                        gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-                        tablet->table().get()),
-      tablet_(tablet) {
-}
-
-string AsyncTruncate::description() const {
-  return "Truncate Tablet RPC for " + tablet_->ToString();
-}
-
-TabletId AsyncTruncate::tablet_id() const {
-  return tablet_->tablet_id();
-}
-
-TabletServerId AsyncTruncate::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
-}
-
 void AsyncTruncate::HandleResponse(int attempt) {
   if (resp_.has_error()) {
     const Status s = StatusFromPB(resp_.error().status());
@@ -1115,6 +1094,45 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
   ts_admin_proxy_->RemoveTableFromTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send RemoveTableFromTablet request (attempt " << attempt << "):\n"
           << req_.DebugString();
+  return true;
+}
+
+// ============================================================================
+//  Class AsyncSplitTablet.
+// ============================================================================
+AsyncSplitTablet::AsyncSplitTablet(
+    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    const std::array<TabletId, 2>& new_tablet_ids, const std::string& split_encoded_key,
+    const std::string& split_partition_key)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet) {
+  req_.set_tablet_id(tablet_id());
+  req_.set_new_tablet1_id(new_tablet_ids[0]);
+  req_.set_new_tablet2_id(new_tablet_ids[1]);
+  req_.set_split_encoded_key(split_encoded_key);
+  req_.set_split_partition_key(split_partition_key);
+}
+
+void AsyncSplitTablet::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    const Status s = StatusFromPB(resp_.error().status());
+    const TabletServerErrorPB::Code code = resp_.error().code();
+    LOG(WARNING) << "TS " << permanent_uuid() << ": split (attempt " << attempt
+                 << ") failed for tablet " << tablet_id() << " with error code "
+                 << TabletServerErrorPB::Code_Name(code) << ": " << s;
+  } else {
+    VLOG(1) << "TS " << permanent_uuid() << ": split complete on tablet " << tablet_id();
+    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+  }
+
+  server::UpdateClock(resp_, master_->clock());
+}
+
+bool AsyncSplitTablet::SendRequest(int attempt) {
+  req_.set_dest_uuid(permanent_uuid());
+  req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  ts_admin_proxy_->SplitTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG(1) << "Sent split tablet request to " << permanent_uuid() << " (attempt " << attempt
+          << "):\n" << req_.DebugString();
   return true;
 }
 

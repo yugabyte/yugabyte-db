@@ -18,17 +18,22 @@
 
 #include <boost/optional/optional.hpp>
 
+#include "yb/common/entity_ids.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/tserver/tserver_admin.pb.h"
-#include "yb/tserver/tserver_service.pb.h"
 
-#include "yb/common/entity_ids.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/server/monitored_task.h"
+
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/status.h"
 #include "yb/util/memory/memory.h"
 
@@ -249,6 +254,21 @@ class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
   const std::string permanent_uuid_;
 };
 
+// RetryingTSRpcTask subclass which retries sending an RPC to a tablet leader.
+class AsyncTabletLeaderTask : public RetryingTSRpcTask {
+ public:
+  AsyncTabletLeaderTask(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet);
+
+  std::string description() const override;
+
+ protected:
+  TabletServerId permanent_uuid() const;
+  TabletId tablet_id() const override;
+
+  scoped_refptr<TabletInfo> tablet_;
+};
+
 // Fire off the async create tablet.
 // This requires that the new tablet info is locked for write, and the
 // consensus configuration information has been filled into the 'dirty' data.
@@ -324,26 +344,18 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
 //  - Tablet has already a newer version
 //    (which may happen in case of concurrent alters, or in case a previous attempt timed
 //     out but was actually applied).
-class AsyncAlterTable : public RetryingTSRpcTask {
+class AsyncAlterTable : public AsyncTabletLeaderTask {
  public:
-  AsyncAlterTable(Master *master,
-                  ThreadPool* callback_pool,
-                  const scoped_refptr<TabletInfo>& tablet);
+  AsyncAlterTable(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet) {}
 
   Type type() const override { return ASYNC_ALTER_TABLE; }
 
   std::string type_name() const override { return "Alter Table"; }
 
-  std::string description() const override;
-
  protected:
-  TabletServerId permanent_uuid() const;
-
   uint32_t schema_version_;
-  scoped_refptr<TabletInfo> tablet_;
-
-  TabletId tablet_id() const override;
-
   tserver::ChangeMetadataResponsePB resp_;
 
  private:
@@ -392,27 +404,21 @@ class AsyncCopartitionTable : public RetryingTSRpcTask {
 };
 
 // Send a Truncate() RPC request.
-class AsyncTruncate : public RetryingTSRpcTask {
+class AsyncTruncate : public AsyncTabletLeaderTask {
  public:
-  AsyncTruncate(Master* master,
-                ThreadPool* callback_pool,
-                const scoped_refptr<TabletInfo>& tablet);
+  AsyncTruncate(Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet) {}
 
   Type type() const override { return ASYNC_TRUNCATE_TABLET; }
 
+  // TODO: Could move Type to the outer scope and use YB_DEFINE_ENUM for it. So type_name() could
+  // be removed.
   std::string type_name() const override { return "Truncate Tablet"; }
 
-  std::string description() const override;
-
  protected:
-  TabletId tablet_id() const override;
-
-  TabletServerId permanent_uuid() const;
-
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
 
-  scoped_refptr<TabletInfo> tablet_;
   tserver::TruncateResponsePB resp_;
 };
 
@@ -591,6 +597,27 @@ class AsyncRemoveTableFromTablet : public RetryingTSRpcTask {
   const TabletId tablet_id_;
   tserver::RemoveTableFromTabletRequestPB req_;
   tserver::RemoveTableFromTabletResponsePB resp_;
+};
+
+// Sends SplitTabletRequest with provided arguments to the service interface of the leader of the
+// tablet.
+class AsyncSplitTablet : public AsyncTabletLeaderTask {
+ public:
+  AsyncSplitTablet(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const std::array<TabletId, 2>& new_tablet_ids, const std::string& split_encoded_key,
+      const std::string& split_partition_key);
+
+  Type type() const override { return ASYNC_SPLIT_TABLET; }
+
+  std::string type_name() const override { return "Split Tablet"; }
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  tserver::SplitTabletRequestPB req_;
+  tserver::SplitTabletResponsePB resp_;
 };
 
 } // namespace master
