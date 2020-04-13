@@ -23,6 +23,7 @@
 #include "yb/master/master_error.h"
 #include "yb/master/sys_catalog_writer.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
@@ -451,7 +452,7 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    RETURN_NOT_OK(context_.ApplyOperationState(state, /* batch_idx= */ -1, write_batch));
+    RETURN_NOT_OK(state.tablet()->ApplyOperationState(state, /* batch_idx= */ -1, write_batch));
 
     if (!tablet_infos.empty()) {
       auto snapshot_id_str = id.AsSlice().ToBuffer();
@@ -472,7 +473,12 @@ class MasterSnapshotCoordinator::Impl {
     std::lock_guard<std::mutex> lock(mutex_);
     auto emplace_result = snapshots_.emplace(snapshot_id, std::move(snapshot));
     if (!emplace_result.second) {
-      return STATUS_FORMAT(IllegalState, "Duplicate snapshot id: $0", snapshot_id);
+      // During sys catalog bootstrap we replay WAL, that could contain "create snapshot" operation.
+      // In this case we add snapshot to snapshots_ and write it data into RocksDB.
+      // Bootstrap sys catalog tries to load all entries from RocksDB, so could find recently
+      // added entry and try to Load it.
+      // So we could just ignore it in this case.
+      return Status::OK();
     }
 
     return Status::OK();
@@ -529,7 +535,8 @@ class MasterSnapshotCoordinator::Impl {
         tablet_infos = snapshot.TabletInfosInState(SysSnapshotEntryPB::DELETING);
       }
     }
-    RETURN_NOT_OK(context_.ApplyOperationState(state, /* batch_idx= */ -1, write_batch));
+
+    RETURN_NOT_OK(state.tablet()->ApplyOperationState(state, /* batch_idx= */ -1, write_batch));
 
     if (!tablet_infos.empty()) {
       auto snapshot_id_str = snapshot_id.AsSlice().ToBuffer();

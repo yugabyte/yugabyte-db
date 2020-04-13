@@ -23,6 +23,7 @@
 using namespace std::literals;
 
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 
 namespace yb {
 namespace client {
@@ -36,6 +37,13 @@ class BackupTxnTest : public TransactionTestBase {
   void SetUp() override {
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
     TransactionTestBase::SetUp();
+  }
+
+  void DoBeforeTearDown() override {
+    FLAGS_flush_rocksdb_on_shutdown = false;
+    ASSERT_OK(cluster_->RestartSync());
+
+    TransactionTestBase::DoBeforeTearDown();
   }
 
   master::MasterBackupServiceProxy MakeBackupServiceProxy() {

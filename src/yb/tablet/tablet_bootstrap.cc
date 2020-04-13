@@ -123,10 +123,10 @@ static string DebugInfo(const string& tablet_id,
                         int segment_seqno,
                         int entry_idx,
                         const string& segment_path,
-                        const LogEntryPB& entry) {
+                        const LogEntryPB* entry) {
   // Truncate the debug string to a reasonable length for logging.  Otherwise, glog will truncate
   // for us and we may miss important information which came after this long string.
-  string debug_str = entry.ShortDebugString();
+  string debug_str = entry ? entry->ShortDebugString() : "<NULL>"s;
   if (debug_str.size() > 500) {
     debug_str.resize(500);
     debug_str.append("...");
@@ -178,8 +178,7 @@ struct ReplayState {
   CHECKED_STATUS ApplyCommittedPendingReplicates(const Handler& handler) {
     auto iter = pending_replicates.begin();
     while (iter != pending_replicates.end() && CanApply(iter->second.entry.get())) {
-      std::unique_ptr<log::LogEntryPB> entry = std::move(iter->second.entry);
-      RETURN_NOT_OK(handler(entry.get(), iter->second.entry_time));
+      RETURN_NOT_OK(handler(iter->second.entry.get(), iter->second.entry_time));
       iter = pending_replicates.erase(iter);  // erase and advance the iterator (C++11)
       ++num_entries_applied_to_rocksdb;
     }
@@ -315,8 +314,7 @@ Status ReplayState::UpdateSplitOpId(const ReplicateMsg& msg, const TabletId& tab
 void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
                                       std::vector<std::string>* strings) const {
   for (const OpIndexToEntryMap::value_type& map_entry : entries) {
-    LogEntryPB* entry = DCHECK_NOTNULL(map_entry.second.entry.get());
-    strings->push_back(Substitute("   [$0] $1", map_entry.first, entry->ShortDebugString()));
+    strings->push_back(Format("   [$0] $1", map_entry.first, map_entry.second.entry.get()));
   }
 }
 
@@ -775,6 +773,7 @@ Status TabletBootstrap::PlayTabletSnapshotOpRequest(ReplicateMsg* replicate_msg)
   TabletSnapshotOpRequestPB* const snapshot = replicate_msg->mutable_snapshot_request();
 
   SnapshotOperationState tx_state(tablet_.get(), snapshot);
+  tx_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
   return tx_state.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
 }
@@ -970,12 +969,12 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       Status s = HandleEntry(
           read_result.entry_metadata[entry_idx], &read_result.entries[entry_idx]);
       if (!s.ok()) {
-        LOG(INFO) << "Dumping replay state to log";
+        LOG(INFO) << "Dumping replay state to log: " << s;
         DumpReplayStateToLog();
         RETURN_NOT_OK_PREPEND(s, DebugInfo(tablet_->tablet_id(),
                                            segment->header().sequence_number(),
                                            entry_idx, segment->path(),
-                                           *read_result.entries[entry_idx]));
+                                           read_result.entries[entry_idx].get()));
       }
     }
     if (!read_result.entry_metadata.empty()) {

@@ -56,10 +56,6 @@ class SnapshotCoordinatorContext {
 
   virtual Result<ColumnId> MetadataColumnId() = 0;
 
-  virtual CHECKED_STATUS ApplyOperationState(
-      const tablet::OperationState& operation_state, int64_t batch_idx,
-      const docdb::KeyValueWriteBatchPB& write_batch) = 0;
-
   virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;

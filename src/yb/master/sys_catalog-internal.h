@@ -127,7 +127,7 @@ CHECKED_STATUS SysCatalogTable::MutateItems(
 }
 
 std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter(int64_t leader_term) {
-  return std::make_unique<SysCatalogWriter>(kSysCatalogTabletId, schema_with_ids_, leader_term);
+  return std::make_unique<SysCatalogWriter>(kSysCatalogTabletId, schema_, leader_term);
 }
 
 } // namespace master

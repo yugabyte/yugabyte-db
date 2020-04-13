@@ -1014,7 +1014,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     metadata.set_namespace_id(kSystemSchemaNamespaceId);
     metadata.set_name(kSysCatalogTableName);
     metadata.set_table_type(TableType::YQL_TABLE_TYPE);
-    SchemaToPB(sys_catalog_->schema_with_ids_, metadata.mutable_schema());
+    SchemaToPB(sys_catalog_->schema_, metadata.mutable_schema());
     metadata.set_version(0);
 
     auto table_ids_map_checkout = table_ids_map_.CheckOut();
@@ -1036,7 +1036,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     auto l = table->LockForRead();
     PartitionSchema partition_schema;
     RETURN_NOT_OK(PartitionSchema::FromPB(l->data().pb.partition_schema(),
-                                          sys_catalog_->schema_with_ids_,
+                                          sys_catalog_->schema_,
                                           &partition_schema));
     vector<Partition> partitions;
     RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
