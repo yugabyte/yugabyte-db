@@ -19,7 +19,7 @@ showAsideToc: true
 
 Use the `DROP ROLE` statement to delete an existing role.
 
-This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
+This statement is enabled by setting the YB-TServer flag [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 
 ## Syntax
 

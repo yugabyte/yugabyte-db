@@ -483,7 +483,7 @@ done
 
 ### Verify
 
-Verify that all the configuration options look correct and environment variables were substituted correctly.
+Verify that all the configuration flags look correct and environment variables were substituted correctly.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -607,7 +607,7 @@ replication_info {
 }
 ```
 
-Suppose your deployment is multi-region rather than multi-zone, one additional  option to consider is to set a preferred location for all the tablet leaders using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
+Suppose your deployment is multi-region rather than multi-zone, one additional option to consider is to set a preferred location for all the tablet leaders using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
 
 The following command sets the preferred zone to `aws.us-west.us-west-2c`:
 

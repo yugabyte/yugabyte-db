@@ -90,7 +90,7 @@ if you have trouble connecting to the DB.
 <img title="Upload template" class="expandable-image" src="/images/deploy/aws/aws-cf-upload-template.png" />
 <br>
 
-4. Provide the required parameters. Each of these fields are prefilled with information from the configuration yaml file that was uploaded. `LatestAmiId` refers to the id of the machine image to use, see [more](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
+4. Provide the required parameters. Each of these fields are prefilled with information from the configuration YAML file that was uploaded. `LatestAmiId` refers to the id of the machine image to use, see [more](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
 
 <img title="Provide Parameters" class="expandable-image" src="/images/deploy/aws/aws-cf-provide-parameters.png" />
 <br>

@@ -36,7 +36,7 @@ $ ./bin/yb-ctl --help
 
 ##### create
 
-Creates a local YugabyteDB cluster. With no optional arguments, creates a 1-node cluster.
+Creates a local YugabyteDB cluster. With no flags, creates a 1-node cluster.
 
 For more details and examples, see [Create a local cluster](#create-a-local-cluster), [Create a cluster across multiple zones, regions, and clouds](#Create-a-cluster-across-multiple-zones-regions-and-clouds), and [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
 
@@ -106,7 +106,7 @@ Enables YugabyteDB support for the Redis-compatible YEDIS API.
 
 For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-api).
 
-## Optional arguments
+## Optional flags
 
 ##### --help, -h
 
@@ -138,7 +138,7 @@ For details and examples, see [Create a cluster with custom flags](#create-a-clu
 
 **Example**
 
-To enable [YSQL authentication](../../secure/authentication/ysql-authentication), you can use the `--tserver_flags` option to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) option to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/authentication/ysql-authentication), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"

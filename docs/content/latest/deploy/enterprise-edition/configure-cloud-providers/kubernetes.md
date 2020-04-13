@@ -65,7 +65,7 @@ If you plan to run YugabyteDB nodes on Kubernetes, all you need to provide on Yu
 
 ## Pick appropriate k8s tab
 
-For Kubernetes, you have two options, one is to using Pivotal Container Service  or Managed Kubernetes Service, depending on what you are using click on the appropriate tab.
+For Kubernetes, you have two options, one is to using Pivotal Container Service or Managed Kubernetes Service, depending on what you are using click on the appropriate tab.
 <img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
 
 Once you go to the appropriate tab, you should see a configuration form like this:

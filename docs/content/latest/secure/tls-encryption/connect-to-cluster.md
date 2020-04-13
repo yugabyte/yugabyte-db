@@ -39,19 +39,17 @@ All three files should be available in the `~/.yugabytedb`, the default location
 
 For each of the clients below, the steps assume that you have:
 
-- Added the required client certificates to the `~/.yugabytedb` directory (or a directory specified using the `--certs_for_clients_dir` option). For details, see [Create client certificates](../client-certificates).
+- Added the required client certificates to the `~/.yugabytedb` directory (or a directory specified using the `--certs_for_clients_dir` flag). For details, see [Create client certificates](../client-certificates).
 - [Enabled client-to-server encryption](../client-to-server) on the YB-TServer nodes of your YugabyteDB cluster.
 - [Enabled server-to-server encryption](../server-to-server) on the YugabyteDB cluster.
 
 ## ysqlsh
 
-To open the YSQL shell (`ysqlsh`) using a YugabyteDB cluster with encryption enabled, you need to add configuration options (flags) to the  
-
 The `ysqlsh` CLI is available in the `bin` directory of your YugabyteDB home directory.
 
 To connect to a remote YugabyteDB cluster, you need to have a local copy of `ysqlsh` available. You can use the `ysqlsh` CLI available on a locally installed YugabyteDB.
 
-To open the local `ysqlsh` CLI and access your YugabyteDB cluster, run `ysqlsh` with the following configuration options set:
+To open the local `ysqlsh` CLI and access your YugabyteDB cluster, run `ysqlsh` with the following flags set:
 
 - host: `-h <node-ip-address>` (required for remote node; default is `127.0.0.1`)
 - port: `-p <port>` (optional; default is `5433`)
@@ -132,7 +130,7 @@ system_schema  system_auth  system
 
 To connect to a remote YugabyteDB cluster, you need to have a local copy of `cqlsh` available. You can use the `cqlsh` CLI available on a locally installed YugabyteDB.
 
-To open the local `cqlsh` CLI and access the remote cluster, run `cqlsh` with configuration options set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-to-server encryption using TLS (successor to SSL).
+To open the local `cqlsh` CLI and access the remote cluster, run `cqlsh` with flags set for the host and port of the remote cluster. You must also add the `--ssl` flag to enable the use of the client-to-server encryption using TLS (successor to SSL).
 
 ```sh
 $ ./bin/cqlsh <node-ip-address> <port> --ssl

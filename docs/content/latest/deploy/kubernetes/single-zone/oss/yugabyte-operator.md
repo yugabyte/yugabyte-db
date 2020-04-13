@@ -45,7 +45,7 @@ showAsideToc: true
 </ul>
 
 
-Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [YugabyteDB k8s operator repository](https://github.com/yugabyte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#configuration-options).
+Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [YugabyteDB k8s operator repository](https://github.com/yugabyte/yugabyte-k8s-operator/). This operator currently provides more configuration flags as compared to the Rook operator. The Rook operator, in near future, will get these flags too. See full list of configuration flags [here](#configuration-flags).
 
 ## Prerequisites
 
@@ -95,7 +95,7 @@ You can also connect to the YCQL API as shown below.
 kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
 ```
 
-## Configuration options
+## Configuration flags
 
 ### Image
 
@@ -149,11 +149,11 @@ Specify storage configurations viz. Storage `count`, `size` & `storageClass` of 
 
 #### resources
 
-Specify resource `requests` & `limits` under `resources` attribute. The resources to be specified are `cpu` & `memory`. The `resource` property in itself is optional & it won't be applied to created `StatefulSets`, if omitted. You may also choose to specify either `resource.requests` or `resource.limits`, or both.
+Specify resource `requests` & `limits` under `resources` attribute. The resources to be specified are `cpu` & `memory`. The `resource` property in itself is flagal & it won't be applied to created `StatefulSets`, if omitted. You may also choose to specify either `resource.requests` or `resource.limits`, or both.
 
-#### Configuration options (gflags)
+#### Configuration flags
 
-Specify list of configuration options (gflags) for additional control of the YugabyteDB cluster. For available configuration options, see [YB-Master configuration options](../../../../../reference/configuration/yb-master) and [YB-TServer configuration options](../../../../../reference/configuration/yb-tserver/).
+Specify list of configuration flags for additional control of the YugabyteDB cluster. For available configuration flags, see [YB-Master configuration flags](../../../../../reference/configuration/yb-master) and [YB-TServer configuration flags](../../../../../reference/configuration/yb-tserver/).
 
 If you have enabled TLS encryption, then you can set:
 
