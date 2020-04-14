@@ -15,14 +15,16 @@ CREATE DATABASE colocation_test colocated = true;
 
 -- CREATE TABLE
 
--- TODO: This test should be changed once we complete issue #3034
-CREATE TABLE tab_nonkey (a INT); -- fail
+CREATE TABLE tab_nonkey (a INT);
+\d tab_nonkey
+CREATE TABLE tab_key (a INT PRIMARY KEY);
+\d tab_key
 CREATE TABLE tab_range (a INT, PRIMARY KEY (a ASC));
 CREATE TABLE tab_range_nonkey (a INT, b INT, PRIMARY KEY (a ASC));
 -- opt out of using colocated tablet
 CREATE TABLE tab_nonkey_noco (a INT) WITH (colocated = false);
 -- multi column primary key table
-CREATE TABLE tab_range_range (a INT, b INT, PRIMARY KEY (a ASC, b DESC));
+CREATE TABLE tab_range_range (a INT, b INT, PRIMARY KEY (a, b DESC));
 CREATE TABLE tab_range_colo (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true);
 
 INSERT INTO tab_range (a) VALUES (0), (1), (2);
@@ -56,6 +58,7 @@ INSERT INTO tab_range_colo VALUES (6), (6);
 -- table with index
 CREATE TABLE tab_range_nonkey2 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range ON tab_range_nonkey2 (a);
+\d tab_range_nonkey2
 INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 EXPLAIN SELECT * FROM tab_range_nonkey2 WHERE a = 1;
 SELECT * FROM tab_range_nonkey2 WHERE a = 1;
