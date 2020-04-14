@@ -47,8 +47,6 @@ DEFINE_string(master_addresses, "localhost:7100",
 DEFINE_string(init_master_addrs, "",
               "host:port of any yb-master in a cluster");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
-DEFINE_string(certs_dir_name, "",
-              "Directory with certificates to use for secure server connection.");
 DEFINE_bool(exclude_dead, false, "Exclude dead tservers from output");
 
 namespace yb {
@@ -127,13 +125,11 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
         &init_master_addrs));
     client.reset(new ClusterAdminClientClass(
         init_master_addrs[0],
-        FLAGS_timeout_ms,
-        FLAGS_certs_dir_name));
+        FLAGS_timeout_ms));
   } else {
     client.reset(new ClusterAdminClientClass(
         addrs,
-        FLAGS_timeout_ms,
-        FLAGS_certs_dir_name));
+        FLAGS_timeout_ms));
   }
 
   RegisterCommandHandlers(client.get());

@@ -28,19 +28,11 @@ namespace enterprise {
 class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   typedef yb::tools::ClusterAdminClient super;
  public:
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis, std::string certs_dir)
-      : super(std::move(addrs), timeout_millis, certs_dir),
-        certs_dir_(std::move(certs_dir)) {}
+  ClusterAdminClient(std::string addrs, int64_t timeout_millis)
+      : super(std::move(addrs), timeout_millis) {}
 
-  ClusterAdminClient(
-      const HostPort& init_master_addrs,
-      int64_t timeout_millis,
-      std::string certs_dir)
-      : super(std::move(init_master_addrs), timeout_millis, certs_dir),
-        certs_dir_(std::move(certs_dir)) {}
-
-  // Initialized the client and connects to the server service proxies.
-  CHECKED_STATUS Init() override;
+  ClusterAdminClient(const HostPort& init_master_addrs, int64_t timeout_millis)
+      : super(init_master_addrs, timeout_millis) {}
 
   // Snapshot operations.
   CHECKED_STATUS ListSnapshots(bool show_details);
@@ -102,12 +94,6 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
 
   Result<HostPort> GetFirstRpcAddressForTS();
-
-  std::unique_ptr<master::MasterBackupServiceProxy> master_backup_proxy_;
-
-  // Secure connection info to connect with tls enabled servers.
-  std::string certs_dir_;
-  std::unique_ptr<rpc::SecureContext> secure_context_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
