@@ -66,10 +66,10 @@ export default class NodeDetailsTable extends Component {
       let nodeName = cell;
       if (row.cloudInfo.cloud === "aws") {
         const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
-        nodeName = (<a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>)
+        nodeName = (<a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>);
       } else if (row.cloudInfo.cloud === "gcp") {
         const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
-        nodeName = (<a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>)
+        nodeName = (<a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>);
       }
       return (<Fragment>
         {nodeName}
