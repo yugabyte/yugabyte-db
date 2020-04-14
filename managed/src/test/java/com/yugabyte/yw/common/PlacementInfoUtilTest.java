@@ -1268,4 +1268,24 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     testSelectMasters(5, 12, 3, 2);
     testSelectMasters(5, 12, 3, 3);
   }
+
+  @Test
+  public void testActiveTserverSelection() {
+    UUID azUUID = UUID.randomUUID();
+    List<NodeDetails> nodes = new ArrayList<NodeDetails>();
+    for (int i = 1; i <= 5; i++) {
+      nodes.add(ApiUtils.getDummyNodeDetails(i, NodeDetails.NodeState.Live,
+                                             false, true, "aws",
+                                             null, null, null, azUUID));
+    }
+    NodeDetails nodeReturned = PlacementInfoUtil.findActiveTServerOnlyInAz(nodes,
+                                                                           azUUID);
+    assertEquals(nodeReturned.nodeIdx, 5);
+    nodeReturned.state = NodeDetails.NodeState.ToBeRemoved;
+    nodeReturned = PlacementInfoUtil.findActiveTServerOnlyInAz(nodes, azUUID);
+    assertEquals(nodeReturned.nodeIdx, 4);
+    nodeReturned.state = NodeDetails.NodeState.ToBeRemoved;
+    nodeReturned = PlacementInfoUtil.findActiveTServerOnlyInAz(nodes, azUUID);
+    assertEquals(nodeReturned.nodeIdx, 3);
+  }
 }
