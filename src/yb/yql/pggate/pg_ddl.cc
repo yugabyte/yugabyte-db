@@ -127,9 +127,9 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
     // For regular user table, ybrowid should be a hash key because ybrowid is a random uuid.
-    // For sys catalog table, it should be a range key because sys catalog table is an
-    // unpartitioned table in a single tablet.
-    bool is_hash = !is_pg_catalog_table_;
+    // For colocated or sys catalog table, ybrowid should be a range key because they are
+    // unpartitioned tables in a single tablet.
+    bool is_hash = !(is_pg_catalog_table_ || colocated);
     CHECK_OK(AddColumn("ybrowid", static_cast<int32_t>(PgSystemAttrNum::kYBRowId),
                        YB_YQL_DATA_TYPE_BINARY, is_hash, true /* is_range */));
   }
