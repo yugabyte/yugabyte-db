@@ -3,7 +3,7 @@ title: ysql_dumpall - back up all YSQL databases
 headerTitle: ysql_dumpall
 linkTitle: ysql_dumpall
 description: ysql_dumpall
-headcontent: Back up all YugabyteDB YSQL databases and roles into a SQL script file.
+headcontent: Back up all YSQL databases and roles into a SQL script file.
 menu:
   latest:
     identifier: ysql-dumpall

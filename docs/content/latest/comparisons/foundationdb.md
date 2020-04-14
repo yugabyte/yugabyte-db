@@ -1,8 +1,8 @@
 ---
-title: Compare FoundationDB to YugabyteDB
+title: Compare FoundationDB with YugabyteDB
 headerTitle: FoundationDB
 linkTitle: FoundationDB
-description: Learn how FoundationDB compares to YugabyteDB.
+description: Learn how FoundationDB compares with YugabyteDB.
 aliases:
   - /comparisons/foundationdb/
 menu:
