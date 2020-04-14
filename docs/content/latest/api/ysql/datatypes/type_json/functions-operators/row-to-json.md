@@ -1,8 +1,9 @@
 ---
 title: row_to_json()
-linkTitle: row_to_json() 
-summary: row_to_json() 
-description: row_to_json()
+headerTitle: row_to_json()
+linkTitle: row_to_json()
+description: Create a JSON object from a SQL record.
+summary: row_to_json()
 menu:
   latest:
     identifier: row-to-json
@@ -12,8 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** create a JSON _object_ from a SQL _record_.
-
+**Purpose:** Create a JSON _object_ from a SQL _record_.
 
 **Signature:**
 
@@ -23,7 +23,7 @@ pretty:            boolean (optional)
 return value:      json
 ```
 
-**Notes:** this has only the `json` variant. The first (mandatory) formal parameter is any SQL `record` whose fields might be compound values. The second formal parameter is optional. When it is _true_, line feeds are added between fields. Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
+**Notes:** This has only the `json` variant. The first (mandatory) formal parameter is any SQL `record` whose fields might be compound values. The second formal parameter is optional. When it is _true_, line feeds are added between fields. Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
 
 ```postgresql
 create type t as (a int, b text);

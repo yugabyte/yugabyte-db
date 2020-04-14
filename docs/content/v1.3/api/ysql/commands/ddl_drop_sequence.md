@@ -3,6 +3,7 @@ title: DROP SEQUENCE
 linkTitle: DROP SEQUENCE
 summary: Drop a sequence in the current schema
 description: DROP SEQUENCE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-drop-sequence

@@ -1,8 +1,8 @@
-# Row Level Partitioning
+Tracking GitHub Issue: [1958](https://github.com/yugabyte/yugabyte-db/issues/1958)
 
-> **Note:** This is a new feature that is still in a design phase.
+# YSQL Table Partitioning
 
-PostgreSQL supports table partitioning to split what is logically a large table into smaller physical pieces. This design document outlines how YugabyteDB, a distributed SQL DB, will support this feature. This feature is also used as the building block for **row level geo-partitioning** of tables.
+PostgreSQL supports table partitioning to split what is logically a large table into smaller physical pieces. This design document outlines how YugabyteDB, a distributed SQL DB, will support this feature. This feature is also used as the building block for **row level geo-partitioning** of tables, where the physical placement of rows can be controlled based on the partitions they fall into.
 
 ## Motivation
 
@@ -14,7 +14,7 @@ Partitioning can provide several benefits such as:
 
 * **Efficient bulk loads and deletes:** These can be accomplished by adding or removing partitions. Detaching or dropping a  partition is much more efficient than a bulk delete operation.
 
-* **Row level geo-partitioning:** List partitioning can be used to place different subsets of data in different geographic locations. This is a powerful feature that allows a logical table to be spread across different regions, each of which can be accessed with low latency from the respective geographies.
+* **Row level geo-partitioning:** List partitioning can be used to place different subsets of data in different geographic locations. This is a powerful feature that allows a logical table to be spread across different regions, each of which can be accessed with low latency from the respective geographies. This enables implementation of architectures that can achieve regulatory compliance (such as GDPR) and tiering of data (moving colder data to cheaper tiers).
 
 # Usage
 

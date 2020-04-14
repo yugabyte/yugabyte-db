@@ -53,6 +53,7 @@ target_link_libraries(integration-tests
   master
   ql_api
   ysck
+  yb-admin_lib
   yb_client
   yb_client_test_util
   yb_fs
@@ -81,6 +82,7 @@ ADD_YB_TEST(client_failover-itest)
 ADD_YB_TEST(client-stress-test)
 ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(tablet_server-itest)
+ADD_YB_TEST(tablet-split-itest)
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:
 # ADD_YB_TEST(test_failures-test)
@@ -118,6 +120,7 @@ ADD_YB_TEST(full_stack-insert-scan-test)
 ADD_YB_TEST(redis_table-test)
 ADD_YB_TEST(update_scan_delta_compact-test)
 ADD_YB_TEST(log_version-test)
+ADD_YB_TEST(load_balancer-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

@@ -36,6 +36,9 @@
   inline Result<TypeName> BOOST_PP_CAT(FullyDecode, TypeName)(const Slice& slice) { \
     return TypeName(VERIFY_RESULT(yb::FullyDecodeUuid(slice))); \
   } \
+  inline TypeName BOOST_PP_CAT(TryFullyDecode, TypeName)(const Slice& slice) { \
+    return TypeName(yb::TryFullyDecodeUuid(slice)); \
+  } \
   inline Result<TypeName> BOOST_PP_CAT(Decode, TypeName)(Slice* slice) { \
     return TypeName(VERIFY_RESULT(yb::DecodeUuid(slice))); \
   }
@@ -70,6 +73,14 @@ class StronglyTypedUuid {
   // Returns true iff the UUID is nil.
   bool IsNil() const {
     return uuid_.is_nil();
+  }
+
+  explicit operator bool() const {
+    return !IsNil();
+  }
+
+  bool operator!() const {
+    return IsNil();
   }
 
   // Represent UUID as pair of uint64 for protobuf serialization.
@@ -128,6 +139,10 @@ class StronglyTypedUuid {
     return boost::uuids::uuid::static_size();
   }
 
+  static size_t StaticStringSize() {
+    return 36;
+  }
+
  private:
   // Represented as an optional UUID.
   boost::uuids::uuid uuid_;
@@ -175,6 +190,7 @@ std::size_t hash_value(const StronglyTypedUuid<Tag>& u) noexcept {
 }
 
 Result<boost::uuids::uuid> FullyDecodeUuid(const Slice& slice);
+boost::uuids::uuid TryFullyDecodeUuid(const Slice& slice);
 Result<boost::uuids::uuid> DecodeUuid(Slice* slice);
 
 } // namespace yb

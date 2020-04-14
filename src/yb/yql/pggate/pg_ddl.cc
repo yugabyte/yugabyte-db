@@ -21,6 +21,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_system_attr.h"
 
 namespace yb {
 namespace pggate {
@@ -251,6 +252,7 @@ PgDropTable::~PgDropTable() {
 
 Status PgDropTable::Exec() {
   Status s = pg_session_->DropTable(table_id_);
+  pg_session_->InvalidateTableCache(table_id_);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
   }

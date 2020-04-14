@@ -563,11 +563,10 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
  protected:
   unique_ptr<CppCassandraDriver> driver_;
   CassandraSession session_;
-  friend void DoTestCreateUniqueIndexWithOnlineWrites(
-      CppCassandraDriverTest* test, bool delete_before_insert);
 };
 
 YB_STRONGLY_TYPED_BOOL(PKOnlyIndex);
+YB_STRONGLY_TYPED_BOOL(IsUnique);
 YB_STRONGLY_TYPED_BOOL(IncludeAllColumns);
 YB_STRONGLY_TYPED_BOOL(UserEnforced);
 
@@ -603,10 +602,15 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
   friend Result<IndexPermissions>
   TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex *test);
 
-  friend void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
-                                     PKOnlyIndex is_pk_only,
+  friend void TestBackfillIndexTable(CppCassandraDriverTestIndex* test,
+                                     PKOnlyIndex is_pk_only, IsUnique is_unique,
                                      IncludeAllColumns include_primary_key,
                                      UserEnforced user_enforced);
+
+  friend void DoTestCreateUniqueIndexWithOnlineWrites(
+      CppCassandraDriverTestIndex* test, bool delete_before_insert);
+
+  void TestUniqueIndexCommitOrder(bool commit_txn1, bool use_txn2);
 };
 
 class CppCassandraDriverTestIndexMultipleChunks
@@ -1322,14 +1326,14 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIndexSlowTServer,
           CppCassandraDriverTestIndexNonResponsiveTServers) {
   IndexPermissions perm =
       ASSERT_RESULT(TestBackfillCreateIndexTableSimple(this));
-  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_BACKFILL_FAILED);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
 }
 
 Result<IndexPermissions>
 TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex *test) {
-  RETURN_NOT_OK(test->session_.ExecuteQuery(
-      "create table test_table (k int primary key, v text) "
-      "with transactions = {'enabled' : true};"));
+  TestTable<cass_int32_t, string> table;
+  RETURN_NOT_OK(table.CreateTable(&test->session_, "test.test_table",
+                                  {"k", "v"}, {"(k)"}, true, 60s));
 
   LOG(INFO) << "Inserting one row";
   RETURN_NOT_OK(test->session_.ExecuteQuery(
@@ -1363,13 +1367,15 @@ Result<int64_t> GetTableSize(CassandraSession *session, const std::string& table
   return size;
 }
 
-void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
-                            PKOnlyIndex is_pk_only,
-                            IncludeAllColumns include_primary_key = IncludeAllColumns::kFalse,
-                            UserEnforced user_enforced = UserEnforced::kFalse) {
+void TestBackfillIndexTable(
+    CppCassandraDriverTestIndex* test, PKOnlyIndex is_pk_only,
+    IsUnique is_unique = IsUnique::kFalse,
+    IncludeAllColumns include_primary_key = IncludeAllColumns::kFalse,
+    UserEnforced user_enforced = UserEnforced::kFalse) {
   constexpr int kLoops = 3;
   constexpr int kBatchSize = 10;
   constexpr int kNumBatches = 10;
+  constexpr int kExpectedCount = kBatchSize * kNumBatches;
 
   typedef TestTable<string, string, string> MyTable;
   typedef MyTable::ColumnsTuple ColumnsType;
@@ -1398,17 +1404,30 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
         continue;
       }
       for (int i = 0; i != kBatchSize; ++i) {
-        ColumnsType tuple(Format("k-$0", batch_idx * kBatchSize + i),
-                          Format("k-$0", batch_idx * kBatchSize + i),
-                          Format("v-$0", loop * 1000 + batch_idx * kBatchSize + i));
+        const int key = batch_idx * kBatchSize + i;
+        // For non-unique tests, the value will be of the form v-l0xx where l is
+        // the loop number, and xx is the key.
+        // For unique index tests, the value will be a permutation of
+        //  1 .. kExpectedCount; or -1 .. -kExpectedCount for odd and even
+        //  loops.
+        const int value =
+            (is_unique ? (loop % 2 ? 1 : -1) *
+                             ((loop * 1000 + key) % kExpectedCount + 1)
+                       : loop * 1000 + key);
+        ColumnsType tuple(Format("k-$0", key), Format("k-$0", key),
+                          Format("v-$0", value));
         auto statement = prepared->Bind();
         table.BindInsert(&statement, tuple);
         batch.Add(&statement);
       }
       futures.push_back(test->session_.SubmitBatch(batch));
     }
-    // At the end of the second loop, we will issue the create index
-    if (loop == 2) {
+
+    // For unique index tests, we want to make sure each loop of writes is
+    // complete before issuing the next one. For non-unique index tests,
+    // we only wait for the writes to persist before issuing the
+    // create index command.
+    if (is_unique || loop == 2) {
       // Let us make sure that the writes so far have persisted.
       for (auto& future : futures) {
         if (!future.Wait().ok()) {
@@ -1416,17 +1435,18 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
         }
       }
       futures.clear();
+    }
 
-      // We then issue the create index.
-      // The final loop of writes will be concurrent with the create index.
+    // At the end of the second loop, we will issue the create index.
+    // The remaining loop(s) of writes will be concurrent with the create index.
+    if (loop == 2) {
       create_index_future = test->session_.ExecuteGetFuture(
-        Format("create index index_by_value on test.key_value ($0) $1 $2;",
-          (is_pk_only ? "key2" : "value"),
-          (include_primary_key ? "include (key1, key2, value)" : " "),
-          (user_enforced ? "with transactions = { 'enabled' : false,"
-                                                 "'consistency_level' : 'user_enforced' }"
-                         : "")
-          ));
+          Format("create $0 index index_by_value on test.key_value ($1) $2 $3;",
+                 (is_unique ? "unique" : ""), (is_pk_only ? "key2" : "value"),
+                 (include_primary_key ? "include (key1, key2, value)" : " "),
+                 (user_enforced ? "with transactions = { 'enabled' : false,"
+                                  "'consistency_level' : 'user_enforced' }"
+                                : "")));
     }
   }
 
@@ -1453,7 +1473,6 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
   auto main_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "key_value"));
   auto index_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "index_by_value"));
 
-  constexpr auto kExpectedCount = kBatchSize * kNumBatches;
   EXPECT_GE(main_table_size, kExpectedCount - kBatchSize * num_failures);
   EXPECT_LE(main_table_size, kExpectedCount + kBatchSize * num_failures);
   EXPECT_GE(index_table_size, kExpectedCount - kBatchSize * num_failures);
@@ -1464,26 +1483,516 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndex, CppCassandraDriverTestIndex) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kFalse);
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
+                         IncludeAllColumns::kFalse);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndexPKOnly, CppCassandraDriverTestIndex) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kTrue, IncludeAllColumns::kFalse);
+  TestBackfillIndexTable(this, PKOnlyIndex::kTrue, IsUnique::kFalse,
+                         IncludeAllColumns::kFalse);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndexCovered, CppCassandraDriverTestIndex) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kTrue);
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
+                         IncludeAllColumns::kTrue);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndexUserEnforced,
           CppCassandraDriverTestUserEnforcedIndex) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kTrue, UserEnforced::kTrue);
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
+                         IncludeAllColumns::kTrue, UserEnforced::kTrue);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableCreateUniqueIndex,
+          CppCassandraDriverTestIndex) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
+                         IncludeAllColumns::kFalse);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableCreateUniqueIndexCovered,
+          CppCassandraDriverTestIndex) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
+                         IncludeAllColumns::kTrue);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableCreateUniqueIndexUserEnforced,
+          CppCassandraDriverTestUserEnforcedIndex) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
+                         IncludeAllColumns::kTrue, UserEnforced::kTrue);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPasses,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (3, 'three');"));
+
+  LOG(INFO) << "Creating index";
+  auto s = session_.ExecuteQuery(
+      "create unique index test_table_index_by_v on test_table (v);");
+  ASSERT_TRUE(s.ok() || s.IsTimedOut());
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  LOG(INFO) << "Inserting more rows -- collisions will be detected.";
+  ASSERT_TRUE(!session_
+                   .ExecuteGetFuture(
+                       "insert into test_table (k, v) values (-1, 'one');")
+                   .Wait()
+                   .ok());
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (4, 'four');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (5, 'five');"));
+  ASSERT_TRUE(!session_
+                   .ExecuteGetFuture(
+                       "insert into test_table (k, v) values (-4, 'four');")
+                   .Wait()
+                   .ok());
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, cass_int32_t> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  constexpr int kNumRows = 10;
+  LOG(INFO) << "Inserting " << kNumRows << " rows";
+  for (int i = 1; i <= kNumRows; i++) {
+    ASSERT_OK(session_.ExecuteQuery(
+        Substitute("insert into test_table (k, v) values ($0, $0);", i)));
+  }
+
+  LOG(INFO) << "Creating index";
+  auto session2 = CHECK_RESULT(driver_->CreateSession());
+  ASSERT_OK(session2.ExecuteQuery("USE test;"));
+  CassandraFuture create_index_future = session2.ExecuteGetFuture(
+      "create unique index test_table_index_by_v on test_table (v);");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_WRITE_AND_DELETE, false);
+  if (perm != IndexPermissions::INDEX_PERM_WRITE_AND_DELETE) {
+    LOG(WARNING) << "IndexPermissions is already past WRITE_AND_DELETE. "
+                 << "This run of the test may not actually be doing anything "
+                    "non-trivial.";
+  }
+
+  const size_t kSleepTimeMs = 20;
+  LOG(INFO) << "Inserting " << kNumRows / 2 << " rows again.";
+  for (int i = 1; i < kNumRows / 2; i++) {
+    if (session_
+            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ok()) {
+      WARN_NOT_OK(session_.ExecuteQuery(Substitute(
+                      "insert into test_table (k, v) values ($0, $0);", i)),
+                  "Overwrite failed");
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+    } else {
+      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+    }
+  }
+
+  perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_DO_BACKFILL, false);
+  if (perm != IndexPermissions::INDEX_PERM_DO_BACKFILL) {
+    LOG(WARNING) << "IndexPermissions already past DO_BACKFILL";
+  }
+
+  LOG(INFO) << "Inserting " << kNumRows / 2 << " more rows again.";
+  for (int i = kNumRows / 2; i <= kNumRows; i++) {
+    if (session_
+            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ok()) {
+      WARN_NOT_OK(session_.ExecuteQuery(Substitute(
+                      "insert into test_table (k, v) values (-$0, $0);", i)),
+                  "Overwrite failed");
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+    } else {
+      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+    }
+  }
+
+  LOG(INFO) << "Waited on the Create Index to finish. Status  = "
+            << create_index_future.Wait();
+
+  perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPassesManyWrites,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  constexpr int kNumRows = 100;
+  LOG(INFO) << "Inserting " << kNumRows << " rows";
+  for (int i = 1; i <= kNumRows; i++) {
+    ASSERT_OK(session_.ExecuteQuery(
+        Substitute("insert into test_table (k, v) values ($0, 'v-$0');", i)));
+  }
+
+  LOG(INFO) << "Creating index";
+  auto session2 = CHECK_RESULT(driver_->CreateSession());
+  ASSERT_OK(session2.ExecuteQuery("USE test;"));
+  CassandraFuture create_index_future = session2.ExecuteGetFuture(
+      "create unique index test_table_index_by_v on test_table (v);");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_WRITE_AND_DELETE, false);
+  if (perm != IndexPermissions::INDEX_PERM_WRITE_AND_DELETE) {
+    LOG(WARNING) << "IndexPermissions is already past WRITE_AND_DELETE. "
+                 << "This run of the test may not actually be doing anything "
+                    "non-trivial.";
+  }
+
+  const size_t kSleepTimeMs = 20;
+  LOG(INFO) << "Inserting " << kNumRows / 2 << " rows again.";
+  for (int i = 1; i < kNumRows / 2; i++) {
+    if (session_
+            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ok()) {
+      WARN_NOT_OK(
+          session_.ExecuteQuery(Substitute(
+              "insert into test_table (k, v) values (-$0, 'v-$0');", i)),
+          "Overwrite failed");
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+    } else {
+      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+    }
+  }
+
+  perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_DO_BACKFILL, false);
+  if (perm != IndexPermissions::INDEX_PERM_DO_BACKFILL) {
+    LOG(WARNING) << "IndexPermissions already past DO_BACKFILL";
+  }
+
+  LOG(INFO) << "Inserting " << kNumRows / 2 << " more rows again.";
+  for (int i = kNumRows / 2; i <= kNumRows; i++) {
+    if (session_
+            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ok()) {
+      WARN_NOT_OK(
+          session_.ExecuteQuery(Substitute(
+              "insert into test_table (k, v) values (-$0, 'v-$0');", i)),
+          "Overwrite failed");
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+    } else {
+      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+    }
+  }
+
+  LOG(INFO) << "Waited on the Create Index to finish. Status  = "
+            << create_index_future.Wait();
+
+  perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateIdxTripleCollisionTest,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  ASSERT_OK(
+      session_.ExecuteQuery("insert into test_table (k, v) values (1, 'a')"));
+  ASSERT_OK(
+      session_.ExecuteQuery("insert into test_table (k, v) values (3, 'a')"));
+  ASSERT_OK(
+      session_.ExecuteQuery("insert into test_table (k, v) values (4, 'a')"));
+
+  LOG(INFO) << "Creating index";
+  // session_.ExecuteQuery("create unique index test_table_index_by_v on
+  // test_table (v);");
+  auto session2 = CHECK_RESULT(driver_->CreateSession());
+  ASSERT_OK(session2.ExecuteQuery("USE test;"));
+  CassandraFuture create_index_future = session2.ExecuteGetFuture(
+      "create unique index test_table_index_by_v on test_table (v);");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  {
+    IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+        client_.get(), table_name, index_table_name,
+        IndexPermissions::INDEX_PERM_DELETE_ONLY, false);
+    EXPECT_EQ(perm, IndexPermissions::INDEX_PERM_DELETE_ONLY);
+  }
+
+  CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 90s,
+                             CoarseMonoClock::Duration::max());
+  auto res = session_.ExecuteQuery("DELETE from test_table WHERE k=4");
+  LOG(INFO) << "Got " << yb::ToString(res);
+  while (!res.ok()) {
+    waiter.Wait();
+    res = session_.ExecuteQuery("DELETE from test_table WHERE k=4");
+    LOG(INFO) << "Got " << yb::ToString(res);
+  }
+
+  LOG(INFO) << "Waited on the Create Index to finish. Status  = "
+            << create_index_future.Wait();
+  {
+    IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+        client_.get(), table_name, index_table_name, IndexPermissions::INDEX_PERM_INDEX_UNUSED,
+        false);
+    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+  }
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (3, 'three');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-2, 'two');"));
+  LOG(INFO) << "Creating index";
+
+  auto s = session_.ExecuteQuery(
+      "create unique index test_table_index_by_v on test_table (v);");
+  ASSERT_TRUE(s.ok() || s.IsTimedOut());
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+
+  LOG(INFO)
+      << "Inserting more rows -- No collision checking for a failed index.";
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-3, 'three');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (4, 'four');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-4, 'four');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (5, 'five');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-5, 'five');"));
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexWithOnlineWriteFails,
+          CppCassandraDriverTestIndex) {
+  DoTestCreateUniqueIndexWithOnlineWrites(this,
+                                          /* delete_before_insert */ false);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexWithOnlineWriteSuccess,
+          CppCassandraDriverTestIndex) {
+  DoTestCreateUniqueIndexWithOnlineWrites(this,
+                                          /* delete_before_insert */ true);
+}
+
+void DoTestCreateUniqueIndexWithOnlineWrites(CppCassandraDriverTestIndex* test,
+                                             bool delete_before_insert) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexInfoPB index_info_pb;
+  YBTableInfo index_table_info;
+
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&test->session_, "test.test_table", {"k", "v"},
+                              {"(k)"}, true, 60s));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(test->session_.ExecuteQuery(
+      "insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(test->session_.ExecuteQuery(
+      "insert into test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(test->session_.ExecuteQuery(
+      "insert into test_table (k, v) values (3, 'three');"));
+  LOG(INFO) << "Creating index";
+
+  bool create_index_failed = false;
+  bool duplicate_insert_failed = false;
+  {
+    auto session2 = CHECK_RESULT(test->driver_->CreateSession());
+    ASSERT_OK(session2.ExecuteQuery("USE test;"));
+
+    CassandraFuture create_index_future = session2.ExecuteGetFuture(
+        "create unique index test_table_index_by_v on test_table (v);");
+
+    auto session3 = CHECK_RESULT(test->driver_->CreateSession());
+    ASSERT_OK(session3.ExecuteQuery("USE test;"));
+    WaitUntilIndexPermissionIsAtLeast(
+        test->client_.get(), table_name, index_table_name,
+        IndexPermissions::INDEX_PERM_WRITE_AND_DELETE);
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 90s,
+                               CoarseMonoClock::Duration::max());
+    if (delete_before_insert) {
+      while (true) {
+        auto res = session3
+                       .ExecuteGetFuture(
+                           "update test_table set v = 'foo' where  k = 2;")
+                       .Wait();
+        LOG(INFO) << "Got " << yb::ToString(res);
+        if (res.ok()) {
+          break;
+        }
+        waiter.Wait();
+      }
+      LOG(INFO) << "Successfully deleted the old value before inserting the "
+                   "duplicate value";
+    }
+    int retries = 0;
+    const int kMaxRetries = 12;
+    Status res;
+    while (++retries < kMaxRetries) {
+      res = session3.ExecuteGetFuture(
+                        "insert into test_table (k, v) values (-2, 'two');")
+                    .Wait();
+      LOG(INFO) << "Got " << yb::ToString(res);
+      if (res.ok()) {
+        break;
+      }
+      waiter.Wait();
+    }
+    duplicate_insert_failed = !res.ok();
+    if (!duplicate_insert_failed) {
+      LOG(INFO) << "Successfully inserted the duplicate value";
+    } else {
+      LOG(ERROR) << "Giving up on inserting the duplicate value after "
+                 << kMaxRetries << " tries.";
+    }
+
+    LOG(INFO) << "Waited on the Create Index to finish. Status  = "
+              << create_index_future.Wait();
+  }
+
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      test->client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  create_index_failed = (perm > IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  LOG(INFO) << "create_index_failed  = " << create_index_failed
+            << ", duplicate_insert_failed = " << duplicate_insert_failed;
+
+  auto main_table_size =
+      ASSERT_RESULT(GetTableSize(&test->session_, "test_table"));
+  auto index_table_size =
+      ASSERT_RESULT(GetTableSize(&test->session_, "test_table_index_by_v"));
+
+  if (!create_index_failed) {
+    EXPECT_EQ(main_table_size, index_table_size);
+  } else {
+    LOG(INFO) << "create index failed. "
+              << "main_table_size " << main_table_size
+              << " is allowed to differ from "
+              << "index_table_size " << index_table_size;
+  }
+  if (delete_before_insert) {
+    // Expect both the create index, and the duplicate insert to succeed.
+    ASSERT_TRUE(!create_index_failed && !duplicate_insert_failed);
+  } else {
+    // Expect exactly one of create index or the duplicate insert to succeed.
+    ASSERT_TRUE((create_index_failed && !duplicate_insert_failed) ||
+                (!create_index_failed && duplicate_insert_failed));
+  }
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableBackfillInChunks,
           CppCassandraDriverTestIndexMultipleChunks) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kTrue,
-                         UserEnforced::kFalse);
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
+                         IncludeAllColumns::kTrue, UserEnforced::kFalse);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableBackfillUniqueInChunks,
+          CppCassandraDriverTestIndexMultipleChunks) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
+                         IncludeAllColumns::kTrue, UserEnforced::kFalse);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestIndexUpdateConcurrentTxn, CppCassandraDriverTestIndex) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+  IndexInfoPB index_info_pb;
+  YBTableInfo index_table_info;
+
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true, 60s));
+
+  LOG(INFO) << "Inserting rows";
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (2, 'two');"));
+
+  LOG(INFO) << "Creating index";
+  {
+    auto session2 = CHECK_RESULT(driver_->CreateSession());
+    ASSERT_OK(session2.ExecuteQuery("USE test;"));
+
+    CassandraFuture create_index_future =
+        session2.ExecuteGetFuture("create index test_table_index_by_v on test_table (v);");
+
+    auto session3 = CHECK_RESULT(driver_->CreateSession());
+    ASSERT_OK(session3.ExecuteQuery("USE test;"));
+    WaitUntilIndexPermissionIsAtLeast(client_.get(), table_name, index_table_name,
+                                      IndexPermissions::INDEX_PERM_DELETE_ONLY);
+
+    WARN_NOT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (1, 'foo');"),
+                "updating k = 1 failed.");
+    WARN_NOT_OK(session3.ExecuteQuery("update test_table set v = 'bar' where  k = 2;"),
+                "updating k =2 failed.");
+
+    WaitUntilIndexPermissionIsAtLeast(client_.get(), table_name, index_table_name,
+                                      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  }
+
+  auto main_table_size = ASSERT_RESULT(GetTableSize(&session_, "test_table"));
+  auto index_table_size = ASSERT_RESULT(GetTableSize(&session_, "test_table_index_by_v"));
+  EXPECT_EQ(main_table_size, index_table_size);
 }
 
 TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestIndex) {
@@ -2102,6 +2611,36 @@ TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
 
   thread_holder.WaitAndStop(30s);
   LOG(INFO) << "Max pending writes: " << max_pending_writes.load();
+}
+
+TEST_F(CppCassandraDriverTest, BigQueryExpr) {
+  const std::string kTableName = "test.key_value";
+  typedef TestTable<std::string> MyTable;
+  MyTable table;
+  ASSERT_OK(table.CreateTable(&session_, kTableName, {"key"}, {"(key)"}));
+
+  constexpr size_t kRows = 400;
+  constexpr size_t kValueSize = RegularBuildVsSanitizers(256_KB, 4_KB);
+
+  auto prepared = ASSERT_RESULT(session_.Prepare(
+      Format("INSERT INTO $0 (key) VALUES (?);", kTableName)));
+
+  for (int32_t i = 0; i != kRows; ++i) {
+    auto statement = prepared.Bind();
+    statement.Bind(0, RandomHumanReadableString(kValueSize));
+    ASSERT_OK(session_.Execute(statement));
+  }
+
+  auto start = MonoTime::Now();
+  auto result = ASSERT_RESULT(session_.ExecuteWithResult(Format(
+      "SELECT MAX(key) FROM $0", kTableName)));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time: " << finish - start;
+
+  auto iterator = result.CreateIterator();
+  ASSERT_TRUE(iterator.Next());
+  LOG(INFO) << "Result: " << iterator.Row().Value(0).ToString();
+  ASSERT_FALSE(iterator.Next());
 }
 
 }  // namespace yb

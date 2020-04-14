@@ -2,6 +2,7 @@
 title: TSREVRANGEBYTIME
 linkTitle: TSREVRANGEBYTIME
 description: TSREVRANGEBYTIME
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

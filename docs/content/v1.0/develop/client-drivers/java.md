@@ -2,6 +2,7 @@
 title: Java
 linkTitle: Java
 description: Develop Java Apps
+block_indexing: true
 menu:
   v1.0:
     identifier: client-drivers-java

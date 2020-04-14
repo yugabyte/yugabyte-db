@@ -39,10 +39,13 @@
 #include <boost/thread/shared_mutex.hpp>
 
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
+
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
@@ -378,7 +381,7 @@ Log::Log(LogOptions options, string log_path,
       allocation_state_(kAllocationNotStarted),
       metric_entity_(metric_entity),
       on_disk_size_(0),
-      log_prefix_(Format("T $0 P $1: ", tablet_id_, peer_uuid_)) {
+      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)) {
   set_wal_retention_secs(options.retention_secs);
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_max_threads(1).Build(&allocation_pool_));
   if (metric_entity_) {
@@ -548,7 +551,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
                      bool caller_owns_operation,
                      bool skip_wal_write) {
   if (!skip_wal_write) {
-        RETURN_NOT_OK(entry_batch->Serialize());
+    RETURN_NOT_OK(entry_batch->Serialize());
     Slice entry_batch_data = entry_batch->data();
     LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->flush_marker())
         << "Cannot call DoAppend() with no data";
@@ -1025,6 +1028,10 @@ scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) c
   }
 
   return reader_->GetSegmentBySequenceNumber(seq);
+}
+
+bool Log::HasOnDiskData(FsManager* fs_manager, const string& tablet_wal_path) {
+  return fs_manager->env()->FileExists(tablet_wal_path);
 }
 
 Status Log::DeleteOnDiskData(Env* env,

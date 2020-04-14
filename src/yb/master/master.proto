@@ -258,6 +258,10 @@ message SysRowEntry {
   optional bytes data = 3;
 }
 
+message SysRowEntries {
+  repeated SysRowEntry entries = 1;
+}
+
 // The on-disk entry in the sys.catalog table ("metadata" column) for
 // tablets entries.
 message SysTabletsEntryPB {
@@ -296,6 +300,9 @@ message SysTabletsEntryPB {
   // of how far along backfill has completed. Encoded as the DocKey for
   // the next row to be backfilled.
   optional bytes backfilled_until = 10;
+
+  // For tablets which are results of splitting we set this to split parent split_depth + 1.
+  optional uint64 split_depth = 11;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -1056,6 +1063,9 @@ message GetTableSchemaResponsePB {
 
   // For index table: information about this index.
   optional IndexInfoPB index_info = 12;
+
+  // True if table is colocated.
+  optional bool colocated = 13;
 }
 
 // ============================================================================
@@ -1074,6 +1084,8 @@ message ListTabletServersResponsePB {
     required NodeInstancePB instance_id = 1;
     optional TSRegistrationPB registration = 2;
     optional int32 millis_since_heartbeat = 3;
+    optional bool alive = 4;
+    optional TServerMetricsPB metrics = 5;
   }
   repeated Entry servers = 2;
 }
@@ -1317,6 +1329,18 @@ message ListNamespacesResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated NamespaceIdentifierPB namespaces = 2;
+}
+
+message GetNamespaceInfoRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+}
+
+message GetNamespaceInfoResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  optional NamespaceIdentifierPB namespace = 2;
+  optional bool colocated = 3;
 }
 
 // ============================================================================
@@ -1681,6 +1705,14 @@ message GetUniverseReplicationResponsePB {
   optional SysUniverseReplicationEntryPB entry = 2;
 }
 
+message SplitTabletRequestPB {
+  required bytes tablet_id = 1;
+}
+
+message SplitTabletResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -1708,6 +1740,7 @@ service MasterService {
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
+  rpc GetNamespaceInfo(GetNamespaceInfoRequestPB) returns (GetNamespaceInfoResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);
@@ -1797,4 +1830,6 @@ service MasterService {
       returns (GetUniverseKeyRegistryResponsePB);
   rpc HasUniverseKeyInMemory(HasUniverseKeyInMemoryRequestPB)
       returns (HasUniverseKeyInMemoryResponsePB);
+
+  rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
 }

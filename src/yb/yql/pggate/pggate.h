@@ -128,6 +128,9 @@ class PgApiImpl {
   // Connect database. Switch the connected database to the given "database_name".
   CHECKED_STATUS ConnectDatabase(const char *database_name);
 
+  // Determine whether the given database is colocated.
+  CHECKED_STATUS IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+
   // Create database.
   CHECKED_STATUS NewCreateDatabase(const char *database_name,
                                    PgOid database_oid,
@@ -158,6 +161,9 @@ class PgApiImpl {
                              PgOid *end_oid);
 
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
+
+  // Load table.
+  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
 
   //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
@@ -308,7 +314,8 @@ class PgApiImpl {
   //   - API for "group_by_expr"
 
   // Buffer write operations.
-  CHECKED_STATUS StartOperationsBuffering();
+  void StartOperationsBuffering();
+  void ResetOperationsBuffering();
   CHECKED_STATUS FlushBufferedOperations();
 
   //------------------------------------------------------------------------------------------------

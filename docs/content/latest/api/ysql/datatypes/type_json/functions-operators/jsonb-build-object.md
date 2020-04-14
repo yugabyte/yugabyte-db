@@ -1,9 +1,9 @@
 ---
-title: jsonb_build_object() 
+title: jsonb_build_object() and json_build_object() [JSON]
 linkTitle: jsonb_build_object() 
 summary: jsonb_build_object() and json_build_object() 
-headerTitle: jsonb_build_object() and json_build_object() 
-description: The jsonb_build_object() variadic function is the obvious counterpart to jsonb_build_array().
+headerTitle: jsonb_build_object() and json_build_object()
+description: Build a JSON object from a variadic list that specifies keys with values of arbitrary SQL data type.
 menu:
   latest:
     identifier: jsonb-build-object
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** create a JSON _object_ from a variadic list that specifies keys with values of arbitrary SQL data type.
+**Purpose:** Create a JSON _object_ from a variadic list that specifies keys with values of arbitrary SQL data type.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       VARIADIC "any"

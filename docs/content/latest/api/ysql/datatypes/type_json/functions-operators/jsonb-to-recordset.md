@@ -1,8 +1,9 @@
 ---
-title: jsonb_to_recordset()
+title: jsonb_to_recordset() and json_to_recordset()
+headerTitle: jsonb_to_recordset() and json_to_recordset()
 linkTitle: jsonb_to_recordset()
-summary: jsonb_to_recordset() and json_to_recordset() 
-description: jsonb_to_recordset() and json_to_recordset()
+description: Convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records.
+summary: jsonb_to_recordset() and json_to_recordset()
 menu:
   latest:
     identifier: jsonb-to-recordset
@@ -12,18 +13,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_.
+**Purpose:** Convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb
 return value:      SETOF record
 ```
 
-**Notes:** the function `jsonb_to_recordset()` bears the same relationship to `jsonb_to_record()` as  `jsonb_populate_recordset()` bears to `jsonb_populate_record()`.
+**Notes:** The function `jsonb_to_recordset()` bears the same relationship to `jsonb_to_record()` as  `jsonb_populate_recordset()` bears to `jsonb_populate_record()`.
 
-Therefore the `DO` block that demonstrated `jsonb_populate_recordset()`'s functionality can be easily extended to demonstrate `jsonb_to_recordset()`'s functionality as well and to show that their results are identical. The `DO` block needs the same type `t` and function `same_as()` that the _ysqlsh_ script for `jsonb_populate_recordset()`defined.
+Therefore, the `DO` block that demonstrated `jsonb_populate_recordset()`'s functionality can be easily extended to demonstrate `jsonb_to_recordset()`'s functionality as well and to show that their results are identical. The `DO` block needs the same type `t` and function `same_as()` that the _ysqlsh_ script for `jsonb_populate_recordset()`defined.
 
 ```postgresql
 do $body$

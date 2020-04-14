@@ -1,7 +1,8 @@
 ---
-title: Build a Python application
-linkTitle: Build a Python application
-description: Build a Python application
+title: Build a Python application that uses SQLAlchemy and YSQL
+headerTitle: Build a Python application
+linkTitle: Python
+description: Build a Python e-commerce application that uses SQLAlchemy and YSQL.
 menu:
   latest:
     parent: build-apps
@@ -13,12 +14,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
+      YSQL - Psycopg2
     </a>
   </li>
   <li >

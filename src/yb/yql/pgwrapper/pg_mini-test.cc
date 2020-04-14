@@ -58,7 +58,6 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void SetUp() override {
-    constexpr int kNumTabletServers = 3;
     constexpr int kNumMasters = 1;
 
     FLAGS_client_read_write_timeout_ms = 120000;
@@ -73,7 +72,7 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     master::SetDefaultInitialSysCatalogSnapshotFlags();
     YBMiniClusterTestBase::SetUp();
 
-    MiniClusterOptions mini_cluster_opt(kNumMasters, kNumTabletServers);
+    MiniClusterOptions mini_cluster_opt(kNumMasters, NumTabletServers());
     cluster_ = std::make_unique<MiniCluster>(env_.get(), mini_cluster_opt);
     ASSERT_OK(cluster_->Start());
 
@@ -101,6 +100,10 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     DontVerifyClusterBeforeNextTearDown();
   }
 
+  virtual int NumTabletServers() {
+    return 3;
+  }
+
   void DoTearDown() override {
     pg_supervisor_->Stop();
     YBMiniClusterTestBase::DoTearDown();
@@ -114,10 +117,11 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
     return PGConn::Connect(pg_host_port_, dbname);
   }
 
-  // Have several threads doing updates and several threads doing large scans in parallel.  If
-  // deferrable is true, then the scans are in deferrable transactions, so no read restarts are
-  // expected.  Otherwise, the scans are in transactions with snapshot isolation, so read restarts
-  // are expected.
+  // Have several threads doing updates and several threads doing large scans in parallel.
+  // If deferrable is true, then the scans are in deferrable transactions, so no read restarts are
+  // expected.
+  // Otherwise, the scans are in transactions with snapshot isolation, but we still don't expect any
+  // read restarts to be observer because they should be transparently handled on the postgres side.
   void TestReadRestart(bool deferrable = true);
 
   // Run interleaved INSERT, SELECT with specified isolation level and row mark.  Possible isolation
@@ -196,7 +200,6 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(With)) {
 
 void PgMiniTest::TestReadRestart(const bool deferrable) {
   constexpr CoarseDuration kWaitTime = 60s;
-  constexpr float kRequiredReadRestartRate = 0.5;
   constexpr int kKeys = 100;
   constexpr int kNumReadThreads = 8;
   constexpr int kNumUpdateThreads = 8;
@@ -269,20 +272,15 @@ void PgMiniTest::TestReadRestart(const bool deferrable) {
                    + num_read_successes.load(std::memory_order_acquire));
   LOG(INFO) << "Successful reads: " << num_read_successes.load(std::memory_order_acquire) << "/"
       << num_reads;
-  if (deferrable) {
-    ASSERT_EQ(num_read_restarts.load(std::memory_order_acquire), 0);
-    ASSERT_GT(num_read_successes.load(std::memory_order_acquire), kRequiredNumReads);
-  } else {
-    ASSERT_GT(static_cast<float>(num_read_restarts.load(std::memory_order_acquire)) / num_reads,
-              kRequiredReadRestartRate);
-  }
+  ASSERT_EQ(num_read_restarts.load(std::memory_order_acquire), 0);
+  ASSERT_GT(num_read_successes.load(std::memory_order_acquire), kRequiredNumReads);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(Deferrable)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSerializableDeferrable)) {
   TestReadRestart(true /* deferrable */);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestart)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot)) {
   TestReadRestart(false /* deferrable */);
 }
 
@@ -936,6 +934,45 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
     num_tables_after = tablet_lock->data().pb.table_ids_size();
   }
   ASSERT_EQ(num_tables_before, num_tables_after);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+
+  constexpr size_t kRows = 400;
+  constexpr size_t kValueSize = RegularBuildVsSanitizers(256_KB, 4_KB);
+
+  for (size_t i = 0; i != kRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t VALUES ($0, '$1')", i, RandomHumanReadableString(kValueSize)));
+  }
+
+  auto start = MonoTime::Now();
+  auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(DISTINCT(value)) FROM t"));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time: " << finish - start;
+  ASSERT_EQ(res, kRows);
+}
+
+class PgMiniSingleTServerTest : public PgMiniTest {
+ public:
+  int NumTabletServers() override {
+    return 1;
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert), PgMiniSingleTServerTest) {
+  constexpr int kRows = 100000;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+
+  auto start = MonoTime::Now();
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0)", kRows));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time: " << finish - start;
 }
 
 } // namespace pgwrapper

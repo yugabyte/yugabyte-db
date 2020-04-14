@@ -197,6 +197,8 @@ class YBClientBuilder {
   // Sets the size of the threadpool for calling callbacks.
   YBClientBuilder& set_callback_threadpool_size(size_t size);
 
+  YBClientBuilder& wait_for_leader_election_on_init(bool should_wait = true);
+
   // Sets skip master leader resolution.
   // Used in tests, when we do not have real master.
   YBClientBuilder& set_skip_master_leader_resolution(bool value);
@@ -321,7 +323,7 @@ class YBClient {
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
                                  const boost::optional<uint32_t>& next_pg_oid = boost::none,
-                                 bool colocated = false);
+                                 const bool colocated = false);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -334,7 +336,8 @@ class YBClient {
                                             const std::string& namespace_id = "",
                                             const std::string& source_namespace_id = "",
                                             const boost::optional<uint32_t>& next_pg_oid =
-                                            boost::none);
+                                            boost::none,
+                                            const bool colocated = false);
 
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
@@ -367,6 +370,12 @@ class YBClient {
 
   Result<vector<master::NamespaceIdentifierPB>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
+
+  // Get namespace information.
+  CHECKED_STATUS GetNamespaceInfo(const std::string& namespace_id,
+                                  const std::string& namespace_name,
+                                  const boost::optional<YQLDatabase>& database_type,
+                                  master::GetNamespaceInfoResponsePB* ret);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
@@ -519,6 +528,12 @@ class YBClient {
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   CHECKED_STATUS OpenTable(const YBTableName& table_name, std::shared_ptr<YBTable>* table);
   CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table);
+
+  Result<YBTablePtr> OpenTable(const TableId& table_id) {
+    YBTablePtr result;
+    RETURN_NOT_OK(OpenTable(table_id, &result));
+    return result;
+  }
 
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.

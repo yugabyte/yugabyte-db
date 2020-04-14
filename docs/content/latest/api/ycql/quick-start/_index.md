@@ -1,7 +1,8 @@
 ---
 title: Quick start YCQL
+headerTitle: Quick start YCQL
 linkTitle: Quick start YCQL
-description: Quick start YCQL
+description: Quick start to explore YCQL in YugabyteDB.
 image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
   - /quick-start/test-cassandra/
@@ -82,7 +83,6 @@ cqlsh> CREATE TABLE myapp.stock_market (
 );
 ```
 
-
 ## 3. Insert data
 
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your cqlsh shell.
@@ -118,7 +118,6 @@ cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 
 (2 rows)
 ```
-
 
 Query all the values for 'FB' and 'GOOG' as follows.
 

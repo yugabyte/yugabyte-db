@@ -78,13 +78,12 @@ using tserver::WriteResponsePB;
 using strings::Substitute;
 
 WriteOperation::WriteOperation(
-    std::unique_ptr<WriteOperationState> state, int64_t term, CoarseTimePoint deadline,
+    std::unique_ptr<WriteOperationState> state, int64_t term,
+    ScopedOperation preparing_token, CoarseTimePoint deadline,
     WriteOperationContext* context)
     : Operation(std::move(state), OperationType::kWrite),
-      context_(*context), term_(term), deadline_(deadline), start_time_(MonoTime::Now()),
-      // If term is unknown, it means that we are creating operation at replica.
-      // So it was already submitted at leader.
-      submitted_(term == yb::OpId::kUnknownTerm) {
+      term_(term), preparing_token_(std::move(preparing_token)), deadline_(deadline),
+      context_(context), start_time_(MonoTime::Now()) {
 }
 
 consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
@@ -154,14 +153,6 @@ string WriteOperation::ToString() const {
                     abs_time_formatted, state()->ToString());
 }
 
-WriteOperation::~WriteOperation() {
-  // If operation was submitted, then it's lifetime is controlled by operation tracker and we
-  // don't have to do it here.
-  if (!submitted_) {
-    context_.Aborted(this);
-  }
-}
-
 void WriteOperation::DoStartSynchronization(const Status& status) {
   std::unique_ptr<WriteOperation> self(this);
   // If a restart read is required, then we return this fact to caller and don't perform the write
@@ -169,7 +160,7 @@ void WriteOperation::DoStartSynchronization(const Status& status) {
   if (restart_read_ht_.is_valid()) {
     auto restart_time = state()->response()->mutable_restart_read_time();
     restart_time->set_read_ht(restart_read_ht_.ToUint64());
-    auto local_limit = context_.ReportReadRestart();
+    auto local_limit = context_->ReportReadRestart();
     restart_time->set_local_limit_ht(local_limit.ToUint64());
     // Global limit is ignored by caller, so we don't set it.
     state()->CompleteWithStatus(Status::OK());
@@ -181,8 +172,7 @@ void WriteOperation::DoStartSynchronization(const Status& status) {
     return;
   }
 
-  self->submitted_ = true;
-  context_.Submit(std::move(self), term_);
+  context_->Submit(std::move(self), term_);
 }
 
 WriteOperationState::WriteOperationState(Tablet* tablet,
@@ -256,6 +246,20 @@ string WriteOperationState::ToString() const {
                     this,
                     op_id().ShortDebugString(),
                     ts_str);
+}
+
+HybridTime WriteOperationState::WriteHybridTime() const {
+  if (request_->has_external_hybrid_time()) {
+    return HybridTime(request_->external_hybrid_time());
+  }
+  return OperationState::WriteHybridTime();
+}
+
+void WriteOperationState::SetTablet(Tablet* tablet) {
+  OperationState::SetTablet(tablet);
+  if (!request_->has_tablet_id()) {
+    request_->set_tablet_id(tablet->tablet_id());
+  }
 }
 
 }  // namespace tablet

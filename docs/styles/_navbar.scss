@@ -137,6 +137,13 @@ body {
     }
   }
 
+  @media screen and (max-width: 350px) {
+    .container-fluid, .container {
+      padding-left: 15px;
+      padding-right: 15px;
+    }
+  }
+
   img.scrolled {
     display: none !important;
   }
@@ -162,12 +169,17 @@ body {
   }
 
   .navbar-search-small {
-    width: auto;
+    width: 60%;
     flex-grow: 1;
     margin: 0 23px 0 20px;
 
     @media screen and (min-width: 992px) {
       display: none;
+    }
+
+    @media screen and (max-width: 320px) {
+      flex-grow: unset;
+      margin: unset;
     }
     .search-container {
       margin-right: 5px;

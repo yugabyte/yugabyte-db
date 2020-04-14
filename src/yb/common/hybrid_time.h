@@ -155,8 +155,16 @@ class HybridTime {
     return AddMicroseconds(millis * MonoTime::kMicrosecondsPerMillisecond);
   }
 
+  HybridTime AddDelta(MonoDelta delta) const {
+    return AddMicroseconds(delta.ToMicroseconds());
+  }
+
   // Sets this hybrid time from 'value'
   CHECKED_STATUS FromUint64(uint64_t value);
+
+  static HybridTime FromPB(uint64_t value) {
+    return value ? HybridTime(value) : HybridTime();
+  }
 
   HybridTimeRepr value() const { return v; }
 

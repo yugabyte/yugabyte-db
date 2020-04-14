@@ -2,6 +2,7 @@
 title: SELECT
 summary: Retrieves rows from a table
 description: SELECT
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-select

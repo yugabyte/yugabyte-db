@@ -3,6 +3,7 @@ title: REASSIGN OWNED
 linkTitle: REASSIGN OWNED
 description: REASSIGN OWNED
 summary: Roles (users and groups)
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-reassign-owned

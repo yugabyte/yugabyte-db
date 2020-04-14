@@ -66,6 +66,7 @@
 #include "yb/tablet/tablet_metrics.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -169,6 +170,17 @@ DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000
               "duration of such user enforced transactions.");
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
+
+DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 2 * 500,
+             "Operations that are received by the tserver, and have decided how "
+             "the indexes need to be updated (based on the IndexPermission), will "
+             "not be added to the list of current transactions until they are "
+             "replicated/applied. This delay allows for the GetSafeTime method "
+             "to wait for such operations to be replicated/applied. Ideally, this "
+             "value should be set to be something larger than the raft-heartbeat-interval "
+             "but can be as high as the client_rpc_timeout if we want to be more conservative.");
+TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
+TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, runtime);
 
 DEFINE_test_flag(int32, TEST_write_rejection_percentage, 0,
                  "Reject specified percentage of writes.");
@@ -379,34 +391,35 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
 
     // Retrieve the rowblocks returned from the QL write operations and return them as RPC
     // sidecars. Populate the row schema also.
+    faststring rows_data;
     for (const auto& ql_write_op : *state_->ql_write_ops()) {
       const auto& ql_write_req = ql_write_op->request();
       auto* ql_write_resp = ql_write_op->response();
       const QLRowBlock* rowblock = ql_write_op->rowblock();
       SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
-      faststring rows_data;
+      rows_data.clear();
       rowblock->Serialize(ql_write_req.client(), &rows_data);
-      int rows_data_sidecar_idx = 0;
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
-          response_, context_.get());
-      ql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+      ql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(rows_data));
     }
 
-    // Retrieve the resultset returned from the PGSQL write operations and return them as RPC
-    // sidecars.
-    for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
-      auto* pgsql_write_resp = pgsql_write_op->response();
-      const PgsqlResultSet& resultset = pgsql_write_op->resultset();
-      if (resultset.rsrow_count() > 0) {
-        faststring rows_data;
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            pggate::PgDocData::WriteTuples(resultset, &rows_data), response_, context_.get());
-        int rows_data_sidecar_idx = 0;
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
-            response_, context_.get());
-        pgsql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+    if (!state_->pgsql_write_ops()->empty()) {
+      // Retrieve the resultset returned from the PGSQL write operations and return them as RPC
+      // sidecars.
+
+      size_t sidecars_size = 0;
+      for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
+        sidecars_size += pgsql_write_op->result_buffer().size();
+      }
+
+      if (sidecars_size != 0) {
+        context_->ReserveSidecarSpace(sidecars_size);
+        for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
+          auto* pgsql_write_resp = pgsql_write_op->response();
+          const faststring& result_buffer = pgsql_write_op->result_buffer();
+          if (!result_buffer.empty()) {
+            pgsql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(result_buffer));
+          }
+        }
       }
     }
 
@@ -539,6 +552,10 @@ void TabletServiceAdminImpl::GetSafeTime(
               << tablet.peer->tablet_id() << " will wait until "
               << min_hybrid_time << " is safe.";
     } else {
+      // Add some extra delay to wait for operations being replicated to be
+      // applied.
+      min_hybrid_time = min_hybrid_time.AddMilliseconds(
+          FLAGS_index_backfill_additional_delay_before_backfilling_ms);
       auto txn_particpant = tablet.peer->tablet()->transaction_participant();
       HybridTime min_running_ht;
       while ((min_running_ht = txn_particpant->MinRunningHybridTime()) <
@@ -1165,6 +1182,32 @@ void TabletServiceAdminImpl::RemoveTableFromTablet(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::SplitTablet(
+    const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
+    return;
+  }
+  TRACE_EVENT1("tserver", "SplitTablet", "tablet_id", req->tablet_id());
+
+  server::UpdateClock(*req, server_->Clock());
+
+  auto leader_tablet_peer =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!leader_tablet_peer) {
+    return;
+  }
+
+  auto state = std::make_unique<tablet::SplitOperationState>(
+      leader_tablet_peer.peer->tablet(), leader_tablet_peer.peer->raft_consensus(),
+      server_->tablet_manager(), req);
+
+  state->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+
+  leader_tablet_peer.peer->Submit(
+      std::make_unique<tablet::SplitOperation>(std::move(state)), leader_tablet_peer.leader_term);
+}
+
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
@@ -1286,6 +1329,18 @@ Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
   Status s = tablet_peer.CheckRunning();
   if (!s.ok()) {
     return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
+  }
+  if (tablet_peer.tablet()->metadata()->tablet_data_state() ==
+      tablet::TabletDataState::TABLET_DATA_SPLIT) {
+    return STATUS(
+        IllegalState,
+        Format(
+            "The tablet $0 is in process of splitting or already split.", tablet_peer.tablet_id()),
+        TabletServerError(TabletServerErrorPB::TABLET_SPLIT));
+    // TODO(tsplit): If we get FS corruption on 1 node, we can just delete that tablet copy and
+    // bootstrap from a good leader. If there's a way that all peers replicated the SPLIT and
+    // modified their data state, but all had some failures (code bug?).
+    // Perhaps we should consider a tool for editing the data state?
   }
   return Status::OK();
 }
@@ -1884,10 +1939,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
         read_context->read_time.local_limit = read_context->safe_ht_to_read;
         return read_context->read_time;
       }
-      int rows_data_sidecar_idx = 0;
-      RETURN_NOT_OK(read_context->context->AddRpcSidecar(
-          RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
-      result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
+      result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_ql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();
@@ -1908,10 +1960,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
         read_context->read_time.local_limit = read_context->safe_ht_to_read;
         return read_context->read_time;
       }
-      int rows_data_sidecar_idx = 0;
-      RETURN_NOT_OK(read_context->context->AddRpcSidecar(
-          RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
-      result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
+      result.response.set_rows_data_sidecar(read_context->context->AddRpcSidecar(result.rows_data));
       read_context->resp->add_pgsql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();

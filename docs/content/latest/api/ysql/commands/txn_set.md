@@ -1,7 +1,8 @@
 ---
-title: SET TRANSACTION
+title: SET TRANSACTION statement [YSQL]
+headerTitle: SET TRANSACTION
 linkTitle: SET TRANSACTION
-description: SET TRANSACTION
+description: Use the `SET TRANSACTION` statement to set the current transaction isolation level.
 summary: SET TRANSACTION
 menu:
   latest:

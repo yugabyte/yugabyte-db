@@ -37,7 +37,9 @@ typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
 class SnapshotCoordinator;
 class SnapshotOperationState;
+class SplitOperationState;
 class TabletSnapshots;
+class TabletSplitter;
 class TabletStatusPB;
 class TabletStatusListener;
 class TransactionIntentApplier;

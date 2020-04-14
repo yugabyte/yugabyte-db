@@ -1,7 +1,8 @@
 ---
-title: 3. Explore YSQL 
+title: Explore YSQL, the YugabyteDB SQL API
+headerTitle: 3. Explore YSQL 
 linkTitle: 3. Explore YSQL 
-description: Explore Yugabyte SQL (YSQL)
+description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible distributed SQL API
 image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
   - /quick-start/test-postgresql/

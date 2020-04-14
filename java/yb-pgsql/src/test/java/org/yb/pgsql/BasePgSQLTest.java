@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -40,6 +41,7 @@ import org.yb.master.Master;
 import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.URL;
+import java.net.URLConnection;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -48,16 +50,19 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.yb.AssertionWrappers.assertArrayEquals;
@@ -191,11 +196,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
-  protected String pgPrefetchLimit() {
+  protected Integer getYsqlPrefetchLimit() {
     return null;
   }
 
-  protected String pgRequestLimit() {
+  protected Integer getYsqlRequestLimit() {
     return null;
   }
 
@@ -213,12 +218,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
 
     // Setup flag for postgres test on prefetch-limit when starting tserver.
-    if (pgPrefetchLimit() != null) {
-      flagMap.put("ysql_prefetch_limit", pgPrefetchLimit());
+    if (getYsqlPrefetchLimit() != null) {
+      flagMap.put("ysql_prefetch_limit", getYsqlPrefetchLimit().toString());
     }
 
-    if (pgRequestLimit() != null) {
-      flagMap.put("ysql_request_limit", pgRequestLimit());
+    if (getYsqlRequestLimit() != null) {
+      flagMap.put("ysql_request_limit", getYsqlRequestLimit().toString());
     }
 
     flagMap.put("ysql_beta_features", "true");
@@ -482,8 +487,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return toPgConnection(connection).getBackendPID();
   }
 
-  protected int getStatementStat(String statName) throws Exception {
-    int value = 0;
+  protected static class AgregatedValue {
+    long count;
+    double value;
+  }
+
+  protected AgregatedValue getStatementStat(String statName) throws Exception {
+    AgregatedValue value = new AgregatedValue();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       URL url = new URL(String.format("http://%s:%d/statements",
                                       ts.getLocalhostIP(),
@@ -494,7 +504,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       JsonObject obj = tree.getAsJsonObject();
       YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
       if (ysqlStat != null) {
-        value += ysqlStat.calls;
+        value.count += ysqlStat.calls;
+        value.value += ysqlStat.total_time;
       }
       scanner.close();
     }
@@ -503,9 +514,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected void verifyStatementStat(Statement statement, String stmt, String statName,
                                      int stmtMetricDelta, boolean validStmt) throws Exception {
-    int oldValue = 0;
+    long oldValue = 0;
     if (statName != null) {
-      oldValue = getStatementStat(statName);
+      oldValue = getStatementStat(statName).count;
     }
 
     if (validStmt) {
@@ -514,41 +525,63 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       runInvalidQuery(statement, stmt);
     }
 
-    int newValue = 0;
+    long newValue = 0;
     if (statName != null) {
-      newValue = getStatementStat(statName);
+      newValue = getStatementStat(statName).count;
     }
 
     assertEquals(oldValue + stmtMetricDelta, newValue);
   }
 
-  protected int getMetricCounter(String metricName) throws Exception {
-    int value = 0;
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      URL url = new URL(String.format("http://%s:%d/metrics",
-                                      ts.getLocalhostIP(),
-                                      ts.getPgsqlWebPort()));
-      Scanner scanner = new Scanner(url.openConnection().getInputStream());
-      JsonParser parser = new JsonParser();
-      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
-      JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
-      assertEquals(obj.get("type").getAsString(), "server");
-      assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
-      value += new Metrics(obj).getYSQLMetric(metricName).count;
+  private JsonArray[] getRawMetric(
+      Function<MiniYBDaemon, Integer> portFetcher) throws Exception {
+    Collection<MiniYBDaemon> servers = miniCluster.getTabletServers().values();
+    JsonArray[] result = new JsonArray[servers.size()];
+    int index = 0;
+    for (MiniYBDaemon ts : servers) {
+      URLConnection connection = new URL(String.format("http://%s:%d/metrics",
+          ts.getLocalhostIP(),
+          portFetcher.apply(ts))).openConnection();
+      connection.setUseCaches(false);
+      Scanner scanner = new Scanner(connection.getInputStream());
+      result[index++] =
+          new JsonParser().parse(scanner.useDelimiter("\\A").next()).getAsJsonArray();
       scanner.close();
     }
+    return result;
+  }
+
+  protected JsonArray[] getRawTSMetric() throws Exception {
+    return getRawMetric((ts) -> ts.getWebPort());
+  }
+
+  protected JsonArray[] getRawYSQLMetric() throws Exception {
+    return getRawMetric((ts) -> ts.getPgsqlWebPort());
+  }
+
+  protected AgregatedValue getMetric(String metricName) throws Exception {
+    AgregatedValue value = new AgregatedValue();
+    for (JsonArray rawMetric : getRawYSQLMetric()) {
+      JsonObject obj = rawMetric.get(0).getAsJsonObject();
+      assertEquals(obj.get("type").getAsString(), "server");
+      assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
+      Metrics.YSQLMetric metric = new Metrics(obj).getYSQLMetric(metricName);
+      value.count += metric.count;
+      value.value += metric.sum;
+    }
     return value;
+  }
+
+  protected long getMetricCounter(String metricName) throws Exception {
+    return getMetric(metricName).count;
   }
 
   /** Time execution of a query. */
   protected long verifyStatementMetric(Statement statement, String stmt, String metricName,
                                        int stmtMetricDelta, int txnMetricDelta,
                                        boolean validStmt) throws Exception {
-    int oldValue = 0;
-    if (metricName != null) {
-      oldValue = getMetricCounter(metricName);
-    }
-    int oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long oldValue = metricName == null ? 0 : getMetricCounter(metricName);
+    long oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
 
     final long startTimeMillis = System.currentTimeMillis();
     if (validStmt) {
@@ -560,11 +593,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     // Check the elapsed time.
     long result = System.currentTimeMillis() - startTimeMillis;
 
-    int newValue = 0;
-    if (metricName != null) {
-      newValue = getMetricCounter(metricName);
-    }
-    int newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long newValue = metricName == null ? 0 : getMetricCounter(metricName);
+    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
 
     assertEquals(oldValue + stmtMetricDelta, newValue);
     assertEquals(oldTxnValue + txnMetricDelta, newTxnValue);
@@ -1264,8 +1294,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
 
-  public static class ConnectionBuilder {
-    private static final int MAX_CONNECTION_ATTEMPTS = 10;
+  // TODO(alex): This should be reworked and made immutable.
+  public static class ConnectionBuilder implements Cloneable {
+    private static final int MAX_CONNECTION_ATTEMPTS = 15;
     private static final int INITIAL_CONNECTION_DELAY_MS = 500;
 
     private final MiniYBCluster miniCluster;
@@ -1274,6 +1305,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     private String database = DEFAULT_PG_DATABASE;
     private String user = TEST_PG_USER;
     private String password = null;
+    private String preferQueryMode = null;
     private IsolationLevel isolationLevel = IsolationLevel.DEFAULT;
     private AutoCommit autoCommit = AutoCommit.DEFAULT;
 
@@ -1311,14 +1343,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return this;
     }
 
+    ConnectionBuilder setPreferQueryMode(String preferQueryMode) {
+      this.preferQueryMode = preferQueryMode;
+      return this;
+    }
+
     ConnectionBuilder newBuilder() {
-      return new ConnectionBuilder(miniCluster)
-          .setTServer(tserverIndex)
-          .setDatabase(database)
-          .setUser(user)
-          .setPassword(password)
-          .setIsolationLevel(isolationLevel)
-          .setAutoCommit(autoCommit);
+      return clone();
+    }
+
+    @Override
+    protected ConnectionBuilder clone() {
+      try {
+        return (ConnectionBuilder) super.clone();
+      } catch (CloneNotSupportedException ex) {
+        throw new RuntimeException("This can't happen, but to keep compiler happy", ex);
+      }
     }
 
     Connection connect() throws Exception {
@@ -1330,15 +1370,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           postgresAddress.getPort(),
           database
       );
+
+      Properties props = new Properties();
+      props.setProperty("user", user);
+      if (password != null) {
+        props.setProperty("password", password);
+      }
+      if (preferQueryMode != null) {
+        props.setProperty("preferQueryMode", preferQueryMode);
+      }
       if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
-        url += "?loggerLevel=TRACE";
+        props.setProperty("loggerLevel", "TRACE");
       }
 
       int delayMs = INITIAL_CONNECTION_DELAY_MS;
       for (int attempt = 1; attempt <= MAX_CONNECTION_ATTEMPTS; ++attempt) {
         Connection connection = null;
         try {
-          connection = checkNotNull(DriverManager.getConnection(url, user, password));
+          connection = checkNotNull(DriverManager.getConnection(url, props));
 
           if (isolationLevel != null) {
             connection.setTransactionIsolation(isolationLevel.pgIsolationLevel);

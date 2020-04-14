@@ -1,7 +1,9 @@
 ---
-title: INSERT
+title: INSERT statement [YCQL]
+headerTitle: INSERT
+linkTitle: INSERT
 summary: Add a new row to a table
-description: INSERT
+description: Use the INSERT statement to add a row to a specified table.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `INSERT` statement adds a row to a specified table.
+Use the `INSERT` statement to add a row to a specified table.
 
 ## Syntax
 

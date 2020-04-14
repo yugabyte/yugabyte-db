@@ -85,20 +85,20 @@ Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                ? &SchemaRef(pgsql_read_request.index_request().table_id())
                                : nullptr;
 
-  PgsqlResultSet resultset;
   TRACE("Start Execute");
-  const Status s = doc_op.Execute(QLStorage(), deadline, read_time, schema, index_schema,
-                                  &resultset, &result->restart_read_ht);
+  auto fetched_rows = doc_op.Execute(QLStorage(), deadline, read_time, schema, index_schema,
+                                     &result->rows_data, &result->restart_read_ht);
   TRACE("Done Execute");
-  if (!s.ok()) {
+  if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+    const auto& s = fetched_rows.status();
     result->response.set_error_message(s.message().cdata(), s.message().size());
     return Status::OK();
   }
   result->response.Swap(&doc_op.response());
 
   RETURN_NOT_OK(CreatePagingStateForRead(
-      pgsql_read_request, resultset.rsrow_count(), &result->response));
+      pgsql_read_request, *fetched_rows, &result->response));
 
   // TODO(neil) The clients' request should indicate what encoding method should be used. When
   // multi-shard is used to process more complicated queries, proxy-server might prefer a different
@@ -107,9 +107,7 @@ Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
 
   // Serializing data for PgGate API.
   CHECK(!pgsql_read_request.has_rsrow_desc()) << "Row description is not needed";
-  TRACE("Start Serialize");
-  RETURN_NOT_OK(pggate::PgDocData::WriteTuples(resultset, &result->rows_data));
-  TRACE("Done Serialize");
+  TRACE("Done Handle");
 
   return Status::OK();
 }

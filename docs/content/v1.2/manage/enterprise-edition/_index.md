@@ -4,6 +4,7 @@ linkTitle: Enterprise Edition
 description: Enterprise Edition
 image: /images/section_icons/manage/enterprise.png
 headcontent: Manage YugabyteDB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
+block_indexing: true
 menu:
   v1.2:
     identifier: manage-enterprise-edition

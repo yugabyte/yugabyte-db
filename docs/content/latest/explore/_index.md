@@ -1,7 +1,8 @@
 ---
 title: Explore core features
+headerTitle: Explore core features
 linkTitle: Explore core features
-description: Explore core features
+description: Explore linear scalability, fault tolerance, global distribution, auto-sharding, follower leads, observability, colocated tables, and change data capture (CDC).
 headcontent:
 image: /images/section_icons/index/explore.png
 aliases:
@@ -14,7 +15,7 @@ section: GET STARTED
 menu:
   latest:
     identifier: explore
-    weight: 200
+    weight: 600
 ---
 
 {{< tip title="Tip" >}}
@@ -61,7 +62,7 @@ Use your [local cluster](../quick-start/) to explore all the core features of Yu
     <a class="section-link icon-offset" href="auto-sharding/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
-        <div class="title">Auto-sharding</div>
+        <div class="title">Auto sharding</div>
       </div>
       <div class="body">
         Purpose-built for large, ever-growing datasets.

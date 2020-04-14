@@ -164,6 +164,7 @@ class TabletHarness {
       .txns_enabled = TransactionsEnabled::kFalse,
       .is_sys_catalog = IsSysCatalogTablet::kFalse,
       .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr
     };
   }
 

@@ -3,6 +3,7 @@ title: COMMENT
 linkTitle: COMMENT
 summary: COMMENT
 description: COMMENT
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-comment

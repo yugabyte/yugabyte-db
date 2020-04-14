@@ -1,9 +1,9 @@
 ---
-title: jsonb_each_text()
+title: jsonb_each_text() and json_each_text() [JSON]
+headerTitle: jsonb_each_text() and json_each_text()
 linkTitle: jsonb_each_text()
 summary: jsonb_each_text() and json_each_text()
-headerTitle: jsonb_each_text() and json_each_text()
-description: The result of jsonb_each_text() bears the same relationship to the result of jsonb_each() as does the result of the ->> operator to that of the -> operator
+description: Create a row set with columns _"key"_ (as a SQL text) and _"value"_ (as a SQL text) from a JSON object.
 menu:
   latest:
     identifier: jsonb-each-text
@@ -13,16 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `text`) from a JSON _object_.
+**Purpose:** Create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `text`) from a JSON _object_.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb
 return value:      SETOF (text, text)
 ```
 
-**Notes:** the result of `jsonb_each_text()` bears the same relationship to the result of `jsonb_each()` as does the result of the `->>` operator to that of the `->` operator. For that reason, `jsonb_each_text()` is useful when the results are primitive values.
+**Notes:** The result of `jsonb_each_text()` bears the same relationship to the result of `jsonb_each()` as does the result of the `->>` operator to that of the `->` operator. For that reason, `jsonb_each_text()` is useful when the results are primitive values.
 
 Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
 

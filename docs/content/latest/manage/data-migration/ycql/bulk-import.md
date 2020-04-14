@@ -1,4 +1,29 @@
-This page documents bulk import for YugabyteDB’s [Cassandra compatible YCQL API](../../../api/ycql).
+---
+title: Bulk import for YCQL
+headerTitle: Bulk import
+linkTitle: Bulk import
+description: Export data from Apache Cassandra and MySQL and bulk import data into YugabyteDB for YCQL.
+aliases:
+  - /latest/manage/data-migration/bulk-import/
+menu:
+  latest:
+    identifier: manage-bulk-import
+    parent: manage-bulk-import-export
+    weight: 704
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
+Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB. This page documents bulk import for YugabyteDB’s [Cassandra-compatible YCQL API](../../../../api/ycql).
 
 We will first export data from existing Apache Cassandra and MySQL tables. Thereafter, we will import the data using the various bulk load options supported by YugabyteDB. We will use a generic IoT timeseries data use case as a running example to illustrate the import process.
 
@@ -84,6 +109,11 @@ Cassandra’s CQL Shell provides the COPY FROM (see also COPY TO) command which 
 ```sql
 cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 ```
+
+{{< note title="Note" >}}
+By default, `COPY` exports timestamps in `yyyy-MM-dd HH:mm:ss.SSSZ` format. 
+{{< /note >}}
+
 
 ### Medium Datasets (GBs)
 

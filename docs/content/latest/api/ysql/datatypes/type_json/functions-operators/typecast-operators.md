@@ -1,8 +1,9 @@
 ---
-title: Typecast operators
-linkTitle: '::jsonb, ::json, and ::text (typecast)'
+title: "::jsonb, ::json, and ::text (JSON typecast operators)"
+headerTitle: "::jsonb, ::json, and ::text (typecast operators)"
+linkTitle: "::jsonb, ::json, and ::text (typecast operators)"
+description: Typecast between any pair of text, json, and jsonb.
 summary: Typecast operators - `::jsonb`, `::json`, and `::text`
-description: '::jsonb, ::json, and ::text (typecast)'
 menu:
   latest:
     identifier: typecast-operators
@@ -12,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** typecast between any pair out of `text`, `json`, and `jsonb` in both directions.
+**Purpose:** Typecast between any pair out of `text`, `json`, and `jsonb` in both directions.
 
 **Signature for the `jsonb` overload of `::text`:**
 
@@ -21,7 +22,7 @@ input value:       jsonb
 return value:      text
 ```
 
-**Notes:** you can use the `::text` operator on both a `jsonb` value and a `json` value;
+**Notes:** You can use the `::text` operator on both a `jsonb` value and a `json` value;
 you can use the `::jsonb` operator on both a `text` value and a `json` value; and
 you can use the `::json` operator on both a `jsonb` value and a `text` value.
 
@@ -84,6 +85,7 @@ begin
 end;
 $body$;
 ```
+
 This example illustrates the point dramatically:
 
 ```postgresql
@@ -106,12 +108,15 @@ begin
 end;
 $body$;
 ```
+
 The `jsonb` representation is semantics-aware, and so it applies the "rightmost mention wins" rule to overwrite the first value establishment for the key `"a"` (the JSON _number 42_) with the second value establishment for that key (the JSON _number 92_). But the `json` representation is _not_ semantics-aware; it merely applies a syntax-check before accepting the content.
 
 This last example shows that the round trip:
+
 ```
 new_json_value := (json_value::jsonb)::json;
 ```
+
 is lossy because the `json` representation stores the text definition of the JSON value.
 
 ```postgresql

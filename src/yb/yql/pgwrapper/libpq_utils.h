@@ -115,6 +115,10 @@ class PGConn {
     CopyPut(value.c_str(), value.length());
   }
 
+  PGconn* get() {
+    return impl_.get();
+  }
+
  private:
   typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
   struct CopyData;

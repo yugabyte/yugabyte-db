@@ -1,7 +1,8 @@
 ---
-title: Build a Java app
-linkTitle: Build a Java app
-description: Build a Java application
+title: Build a Java application that uses YSQL
+headerTitle: Build a Java application
+linkTitle: Java
+description: Build a simple Java application that uses YSQL.
 aliases:
   - /develop/client-drivers/java/
   - /latest/develop/client-drivers/java/

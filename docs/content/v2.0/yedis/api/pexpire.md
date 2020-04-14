@@ -2,6 +2,7 @@
 title: PEXPIRE
 linkTitle: PEXPIRE
 description: PEXPIRE
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

@@ -15,6 +15,8 @@
 
 #include "yb/yql/pggate/pg_column.h"
 
+#include "yb/common/pg_system_attr.h"
+
 namespace yb {
 namespace pggate {
 

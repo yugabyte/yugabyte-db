@@ -65,7 +65,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // Returns the transactional session, starting a new transaction if necessary.
   yb::Result<client::YBSession*> GetTransactionalSession();
 
-  CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op);
+  CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op,
+                                                  bool needs_pessimistic_locking = false);
 
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
 

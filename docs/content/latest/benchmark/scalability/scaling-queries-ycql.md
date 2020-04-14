@@ -1,9 +1,8 @@
 ---
-title: Scaling queries
+title: Benchmark scaling YCQL queries
+headerTitle: Scaling YCQL queries
 linkTitle: Scaling queries
-description: Scaling queries
-image: /images/section_icons/explore/high_performance.png
-headcontent: Benchmark YugabyteDB using different queries
+description: Benchmark scaling YCQL queries in YugabyteDB.
 menu:
   latest:
     identifier: scaling-queries-2-ycql
@@ -52,7 +51,7 @@ The sections below cover the experimental setup and the details of the read and 
   - 60 GB RAM
   - 2 x 375 GB direct attached SSD
 - Replication factor (RF) = `3`
-- YugabyteDB version: `0.9.1.0`. All configuration options are default on the YugabyteDB nodes.
+- YugabyteDB version: `0.9.1.0`. All configuration flags are default on the YugabyteDB nodes.
 
 The workload was generated using a multi-threaded Cassandra key-value sample application that was run from `n1-highcpu-32` machines. The key and value sizes used were 40 and 16 bytes, respectively.
 
@@ -100,4 +99,4 @@ Note that these writes are the logical writes that the application issued. Each 
 
 ## Next steps
 
-By following the same steps outlined above, you can visit our [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a local cluster and test your favorite application, share your feedback and suggestions with the [YugabyteDB Slack community](yugabyte-db.slack.com).
+You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack](http://www.yugabyte.com/slack).

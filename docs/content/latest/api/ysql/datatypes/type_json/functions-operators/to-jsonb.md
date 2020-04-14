@@ -1,8 +1,9 @@
 ---
-title: to_jsonb()
+title: to_jsonb() and to_json()
+headerTitle: to_jsonb()
 linkTitle: to_jsonb()
-summary: to_jsonb() and to_json()
-description: to_jsonb() and to_json()
+summary: to_jsonb() 
+description: Convert a single SQL value of any primitive or compound data type, that allows a JSON representation, to a semantically equivalent jsonb value.
 menu:
   latest:
     identifier: to-jsonb
@@ -11,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** convert a single SQL value of any primitive or compound data type, that allows a JSON representation, to a sematically equivaent `jsonb` value..
+**Purpose:** Convert a single SQL value of any primitive or compound data type, that allows a JSON representation, to a semantically equivalent `jsonb` value.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       anyelement

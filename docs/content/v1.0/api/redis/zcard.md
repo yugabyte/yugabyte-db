@@ -2,6 +2,7 @@
 title: ZCARD
 linkTitle: ZCARD
 description: ZCARD
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

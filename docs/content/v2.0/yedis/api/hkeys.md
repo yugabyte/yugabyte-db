@@ -2,6 +2,7 @@
 title: HKEYS
 linkTitle: HKEYS
 description: HKEYS
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

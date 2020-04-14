@@ -2,6 +2,7 @@
 title: SISMEMBER
 linkTitle: SISMEMBER
 description: SISMEMBER
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

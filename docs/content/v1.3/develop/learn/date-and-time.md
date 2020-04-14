@@ -2,6 +2,7 @@
 title: 7. Date and time
 linkTitle: 7. Date and time
 description: Date and time
+block_indexing: true
 menu:
   v1.3:
     parent: learn

@@ -3,6 +3,7 @@ title: ALTER GROUP
 linkTitle: ALTER GROUP
 description: ALTER GROUP
 summary: Groups and roles
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-alter-group

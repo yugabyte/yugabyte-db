@@ -124,17 +124,19 @@ class TabletBootstrap {
 
   CHECKED_STATUS PlayTabletSnapshotOpRequest(consensus::ReplicateMsg* replicate_msg);
 
-  void DumpReplayStateToLog(const ReplayState& state);
+  CHECKED_STATUS PlayHistoryCutoffRequest(consensus::ReplicateMsg* replicate_msg);
+
+  CHECKED_STATUS PlaySplitOpRequest(consensus::ReplicateMsg* replicate_msg);
+
+  void DumpReplayStateToLog();
 
   // Handlers for each type of message seen in the log during replay.
   CHECKED_STATUS HandleEntry(
-      yb::log::LogEntryMetadata entry_metadata, ReplayState* state,
-      std::unique_ptr<log::LogEntryPB>* entry);
+      yb::log::LogEntryMetadata entry_metadata, std::unique_ptr<log::LogEntryPB>* entry);
   CHECKED_STATUS HandleReplicateMessage(
-      yb::log::LogEntryMetadata entry_metadata, ReplayState* state,
-      std::unique_ptr<log::LogEntryPB>* replicate_entry);
+      yb::log::LogEntryMetadata entry_metadata, std::unique_ptr<log::LogEntryPB>* replicate_entry);
   CHECKED_STATUS HandleEntryPair(
-      ReplayState* state, log::LogEntryPB* replicate_entry, RestartSafeCoarseTimePoint entry_time);
+      log::LogEntryPB* replicate_entry, RestartSafeCoarseTimePoint entry_time);
 
   virtual CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
                                          consensus::ReplicateMsg* replicate);
@@ -160,6 +162,7 @@ class TabletBootstrap {
   TabletPtr tablet_;
   scoped_refptr<log::Log> log_;
   std::unique_ptr<log::LogReader> log_reader_;
+  std::unique_ptr<ReplayState> replay_state_;
 
   std::unique_ptr<consensus::ConsensusMetadata> cmeta_;
 

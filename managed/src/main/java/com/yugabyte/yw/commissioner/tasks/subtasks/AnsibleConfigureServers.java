@@ -29,7 +29,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public UpgradeUniverse.UpgradeTaskType type = UpgradeUniverse.UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
 
-    // Optional params
+    // Optional params.
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public boolean enableYSQL = false;
@@ -39,6 +39,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public Map<String, String> gflags = new HashMap<>();
     public boolean updateMasterAddrsOnly = false;
     public CollectionLevel callhomeLevel;
+    // Development params.
+    public String itestS3PackagePath = "";
   }
 
   @Override

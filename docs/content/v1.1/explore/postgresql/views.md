@@ -2,6 +2,7 @@
 title: Views
 linkTitle: 6. Views
 description: Views
+block_indexing: true
 menu:
   v1.1:
     identifier: pgsql-views

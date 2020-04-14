@@ -1,5 +1,6 @@
 ---
 title: Spring Data YugabyteDB
+headerTitle: Spring Data YugabyteDB
 linkTitle: Spring Data YugabyteDB
 description: Spring Data YugabyteDB
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag

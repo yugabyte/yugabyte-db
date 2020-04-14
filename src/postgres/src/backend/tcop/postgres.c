@@ -2739,10 +2739,6 @@ die(SIGNAL_ARGS)
 		ProcessInterrupts();
 
 	errno = save_errno;
-
-	if (IsYugaByteEnabled()) {
-		YBOnPostgresBackendShutdown();
-	}
 }
 
 /*
@@ -3810,9 +3806,42 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 
 static const char* yb_parse_command_tag(const char *query_string)
 {
-	List* parsetree_list = pg_parse_query(query_string);
-	RawStmt* raw_parse_tree = linitial_node(RawStmt, parsetree_list);
-	return CreateCommandTag(raw_parse_tree->stmt);
+	List* parsetree_list;
+
+	// Suppress logging of warnings emitted during parsing.
+	int prev_log_min_messages    = log_min_messages;
+	int prev_client_min_messages = client_min_messages;
+	PG_TRY();
+	{
+		log_min_messages    = ERROR;
+		client_min_messages = ERROR;
+		parsetree_list      = pg_parse_query(query_string);
+		log_min_messages    = prev_log_min_messages;
+		client_min_messages = prev_client_min_messages;
+	}
+	PG_CATCH();
+	{
+		log_min_messages    = prev_log_min_messages;
+		client_min_messages = prev_client_min_messages;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if (list_length(parsetree_list) > 0) {
+		RawStmt* raw_parse_tree = linitial_node(RawStmt, parsetree_list);
+		return CreateCommandTag(raw_parse_tree->stmt);
+	} else {
+		return NULL;
+	}
+}
+
+static bool yb_is_begin_transaction(const char *command_tag)
+{
+	if (!command_tag)
+		return false;
+
+	return (strncmp(command_tag, "BEGIN", 5) == 0 ||
+	        strncmp(command_tag, "START TRANSACTION", 17) == 0);
 }
 
 /*
@@ -3824,11 +3853,14 @@ static bool yb_check_retry_allowed(const char *query_string)
 	if (!query_string)
 		return false;
 
-	const char* commandTag = yb_parse_command_tag(query_string);
-	return (strncmp(commandTag, "DELETE", 6) == 0 ||
-	        strncmp(commandTag, "INSERT", 6) == 0 ||
-	        strncmp(commandTag, "SELECT", 6) == 0 ||
-	        strncmp(commandTag, "UPDATE", 6) == 0);
+	const char* command_tag = yb_parse_command_tag(query_string);
+	if (!command_tag)
+		return false;
+
+	return (strncmp(command_tag, "DELETE", 6) == 0 ||
+	        strncmp(command_tag, "INSERT", 6) == 0 ||
+	        strncmp(command_tag, "SELECT", 6) == 0 ||
+	        strncmp(command_tag, "UPDATE", 6) == 0);
 }
 
 static void YBCheckSharedCatalogCacheVersion() {
@@ -3925,7 +3957,7 @@ yb_collect_portal_restart_data(const char* portal_name)
 
 	result->portal_name  = pstrdup(portal_name);
 	result->query_string = pstrdup(portal->sourceText);
-	result->command_tag  = pstrdup(portal->commandTag);
+	result->command_tag  = portal->commandTag ? pstrdup(portal->commandTag) : NULL;
 
 	result->params      = yb_copy_param_list(portal->portalParams);
 	result->num_params  = result->params ? result->params->numParams : 0;
@@ -4012,10 +4044,20 @@ static void
 yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
                                                 MemoryContext exec_context)
 {
+	PortalRestartData restart_data  = {
+	    .portal_name  = "",
+	    .query_string = query_string,
+	    .command_tag  = yb_parse_command_tag(query_string),
+	    .num_params   = 0,
+	    .param_types  = NULL,
+	    .params       = NULL,
+	    .num_formats  = 0,
+	    .formats      = NULL
+	};
 	for (int attempt = 0;; ++attempt) {
 		PG_TRY();
 		{
-			YBSaveOutputBufferPosition();
+			YBSaveOutputBufferPosition(!yb_is_begin_transaction(restart_data.command_tag));
 			exec_simple_query(query_string);
 			return;
 		}
@@ -4025,16 +4067,6 @@ yb_exec_simple_query_attempting_to_restart_read(const char* query_string,
 			// when server started processing user request.
 			MemoryContext     error_context = MemoryContextSwitchTo(exec_context);
 			ErrorData*        edata         = CopyErrorData();
-			PortalRestartData restart_data  = {
-			    .portal_name  = "",
-			    .query_string = query_string,
-			    .command_tag  = yb_parse_command_tag(query_string),
-			    .num_params   = 0,
-			    .param_types  = NULL,
-			    .params       = NULL,
-			    .num_formats  = 0,
-			    .formats      = NULL
-			};
 
 			if (yb_is_read_restart_nedeed(edata) &&
 			   yb_is_read_restart_possible(attempt, &restart_data)) {
@@ -4062,11 +4094,11 @@ yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
                                                    long max_rows,
                                                    MemoryContext exec_context)
 {
-	PortalRestartData* restart_data = NULL;
+	PortalRestartData* restart_data = yb_collect_portal_restart_data(portal_name);
 	for (int attempt = 0;; ++attempt) {
 		PG_TRY();
 		{
-			YBSaveOutputBufferPosition();
+			YBSaveOutputBufferPosition(!yb_is_begin_transaction(restart_data->command_tag));
 			exec_execute_message(portal_name, max_rows);
 			return;
 		}
@@ -4076,8 +4108,6 @@ yb_exec_execute_message_attempting_to_restart_read(const char* portal_name,
 			// when server started processing user request.
 			MemoryContext      error_context = MemoryContextSwitchTo(exec_context);
 			ErrorData*         edata         = CopyErrorData();
-			if (!restart_data)
-				restart_data = yb_collect_portal_restart_data(portal_name);
 
 			if (yb_is_read_restart_nedeed(edata) &&
 			    yb_is_read_restart_possible(attempt, restart_data)) {
@@ -4789,7 +4819,8 @@ PostgresMain(int argc, char *argv[],
 						    restart_data &&
 						    restart_data->portal_name[0] == '\0' &&
 						    restart_data->num_params == 0 &&
-                                yb_check_retry_allowed(unnamed_stmt_psrc->query_string);
+						    unnamed_stmt_psrc &&
+						    yb_check_retry_allowed(unnamed_stmt_psrc->query_string);
 
 						bool need_retry = false;
 						/*

@@ -191,7 +191,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       this.name = name;
       this.index = index;
     }
-    
+
     public String toString() {
       return "{name: " + name + ", index: " + index + "}";
     }
@@ -605,7 +605,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       params.allowInsecure = taskParams().allowInsecure;
       params.rootCA = taskParams().rootCA;
-      
+
+      // Development testing variable.
+      params.itestS3PackagePath = taskParams().itestS3PackagePath;
+
       UUID custUUID = Customer.get(Universe.get(taskParams().universeUUID).customerId).uuid;
 
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);

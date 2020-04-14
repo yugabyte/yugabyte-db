@@ -189,6 +189,11 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 
   CHECKED_STATUS AddEntries(const TableDescription& table_description);
 
+  static void AddEntries(
+      const TableDescription& table_description,
+      google::protobuf::RepeatedPtrField<SysRowEntry>* out,
+      google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos);
+
  private:
   friend class RefCountedThreadSafe<SnapshotInfo>;
   ~SnapshotInfo() = default;

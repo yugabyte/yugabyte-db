@@ -4,6 +4,7 @@ linkTitle: Develop
 description: Develop Apps on YEDIS
 headcontent: 
 image: /images/section_icons/index/develop.png
+block_indexing: true
 menu:
   v1.2:
     identifier: develop-yedis

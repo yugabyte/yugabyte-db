@@ -180,22 +180,23 @@ class RaftConsensusQuorumTest : public YBTest {
           pool_token.get(),
           logs_[i]);
 
-      shared_ptr<RaftConsensus> peer(
-          new RaftConsensus(options_,
-                            std::move(cmeta),
-                            std::move(proxy_factory),
-                            std::move(queue),
-                            std::move(peer_manager),
-                            std::move(pool_token),
-                            metric_entity_,
-                            config_.peers(i).permanent_uuid(),
-                            clock_,
-                            operation_factory,
-                            logs_[i],
-                            parent_mem_trackers_[i],
-                            Bind(&DoNothing),
-                            DEFAULT_TABLE_TYPE,
-                            nullptr /* retryable_requests */));
+      shared_ptr<RaftConsensus> peer(new RaftConsensus(
+          options_,
+          std::move(cmeta),
+          std::move(proxy_factory),
+          std::move(queue),
+          std::move(peer_manager),
+          std::move(pool_token),
+          metric_entity_,
+          config_.peers(i).permanent_uuid(),
+          clock_,
+          operation_factory,
+          logs_[i],
+          parent_mem_trackers_[i],
+          Bind(&DoNothing),
+          DEFAULT_TABLE_TYPE,
+          nullptr /* retryable_requests */,
+          yb::OpId() /* split_op_id */));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);
@@ -869,7 +870,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   req.set_caller_uuid(leader->peer_uuid());
   req.set_caller_term(last_op_id.term());
   req.mutable_preceding_id()->CopyFrom(last_op_id);
-  req.mutable_committed_index()->CopyFrom(last_op_id);
+  req.mutable_committed_op_id()->CopyFrom(last_op_id);
 
   ReplicateMsg* replicate = req.add_ops();
   replicate->set_hybrid_time(clock_->Now().ToUint64());
@@ -1007,7 +1008,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ConsensusRequestPB req;
   req.set_caller_term(last_op_id.term());
   req.set_caller_uuid("peer-0");
-  req.mutable_committed_index()->CopyFrom(last_op_id);
+  req.mutable_committed_op_id()->CopyFrom(last_op_id);
   ConsensusResponsePB res;
   Status s = peer->Update(&req, &res, CoarseBigDeadline());
   ASSERT_EQ(last_op_id.term() + 3, res.responder_term());

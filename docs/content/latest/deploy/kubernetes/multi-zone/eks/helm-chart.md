@@ -1,5 +1,6 @@
 ---
 title: Amazon Elastic Kubernetes Service (EKS)
+headerTitle: Amazon Elastic Kubernetes Service (EKS)
 linkTitle: Amazon Elastic Kubernetes Service (EKS)
 description: Amazon Elastic Kubernetes Service (EKS)
 menu:
@@ -31,11 +32,10 @@ You must have a Amazon EKS cluster that has Helm configured. Note that Amazon EK
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- Amazon EKS running Kubernetes 1.14+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `m5.2xlarge` is the minimum AWS EC2 instance type that meets these criteria.
-- Helm 3.0+
-- YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0+
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
+- Amazon EKS running Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `m5.2xlarge` is the minimum AWS EC2 instance type that meets these criteria.
+- Helm 3.0 or later
+- YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0 or later
+- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites.
 
@@ -58,7 +58,7 @@ eksctl version
 
 - Install and configure `kubectl` for Amazon EKS
 
-You have multiple options to download and install kubectl for your OS. Note that Amazon EKS also vends kubectl binaries that you can use that are identical to the upstream kubectl binaries with the same version. To install the Amazon EKS-vended binary for your operating system, see [Installing kubectl](https://docs.aws.amazon.com/eks/latest/userguide/install-kubectl.html).
+You have multiple options to download and install `kubectl` for your OS. Note that Amazon EKS also vends kubectl binaries that you can use that are identical to the upstream kubectl binaries with the same version. To install the Amazon EKS-vended binary for your operating system, see [Installing kubectl](https://docs.aws.amazon.com/eks/latest/userguide/install-kubectl.html).
 
 - Ensure `helm` is installed
 
@@ -69,6 +69,7 @@ $ helm version
 ```
 
 For Helm 3, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
+
 ```
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
@@ -93,9 +94,11 @@ $ eksctl create cluster \
 --managed
 ```
 
-As stated in the Prerequisites section, the default configuration in the YugabyteDB Helm Chart requires Kubernetes nodes to have a total of 12 CPU cores and 45 GB RAM allocated to YugabyteDB. This can be three nodes with 4 CPU cores and 15 GB RAM allocated to YugabyteDB. The smallest AWS instance type that meets this requirement is `m5.2xlarge` which has 8 CPU cores and 32GB RAM.
+As stated in the Prerequisites section, the default configuration in the YugabyteDB Helm Chart requires Kubernetes nodes to have a total of 12 CPU cores and 45 GB RAM allocated to YugabyteDB. This can be three nodes with 4 CPU cores and 15 GB RAM allocated to YugabyteDB. The smallest AWS instance type that meets this requirement is `m5.2xlarge` which has 8 CPU cores and 32 GB RAM.
 
-### Create storage classes per zone
+### Create a storage class per zone
+
+We need to ensure that the storage classes used by the pods in a given zone are always pinned to that zone only.
 
 Copy the contents below to a file named `storage.yaml`.
 
@@ -156,6 +159,7 @@ Validate that you have the updated char version.
 ```sh
 $ helm search repo yugabytedb/yugabyte
 ```
+
 ```sh
 NAME                CHART VERSION APP VERSION DESCRIPTION                                       
 yugabytedb/yugabyte 2.1.0         2.1.0.0-b18 YugabyteDB is the high-performance distributed ...
@@ -164,6 +168,7 @@ yugabytedb/yugabyte 2.1.0         2.1.0.0-b18 YugabyteDB is the high-performance
 ### Create override files
 
 Copy the contents below to a file named `overrides-us-east-1a.yaml`.
+
 ```sh
 isMultiAz: True
 
@@ -194,6 +199,7 @@ gflags:
 ```
 
 Copy the contents below to a file named `overrides-us-east-1b.yaml`.
+
 ```sh
 isMultiAz: True
 
@@ -224,6 +230,7 @@ gflags:
 ```
 
 Copy the contents below to a file named `overrides-us-east-1b.yaml`.
+
 ```sh
 isMultiAz: True
 
@@ -272,11 +279,13 @@ $ helm install yb-demo-us-east-1a yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1a \
  -f overrides-us-east-1a.yaml --wait
 ```
+
 ```sh
 $ helm install yb-demo-us-east-1b yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1b \
  -f overrides-us-east-1b.yaml --wait
 ```
+
 ```sh
 $ helm install yb-demo-us-east-1c yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1c \
@@ -298,6 +307,7 @@ Check the services.
 ```sh
 $ kubectl get services --all-namespaces
 ```
+
 ```
 NAMESPACE            NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP                                                               PORT(S)                                        AGE
 default              kubernetes           ClusterIP      10.100.0.1       <none>                                                                    443/TCP                                        20m
@@ -317,13 +327,13 @@ yb-demo-us-east-1c   yb-tservers          ClusterIP      None             <none>
 
 ```
 
-Access the yb-master Admin UI for the cluster at http://\<external-ip\>:7000 where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above 3 services for this purpose since all of them will show the same cluster metadata.
+Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
 
 ![mz-ybmaster](/images/deploy/kubernetes/aws-multizone-ybmaster.png) 
 
 ## 4. Configure zone-aware replica placement
 
-Default replica placement policy treats every yb-tserver as equal irrespective of its `placement_*` setting. Go to http://\<external-ip\>:7000/cluster-config to confirm that the default configuration is still in effect. 
+Default replica placement policy treats every yb-tserver as equal irrespective of its `placement_*` setting. Go to `http://<external-ip>:7000/cluster-config` to confirm that the default configuration is still in effect. 
 
 ![before-zoneaware](/images/deploy/kubernetes/gke-aws-multizone-before-zoneaware.png)
 
@@ -334,13 +344,13 @@ kubectl exec -it -n yb-demo-us-east-1a yb-master-0 bash \
 -- -c "/home/yugabyte/master/bin/yb-admin --master_addresses yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100 modify_placement_info aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c 3"
 ```
 
-Go to http://\<external-ip\>:7000/cluster-config to see the new configuration. 
+Go to `http://<external-ip>:7000/cluster-config` to see the new configuration.
 
 ![after-zoneaware](/images/deploy/kubernetes/aws-multizone-after-zoneaware.png)
 
-## 5. Connect using YugabyteDB Shells
+## 5. Connect using YugabyteDB shells
 
-To connect and use the YSQL Shell `ysqlsh`, run the following command.
+To connect and use the YSQL Shell (`ysqlsh`), run the following command.
 
 us-east-1a,us-east-1b,us-east-1c \
 
@@ -349,14 +359,14 @@ $ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 /home/yugabyte/bin/ysqlsh 
  -- -h yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 ```
 
-To connect and use the YCQL Shell `cqlsh`, run the following command.
+To connect and use the YCQL Shell (`cqlsh`), run the following command.
 
 ```sh
 $ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 /home/yugabyte/bin/cqlsh \
 yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 ```
 
-You can follow the [Explore YSQL](../../../../../quick-start/explore-ysql) tutorial and then go to the http://\<external-ip\>:7000/tablet-servers page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all 3 zones for both user data and system data.
+You can follow the [Explore YSQL](../../../../../quick-start/explore-ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
 ![mz-ybtserver](/images/deploy/kubernetes/aws-multizone-ybtserver.png) 
 
@@ -367,6 +377,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` address of o
 ```sh
 $ kubectl get services --namespace yb-demo
 ```
+
 ```
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...

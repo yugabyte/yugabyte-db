@@ -386,4 +386,61 @@ public class TestPgSelect extends BasePgSQLTest {
       }
     }
   }
+
+  @Test
+  public void testReverseScanMultiRangeCol() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+
+      statement.execute("CREATE TABLE test_reverse_scan_multicol (h int, r1 int, r2 int, r3 int," +
+                              " PRIMARY KEY (h, r1, r2, r3))");
+      String insert_stmt = "INSERT INTO test_reverse_scan_multicol VALUES (1, %d, %d, %d)";
+
+      for (int r1 = 1; r1 <= 5; r1++) {
+        for (int r2 = 1; r2 <= 5; r2++) {
+          for (int r3 = 1; r3 <= 5; r3++) {
+            statement.execute(String.format(insert_stmt, r1, r2, r3));
+          }
+        }
+      }
+
+      // Test reverse scan with prefix bounds: r1[2, 4], r2(1,4).
+      String select_stmt = "SELECT * FROM test_reverse_scan_multicol WHERE h = 1" +
+                                          "AND r1 >= 2 AND r1 <= 4 AND r2 > 1 and r2 < 4" +
+                                          "ORDER BY r1 DESC, r2 DESC, r3 DESC";
+      ResultSet rs = statement.executeQuery(select_stmt);
+
+      for (int r1 = 4; r1 >= 2; r1--) {
+        for (int r2 = 3; r2 > 1; r2--) {
+          for (int r3 = 5; r3 >= 1; r3--) {
+            assertTrue(rs.next());
+            assertEquals(r1, rs.getInt("r1"));
+            assertEquals(r2, rs.getInt("r2"));
+            assertEquals(r3, rs.getInt("r3"));
+          }
+        }
+      }
+      assertFalse(rs.next());
+
+      // Test reverse scan with non-prefix bounds and LIMIT: r1[2, 4], r3[2, 3].
+      // Total 3 * 5 * 2 = 30 rows but set LIMIT to 25.
+      select_stmt = "SELECT * FROM test_reverse_scan_multicol WHERE h = 1" +
+              "AND r1 >= 2 AND r1 <= 4 AND r3 > 1 and r3 < 4" +
+              "ORDER BY r1 DESC, r2 DESC, r3 DESC LIMIT 25";
+      rs = statement.executeQuery(select_stmt);
+
+      int idx = 0;
+      for (int r1 = 4; r1 >= 2 && idx < 25; r1--) {
+        for (int r2 = 5; r2 >= 1 && idx < 25; r2--) {
+          for (int r3 = 3; r3 > 1 && idx < 25; r3--) {
+            assertTrue(rs.next());
+            assertEquals(r1, rs.getInt("r1"));
+            assertEquals(r2, rs.getInt("r2"));
+            assertEquals(r3, rs.getInt("r3"));
+            idx++;
+          }
+        }
+      }
+      assertFalse(rs.next());
+    }
+  }
 }

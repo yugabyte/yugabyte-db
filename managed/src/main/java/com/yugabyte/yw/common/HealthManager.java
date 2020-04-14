@@ -30,8 +30,8 @@ public class HealthManager extends DevopsBase {
     // TODO: this is to be used by k8s.
     // Note: this is the same across all clusters, so maybe we should pull it out one level above.
     public Map<String, String> namespaceToConfig = new HashMap<>();
-    public List<String> masterNodes = new ArrayList<>();
-    public List<String> tserverNodes = new ArrayList<>();
+    public Map<String, String> masterNodes = new HashMap<>();
+    public Map<String, String> tserverNodes = new HashMap<>();
     public String ybSoftwareVersion = null;
     public boolean enableTlsClient = false;
     public boolean enableYSQL = false;

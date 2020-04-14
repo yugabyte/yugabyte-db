@@ -169,6 +169,14 @@ class IntentAwareIterator {
       DocHybridTime* max_overwrite_time,
       Slice* result_value = nullptr);
 
+  // Finds the oldest record for a particular key that is larger than the
+  // specified min_hybrid_time, returns the overwrite time.
+  // This record may not be a full record, but instead a merge record (e.g. a
+  // TTL row).
+  // Returns HybridTime::kInvalid if no such record was found.
+  Result<HybridTime> FindOldestRecord(const Slice& key_without_ht,
+                                      HybridTime min_hybrid_time);
+
   void SetUpperbound(const Slice& upperbound) {
     upperbound_ = upperbound;
   }
@@ -234,15 +242,16 @@ class IntentAwareIterator {
 
   void UpdateResolvedIntentSubDocKeyEncoded();
 
-  Status FindLatestIntentRecord(
-    const Slice& key_without_ht,
-    DocHybridTime* max_overwrite_time,
-    bool* found_later_intent_result);
-
-  Status FindLatestRegularRecord(
-    const Slice& key_without_ht,
-    DocHybridTime* max_overwrite_time,
-    bool* found_later_regular_result);
+  // Seeks to the appropriate intent-prefix and returns the associated
+  // DocHybridTime.
+  Result<DocHybridTime> FindMatchingIntentRecordDocHybridTime(
+      const Slice& key_without_ht);
+  // Returns the DocHybridTime associated with the current regular record
+  // pointed to, if it matches the key that is passed as the argument.
+  // If the current record does not match the passed key, invalid hybrid time
+  // is returned.
+  Result<DocHybridTime> GetMatchingRegularRecordDocHybridTime(
+      const Slice& key_without_ht);
 
   // Whether current entry is regular key-value pair.
   bool IsEntryRegular(bool descending = false);

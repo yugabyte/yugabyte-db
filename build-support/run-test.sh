@@ -112,7 +112,7 @@ if [[ -z ${BUILD_ROOT:-} ]]; then
   handle_build_root_from_current_dir
 fi
 
-yb_ninja_not_needed=true
+yb_ninja_executable_not_needed=true
 if [[ -z ${BUILD_ROOT:-} ]]; then
   set_build_root
 else
@@ -278,7 +278,7 @@ fi
 for test_descriptor in "${tests[@]}"; do
   for (( test_attempt=$min_test_attempt_index;
          test_attempt <= $max_test_attempt_index;
-         test_attempt++ )); do
+         test_attempt+=1 )); do
     if [[ $max_test_attempt_index -gt 1 ]]; then
       log "Starting test attempt $test_attempt ($test_descriptor)"
       test_attempt_index=$test_attempt

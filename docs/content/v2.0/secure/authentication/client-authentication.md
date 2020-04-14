@@ -4,6 +4,7 @@ linkTitle: Fine-grained authentication
 description: Fine-grained authentication
 headcontent: Configure fine-grained access control for YSQL clients
 image: /images/section_icons/secure/authentication.png
+block_indexing: true
 menu:
   v2.0:
     identifier: client-authentication

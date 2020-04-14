@@ -1,8 +1,8 @@
 ---
-title: YCSB
+title: Benchmark YCQL performance using YCSB
+headerTitle: YCSB
 linkTitle: YCSB
-description: YCSB
-headcontent: Benchmark YugabyteDB using YCSB.
+description: Benchmark YugabyteDB YCQL performance using YCSB.
 aliases:
   - /latest/benchmark/ycsb
 menu:
@@ -34,7 +34,7 @@ isTocNested: true
 
 {{< note title="Note" >}}
 
-For more information about YCSB, see: 
+For more information about YCSB, see:
 
 * YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
 * Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
@@ -52,21 +52,17 @@ $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
 
+{{< note title="Note" >}}
+
+The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
+
+{{< /note >}}
+
 ## Step 2. Start YugabyteDB
 
 Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
 
-## Step 3. Create your keyspace
-
-Create the keyspace and table using the `cqlsh` tool.
-The `cqlsh` tool is distributed as part of the database package.
-
-```sh
-$ ./bin/cqlsh <ip> --execute "create keyspace ycsb"
-$ ./bin/cqlsh <ip> --keyspace ycsb --execute 'create table usertable (y_id varchar primary key, field0 varchar, field1 varchar, field2 varchar, field3 varchar, field4 varchar, field5 varchar, field6 varchar, field7 varchar, field8 varchar, field9 varchar);'
-```
-
-## Step 4. Configure YCSB connection properties
+## Step 3. Configure YCSB connection properties
 
 Set the following connection configuration options in `db.properties`:
 
@@ -76,10 +72,35 @@ port=9042
 cassandra.username=yugabyte
 ```
 
-For details on other configuration parameters, like username, password, connection
-parameters, etc., see [YugabyteCQL binding](https://github.com/yugabyte/YCSB/tree/master/yugabyteCQL).
+For details on other configuration parameters, like username, password, connection parameters, etc., see [YugabyteCQL binding](https://github.com/yugabyte/YCSB/tree/master/yugabyteCQL).
 
-## Step 5. Running the workload
+## Step 4. Run the workloads
+
+There is a handy script (`run_cql.sh`) that loads and runs all the workloads.
+First we need to supply the paths to the ycsb binary and the cqlsh binary (which is distributed as part of the database package) along with the IP of the tserver node.
+Then you simply run the workloads as:
+
+```sh
+$ ./run_cql.sh
+```
+
+The script creates two result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
+
+{{< note title="Note" >}}
+
+To get the maximum performance out of the system, you would have to tune the `threadcount` parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32 GB RAM, we used a `threadcount` of 32 for the loading phase and 256 for the execution phase.
+
+{{< /note >}}
+
+## Manually run the workloads
+
+Create the keyspace and table using the `cqlsh` tool.
+The `cqlsh` tool is distributed as part of the database package.
+
+```sh
+$ ./bin/cqlsh <ip> --execute "create keyspace ycsb"
+$ ./bin/cqlsh <ip> --keyspace ycsb --execute 'create table usertable (y_id varchar primary key, field0 varchar, field1 varchar, field2 varchar, field3 varchar, field4 varchar, field5 varchar, field6 varchar, field7 varchar, field8 varchar, field9 varchar);'
+```
 
 Before starting the `yugabyteCQL` workload, you first need to load the data.
 

@@ -66,9 +66,9 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     return;
   }
 
+  auto snapshot_hybrid_time = HybridTime::FromPB(req->snapshot_hybrid_time());
   // Transaction aware snapshot
-  if (req->has_snapshot_hybrid_time()) {
-    HybridTime snapshot_hybrid_time(req->snapshot_hybrid_time());
+  if (snapshot_hybrid_time && tablet.peer->tablet()->transaction_participant()) {
     auto status = tablet.peer->tablet()->transaction_participant()->ResolveIntents(
         snapshot_hybrid_time, context.GetClientDeadline());
     if (!status.ok()) {

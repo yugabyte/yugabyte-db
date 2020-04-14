@@ -2,6 +2,7 @@
 title: GETRANGE
 linkTitle: GETRANGE
 description: GETRANGE
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

@@ -31,10 +31,12 @@
 //
 #include "yb/consensus/consensus_meta.h"
 
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/logging.h"
@@ -104,6 +106,7 @@ Status ConsensusMetadata::DeleteOnDiskData(FsManager* fs_manager, const string& 
   if (!env->FileExists(cmeta_path)) {
     return Status::OK();
   }
+  LOG(INFO) << "T " << tablet_id << " Deleting consensus metadata";
   RETURN_NOT_OK_PREPEND(env->DeleteFile(cmeta_path),
                         "Unable to delete consensus metadata file for tablet " + tablet_id);
   return Status::OK();
@@ -187,6 +190,10 @@ void ConsensusMetadata::set_leader_uuid(const string& uuid) {
   UpdateActiveRole();
 }
 
+void ConsensusMetadata::clear_leader_uuid() {
+  set_leader_uuid("");
+}
+
 RaftPeerPB::Role ConsensusMetadata::active_role() const {
   return active_role_;
 }
@@ -264,7 +271,7 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
 }
 
 std::string ConsensusMetadata::LogPrefix() const {
-  return Substitute("T $0 P $1: ", tablet_id_, peer_uuid_);
+  return MakeTabletLogPrefix(tablet_id_, peer_uuid_);
 }
 
 void ConsensusMetadata::UpdateActiveRole() {

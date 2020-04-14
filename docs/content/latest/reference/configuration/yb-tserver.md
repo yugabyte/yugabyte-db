@@ -1,8 +1,8 @@
 ---
-title: yb-tserver configuration
+title: yb-tserver configuration reference
 headerTitle: yb-tserver
 linkTitle: yb-tserver
-description: Configure YugabyteDB YB-TServer (yb-tserver) nodes to store and manages data for client applications.
+description: YugabyteDB Tablet Server (yb-tserver) binary and configuration flags to store and manage data for client applications.
 menu:
   latest:
     identifier: yb-tserver
@@ -14,12 +14,12 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-Use the `yb-tserver` binary and its options to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
 ```sh
-yb-tserver [ options ]
+yb-tserver [ flags ]
 ```
 
 ### Example
@@ -40,41 +40,41 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 $ ./bin/yb-tserver --help
 ```
 
-## Configuration options
+## Configuration flags
 
-- [Help](#help-options)
-- [General](#general-options)
-- [Logging](#logging-options)
-- [Raft](#raft-options)
-  - [Write Ahead Log (WAL)](#write-ahead-log-wal-options)
-- [Sharding](#sharding-options)
-- [Geo-distribution](#geo-distribution-options)
-- [YSQL](#ysql-options)
-- [YCQL](#ycql-options)
-- [YEDIS](#yedis-options)
-- [Performance](#performance-options)
-- [Security](#security-options)
-- [Change data capture (CDC)](#change-data-capture-cdc-options)
+- [Help](#help-flags)
+- [General](#general-flags)
+- [Logging](#logging-flags)
+- [Raft](#raft-flags)
+  - [Write Ahead Log (WAL)](#write-ahead-log-wal-flags)
+- [Sharding](#sharding-flags)
+- [Geo-distribution](#geo-distribution-flags)
+- [YSQL](#ysql-flags)
+- [YCQL](#ycql-flags)
+- [YEDIS](#yedis-flags)
+- [Performance](#performance-flags)
+- [Security](#security-flags)
+- [Change data capture (CDC)](#change-data-capture-cdc-flags)
 
 ---
 
-### Help options
+### Help flags
 
 ##### --help
 
-Displays help on all options.
+Displays help on all flags.
 
 ##### --helpon
 
-Displays help on modules named by the specified option (or flag) value.
+Displays help on modules named by the specified flag value.
 
 ---
 
-### General options
+### General flags
 
 ##### --flagfile
 
-Specifies the file to load the configuration options (or flags) from. The configuration settings, or flags, must be in the same format as supported by the command line options.
+Specifies the file to load the configuration flags from. The configuration flags must be in the same format as supported by the command line flags.
 
 ##### --version
 
@@ -132,7 +132,7 @@ Default: `0.0.0.0:9100`
 
 ##### --use_private_ip
 
-Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration flags](#placement-flags).
 
 Valid values for the policy are:
 
@@ -162,7 +162,7 @@ Default: The `www` directory in the YugabyteDB home directory.
 
 ---
 
-### Logging options
+### Logging flags
 
 ##### --log_dir
 
@@ -180,7 +180,7 @@ Default: `999`
 
 The mailer used to send logging email messages.
 
-Default: `"/bin/mail"
+Default: `"/bin/mail"`
 
 ##### --logtostderr
 
@@ -214,7 +214,7 @@ Default: `false`
 
 ---
 
-### Raft options
+### Raft flags
 
 {{< note title="Note" >}}
 
@@ -238,7 +238,7 @@ The `--follower_unavailable_considered_failed_sec` value should match the value 
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this option to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -248,7 +248,7 @@ The heartbeat interval, in milliseconds (ms), for Raft replication. The leader p
 
 Default: `500`
 
-#### Write ahead log (WAL) options
+#### Write ahead log (WAL) flags
 
 {{< note title="Note" >}}
 
@@ -264,7 +264,7 @@ Default: Same as `--fs_data_dirs`
 
 ##### --durable_wal_write
 
-If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-mas) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this option should be set to `true`.
+If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-mas) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 Default: `false`
 
@@ -300,13 +300,13 @@ Default: `64`
 
 ---
 
-### Sharding options
+### Sharding flags
 
 ##### --yb_num_shards_per_tserver
 
 The number of shards per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this option.
+Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag.
 
 {{< note title="Important" >}}
 
@@ -338,13 +338,9 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/comma
 
 {{< /note >}}
 
-
-
-
-
 ---
 
-### Geo-distribution options
+### Geo-distribution flags
 
 Settings related to managing geo-distributed clusters.
 
@@ -374,13 +370,13 @@ Default: `""`
 
 ---
 
-### YSQL options
+### YSQL flags
 
-The following options, or flags, support the use of the [YSQL API](../../../api/ysql/).
+The following flags support the use of the [YSQL API](../../../api/ysql/).
 
 ##### --enable_ysql
 
-Enables the YSQL API. Replaces the deprecated `--start_pgsql_proxy` option.
+Enables the YSQL API. Replaces the deprecated `--start_pgsql_proxy` flag.
 
 Default: `true`
 
@@ -390,9 +386,9 @@ Enables YSQL authentication.
 
 {{< note title="Note" >}}
 
-**Yugabyte 2.0:** Assign a password for the default `yugabyte` user to be able to sign in after enabling YSQL authentication.
+**Release 2.0:** Assign a password for the default `yugabyte` user to be able to sign in after enabling YSQL authentication.
 
-**Yugabyte 2.0.1:** When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte".
+**Release 2.0.1:** When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte`.
 
 {{< /note >}}
 
@@ -406,11 +402,6 @@ To specify fine-grained access control over who can access the server, use [`--y
 
 Default: `0.0.0.0:5433`
 
-{{< note title="Note" >}}
-
-When using local YugabyteDB clusters built using the
-
-{{< /note >}}
 
 ##### --pgsql_proxy_webserver_port
 
@@ -452,13 +443,13 @@ Default: `300`
 
 Specifies the default transaction isolation level.
 
-Valid values: `READ UNCOMMITTED`, `READ COMMITTED`, `REPEATABLE READ`, and `SERIALIZABLE`.
+Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-Default: `READ COMMITTED` (implemented in YugabyteDB as `REPEATABLE READ`)
+Default: `REPEATABLE READ`
 
 {{< note title="Note" >}}
 
-YugabyteDB supports two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The transaction isolation levels of `READ UNCOMMITTED` and `READ COMMITTED` are implemented in YugabyteDB as `REPEATABLE READ`.
+YugabyteDB supports only two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The transaction isolation levels of `READ UNCOMMITTED` and `READ COMMITTED` are implemented in YugabyteDB as `REPEATABLE READ`.
 
 {{< /note >}}
 
@@ -476,9 +467,9 @@ Specifies the lowest YSQL message level to log.
 
 ---
 
-### YCQL options
+### YCQL flags
 
-The following options, or flags, support the use of the [YCQL API](../../../api/ycql/).
+The following flags support the use of the [YCQL API](../../../api/ycql/).
 
 ##### --use_cassandra_authentication
 
@@ -508,9 +499,9 @@ Default: `false`
 
 ---
 
-### YEDIS options
+### YEDIS flags
 
-The following options, or flags, support the use of the YEDIS API.
+The following flags support the use of the YEDIS API.
 
 ##### --redis_proxy_bind_address
 
@@ -526,7 +517,7 @@ Default: `11000`
 
 ---
 
-### Performance options
+### Performance flags
 
 ##### --enable_ondisk_compression
 
@@ -558,7 +549,7 @@ Default: `20`
 
 ##### --timestamp_history_retention_interval_sec
 
-The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval  
+The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval 
 might not be allowed after a compaction and return a `Snapshot too old` error. 
 Set this to be greater than the expected maximum duration of any single transaction in your application.
 
@@ -572,7 +563,7 @@ Default: `256MB`
 
 ---
 
-### Security options
+### Security flags
 
 For details on enabling client-server encryption, see [Client-server encryption](../../../secure/tls-encryption/client-to-server).
 
@@ -584,7 +575,7 @@ Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
 
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this option requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
@@ -614,7 +605,7 @@ Default: `false`
 
 ---
 
-### Change data capture (CDC) options
+### Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
 

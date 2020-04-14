@@ -1,8 +1,9 @@
 ---
 title: jsonb_pretty()
-linkTitle: jsonb_pretty() 
+headerTitle: json_pretty()
+linkTitle: jsonb_pretty()
+description: Format the text representation of the input `jsonb` actual argument represents, using whitespace, to make it more human-readable.
 summary: jsonb_pretty() 
-description: jsonb_pretty()
 menu:
   latest:
     identifier: jsonb-pretty
@@ -12,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** format the text representation of the JSON value that the input `jsonb` actual argument represents, using whitespace, to make it maximally easily human readable.
+**Purpose:** Format the text representation of the JSON value that the input `jsonb` actual argument represents, using whitespace, to make it more human-readable.
 
 **Signature:**
 

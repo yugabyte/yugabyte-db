@@ -4,6 +4,7 @@ linkTitle: Explore Sample Apps
 description: Explore Sample Apps
 headcontent: 
 image: /images/section_icons/index/develop.png
+block_indexing: true
 menu:
   v1.2:
     identifier: explore-sample-apps

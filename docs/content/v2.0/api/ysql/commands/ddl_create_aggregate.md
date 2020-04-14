@@ -3,6 +3,7 @@ title: CREATE AGGREGATE
 linkTitle: CREATE AGGREGATE
 summary: Create a new aggregate
 description: CREATE AGGREGATE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-aggregate

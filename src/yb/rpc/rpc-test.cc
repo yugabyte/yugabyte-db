@@ -74,6 +74,7 @@ DECLARE_bool(enable_rpc_keepalive);
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(TEST_pause_calculator_echo_request);
 DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
+DECLARE_string(vmodule);
 
 using namespace std::chrono_literals;
 using std::string;
@@ -315,7 +316,11 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   // rpc_connection_timeout less than kGcTimeout.
   FLAGS_rpc_connection_timeout_ms = MonoDelta(kGcTimeout).ToMilliseconds() / 2;
   FLAGS_enable_rpc_keepalive = true;
-
+  if (!FLAGS_vmodule.empty()) {
+    FLAGS_vmodule = FLAGS_vmodule + ",yb_rpc=5";
+  } else {
+    FLAGS_vmodule = "yb_rpc=5";
+  }
   // Set up server.
   HostPort server_addr;
   StartTestServer(&server_addr, options);

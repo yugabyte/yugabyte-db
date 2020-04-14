@@ -30,13 +30,7 @@ namespace tablet {
 
 void UpdateTxnOperationState::UpdateRequestFromConsensusRound() {
   VLOG_WITH_PREFIX(2) << "UpdateRequestFromConsensusRound";
-  request_.store(consensus_round()->replicate_msg()->mutable_transaction_state(),
-                 std::memory_order_release);
-}
-
-std::string UpdateTxnOperationState::ToString() const {
-  auto req = request();
-  return Format("UpdateTxnOperationState [$0]", !req ? "(none)"s : req->ShortDebugString());
+  UseRequest(&consensus_round()->replicate_msg()->transaction_state());
 }
 
 consensus::ReplicateMsgPtr UpdateTxnOperation::NewReplicateMsg() {

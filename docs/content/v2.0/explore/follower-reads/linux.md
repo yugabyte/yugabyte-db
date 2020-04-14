@@ -2,6 +2,7 @@
 title: Follower reads
 linkTitle: Follower reads
 description: Follower reads
+block_indexing: true
 menu:
   v2.0:
     identifier: follower-reads-2-linux

@@ -1,7 +1,8 @@
 ---
-title: Auto sharding
+title: Explore auto sharding [Linux]
+headerTitle: Auto sharding
 linkTitle: Auto sharding
-description: Auto sharding
+description: Follow this tutorial to learn how YugabyteDB automatically splits tables into shards.
 aliases:
   - /latest/explore/auto-sharding-linux/
 menu:
@@ -65,10 +66,10 @@ If you have a currently running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with a replication factor of 1 (RF=1). We are passing the following options:
+Start a new local universe with a replication factor of 1 (RF=1). We are passing the following flags:
 
 - `--rf 1` This creates a universe with a replication factor of 1.
-- `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
+- `--num_shards_per_tserver 4`  This flag controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
 - `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that we can observe which tablets the data is written to.
 
 You can do this as shown below.

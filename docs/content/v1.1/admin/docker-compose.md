@@ -2,6 +2,7 @@
 title: docker-compose
 linkTitle: docker-compose
 description: docker-compose
+block_indexing: true
 menu:
   v1.1:
     identifier: docker-compose

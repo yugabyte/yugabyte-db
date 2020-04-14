@@ -109,20 +109,6 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     });
   }
 
-  shared_ptr<YBqlReadOp> CreateReadOp(int32_t key) {
-    const auto op = table_.NewReadOp();
-    auto* const req = op->mutable_request();
-    QLAddInt32HashValue(req, key);
-    auto value_column_id = table_.ColumnId(kValueColumnName);
-    req->add_selected_exprs()->set_column_id(value_column_id);
-    req->mutable_column_refs()->add_ids(value_column_id);
-
-    QLRSColDescPB* rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
-    rscol_desc->set_name(kValueColumnName);
-    table_.ColumnType(kValueColumnName)->ToQLTypePB(rscol_desc->mutable_ql_type());
-    return op;
-  }
-
   shared_ptr<YBqlWriteOp> CreateWriteIfOp(int32_t key, int32_t old_value, int32_t new_value) {
     const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
@@ -138,7 +124,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
   }
 
   boost::optional<int32_t> GetValue(const YBSessionPtr& session, int32_t key) {
-    const auto op = CreateReadOp(key);
+    const auto op = client::CreateReadOp(key, table_, kValueColumnName);
     Status s = session->ApplyAndFlush(op);
     if (!s.ok()) {
       return boost::none;

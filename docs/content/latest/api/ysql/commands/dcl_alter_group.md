@@ -1,7 +1,8 @@
 ---
-title: ALTER GROUP
+title: ALTER GROUP statement [YSQL]
+headerTitle: ALTER GROUP
 linkTitle: ALTER GROUP
-description: ALTER GROUP
+description: Use the `ALTER GROUP` statement to alter attributes for a group (role).
 summary: Groups and roles
 menu:
   latest:
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`ALTER GROUP` is used to alter attributes for a group (role).
+Use the `ALTER GROUP` statement to alter attributes for a group (role).
 This is added for compatibility with Postgres. Its usage is discouraged. [`ALTER ROLE`](../dcl_alter_role) is the preferred way to change attributes of a role.
 
 ## Syntax

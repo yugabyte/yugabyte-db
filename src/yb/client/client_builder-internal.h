@@ -74,6 +74,11 @@ class YBClientBuilder::Data {
   // The size of the threadpool to use for calling callbacks.
   size_t threadpool_size_ = 0;
 
+  // If all masters are available but no leader is present on client init,
+  // this flag determines if the client returns failure right away
+  // or waits for a leader to be elected.
+  bool wait_for_leader_election_on_init_ = true;
+
   // Placement information for the client.
   CloudInfoPB cloud_info_pb_;
 

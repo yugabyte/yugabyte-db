@@ -2,6 +2,7 @@
 title: DROP TYPE
 summary: Drop a user-defined data type
 description: DROP TYPE
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

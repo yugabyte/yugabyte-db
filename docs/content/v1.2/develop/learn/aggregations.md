@@ -2,6 +2,7 @@
 title: 5. Aggregations
 linkTitle: 5. Aggregations
 description: Aggregations
+block_indexing: true
 menu:
   v1.2:
     identifier: aggregations

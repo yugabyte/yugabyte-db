@@ -2,6 +2,7 @@
 title: Upgrade Universe
 linkTitle: Upgrade Universe
 description: Upgrade Universe
+block_indexing: true
 menu:
   v1.2:
     identifier: manage-upgrade-universe

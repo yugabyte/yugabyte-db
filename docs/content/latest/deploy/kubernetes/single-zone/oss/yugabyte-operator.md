@@ -1,7 +1,8 @@
 ---
-title: Open Source Kubernetes 
-linkTitle: Open Source Kubernetes
-description: Open Source Kubernetes 
+title: Open source Kubernetes using YugabyteDB operator
+headerTitle: Open source Kubernetes
+linkTitle: Open source Kubernetes
+description: Deploy a YugabyteDB cluster with a Kubernetes native customer resource.
 menu:
   latest:
     parent: deploy-kubernetes-sz
@@ -45,7 +46,7 @@ showAsideToc: true
 </ul>
 
 
-Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [Yugabyte k8s operator repository](https://github.com/yugaByte/yugabyte-k8s-operator/). This operator currently provides more configuration options as compared to the Rook operator. The Rook operator, in near future, will get these options too. See full list of configuration options [here](#configuration-options).
+Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [YugabyteDB k8s operator repository](https://github.com/yugabyte/yugabyte-k8s-operator/). This operator currently provides more configuration flags as compared to the Rook operator. The Rook operator, in near future, will get these flags too. See full list of configuration flags [here](#configuration-flags).
 
 ## Prerequisites
 
@@ -83,21 +84,19 @@ Verify that the cluster is up and running with the following command. You should
 kubectl get po,sts,svc
 ```
 
-Once the cluster is up and running, you may start the PostgreQL-compatible YSQL API and start executing relational queries.
+Once the cluster is up and running, you may start the YSQL API and start executing relational queries.
 
 ```sh
 kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0 --echo-queries
 ```
 
-You may choose to start the Cassandra-compatible YCQL api and start storing data in NoSQL format.
+You can also connect to the YCQL API as shown below.
 
 ```sh
 kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0
 ```
 
-You can read more about the YSQL and YCQL APIs in [Yugabyte documentation](https://docs.yugabyte.com/latest/api/)
-
-## Configuration options
+## Configuration flags
 
 ### Image
 
@@ -109,7 +108,7 @@ Specify the required data replication factor. This is a **required** field.
 
 ### TLS
 
-Enable TLS encryption for YugabyteDB, if desired. It is disabled by default. You can use the TLS encryption with 3 GFlags, explained later. If you have set `enabled` to true, then you need to generate root certificate and key. Specify the two under `rootCA.cert` & `rootCA.key`. Refer to  [YugabyteDB docs](https://docs.yugabyte.com/latest/secure/tls-encryption/prepare-nodes/#create-the-openssl-ca-configuration) (till [generate root configuration](https://docs.yugabyte.com/latest/secure/tls-encryption/prepare-nodes/#generate-root-configuration) section) for an idea on how to generate the certificate & key files.
+Enable TLS encryption for YugabyteDB, if desired. It is disabled by default. You can enable the TLS encryption with 3 flags, explained later. If you have set `enabled` to true, then you need to generate root certificate and key. Specify the two under `rootCA.cert` & `rootCA.key`. Refer to  [TLS encryption docs](../../../../../secure/tls-encryption/server-certificates/) (through the `Generate root configuration` section) for how to generate the certificate and key files.
 
 ### YB-Master and YB-TServer
 
@@ -143,21 +142,22 @@ Table depicting acceptable port names, applicable component (Master/TServer) and
 
 #### podManagementPolicy
 
-Specify pod management policy for statefulsets created as part of YugabyteDB cluster. Valid values are `Parallel` & `OrderedReady`, `Parallel` being the default value.
+Specify pod management policy for Statefulsets created as part of YugabyteDB cluster. Valid values are `Parallel` & `OrderedReady`, `Parallel` being the default value.
 
 #### storage
 
-Specify storage configurations viz. Storage `count`, `size` & `storageClass` of volumes. Typically 1 volume per Master instance is sufficient, hence Master has a default storage count of `1`. If storage class isn't specified, it will be defaulted to `standard`. Make sure kubernetes admin has defined `standard` storage class, before leaving this field out.
+Specify storage configurations viz. Storage `count`, `size` & `storageClass` of volumes. Typically, 1 volume per Master instance is sufficient, hence Master has a default storage count of `1`. If storage class isn't specified, it will be defaulted to `standard`. Make sure kubernetes admin has defined `standard` storage class, before leaving this field out.
 
 #### resources
 
-Specify resource `requests` & `limits` under `resources` attribute. The resources to be specified are `cpu` & `memory`. The `resource` property in itself is optional & it won't be applied to created `StatefulSets`, if omitted. You may also choose to specify either `resource.requests` or `resource.limits`, or both.
+Specify resource `requests` and `limits` under `resources` attribute. The resources to be specified are `cpu` and `memory`. The `resource` property in itself is optional and will not be applied to created `StatefulSets`, if omitted. You may also choose to specify either `resource.requests` or `resource.limits`, or both.
 
-#### gflags
+#### flags
 
-Specify list of configuration options (gflags) for additional control of the YugabyteDB cluster. For available configuration options, see [YB-Master configuration options](../../../../reference/configuration/yb-master) and [YB-TServer configuration options](../../../../reference/configuration/yb-tserver/).
+Specify flags for additional control of the YugabyteDB cluster. For available, see [YB-Master flags](../../../../../reference/configuration/yb-master/#flags) and [YB-TServer flags](../../../../../reference/configuration/yb-tserver/#flags).
 
 If you have enabled TLS encryption, then you can set:
-- `use_node_to_node_encryption` flag to enable node to node encryption
-- `allow_insecure_connections` flag to specify if insecure connections are allowed when tls is enabled
-- `use_client_to_server_encryption` flag to enable client to node encryption
+
+- `use_node_to_node_encryption` flag to enable node-to-node encryption
+- `allow_insecure_connections` flag to specify if insecure connections are allowed when TLS is enabled
+- `use_client_to_server_encryption` flag to enable client-to-node encryption

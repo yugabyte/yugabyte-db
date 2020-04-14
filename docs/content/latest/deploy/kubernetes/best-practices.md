@@ -1,7 +1,7 @@
 ---
-title: Best Practices
-linkTitle: Best Practices
-description: Best Practices
+title: Best practices
+linkTitle: Best practices
+description: Best practices
 aliases:
   - /latest/deploy/kubernetes/local-ssd/
 menu:

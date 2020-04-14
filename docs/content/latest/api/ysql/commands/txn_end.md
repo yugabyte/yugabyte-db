@@ -1,7 +1,8 @@
 ---
-title: END
+title: END statement [YSQL]
+headerTitle: END
 linkTitle: END
-description: END
+description: Use the `END` statement to commit the current transaction.
 summary: END
 menu:
   latest:

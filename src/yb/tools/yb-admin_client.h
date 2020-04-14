@@ -77,6 +77,11 @@ class ClusterAdminClient {
   // If certs_dir is non-empty, caller will init the yb_client_.
   ClusterAdminClient(std::string addrs, int64_t timeout_millis, string certs_dir);
 
+  ClusterAdminClient(
+      const HostPort& init_master_addr,
+      int64_t timeout_millis,
+      string certs_dir);
+
   virtual ~ClusterAdminClient();
 
   // Initialized the client and connects to the specified tablet server.
@@ -131,7 +136,7 @@ class ClusterAdminClient {
   CHECKED_STATUS DeleteNamespaceById(const NamespaceId& namespace_id);
 
   // List all tablet servers known to master
-  CHECKED_STATUS ListAllTabletServers();
+  CHECKED_STATUS ListAllTabletServers(bool exclude_dead = false);
 
   // List all masters
   CHECKED_STATUS ListAllMasters();
@@ -190,6 +195,8 @@ class ClusterAdminClient {
       const std::string& tablet_id,
       const std::string& dest_ts_uuid);
 
+  CHECKED_STATUS SplitTablet(const std::string& tablet_id);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
@@ -231,7 +238,8 @@ class ClusterAdminClient {
   CHECKED_STATUS GetMasterLeaderInfo(std::string* leader_uuid);
   CHECKED_STATUS WaitUntilMasterLeaderReady();
 
-  const std::string master_addr_list_;
+  std::string master_addr_list_;
+  HostPort init_master_addr_;
   const MonoDelta timeout_;
   HostPort leader_addr_;
   std::unique_ptr<rpc::Messenger> messenger_;
@@ -243,6 +251,10 @@ class ClusterAdminClient {
   bool initted_ = false;
 
  private:
+
+  CHECKED_STATUS DiscoverAllMasters(
+    const HostPort& init_master_addr, std::string* all_master_addrs);
+
   CHECKED_STATUS FillPlacementInfo(
       master::PlacementInfoPB* placement_info_pb, const std::string& placement_str);
 

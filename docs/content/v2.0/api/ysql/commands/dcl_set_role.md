@@ -3,6 +3,7 @@ title: SET ROLE
 linkTitle: SET ROLE
 description: SET ROLE
 summary: Roles (users and groups)
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-set-role

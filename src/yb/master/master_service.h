@@ -106,6 +106,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void ListNamespaces(const ListNamespacesRequestPB* req,
                       ListNamespacesResponsePB* resp,
                       rpc::RpcContext rpc) override;
+  void GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
+                        GetNamespaceInfoResponsePB* resp,
+                        rpc::RpcContext rpc) override;
 
   void ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                         ReservePgsqlOidsResponsePB* resp,
@@ -278,6 +281,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                               GetUniverseReplicationResponsePB* resp,
                               rpc::RpcContext rpc) override;
+
+  void SplitTablet(
+      const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
  private:
 };

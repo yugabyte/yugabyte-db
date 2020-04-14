@@ -2,6 +2,7 @@
 title: BOOLEAN
 summary: Boolean values of false or true
 description: BOOLEAN Type
+block_indexing: true
 menu:
   v1.0:
     identifier: api-postgresql-bool

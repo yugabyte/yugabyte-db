@@ -1,7 +1,8 @@
 ---
-title: Replication
+title: Replication in DocDB
+headerTitle: Replication
 linkTitle: Replication
-description: Replication with Raft consensus
+description: Learn how YugabyteDB uses the Raft consensus in DocDB to replicate data.
 aliases:
   - /latest/architecture/docdb/replication/
   - /latest/architecture/concepts/replication/

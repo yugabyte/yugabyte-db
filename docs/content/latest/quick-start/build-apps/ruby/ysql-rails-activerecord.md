@@ -1,7 +1,8 @@
 ---
-title: Build a Ruby application
-linkTitle: Build a Ruby application
-description: Build a Ruby application
+title: Build a Ruby application that uses ActiveRecord and YSQL
+headerTitle: Build a Ruby application
+linkTitle: Ruby
+description: Build a Ruby application that uses Rails ActiveRecord and the YSQL API
 menu:
   latest:
     parent: build-apps
@@ -23,7 +24,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/ruby/ysql-rails-activerecord" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Rails ActiveRecord
+      YSQL - ActiveRecord
     </a>
   </li>
   <li>

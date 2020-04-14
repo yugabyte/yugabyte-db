@@ -155,7 +155,7 @@ void QLTransactionTest::TestReadRestart(bool commit) {
 
   {
     auto write_txn = CreateTransaction();
-    WriteRows(CreateSession(write_txn));
+    ASSERT_OK(WriteRows(CreateSession(write_txn)));
     if (commit) {
       ASSERT_OK(write_txn->CommitFuture().get());
     }
@@ -230,7 +230,7 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
   for (size_t i = 0; i != kTotalTransactions; ++i) {
     SCOPED_TRACE(Format("Transaction $0", i));
     auto txn = CreateTransaction();
-    WriteRows(CreateSession(txn), i);
+    ASSERT_OK(WriteRows(CreateSession(txn), i));
     ASSERT_OK(txn->CommitFuture().get());
     ASSERT_NO_FATALS(VerifyRows(CreateSession(), i));
 
@@ -299,7 +299,7 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
   SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
 
   auto write_txn = CreateTransaction();
-  WriteRows(CreateSession(write_txn));
+  ASSERT_OK(WriteRows(CreateSession(write_txn)));
   ASSERT_OK(write_txn->CommitFuture().get());
 
   server::SkewedClockDeltaChanger delta_changer(-kClockDelta, skewed_clock_);
@@ -340,7 +340,7 @@ TEST_F(QLTransactionTest, Child) {
   ASSERT_OK(data);
   auto txn2 = std::make_shared<YBTransaction>(&manager2, std::move(*data));
 
-  WriteRows(CreateSession(txn2), 0);
+  ASSERT_OK(WriteRows(CreateSession(txn2), 0));
   auto result = txn2->FinishChild();
   ASSERT_OK(result);
   ASSERT_OK(txn->ApplyChildResult(*result));
@@ -357,7 +357,7 @@ TEST_F(QLTransactionTest, ChildReadRestart) {
 
   {
     auto write_txn = CreateTransaction();
-    WriteRows(CreateSession(write_txn));
+    ASSERT_OK(WriteRows(CreateSession(write_txn)));
     ASSERT_OK(write_txn->CommitFuture().get());
   }
 
@@ -421,7 +421,7 @@ TEST_F(QLTransactionTest, Cleanup) {
 TEST_F(QLTransactionTest, Heartbeat) {
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
-  WriteRows(session);
+  ASSERT_OK(WriteRows(session));
   std::this_thread::sleep_for(GetTransactionTimeout() * 2);
   ASSERT_OK(txn->CommitFuture().get());
   VerifyData();
@@ -432,7 +432,7 @@ TEST_F(QLTransactionTest, Expire) {
   SetDisableHeartbeatInTests(true);
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
-  WriteRows(session);
+  ASSERT_OK(WriteRows(session));
   std::this_thread::sleep_for(GetTransactionTimeout() * 2);
   auto commit_status = txn->CommitFuture().get();
   ASSERT_TRUE(commit_status.IsExpired()) << "Bad status: " << commit_status;
@@ -450,7 +450,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   for (size_t i = 0; i != kTransactions; ++i) {
     auto txn = CreateTransaction();
     auto session = CreateSession(txn);
-    WriteRows(session, i);
+    ASSERT_OK(WriteRows(session, i));
     transactions.push_back(std::move(txn));
     std::this_thread::sleep_for(100ms);
   }
@@ -565,8 +565,8 @@ TEST_F(QLTransactionTest, ConflictResolution) {
 
 TEST_F(QLTransactionTest, SimpleWriteConflict) {
   auto transaction = CreateTransaction();
-  WriteRows(CreateSession(transaction));
-  WriteRows(CreateSession());
+  ASSERT_OK(WriteRows(CreateSession(transaction)));
+  ASSERT_OK(WriteRows(CreateSession()));
 
   ASSERT_NOK(transaction->CommitFuture().get());
 }
@@ -1402,7 +1402,7 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
       size_t idx = i;
       while (!stopped) {
         auto txn = CreateTransaction();
-        WriteRows(CreateSession(txn), idx, WriteOpType::INSERT);
+        ASSERT_OK(WriteRows(CreateSession(txn), idx, WriteOpType::INSERT));
         auto status = txn->CommitFuture().get();
         if (status.ok()) {
           ++successes;
@@ -1521,7 +1521,7 @@ TEST_F(QLTransactionTest, FlushIntents) {
   FLAGS_flush_rocksdb_on_shutdown = false;
 
   WriteData();
-  WriteRows(CreateSession(), 1);
+  ASSERT_OK(WriteRows(CreateSession(), 1));
 
   VerifyData(2);
 
@@ -1635,7 +1635,7 @@ TEST_F_EX(QLTransactionTest, DeleteFlushedIntents, QLTransactionTestSingleTablet
   for (size_t idx = 0; idx != kNumWrites; ++idx) {
     auto txn = CreateTransaction();
     session->SetTransaction(txn);
-    WriteRows(session, idx, WriteOpType::INSERT);
+    ASSERT_OK(WriteRows(session, idx, WriteOpType::INSERT));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents));
     ASSERT_OK(txn->CommitFuture().get());
   }
@@ -1684,7 +1684,7 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
       YBTransactionPtr write_txn = use_transaction.load(std::memory_order_acquire)
           ? CreateTransaction() : nullptr;
       session->SetTransaction(write_txn);
-      WriteRows(session, txn_idx++);
+      ASSERT_OK(WriteRows(session, txn_idx++));
       if (write_txn) {
         ASSERT_OK(write_txn->CommitFuture().get());
       }

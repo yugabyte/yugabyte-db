@@ -1,7 +1,8 @@
 ---
-title: API compatibility FAQ
+title: FAQs about YugabyteDB API compatibility
+headerTitle: API compatibility FAQ
 linkTitle: API compatibility FAQ
-description: API compatibility FAQ
+description: Answers to common questions about YugabyteDB API compatibility.
 aliases:
   - /faq/cassandra/
   - /latest/faq/cassandra/
@@ -48,18 +49,6 @@ YugabyteDB's goal is to remain as compatible with PostgreSQL as much as possible
 The YugabyteDB APIs are currently isolated and independent from one another. Data inserted or managed by one API cannot be queried by the other API. Additionally, Yugabyte does not provide a way to access the data across the APIs. An external framework, such as Presto, might be useful for simple use cases. For an example that joins YCQL and YSQL data, see the blog post about [Presto on YugabyteDB: Interactive OLAP SQL Queries Made Easy](https://blog.yugabyte.com/presto-on-yugabyte-db-interactive-olap-sql-queries-made-easy-facebook/).
 
 Allowing YCQL tables to be accessed from the PostgreSQL-compatible YSQL API as foreign tables using foreign data wrappers (FDW) is on the roadmap. You can comment or increase the priority of the associated [GitHub](https://github.com/yugabyte/yugabyte-db/issues/830) issue.
-
-## When should I pick YCQL over YSQL?
-
-You should pick YCQL over YSQL if your application:
-
-- Does not require fully-relational data modeling constructs, such as foreign keys and JOINs. Note that strongly-consistent secondary indexes and unique constraints are supported by YCQL.
-- Requires storing large amounts of data (for example, 10TB or more).
-- Needs to serve low-latency (sub-millisecond) queries.
-- Needs TTL-driven automatic data expiration.
-- Needs to integrate with stream processors, such as Apache Spark and KSQL.
-
-If you have a specific use case in mind, share it in our [Slack community](https://www.yugabyte.com/slack) and the community can help you decide the best approach.
 
 ## YCQL compatibility with Apache Cassandra QL
 

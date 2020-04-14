@@ -1,7 +1,8 @@
 ---
-title: Open Source Kubernetes 
-linkTitle: Open Source Kubernetes
-description: Open Source Kubernetes 
+title: Deploy on OSS Kubernetes using Helm Chart 
+headerTitle: Open source Kubernetes
+linkTitle: Open source Kubernetes
+description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
 aliases:
   - /latest/deploy/kubernetes/oss/
   - /latest/deploy/kubernetes/oss/helm-chart/
@@ -57,11 +58,10 @@ You must have a Kubernetes cluster that has Helm configured. If you have not ins
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- Kubernetes 1.10+
+- Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
 - Helm 2.8+ or 3.0+
 - YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 Confirm that `helm` and `kubectl` are configured correctly.
 
@@ -404,9 +404,9 @@ In case you want to use a storage class other than the standard class for your d
 $ helm install yugabyte --namespace yb-demo --name yb-demo --set persistentVolume.storageClass=<name of provisioned storage> --wait
 ```
 
-### YugabyteDB configuration flags
+### Configure YB-Master and YB-TServer pods
 
-Setting configuration flags (aka gflags) on the yb-master/yb-tserver pods can be done at the command line or by overriding the values.yaml file in the charts repository. For example, the following example shows how to set the three geo-distribution related flags of `placement_cloud`,`placement_region` and `placement_zone` on a minikube cluster.
+Flags on the yb-master and yb-tserver pods can be done at the command line or by overriding the `values.yaml` file in the charts repository. For example, the following example shows how to set the three geo-distribution related flags of `placement_cloud`,`placement_region` and `placement_zone` on a Minikube cluster.
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \

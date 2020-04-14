@@ -2,6 +2,7 @@
 title: YEDIS Connection Issues
 linkTitle: YEDIS Connection Issues
 description: Cannot Connect to YEDIS API
+block_indexing: true
 menu:
   v1.2:
     parent: troubleshoot-cluster

@@ -2,6 +2,7 @@
 title: ZREVRANGE
 linkTitle: ZREVRANGE
 description: ZREVRANGE
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

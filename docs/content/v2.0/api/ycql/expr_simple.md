@@ -2,6 +2,7 @@
 title: Simple expressions
 summary: Columns, constants, and null.
 description: Simple expressions
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

@@ -3,6 +3,7 @@ title: Two data center (2DC)
 linkTitle: Two data center (2DC)
 description: Two data center (2DC) deployment
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v2.0:
     identifier: two-data-centers-2-linux

@@ -1,8 +1,9 @@
 ---
-title: CREATE SCHEMA
+title: CREATE SCHEMA statement [YSQL]
+headerTitle: CREATE SCHEMA
 linkTitle: CREATE SCHEMA
 summary: Create schema
-description: CREATE SCHEMA
+description: Use the CREATE SCHEMA statement to create a new schema in the current database.
 menu:
   latest:
     identifier: api-ysql-commands-create-schema

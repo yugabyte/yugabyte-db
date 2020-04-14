@@ -2,6 +2,7 @@
 title: BOOLEAN
 summary: Boolean values of false or true
 description: BOOLEAN type
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

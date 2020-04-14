@@ -1,7 +1,8 @@
 ---
-title: Data migration
-linkTitle: Data migration
-description: Data migration
+title: Migrate data
+headerTitle: Migrate data
+linkTitle: Migrate data
+description: Import and export data in YugabyteDB.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk import/export data to/from YugabyteDB.
 menu:
@@ -10,8 +11,6 @@ menu:
     parent: manage
     weight: 703
 ---
-
-This section goes into details of importing data into YugabyteDB as well as exporting data out of YugabyteDB.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

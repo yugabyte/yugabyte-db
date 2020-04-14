@@ -79,6 +79,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     ASYNC_BACKFILL_TABLET_CHUNK,
     ASYNC_BACKFILL_DONE,
     BACKFILL_TABLE,
+    ASYNC_SPLIT_TABLET,
   };
 
   virtual Type type() const = 0;

@@ -2,6 +2,14 @@
 -- Colocation
 --
 
+-- CREATE TABLE on non-colocated database
+
+CREATE TABLE tab_colo (a INT) WITH (colocated = true);
+CREATE TABLE tab_noco (a INT) WITH (colocated = false);
+DROP TABLE tab_noco;
+
+-- CREATE DATABASE colocated
+
 CREATE DATABASE colocation_test colocated = true;
 \c colocation_test
 

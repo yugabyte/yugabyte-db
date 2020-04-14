@@ -40,12 +40,16 @@
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
 #include "yb/util/stol_utils.h"
+#include "yb/master/master_defaults.h"
 
 DEFINE_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
+DEFINE_string(init_master_addrs, "",
+              "host:port of any yb-master in a cluster");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 DEFINE_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
+DEFINE_bool(exclude_dead, false, "Exclude dead tservers from output");
 
 namespace yb {
 namespace tools {
@@ -113,9 +117,26 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(prog_name.c_str());
 
+  std::unique_ptr<ClusterAdminClientClass> client;
   const string addrs = FLAGS_master_addresses;
-  ClusterAdminClientClass client(addrs, FLAGS_timeout_ms, FLAGS_certs_dir_name);
-  RegisterCommandHandlers(&client);
+  if (!FLAGS_init_master_addrs.empty()) {
+    std::vector<HostPort> init_master_addrs;
+    RETURN_NOT_OK(HostPort::ParseStrings(
+        FLAGS_init_master_addrs,
+        master::kMasterDefaultPort,
+        &init_master_addrs));
+    client.reset(new ClusterAdminClientClass(
+        init_master_addrs[0],
+        FLAGS_timeout_ms,
+        FLAGS_certs_dir_name));
+  } else {
+    client.reset(new ClusterAdminClientClass(
+        addrs,
+        FLAGS_timeout_ms,
+        FLAGS_certs_dir_name));
+  }
+
+  RegisterCommandHandlers(client.get());
   SetUsage(prog_name);
 
   CLIArguments args;
@@ -137,12 +158,12 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   }
 
   // Init client.
-  Status s = client.Init();
+  Status s = client->Init();
 
   if (PREDICT_FALSE(!s.ok())) {
-    cerr << s.CloneAndPrepend("Unable to establish connection to master at [" + addrs + "]."
+    cerr << s.CloneAndPrepend("Unable to establish connection to leader master at [" + addrs + "]."
                               " Please verify the addresses.\n\n").ToString() << endl;
-    return ClusterAdminCli::kInvalidArguments;
+    return STATUS(RuntimeError, "Error connecting to cluster");
   }
 
   // Run found command.
@@ -435,7 +456,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "list_all_tablet_servers", "",
       [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->ListAllTabletServers(),
+        RETURN_NOT_OK_PREPEND(client->ListAllTabletServers(FLAGS_exclude_dead),
                               "Unable to list tablet servers");
         return Status::OK();
       });
@@ -595,6 +616,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "leader_stepdown", " tablet_id dest_ts_uuid",
       std::bind(&LeaderStepDown, client, _1));
+
+  Register(
+      "split_tablet", " <tablet_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string tablet_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->SplitTablet(tablet_id),
+                              Format("Unable to start split of tablet $0", tablet_id));
+        return Status::OK();
+      });
 }
 
 Result<YBTableName> ResolveTableName(ClusterAdminClientClass* client,

@@ -2,6 +2,7 @@
 title: 1. SQL vs NoSQL
 linkTitle: 1. SQL vs NoSQL
 description: SQL vs NoSQL
+block_indexing: true
 menu:
   v1.1:
     identifier: sql-nosql

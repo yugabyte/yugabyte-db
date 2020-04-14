@@ -1,7 +1,8 @@
 ---
-title: Start YB-Masters
+title: Start YB-Master nodes of YugabyteDB cluster
+headerTitle: Start YB-Masters
 linkTitle: 3. Start YB-Masters
-description: Start YB-Masters
+description: Start YB-Master servers of your YugabyteDB cluster
 aliases:
   - /deploy/manual-deployment/start-masters
 menu:
@@ -17,11 +18,11 @@ showAsideToc: true
 
 - The number of nodes in a cluster running YB-Masters **must** equal the replication factor.
 - The number of comma-separated addresses present in `master_addresses` should also equal the replication factor.
-- For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC Deployments](../../../deploy/multi-dc/) section.
+- For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC deployments](../../../deploy/multi-dc/) section.
 
 {{< /note >}}
 
-This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement-related options are set to the same value across every node.
+This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.
 
 ## Example scenario
 
@@ -31,9 +32,9 @@ This section covers deployment for a single region or data center in a multi-zon
       - Cloud will be `aws`, region will be `us-west`, and the three AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that one replica for each tablet (aka shard) gets placed in any one node for each AZ. 
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
 
-## Run YB-Master servers with command line parameters
+## Run YB-Master servers with command line flags
 
-Run the `yb-master` server on each of the three nodes as shown below. Note how multiple directories can be provided to the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) option. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, simply use the same value for the `placement_zone` option.
+Run the `yb-master` server on each of the three nodes as shown below. Note how multiple directories can be provided to the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
 
 ```sh
 $ ./bin/yb-master \
@@ -46,11 +47,11 @@ $ ./bin/yb-master \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-For the full list of configuration options (or flags), see the [YB-Master reference](../../../reference/configuration/yb-master/).
+For the full list of configuration flag), see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
 ## Run YB-Master servers with configuration file
 
-Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the [`--flagfile`](../../../reference/configuration/yb-master/#flagfile) option as shown below. For each YB-Master server, replace the [`--rpc-bind-addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) configuration option with the private IP address of the YB-Master server.
+Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the [`--flagfile`](../../../reference/configuration/yb-master/#flagfile) option as shown below. For each YB-Master server, replace the [`--rpc-bind-addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) configuration flag with the private IP address of the YB-Master server.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
@@ -67,7 +68,7 @@ $ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 
 ## Verify health
 
-Make sure all the three YB-Masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) option.
+Make sure all the three YB-Masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag.
 
 ```sh
 $ cat /home/centos/disk1/yb-data/master/logs/yb-master.INFO

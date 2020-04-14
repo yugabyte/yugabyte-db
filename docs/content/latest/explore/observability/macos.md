@@ -1,7 +1,8 @@
 ---
-title: Observability with Prometheus
+title: Explore observability with Prometheus using macOS
+headerTitle: Observability
 linkTitle: Observability 
-description: Observability with Prometheus
+description: Learn about observability with Prometheus in a local three-node YugabyteDB cluster.
 aliases:
   - /latest/explore/cloud-native/observability/
   - /latest/explore/observability/

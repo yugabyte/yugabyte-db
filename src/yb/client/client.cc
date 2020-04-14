@@ -80,6 +80,8 @@ using yb::master::CreateTableRequestPB;
 using yb::master::CreateTableResponsePB;
 using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
+using yb::master::GetNamespaceInfoRequestPB;
+using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
@@ -182,7 +184,6 @@ using std::shared_ptr;
     Status s = data_->SyncLeaderMasterRpc<BOOST_PP_CAT(method, RequestPB), \
                                           BOOST_PP_CAT(method, ResponsePB)>( \
         deadline, \
-        this, \
         req, \
         &resp, \
         nullptr, \
@@ -277,6 +278,11 @@ YBClientBuilder& YBClientBuilder::skip_master_flagfile(bool should_skip) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::wait_for_leader_election_on_init(bool should_wait) {
+  data_->wait_for_leader_election_on_init_ = should_wait;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::default_admin_operation_timeout(const MonoDelta& timeout) {
   data_->default_admin_operation_timeout_ = timeout;
   return *this;
@@ -352,12 +358,15 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->skip_master_flagfile_ = data_->skip_master_flagfile_;
   c->data_->default_admin_operation_timeout_ = data_->default_admin_operation_timeout_;
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;
+  c->data_->wait_for_leader_election_on_init_ = data_->wait_for_leader_election_on_init_;
 
   // Let's allow for plenty of time for discovering the master the first
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
   RETURN_NOT_OK_PREPEND(
-      c->data_->SetMasterServerProxy(c.get(), deadline, data_->skip_master_leader_resolution_),
+      c->data_->SetMasterServerProxy(deadline,
+          data_->skip_master_leader_resolution_,
+          data_->wait_for_leader_election_on_init_),
       "Could not locate the leader master");
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
@@ -403,6 +412,7 @@ YBClient::~YBClient() {
 }
 
 void YBClient::Shutdown() {
+  data_->StartShutdown();
   if (data_->messenger_holder_) {
     data_->messenger_holder_->Shutdown();
   }
@@ -412,6 +422,7 @@ void YBClient::Shutdown() {
   if (data_->cb_threadpool_) {
     data_->cb_threadpool_->Shutdown();
   }
+  data_->CompleteShutdown();
 }
 
 std::unique_ptr<YBTableCreator> YBClient::NewTableCreator() {
@@ -555,7 +566,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const std::string& namespace_id,
                                  const std::string& source_namespace_id,
                                  const boost::optional<uint32_t>& next_pg_oid,
-                                 bool colocated) {
+                                 const bool colocated) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
@@ -584,7 +595,8 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const std::string& creator_role_name,
                                             const std::string& namespace_id,
                                             const std::string& source_namespace_id,
-                                            const boost::optional<uint32_t>& next_pg_oid) {
+                                            const boost::optional<uint32_t>& next_pg_oid,
+                                            const bool colocated) {
   Result<bool> namespace_exists = (!namespace_id.empty() ? NamespaceIdExists(namespace_id)
                                                          : NamespaceExists(namespace_name));
   if (VERIFY_RESULT(namespace_exists)) {
@@ -592,7 +604,7 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
   }
 
   return CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                         source_namespace_id, next_pg_oid);
+                         source_namespace_id, next_pg_oid, colocated);
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
@@ -632,6 +644,28 @@ Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
     result.push_back(std::move(ns));
   }
   return result;
+}
+
+Status YBClient::GetNamespaceInfo(const std::string& namespace_id,
+                                  const std::string& namespace_name,
+                                  const boost::optional<YQLDatabase>& database_type,
+                                  master::GetNamespaceInfoResponsePB* ret) {
+  GetNamespaceInfoRequestPB req;
+  GetNamespaceInfoResponsePB resp;
+
+  if (!namespace_id.empty()) {
+    req.mutable_namespace_()->set_id(namespace_id);
+  }
+  if (!namespace_name.empty()) {
+    req.mutable_namespace_()->set_name(namespace_name);
+  }
+  if (database_type) {
+    req.mutable_namespace_()->set_database_type(*database_type);
+  }
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetNamespaceInfo);
+  ret->Swap(&resp);
+  return Status::OK();
 }
 
 Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
@@ -1227,7 +1261,7 @@ Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>*
 
 Result<HostPort> YBClient::RefreshMasterLeaderAddress() {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->SetMasterServerProxy(this, deadline));
+  RETURN_NOT_OK(data_->SetMasterServerProxy(deadline));
 
   return GetMasterLeaderAddress();
 }
@@ -1354,19 +1388,7 @@ shared_ptr<YBSession> YBClient::NewSession() {
 }
 
 bool YBClient::IsMultiMaster() const {
-  std::lock_guard<simple_spinlock> l(data_->master_server_addrs_lock_);
-  if (data_->master_server_addrs_.size() > 1) {
-    return true;
-  }
-  // For single entry case, check if it is a list of host/ports.
-  vector<Endpoint> addrs;
-  const auto status = ParseAddressList(data_->master_server_addrs_[0],
-                                       yb::master::kMasterDefaultPort,
-                                       &addrs);
-  if (!status.ok()) {
-    return false;
-  }
-  return addrs.size() > 1;
+  return data_->IsMultiMaster();
 }
 
 Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {

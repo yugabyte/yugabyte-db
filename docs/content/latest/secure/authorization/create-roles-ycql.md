@@ -1,7 +1,8 @@
 ---
-title: Create roles
+title: Create YCQL roles in YugabyteDB
+headerTitle: Create roles
 linkTitle: Create roles
-description: Create roles
+description: Create YCQL roles in YugabyteDB
 headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -30,7 +31,6 @@ showAsideToc: true
   </li>
 
 </ul>
-
 
 ## 1. Create roles
 

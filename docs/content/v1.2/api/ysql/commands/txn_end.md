@@ -2,6 +2,7 @@
 title: END TRANSACTION
 description: END TRANSACTION
 summary: END TRANSACTION
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-txn-end

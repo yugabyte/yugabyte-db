@@ -2,6 +2,7 @@
 title: ZCARD
 linkTitle: ZCARD
 description: ZCARD
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

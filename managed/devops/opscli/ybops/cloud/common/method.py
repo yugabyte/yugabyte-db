@@ -430,6 +430,10 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--cql_proxy_rpc_port', default=9042)
         self.parser.add_argument('--redis_proxy_rpc_port', default=6379)
 
+        # Development flag for itests.
+        self.parser.add_argument('--itest_s3_package_path',
+                                 help="Path to download packages for itest. Only for AWS/onprem.")
+
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
         # operations like creating directories under /home/yugabyte/ which can be performed only
@@ -509,13 +513,24 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             # Python based paramiko seemed to have the same problems as ansible copy module!
             #
             # NOTE: we should only do this if we have to download the package...
+            # NOTE 2: itest should download package from s3 to improve speed for instances in AWS.
+            # TODO: Add a variable to specify itest ssh_user depending on VM users.
             if args.package and (args.tags is None or args.tags == "download-software"):
-                scp_package_to_tmp(
-                    args.package,
-                    self.extra_vars["private_ip"],
-                    self.extra_vars["ssh_user"],
-                    self.extra_vars["ssh_port"],
-                    args.private_key_file)
+                if args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
+                    itest_extra_vars = self.extra_vars.copy()
+                    itest_extra_vars["itest_s3_package_path"] = args.itest_s3_package_path
+                    itest_extra_vars["ssh_user"] = "centos"
+                    # Runs all itest-related tasks (e.g. download from s3 bucket).
+                    itest_extra_vars["tags"] = "itest"
+                    self.cloud.setup_ansible(args).run(
+                        "configure-{}.yml".format(args.type), itest_extra_vars, host_info)
+                else:
+                    scp_package_to_tmp(
+                        args.package,
+                        self.extra_vars["private_ip"],
+                        self.extra_vars["ssh_user"],
+                        self.extra_vars["ssh_port"],
+                        args.private_key_file)
 
         logging.info("Configuring Instance: {}".format(args.search_pattern))
         ssh_options = {
@@ -534,8 +549,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.encryption_key_source_file, args.encryption_key_target_dir))
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
-        self.cloud.setup_ansible(args).run("configure-{}.yml".format(args.type),
-                                           self.extra_vars, host_info)
+        self.cloud.setup_ansible(args).run(
+            "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 
 
 class InitYSQLMethod(AbstractInstancesMethod):
@@ -627,6 +642,16 @@ class AccessCreateVaultMethod(AbstractMethod):
             id_rsa_pub=public_key,
             authorized_keys=public_key
         )
+
+        # These are saved for itest specific improvements.
+        aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID', "")
+        aws_secret = os.environ.get('AWS_SECRET_ACCESS_KEY', "")
+        if aws_access_key and aws_secret:
+            self.cluster_vault.update(
+                AWS_ACCESS_KEY_ID=os.environ['AWS_ACCESS_KEY_ID'],
+                AWS_SECRET_ACCESS_KEY=os.environ['AWS_SECRET_ACCESS_KEY']
+            )
+
         vault_data = dict(cluster_server_vault=self.cluster_vault)
         if args.has_sudo_password:
             sudo_password = getpass.getpass("SUDO Password: ")

@@ -1,7 +1,8 @@
 ---
-title: General FAQ
+title: FAQs about YugabyteDB
+headerTitle: General FAQ
 linkTitle: General FAQ
-description: General FAQ
+description: Answers to common questions about YugabyteDB.
 aliases:
   - /latest/faq/product/
   - /latest/introduction/overview/
@@ -90,6 +91,18 @@ The YugabyteDB APIs are isolated and independent from one another today. This me
 <b>The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.</b>
 
 {{< /note >}}
+
+## When should I pick YCQL over YSQL?
+
+You should pick YCQL over YSQL if your application:
+
+- Does not require fully-relational data modeling constructs, such as foreign keys and JOINs. Note that strongly-consistent secondary indexes and unique constraints are supported by YCQL.
+- Requires storing large amounts of data (for example, 10TB or more).
+- Needs to serve low-latency (sub-millisecond) queries.
+- Needs TTL-driven automatic data expiration.
+- Needs to integrate with stream processors, such as Apache Spark and KSQL.
+
+If you have a specific use case in mind, share it in our [Slack community](https://www.yugabyte.com/slack) and the community can help you decide the best approach.
 
 ## How does YugabyteDB's common document store work?
 
@@ -210,7 +223,6 @@ In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c
 On one hand, the YugabyteDB storage and replication architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html), which is also a CP database with high write availability. While Google Cloud Spanner leverages Google's proprietary network infrastructure, YugabyteDB is designed work on commodity infrastructure used by most enterprise users. On the other hand, YugabyteDB's multi-model, multi-API, and tunable read latency approach is similar to that of [Azure Cosmos DB](https://azure.microsoft.com/en-us/blog/a-technical-overview-of-azure-cosmos-db/).
 
 A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugabyteDB](https://blog.yugabyte.com/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db/) goes through the above tradeoffs in more detail.
-
 
 ## How many major releases YugabyteDB has had so far?
 

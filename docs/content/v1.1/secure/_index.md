@@ -4,6 +4,7 @@ linkTitle: Secure
 description: Secure YugabyteDB
 headcontent: Secure your deployment of YugabyteDB.
 image: /images/section_icons/index/secure.png
+block_indexing: true
 menu:
   v1.1:
     identifier: secure

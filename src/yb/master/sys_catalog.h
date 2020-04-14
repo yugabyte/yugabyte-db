@@ -164,6 +164,10 @@ class SysCatalogTable {
   // Drop YSQL table by removing the table metadata in sys-catalog.
   CHECKED_STATUS DeleteYsqlSystemTable(const string& table_id);
 
+  Result<ColumnId> MetadataColumnId();
+
+  const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
+
  private:
   friend class CatalogManager;
 
@@ -213,11 +217,8 @@ class SysCatalogTable {
   // Crashes due to an invariant check if the rpc server is not running.
   void InitLocalRaftPeerPB();
 
-  // Table schema, without IDs, used to send messages to the TabletPeer
-  Schema schema_;
-
   // Table schema, with IDs, used for the YQL write path.
-  Schema schema_with_ids_;
+  Schema schema_;
 
   MetricRegistry* metric_registry_;
 
@@ -243,6 +244,8 @@ class SysCatalogTable {
   consensus::RaftPeerPB local_peer_pb_;
 
   scoped_refptr<Histogram> setup_config_dns_histogram_;
+
+  scoped_refptr<Counter> peer_write_count;
 
   std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
 

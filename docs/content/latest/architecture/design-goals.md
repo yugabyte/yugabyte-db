@@ -1,7 +1,8 @@
 ---
 title: Design goals
+headerTitle: Design goals
 linkTitle: Design goals
-description: Design goals
+description: Learn about the design goals that drive the building of YugabyteDB.
 aliases:
   - /latest/architecture/design-goals/
 menu:

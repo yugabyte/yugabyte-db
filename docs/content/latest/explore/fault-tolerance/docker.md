@@ -1,7 +1,8 @@
 ---
-title: Fault tolerance
+title: Explore fault tolerance in YugabyteDB using Docker
+headerTitle: Fault tolerance
 linkTitle: Fault tolerance
-description: Fault tolerance
+description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster using Docker.
 aliases:
   - /latest/explore/fault-tolerance-docker/
 menu:

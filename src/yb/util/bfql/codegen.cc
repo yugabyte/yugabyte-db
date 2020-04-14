@@ -251,14 +251,14 @@ class BFCodegen {
                 << "  static Status Exec(const std::vector<std::shared_ptr<PType>>& params," << endl
                 << "                     const std::shared_ptr<RType>& result) {" << endl
                 << "    return "
-                << entry.cpp_name() << "<std::shared_ptr<PType>, const std::shared_ptr<RType>&>(";
+                << entry.cpp_name() << "(";
         break;
       case BFApiParamOption::kRawPtr:
         // Raw pointer.
         foper_h << "  template<typename PType, typename RType>" << endl
                 << "  static Status ExecRaw(const std::vector<PType*>& params," << endl
                 << "                        RType *result) {" << endl
-                << "    return " << entry.cpp_name() << "<PType*, RType*>(";
+                << "    return " << entry.cpp_name() << "(";
         break;
       case BFApiParamOption::kRefAndRaw:
         // Reference of object.
@@ -275,10 +275,10 @@ class BFCodegen {
                   << "    for (int i = 0; i < count; i++) {" << endl
                   << "      local_params[i] = &(*params)[i];" << endl
                   << "    }" << endl;
-          foper_h << "    return " << entry.cpp_name() << "<PType*, RType*>(";
+          foper_h << "    return " << entry.cpp_name() << "(";
         } else {
           param_pointer = "&(*params)";
-          foper_h << "    return " << entry.cpp_name() << "<PType*, RType*>(";
+          foper_h << "    return " << entry.cpp_name() << "(";
         }
     }
 

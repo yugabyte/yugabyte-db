@@ -97,6 +97,7 @@ class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWith
 namespace tablet {
 
 struct TableInfo;
+enum RaftGroupStatePB;
 
 }
 
@@ -217,6 +218,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                    IsCreateTableDoneResponsePB* resp);
 
+  CHECKED_STATUS IsCreateTableInProgress(const TableId& table_id,
+                                         CoarseTimePoint deadline,
+                                         bool* create_in_progress);
+
+  CHECKED_STATUS WaitForCreateTableToFinish(const TableId& table_id);
+
   // Check if the transaction status table creation is done.
   //
   // This is called at the end of IsCreateTableDone if the table has transactions enabled.
@@ -328,6 +335,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // List all the current namespaces.
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                                 ListNamespacesResponsePB* resp);
+
+  // Get information about a namespace.
+  CHECKED_STATUS GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
+                                  GetNamespaceInfoResponsePB* resp,
+                                  rpc::RpcContext* rpc);
 
   // Set Redis Config
   CHECKED_STATUS RedisConfigSet(const RedisConfigSetRequestPB* req,
@@ -622,6 +634,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return *encryption_manager_;
   }
 
+  // Splits tablet specified in the request using middle of the partition as a split point.
+  CHECKED_STATUS SplitTablet(
+      const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc);
+
+  // Test wrapper around protected DoSplitTablet method.
+  CHECKED_STATUS TEST_SplitTablet(
+      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -779,9 +799,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      CreateTableResponsePB* resp);
 
   // Delete index info from the indexed table.
-  CHECKED_STATUS DeleteIndexInfoFromTable(const TableId& indexed_table_id,
-                                          const TableId& index_table_id,
-                                          DeleteTableResponsePB* resp);
+  CHECKED_STATUS MarkIndexInfoFromTableForDeletion(
+      const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableResponsePB* resp);
+
+  // Delete index info from the indexed table.
+  CHECKED_STATUS DeleteIndexInfoFromTable(
+      const TableId& indexed_table_id, const TableId& index_table_id);
 
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
@@ -789,36 +812,26 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                          TabletLocationsPB* locs_pb);
 
-  // Handle one of the tablets in a tablet reported.
-  // Requires that the lock is already held.
-  CHECKED_STATUS HandleReportedTablet(TSDescriptor* ts_desc,
-                                      const ReportedTabletPB& report,
-                                      ReportedTabletUpdatesPB* report_updates,
-                                      bool is_incremental);
-
-  CHECKED_STATUS ResetTabletReplicasFromReportedConfig(
-      const ReportedTabletPB& report, const scoped_refptr<TabletInfo>& tablet,
+  void ReconcileTabletReplicasInLocalMemoryWithReport(
+      const scoped_refptr<TabletInfo>& tablet,
       const std::string& sender_uuid,
-      TabletInfo::lock_type* tablet_lock, TableInfo::lock_type* table_lock);
+      const consensus::ConsensusStatePB& consensus_state,
+      const tablet::RaftGroupStatePB& replica_state);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
   // server that is part of a consensus configuration has not heartbeated to the Master yet, we
   // leave it out of the consensus configuration reported to clients.
   // TODO: See if we can remove this logic, as it seems confusing.
-  void UpdateTabletReplica(TSDescriptor* ts_desc,
-                           const ReportedTabletPB& report,
-                           const scoped_refptr<TabletInfo>& tablet);
+  void UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
+                                        const consensus::ConsensusStatePB* consensus_state,
+                                        const tablet::RaftGroupStatePB& replica_state,
+                                        const scoped_refptr<TabletInfo>& tablet_to_update);
 
-  // It works as AddReplicaToTabletIfNotFound if the replica is not in the tablet map.
-  // If it already exists, it replaces the existing replica with a new replica created from the
-  // report.
-  void UpdateReplicaInTablet(TSDescriptor* ts_desc,
-                             const ReportedTabletPB& report,
-                             const scoped_refptr<TabletInfo>& tablet);
-
-  static void NewReplica(
-      TSDescriptor* ts_desc, const ReportedTabletPB& report, TabletReplica* replica);
+  static void CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
+                                             const consensus::ConsensusStatePB* consensus_state,
+                                             const tablet::RaftGroupStatePB& replica_state,
+                                             TabletReplica* new_replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
   // that must be processed because not running yet.
@@ -896,14 +909,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
   void SendAlterTableRequest(const scoped_refptr<TableInfo>& table);
 
-  // Start the background task to send the AlterTable() RPC to the leader for this
-  // tablet.
-  void SendAlterTabletRequest(const scoped_refptr<TabletInfo>& tablet);
-
   // Start the background task to send the CopartitionTable() RPC to the leader for this
   // tablet.
   void SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
                                     const scoped_refptr<TableInfo>& table);
+
+  // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
+  void SendSplitTabletRequest(
+      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, 2> new_tablet_ids,
+      const std::string& split_encoded_key, const std::string& split_partition_key);
 
   // Send the "truncate table request" to all tablets of the specified table.
   void SendTruncateTableRequest(const scoped_refptr<TableInfo>& table);
@@ -1003,6 +1017,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // for the blacklist.
   CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist);
   CHECKED_STATUS SetLeaderBlacklist(const BlacklistPB& leader_blacklist);
+
+  // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
+  // Does not change any other tablets and their partitions.
+  // Returns TabletInfo for registered tablet.
+  Result<TabletInfo*> RegisterNewTabletForSplit(
+      const TabletInfo& source_tablet_info, const PartitionPB& partition);
+
+  // Splits tablet using specified split_hash_code as a split point.
+  CHECKED_STATUS DoSplitTablet(
+      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
 
   // Calculate the total number of replicas which are being handled by servers in state.
   int64_t GetNumRelevantReplicas(const BlacklistState& state, bool leaders_only);

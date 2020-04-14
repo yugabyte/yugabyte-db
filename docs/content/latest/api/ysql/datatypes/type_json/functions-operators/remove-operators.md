@@ -1,8 +1,9 @@
 ---
-title: '- and #- (remove)'
-linkTitle: '- and #- (remove)'
-summary: '- and #- (remove)'
-description: '- and #- (remove)'
+title: "- and #- (remove operators) [JSON]"
+headerTitle: "- and #- (remove operators)"
+linkTitle: "- and #- (remove)"
+description: Remove key-value pairs from an object or remove a single value from an array.
+summary: "- and #- (remove)"
 menu:
   latest:
     identifier: remove-operators
@@ -12,20 +13,22 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** remove key-value pair(s) from an _object_ or a single value from an _array_. The plain `-` variant takes the specified object itself. The `#-` variant takes the path from the specified object.
+**Purpose:** Remove key-value pairs from an _object_ or a single value from an _array_. The plain `-` variant takes the specified object itself. The `#-` variant takes the path from the specified object.
 
-**Notes:** describing the behavior by using the term "remove" is a convenient shorthand. The actual effect of these operators is to create a _new_ `jsonb` value from the specified `jsonb` value according to the rule that the operator implements, parameterized by the SQL value on the right of the operator.
+**Notes:** Describing the behavior by using the term "remove" is a convenient shorthand. The actual effect of these operators is to create a _new_ `jsonb` value from the specified `jsonb` value according to the rule that the operator implements, parameterized by the SQL value on the right of the operator.
 
 ### The `-` operator
 
-**Purpose:** remove key-value pair(s) from an _object_ or a single value from an _array_.
+**Purpose:** Remove key-value pairs from an _object_ or a single value from an _array_.
 
 **Signature:**
+
 ```
 input values:       jsonb - [int | text]
 return value:       jsonb
 ```
-**Notes:** there is no `json` overload.
+
+**Notes:** There is no `json` overload.
 
 To remove a single key-value pair:
 
@@ -99,16 +102,16 @@ $body$;
 
 ### The `#-` operator
 
-**Purpose:** remove a single key-value pair from an _object_ or a single value from an _array_ at the specified path.
+**Purpose:** Remove a single key-value pair from an _object_ or a single value from an _array_ at the specified path.
 
 **Signature:**
+
 ```
 input values:       jsonb - text[]
 return value:       jsonb
 ```
 
 **Notes:** there is no `json` overload.
-
 
 ```postgresql
 do $body$
@@ -125,3 +128,4 @@ $body$;
 ```
 
 Just as with the `#>` and `#>>` operators, array index values are presented as convertible `text` values. Notice that the address of each JSON array element along the path is specified JSON-style, where the index starts at zero.
+ss

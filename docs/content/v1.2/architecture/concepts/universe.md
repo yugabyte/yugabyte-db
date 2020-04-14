@@ -2,6 +2,7 @@
 title: Universe
 linkTitle: Universe
 description: Universe
+block_indexing: true
 menu:
   v1.2:
     identifier: architecture-concepts-universe

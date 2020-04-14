@@ -1,7 +1,9 @@
 ---
-title: SELECT
+title: SELECT statement [YCQL]
+headerTitle: SELECT
+linkTitle: SELECT
 summary: Retrieves rows from a table
-description: SELECT
+description: Use the SELECT statement to retrieve (part of) rows of specified columns that meet a given condition from a table.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `SELECT` statement retrieves (part of) rows of specified columns that meet a given condition from a table. It specifies the columns to be retrieved, the name of the table, and the condition each selected row must satisfy.
+Use the `SELECT` statement to retrieve (part of) rows of specified columns that meet a given condition from a table. It specifies the columns to be retrieved, the name of the table, and the condition each selected row must satisfy.
 
 ## Syntax
 

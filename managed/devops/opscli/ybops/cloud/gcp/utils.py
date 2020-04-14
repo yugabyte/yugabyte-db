@@ -160,7 +160,7 @@ class Waiter():
 
 
 class NetworkManager():
-    def __init__(self, project, compute, metadata, dest_vpc_id, host_vpc_id):
+    def __init__(self, project, compute, metadata, dest_vpc_id, host_vpc_id, per_region_meta):
         self.project = project
         self.compute = compute
         self.metadata = metadata
@@ -174,6 +174,7 @@ class NetworkManager():
         self.host_vpc_id = host_vpc_id if host_vpc_id is not None else GcpMetadata.network()
         if self.host_vpc_id is not None:
             self.host_vpc_id = self.host_vpc_id.split("/")[-1]
+        self.per_region_meta = per_region_meta
 
         self.waiter = Waiter(self.project, self.compute)
 
@@ -193,12 +194,21 @@ class NetworkManager():
         for region_name, scope in subnet_map.iteritems():
             region = region_name.split("/")[1]
             subnets = [s["name"] for s in scope.get("subnetworks", [])]
+            if self.per_region_meta:
+                desired_region_metadata = self.per_region_meta.get(region)
+                if not desired_region_metadata or not desired_region_metadata.get("subnetId"):
+                    continue
+                desired_subnet = desired_region_metadata.get("subnetId")
+                if desired_subnet not in subnets:
+                    raise YBOpsRuntimeError(
+                        "Invalid target subnet: {}".format(desired_subnet))
+                subnets = [desired_subnet]
             if len(subnets) > 0:
                 output_region_to_subnet_map[region] = subnets
         return self.network_info_as_json(network_name, output_region_to_subnet_map)
 
     def bootstrap(self):
-        # If we were given a target VPC, then just query it's data, don't create anything...
+        # If given a target VPC, then query and validate its data, don't create anything...
         if self.dest_vpc_id:
             return self.get_network_data(self.dest_vpc_id)
         # If we were not given a target VPC, then we'll try to provision our custom network.
@@ -483,8 +493,9 @@ class GoogleCloudAdmin():
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
 
-    def network(self, dest_vpc_id=None, host_vpc_id=None):
-        return NetworkManager(self.project, self.compute, self.metadata, dest_vpc_id, host_vpc_id)
+    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None):
+        return NetworkManager(
+            self.project, self.compute, self.metadata, dest_vpc_id, host_vpc_id, per_region_meta)
 
     @staticmethod
     def get_current_host_info():

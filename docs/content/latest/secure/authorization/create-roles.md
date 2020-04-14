@@ -1,7 +1,7 @@
 ---
-title: Create roles
+title: Create roles in YugabyteDB
 linkTitle: Create roles
-description: Create roles
+description: Create roles in YugabyteDB
 headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
 menu:

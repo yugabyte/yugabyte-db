@@ -156,7 +156,8 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
           "Type of enum value passed to FATAL_INVALID_ENUM_VALUE must be " \
           BOOST_PP_STRINGIZE(enum_type)); \
       ::yb::FatalInvalidEnumValueInternal<enum_type>( \
-          BOOST_PP_STRINGIZE(enum_type), _value_copy, BOOST_PP_STRINGIZE(value_macro_arg)); \
+          BOOST_PP_STRINGIZE(enum_type), _value_copy, BOOST_PP_STRINGIZE(value_macro_arg), \
+          __FILE__, __LINE__); \
     } while (0)
 
 template<typename T>
@@ -172,11 +173,14 @@ template<typename Enum>
 [[noreturn]] void FatalInvalidEnumValueInternal(
     const char* enum_name,
     Enum value,
-    const char* expression_str) {
-  LOG(FATAL) << "Invalid value of enum " << enum_name << " ("
-             << "full enum type: " << GetTypeName<Enum>() << ", "
-             << "expression: " << expression_str << "): "
-             << std::to_string(to_underlying(value)) << ".";
+    const char* expression_str,
+    const char* fname,
+    int line) {
+  google::LogMessageFatal(fname, line).stream()
+      << "Invalid value of enum " << enum_name << " ("
+      << "full enum type: " << GetTypeName<Enum>() << ", "
+      << "expression: " << expression_str << "): "
+      << std::to_string(to_underlying(value)) << ".";
   abort();  // Never reached.
 }
 

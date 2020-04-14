@@ -77,9 +77,6 @@ Status PgSelectIndex::PrepareQuery(PgsqlReadRequestPB *read_req) {
 }
 
 Result<bool> PgSelectIndex::FetchYbctidBatch(const vector<Slice> **ybctids) {
-  // Clear the current batch.
-  ybctid_batch_ = nullptr;
-
   // Keep reading until we get one batch of ybctids or EOF.
   while (!VERIFY_RESULT(GetNextYbctidBatch())) {
     if (!VERIFY_RESULT(FetchDataFromServer())) {
@@ -90,20 +87,18 @@ Result<bool> PgSelectIndex::FetchYbctidBatch(const vector<Slice> **ybctids) {
   }
 
   // Got the next batch of ybctids.
-  *ybctids = &ybctid_batch_->ybctids();
+  DCHECK(!rowsets_.empty());
+  *ybctids = &rowsets_.front().ybctids();
   return true;
 }
 
 Result<bool> PgSelectIndex::GetNextYbctidBatch() {
-  list<PgDocResult::SharedPtr>::iterator rowset_iter = rowsets_.begin();
-  while (rowset_iter != rowsets_.end()) {
-    // Check if the rowset has any data.
-    ybctid_batch_ = std::move(*rowset_iter);
-    rowsets_.erase(rowset_iter++);
-
-    if (!ybctid_batch_->is_eof()) {
+  for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
+    if (rowset_iter->is_eof()) {
+      rowset_iter = rowsets_.erase(rowset_iter);
+    } else {
       // Write all found rows to ybctid array.
-      RETURN_NOT_OK(ybctid_batch_->ProcessSystemColumns());
+      RETURN_NOT_OK(rowset_iter->ProcessSystemColumns());
       return true;
     }
   }

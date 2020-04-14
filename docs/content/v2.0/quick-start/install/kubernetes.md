@@ -2,6 +2,7 @@
 title: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Install YugabyteDB
+block_indexing: true
 menu:
   v2.0:
     parent: quick-start

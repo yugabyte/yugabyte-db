@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.commissioner.tasks;
+package com.yugabyte.yw.commissioner;
 
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;

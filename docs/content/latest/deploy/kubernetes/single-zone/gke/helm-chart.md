@@ -43,29 +43,26 @@ showAsideToc: true
 
 You must have a GKE cluster that has Helm configured. If you have not installed the Helm client (`helm`), see [Installing Helm](https://helm.sh/docs/intro/install/).
 
-The YugabyteDB Helm chart has been tested with the following software versions:
+The YugabyteDB Helm Chart has been tested with the following software versions:
 
-- GKE running Kubernetes 1.10+
-- Kubernetes nodes where a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
-- Helm 2.8+ or 3.0+
-- YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0+
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
+- GKE running Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
+- Helm 2.8 or later; 3.0 or later
+- Docker image for YugabyteDB (`yugabytedb/yugabyte`) 2.1.0 or later
+- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites.
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
 
-**NOTE:** If you install gcloud using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
-
 - Configure defaults for gcloud
 
-Set the project ID as `yugabyte`. You can change this as per your need.
+Set the project ID as `yugabyte`. You can change this as needed.
 
 ```sh
 $ gcloud config set project yugabyte
 ```
 
-Set the default compute zone as `us-west1-b`. You can change this as per your need.
+Set the default compute zone as `us-west1-b`. You can change this as needed.
 
 ```sh
 $ gcloud config set compute/zone us-west1-b
@@ -73,7 +70,7 @@ $ gcloud config set compute/zone us-west1-b
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the `kubectl` command line tool by running the following command. 
+After installing Cloud SDK, install the `kubectl` command line tool by running the following command.
 
 ```sh
 $ gcloud components install kubectl
@@ -162,7 +159,7 @@ Make sure that you have the latest updates to the repository by running the foll
 $ helm repo update
 ```
 
-### Validate the chart version
+### Validate the Chart version
 
 **For Helm 2:**
 
@@ -185,7 +182,7 @@ yugabytedb/yugabyte 2.1.0        2.1.0.0-b18  YugabyteDB is the high-performance
 
 ### Install YugabyteDB
 
-Install YugabyteDB in the Kubernetes cluster using the commands below. 
+Install YugabyteDB in the Kubernetes cluster using the commands below.
 
 **For Helm 2:**
 
@@ -322,6 +319,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` IP address o
 ```sh
 $ kubectl get services --namespace yb-demo
 ```
+
 ```
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
@@ -331,11 +329,11 @@ yb-tserver-service   LoadBalancer   10.98.36.163    35.225.153.214     6379:3092
 
 ## Configure cluster
 
-You can configure the cluster using the same commands/options as [Open Source Kubernetes](../../oss/helm-chart/#configure-cluster)
+You can configure the cluster using the same commands and options as [Open Source Kubernetes](../../oss/helm-chart/#configure-cluster).
 
 ### Independent LoadBalancers
 
-By default, the YugabyteDB Helm chart will expose the client API endpoints as well as master UI endpoint using 2 LoadBalancers. If you want to expose the client APIs using independent LoadBalancers, you can do the following.
+By default, the YugabyteDB Helm Chart will expose the client API endpoints as well as master UI endpoint using two LoadBalancers. If you want to expose the client APIs using independent LoadBalancers, you can do the following.
 
 **For Helm 2**:
 

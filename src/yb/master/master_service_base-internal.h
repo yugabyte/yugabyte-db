@@ -14,9 +14,12 @@
 #ifndef YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
 #define YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
 
-#include "yb/master/master_service_base.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/master_service_base.h"
+
 #include "yb/rpc/rpc_context.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -24,11 +27,28 @@ namespace master {
 
 // Template member function definitions must go into a header file.
 
+// If 's' is not OK and 'resp' has no application specific error set,
+// set the error field of 'resp' to match 's' and set the code to
+// UNKNOWN_ERROR.
 template<class RespClass>
-void MasterServiceBase::CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {
+typename std::enable_if<HasMemberFunction_mutable_error<RespClass>::value, void>::type
+CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {
   if (PREDICT_FALSE(!s.ok() && !resp->has_error())) {
-    StatusToPB(s, resp->mutable_error()->mutable_status());
-    resp->mutable_error()->set_code(MasterErrorPB::UNKNOWN_ERROR);
+    const MasterError master_error(s);
+    if (master_error.value() == MasterErrorPB::Code()) {
+      LOG(WARNING) << "Unknown master error in status: " << s;
+      FillStatus(s, MasterErrorPB::UNKNOWN_ERROR, resp);
+    } else {
+      FillStatus(s, master_error.value(), resp);
+    }
+  }
+}
+
+template<class RespClass>
+typename std::enable_if<HasMemberFunction_mutable_status<RespClass>::value, void>::type
+CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {
+  if (PREDICT_FALSE(!s.ok() && !resp->has_status())) {
+    StatusToPB(s, resp->mutable_status());
   }
 }
 
@@ -78,6 +98,8 @@ void MasterServiceBase::HandleIn(const ReqType* req,
                                  rpc::RpcContext* rpc,
                                  Status (HandlerType::*f)(const ReqType*, RespType*),
                                  HoldCatalogLock hold_catalog_lock) {
+  LongOperationTracker long_operation_tracker("HandleIn", std::chrono::seconds(10));
+
   HandleOnLeader(req, resp, rpc, [=]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp); },
       hold_catalog_lock);

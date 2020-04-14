@@ -1,7 +1,8 @@
 ---
-title: Create universe - Multi-zone
+title: Create a multi-zone Yugabyte Platform universe
+headerTitle: Create universe - Multi-zone
 linkTitle: Create universe  - Multi-zone
-description: Create universe - Multi-zone
+description: Use YugaWare to create a Yugabyte Platform universe in one geographic region across multiple zones.
 aliases:
   - /manage/enterprise-edition/create-universe/
 menu:
@@ -13,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to create a universe in one geographic region across multiple zones. We will examine the various nodes created by YugaWare, run some workloads against this universe and take a look at the metrics against the running universe.
+This section will describe how to create a universe in one geographic region across multiple availability zones. We will examine the various nodes created by YugaWare, run some workloads against this universe and take a look at the metrics against the running universe.
 
 ## 1. Create the universe
 

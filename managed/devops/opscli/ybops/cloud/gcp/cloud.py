@@ -212,7 +212,8 @@ class GcpCloud(AbstractCloud):
         custom_payload = json.loads(args.custom_payload)
         dest_vpc_id = custom_payload.get("destVpcId")
         host_vpc_id = custom_payload.get("hostVpcId")
-        return self.get_admin().network(dest_vpc_id, host_vpc_id).bootstrap()
+        per_region_meta = custom_payload.get("perRegionMetadata")
+        return self.get_admin().network(dest_vpc_id, host_vpc_id, per_region_meta).bootstrap()
 
     def network_cleanup(self, args):
         custom_payload = json.loads(args.custom_payload)

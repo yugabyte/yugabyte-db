@@ -33,6 +33,8 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/consensus/consensus_util.h"
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb.h"
 
@@ -523,14 +525,14 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   void SetDB(
       rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
-      PendingOperationCounter* pending_op_counter) {
+      RWOperationCounter* pending_op_counter) {
     bool had_db = db_ != nullptr;
     db_ = db;
     key_bounds_ = key_bounds;
 
     // In case of truncate we should not reload transactions.
     if (!had_db) {
-      auto scoped_pending_operation = std::make_unique<ScopedPendingOperation>(pending_op_counter);
+      auto scoped_pending_operation = std::make_unique<ScopedRWOperation>(pending_op_counter);
       if (scoped_pending_operation->ok()) {
         auto iter = std::make_unique<docdb::BoundedRocksDbIterator>(docdb::CreateRocksDBIterator(
             db_, &docdb::KeyBounds::kNoBounds,
@@ -941,10 +943,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   void LoadTransactions(
-      docdb::BoundedRocksDbIterator* iterator, ScopedPendingOperation* scoped_pending_operation) {
+      docdb::BoundedRocksDbIterator* iterator, ScopedRWOperation* scoped_pending_operation) {
     LOG_WITH_PREFIX(INFO) << __func__ << " start";
 
-    std::unique_ptr<ScopedPendingOperation> scoped_pending_operation_holder(
+    std::unique_ptr<ScopedRWOperation> scoped_pending_operation_holder(
         scoped_pending_operation);
     std::unique_ptr<docdb::BoundedRocksDbIterator> iterator_holder(iterator);
     docdb::KeyBytes key_bytes;
@@ -1372,7 +1374,7 @@ void TransactionParticipant::FillPriorities(
 
 void TransactionParticipant::SetDB(
     rocksdb::DB* db, const docdb::KeyBounds* key_bounds,
-    PendingOperationCounter* pending_op_counter) {
+    RWOperationCounter* pending_op_counter) {
   impl_->SetDB(db, key_bounds, pending_op_counter);
 }
 
@@ -1428,7 +1430,7 @@ std::string TransactionParticipant::DumpTransactions() const {
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {
-  return Format("T $0 P $1: ", tablet_id(), permanent_uuid());
+  return consensus::MakeTabletLogPrefix(tablet_id(), permanent_uuid());
 }
 
 } // namespace tablet

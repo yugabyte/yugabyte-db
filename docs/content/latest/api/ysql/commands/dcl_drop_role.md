@@ -1,7 +1,8 @@
 ---
-title: DROP ROLE
+title: DROP ROLE statement [YSQL]
+headerTitle: DROP ROLE
 linkTitle: DROP ROLE
-description: DROP ROLE
+description: Use the DROP ROLE statement to remove the specified roles.
 summary: Roles (users and groups)
 menu:
   latest:

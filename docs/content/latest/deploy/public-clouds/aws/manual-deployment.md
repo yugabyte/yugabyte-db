@@ -1,4 +1,39 @@
-This page documents the manual deployment of YugabyteDB on 6 AWS EC2 instances with c5d.4xlarge as the instance type and CentOS 7 as the instance OS. The deployment is configured for multi-AZ (across 3 AZs) and is with replication factor (RF=3). The configuration can be easily changed to handle single-AZ as well as multi-region deployments.
+---
+title: Manually deploy on Amazon Web Services
+headerTitle: Amazon Web Services
+linkTitle: Amazon Web Services
+description: Manually deploy a YugabyteDB cluster on Amazon Web Services.
+menu:
+  latest:
+    identifier: deploy-in-aws-3-manual-deployment
+    parent: public-clouds
+    weight: 630
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link">
+      <i class="icon-shell"></i>
+      CloudFormation
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/terraform" class="nav-link">
+      <i class="icon-shell"></i>
+      Terraform
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link active">
+      <i class="icon-shell"></i>
+      Manual deployment
+    </a>
+  </li>
+</ul>
+
+This page documents the manual deployment of YugabyteDB on six AWS EC2 instances with `c5d.4xlarge` as the instance type and CentOS 7 as the instance operating system. The deployment is configured for multiple availability zones (multi-AZ), with three AZs, and has a replication factor (RF) of `3`. The configuration can be easily changed to handle single-AZ as well as multi-region deployments.
 
 ## 1. Prerequisites
 
@@ -10,17 +45,17 @@ Create AWS EC2 instances with the following characteristics.
 
 - Operating System: CentOS 7 VMs of above type. You can use Ubuntu as well, but then some of the specific steps in terms of setting up ulimits etc. could be slightly different.
 
-- Ports: Make sure to bring these VMs up in a Security Group where communication between instances is enabled on these ports (and not locked down by security settings). Our checklist has a [reference port list](../../checklist/#default-ports-reference).
+- Ports: Make sure to bring these VMs up in a Security Group where communication between instances is enabled on these ports (and not locked down by security settings). For a listing of these ports, see [Default ports reference](../../../../reference/configuration/default-ports).
 
 We now have 2 VMs each in Availability Zones `us-west-2a`, `us-west-2b`, `us-west-2c` respectively.
 
 ### Set environment variables
 
-Now that the six nodes have been prepared, the yb-master process will be run on three of these nodes (because RF=3) and yb-tserver will be run on all six nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../architecture/concepts/universe/).
+Now that the six nodes have been prepared, the yb-master process will be run on three of these nodes (because RF=3) and yb-tserver will be run on all six nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../../architecture/concepts/universe/).
 
-These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above 6 VMs over “ssh”.
+These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above six VMs over `ssh`.
 
-These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the 6 YB nodes.
+These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the six nodes.
 
 ```sh
 # Suppose these are the IP addresses of your 6 machines
@@ -30,7 +65,7 @@ export AZ2_NODES="<ip2> <ip2> ..."
 export AZ3_NODES="<ip1> <ip2> ..."
 
 # Version of YugabyteDB you plan to install.
-export YB_VERSION=2.1.2.0
+export YB_VERSION=2.1.3.0
 
 # Comma separated list of directories available for YB on each node
 # In this example, it is just 1. But if you have two then the RHS
@@ -58,9 +93,9 @@ export ADMIN_USER=centos
 # masters.)
 #
 # You don’t need to CHANGE these unless you want to customize.
-export MASTER1=`echo $AZ1_NODES | cut -f1 -d" "`
-export MASTER2=`echo $AZ2_NODES | cut -f1 -d" "`
-export MASTER3=`echo $AZ3_NODES | cut -f1 -d" "`
+export MASTER1=\`echo $AZ1_NODES | cut -f1 -d" "\`
+export MASTER2=\`echo $AZ2_NODES | cut -f1 -d" "\`
+export MASTER3=\`echo $AZ3_NODES | cut -f1 -d" "\`
 
 
 # Other Environment vars that are simply derived from above ones.
@@ -181,7 +216,7 @@ done
 
 ### Verify system configuration
 
-Below is an example of setting up these prerequisites in CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. For details, see [System configuration](../../manual-deployment/system-config/).
+Below is an example of setting up these prerequisites in CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. For details, see [System configuration](../../../manual-deployment/system-config/).
 
 #### Install ntp and other optional packages
 
@@ -222,7 +257,7 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-Make sure the above is not overriden by files in `limits.d` directory. For example, if `20-nproc.conf` file on the nodes has a different value, then update the file as below.
+Make sure the above is not overridden by files in `limits.d` directory. For example, if `20-nproc.conf` file on the nodes has a different value, then update the file as below.
 
 ```sh
 $ cat /etc/security/limits.d/20-nproc.conf
@@ -448,7 +483,7 @@ done
 
 ### Verify
 
-Verify that all the configuration options look correct and environment variables were substituted correctly.
+Verify that all the configuration flags look correct and environment variables were substituted correctly.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -572,7 +607,7 @@ replication_info {
 }
 ```
 
-Suppose your deployment is multi-region rather than multi-zone, one additional  option to consider is to set a preferred location for all the tablet leaders using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
+Suppose your deployment is multi-region rather than multi-zone, one additional option to consider is to set a preferred location for all the tablet leaders using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
 
 The following command sets the preferred zone to `aws.us-west.us-west-2c`:
 
@@ -624,8 +659,8 @@ replication_info {
 
 ## 8. Test PostgreSQL-compatible YSQL API
 
-Connect to the cluster using the `ysqlsh` utility that comes pre-bundled in the `bin` directory. 
-If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../admin/ysqlsh/).
+Connect to the cluster using the YSQL shell (`ysqlsh`) that comes pre-bundled in the `bin` directory.
+If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../../admin/ysqlsh/).
 
 From any node, execute the following command.
 
@@ -663,7 +698,7 @@ Output should be the following:
 
 ### Using cqlsh
 
-Connect to the cluster using the `cqlsh` utility that comes pre-bundled in the `bin` directory. If you need to try cqlsh from a different node, you can download cqlsh using instructions documented [here](../../../admin/cqlsh/).
+Connect to the cluster using the YCQL shell (`cqlsh`) that comes pre-bundled in the `bin` directory. If you need to try `cqlsh` from a different node, you can download `cqlsh` using instructions documented [here](../../../../admin/cqlsh/).
 
 From any node, execute the following command.
 
@@ -741,7 +776,7 @@ When workload is running, verify activity across various tablet-servers in the M
 http://<master-ip>:7000/tablet-servers
 ```
 
-When workload is running, verify active YCQL or YEDIS RPCs from this links on the “utilz” page.
+When workload is running, verify active YCQL or YEDIS RPC calls from this links on the “utilz” page.
 
 ```
 http://<any-tserver-ip>:9000/utilz
@@ -751,7 +786,7 @@ http://<any-tserver-ip>:9000/utilz
 
 ### Prerequisite
 
-Create the YugabyteDB `system_redis.redis` (which is the default Redis database 0) table using `yb-admin` or using `redis-cli`.
+Create the YugabyteDB `system_redis.redis` (which is the default Redis database `0`) table using `yb-admin` or using `redis-cli`.
 
 - Using `yb-admin`
 

@@ -32,11 +32,18 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       : super(std::move(addrs), timeout_millis, certs_dir),
         certs_dir_(std::move(certs_dir)) {}
 
+  ClusterAdminClient(
+      const HostPort& init_master_addrs,
+      int64_t timeout_millis,
+      std::string certs_dir)
+      : super(std::move(init_master_addrs), timeout_millis, certs_dir),
+        certs_dir_(std::move(certs_dir)) {}
+
   // Initialized the client and connects to the server service proxies.
   CHECKED_STATUS Init() override;
 
   // Snapshot operations.
-  CHECKED_STATUS ListSnapshots();
+  CHECKED_STATUS ListSnapshots(bool show_details);
   CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables,
                                 int flush_timeout_secs);
   CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id);

@@ -3,6 +3,7 @@ title: CREATE OPERATOR CLASS
 linkTitle: CREATE OPERATOR CLASS
 summary: Create a new operator class
 description: CREATE OPERATOR CLASS
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-operator-class

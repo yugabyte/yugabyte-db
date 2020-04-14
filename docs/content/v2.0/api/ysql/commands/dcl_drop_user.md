@@ -3,6 +3,7 @@ title: DROP USER
 linkTitle: DROP USER
 description: DROP USER
 summary: DROP USER
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-user

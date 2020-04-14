@@ -6,6 +6,7 @@
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/pg_system_attr.h"
 
 #include "yb/client/schema.h"
 
@@ -28,22 +29,22 @@ DocExprExecutor::DocExprExecutor() {}
 DocExprExecutor::~DocExprExecutor() {}
 
 CHECKED_STATUS DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                              const QLTableRow::SharedPtrConst& table_row,
-                                              QLValue *result) {
+                                              const QLTableRow* table_row,
+                                              QLExprResultWriter result_writer) {
   // Return NULL value if row is not provided.
   if (table_row == nullptr) {
-    result->SetNull();
+    result_writer.SetNull();
     return Status::OK();
   }
 
   // Read value from given row.
   if (col_id >= 0) {
-    return table_row->ReadColumn(col_id, result);
+    return table_row->ReadColumn(col_id, result_writer);
   }
 
   // Read key of the given row.
   if (col_id == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    return GetTupleId(result);
+    return GetTupleId(&result_writer.NewValue());
   }
 
   return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", col_id);
@@ -91,53 +92,65 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
     case bfql::TSOpcode::kCount:
       if (tscall.operands(0).has_column_id()) {
         // Check if column value is NULL. CQL does not count NULL value of a column.
-        QLValue arg_result;
-        RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-        if (arg_result.IsNull()) {
+        QLExprResult arg_result;
+        RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+        if (IsNull(arg_result.Value())) {
           return Status::OK();
         }
       }
       return EvalCount(result);
 
     case bfql::TSOpcode::kSum: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalSum(arg_result, result);
+      QLExprResult arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+      return EvalSum(arg_result.Value(), result);
     }
 
     case bfql::TSOpcode::kMin: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalMin(arg_result, result);
+      QLExprResult arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+      return EvalMin(arg_result.Value(), result);
     }
 
     case bfql::TSOpcode::kMax: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalMax(arg_result, result);
+      QLExprResult arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+      return EvalMax(arg_result.Value(), result);
     }
 
     case bfql::TSOpcode::kAvg: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalAvg(arg_result, result);
+      QLExprResult arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+      return EvalAvg(arg_result.Value(), result);
     }
 
     case bfql::TSOpcode::kMapExtend: FALLTHROUGH_INTENDED;
     case bfql::TSOpcode::kMapRemove: FALLTHROUGH_INTENDED;
     case bfql::TSOpcode::kSetExtend: FALLTHROUGH_INTENDED;
     case bfql::TSOpcode::kSetRemove: FALLTHROUGH_INTENDED;
-    case bfql::TSOpcode::kListAppend:
+    case bfql::TSOpcode::kListAppend: {
       // Return the value of the second operand. The first operand must be a column ID.
-      return EvalExpr(tscall.operands(1), table_row, result);
-    case bfql::TSOpcode::kListPrepend:
+      QLExprResult temp;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(1), table_row, temp.Writer()));
+      temp.MoveTo(result->mutable_value());
+      return Status::OK();
+    }
+    case bfql::TSOpcode::kListPrepend: {
       // Return the value of the first operand. The second operand is a column ID.
-      return EvalExpr(tscall.operands(0), table_row, result);
+      QLExprResult temp;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, temp.Writer()));
+      temp.MoveTo(result->mutable_value());
+      return Status::OK();
+    }
     case bfql::TSOpcode::kListRemove: {
+      QLExprResult org_list_result;
+      QLExprResult sub_list_result;
+      RETURN_NOT_OK(EvalOperands(
+          this, tscall.operands(), table_row, org_list_result.Writer(), sub_list_result.Writer()));
       QLValue org_list_value;
       QLValue sub_list_value;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &org_list_value));
-      RETURN_NOT_OK(EvalExpr(tscall.operands(1), table_row, &sub_list_value));
+      org_list_result.MoveTo(org_list_value.mutable_value());
+      sub_list_result.MoveTo(sub_list_value.mutable_value());
 
       result->set_list_value();
       if (!org_list_value.IsNull() && !sub_list_value.IsNull()) {
@@ -168,7 +181,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
 }
 
 CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
-                                           const QLTableRow::SharedPtrConst& table_row,
+                                           const QLTableRow& table_row,
                                            QLValue *result,
                                            const Schema *schema) {
   bfpg::TSOpcode tsopcode = static_cast<bfpg::TSOpcode>(tscall.opcode());
@@ -177,60 +190,56 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
       if (tscall.operands(0).has_column_id()) {
         // Check if column value is NULL. Postgres does not count NULL value of a column, unless
         // it's COUNT(*).
-        QLValue arg_result;
-        RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-        if (arg_result.IsNull()) {
+        QLExprResult arg_result;
+        RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+        if (IsNull(arg_result.Value())) {
           return Status::OK();
         }
       }
       return EvalCount(result);
 
-    case bfpg::TSOpcode::kSumInt8: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalSumInt8(arg_result, result);
-    }
+    case bfpg::TSOpcode::kSumInt8:
+      return EvalSumInt(tscall.operands(0), table_row, result, [](const QLValuePB& value) {
+        return value.int8_value();
+      });
 
-    case bfpg::TSOpcode::kSumInt16: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalSumInt16(arg_result, result);
-    }
+    case bfpg::TSOpcode::kSumInt16:
+      return EvalSumInt(tscall.operands(0), table_row, result, [](const QLValuePB& value) {
+        return value.int16_value();
+      });
 
-    case bfpg::TSOpcode::kSumInt32: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalSumInt32(arg_result, result);
-    }
+    case bfpg::TSOpcode::kSumInt32:
+      return EvalSumInt(tscall.operands(0), table_row, result, [](const QLValuePB& value) {
+        return value.int32_value();
+      });
 
-    case bfpg::TSOpcode::kSumInt64: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalSumInt64(arg_result, result);
-    }
+    case bfpg::TSOpcode::kSumInt64:
+      return EvalSumInt(tscall.operands(0), table_row, result, [](const QLValuePB& value) {
+        return value.int64_value();
+      });
 
-    case bfpg::TSOpcode::kSumFloat: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalSumFloat(arg_result, result);
-    }
+    case bfpg::TSOpcode::kSumFloat:
+      return EvalSumReal(
+          tscall.operands(0), table_row, result,
+          [](const QLValuePB& value) { return value.float_value(); },
+          [](float value, QLValuePB* out) { return out->set_float_value(value); });
 
-    case bfpg::TSOpcode::kSumDouble: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalSumDouble(arg_result, result);
-    }
+    case bfpg::TSOpcode::kSumDouble:
+      return EvalSumReal(
+          tscall.operands(0), table_row, result,
+          [](const QLValuePB& value) { return value.double_value(); },
+          [](double value, QLValuePB* out) { return out->set_double_value(value); });
 
     case bfpg::TSOpcode::kMin: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalMin(arg_result, result);
+      QLExprResult arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+      return EvalMin(arg_result.Value(), result);
     }
 
     case bfpg::TSOpcode::kMax: {
-      QLValue arg_result;
-      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, &arg_result));
-      return EvalMax(arg_result, result);
+      QLExprResult arg_result;
+      RETURN_NOT_OK(EvalExpr(tscall.operands(0), table_row, arg_result.Writer()));
+      return EvalMax(arg_result.Value(), result);
     }
 
     case bfpg::TSOpcode::kPgEvalExprCall: {
@@ -269,8 +278,8 @@ CHECKED_STATUS DocExprExecutor::EvalCount(QLValue *aggr_count) {
   return Status::OK();
 }
 
-CHECKED_STATUS DocExprExecutor::EvalSum(const QLValue& val, QLValue *aggr_sum) {
-  if (val.IsNull()) {
+CHECKED_STATUS DocExprExecutor::EvalSum(const QLValuePB& val, QLValue *aggr_sum) {
+  if (IsNull(val)) {
     return Status::OK();
   }
 
@@ -293,7 +302,7 @@ CHECKED_STATUS DocExprExecutor::EvalSum(const QLValue& val, QLValue *aggr_sum) {
       aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int64_value());
       break;
     case InternalType::kVarintValue:
-      aggr_sum->set_varint_value(aggr_sum->varint_value() + val.varint_value());
+      aggr_sum->set_varint_value(aggr_sum->varint_value() + QLValue::varint_value(val));
       break;
     case InternalType::kFloatValue:
       aggr_sum->set_float_value(aggr_sum->float_value() + val.float_value());
@@ -315,106 +324,64 @@ CHECKED_STATUS DocExprExecutor::EvalSum(const QLValue& val, QLValue *aggr_sum) {
   return Status::OK();
 }
 
-CHECKED_STATUS DocExprExecutor::EvalSumInt8(const QLValue& val, QLValue *aggr_sum) {
-  if (val.IsNull()) {
+template <class Extractor>
+CHECKED_STATUS DocExprExecutor::EvalSumInt(
+    const PgsqlExpressionPB& operand, const QLTableRow& table_row, QLValue *aggr_sum,
+    const Extractor& extractor) {
+  QLExprResult arg_result;
+  RETURN_NOT_OK(EvalExpr(operand, table_row, arg_result.Writer()));
+  const auto& val = arg_result.Value();
+
+  if (IsNull(val)) {
     return Status::OK();
   }
 
   if (aggr_sum->IsNull()) {
-    aggr_sum->set_int64_value(val.int8_value());
+    aggr_sum->set_int64_value(extractor(val));
   } else {
-    aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int8_value());
+    aggr_sum->set_int64_value(aggr_sum->int64_value() + extractor(val));
   }
 
   return Status::OK();
 }
 
-CHECKED_STATUS DocExprExecutor::EvalSumInt16(const QLValue& val, QLValue *aggr_sum) {
-  if (val.IsNull()) {
+template <class Extractor, class Setter>
+CHECKED_STATUS DocExprExecutor::EvalSumReal(
+    const PgsqlExpressionPB& operand, const QLTableRow& table_row, QLValue *aggr_sum,
+    const Extractor& extractor, const Setter& setter) {
+  QLExprResult arg_result;
+  RETURN_NOT_OK(EvalExpr(operand, table_row, arg_result.Writer()));
+  const auto& val = arg_result.Value();
+
+  if (IsNull(val)) {
     return Status::OK();
   }
 
   if (aggr_sum->IsNull()) {
-    aggr_sum->set_int64_value(val.int16_value());
+    setter(extractor(val), aggr_sum->mutable_value());
   } else {
-    aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int16_value());
+    setter(extractor(aggr_sum->value()) + extractor(val), aggr_sum->mutable_value());
   }
 
   return Status::OK();
 }
 
-CHECKED_STATUS DocExprExecutor::EvalSumInt32(const QLValue& val, QLValue *aggr_sum) {
-  if (val.IsNull()) {
-    return Status::OK();
-  }
-
-  if (aggr_sum->IsNull()) {
-    aggr_sum->set_int64_value(val.int32_value());
-  } else {
-    aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int32_value());
-  }
-
-  return Status::OK();
-}
-
-CHECKED_STATUS DocExprExecutor::EvalSumInt64(const QLValue& val, QLValue *aggr_sum) {
-  if (val.IsNull()) {
-    return Status::OK();
-  }
-
-  if (aggr_sum->IsNull()) {
-    aggr_sum->set_int64_value(val.int64_value());
-  } else {
-    aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int64_value());
-  }
-
-  return Status::OK();
-}
-
-CHECKED_STATUS DocExprExecutor::EvalSumFloat(const QLValue& val, QLValue *aggr_sum) {
-  if (val.IsNull()) {
-    return Status::OK();
-  }
-
-  if (aggr_sum->IsNull()) {
-    aggr_sum->set_float_value(val.float_value());
-  } else {
-    aggr_sum->set_float_value(aggr_sum->float_value() + val.float_value());
-  }
-
-  return Status::OK();
-}
-
-CHECKED_STATUS DocExprExecutor::EvalSumDouble(const QLValue& val, QLValue *aggr_sum) {
-  if (val.IsNull()) {
-    return Status::OK();
-  }
-
-  if (aggr_sum->IsNull()) {
-    aggr_sum->set_double_value(val.double_value());
-  } else {
-    aggr_sum->set_double_value(aggr_sum->double_value() + val.double_value());
-  }
-
-  return Status::OK();
-}
-
-CHECKED_STATUS DocExprExecutor::EvalMax(const QLValue& val, QLValue *aggr_max) {
-  if (!val.IsNull() && (aggr_max->IsNull() || *aggr_max < val)) {
+CHECKED_STATUS DocExprExecutor::EvalMax(const QLValuePB& val, QLValue *aggr_max) {
+  if (!IsNull(val) && (aggr_max->IsNull() || aggr_max->value() < val)) {
     *aggr_max = val;
   }
   return Status::OK();
 }
 
-CHECKED_STATUS DocExprExecutor::EvalMin(const QLValue& val, QLValue *aggr_min) {
-  if (!val.IsNull() && (aggr_min->IsNull() || *aggr_min > val)) {
+CHECKED_STATUS DocExprExecutor::EvalMin(const QLValuePB& val, QLValue *aggr_min) {
+  if (!IsNull(val) && (aggr_min->IsNull() || aggr_min->value() > val)) {
     *aggr_min = val;
   }
   return Status::OK();
 }
 
-CHECKED_STATUS DocExprExecutor::EvalAvg(const QLValue& val, QLValue *aggr_avg) {
-  if (val.IsNull()) {
+CHECKED_STATUS DocExprExecutor::EvalAvg(const QLValuePB& val, QLValue *aggr_avg) {
+  if (IsNull(val)) {
     return Status::OK();
   }
 
@@ -519,8 +486,8 @@ CHECKED_STATUS DocExprExecutor::EvalParametricToJson(const QLExpressionPB& opera
                                                      const QLTableRow& table_row,
                                                      QLValue *result,
                                                      const Schema *schema) {
-  QLValue val;
-  RETURN_NOT_OK(EvalExpr(operand, table_row, &val, schema));
+  QLExprResult val;
+  RETURN_NOT_OK(EvalExpr(operand, table_row, val.Writer(), schema));
 
   // Repack parametric types like UDT, FROZEN, SET<FROZEN>, etc.
   if (operand.has_column_id() && schema != nullptr) {
@@ -528,12 +495,12 @@ CHECKED_STATUS DocExprExecutor::EvalParametricToJson(const QLExpressionPB& opera
     DCHECK(col.ok());
 
     if (col.ok()) {
-      UnpackUDTAndFrozen(col->type(), val.mutable_value());
+      UnpackUDTAndFrozen(col->type(), val.ForceNewValue().mutable_value());
     }
   }
 
   // Direct call of ToJson() for elementary type.
-  return bfql::ToJson(&val, result);
+  return bfql::ToJson(&val.ForceNewValue(), result);
 }
 
 //--------------------------------------------------------------------------------------------------

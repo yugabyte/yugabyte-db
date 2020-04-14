@@ -102,7 +102,6 @@ DEFINE_bool(
     stop_on_empty_read, true,
     "Stop reading if we get an empty set of rows on a read operation");
 
-using strings::Substitute;
 using std::atomic_long;
 using std::atomic_bool;
 
@@ -128,8 +127,6 @@ using yb::Slice;
 using yb::YBPartialRow;
 using yb::TableType;
 using yb::YQLDatabase;
-
-using strings::Substitute;
 
 using yb::load_generator::KeyIndexSet;
 using yb::load_generator::SessionFactory;

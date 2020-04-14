@@ -1,7 +1,8 @@
 ---
-title: Observability with Prometheus
+title: Explore observability with Prometheus using Kubernetes (Minikube)
+headerTitle: Observability with Prometheus
 linkTitle: Observability 
-description: Observability with Prometheus
+description: Learn about observability and monitoring with Prometheus using a local three-node YugabyteDB cluster.
 aliases:
   - /latest/explore/observability-kubernetes/
 menu:

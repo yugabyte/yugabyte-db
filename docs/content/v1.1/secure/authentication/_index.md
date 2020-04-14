@@ -4,6 +4,7 @@ linkTitle: Authentication
 description: Authentication
 headcontent: Instructions for enabling authentication in YugabyteDB.
 image: /images/section_icons/secure/authentication.png
+block_indexing: true
 menu:
   v1.1:
     identifier: secure-authentication

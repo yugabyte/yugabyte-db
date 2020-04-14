@@ -84,16 +84,16 @@ class IndexInfo {
   // the index backfill is successfully completed.
   bool AllowReads() const { return index_permissions_ == INDEX_PERM_READ_WRITE_AND_DELETE; }
 
-  // Should write operations to the index be allowed to update it.
+  // Should write operations to the index be allowed to update the index table.
   bool AllowWrites() const {
     return index_permissions_ >= INDEX_PERM_WRITE_AND_DELETE &&
-           index_permissions_ <= INDEX_PERM_READ_WRITE_AND_DELETE;
+           index_permissions_ <= INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING;
   }
 
-  // Should delete operations to the index be allowed to update it.
+  // Should delete operations to the index be allowed to update the index table.
   bool AllowDelete() const {
     return index_permissions_ >= INDEX_PERM_DELETE_ONLY &&
-           index_permissions_ <= INDEX_PERM_READ_WRITE_AND_DELETE;
+           index_permissions_ <= INDEX_PERM_DELETE_ONLY_WHILE_REMOVING;
   }
 
   // Is the index being backfilled.

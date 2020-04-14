@@ -1,7 +1,8 @@
 ---
-title: Sharding
+title: Hash and range sharding in DocDB
+headerTitle: Sharding
 linkTitle: Sharding
-description: Sharding into tablets
+description: Learn how YugabyteDB uses hash and range sharding to manage tables.
 aliases:
   - /latest/architecture/docdb/sharding/
   - /latest/architecture/concepts/sharding/
@@ -12,7 +13,7 @@ menu:
     parent: docdb
     weight: 1142
 isTocNested: false
-showAsideToc: false
+showAsideToc: true
 ---
 
 User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as

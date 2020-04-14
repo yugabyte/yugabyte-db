@@ -1,7 +1,8 @@
 ---
-title: Docker
+title: Deploy a local cluster to Docker Swarm
+headerTitle: Docker
 linkTitle: Docker
-description: Docker
+description: Deploy a local YugabyteDB cluster to Docker Swarm.
 aliases:
  - /deploy/docker-swarm/
  - /latest/deploy/docker-swarm/
@@ -10,7 +11,7 @@ menu:
   latest:
     parent: deploy
     name: Docker
-    identifier: docker-1-swarm
+    identifier: docker-2-swarm
     weight: 625
 type: page
 isTocNested: false
@@ -18,16 +19,16 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/latest/deploy/docker/docker-swarm" class="nav-link active">
-      <i class="fas fa-layer-group"></i>
-      Docker Swarm
-    </a>
-  </li>
   <li>
     <a href="/latest/deploy/docker/docker-compose" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker Compose
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/docker/docker-swarm" class="nav-link active">
+      <i class="fas fa-layer-group"></i>
+      Docker Swarm
     </a>
   </li>
 </ul>

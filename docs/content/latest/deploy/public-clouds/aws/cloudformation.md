@@ -1,3 +1,40 @@
+---
+title: Deploy on Amazon Web Services using AWS CloudFormation
+headerTitle: Amazon Web Services
+linkTitle: Amazon Web Services
+description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudFormation
+aliases:
+  - /latest/deploy/public-clouds/aws/
+menu:
+  latest:
+    identifier: deploy-in-aws-1-cloudformation
+    parent: public-clouds
+    weight: 630
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link active">
+      <i class="icon-shell"></i>
+      CloudFormation
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/public-clouds/aws/terraform" class="nav-link">
+      <i class="icon-shell"></i>
+      Terraform
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+      <i class="icon-shell"></i>
+      Manual deployment
+    </a>
+  </li>
+</ul>
+
 ## Prerequisites
 
 1. You need to have an IAM user who has `AWSCloudFormationFullAccess` privilege.
@@ -53,7 +90,7 @@ if you have trouble connecting to the DB.
 <img title="Upload template" class="expandable-image" src="/images/deploy/aws/aws-cf-upload-template.png" />
 <br>
 
-4. Provide the required parameters. Each of these fields are prefilled with information from the configuration yaml file that was uploaded. `LatestAmiId` refers to the id of the machine image to use, see [more](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
+4. Provide the required parameters. Each of these fields are prefilled with information from the configuration YAML file that was uploaded. `LatestAmiId` refers to the id of the machine image to use, see [more](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
 
 <img title="Provide Parameters" class="expandable-image" src="/images/deploy/aws/aws-cf-provide-parameters.png" />
 <br>

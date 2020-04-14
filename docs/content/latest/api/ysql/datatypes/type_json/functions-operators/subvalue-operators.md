@@ -1,9 +1,9 @@
 ---
-title: JSON subvalue operators
-linkTitle: '->, ->>, #>, and #>> (JSON subvalues)'
+title: "->, ->>, #>, and #>> (JSON subvalue operators)"
+headerTitle: "->, ->>, #>, and #>> (JSON subvalues)"
+linkTitle: "->, ->>, #>, and #>> (JSON subvalues)"
+description: Read a JSON value at a specified path.
 summary: JSON subvalue operators
-headerTitle: '->, ->>, #>, and #>> (JSON subvalues)'
-description: An arbitrarily deeply located JSON subvalue is identified by its path from the topmost JSON value.
 menu:
   latest:
     identifier: subvalue-operators
@@ -13,13 +13,14 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** read a JSON value at a specified path. The `>` variants return a `json` or `jsonb` value, according to the data type of the input. And the `>>` variants reurn a `text` value. The `#>` and `#>>` variants differ from `->` and `->>` variants in how the path is specified.
+**Purpose:** Read a JSON value at a specified path. The `>` variants return a `json` or `jsonb` value, according to the data type of the input. And the `>>` variants reurn a `text` value. The `#>` and `#>>` variants differ from `->` and `->>` variants in how the path is specified.
 
-### The `->` operator
+## The `->` operator
 
-**Purpose:** read the value specified by a one-step path returning it as a `json` or `jsonb` value.
+**Purpose:** Read the value specified by a one-step path returning it as a `json` or `jsonb` value.
 
-**Signature** for the `jsonb` overload:
+**Signature** For the `jsonb` overload:
+
 ```
 input values:       jsonb -> [int | text] [ -> [int | text] ]*
 return value:       jsonb
@@ -59,9 +60,9 @@ end;
 $body$;
 ```
 
-### The `#>` operator
+## The `#>` operator
 
-**Purpose:** read the value specified by a multi-step path returning it as a `json` or `jsonb` value.
+**Purpose:** Read the value specified by a multi-step path returning it as a `json` or `jsonb` value.
 
 **Signature** for the `jsonb` overload:
 
@@ -158,11 +159,12 @@ $body$;
 
 The paths are written using PL/pgSQL variables so that, as a pedagogic device, the data types are explicit.
 
-### The `->>` and `#>>` operators
+## The `->>` and `#>>` operators
 
-**Purpose:** read the specified JSON value as a `text` value.
+**Purpose:** Read the specified JSON value as a `text` value.
 
-**Signatures** for the `jsonb` overloads:
+**Signatures** For the `jsonb` overloads:
+
 ```
 input values:       jsonb ->> [int | text] [ -> [int | text] ]*
 return value:       text
@@ -173,7 +175,7 @@ input value:        jsonb #>> text[]
 return value:       text
 ```
 
-**Notes:** the `->` operator returns a JSON object. When the targeted value is compound, the `->>` operator returns the `::text` typecast of the value. But when the targeted value is primitive, the `->>` operator returns the value itself, as a `text` value. In particular; a JSON _number_ value is returned as the `::text` typecast of that value (for example `'4.2'`), allowing it to be trivially `::numeric` typecasted back to what it actually is; a JSON _boolean_ value is returned as the `::text` typecast of that value (`'true'` or `'false'`), allowing it to be trivially `::boolean` typecasted back to what it actually is; a JSON _string_ value is return as is as a `text` value; and a JSON _null_ value is returned as a genuine SQL `null` so that the `is null` test is `true`.
+**Notes:** The `->` operator returns a JSON object. When the targeted value is compound, the `->>` operator returns the `::text` typecast of the value. But when the targeted value is primitive, the `->>` operator returns the value itself, as a `text` value. In particular; a JSON _number_ value is returned as the `::text` typecast of that value (for example `'4.2'`), allowing it to be trivially `::numeric` typecasted back to what it actually is; a JSON _boolean_ value is returned as the `::text` typecast of that value (`'true'` or `'false'`), allowing it to be trivially `::boolean` typecasted back to what it actually is; a JSON _string_ value is return as is as a `text` value; and a JSON _null_ value is returned as a genuine SQL `null` so that the `is null` test is `true`.
 
 The difference in semantics between the `->` operator and the `->>` operator is vividly illustrated (as promised above) by targeting this primitive JSON _string_ subvalue:
 

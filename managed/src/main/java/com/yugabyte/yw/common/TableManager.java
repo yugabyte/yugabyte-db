@@ -99,7 +99,7 @@ public class TableManager extends DevopsBase {
           commandArgs.add("--ssh_key_path");
           commandArgs.add(accessKey.getKeyInfo().privateKey);
         }
-        commandArgs.add("--s3bucket");
+        commandArgs.add("--backup_location");
         commandArgs.add(backupTableParams.storageLocation);
         commandArgs.add("--storage_type");
         commandArgs.add(customerConfig.name.toLowerCase());

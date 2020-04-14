@@ -4,6 +4,7 @@ linkTitle: 2. Create Roles
 description: 2. Create Roles
 headcontent: Creating roles
 image: /images/section_icons/secure/create-roles.png
+block_indexing: true
 menu:
   v1.3:
     identifier: secure-authorization-create-roles

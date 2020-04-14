@@ -3,6 +3,7 @@ title: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
 summary: Create a new operator
 description: CREATE OPERATOR
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-operator

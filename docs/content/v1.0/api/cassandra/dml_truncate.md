@@ -2,6 +2,7 @@
 title: TRUNCATE
 summary: Removes all rows from a table.
 description: TRUNCATE
+block_indexing: true
 menu:
   v1.0:
     parent: api-cassandra

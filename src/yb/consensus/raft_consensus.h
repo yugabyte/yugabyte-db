@@ -94,6 +94,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
  public:
   class ConsensusFaultHooks;
 
+  // Creates RaftConsensus.
+  // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
   static std::shared_ptr<RaftConsensus> Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -109,8 +111,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests);
+    RetryableRequests* retryable_requests,
+    const yb::OpId& split_op_id);
 
+  // Creates RaftConsensus.
+  // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
   RaftConsensus(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -126,7 +131,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests);
+    RetryableRequests* retryable_requests,
+    const yb::OpId& split_op_id);
 
   virtual ~RaftConsensus();
 
@@ -206,6 +212,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   yb::OpId GetLastReceivedOpId() override;
 
   yb::OpId GetLastCommittedOpId() override;
+
+  yb::OpId GetSplitOpId() override;
+
+  // Resets split operation ID, to be used only from SplitOperation::DoAbort.
+  CHECKED_STATUS ResetSplitOpId();
 
   MicrosTime MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
@@ -439,6 +450,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // - Set consensus_error.code to the given code.
   void FillVoteResponseVoteDenied(ConsensusErrorPB::Code error_code, VoteResponsePB* response);
 
+  void RequestVoteRespondVoteDenied(
+      ConsensusErrorPB::Code error_code, const std::string& message_suffix,
+      const VoteRequestPB& request, VoteResponsePB* response);
+
   // Respond to VoteRequest that the candidate has an old term.
   CHECKED_STATUS RequestVoteRespondInvalidTerm(const VoteRequestPB* request,
                                                VoteResponsePB* response);
@@ -453,8 +468,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Respond to VoteRequest that the candidate's last-logged OpId is too old.
   CHECKED_STATUS RequestVoteRespondLastOpIdTooOld(const OpId& local_last_opid,
-                                          const VoteRequestPB* request,
-                                          VoteResponsePB* response);
+                                                  const VoteRequestPB* request,
+                                                  VoteResponsePB* response);
 
   // Respond to VoteRequest that the vote was not granted because we believe
   // the leader to be alive.

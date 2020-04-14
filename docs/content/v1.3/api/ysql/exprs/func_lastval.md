@@ -2,6 +2,7 @@
 title: lastval()
 summary: Get the value returned from the last call to `nextval()`
 description: lastval()
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-exprs-lastval

@@ -15,6 +15,7 @@
 
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+#include "yb/common/pg_system_attr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/util/debug-util.h"
 #include "yb/yql/pggate/pg_dml.h"
@@ -329,20 +330,20 @@ Result<bool> PgDml::FetchDataFromServer() {
     // Execute doc_op_ again for the new set of WHERE condition from the nested query.
     SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
               "YSQL read operation was not sent");
+
+    // Get the rowsets from doc-operator.
+    RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
   }
 
-  // Get the rowsets from doc-operator.
-  RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
   return true;
 }
 
 Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
-  list<PgDocResult::SharedPtr>::iterator rowset_iter = rowsets_.begin();
-  while (rowset_iter != rowsets_.end()) {
+  for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
     // Check if the rowset has any data.
-    const PgDocResult::SharedPtr& rowset = *rowset_iter;
-    if (rowset->is_eof()) {
-      rowsets_.erase(rowset_iter++);
+    auto& rowset = *rowset_iter;
+    if (rowset.is_eof()) {
+      rowset_iter = rowsets_.erase(rowset_iter);
       continue;
     }
 
@@ -353,10 +354,10 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
     //   DML <Table> WHERE ybctid IN (SELECT base_ybctid FROM <Index> ORDER BY <Index Range>)
     // The nested subquery should return rows in indexing order, but the ybctids are then grouped
     // by hash-code for BATCH-DML-REQUEST, so the response here are out-of-order.
-    if (rowset->NextRowOrder() <= current_row_order_) {
+    if (rowset.NextRowOrder() <= current_row_order_) {
       // Write row to postgres tuple.
       int64_t row_order = -1;
-      RETURN_NOT_OK(rowset->WritePgTuple(targets_, pg_tuple, &row_order));
+      RETURN_NOT_OK(rowset.WritePgTuple(targets_, pg_tuple, &row_order));
       SCHECK(row_order == -1 || row_order == current_row_order_, InternalError,
              "The resulting row are not arranged in indexing order");
 

@@ -2,6 +2,7 @@
 title: System Stats
 linkTitle: System Stats
 description: Check System Stats
+block_indexing: true
 menu:
   v1.2:
     parent: troubleshoot-nodes

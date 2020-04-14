@@ -124,7 +124,6 @@ set(COMMON_SRCS
   ql_expr.cc
   common_flags.cc
   pgsql_error.cc
-  pgsql_resultset.cc
   roles_permissions.cc
   ybc_util.cc
   ybc-internal.cc

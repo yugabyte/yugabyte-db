@@ -158,6 +158,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
+	if (IsYugaByteEnabled())
+		YBBeginOperationsBuffering();
+
 	/*
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.  EXPLAIN is considered read-only.
@@ -438,6 +441,10 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	/* Execute queued AFTER triggers, unless told not to */
 	if (!(estate->es_top_eflags & EXEC_FLAG_SKIP_TRIGGERS))
 		AfterTriggerEndQuery(estate);
+
+	// Flush buffered operations straight before elapsed time calculation.
+	if (IsYugaByteEnabled())
+		YBEndOperationsBuffering();
 
 	if (queryDesc->totaltime)
 		InstrStopNode(queryDesc->totaltime, 0);

@@ -15,6 +15,7 @@
 #define YB_CONSENSUS_CONSENSUS_UTIL_H
 
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 
 namespace yb {
 namespace consensus {
@@ -30,6 +31,10 @@ YB_DEFINE_ENUM(
     // Send a request even if the queue is empty, and therefore (in most cases) the request is
     // empty. This is used during heartbeats from leader to peers.
     (kAlwaysSend));
+
+inline std::string MakeTabletLogPrefix(const std::string& tablet_id, const std::string& peer_id) {
+  return Format("T $0 P $1: ", tablet_id, peer_id);
+}
 
 }  // namespace consensus
 }  // namespace yb

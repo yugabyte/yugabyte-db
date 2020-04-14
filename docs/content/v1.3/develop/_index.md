@@ -5,6 +5,7 @@ description: Develop apps on YugabyteDB
 headcontent: Get started building applications on top of YugabyteDB.
 image: /images/section_icons/index/develop.png
 section: USER GUIDES
+block_indexing: true
 menu:
   v1.3:
     identifier: develop

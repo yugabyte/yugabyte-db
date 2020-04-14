@@ -1,9 +1,8 @@
 ---
-title: jsonb_typeof()
+title: jsonb_typeof() and json_typeof()
 linkTitle: jsonb_typeof()
-summary: jsonb_typeof() and json_typeof()
 headerTitle: jsonb_typeof() and json_typeof()
-description: jsonb_typeof() and json_typeof() functions return the type of the JSON value as a SQL text value.
+description: Return the data type of the JSON value as a SQL text value.
 menu:
   latest:
     identifier: jsonb-typeof
@@ -13,17 +12,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** return the data type of the JSON value as a SQL `text` value.
+**Purpose:** Return the data type of the JSON value as a SQL `text` value.
 
-
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb
 return value:      text
 ```
 
-**Notes:** possible return values are _string_, _number_, _boolean_, _null_,  _object_, and _array_ — as follows.
+**Notes:** Possible return values are _string_, _number_, _boolean_, _null_,  _object_, and _array_ — as follows.
 
 ```postgresql
 do $body$

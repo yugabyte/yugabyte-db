@@ -32,6 +32,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include <array>
+#include <sstream>
 #include <type_traits>
 
 #include <boost/tti/has_member_function.hpp>
@@ -42,14 +43,23 @@
 #include "yb/client/table_creator.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/string_case.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+DEFINE_bool(wait_if_no_leader_master, false,
+            "When yb-admin connects to the cluster and no leader master is present, "
+            "this flag determines if yb-admin should wait for the entire duration of timeout or"
+            "in case a leader master appears in that duration or return error immediately.");
 
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
@@ -122,6 +132,8 @@ const int kPartitionRangeColWidth = 56;
 const int kHostPortColWidth = 20;
 const int kTableNameColWidth = 48;
 const int kNumCharactersInUuid = 32;
+const int kLongColWidth = 15;
+const int kSmallColWidth = 8;
 const int kSleepTimeSec = 1;
 const int kNumberOfTryouts = 30;
 
@@ -156,10 +168,62 @@ ClusterAdminClient::ClusterAdminClient(string addrs,
       client_init_(certs_dir.empty()),
       initted_(false) {}
 
+ClusterAdminClient::ClusterAdminClient(
+    const HostPort& init_master_addr,
+    int64_t timeout_millis,
+    string certs_dir)
+    : init_master_addr_(init_master_addr),
+      timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
+      client_init_(certs_dir.empty()),
+      initted_(false) {}
+
 ClusterAdminClient::~ClusterAdminClient() {
   if (messenger_) {
     messenger_->Shutdown();
   }
+}
+
+Status ClusterAdminClient::DiscoverAllMasters(
+    const HostPort& init_master_addr,
+    std::string* all_master_addrs
+) {
+
+  std::unique_ptr<MasterServiceProxy> master_proxy(new MasterServiceProxy(
+      proxy_cache_.get(),
+      init_master_addr));
+
+  VLOG(0) << "Initializing master leader list from single master at "
+          << init_master_addr.ToString();
+  const auto list_resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
+      master_proxy.get(), ListMastersRequestPB()));
+  if (list_resp.masters().empty()) {
+    return  STATUS(NotFound, "no masters found");
+  }
+
+  std::vector<std::string> addrs;
+  for (const auto& master : list_resp.masters()) {
+    if (!master.has_registration()) {
+      LOG(WARNING) << master.instance_id().permanent_uuid() << " has no registration.";
+      continue;
+    }
+
+    if (master.registration().broadcast_addresses_size() > 0) {
+      addrs.push_back(FormatFirstHostPort(master.registration().broadcast_addresses()));
+    } else if (master.registration().private_rpc_addresses_size() > 0) {
+      addrs.push_back(FormatFirstHostPort(master.registration().private_rpc_addresses()));
+    } else {
+      LOG(WARNING) << master.instance_id().permanent_uuid() << " has no rpc/broadcast address.";
+      continue;
+    }
+  }
+
+  if (addrs.empty()) {
+    return STATUS(NotFound, "no masters found");
+  }
+
+  JoinStrings(addrs, ",", all_master_addrs);
+  VLOG(0) << "Discovered full master list: " << *all_master_addrs;
+  return Status::OK();
 }
 
 Status ClusterAdminClient::Init() {
@@ -168,11 +232,17 @@ Status ClusterAdminClient::Init() {
   // Check if caller will initialize the client and related parts.
   if (client_init_) {
     messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-    yb_client_ = VERIFY_RESULT(YBClientBuilder()
-        .add_master_server_addr(master_addr_list_)
-        .default_admin_operation_timeout(timeout_)
-        .Build(messenger_.get()));
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+
+    if (!init_master_addr_.host().empty()) {
+      RETURN_NOT_OK(DiscoverAllMasters(init_master_addr_, &master_addr_list_));
+    }
+
+    yb_client_ = VERIFY_RESULT(YBClientBuilder()
+    .add_master_server_addr(master_addr_list_)
+    .default_admin_operation_timeout(timeout_)
+    .wait_for_leader_election_on_init(FLAGS_wait_if_no_leader_master)
+    .Build(messenger_.get()));
 
     // Find the leader master's socket info to set up the master proxy.
     leader_addr_ = yb_client_->GetMasterLeaderAddress();
@@ -663,17 +733,48 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
       NotFound, "Server with UUID $0 has no RPC address registered with the Master", uuid);
 }
 
-Status ClusterAdminClient::ListAllTabletServers() {
+Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  char kSpaceSep = ' ';
 
-  if (!servers.empty()) {
-    cout << RightPadToUuidWidth("Tablet Server UUID") << kColumnSep
-         << kRpcHostPortHeading << endl;
-  }
+  cout << RightPadToUuidWidth("Tablet Server UUID") << kSpaceSep
+        << kRpcHostPortHeading << kSpaceSep
+        << RightPadToWidth("Heartbeat delay", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("Status", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Reads/s", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Writes/s", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Uptime", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("SST total size", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("SST uncomp size", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("SST #files", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("Memory", kSmallColWidth) << kSpaceSep
+        << endl;
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    cout << server.instance_id().permanent_uuid() << kColumnSep
+    if (exclude_dead && server.has_alive() && !server.alive()) {
+      continue;
+    }
+    std::stringstream time_str;
+    auto heartbeat_delay_ms = server.has_millis_since_heartbeat() ?
+                               server.millis_since_heartbeat() : 0;
+    time_str << std::fixed << std::setprecision(2) << (heartbeat_delay_ms/1000.0) << "s";
+    auto status_str = server.has_alive() ? (server.alive() ? "ALIVE" : "DEAD") : "UNKNOWN";
+    cout << server.instance_id().permanent_uuid() << kSpaceSep
          << FormatFirstHostPort(server.registration().common().private_rpc_addresses())
+         << kSpaceSep
+         << RightPadToWidth(time_str.str(), kLongColWidth) << kSpaceSep
+         << RightPadToWidth(status_str, kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(server.metrics().read_ops_per_sec(), kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(server.metrics().write_ops_per_sec(), kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(server.metrics().uptime_seconds(), kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().total_sst_file_size()), kLongColWidth)
+         << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().uncompressed_sst_file_size()),
+                            kLongColWidth)
+         << kSpaceSep
+         << RightPadToWidth(server.metrics().num_sst_files(), kLongColWidth) << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().total_ram_usage()), kSmallColWidth)
+         << kSpaceSep
          << endl;
   }
 
@@ -683,50 +784,31 @@ Status ClusterAdminClient::ListAllTabletServers() {
 Status ClusterAdminClient::ListAllMasters() {
   const auto lresp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
       master_proxy_.get(), ListMastersRequestPB()));
-  if (!lresp.masters().empty()) {
-    cout << RightPadToUuidWidth("Master UUID") << kColumnSep
-         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth)<< kColumnSep
-         << "State" << kColumnSep
-         << "Role" << endl;
+
+  if (lresp.has_error()) {
+    LOG(ERROR) << "Error: querying leader master for live master info : "
+               << lresp.error().DebugString() << endl;
+    return STATUS(RemoteError, lresp.error().DebugString());
   }
-  int i = 0;
+
+  cout << RightPadToUuidWidth("Master UUID") << kColumnSep
+        << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
+        << "State" << kColumnSep
+        << "Role" << endl;
+
   for (const auto& master : lresp.masters()) {
-    if (master.role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
       const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
-      cout << (master_reg ? master.instance_id().permanent_uuid()
+      cout << (master.has_instance_id() ? master.instance_id().permanent_uuid()
                           : RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep;
-      cout << RightPadToWidth(master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
-                                         : "UNKNOWN", kHostPortColWidth) << kColumnSep;
-      cout << (master.has_error() ? PBEnumToString(master.error().code()) : "ALIVE") << kColumnSep;
-      cout << PBEnumToString(master.role()) << endl;
-    } else {
-      cout << "UNREACHABLE MASTER at index " << i << "." << endl;
-    }
-    ++i;
-  }
-
-  const auto r_resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
-      &MasterServiceProxy::ListMasterRaftPeers, master_proxy_.get(),
-      ListMasterRaftPeersRequestPB()));
-  if (r_resp.has_error()) {
-    return STATUS_FORMAT(RuntimeError, "List Raft Masters RPC response hit error: $0",
-        r_resp.error().ShortDebugString());
-  }
-
-  if (r_resp.masters_size() != lresp.masters_size()) {
-    cout << "WARNING: Mismatch in in-memory masters and raft peers info."
-         << "Raft peer info from master leader dumped below." << endl;
-    int i = 0;
-    for (const auto& master : r_resp.masters()) {
-      if (master.member_type() != consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE) {
-        cout << master.permanent_uuid() << "  "
-             << master.last_known_private_addr(0).host() << "/"
-             << master.last_known_private_addr(0).port() << endl;
-      } else {
-        cout << "UNREACHABLE MASTER at index " << i << "." << endl;
-      }
-      ++i;
-    }
+      cout << RightPadToWidth(
+                master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
+                            : "UNKNOWN", kHostPortColWidth)
+            << kColumnSep;
+      cout << RightPadToWidth((master.has_error() ?
+                                PBEnumToString(master.error().code()) : "ALIVE"),
+                              kSmallColWidth)
+            << kColumnSep;
+      cout << (master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN") << endl;
   }
 
   return Status::OK();
@@ -1247,6 +1329,15 @@ Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterCl
   return InvokeRpc(&MasterServiceProxy::GetMasterClusterConfig, master_proxy_.get(),
                    master::GetMasterClusterConfigRequestPB(),
                    "MasterServiceImpl::GetMasterClusterConfig call failed.");
+}
+
+CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+  const auto resp = VERIFY_RESULT(
+      InvokeRpc(&MasterServiceProxy::SplitTablet, master_proxy_.get(), req));
+  std::cout << "Response: " << AsString(resp) << std::endl;
+  return Status::OK();
 }
 
 template<class Response, class Request, class Object>

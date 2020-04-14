@@ -14,38 +14,80 @@
 #ifndef YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 #define YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/master/master_fwd.h"
 
+#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
+
+#include "yb/tserver/backup.pb.h"
 
 #include "yb/util/status.h"
 
 namespace yb {
 namespace master {
 
+using TabletSnapshotOperationCallback =
+    std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
+
 // Context class for MasterSnapshotCoordinator.
 class SnapshotCoordinatorContext {
  public:
+  // Return tablet infos for specified tablet ids.
+  // The returned vector is always of the same length as the input vector,
+  // with null entries returned for unknown tablet ids.
   virtual TabletInfos GetTabletInfos(const std::vector<TabletId>& id) = 0;
+
   virtual void SendCreateTabletSnapshotRequest(
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime snapshot_hybrid_time) = 0;
+      HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) = 0;
+
+  virtual void SendRestoreTabletSnapshotRequest(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
+      TabletSnapshotOperationCallback callback) = 0;
+
+  virtual void SendDeleteTabletSnapshotRequest(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
+      TabletSnapshotOperationCallback callback) = 0;
+
+  virtual Result<ColumnId> MetadataColumnId() = 0;
+
+  virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
 };
 
-// Class that coordinates snapshots at master.
+// Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
   explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context);
   ~MasterSnapshotCoordinator();
 
+  Result<TxnSnapshotId> Create(
+      const SysRowEntries& entries, HybridTime snapshot_hybrid_time, CoarseTimePoint deadline);
+
+  CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
+
   // As usual negative leader_term means that this operation was replicated at the follower.
-  CHECKED_STATUS Replicated(
+  CHECKED_STATUS CreateReplicated(
       int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+
+  CHECKED_STATUS DeleteReplicated(
+      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+
+  CHECKED_STATUS ListSnapshots(const TxnSnapshotId& snapshot_id, ListSnapshotsResponsePB* resp);
+
+  Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId& snapshot_id);
+
+  CHECKED_STATUS ListRestorations(
+      const TxnSnapshotRestorationId& snapshot_id, ListSnapshotRestorationsResponsePB* resp);
+
+  // Load snapshot data from system catalog RocksDB entry.
+  CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data);
 
  private:
   class Impl;

@@ -1,7 +1,8 @@
 ---
-title: 1. Install YugabyteDB
+title: Install YugabyteDB for macOS [Quick start]
+headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
-description: Install YugabyteDB
+description: Install YugabyteDB for macOS
 aliases:
   - /quick-start/install/
   - /latest/quick-start/install/
@@ -14,7 +15,6 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
-hidePagination: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -128,13 +128,13 @@ hidePagination: true
 Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-2.1.2.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-2.1.3.0-darwin.tar.gz
 ```
 
 To unpack the archive file and change to the YugabyteDB home directory, run the following command.
 
 ```sh
-$ tar xvfz yugabyte-2.1.2.0-darwin.tar.gz && cd yugabyte-2.1.2.0/
+$ tar xvfz yugabyte-2.1.3.0-darwin.tar.gz && cd yugabyte-2.1.3.0/
 ```
 
 ## Configure 

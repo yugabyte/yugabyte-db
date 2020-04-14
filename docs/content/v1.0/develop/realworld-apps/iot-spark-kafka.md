@@ -2,6 +2,7 @@
 title: IoT - Spark & Kafka
 linkTitle: IoT Fleet Management
 description: IoT Fleet Management - Spark and Kafka
+block_indexing: true
 menu:
   v1.0:
     identifier: iot-spark-kafka

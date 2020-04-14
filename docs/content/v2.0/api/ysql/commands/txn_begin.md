@@ -3,6 +3,7 @@ title: BEGIN
 linkTitle: BEGIN
 description: BEGIN
 summary: BEGIN
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-txn-begin

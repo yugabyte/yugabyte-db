@@ -1,9 +1,9 @@
 ---
-title: jsonb_each()
+title: jsonb_each() and json_each() [JSON]
+headerTitle: jsonb_each() and json_each()
 linkTitle: jsonb_each()
 summary: jsonb_each() and json_each()
-headerTitle: jsonb_each() and json_each()
-description: The functions in this pair require that the supplied JSON value is an object. They return a row set with columns "key" and "value"
+description: Create a row set with columns "key" (as a SQL text) and "value" (as a SQL jsonb) from a JSON object.
 menu:
   latest:
     identifier: jsonb-each
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `jsonb`) from a JSON _object_.
+**Purpose:** Create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `jsonb`) from a JSON _object_.
 
-**Signature** for the `jsonb` variant:
+**Signature** For the `jsonb` variant:
 
 ```
 input value:       jsonb

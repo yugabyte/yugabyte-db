@@ -1,8 +1,8 @@
 ---
-title: cqlsh
+title: cqlsh - YCQL shell/CLI for YugabyteDB
+headerTitle: cqlsh
 linkTitle: cqlsh
-headerTitle: cqlsh shell for YCQL
-description: The YugabyteDB CQL shell cqlsh provides a CLI for interacting with YugabyteDB using YCQL
+description: Use the YCQL shell (cqlsh), a command line interface (CLI), to interact with YugabyteDB using YCQL.
 aliases:
   - /develop/tools/cqlsh/
   - /latest/develop/tools/cqlsh/
@@ -40,7 +40,7 @@ Run `cqlsh --help` to display the online help.
 ## Syntax
 
 ```sh
-cqlsh [options] [host [port]]
+cqlsh [flags] [host [port]]
 ```
 
 Where
@@ -48,7 +48,7 @@ Where
 - `host` is the IP address of the host on which [YB-TServer](../../architecture/concepts/universe/#yb-tserver-process) is run. The default is local host at `127.0.0.1`.
 - `port` is the TCP port at which YB-TServer listens for YCQL connections. The default is `9042`.
 
-| Options             | Short Form | Default | Description                                                  |
+| Flags               | Short Form | Default | Description                                                  |
 | ------------------- | ---------- | ------- | ------------------------------------------------------------ |
 | `--color`           | `-C`       |         | Force color output                                           |
 | `--no-color`        |            |         | Disable color output                                         |
@@ -241,7 +241,7 @@ The `DESCRIBE SCHEMA` command prints the DDL statements needed to recreate the e
 Copies data from a table to a CSV file.
 
 ```sql
-COPY <table name> [(<column>, ...)] TO <file name> WITH <copy option> [AND <copy option> ...]
+COPY <table name> [(<column>, ...)] TO <file name> WITH <copy flag> [AND <copy flag> ...]
 
 ```
 
@@ -249,7 +249,7 @@ If no columns are specified, all columns from the table will be copied to the CS
 
 The `file name` should be a string literal (with single quotes) representing a path to the destination file. This can also the special value `STDOUT` (without single quotes) to print the CSV to stdout.
 
-| Options                  | Default | Description                                                  |
+| Flags                    | Default | Description                                                  |
 | ------------------------ | ------- | ------------------------------------------------------------ |
 | `MAXREQUESTS`            | 6       | The maximum number token ranges to fetch simultaneously.     |
 | `PAGESIZE`               | 1000    | The number of rows to fetch in a single page.                |
@@ -258,9 +258,9 @@ The `file name` should be a string literal (with single quotes) representing a p
 | `MAXOUTPUTSIZE`          | -1      | The maximum size of the output file measured in number of lines; beyond this maximum the output file will be split into segments. -1 means unlimited. |
 | `ENCODING`               | utf8    | The encoding used for characters.                            |
 
-The following options are common to both `COPY TO` and `COPY FROM`.
+The following flags are common to both `COPY TO` and `COPY FROM`.
 
-| Options           | Default      | Description                                                  |
+| Flags             | Default      | Description                                                  |
 | ----------------- | ------------ | ------------------------------------------------------------ |
 | `NULLVAL`         | `null`       | The string placeholder for null values.                      |
 | `HEADER`          | `false`      | For `COPY TO`, controls whether the first line in the CSV output file will contain the column names. For `COPY FROM`, specifies whether the first line in the CSV input file contains column names. |
@@ -277,7 +277,7 @@ The following options are common to both `COPY TO` and `COPY FROM`.
 Copies data from a CSV file to table.
 
 ```sql
-COPY <table name> [(<column>, ...)] FROM <file name> WITH <copy option> [AND <copy option> ...]
+COPY <table name> [(<column>, ...)] FROM <file name> WITH <copy flag> [AND <copy flag> ...]
 
 ```
 
@@ -285,7 +285,7 @@ If no columns are specified, all columns from the CSV file will be copied to the
 
 The `file name` should be a string literal (with single quotes) representing a path to the source file. This can also the special value `STDIN` (without single quotes) to read the CSV data from stdin.
 
-| Options           | Default | Description                                                  |
+| Flags             | Default | Description                                                  |
 | ----------------- | ------- | ------------------------------------------------------------ |
 | `INGESTRATE`      | 100000  | The maximum number of rows to process per second.            |
 | `MAXROWS`         | -1      | The maximum number of rows to import. -1 means unlimited.    |
@@ -298,4 +298,4 @@ The `file name` should be a string literal (with single quotes) representing a p
 | `MINBATCHSIZE`    | 2       | The min number of rows inserted in a single batch.           |
 | `CHUNKSIZE`       | 1000    | The number of rows that are passed to child worker processes from the main process at a time. |
 
-See `COPY TO` for additional options common to both `COPY TO` and `COPY FROM`.
+See `COPY TO` for additional flags common to both `COPY TO` and `COPY FROM`.

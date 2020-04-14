@@ -1,7 +1,8 @@
 ---
-title: ALTER ROLE
+title: ALTER ROLE statement [YSQL]
+headerTitle: ALTER ROLE
 linkTitle: ALTER ROLE
-description: ALTER ROLE changes the attributes of a role (user or group). Superusers can change the attributes of any role.
+description: Use the ALTER ROLE statement to change the attributes of a role (user or group).
 summary: Roles (users and groups)
 menu:
   latest:
@@ -15,9 +16,9 @@ showAsideToc: true
 
 ## Synopsis
 
-`ALTER ROLE` changes the attributes of a role (user or group).
+Use the `ALTER ROLE` statement to change the attributes of a role (user or group).
 
-Superusers can change the attributes of any role. Roles with CREATEROLE privilege can change the attributes of any non-superuser role.
+Superusers can change the attributes of any role. Roles with `CREATEROLE` privilege can change the attributes of any non-superuser role.
 Other roles can only change their own password.
 
 ## Syntax

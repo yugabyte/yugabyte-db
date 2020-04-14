@@ -2,6 +2,7 @@
 title: Auto Sharding
 linkTitle: 2. Auto Sharding
 description: Auto Sharding
+block_indexing: true
 menu:
   v1.0:
     identifier: auto-sharding

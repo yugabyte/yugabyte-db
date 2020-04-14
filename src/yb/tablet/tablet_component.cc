@@ -16,7 +16,7 @@
 namespace yb {
 namespace tablet {
 
-ScopedPendingOperationPause TabletComponent::PauseReadWriteOperations() {
+ScopedRWOperationPause TabletComponent::PauseReadWriteOperations() {
   return tablet_.PauseReadWriteOperations();
 }
 
@@ -40,7 +40,7 @@ RaftGroupMetadata& TabletComponent::metadata() const {
   return *tablet_.metadata();
 }
 
-PendingOperationCounter& TabletComponent::pending_op_counter() const {
+RWOperationCounter& TabletComponent::pending_op_counter() const {
   return tablet_.pending_op_counter_;
 }
 

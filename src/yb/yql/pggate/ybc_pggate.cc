@@ -128,6 +128,10 @@ YBCStatus YBCPgConnectDatabase(const char *database_name) {
   return ToYBCStatus(pgapi->ConnectDatabase(database_name));
 }
 
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated) {
+  return ToYBCStatus(pgapi->IsDatabaseColocated(database_oid, colocated));
+}
+
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  const YBCPgOid database_oid,
                                  const YBCPgOid source_database_oid,
@@ -353,6 +357,20 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
+YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
+                                const YBCPgOid table_oid,
+                                bool *colocated) {
+  const PgObjectId table_id(database_oid, table_oid);
+  PgTableDesc::ScopedRefPtr table_desc;
+  YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
+  if (status) {
+    return status;
+  } else {
+    *colocated = table_desc->IsColocated();
+    return YBCStatusOK();
+  }
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateIndex(const char *database_name,
@@ -436,8 +454,12 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
-YBCStatus YBCPgStartOperationsBuffering() {
-  return ToYBCStatus(pgapi->StartOperationsBuffering());
+void YBCPgStartOperationsBuffering() {
+  return pgapi->StartOperationsBuffering();
+}
+
+void YBCPgResetOperationsBuffering() {
+  return pgapi->ResetOperationsBuffering();
 }
 
 YBCStatus YBCPgFlushBufferedOperations() {

@@ -963,7 +963,7 @@ static void ybcSetupTargets(Relation relation,
  * Begin a scan for
  *   SELECT <Targets> FROM <Relation relation> USING <Relation index>
  * NOTES:
- * - "relation" is the table beging SELECTed.
+ * - "relation" is the table being SELECTed.
  * - "index" identify the INDEX that will be used for scaning.
  * - "nkeys" and "key" identify which key columns are provided in the SELECT WHERE clause.
  *   nkeys = Number of key.

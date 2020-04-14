@@ -67,10 +67,6 @@ using yb::consensus::StateChangeContext;
 
 namespace yb {
 
-namespace consensus {
-class RaftConsensus;
-}
-
 namespace log {
 class LogAnchorRegistry;
 }
@@ -86,9 +82,7 @@ class ThreadPool;
 
 namespace tablet {
 
-class Operation;
-
-// A peer in a tablet consensus configuration, which coordinates writes to tablets.
+// A peer is a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
 // state machine through a consensus algorithm, which makes sure that other
 // peers see the same updates in the same order. In addition to this, this
@@ -100,27 +94,34 @@ class TabletPeer : public consensus::ConsensusContext,
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
-  TabletPeer(const RaftGroupMetadataPtr& meta,
-             const consensus::RaftPeerPB& local_peer_pb,
-             const scoped_refptr<server::Clock> &clock,
-             const std::string& permanent_uuid,
-             Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-             MetricRegistry* metric_registry);
+  // Creates TabletPeer.
+  // `tablet_splitter` will be used for applying split tablet Raft operation.
+  TabletPeer(
+      const RaftGroupMetadataPtr& meta,
+      const consensus::RaftPeerPB& local_peer_pb,
+      const scoped_refptr<server::Clock>& clock,
+      const std::string& permanent_uuid,
+      Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+      MetricRegistry* metric_registry,
+      TabletSplitter* tablet_splitter);
 
   ~TabletPeer();
 
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
-  CHECKED_STATUS InitTabletPeer(const TabletPtr& tablet,
-                                const std::shared_future<client::YBClient*>& client_future,
-                                const std::shared_ptr<MemTracker>& server_mem_tracker,
-                                rpc::Messenger* messenger,
-                                rpc::ProxyCache* proxy_cache,
-                                const scoped_refptr<log::Log> &log,
-                                const scoped_refptr<MetricEntity> &metric_entity,
-                                ThreadPool* raft_pool,
-                                ThreadPool* tablet_prepare_pool,
-                                consensus::RetryableRequests* retryable_requests);
+  // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
+  CHECKED_STATUS InitTabletPeer(
+      const TabletPtr& tablet,
+      const std::shared_future<client::YBClient*>& client_future,
+      const std::shared_ptr<MemTracker>& server_mem_tracker,
+      rpc::Messenger* messenger,
+      rpc::ProxyCache* proxy_cache,
+      const scoped_refptr<log::Log>& log,
+      const scoped_refptr<MetricEntity>& metric_entity,
+      ThreadPool* raft_pool,
+      ThreadPool* tablet_prepare_pool,
+      consensus::RetryableRequests* retryable_requests,
+      const yb::OpId& split_op_id);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -154,8 +155,6 @@ class TabletPeer : public consensus::ConsensusContext,
       std::unique_ptr<WriteOperationState> operation_state, int64_t term, CoarseTimePoint deadline);
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
-
-  void Aborted(Operation* operation) override;
 
   HybridTime Now() override;
 
@@ -428,7 +427,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
 
-  std::atomic<size_t> preparing_operations_{0};
+  OperationCounter preparing_operations_counter_;
 
   // Serializes access to set_cdc_min_replicated_index and reset_cdc_min_replicated_index_if_stale
   // and protects cdc_min_replicated_index_refresh_time_ for reads and writes.
@@ -439,7 +438,7 @@ class TabletPeer : public consensus::ConsensusContext,
   HybridTime ReportReadRestart() override;
 
   FixedHybridTimeLease HybridTimeLease(MicrosTime min_allowed, CoarseTimePoint deadline);
-  HybridTime PropagatedSafeTime() override;
+  HybridTime PreparePeerRequest() override;
   void MajorityReplicated() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;
@@ -452,6 +451,8 @@ class TabletPeer : public consensus::ConsensusContext,
   }
 
   std::shared_future<client::YBClient*> client_future_;
+
+  TabletSplitter* tablet_splitter_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

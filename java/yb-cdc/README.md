@@ -1,6 +1,6 @@
-Using YugaByte’s Change Data Capture (CDC) API, follow these steps to use YugaByte as a data source to a console sink: 
+Using YugabyteDB’s Change Data Capture (CDC) API, follow these steps to use YugabyteDB as a data source to a console sink: 
 
-### Setup YugaByte
+### Setup YugabyteDB
 
 1. Download latest version of YugabyteDB.
 
@@ -12,9 +12,9 @@ https://docs.yugabyte.com/latest/quick-start/create-local-cluster/
 
 3. Create a table on the cluster.
 
-### Setup YugaByte Connector
+### Setup the CDC Connector for stdout
 
-1. Download the cdc connector app.
+1. Download the cdc connector for stdout.
 
 ```sh
 wget http://download.yugabyte.com/yb-cdc-connector.jar

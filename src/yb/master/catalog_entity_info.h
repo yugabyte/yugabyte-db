@@ -335,6 +335,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
   const std::string indexed_table_id() const;
 
+  bool is_index() const {
+    return !indexed_table_id().empty();
+  }
+
   // For index table
   bool is_local_index() const;
   bool is_unique_index() const;
@@ -349,6 +353,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
+
+  // If tablet is a result of split:
+  // 1) If tablet is not sharing start partition key with other tablets - add it.
+  // 2) If tablet is sharing start partition key with some tablet - only add it if split_depth of
+  //    new tablet is higher.
+  // Requires `tablet` to be locked and its lock.
+  void MaybeAddTabletForSplit(TabletInfo* tablet, TabletInfo::lock_type* tablet_lock);
+
   // Add multiple tablets to this table.
   void AddTablets(const std::vector<TabletInfo*>& tablets);
 
@@ -659,8 +671,9 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
 };
 
 // Convenience typedefs.
-typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
-typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
+// Table(t)InfoMap ordered for deterministic locking.
+typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
+typedef std::map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;

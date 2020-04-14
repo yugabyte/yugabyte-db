@@ -1,5 +1,6 @@
 ---
 title: Upgrade deployment
+headerTitle: Upgrade deployment
 linkTitle: Upgrade deployment
 description: Upgrade deployment
 aliases:
@@ -19,16 +20,20 @@ The basic flow is to upgrade each YB-Master and YB-TServer one at a time, verify
 If you plan to script this in a loop, then a pause of about 60 seconds is recommended before moving from one process or node to another.
 
 {{<tip title="Preserving data and cluster configuration across upgrades" >}}
+
 Your data/log/conf directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
+
 {{< /tip >}}
 
 ## Install new version of YugabyteDB
+
 First we need to install the new version of YugabyteDB in a new location. 
 For CentOS, this would be something like:
+
 ```
 1. wget https://downloads.yugabyte.com/yugabyte-$VER.tar.gz
 2. tar xf yugabyte-$VER.tar.gz -C /home/yugabyte/softwareyb-$VER/ 
-3. cd /home/yugabyte/softwareyb-$VER/ 
+3. cd /home/yugabyte/softwareyb-$VER/
 4. ./bin/post_install.sh
 ```
 

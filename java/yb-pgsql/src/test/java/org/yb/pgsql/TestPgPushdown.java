@@ -40,9 +40,9 @@ public class TestPgPushdown extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgPushdown.class);
 
   @Override
-  protected String pgRequestLimit() {
+  protected Integer getYsqlRequestLimit() {
     // This should be less than number of operations in some tests
-    return "7";
+    return 7;
   }
 
   @Test
@@ -1014,10 +1014,14 @@ public class TestPgPushdown extends BasePgSQLTest {
   }
 
   /**
-   * Tests execution time of SELECT/UPDATE ... WHERE ... IN (...) type of statements by comparing it
-   * with the execution time of similar non-optimized queries.
+   * Tests execution plan and elapsed time of SELECT/UPDATE/DELETE ... WHERE ... IN (...) type of
+   * statements by comparing it with the execution time of similar non-optimized queries.
    * <p>
    * Expects last column to be "v" of type INT.
+   * <p>
+   * Note that actual performance numbers are only verified for SELECT - performance of pushed down
+   * UPDATE/DELETE is close enough to the original that it might on rare occasions take even LONGER
+   * than non-optimized queries, leading to flaky tests. For them, we only check an execution plan.
    */
   private abstract class InClausePushdownTester {
     /** How many times would each query be iterated to get a total running time? */
@@ -1025,10 +1029,6 @@ public class TestPgPushdown extends BasePgSQLTest {
 
     /** Minimum speedup multiplier expected for pushed down SELECT-type queries */
     public final double minSelectSpeedup = 2;
-
-    // Since UPDATE is not batched, it's faster but still rather slow
-    /** Minimum speedup multiplier expected for pushed down UPDATE-type queries */
-    public final double minUpdateSpeedup = 1.5;
 
     public final String tableName;
 
@@ -1191,14 +1191,13 @@ public class TestPgPushdown extends BasePgSQLTest {
         assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery2)));
       }
 
-      long maxOptimizedTime = (long) (nonOptimizedTime / minUpdateSpeedup);
-
       // Plain optimized query
       {
         stmt.executeUpdate(getResetQuery());
         String query = getOptimizedUpdateQuery(valueToSet);
         assertPushdownPlan(stmt, query, true);
-        assertStatementRuntime(query, queryRunCount, maxOptimizedTime);
+        long optimizedTime = timeStatement(query, queryRunCount);
+        LOG.info("Optimized plain UPDATE total time (ms): " + optimizedTime);
         assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery1)));
         assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery2)));
       }
@@ -1215,7 +1214,8 @@ public class TestPgPushdown extends BasePgSQLTest {
           }
         }, true);
         try (PreparedStatement pquery = prepareUpdateQuery(queryString, valueToSet)) {
-          assertStatementRuntime(pquery, queryRunCount, maxOptimizedTime);
+          long optimizedTime = timeStatement(pquery, queryRunCount);
+          LOG.info("Optimized prepared UPDATE total time (ms): " + optimizedTime);
           assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery1)));
           assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery2)));
         }
@@ -1248,15 +1248,14 @@ public class TestPgPushdown extends BasePgSQLTest {
         assertEquals(tableSizeAfter, getTableSize(stmt));
       }
 
-      long maxOptimizedTime = (long) (nonOptimizedTime / minSelectSpeedup);
-
       // Plain optimized query
       {
         stmt.executeUpdate(truncateQuery);
         fillTable(stmt);
         String query = getOptimizedDeleteQuery();
         assertPushdownPlan(stmt, query, true);
-        assertStatementRuntime(query, queryRunCount, maxOptimizedTime);
+        long optimizedTime = timeStatement(query, queryRunCount);
+        LOG.info("Optimized plain DELETE total time (ms): " + optimizedTime);
         assertEquals(Collections.EMPTY_LIST, getSortedRowList(stmt.executeQuery(selectQuery)));
         assertEquals(tableSizeAfter, getTableSize(stmt));
       }
@@ -1274,7 +1273,8 @@ public class TestPgPushdown extends BasePgSQLTest {
           }
         }, true);
         try (PreparedStatement pquery = prepareSelectOrDeleteQuery(queryString)) {
-          assertStatementRuntime(pquery, queryRunCount, maxOptimizedTime);
+          long optimizedTime = timeStatement(pquery, queryRunCount);
+          LOG.info("Optimized prepared DELETE total time (ms): " + optimizedTime);
           assertEquals(Collections.EMPTY_LIST, getSortedRowList(stmt.executeQuery(selectQuery)));
           assertEquals(tableSizeAfter, getTableSize(stmt));
         }

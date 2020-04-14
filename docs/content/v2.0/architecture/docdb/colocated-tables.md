@@ -2,6 +2,7 @@
 title: Colocated tables
 linkTitle: Colocated tables
 description: Colocated tables
+block_indexing: true
 menu:
   v2.0:
     identifier: docdb-colocated-tables

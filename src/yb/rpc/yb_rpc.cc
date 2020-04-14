@@ -31,7 +31,7 @@
 #include "yb/util/size_literals.h"
 
 using google::protobuf::io::CodedInputStream;
-using yb::operator"" _MB;
+using namespace yb::size_literals;
 using namespace std::literals;
 
 DECLARE_bool(rpc_dump_all_traces);
@@ -45,6 +45,8 @@ DEFINE_int32(rpc_max_message_size, 255_MB,
              "The maximum size of a message of any RPC that the server will accept.");
 
 DEFINE_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
+
+DEFINE_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
 
 DEFINE_test_flag(int32, TEST_yb_inbound_big_calls_parse_delay_ms, false,
     "Test flag for simulating slow parsing of inbound calls larger than "
@@ -291,33 +293,65 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   return Status::OK();
 }
 
-Status YBInboundCall::AddRpcSidecar(RefCntBuffer car, int* idx) {
-  // Check that the number of sidecars does not exceed the number of payload
-  // slices that are free.
-  *idx = static_cast<int>(sidecars_.size());
-  if(consumption_) {
-    consumption_.Add(car.size());
+size_t YBInboundCall::CopyToLastSidecarBuffer(const Slice& car) {
+  if (sidecar_buffers_.empty()) {
+    return 0;
   }
-  sidecars_.push_back(std::move(car));
+  auto& last_buffer =  sidecar_buffers_.back();
+  auto len = std::min(last_buffer.size() - filled_bytes_in_last_sidecar_buffer_, car.size());
+  memcpy(last_buffer.data() + filled_bytes_in_last_sidecar_buffer_, car.data(), len);
+  filled_bytes_in_last_sidecar_buffer_ += len;
 
-  return Status::OK();
+  return len;
 }
 
-int YBInboundCall::RpcSidecarsSize() const {
-  return sidecars_.size();
-}
+size_t YBInboundCall::AddRpcSidecar(Slice car) {
+  sidecar_offsets_.Add(total_sidecars_size_);
+  total_sidecars_size_ += car.size();
+  // Copy start of sidecar to existing buffer if present.
+  car.remove_prefix(CopyToLastSidecarBuffer(car));
 
-const RefCntBuffer& YBInboundCall::RpcSidecar(int idx) {
-  return sidecars_[idx];
+  // If sidecar did not fit into last buffer, then we should allocate a new one.
+  if (!car.empty()) {
+    DCHECK(sidecar_buffers_.empty() ||
+           filled_bytes_in_last_sidecar_buffer_ == sidecar_buffers_.back().size());
+
+    // Allocate new sidecar buffer and copy remaining part of sidecar to it.
+    AllocateSidecarBuffer(std::max<size_t>(car.size(), FLAGS_min_sidecar_buffer_size));
+    memcpy(sidecar_buffers_.back().data(), car.data(), car.size());
+    filled_bytes_in_last_sidecar_buffer_ = car.size();
+  }
+
+  return num_sidecars_++;
 }
 
 void YBInboundCall::ResetRpcSidecars() {
   if (consumption_) {
-    for (const auto& sidecar : sidecars_) {
-      consumption_.Add(-sidecar.size());
+    for (const auto& buffer : sidecar_buffers_) {
+      consumption_.Add(-buffer.size());
     }
   }
-  sidecars_.clear();
+  num_sidecars_ = 0;
+  filled_bytes_in_last_sidecar_buffer_ = 0;
+  total_sidecars_size_ = 0;
+  sidecar_buffers_.clear();
+  sidecar_offsets_.Clear();
+}
+
+void YBInboundCall::ReserveSidecarSpace(size_t space) {
+  if (num_sidecars_ != 0) {
+    LOG(DFATAL) << "Attempt to ReserveSidecarSpace when there are already sidecars present";
+    return;
+  }
+
+  AllocateSidecarBuffer(space);
+}
+
+void YBInboundCall::AllocateSidecarBuffer(size_t size) {
+  sidecar_buffers_.push_back(RefCntBuffer(size));
+  if (consumption_) {
+    consumption_.Add(size);
+  }
 }
 
 Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
@@ -330,18 +364,15 @@ Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLit
   ResponseHeader resp_hdr;
   resp_hdr.set_call_id(header_.call_id());
   resp_hdr.set_is_error(!is_success);
-  uint32_t absolute_sidecar_offset = protobuf_msg_size;
-  for (auto& car : sidecars_) {
-    resp_hdr.add_sidecar_offsets(absolute_sidecar_offset);
-    absolute_sidecar_offset += car.size();
+  for (auto& offset : sidecar_offsets_) {
+    offset += protobuf_msg_size;
   }
-
-  int additional_size = absolute_sidecar_offset - protobuf_msg_size;
+  *resp_hdr.mutable_sidecar_offsets() = std::move(sidecar_offsets_);
 
   size_t message_size = 0;
   auto status = SerializeMessage(response,
                                  /* param_buf */ nullptr,
-                                 additional_size,
+                                 total_sidecars_size_,
                                  /* use_cached_size */ true,
                                  /* offset */ 0,
                                  &message_size);
@@ -350,7 +381,7 @@ Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLit
   }
   size_t header_size = 0;
   status = SerializeHeader(resp_hdr,
-                           message_size + additional_size,
+                           message_size + total_sidecars_size_,
                            &response_buf_,
                            message_size,
                            &header_size);
@@ -359,7 +390,7 @@ Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLit
   }
   return SerializeMessage(response,
                           &response_buf_,
-                          additional_size,
+                          total_sidecars_size_,
                           /* use_cached_size */ true,
                           header_size);
 }
@@ -414,10 +445,13 @@ void YBInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>*
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
   output->push_back(std::move(response_buf_));
-  for (auto& car : sidecars_) {
-    output->push_back(std::move(car));
+  if (!sidecar_buffers_.empty()) {
+    sidecar_buffers_.back().Shrink(filled_bytes_in_last_sidecar_buffer_);
+    for (auto& car : sidecar_buffers_) {
+      output->push_back(std::move(car));
+    }
+    sidecar_buffers_.clear();
   }
-  sidecars_.clear();
 }
 
 Status YBInboundCall::ParseParam(google::protobuf::Message *message) {

@@ -1,8 +1,9 @@
 ---
-title: Change data capture (CDC)
+title: Explore change data capture (CDC) [macOS]
+headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
-description: Change data capture (CDC)
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+description: Use a local YugabyteDB cluster to stream data changes to stdout using the CDC API.
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /latest/deploy/cdc/cdc-to-stdout/
   - /latest/explore/change-data-capture/
@@ -36,13 +37,13 @@ showAsideToc: true
 
 [Change data capture (CDC)](../../../architecture/cdc-architecture) can be used to asynchronously stream data changes from a YugabyteDB cluster to external systems like message queues and OLAP warehouses. The data changes in YugabyteDB are detected, captured, and then output to the specified target.  In the steps below, you will use a local YugabyteDB cluster to stream data changes to `stdout` using the CDC API.
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
 
 ## Prerequisites
 
 ### Java
 
-A JRE (or JDK), for Java 8 or later, is installed. JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+A JRE (or JDK), for Java 8 or later, is installed. 
 
 ## 1. Add a database table
 
@@ -52,7 +53,7 @@ Start your local YugabyteDB cluster and run `ysqlsh` to connect to the service.
 $ ./bin/ysqlsh 
 ```
 
-Add a table, named `users`, to the default `yugabyte` database.
+Add a table, named `products`, to the default `yugabyte` database.
 
 ```postgresql
 CREATE TABLE products(
@@ -68,37 +69,50 @@ CREATE TABLE products(
 );
 ```
 
-## 2. Download the YugabyteDB CDC Connector
+## 2. Download the CDC Connector for stdout
 
-Download the CDC Connector JAR file (`yb-cdc-connector.jar`).
+Download the stdout CDC Connector JAR file.
 
 ```sh
-$ wget -O yb-cdc-connector.jar https://github.com/yugabyte/yb-kafka-connector/blob/master/yb-cdc/yb-cdc-connector.jar?raw=true
-
+$ wget https://downloads.yugabyte.com/yb-cdc-connector.jar
 ```
 
-## 3. Stream the log output stream to "stdout"
+## 3. Stream the log output stream to stdout
 
 Run the command below to to start logging an output stream of data changes from the YugabyteDB `cdc` table to `stdout`.
 
 ```sh
-java -jar yb-cdc-connector.jar \
---table_name yugabyte.products \
---log_only
+java -jar yb-cdc-connector.jar --table_name yugabyte.products 
 ```
 
 The example above uses the following parameters:
 
 - `--table_name` — Specifies the namespace and table, where namespace is the database (YSQL) or keyspace (YCQL).
 - `--master_addrs` — Specifies the IP addresses for all of the YB-Master servers that are producing or consuming. Default value is `127.0.0.1:7100`. If you are using a 3-node local cluster, then you need to specify a comma-delimited list of the addresses for all of your YB-Master servers.
-- `--log_only`: Flag to restrict logging only to the console (`stdout`).
 
 ## 4. Insert values and observe
 
 In another terminal shell, write some values to the table and observe the values on your `stdout` output stream.
 
 ```postgresql
-INSERT INTO products (id, category, created_at, ean, price, rating, title, vendor) VALUES (14,'Widget','2017-12-31T14:41:56.870Z',8833419218504,25.09876359271891,4.0,'Awesome Concrete Shoes','McClure-Lockman');
+INSERT INTO products (
+  id, 
+  category, 
+  created_at, 
+  ean, 
+  price, 
+  rating, 
+  title, 
+  vendor) 
+VALUES (
+  14, 
+  'Widget', 
+  '2017-12-31T14:41:56.870Z', 
+  8833419218504, 
+  25.09876359271891, 
+  4.0, 
+  'Awesome Concrete Shoes', 
+  'McClure-Lockman'); 
 ```
 
 ```

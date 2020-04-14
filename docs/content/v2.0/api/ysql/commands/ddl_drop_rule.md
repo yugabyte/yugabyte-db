@@ -3,6 +3,7 @@ title: DROP RULE
 linkTitle: DROP RULE
 summary: Remove a rule
 description: DROP RULE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-rule

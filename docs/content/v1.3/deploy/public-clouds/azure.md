@@ -2,6 +2,7 @@
 title: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Microsoft Azure
+block_indexing: true
 menu:
   v1.3:
     identifier: deploy-in-azure

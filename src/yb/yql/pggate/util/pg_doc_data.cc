@@ -24,81 +24,59 @@
 namespace yb {
 namespace pggate {
 
-//--------------------------------------------------------------------------------------------------
-// Write Tuple Routine in DocDB Format (wire_protocol).
-//--------------------------------------------------------------------------------------------------
-Status PgDocData::WriteTuples(const PgsqlResultSet& tuples, faststring *buffer) {
-  // Write the number rows.
-  WriteInt64(tuples.rsrow_count(), buffer);
-
-  // Write the row contents.
-  for (const PgsqlRSRow& tuple : tuples.rsrows()) {
-    RETURN_NOT_OK(WriteTuple(tuple, buffer));
-  }
-  return Status::OK();
-}
-
-Status PgDocData::WriteTuple(const PgsqlRSRow& tuple, faststring *buffer) {
-  // Write the column contents.
-  for (const QLValue& col_value : tuple.rscols()) {
-    RETURN_NOT_OK(WriteColumn(col_value, buffer));
-  }
-  return Status::OK();
-}
-
-Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
+Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
   // Write data header.
   bool has_data = true;
   PgWireDataHeader col_header;
-  if (col_value.IsNull()) {
+  if (QLValue::IsNull(col_value)) {
     col_header.set_null();
     has_data = false;
   }
-  WriteUint8(col_header.ToUint8(), buffer);
+  PgWire::WriteUint8(col_header.ToUint8(), buffer);
 
   if (!has_data) {
     return Status::OK();
   }
 
-  switch (col_value.type()) {
+  switch (col_value.value_case()) {
     case InternalType::VALUE_NOT_SET:
       break;
     case InternalType::kBoolValue:
-      WriteBool(col_value.bool_value(), buffer);
+      PgWire::WriteBool(col_value.bool_value(), buffer);
       break;
     case InternalType::kInt8Value:
-      WriteInt8(col_value.int8_value(), buffer);
+      PgWire::WriteInt8(col_value.int8_value(), buffer);
       break;
     case InternalType::kInt16Value:
-      WriteInt16(col_value.int16_value(), buffer);
+      PgWire::WriteInt16(col_value.int16_value(), buffer);
       break;
     case InternalType::kInt32Value:
-      WriteInt32(col_value.int32_value(), buffer);
+      PgWire::WriteInt32(col_value.int32_value(), buffer);
       break;
     case InternalType::kInt64Value:
-      WriteInt64(col_value.int64_value(), buffer);
+      PgWire::WriteInt64(col_value.int64_value(), buffer);
       break;
     case InternalType::kUint32Value:
-      WriteUint32(col_value.uint32_value(), buffer);
+      PgWire::WriteUint32(col_value.uint32_value(), buffer);
       break;
     case InternalType::kUint64Value:
-      WriteUint64(col_value.uint64_value(), buffer);
+      PgWire::WriteUint64(col_value.uint64_value(), buffer);
       break;
     case InternalType::kFloatValue:
-      WriteFloat(col_value.float_value(), buffer);
+      PgWire::WriteFloat(col_value.float_value(), buffer);
       break;
     case InternalType::kDoubleValue:
-      WriteDouble(col_value.double_value(), buffer);
+      PgWire::WriteDouble(col_value.double_value(), buffer);
       break;
     case InternalType::kStringValue:
-      WriteText(col_value.string_value(), buffer);
+      PgWire::WriteText(col_value.string_value(), buffer);
       break;
     case InternalType::kBinaryValue:
-      WriteBinary(col_value.binary_value(), buffer);
+      PgWire::WriteBinary(col_value.binary_value(), buffer);
       break;
     case InternalType::kDecimalValue:
       // Passing a serialized form of YB Decimal, decoding will be done in pg_expr.cc
-      WriteText(col_value.decimal_value(), buffer);
+      PgWire::WriteText(col_value.decimal_value(), buffer);
       break;
     case InternalType::kTimestampValue:
     case InternalType::kDateValue: // Not used for PG storage
@@ -110,7 +88,7 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kTimeuuidValue:
       // PgGate has not supported these datatypes yet.
       return STATUS_FORMAT(NotSupported,
-          "Unexpected data was read from database: col_value.type()=$0", col_value.type());
+          "Unexpected data was read from database: col_value.type()=$0", col_value.value_case());
 
     case InternalType::kListValue:
     case InternalType::kMapValue:
@@ -118,7 +96,7 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kFrozenValue:
       // Postgres does not have these datatypes.
       return STATUS_FORMAT(Corruption,
-          "Unexpected data was read from database: col_value.type()=$0", col_value.type());
+          "Unexpected data was read from database: col_value.type()=$0", col_value.value_case());
   }
 
   return Status::OK();

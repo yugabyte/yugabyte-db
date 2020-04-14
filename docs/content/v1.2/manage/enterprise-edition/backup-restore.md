@@ -2,6 +2,7 @@
 title: Backup & Restore
 linkTitle: Backup & Restore
 description: Backup & Restore
+block_indexing: true
 menu:
   v1.2:
     identifier: manage-ee-backup-restore

@@ -3,6 +3,7 @@ title: CREATE PROCEDURE
 linkTitle: CREATE PROCEDURE
 summary: Create a new procedure in a database
 description: CREATE PROCEDURE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-procedure

@@ -23,6 +23,11 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/flag_tags.h"
+
+DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
+                 "Inject delay before launching transaction status resolver RPC.");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -39,7 +44,12 @@ class TransactionStatusResolver::Impl {
 
   void Shutdown() {
     closing_.store(true, std::memory_order_release);
-    run_latch_.Wait();
+    for (;;) {
+      if (run_latch_.WaitFor(10s)) {
+        break;
+      }
+      LOG(DFATAL) << "Long wait for transaction status resolver to shutdown";
+    }
   }
 
   void Start(CoarseTimePoint deadline) {
@@ -90,14 +100,22 @@ class TransactionStatusResolver::Impl {
       VLOG_WITH_PREFIX(4) << "Checking txn status: " << txn_id;
       req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
     }
-    rpcs_.RegisterAndStart(
+
+    auto injected_delay = FLAGS_inject_status_resolver_delay_ms;
+    if (injected_delay > 0) {
+      std::this_thread::sleep_for(1ms * injected_delay);
+    }
+
+    if (!rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
             std::min(deadline_, TransactionRpcDeadline()),
             nullptr /* tablet */,
             participant_context_.client_future().get(),
             &req,
             std::bind(&Impl::StatusReceived, this, _1, _2, request_size)),
-        &handle_);
+        &handle_)) {
+      Complete(STATUS(Aborted, "Aborted because cannot start RPC"));
+    }
   }
 
   const std::string& LogPrefix() const {

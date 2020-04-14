@@ -505,8 +505,10 @@ class UniverseForm extends Component {
       const currentCluster = this.state.currentView === "Primary" ? getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters) : getReadOnlyCluster(universe.currentUniverse.data.universeDetails.clusters);
       const newCluster = this.state.currentView === "Primary" ? getPrimaryCluster(universeConfigTemplate.data.clusters): getReadOnlyCluster(universeConfigTemplate.data.clusters);
       const placementUuid = newCluster.uuid;
-      const oldNodes = universeConfigTemplate.data.nodeDetailsSet.filter(node => node.placementUuid === placementUuid && node.nodeName);
-      const newNodes = universeConfigTemplate.data.nodeDetailsSet.filter(node => node.placementUuid === placementUuid && !node.nodeName);
+      const oldNodes = universeConfigTemplate.data.nodeDetailsSet
+                        .filter(node => node.placementUuid === placementUuid && node.nodeName && node.isTserver);
+      const newNodes = universeConfigTemplate.data.nodeDetailsSet
+                        .filter(node => node.placementUuid === placementUuid && !node.nodeName);
       const oldConfig = {};
       if (currentCluster) {
         oldConfig.numVolumes =  currentCluster.userIntent.deviceInfo.numVolumes;

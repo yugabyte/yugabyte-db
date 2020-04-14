@@ -681,6 +681,10 @@ class DBImpl : public DB {
 
   void ListenFilesChanged(std::function<void()> listener) override;
 
+  std::function<void()> GetFilesChangedListener() const;
+
+  bool HasFilesChangedListener() const;
+
   void FilesChanged();
 
   struct TaskPriorityChange {
@@ -979,7 +983,9 @@ class DBImpl : public DB {
   // Whether DB should be flushed on shutdown.
   bool disable_flush_on_shutdown_ = false;
 
-  std::function<void()> files_changed_listener_;
+  mutable std::mutex files_changed_listener_mutex_;
+
+  std::function<void()> files_changed_listener_ GUARDED_BY(files_changed_listener_mutex_);
 
   // No copying allowed
   DBImpl(const DBImpl&) = delete;

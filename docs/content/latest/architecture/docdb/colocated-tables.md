@@ -1,9 +1,8 @@
 ---
-title: Colocated tables for managing distributed SQL databases in YugabyteDB clusters
+title: Colocated tables
 headerTitle: Colocated tables
 linkTitle: Colocated tables
-description: Use YugabyteDB's colocated tables to cluster SQL tables into a single tablet and reduce the number of tablets per node.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+description: Learn about how colocated tables aggregate data into a single tablet.
 aliases:
   - /latest/architecture/docdb/colocated_tables/
 menu:
@@ -33,7 +32,7 @@ Note that all the data in the colocation tablet is still replicated across three
 
 This feature is desirable in a number of scenarios, some of which are described below.
 
-### 1. Small datasets needing high availability or geo-distribution
+### Small datasets needing HA or geo-distribution
 
 Applications that have a smaller dataset may fall into the following pattern:
 
@@ -49,7 +48,7 @@ this might affect performance of certain queries due to more network hops (for e
 large, but is accessed in a relational manner, requires high availability and might need to be
 geo-distributed for low latency access.
 
-### 2. Large datasets - a few large tables with many small tables
+### Large datasets - a few large tables with many small tables
 
 Applications that have a large dataset may fall into the pattern where:
 
@@ -64,7 +63,7 @@ larger ones, would not need network hops.
 **Example:** An IoT use case, where one table records the data from the IoT devices while
 there are a number of other tables that store data pertaining to user identity, device profiles, privacy, etc.
 
-### 3. Scaling the number of databases, each database with a small dataset
+### Scaling the number of databases, each database with a small dataset
 
 There may be scenarios where the number of databases grows rapidly, while the dataset of each database is small.
 This is characteristic of a microservices-oriented architecture, where each microservice needs its own database.

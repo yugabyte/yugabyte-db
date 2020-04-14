@@ -2,6 +2,7 @@
 title: EXISTS
 linkTitle: EXISTS
 description: EXISTS
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

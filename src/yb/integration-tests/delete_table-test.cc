@@ -1218,6 +1218,16 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
         << t.tablet_status().tablet_id() << " not tombstoned";
   }
 
+  // Check that, upon restart of the tablet server with a tombstoned tablet,
+  // we don't unnecessary "roll forward" and rewrite the tablet metadata file
+  // when it is already fully deleted.
+  int64_t orig_mtime = inspect_->GetTabletSuperBlockMTimeOrDie(kTsIndex, tablet_id);
+  cluster_->tablet_server(kTsIndex)->Shutdown();
+  ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
+  int64_t new_mtime = inspect_->GetTabletSuperBlockMTimeOrDie(kTsIndex, tablet_id);
+  ASSERT_EQ(orig_mtime, new_mtime)
+                << "Tablet superblock should not have been re-flushed unnecessarily";
+
   // Finally, delete all tablets on the TS, and wait for all data to be gone.
   LOG(INFO) << "Deleting all tablets...";
   for (const ListTabletsResponsePB::StatusAndSchemaPB& tablet : tablets) {

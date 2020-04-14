@@ -4,6 +4,7 @@ linkTitle: Scalability
 description: Scalability
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Adjusting capacity to meet demand
+block_indexing: true
 menu:
   v2.0:
     identifier: scalability

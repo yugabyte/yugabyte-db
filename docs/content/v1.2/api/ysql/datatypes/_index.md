@@ -3,6 +3,7 @@ title: Datatypes
 description: Datatypes
 summary: YSQL datatype overview and specification.
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-datatypes

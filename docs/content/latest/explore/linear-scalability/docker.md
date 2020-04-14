@@ -1,7 +1,8 @@
 ---
-title: Linear scalability
+title: Explore linear scalability using Docker
+headerTitle: Linear scalability
 linkTitle: Linear scalability
-description: Linear scalability
+description: Learn how to scale a local three-node YugabyteDB cluster while a workload is running.
 aliases:
   - /latest/explore/linear-scalability-docker/
 menu:
@@ -45,7 +46,7 @@ showAsideToc: true
 
 </ul>
 
-With YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a three-node local cluster with a replication factor of `3,` and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+With YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a three-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 ## Prerequisite
 
@@ -86,7 +87,7 @@ $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugaby
 	--num_threads_read 4
 ```
 
-The `SqlInserts` workload application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).
+The `SqlInserts` workload application prints some stats while running, which is also shown below. 
 
 ```
 2017-11-20 14:02:48,114 [INFO|...] Read: 9893.73 ops/sec (0.40 ms/op), 233458 total ops  |

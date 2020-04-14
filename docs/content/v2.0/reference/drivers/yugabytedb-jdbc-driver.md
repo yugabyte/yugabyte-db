@@ -4,6 +4,7 @@ linkTitle: YugabyteDB JDBC Driver
 description: YugabyteDB JDBC Driver
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
+block_indexing: true
 menu:
   v2.0:
     identifier: yugabytedb-jdbc-driver

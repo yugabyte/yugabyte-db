@@ -119,6 +119,24 @@ extern bool YBTransactionsEnabled();
 extern void	HandleYBStatus(YBCStatus status);
 
 /*
+ * Since DDL metadata in master DocDB and postgres system tables is not modified
+ * in an atomic fashion, it is possible that we could have a table existing in
+ * postgres metadata but not in DocDB. In the case of a delete it is really
+ * problematic, since we can't delete the table nor can we create a new one with
+ * the same name. So in this case we just ignore the DocDB 'NotFound' error and
+ * delete our metadata.
+ */
+extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
+
+/*
+ * Same as HandleYBStatusIgnoreNotFound but deletes the statement first if the
+ * status is not ok.
+ */
+extern void HandleYBStmtStatusIgnoreNotFound(YBCStatus status,
+                                             YBCPgStatement ybc_stmt,
+                                             bool *not_found);
+
+/*
  * Same as HandleYBStatus but delete the statement first if the status is
  * not ok.
  */
@@ -265,6 +283,7 @@ Oid YBCGetDatabaseOid(Relation rel);
  * linking to the referenced issue (if any).
  */
 void YBRaiseNotSupported(const char *msg, int issue_no);
+void YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -289,5 +308,9 @@ extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
  * Checks if the master thinks initdb has already been done.
  */
 bool YBIsInitDbAlreadyDone();
+
+extern void YBBeginOperationsBuffering();
+extern void YBEndOperationsBuffering();
+extern void YBResetOperationsBuffering();
 
 #endif /* PG_YB_UTILS_H */

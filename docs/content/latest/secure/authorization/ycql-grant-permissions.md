@@ -1,7 +1,8 @@
 ---
-title: Grant privileges
+title: Grant YCQL privileges in YugabyteDB
+headerTitle: Grant privileges
 linkTitle: Grant privileges
-description: Grant privileges
+description: Grant YCQL privileges in YugabyteDB
 menu:
   latest:
     name: Grant privileges
@@ -237,7 +238,7 @@ All Keyspaces (data) > keyspace (dev_keyspace) > table (integration_tests)
 
 DB admins should be able to perform all operations on any keyspace. There are two ways to achieve this:
 
-1. The DB admins can be granted the superuser permission. Read more about [granting the superuser permission to roles](../authentication/#ycql). Note that doing this will give the DB admin all the permissions over all the roles as well.
+1. The DB admins can be granted the superuser permission. Read more about [granting the superuser permission to roles](../../authentication/ycql-authentication). Note that doing this will give the DB admin all the permissions over all the roles as well.
 
 2. Grant ALL permissions to the "db_admin" role. This can be achieved as follows.
 

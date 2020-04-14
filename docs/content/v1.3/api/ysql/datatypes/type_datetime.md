@@ -3,6 +3,7 @@ title: DATE-TIME data types
 linktitle: Date-time
 summary: DATE-TIME data types
 description: DATE-TIME data types
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-datatypes-datetime

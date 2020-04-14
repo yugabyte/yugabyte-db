@@ -6,6 +6,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Contributing code to improve YugabyteDB.
 type: page
 section: CONTRIBUTOR GUIDES
+block_indexing: true
 menu:
   v1.2:
     identifier: contribute-to-yugabyte-db

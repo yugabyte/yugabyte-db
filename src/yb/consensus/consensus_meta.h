@@ -35,6 +35,7 @@
 #include <stdint.h>
 #include <string>
 
+#include "yb/common/entity_ids.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -124,6 +125,11 @@ class ConsensusMetadata {
   // Accessors for setting the active leader.
   const std::string& leader_uuid() const;
   void set_leader_uuid(const std::string& uuid);
+  void clear_leader_uuid();
+
+  const TabletId& tablet_id() { return tablet_id_; }
+
+  void set_tablet_id(const TabletId& tablet_id) { tablet_id_ = tablet_id; }
 
   // Returns the currently active role of the current node.
   RaftPeerPB::Role active_role() const;
@@ -182,7 +188,7 @@ class ConsensusMetadata {
   // Transient fields.
   // Constants:
   FsManager* const fs_manager_;
-  const std::string tablet_id_;
+  std::string tablet_id_;
   const std::string peer_uuid_;
   // Mutable:
   std::string leader_uuid_; // Leader of the current term (term == pb_.current_term).

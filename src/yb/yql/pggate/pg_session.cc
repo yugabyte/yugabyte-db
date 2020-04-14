@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include <memory>
+#include <boost/optional.hpp>
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_session.h"
@@ -31,7 +32,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_error.h"
-#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_error.h"
@@ -63,6 +64,7 @@ using client::YBTable;
 using client::YBTableName;
 using client::YBTableType;
 
+using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::IsInitDbDoneRequestPB;
 using yb::master::IsInitDbDoneResponsePB;
 using yb::master::MasterServiceProxy;
@@ -107,41 +109,46 @@ string GetStatusStringSet(const client::CollectedErrors& errors) {
   return RangeToString(status_strings.begin(), status_strings.end());
 }
 
+bool IsHomogeneousErrors(const client::CollectedErrors& errors) {
+  if (errors.size() < 2) {
+    return true;
+  }
+  auto i = errors.begin();
+  const auto& status = (**i).status();
+  const auto codes = status.ErrorCodesSlice();
+  for (++i; i != errors.end(); ++i) {
+    const auto& s = (**i).status();
+    if (s.code() != status.code() || codes != s.ErrorCodesSlice()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+boost::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
+  const uint8_t* err_data = status.ErrorData(PgsqlErrorTag::kCategory);
+  if (err_data) {
+    return PgsqlErrorTag::Decode(err_data);
+  }
+  return boost::none;
+}
+
 // Get a common Postgres error code from the status and all errors, and append it to a previous
 // result.
 // If any of those have different conflicting error codes, previous result is returned as-is.
-Status AppendPsqlErrorCode(const Status& prev_result,
-                           const Status& status,
+Status AppendPsqlErrorCode(const Status& status,
                            const client::CollectedErrors& errors) {
-  auto DecodeError = [](const Status& s) {
-    boost::optional<YBPgErrorCode> err_code_option;
-    const uint8_t* err_data = s.ErrorData(PgsqlErrorTag::kCategory);
-    if (err_data) {
-      err_code_option = PgsqlErrorTag::Decode(err_data);
-    }
-    return err_code_option;
-  };
-
-  auto err_code_option = DecodeError(status);
-
-  for (const auto& error : errors) {
-    auto err_code_option_2 = DecodeError(error->status());
-    if (err_code_option_2) {
-      if (!err_code_option) {
-        // Replacing no code with a given error code.
-        err_code_option = err_code_option_2;
-      } else if (err_code_option != err_code_option_2) {
-        // We have multiple conflicting error codes, don't set any.
-        return prev_result;
-      }
+  boost::optional<YBPgErrorCode> common_psql_error =  boost::make_optional(false, YBPgErrorCode());
+  for(const auto& error : errors) {
+    const auto psql_error = PsqlErrorCode(error->status());
+    if (!common_psql_error) {
+      common_psql_error = psql_error;
+    } else if (psql_error && common_psql_error != psql_error) {
+      common_psql_error = boost::none;
+      break;
     }
   }
-
-  if (err_code_option) {
-    return prev_result.CloneAndAddErrorCode(PgsqlError(*err_code_option));
-  } else {
-    return prev_result;
-  }
+  return common_psql_error ? status.CloneAndAddErrorCode(PgsqlError(*common_psql_error)) : status;
 }
 
 // Given a set of errors from operations, this function attempts to combine them into one status
@@ -154,8 +161,17 @@ Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
       // TODO: move away from string comparison here and use a more specific status than IOError.
       // See https://github.com/YugaByte/yugabyte-db/issues/702
       status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
-      errors.size() == 1) {
-    return errors.front()->status();
+      IsHomogeneousErrors(errors)) {
+    const auto& result = errors.front()->status();
+    if (errors.size() == 1) {
+      return result;
+    }
+    return Status(result.code(),
+                  __FILE__,
+                  __LINE__,
+                  "Multiple homogeneous errors: " + GetStatusStringSet(errors),
+                  result.ErrorCodesSlice(),
+                  DupFileName::kFalse);
   }
 
   Status result =
@@ -163,9 +179,7 @@ Status CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
     ? STATUS(InternalError, GetStatusStringSet(errors))
     : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
 
-  result = AppendPsqlErrorCode(result, status, errors);
-
-  return result;
+  return AppendPsqlErrorCode(result, errors);
 }
 
 docdb::PrimitiveValue NullValue(ColumnSchema::SortingType sorting) {
@@ -198,10 +212,10 @@ void InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       QLExprExecutor executor;
-      QLValue result;
-      auto s = executor.EvalExpr(column_value, nullptr, &result);
+      QLExprResult result;
+      auto s = executor.EvalExpr(column_value, nullptr, result.Writer());
 
-      components->push_back(docdb::PrimitiveValue::FromQLValuePB(result.value(), sorting_type));
+      components->push_back(docdb::PrimitiveValue::FromQLValuePB(result.Value(), sorting_type));
     }
     ++column_idx;
   }
@@ -250,8 +264,7 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
                                    bool force_non_bufferable) {
   auto& buffered_keys = pg_session_.buffered_keys_;
   if (pg_session_.buffering_enabled_ && !force_non_bufferable &&
-      op->type() == YBOperation::Type::PGSQL_WRITE &&
-      (!op->IsYsqlCatalogOp() || YBCIsInitDbModeEnvVarSet())) {
+      op->type() == YBOperation::Type::PGSQL_WRITE) {
     const auto& wop = *down_cast<client::YBPgsqlWriteOp*>(op.get());
     // Check for buffered operation related to same row.
     // If multiple operations are performed in context of single RPC second operation will not
@@ -273,13 +286,18 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
   if (!buffered_keys.empty()) {
     RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl());
   }
+  bool needs_pessimistic_locking = false;
   bool read_only = op->read_only();
   if (op->type() == YBOperation::Type::PGSQL_READ) {
     const PgsqlReadRequestPB &read_req = down_cast<client::YBPgsqlReadOp *>(op.get())->request();
-    read_only = read_only && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_req));
+    auto row_mark_type = GetRowMarkTypeFromPB(read_req);
+    read_only = read_only && !IsValidRowMarkType(row_mark_type);
+    needs_pessimistic_locking = RowMarkNeedsPessimisticLock(row_mark_type);
   }
 
-  auto session = VERIFY_RESULT(pg_session_.GetSession(transactional_, read_only));
+  auto session = VERIFY_RESULT(pg_session_.GetSession(transactional_,
+                                                      read_only,
+                                                      needs_pessimistic_locking));
   if (!yb_session_) {
     yb_session_ = session->shared_from_this();
     if (transactional_ && read_time) {
@@ -399,6 +417,14 @@ PgSession::~PgSession() {
 
 Status PgSession::ConnectDatabase(const string& database_name) {
   connected_database_ = database_name;
+  return Status::OK();
+}
+
+Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated) {
+  GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(client_->GetNamespaceInfo(
+      GetPgsqlNamespaceId(database_oid), "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  *colocated = resp.colocated();
   return Status::OK();
 }
 
@@ -699,6 +725,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
 
   auto cached_yb_table = table_cache_.find(yb_table_id);
   if (cached_yb_table == table_cache_.end()) {
+    VLOG(4) << "Table cache MISS: " << table_id;
     Status s = client_->OpenTable(yb_table_id, &table);
     if (!s.ok()) {
       VLOG(3) << "LoadTable: Server returns an error: " << s;
@@ -708,6 +735,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
     }
     table_cache_[yb_table_id] = table;
   } else {
+    VLOG(4) << "Table cache HIT: " << table_id;
     table = cached_yb_table->second;
   }
 
@@ -721,16 +749,18 @@ void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
   table_cache_.erase(yb_table_id);
 }
 
-Status PgSession::StartOperationsBuffering() {
-  // Log in case previously buffered operation was not flushed.
-  // This could happen in case previous statement was failed and transaction was not committed.
-  LOG_IF(INFO, !buffered_keys_.empty())
-      << "Dropping " << buffered_keys_.size() << " pending operations silently";
+void PgSession::StartOperationsBuffering() {
+  DCHECK(buffered_keys_.empty());
   buffering_enabled_ = true;
+}
+
+void PgSession::ResetOperationsBuffering() {
+  VLOG_IF(1, !buffered_keys_.empty())
+          << "Dropping " << buffered_keys_.size() << " pending operations";
+  buffering_enabled_ = false;
   buffered_keys_.clear();
   buffered_ops_.clear();
   buffered_txn_ops_.clear();
-  return Status::OK();
 }
 
 Status PgSession::FlushBufferedOperations() {
@@ -765,10 +795,13 @@ bool PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op) {
              FLAGS_ysql_enable_manual_sys_table_txn_ctl);
 }
 
-Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
+Result<YBSession*> PgSession::GetSession(bool transactional,
+                                         bool read_only_op,
+                                         bool needs_pessimistic_locking) {
   if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
-    RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op));
+    RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op,
+                                                                    needs_pessimistic_locking));
     VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session: "
             << txn_session;
@@ -818,8 +851,6 @@ Status PgSession::FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool tra
         << ", table is transactional: "
         << op->table()->schema().table_properties().is_transactional()
         << ", initdb mode: " << YBCIsInitDbModeEnvVarSet();
-    // Catalog operations can be buffered only in InitDb mode
-    DCHECK(!op->IsYsqlCatalogOp() || YBCIsInitDbModeEnvVarSet());
     RETURN_NOT_OK(session->Apply(op));
   }
   const auto status = session->FlushFuture().get();

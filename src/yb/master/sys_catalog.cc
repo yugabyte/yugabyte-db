@@ -104,10 +104,17 @@ METRIC_DEFINE_histogram(
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
   60000000LU, 2);
+METRIC_DEFINE_counter(
+  server, sys_catalog_peer_write_count,
+  "yb.master.SysCatalogTable Count of Writes",
+  yb::MetricUnit::kRequests,
+  "Number of writes to disk handled by the system catalog.");
 
 DECLARE_int32(master_discovery_timeout_ms);
 
-DEFINE_int32(copy_table_batch_size, -1, "Batch size for copy pg sql tables");
+DEFINE_int32(copy_table_batch_size, 10000, "Batch size for copy pg sql tables");
+
+DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 
 namespace yb {
 namespace master {
@@ -120,7 +127,8 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
-    : metric_registry_(metrics),
+    : schema_(BuildTableSchema()),
+      metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master),
       leader_cb_(std::move(leader_cb)) {
@@ -131,6 +139,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
 
   setup_config_dns_histogram_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
       metric_entity_);
+  peer_write_count = METRIC_sys_catalog_peer_write_count.Instantiate(metric_entity_);
 }
 
 SysCatalogTable::~SysCatalogTable() {
@@ -199,7 +208,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   RETURN_NOT_OK(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
 
   // Verify that the schema is the current one
-  if (!metadata->schema().Equals(BuildTableSchema())) {
+  if (!metadata->schema().Equals(schema_)) {
     // TODO: In this case we probably should execute the migration step.
     return(STATUS(Corruption, "Unexpected schema", metadata->schema().ToString()));
   }
@@ -466,7 +475,7 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
       metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_);
+      metric_registry_, nullptr /* tablet_splitter */);
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
@@ -510,6 +519,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .txns_enabled = tablet::TransactionsEnabled(!FLAGS_create_initial_sys_catalog_snapshot),
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
+      .tablet_splitter = nullptr,
   };
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -522,7 +532,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   // TODO: Do we have a setSplittable(false) or something from the outside is
   // handling split in the TS?
 
-  RETURN_NOT_OK_PREPEND(tablet_peer()->InitTabletPeer(
+  RETURN_NOT_OK_PREPEND(
+      tablet_peer()->InitTabletPeer(
           tablet,
           master_->async_client_initializer().get_client_future(),
           master_->mem_tracker(),
@@ -532,7 +543,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetMetricEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests */),
+          nullptr /* retryable_requests */,
+          yb::OpId() /* split_op_id */),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),
@@ -540,9 +552,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   tablet_peer()->RegisterMaintenanceOps(master_->maintenance_manager());
 
-  const Schema* schema = tablet->schema();
-  schema_ = SchemaBuilder(*schema).BuildWithoutIds();
-  schema_with_ids_ = SchemaBuilder(*schema).Build();
+  if (!tablet->schema()->Equals(schema_)) {
+    return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
+  }
   return Status::OK();
 }
 
@@ -593,18 +605,21 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
 
   tablet_peer()->WriteAsync(
       std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
+  peer_write_count->Increment();
 
   {
     int num_iterations = 0;
+    auto time = CoarseMonoClock::now();
+    auto deadline = time + FLAGS_sys_catalog_write_timeout_ms * 1ms;
     static constexpr auto kWarningInterval = 5s;
-    static constexpr int kMaxNumIterations = 12;
-    while (!latch->WaitFor(kWarningInterval)) {
+    while (!latch->WaitUntil(std::min(deadline, time + kWarningInterval))) {
       ++num_iterations;
       const auto waited_so_far = num_iterations * kWarningInterval;
       LOG(WARNING) << "Waited for "
                    << waited_so_far << " for synchronous write to complete. "
                    << "Continuing to wait.";
-      if (num_iterations >= kMaxNumIterations) {
+      time = CoarseMonoClock::now();
+      if (time >= deadline) {
         LOG(ERROR) << "Already waited for a total of " << waited_so_far << ". "
                    << "Returning a timeout from SyncWrite.";
         return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
@@ -669,16 +684,15 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
-  auto iter = tablet->NewRowIterator(schema_, boost::none);
-  RETURN_NOT_OK(iter);
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema_.CopyWithoutColumnIds(), boost::none));
 
-  auto doc_iter = dynamic_cast<yb::docdb::DocRowwiseIterator*>(iter->get());
+  auto doc_iter = dynamic_cast<yb::docdb::DocRowwiseIterator*>(iter.get());
   CHECK(doc_iter != nullptr);
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
-  QLAddInt8Condition(&cond, schema_with_ids_.column_id(type_col_idx), QL_OP_EQUAL, tables_entry);
+  QLAddInt8Condition(&cond, schema_.column_id(type_col_idx), QL_OP_EQUAL, tables_entry);
   yb::docdb::DocQLScanSpec spec(
-      schema_with_ids_, boost::none /* hash_code */, boost::none /* max_hash_code */,
+      schema_, boost::none /* hash_code */, boost::none /* max_hash_code */,
       {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
@@ -686,13 +700,13 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   QLValue entry_type, entry_id, metadata;
   uint64_t count = 0;
   auto start = CoarseMonoClock::Now();
-  while (VERIFY_RESULT((**iter).HasNext())) {
+  while (VERIFY_RESULT(iter->HasNext())) {
     ++count;
-    RETURN_NOT_OK((**iter).NextRow(&value_map));
-    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(type_col_idx), &entry_type));
+    RETURN_NOT_OK(iter->NextRow(&value_map));
+    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(type_col_idx), &entry_type));
     CHECK_EQ(entry_type.int8_value(), tables_entry);
-    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(entry_id_col_idx), &entry_id));
-    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(metadata_col_idx), &metadata));
+    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(entry_id_col_idx), &entry_id));
+    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(metadata_col_idx), &metadata));
     RETURN_NOT_OK(visitor->Visit(entry_id.binary_value(), metadata.binary_value()));
   }
   auto duration = CoarseMonoClock::Now() - start;
@@ -787,6 +801,10 @@ Status SysCatalogTable::CopyPgsqlTables(
 Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
   tablet_peer()->tablet_metadata()->RemoveTable(table_id);
   return Status::OK();
+}
+
+Result<ColumnId> SysCatalogTable::MetadataColumnId() {
+  return schema_.ColumnIdByName(kSysCatalogTableColMetadata);
 }
 
 } // namespace master

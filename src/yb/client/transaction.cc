@@ -386,17 +386,13 @@ class YBTransaction::Impl final {
       }
       state_.store(TransactionState::kAborted, std::memory_order_release);
       if (!ready_) {
-        waiters_.emplace_back([this, deadline, transaction](const Status& status) {
-          if (!status.ok()) {
-            // We already stopped to send heartbeats, so transaction would be aborted anyway.
-            LOG_WITH_PREFIX(WARNING) << "Failed to abort transaction: " << status;
-            return;
-          }
-
-          DoAbort(deadline, transaction);
-        });
+        std::vector<Waiter> waiters;
+        waiters_.swap(waiters);
         lock.unlock();
-        RequestStatusTablet(deadline);
+        const auto aborted_status = STATUS(Aborted, "Transaction aborted");
+        for(const auto& waiter : waiters) {
+          waiter(aborted_status);
+        }
         return;
       }
     }
@@ -807,10 +803,17 @@ class YBTransaction::Impl final {
       return;
     }
 
-    if (status != TransactionStatus::CREATED &&
-        GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
-      HeartbeatDone(Status::OK(), tserver::UpdateTransactionResponsePB(), status, transaction);
-      return;
+    VLOG_WITH_PREFIX(4) << __func__ << "(" << TransactionStatus_Name(status) << ")";
+
+    MonoDelta timeout;
+    if (status != TransactionStatus::CREATED) {
+      if (GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
+        HeartbeatDone(Status::OK(), tserver::UpdateTransactionResponsePB(), status, transaction);
+        return;
+      }
+      timeout = std::chrono::microseconds(FLAGS_transaction_heartbeat_usec);
+    } else {
+      timeout = TransactionRpcTimeout();
     }
 
     tserver::UpdateTransactionRequestPB req;
@@ -821,7 +824,7 @@ class YBTransaction::Impl final {
     state.set_status(status);
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
-            TransactionRpcDeadline(),
+            CoarseMonoClock::now() + timeout,
             status_tablet_.get(),
             manager_->client(),
             &req,
@@ -850,14 +853,17 @@ class YBTransaction::Impl final {
     UpdateClock(response, manager_);
     manager_->rpcs().Unregister(&heartbeat_handle_);
 
+    VLOG_WITH_PREFIX(4) << __func__ << "(" << status << ", "
+                        << TransactionStatus_Name(transaction_status) << ")";
+
     if (status.ok()) {
       if (transaction_status == TransactionStatus::CREATED) {
         NotifyWaiters(Status::OK());
       }
       std::weak_ptr<YBTransaction> weak_transaction(transaction);
       manager_->client()->messenger()->scheduler().Schedule(
-          [this, weak_transaction](const Status&) {
-              SendHeartbeat(TransactionStatus::PENDING, metadata_.transaction_id, weak_transaction);
+          [this, weak_transaction, id = metadata_.transaction_id](const Status&) {
+              SendHeartbeat(TransactionStatus::PENDING, id, weak_transaction);
           },
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {

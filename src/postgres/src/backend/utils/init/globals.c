@@ -85,6 +85,8 @@ Oid			MyDatabaseId = InvalidOid;
 
 Oid			MyDatabaseTableSpace = InvalidOid;
 
+bool		MyDatabaseColocated = false;
+
 /*
  * DatabasePath is the path (relative to DataDir) of my database's
  * primary directory, ie, its directory in the default tablespace.

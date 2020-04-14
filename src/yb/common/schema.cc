@@ -543,6 +543,14 @@ size_t Schema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
+Result<ColumnId> Schema::ColumnIdByName(const std::string& column_name) const {
+  size_t column_index = find_column(column_name);
+  if (column_index == Schema::kColumnNotFound) {
+    return STATUS_FORMAT(NotFound, "Couldn't find column $0 in the schema", column_name);
+  }
+  return ColumnId(column_id(column_index));
+}
+
 ColumnId Schema::first_column_id() {
   return kFirstColumnId;
 }

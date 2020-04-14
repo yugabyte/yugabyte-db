@@ -18,6 +18,7 @@
 
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/string_case.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -36,9 +37,22 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
   Register(
-      "list_snapshots", "",
-      [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(),
+      "list_snapshots", " [SHOW_DETAILS]",
+      [client](const CLIArguments& args) -> Status {
+        bool show_details = false;
+
+        if (args.size() >= 3) {
+          string uppercase_flag;
+          ToUpperCase(args[2], &uppercase_flag);
+
+          if (uppercase_flag == "SHOW_DETAILS") {
+            show_details = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details),
                               "Unable to list snapshots");
         return Status::OK();
       });

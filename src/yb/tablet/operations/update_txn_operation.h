@@ -26,31 +26,14 @@ namespace tablet {
 
 class TransactionCoordinator;
 
-class UpdateTxnOperationState : public OperationState {
+class UpdateTxnOperationState : public OperationStateBase<tserver::TransactionStatePB> {
  public:
-  UpdateTxnOperationState(Tablet* tablet, const tserver::TransactionStatePB* request)
-      : OperationState(tablet), request_(request) {}
-
-  explicit UpdateTxnOperationState(Tablet* tablet)
-      : UpdateTxnOperationState(tablet, nullptr) {}
-
-  const tserver::TransactionStatePB* request() const override {
-    return request_.load(std::memory_order_acquire);
-  }
-
-  void TakeRequest(tserver::TransactionStatePB* request) {
-    request_holder_.reset(new tserver::TransactionStatePB);
-    request_.store(request_holder_.get(), std::memory_order_release);
-    request_holder_->Swap(request);
-  }
-
-  std::string ToString() const override;
+  template <class... Args>
+  explicit UpdateTxnOperationState(Args&&... args)
+      : OperationStateBase(std::forward<Args>(args)...) {}
 
  private:
   void UpdateRequestFromConsensusRound() override;
-
-  std::unique_ptr<tserver::TransactionStatePB> request_holder_;
-  std::atomic<const tserver::TransactionStatePB*> request_;
 };
 
 class UpdateTxnOperation : public Operation {

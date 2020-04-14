@@ -1,7 +1,8 @@
 ---
-title: Open Source Kubernetes 
-linkTitle: Open Source Kubernetes
-description: Open Source Kubernetes 
+title: Deploy on Kubernetes clusters using Rook operator
+headerTitle: Open source Kubernetes
+linkTitle: Open source Kubernetes
+description: Deploy YugabyteDB on OSS Kubernetes clusters using the Rook YugabyteDB operator.
 menu:
   latest:
     parent: deploy-kubernetes-sz
@@ -51,11 +52,6 @@ showAsideToc: true
 The [Rook YugabyteDB operator](https://rook.io/docs/rook/v1.1/yugabytedb.html) is a custom controller that uses Custom Resource Definition (CRD) to extend the Kubernetes API and automate deploying, scaling, and managing YugabyteDB clusters.  Based on the  _desired state_ that you specified in the CRD, the Rook operator observes (watching for changes in state and health), analyzes (comparing current to desired state), and acts (applying changes to the cluster) to maintain the desired state. For details, see [YugabyteDB Cluster CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html).
 
 ## Before you begin
-
-A YugabyteDB cluster installed in a Kubernetes environment is required.
-
-- To create a local cluster in Kubernetes for development and learning, see [Quick start](https://docs.yugabyte.com/latest/quick-start/).
-- To deploy a production cluster, see the YugabyteDB documentation on [deploying in  Kubernetes](../../../kubernetes/).
 
 Verify that your Kubernetes cluster is ready for Rook by reviewing the [Kubernetes cluster prerequisites for using the Rook operator](https://github.com/rook/rook/blob/master/Documentation/k8s-pre-reqs.md).
 
@@ -129,8 +125,8 @@ kubectl exec -it yb-tserver-rook-yugabytedb-0 /home/yugabyte/bin/ysqlsh -- -h yb
 
 For details on the YSQL API, see:
 
-- [Explore YSQL](../../../../quick-start/explore-ysql/#kubernetes)
-- [YSQL Reference](../../../../api/ysql/) 
+- [Explore YSQL](../../../../../quick-start/explore-ysql/)
+- [YSQL Reference](../../../../../api/ysql/) 
 
 ## Cleanup
 
@@ -149,7 +145,7 @@ Manually delete any Persistent Volumes that were created for this YugabyteDB clu
 
 ### Review the operator logs
 
-If the cluster does not start,  run following command to take a look at operator logs.
+If the cluster does not start, run following command to take a look at operator logs.
 
 ```sh
 kubectl -n rook-yugabytedb-system logs -l app=rook-yugabytedb-operator
