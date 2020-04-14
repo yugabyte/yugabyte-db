@@ -61,6 +61,9 @@ DEFINE_bool(wait_if_no_leader_master, false,
             "this flag determines if yb-admin should wait for the entire duration of timeout or"
             "in case a leader master appears in that duration or return error immediately.");
 
+DEFINE_string(certs_dir_name, "",
+              "Directory with certificates to use for secure server connection.");
+
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
 
@@ -167,21 +170,14 @@ Result<Response> ResponseResult(Response&& response,
 
 }  // anonymous namespace
 
-ClusterAdminClient::ClusterAdminClient(string addrs,
-                                       int64_t timeout_millis,
-                                       string certs_dir)
+ClusterAdminClient::ClusterAdminClient(string addrs, int64_t timeout_millis)
     : master_addr_list_(std::move(addrs)),
       timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
-      client_init_(certs_dir.empty()),
       initted_(false) {}
 
-ClusterAdminClient::ClusterAdminClient(
-    const HostPort& init_master_addr,
-    int64_t timeout_millis,
-    string certs_dir)
+ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, int64_t timeout_millis)
     : init_master_addr_(init_master_addr),
       timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
-      client_init_(certs_dir.empty()),
       initted_(false) {}
 
 ClusterAdminClient::~ClusterAdminClient() {
@@ -237,24 +233,32 @@ Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
   // Check if caller will initialize the client and related parts.
-  if (client_init_) {
-    messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
-
-    if (!init_master_addr_.host().empty()) {
-      RETURN_NOT_OK(DiscoverAllMasters(init_master_addr_, &master_addr_list_));
-    }
-
-    yb_client_ = VERIFY_RESULT(YBClientBuilder()
-    .add_master_server_addr(master_addr_list_)
-    .default_admin_operation_timeout(timeout_)
-    .wait_for_leader_election_on_init(FLAGS_wait_if_no_leader_master)
-    .Build(messenger_.get()));
-
-    // Find the leader master's socket info to set up the master proxy.
-    leader_addr_ = yb_client_->GetMasterLeaderAddress();
-    master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
+  rpc::MessengerBuilder messenger_builder("yb-admin");
+  if (!FLAGS_certs_dir_name.empty()) {
+    LOG(INFO) << "Built secure client using certs dir " << FLAGS_certs_dir_name;
+    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir_name));
+    server::ApplySecureContext(secure_context_.get(), &messenger_builder);
   }
+
+  messenger_ = VERIFY_RESULT(messenger_builder.Build());
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+
+  if (!init_master_addr_.host().empty()) {
+    RETURN_NOT_OK(DiscoverAllMasters(init_master_addr_, &master_addr_list_));
+  }
+
+  yb_client_ = VERIFY_RESULT(YBClientBuilder()
+      .add_master_server_addr(master_addr_list_)
+      .default_admin_operation_timeout(timeout_)
+      .wait_for_leader_election_on_init(FLAGS_wait_if_no_leader_master)
+      .Build(messenger_.get()));
+
+  // Find the leader master's socket info to set up the master proxy.
+  leader_addr_ = yb_client_->GetMasterLeaderAddress();
+  master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
+
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  master_backup_proxy_.reset(new master::MasterBackupServiceProxy(&proxy_cache, leader_addr_));
 
   initted_ = true;
   return Status::OK();

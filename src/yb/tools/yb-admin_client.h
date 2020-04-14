@@ -45,6 +45,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/messenger.h"
 
@@ -75,17 +76,14 @@ class ClusterAdminClient {
   // Creates an admin client for host/port combination e.g.,
   // "localhost" or "127.0.0.1:7050" with the given timeout.
   // If certs_dir is non-empty, caller will init the yb_client_.
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis, string certs_dir);
+  ClusterAdminClient(std::string addrs, int64_t timeout_millis);
 
-  ClusterAdminClient(
-      const HostPort& init_master_addr,
-      int64_t timeout_millis,
-      string certs_dir);
+  ClusterAdminClient(const HostPort& init_master_addr, int64_t timeout_millis);
 
   virtual ~ClusterAdminClient();
 
   // Initialized the client and connects to the specified tablet server.
-  virtual CHECKED_STATUS Init();
+  CHECKED_STATUS Init();
 
   // Parse the user-specified change type to consensus change type
   CHECKED_STATUS ParseChangeType(
@@ -242,11 +240,13 @@ class ClusterAdminClient {
   HostPort init_master_addr_;
   const MonoDelta timeout_;
   HostPort leader_addr_;
+  std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<master::MasterServiceProxy> master_proxy_;
+  std::unique_ptr<master::MasterBackupServiceProxy> master_backup_proxy_;
+
   // Skip yb_client_ and related fields' initialization.
-  bool client_init_ = true;
   std::unique_ptr<client::YBClient> yb_client_;
   bool initted_ = false;
 

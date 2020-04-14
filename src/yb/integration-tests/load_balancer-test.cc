@@ -40,7 +40,7 @@ class LoadBalancerTest : public YBTableTestBase {
     YBTableTestBase::SetUp();
 
     yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
-        external_mini_cluster()->GetMasterAddresses(), kDefaultTimeoutMillis, "");
+        external_mini_cluster()->GetMasterAddresses(), kDefaultTimeoutMillis);
 
     ASSERT_OK(yb_admin_client_->Init());
   }
