@@ -1,7 +1,8 @@
 ---
-title: Open Source Kubernetes 
-linkTitle: Open Source Kubernetes
-description: Open Source Kubernetes 
+title: Deploy on OSS Kubernetes using Helm Chart 
+headerTitle: Open source Kubernetes
+linkTitle: Open source Kubernetes
+description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
 aliases:
   - /latest/deploy/kubernetes/oss/
   - /latest/deploy/kubernetes/oss/helm-chart/
@@ -403,9 +404,9 @@ In case you want to use a storage class other than the standard class for your d
 $ helm install yugabyte --namespace yb-demo --name yb-demo --set persistentVolume.storageClass=<name of provisioned storage> --wait
 ```
 
-### YugabyteDB configuration flags
+### Configure YB-Master and YB-TServer pods
 
-Setting configuration flags (aka gflags) on the yb-master/yb-tserver pods can be done at the command line or by overriding the values.yaml file in the charts repository. For example, the following example shows how to set the three geo-distribution related flags of `placement_cloud`,`placement_region` and `placement_zone` on a minikube cluster.
+Flags on the yb-master and yb-tserver pods can be done at the command line or by overriding the `values.yaml` file in the charts repository. For example, the following example shows how to set the three geo-distribution related flags of `placement_cloud`,`placement_region` and `placement_zone` on a Minikube cluster.
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \

@@ -18,7 +18,7 @@ showAsideToc: true
 <b>`FLUSHALL`</b><br>
 This command deletes all keys from all databases.
 
-This functionality can be disabled by setting the yb-tserver gflag `yedis_enable_flush` to `false`.
+This functionality can be disabled by setting the yb-tserver `--yedis_enable_flush` flag to `false`.
 
 ## Return value
 
