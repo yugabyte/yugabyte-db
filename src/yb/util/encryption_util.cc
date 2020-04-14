@@ -181,9 +181,9 @@ __attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS LockingCallback(
     crypto_mutexes[n]->unlock();
   }
 }
+
 __attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS ThreadId(CRYPTO_THREADID *tid) {
-  auto id = Thread::CurrentThreadId();
-  CRYPTO_THREADID_set_numeric(tid, id);
+  CRYPTO_THREADID_set_numeric(tid, Thread::CurrentThreadId());
 }
 
 class OpenSSLInitializer {

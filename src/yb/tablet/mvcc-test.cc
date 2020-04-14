@@ -31,6 +31,7 @@
 //
 
 #include <vector>
+#include <sstream>
 
 #include <gtest/gtest.h>
 #include <glog/logging.h>
@@ -87,6 +88,11 @@ TEST_F(MvccTest, Basic) {
 }
 
 TEST_F(MvccTest, SafeHybridTimeToReadAt) {
+  std::ostringstream mvcc_op_trace_stream;
+  manager_.TEST_DumpTrace(&mvcc_op_trace_stream);
+  ASSERT_STR_CONTAINS(mvcc_op_trace_stream.str(), "No MVCC operations");
+  mvcc_op_trace_stream.clear();
+
   constexpr uint64_t kLease = 10;
   constexpr uint64_t kDelta = 10;
   auto time = AddLogical(clock_->Now(), kLease);
@@ -115,6 +121,13 @@ TEST_F(MvccTest, SafeHybridTimeToReadAt) {
     .lease = time,
   };
   ASSERT_EQ(time, manager_.SafeTime(ht_lease));
+
+  manager_.TEST_DumpTrace(&mvcc_op_trace_stream);
+  const auto mvcc_trace = mvcc_op_trace_stream.str();
+  ASSERT_STR_CONTAINS(mvcc_trace, "1. SafeTime");
+  ASSERT_STR_CONTAINS(mvcc_trace, "2. AddPending");
+  ASSERT_STR_CONTAINS(mvcc_trace, "8. Replicated");
+  ASSERT_STR_CONTAINS(mvcc_trace, "9. SafeTime");
 }
 
 TEST_F(MvccTest, Abort) {
