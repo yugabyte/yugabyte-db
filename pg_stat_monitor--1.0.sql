@@ -79,7 +79,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     max_time,
     mean_time,
     stddev_time,
-    rows int8,
+    rows,
     shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,

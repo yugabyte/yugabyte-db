@@ -290,7 +290,9 @@ SELECT PLUS_ONE(10);
 SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
              query              | calls | rows 
 --------------------------------+-------+------
- SELECT $1::TEXT                |     1 |    1
+ SELECT $1                     +|     1 |    1
+                               +|       | 
+   AS "text"                    |       | 
  SELECT PLUS_ONE($1)            |     2 |    2
  SELECT PLUS_TWO($1)            |     2 |    2
  SELECT pg_stat_monitor_reset() |     1 |    1
@@ -391,7 +393,7 @@ SELECT query, calls, rows FROM pg_stat_monitor ORDER BY query COLLATE "C";
  DROP FUNCTION PLUS_TWO(INTEGER)           |     1 |    0
  DROP TABLE IF EXISTS test                 |     3 |    0
  DROP TABLE test                           |     1 |    0
- SELECT $1                                 |     1 |    1
+ SELECT $1 AS "int"                        |     1 |    1
  SELECT pg_stat_monitor_reset()            |     1 |    1
 (8 rows)
 

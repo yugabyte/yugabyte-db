@@ -15,7 +15,7 @@ REGRESS = pg_stat_monitor
 
 # Disabled because these tests require "shared_preload_libraries=pg_stat_statements",
 # which typical installcheck users do not have (e.g. buildfarm clients).
-NO_INSTALLCHECK = 1
+# NO_INSTALLCHECK = 1
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
