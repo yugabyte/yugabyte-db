@@ -128,6 +128,13 @@ string FormatFirstHostPort(
   }
 }
 
+string FormatDouble(double d, int precision = 2) {
+  std::ostringstream op_stream;
+  op_stream << std::fixed << std::setprecision(precision);
+  op_stream << d;
+  return op_stream.str();
+}
+
 const int kPartitionRangeColWidth = 56;
 const int kHostPortColWidth = 20;
 const int kTableNameColWidth = 48;
@@ -764,8 +771,10 @@ Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
          << kSpaceSep
          << RightPadToWidth(time_str.str(), kLongColWidth) << kSpaceSep
          << RightPadToWidth(status_str, kSmallColWidth) << kSpaceSep
-         << RightPadToWidth(server.metrics().read_ops_per_sec(), kSmallColWidth) << kSpaceSep
-         << RightPadToWidth(server.metrics().write_ops_per_sec(), kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(FormatDouble(server.metrics().read_ops_per_sec()), kSmallColWidth)
+         << kSpaceSep
+         << RightPadToWidth(FormatDouble(server.metrics().write_ops_per_sec()), kSmallColWidth)
+         << kSpaceSep
          << RightPadToWidth(server.metrics().uptime_seconds(), kSmallColWidth) << kSpaceSep
          << RightPadToWidth(HumanizeBytes(server.metrics().total_sst_file_size()), kLongColWidth)
          << kSpaceSep
