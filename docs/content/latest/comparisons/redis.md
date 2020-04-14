@@ -1,7 +1,7 @@
 ---
-title: Compare Redis in-memory store to YugabyteDB
+title: Compare Redis in-memory store with YugabyteDB
 linkTitle: Redis in-memory store
-description: Compare Redis in-memory store to YugabyteDB.
+description: Compare Redis in-memory store with YugabyteDB.
 aliases:
   - /comparisons/redis/
 menu:
