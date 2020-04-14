@@ -114,78 +114,101 @@ public class ImportControllerTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testImportUniverse() {
+  public void testImportUniverseMultiStep() {
+    testImportUniverse(false);
+  }
+
+  @Test
+  public void testImportUniverseSingleStep() {
+    testImportUniverse(true);
+  }
+
+  public void testImportUniverse(boolean singleStep) {
+
     String url = "/api/customers/" + customer.uuid + "/universes/import";
+    String univUUID = "2565538e-b7b3-4065-8eb9-7e96ddcb863c";
     ObjectNode bodyJson = Json.newObject()
                               .put("universeName", "importUniv")
-                              .put("masterAddresses", MASTER_ADDRS);
-    // Master phase
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    String univUUID = json.get("universeUUID").asText();
-    assertNotNull(univUUID);
-    assertNotNull(json.get("checks").get("create_db_entry"));
-    assertEquals(json.get("checks").get("create_db_entry").asText(), "OK");
-    assertNotNull(json.get("checks").get("check_masters_are_running"));
-    assertEquals(json.get("checks").get("check_masters_are_running").asText(), "OK");
-    assertNotNull(json.get("checks").get("check_master_leader_election"));
-    assertEquals(json.get("checks").get("check_master_leader_election").asText(), "OK");
-    assertNotNull(json.get("state").asText());
-    assertEquals(json.get("state").asText(), "IMPORTED_MASTERS");
-    assertNotNull(json.get("universeName").asText());
-    assertEquals(json.get("universeName").asText(), "importUniv");
-    assertNotNull(json.get("masterAddresses").asText());
-    assertEquals(json.get("masterAddresses").asText(), MASTER_ADDRS);
-    Universe universe = Universe.get(UUID.fromString(univUUID));
-    assertEquals(universe.getUniverseDetails().importedState, ImportedState.MASTERS_ADDED);
-    assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
+                              .put("masterAddresses", MASTER_ADDRS)
+                              .put("universeUUID", univUUID);
 
-    String tUnivUUID = json.get("universeUUID").asText();
-    assertEquals(univUUID, tUnivUUID);
-    // Tserver phase
-    bodyJson.put("currentState", json.get("state").asText())
-            .put("universeUUID", univUUID);
-    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertOk(result);
-    json = Json.parse(contentAsString(result));
-    assertNotNull(json.get("state").asText());
-    assertEquals(json.get("state").asText(), "IMPORTED_TSERVERS");
-    assertNotNull(json.get("universeUUID"));
-    assertNotNull(json.get("checks").get("find_tservers_list"));
-    assertEquals(json.get("checks").get("find_tservers_list").asText(), "OK");
-    assertNotNull(json.get("checks").get("check_tservers_are_running"));
-    assertEquals(json.get("checks").get("check_tservers_are_running").asText(), "OK");
-    assertNotNull(json.get("checks").get("check_tserver_heartbeats"));
-    assertEquals(json.get("checks").get("check_tserver_heartbeats").asText(), "OK");
-    assertNotNull(json.get("universeName").asText());
-    assertEquals(json.get("universeName").asText(), "importUniv");
-    assertNotNull(json.get("masterAddresses").asText());
-    assertEquals(json.get("masterAddresses").asText(), MASTER_ADDRS);
-    assertNotNull(json.get("tservers_list").asText());
-    assertValue(json, "tservers_count", "3");
-    universe = Universe.get(UUID.fromString(univUUID));
-    assertEquals(universe.getUniverseDetails().importedState, ImportedState.TSERVERS_ADDED);
-    assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
+    JsonNode json = null;
+    Universe universe = null;
+    if (singleStep) {
+      bodyJson.put("singleStep", "true");
+    }
 
-    // Finish. Default expectation is that imported universes do not have node exporter running.
     when(mockApiHelper.getBody(any())).thenReturn("Connection refused");
     when(mockApiHelper.getHeaderStatus(any())).thenReturn(Json.newObject().put("status", "OK"));
-    bodyJson.put("currentState", json.get("state").asText());
-    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertOk(result);
-    json = Json.parse(contentAsString(result));
+
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    if (!singleStep) {
+      // Master phase
+      assertOk(result);
+      json = Json.parse(contentAsString(result));
+      assertValueAtPath(json, "/checks/create_db_entry", "OK");
+      assertValueAtPath(json, "/checks/check_masters_are_running", "OK");
+      assertValueAtPath(json, "/checks/check_master_leader_election", "OK");
+      assertValue(json, "state", "IMPORTED_MASTERS");
+      assertValue(json, "universeName", "importUniv");
+      assertValue(json, "masterAddresses", MASTER_ADDRS);
+      assertValue(json, "universeUUID", univUUID);
+
+      universe = Universe.get(UUID.fromString(univUUID));
+      assertEquals(universe.getUniverseDetails().importedState, ImportedState.MASTERS_ADDED);
+      assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
+
+      // Tserver phase
+      bodyJson.put("currentState", json.get("state").asText())
+              .put("universeUUID", univUUID);
+      result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+      assertOk(result);
+      json = Json.parse(contentAsString(result));
+
+      assertValue(json, "state", "IMPORTED_TSERVERS");
+      assertValueAtPath(json, "/checks/find_tservers_list", "OK");
+      assertValueAtPath(json, "/checks/check_tservers_are_running", "OK");
+      assertValueAtPath(json, "/checks/check_tserver_heartbeats", "OK");
+      assertValue(json, "universeName", "importUniv");
+      assertValue(json, "masterAddresses", MASTER_ADDRS);
+      assertValue(json, "tservers_count", "3");
+      universe = Universe.get(UUID.fromString(univUUID));
+      assertEquals(universe.getUniverseDetails().importedState, ImportedState.TSERVERS_ADDED);
+      assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
+
+      // Finish. Default expectation is that imported universes do not have node exporter running.
+      bodyJson.put("currentState", json.get("state").asText());
+      result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+      assertOk(result);
+      json = Json.parse(contentAsString(result));
+    } else {
+      assertOk(result);
+      System.out.println("query output was " + contentAsString(result));
+      json = Json.parse(contentAsString(result));
+      assertValueAtPath(json, "/checks/create_db_entry", "OK");
+      assertValueAtPath(json, "/checks/check_masters_are_running", "OK");
+      assertValueAtPath(json, "/checks/check_master_leader_election", "OK");
+      assertValueAtPath(json, "/checks/find_tservers_list", "OK");
+      assertValueAtPath(json, "/checks/check_tservers_are_running", "OK");
+      assertValueAtPath(json, "/checks/check_tserver_heartbeats", "OK");
+      assertValue(json, "universeName", "importUniv");
+      assertValue(json, "masterAddresses", MASTER_ADDRS);
+      assertValue(json, "tservers_count", "3");
+      universe = Universe.get(UUID.fromString(univUUID));
+      assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
+    }
+
     assertValue(json, "state", "FINISHED");
-    assertNotNull(json.get("checks").get("create_prometheus_config"));
-    assertEquals(json.get("checks").get("create_prometheus_config").asText(), "OK");
+    assertValueAtPath(json, "/checks/create_prometheus_config", "OK");
     assertThat(json.get("checks").get("node_exporter").asText(),
         allOf(notNullValue(), containsString("OK")));
     assertThat(json.get("checks").get("node_exporter_ip_error_map").asText(),
             allOf(notNullValue(), containsString("127.0.0")));
-    assertEquals(json.get("universeUUID").asText(), univUUID);
+    assertValue(json, "universeUUID", univUUID);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 
-    assertAuditEntry(3, customer.uuid);
+    int numAuditsExpected = (singleStep ? 1 : 3);
+    assertAuditEntry(numAuditsExpected, customer.uuid);
 
     // Confirm customer knows about this universe and has correct node names/ips.
     url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
@@ -249,7 +272,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     }
     assertNotNull(deleteTaskInfo);
     assertValue(Json.toJson(deleteTaskInfo), "taskState", "Success");
-    assertAuditEntry(4, customer.uuid);
+    assertAuditEntry(numAuditsExpected + 1, customer.uuid);
 
     url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
     result = doRequestWithAuthToken("GET", url, authToken);

@@ -154,7 +154,7 @@ class ControlScript(object):
                     SCRIPT_NAME, err, self.script.pidfile))
             sys.exit(1)
         else:
-            Output.print_out("{} stopped.".format(SCRIPT_NAME))
+            Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         sys.exit(0)
 
     # Prints status of YugabyteDB.
@@ -517,63 +517,16 @@ class ControlScript(object):
                         status=Output.ANIMATION_FAIL)
                     Output.log_error_and_exit("Failed to start master {}".format(SCRIPT_NAME))
 
+                universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
+                if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
+                    self.configs.saved_data["universe_uuid"] = universe_uuid
+                    self.configs.save_configs()
+
                 Output.update_animation("System checks")
-            yw_logged_in = False
+
             if self.configs.temp_data.get("ui"):
-                yw_process = self.processes.get("yugaware")
-                yw_proxy = YugaWareProxy(advertise_ip,
-                    self.configs.saved_data.get("webserver_port"))
-                if is_first_run and not self.is_yw_initialized():
-                    Output.log("Setting up admin console schema...")
-                    Output.init_animation("Installing database...")
-                    if not self.init_yw():
-                        Output.log_error_and_exit("Failed to set up admin console schema...")
-                    Output.update_animation("Database installed")
-
-                    yw_process.start()
-
-                    Output.init_animation("Bringing up UI...")
-                    Output.log(self.wait_yw_login(yw_proxy))
-                    yw_logged_in = True
-
-                    Output.log(yw_proxy.set_security("insecure"))
-                    Output.log(yw_proxy.insecure_login())
-
-                    Output.log(yw_proxy.import_universe(
-                                advertise_ip,
-                                master_rpc_port,
-                                self.configs.saved_data.get("universe_uuid")))
-
-                    Output.log(yw_proxy.set_landing_page(
-                            self.configs.saved_data.get("universe_uuid")))
-                    should_callhome = True
-                    Output.update_animation("UI ready")
-                else:
-                    if not yw_process.is_running():
-                        if not is_first_run:
-                            Output.log(
-                                "Webserver died unexpectedly. Restarting...", logging.ERROR)
-                        yw_process.start()
-
-                        # TODO: If insecure login fails here, we should assume importing
-                        # universe and setting security level failed and retry initializing YW.
-                        if is_first_run:
-                            Output.init_animation("Bringing up UI...")
-
-                        yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
-                        if yw_logged_in:
-                            animation_status = Output.ANIMATION_SUCCESS
-                        else:
-                            animation_status = Output.ANIMATION_FAIL
-                        if is_first_run:
-                            Output.update_animation("UI status", status=animation_status)
-
-                        should_callhome = True
-                    else:
-                        yw_logged_in = False
-                if yw_process.is_running() and yw_logged_in:
-                    if self.alerts:
-                        yw_proxy.send_alerts(self.alerts)
+                (_, was_started) = self.maybe_start_yw(is_first_run, is_first_install)
+                should_callhome = should_callhome or was_started
 
             if is_first_run:
                 status = self.get_status_string() + \
@@ -618,6 +571,105 @@ class ControlScript(object):
         # Stop callhome. Useful in future if we do anything after quitting.
         self.stop_callhome = True
         callhome_thread.join()
+
+    # Returns (error string, yw_started).
+    # yw_started is True if YW was actually started
+    def maybe_start_yw(self, is_first_run, is_first_install):
+        was_started = False
+        err = None
+
+        if not self.configs.temp_data.get("ui"):
+            return (err, was_started)
+
+        yw_process = self.processes.get("yugaware")
+        yw_proxy = YugaWareProxy(self.advertise_ip(),
+            self.configs.saved_data.get("webserver_port"))
+
+        # Setup schema for play framework.
+        if is_first_run and not self.is_yw_initialized():
+            Output.log("Setting up admin console schema...")
+            Output.init_animation("Preparing UI schema...")
+            if not self.init_yw():
+                #TODO: make this return to caller
+                Output.log_error_and_exit("Failed to set up admin console schema...")
+
+            Output.update_animation("UI schema ready")
+
+        try:
+            if is_first_run:
+                Output.init_animation("Bringing up UI...")
+
+            # Start YW process.
+            if not yw_process.is_running():
+                if not is_first_run:
+                    Output.log(
+                        "Webserver died unexpectedly. Restarting...", logging.ERROR)
+                yw_process.start()
+                was_started = True
+
+            # After first run, do not attempt any more setup, just return.
+            if not is_first_run:
+                return (err, was_started)
+
+            # Login with username/pwd, this tells us that YW server is up.
+            err = self.wait_yw_login(yw_proxy, insecure=False)
+            if err:
+                return (err, was_started)
+
+            # On first install run, always setup YW.
+            # On a first run that is not first install,
+            # check if setup still needs to complete.
+            needs_setup = is_first_install
+            if not needs_setup:
+                # Login insecurely - if this fails, this likely means
+                # YW wasn't fully setup the first time around.
+                err = self.wait_yw_login(yw_proxy, insecure=True)
+                if err:
+                    Output.log("Unable to insecure login to YW: {}".format(err))
+                    needs_setup = True
+
+            if not needs_setup:
+                return (err, was_started)
+
+            # Set up login without username and password.
+            err = yw_proxy.set_security("insecure")
+            if err:
+                return (err, was_started)
+
+            # Verify login without username and password.
+            err = yw_proxy.insecure_login()
+            if err:
+                return (err, was_started)
+            yw_logged_in = True
+
+            full_master_list = self.wait_get_all_masters(timeout=60)
+            if not full_master_list:
+                err = "Unable to find full master list for YW import"
+                return (err, was_started)
+
+            # Import the universe (or re-import it). Re-importing should be harmless.
+            err = yw_proxy.import_universe(
+                        ",".join(full_master_list),
+                        self.master_port(),
+                        self.configs.saved_data.get("universe_uuid"))
+            if err:
+                return (err, was_started)
+
+            err = yw_proxy.set_landing_page(
+                    self.configs.saved_data.get("universe_uuid"))
+            if err:
+                return (err, was_started)
+
+            if is_first_run:
+                Output.update_animation("UI ready")
+            if is_first_run and yw_process.is_running() and self.alerts:
+                yw_proxy.send_alerts(self.alerts)
+
+        finally:
+            if is_first_run:
+                animation_status = Output.ANIMATION_FAIL if err else Output.ANIMATION_SUCCESS
+                Output.update_animation("UI status", status=animation_status)
+        return (err, was_started)
 
     # Pushes yugabyted script to background as a daemon. The process is not tied to a shell, but
     # it will not survive between machine restarts.
@@ -1190,6 +1242,8 @@ class ControlScript(object):
         bind_ip = self.configs.saved_data.get("bind_ip")
         return bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
+    def master_port(self):
+       self.configs.saved_data.get("master_rpc_port")
 
 class Configs(object):
     def __init__(self, config_file, base_dir):
@@ -1772,9 +1826,10 @@ class YugaWareProxy(object):
         data = {
             "cloudProviderType": "other",
             "currentState": "BEGIN",
-            "masterAddresses": "{}:{}".format(master_address, master_rpc_port),
+            "masterAddresses": "{}".format(master_address),
             "universeName": self.univ_name,
             "universeUUID": universeUUID,
+            "singleStep": "true",
         }
 
         Output.log("Importing Yugabyte into webserver...")
@@ -1783,39 +1838,24 @@ class YugaWareProxy(object):
             req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
             resp = json.loads(urlopen(req).read())
             checks = resp.get("checks")
-            Output.log("Import master payload: {}".format(resp), logging.DEBUG)
-            if universeUUID == resp.get("universeUUID") and checks and not all(
-                    check == 'OK' for check in checks.values()):
-                Output.log_error_and_exit(
-                    "Failed to import local universe into webserver: checks failed.")
-
-            Output.log("Importing tserver.", logging.DEBUG)
-            data["currentState"] = "IMPORTED_MASTERS"
-            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
-            resp = json.loads(urlopen(req).read())
-            checks = resp.get("checks")
-            Output.log("Import tserver payload: {}".format(resp), logging.DEBUG)
-            if checks and not all(check == 'OK' for check in checks.values()):
-                Output.log_error_and_exit(
-                    "Failed to import local universe into webserver: checks failed.")
-
-            Output.log("Finalizing import.", logging.DEBUG)
-            data["currentState"] = "IMPORTED_TSERVERS"
-            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
-            resp = json.loads(urlopen(req).read())
-            checks = resp.get("checks")
-            Output.log("Finalizing import payload: {}".format(resp), logging.DEBUG)
+            Output.log("Import master payload: req: {}, resp: {}".format(req, resp))
+            if universeUUID != resp.get("universeUUID"):
+                Output.log(
+                    "Failed to import local universe into webserver: invalid uuid: {}".format(resp),
+                    logging.ERROR)
             # Node exporter does not matter for local universes and will fail on import.
             if "node_exporter_ip_error_map" in checks:
                 del[checks["node_exporter_ip_error_map"]]
             if checks and not all(check == 'OK' for check in checks.values()):
-                Output.log_error_and_exit(
-                    "Failed to import local universe into webserver: checks failed.")
+                Output.log(
+                    ("Failed to import local universe into webserver, "
+                     "checks failed: {}").format(resp))
+
         except (ValueError, HTTPError, URLError, KeyError) as e:
             return "Failed to import local universe into YW with payload: {}.\n" \
                 "Got error: {}".format(data, e)
 
-        Output.log("Import succeeded!")
+        Output.log("Import completed.")
         return None
 
     # Disables/hides paid services on UI.
@@ -2152,14 +2192,19 @@ class RetryableError(Exception):
 # Retry as long as func throws RetryableError.
 def retry_op(func, timeout=180):
     start_time = time.time()
-    while time.time() - start_time < timeout:
+    now = start_time
+    while True:
         try:
             return func()
         except RetryableError:
-            continue
+            pass
+        now = time.time()
+        if now - start_time > timeout:
+            break
+        time.sleep(0.5)
 
-        time.sleep(.5)
-    raise RuntimeError("Failed after retrying operation for {} secs.")
+    raise RuntimeError("Failed after retrying operation for {} secs.".format(
+        now - start_time))
 
 if __name__ == '__main__':
     ControlScript().run()
