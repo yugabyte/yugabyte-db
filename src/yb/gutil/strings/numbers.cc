@@ -1483,7 +1483,7 @@ namespace {
 
 string HumanizeBytes(uint64_t bytes, int precision) {
   std::ostringstream op_stream;
-  op_stream << std::setprecision(precision);
+  op_stream << std::fixed << std::setprecision(precision);
   if (bytes >= kBytesPerGB) {
     op_stream << static_cast<double> (bytes)/kBytesPerGB << " GB";
   } else if (bytes >= kBytesPerMB) {
