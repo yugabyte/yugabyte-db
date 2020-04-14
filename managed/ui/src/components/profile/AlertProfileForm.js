@@ -29,22 +29,25 @@ export default class AlertProfileForm extends Component {
     if (isNonAvailable(customer.features, "main.profile")) browserHistory.push('/');
   }
 
+  componentDidUpdate() {
+    const { customerProfile, handleProfileUpdate } = this.props;
+    const { statusUpdated } = this.state;
+    if (statusUpdated && (getPromiseState(customerProfile).isSuccess() ||
+        getPromiseState(customerProfile).isError())) {
+      handleProfileUpdate(customerProfile.data);
+      this.setState({statusUpdated: false});
+    }
+  }
+
   render() {
     const {
       customer = {},
       users = [],
-      customerProfile,
       updateCustomerDetails
     } = this.props;
 
     showOrRedirect(customer.data.features, "main.profile");
 
-    if (this.state.statusUpdated &&
-        (getPromiseState(customerProfile).isSuccess() ||
-         getPromiseState(customerProfile).isError())) {
-      this.props.handleProfileUpdate(customerProfile.data);
-      this.setState({statusUpdated: false});
-    }
     const validationSchema = Yup.object().shape({
       alertingData: Yup.object({
         sendAlertsToYb: Yup.boolean(),
