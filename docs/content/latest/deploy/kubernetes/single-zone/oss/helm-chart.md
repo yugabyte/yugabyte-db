@@ -1,8 +1,8 @@
 ---
-title: Open source Kubernetes 
+title: Deploy on OSS Kubernetes using Helm Chart 
 headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
-description: Open source Kubernetes 
+description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
 aliases:
   - /latest/deploy/kubernetes/oss/
   - /latest/deploy/kubernetes/oss/helm-chart/
