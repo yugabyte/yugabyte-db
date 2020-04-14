@@ -16,6 +16,7 @@ import time
 
 
 from googleapiclient import discovery
+from googleapiclient.errors import HttpError
 import oauth2client
 from six.moves import http_client
 
@@ -113,7 +114,18 @@ class GcpMetadata():
 
     @staticmethod
     def project():
-        return GcpMetadata._query_endpoint("/project/project-id")
+        network_data = GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
+        try:
+            # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
+            project = network_data.split('/')[1]
+        except IndexError:
+            return None
+
+        compute = discovery.build('compute', 'beta')
+        try:
+            return compute.projects().get(project=project).execute().get('name')
+        except HttpError:
+            return None
 
     @staticmethod
     def network():

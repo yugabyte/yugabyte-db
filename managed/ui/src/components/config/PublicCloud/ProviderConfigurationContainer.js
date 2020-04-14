@@ -39,7 +39,7 @@ const mapDispatchToProps = (dispatch) => {
           const hostNetwork = providerConfig["network"];
           const params = {
             "hostVpcId": hostNetwork,
-            "destVpcId": providerConfig["use_host_vpc"] ? hostNetwork : "",
+            "destVpcId": hostNetwork,
             "perRegionMetadata": perRegionMetadata
           };
           dispatch(bootstrapProvider(providerUUID, params)).then((boostrapResponse) => {

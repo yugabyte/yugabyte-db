@@ -72,13 +72,11 @@ class GCPProviderInitView extends Component {
     const perRegionMetadata = {};
     if (isNonEmptyString(vals.destVpcId)) {
       gcpCreateConfig["network"] = vals.destVpcId;
-      gcpCreateConfig["use_host_vpc"] = true;
-    } else {
-      gcpCreateConfig["use_host_vpc"] = false;
     }
     if (isNonEmptyString(vals.gcpProjectName)) {
       gcpCreateConfig["project_id"] = vals.gcpProjectName;
     }
+    gcpCreateConfig["use_host_vpc"] = vals.network_setup === "host_vpc";
     if (vals.network_setup !== "new_vpc") {
       vals.regionMapping.forEach((item) =>
         perRegionMetadata[item.region] = { "subnetId": item.subnet}

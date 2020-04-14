@@ -649,7 +649,8 @@ public class CloudProviderController extends AuthenticatedController {
         boolean shouldUseHostVpc = configNode.has("use_host_vpc")
                                      && configNode.get("use_host_vpc").asBoolean();
         contents = configNode.get("project_id");
-        if (!shouldUseHostVpc && contents != null && !contents.textValue().isEmpty()) {
+        if (!config.isEmpty() && !shouldUseHostVpc && contents != null
+            && !contents.textValue().isEmpty()) {
           config.put("project_id", contents.textValue());
         }
 
