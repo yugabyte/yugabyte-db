@@ -39,18 +39,18 @@ menu:
     </a>
   </div>
 
-    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="core-functions/">
-        <div class="head">
-          <img class="icon" src="/images/section_icons/architecture/core_functions.png" aria-hidden="true" />
-          <div class="articles">5 articles</div>
-          <div class="title">Core functions</div>
-        </div>
-        <div class="body">
-          Understand universe creation, table creation, write IO path, read IO path, and high availability.
-        </div>
-      </a>
-    </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="core-functions/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/core_functions.png" aria-hidden="true" />
+        <div class="articles">5 articles</div>
+        <div class="title">Core functions</div>
+      </div>
+      <div class="body">
+        Understand universe creation, table creation, write IO path, read IO path, and high availability.
+      </div>
+    </a>
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="layered-architecture/">
@@ -64,7 +64,7 @@ menu:
     </a>
   </div>
 
-    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="query-layer/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />
