@@ -79,6 +79,11 @@ showAsideToc: true
     - CentOS: `yum install curl`
     - Ubuntu: `apt install curl`
 
+4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, 
+you can soon end up creating a large number of files in the current shell. 
+Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
+
+
 ## Download YugabyteDB
 
 1. Download the YugabyteDB package using the following `wget` command.

@@ -117,7 +117,6 @@ PgDocOp::~PgDocOp() {
 }
 
 void PgDocOp::Initialize(const PgExecParameters *exec_params) {
-  result_cache_.clear();
   end_of_data_ = false;
   if (exec_params) {
     exec_params_ = *exec_params;
@@ -136,21 +135,24 @@ Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
   return RequestSent(response_.InProgress());
 }
 
-Status PgDocOp::GetResult(list<PgDocResult::SharedPtr> *rowsets) {
+Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
   // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
 
-  if (result_cache_.empty() && !end_of_data_) {
-    DCHECK(response_.InProgress());
-    RETURN_NOT_OK(ProcessResponse(response_.GetStatus()));
-    // In case ProcessResponse doesn't fail with an error
-    // it should fill result_cache_ and/or set end_of_data_.
-    DCHECK(!result_cache_.empty() || end_of_data_);
-  }
+  if (!end_of_data_) {
+    // Send request now in case prefetching was suppressed.
+    if (suppress_next_result_prefetching_ && !response_.InProgress()) {
+      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
+    }
 
-  if (!result_cache_.empty()) {
-    rowsets->splice(rowsets->end(), result_cache_);
-    if (result_cache_.empty() && !end_of_data_) {
+    DCHECK(response_.InProgress());
+    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus()));
+    // In case ProcessResponse doesn't fail with an error
+    // it should return non empty rows and/or set end_of_data_.
+    DCHECK(!rows.empty() || end_of_data_);
+    rowsets->splice(rowsets->end(), rows);
+    // Prefetch next portion of data if needed.
+    if (!(end_of_data_ || suppress_next_result_prefetching_)) {
       RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
     }
   }
@@ -171,11 +173,15 @@ Status PgDocOp::SendRequest(bool force_non_bufferable) {
   return exec_status_;
 }
 
-Status PgDocOp::ProcessResponse(const Status& status) {
+Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(const Status& status) {
   DCHECK(exec_status_.ok());
-  exec_status_ = status.ok() ? ProcessResponseImpl(status) : status;
-  if (!exec_status_.ok()) {
-    end_of_data_ = true;
+  exec_status_ = status;
+  if (exec_status_.ok()) {
+    auto result = ProcessResponseImpl();
+    if (result.ok()) {
+      return result;
+    }
+    exec_status_ = result.status();
   }
   return exec_status_;
 }
@@ -300,8 +306,10 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
 
   // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
   int64_t limit_count = exec_params_.limit_count + exec_params_.limit_offset;
+  suppress_next_result_prefetching_ = true;
   if (exec_params_.limit_use_default || limit_count > predicted_limit) {
     limit_count = predicted_limit;
+    suppress_next_result_prefetching_ = false;
   }
   req->set_limit(limit_count);
 }
@@ -438,7 +446,8 @@ Status PgDocReadOp::SendRequestImpl(bool force_non_bufferable) {
   return Status::OK();
 }
 
-Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
+Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
+  std::list<PgDocResult> result;
   for (const auto& read_op : read_ops_) {
     RETURN_NOT_OK(pg_session_->HandleResponse(*read_op, PgObjectId()));
   }
@@ -446,14 +455,14 @@ Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
   if (batch_row_orders_.size() == 0) {
     for (auto& read_op : read_ops_) {
       DCHECK(!read_op->rows_data().empty()) << "Read operation should not return empty data";
-      result_cache_.push_back(make_shared<PgDocResult>(read_op->rows_data()));
+      result.emplace_back(read_op->rows_data());
     }
   } else {
     for (int partition = 0; partition < batch_ops_.size(); partition++) {
       if (batch_ops_[partition]->mutable_request()->has_ybctid_column_value()) {
         // Read the response as this request has been initialized and send to tablet server.
-        result_cache_.push_back(make_shared<PgDocResult>(batch_ops_[partition]->rows_data(),
-                                                         std::move(batch_row_orders_[partition])));
+        result.emplace_back(batch_ops_[partition]->rows_data(),
+                            std::move(batch_row_orders_[partition]));
       }
     }
   }
@@ -538,7 +547,7 @@ Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
   }), read_ops_.end());
 
   end_of_data_ = read_ops_.empty() && !can_produce_more_ops_;
-  return Status::OK();
+  return result;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -557,15 +566,16 @@ Status PgDocWriteOp::SendRequestImpl(bool force_non_bufferable) {
   return Status::OK();
 }
 
-Status PgDocWriteOp::ProcessResponseImpl(const Status& exec_status) {
+Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl() {
   RETURN_NOT_OK(pg_session_->HandleResponse(*write_op_, relation_id_));
+  std::list<PgDocResult> result;
   if (PREDICT_FALSE(!write_op_->rows_data().empty())) {
-    result_cache_.push_back(make_shared<PgDocResult>(write_op_->rows_data()));
+    result.emplace_back(write_op_->rows_data());
   }
   rows_affected_count_ = write_op_.get()->response().rows_affected_count();
   end_of_data_ = true;
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
-  return Status::OK();
+  return result;
 }
 
 }  // namespace pggate
