@@ -106,7 +106,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-architecture/">
       <div class="head">
-        <!-- img class="icon" src="/images/section_icons/architecturedistributed_acid.png" aria-hidden="true" / -->
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
         <div class="title">Change data capture (CDC)</div>
       </div>
       <div class="body">
@@ -118,7 +118,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="2dc-deployments/">
       <div class="head">
-        <!-- img class="icon" src="/images/section_iconsarchitecturedistributed_acid.png" aria-hidden="true" / -->
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
         <div class="title">Two data center (2DC) deployments</div>
       </div>
       <div class="body">
