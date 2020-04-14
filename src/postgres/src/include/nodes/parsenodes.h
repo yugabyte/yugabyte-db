@@ -2148,7 +2148,7 @@ typedef struct Constraint
 	bool		skip_validation;	/* skip validation of existing rows? */
 	bool		initially_valid;	/* mark the new constraint as valid? */
 
-	/* For YugaByte LSM priamry or unique key defined inline with the table
+	/* For YugaByte LSM primary or unique key defined inline with the table
 	 * definition, we allow the key definition to include the sorting info
 	 * like "create table (... primary key (h hash, r1 asc, r2 desc))".
 	 * We save the IndexElem of the attributes in 'yb_index_params' to access

@@ -963,11 +963,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   }
   tablets_bar_index.Swap(&tablets);
 
-  // Fail when creating a hash partition table without opt-out.
-  const auto status = conn.Execute("CREATE TABLE baz (a INT)");
-  ASSERT_FALSE(status.ok());
-  ASSERT_STR_CONTAINS(
-      status.ToString(), "Cannot create hash partitioned table in colocated database");
+  // Create a range partition table without specifying primary key.
+  ASSERT_OK(conn.Execute("CREATE TABLE baz (a INT)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "baz"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
 
   // Create another table and index.
   ASSERT_OK(conn.Execute("CREATE TABLE qux (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true)"));
