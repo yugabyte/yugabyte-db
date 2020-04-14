@@ -100,7 +100,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	(string_to_array(tables_names, ',')) tables_names,
 	wait_event,
 	wait_event_type 
-FROM  pg_stat_monitor(true) m, pg_stat_wait_events() w WHERE (w.queryid = m.queryid) OR w.queryid IS NULL;
+from  pg_stat_monitor(true) m LEFT OUTER JOIN pg_stat_wait_events() w ON w.queryid = m.queryid;
 
 
 -- Register a view on the function for ease of use.
