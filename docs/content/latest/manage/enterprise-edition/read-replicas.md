@@ -12,22 +12,22 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to create a universe with both a primary and [read replica](../../../architecture/concepts/replication/#read-only-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove, a read replica cluster. In this example, we are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
+This section will describe how to create a universe with both a primary and [read replica](../../../architecture/concepts/replication/#read-only-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove, a read replica cluster. In this example, you are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
 
 ## Create the universe
 
-First, we are going to enter the following values to create a primary cluster on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider. Click **Create Universe** and then enter the following intent.
+First, enter the following values to create a primary cluster on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider. Click **Create Universe** and then enter the following intent.
 
 - Enter a universe name: **helloworld3**
 - Enter the set of regions: **Oregon**
 - Enter the replication factor: **3**
 - Change instance type: **n1-standard-8**
-- Add the following GFlag for Master and T-Server: **leader_failure_max_missed_heartbeat_periods = 10**. Since the the data is globally replicated, RPC latencies are higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+- Add the following GFlag (flag) for Master and T-Server: **leader_failure_max_missed_heartbeat_periods = 10**. Since the the data is globally replicated, RPC latencies are higher. You can use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 
 Then, click **Configure Read Replica** and then enter the following intent to create a read replica
-cluster on [AWS](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-aws). 
+cluster on [AWS](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-aws).
 
 - Enter the set of regions: **US East**
 - Enter the replication factor: **3**
@@ -35,7 +35,7 @@ cluster on [AWS](../../../deploy/enterprise-edition/configure-cloud-providers/#c
 
 ![Create Read Replica Cluster on AWS](/images/ee/read-replica-creation.png)
 
-Since we do not need to a establish a quorum for read replica clusters, the replication factor can be
+Since you do not need to a establish a quorum for read replica clusters, the replication factor can be
 either even or odd. Click **Create**.
 
 ## Examine the universe
@@ -48,7 +48,7 @@ Once the universe is created, you should see something like this in the universe
 
 ![Universe Overview](/images/ee/universe-overview.png)
 
-Note how we have a distinguished primary and read replica cluster defined, designated by the yellow and green groups respectively. 
+Note how you have a distinguished primary and read replica cluster defined, designated by the yellow and green groups respectively.
 
 ### Universe nodes
 
