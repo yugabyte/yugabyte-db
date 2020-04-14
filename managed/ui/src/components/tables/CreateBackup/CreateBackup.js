@@ -132,7 +132,8 @@ export default class CreateBackup extends Component {
           onFormSubmit={(values) => {
             const payload = {
               ...values,
-              backupTableUUID: values.backupTableUUID.map(x => x.value),
+              backupTableUUID: Array.isArray(values.backupTableUUID) ? 
+                values.backupTableUUID.map(x => x.value) : [values.backupTableUUID.value],
               storageConfigUUID: values.storageConfigUUID.value,
             };
             this.createBackup(payload);
