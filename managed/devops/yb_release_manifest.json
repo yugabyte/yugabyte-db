@@ -21,6 +21,7 @@
     "bin/ssh_wrapper_with_sudo.sh",
     "bin/yb_bulk_load.py",
     "bin/yb_backup.py",
+    "bin/yb_platform_backup.sh",
     "bin/ybcloud.sh"
   ],
   "filter_plugins": [
