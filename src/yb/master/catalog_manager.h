@@ -1049,6 +1049,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   template <class Loader>
   CHECKED_STATUS Load(const std::string& title, const int64_t term);
 
+  virtual void Started() {}
+
   // ----------------------------------------------------------------------------------------------
   // Private member fields
   // ----------------------------------------------------------------------------------------------

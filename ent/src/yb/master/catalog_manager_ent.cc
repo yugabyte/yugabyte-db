@@ -41,6 +41,8 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/encryption_manager.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/tserver/backup.proxy.h"
@@ -227,6 +229,7 @@ CatalogManager::~CatalogManager() {
 }
 
 void CatalogManager::Shutdown() {
+  snapshot_coordinator_.Shutdown();
   if (cdc_ybclient_) {
     cdc_ybclient_->Shutdown();
   }
@@ -1143,6 +1146,19 @@ void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletI
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
   WARN_NOT_OK(call->Run(), "Failed to send delete snapshot request");
+}
+
+rpc::Scheduler& CatalogManager::Scheduler() {
+  return master_->messenger()->scheduler();
+}
+
+bool CatalogManager::IsLeader() {
+  auto consensus = tablet_peer()->shared_consensus();
+  if (!consensus) {
+    return false;
+  }
+  auto leader_status = consensus->GetLeaderStatus(/* allow_stale= */ true);
+  return leader_status == consensus::LeaderStatus::LEADER_AND_READY;
 }
 
 void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) {
@@ -2987,6 +3003,10 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
   auto l = universe->LockForRead();
   resp->mutable_entry()->CopyFrom(l->data().pb);
   return Status::OK();
+}
+
+void CatalogManager::Started() {
+  snapshot_coordinator_.Start();
 }
 
 } // namespace enterprise

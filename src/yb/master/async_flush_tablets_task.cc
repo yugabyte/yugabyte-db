@@ -69,14 +69,14 @@ void AsyncFlushTablets::HandleResponse(int attempt) {
         LOG(WARNING) << "TS " << permanent_uuid() << ": flush tablets failed because tablet "
                      << resp_.failed_tablet_id() << " was not found. "
                      << "No further retry: " << status.ToString();
-        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+        TransitionToCompleteState();
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": flush tablets failed: "
                      << status.ToString();
     }
   } else {
-    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+    TransitionToCompleteState();
     VLOG(1) << "TS " << permanent_uuid() << ": flush tablets complete";
   }
 

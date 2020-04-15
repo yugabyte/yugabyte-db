@@ -180,7 +180,7 @@ class BackfillTableJob : public MonitoredTask {
 
   void SetState(MonitoredTaskState new_state);
 
-  MonitoredTaskState AbortAndReturnPrevState() override;
+  MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
 
   void MarkDone() {
     completion_timestamp_ = MonoTime::Now();

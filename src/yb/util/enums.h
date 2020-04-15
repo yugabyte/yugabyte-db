@@ -156,8 +156,20 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
           "Type of enum value passed to FATAL_INVALID_ENUM_VALUE must be " \
           BOOST_PP_STRINGIZE(enum_type)); \
       ::yb::FatalInvalidEnumValueInternal<enum_type>( \
-          BOOST_PP_STRINGIZE(enum_type), _value_copy, BOOST_PP_STRINGIZE(value_macro_arg), \
-          __FILE__, __LINE__); \
+          BOOST_PP_STRINGIZE(enum_type), std::string(), _value_copy, \
+          BOOST_PP_STRINGIZE(value_macro_arg), __FILE__, __LINE__); \
+    } while (0)
+
+#define FATAL_INVALID_PB_ENUM_VALUE(enum_type, value_macro_arg) \
+    do { \
+      auto _value_copy = (value_macro_arg); \
+      static_assert( \
+          std::is_same<decltype(_value_copy), enum_type>::value, \
+          "Type of enum value passed to FATAL_INVALID_ENUM_VALUE must be " \
+          BOOST_PP_STRINGIZE(enum_type)); \
+      ::yb::FatalInvalidEnumValueInternal<enum_type>( \
+          BOOST_PP_STRINGIZE(enum_type), BOOST_PP_CAT(enum_type, _Name)(_value_copy), _value_copy, \
+          BOOST_PP_STRINGIZE(value_macro_arg), __FILE__, __LINE__); \
     } while (0)
 
 template<typename T>
@@ -172,6 +184,7 @@ std::string GetTypeName() {
 template<typename Enum>
 [[noreturn]] void FatalInvalidEnumValueInternal(
     const char* enum_name,
+    const std::string& value_str,
     Enum value,
     const char* expression_str,
     const char* fname,
@@ -180,7 +193,9 @@ template<typename Enum>
       << "Invalid value of enum " << enum_name << " ("
       << "full enum type: " << GetTypeName<Enum>() << ", "
       << "expression: " << expression_str << "): "
-      << std::to_string(to_underlying(value)) << ".";
+      << value_str << (!value_str.empty() ? " (" : "")
+      << std::to_string(to_underlying(value))
+      << (!value_str.empty() ? ")" : "") << ".";
   abort();  // Never reached.
 }
 
