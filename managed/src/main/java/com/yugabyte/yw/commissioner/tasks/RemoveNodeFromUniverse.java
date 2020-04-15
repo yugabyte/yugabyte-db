@@ -134,21 +134,20 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
           throw new RuntimeException("Error getting placement info for cluster with node: " +
                                      currentNode.nodeName);
         }
-        // Since numNodes can never be less, that will mean there is a potential node to move
-        // data to.
-        if (userIntent.numNodes > userIntent.replicationFactor) {
-          // We only want to move data if the number of nodes in the zone are more than the RF
-          // of the zone.
-          if (nodesInZone > rfInZone) {
-            createWaitForDataMoveTask()
-                .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-          }
-        }
-
-        // Stop the tserver process only if it is reachable.
+        // Perform a data migration and stop the tserver process only if it is reachable.
         boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
         LOG.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
         if (tserverReachable) {
+          // Since numNodes can never be less, that will mean there is a potential node to move
+          // data to.
+          if (userIntent.numNodes > userIntent.replicationFactor) {
+            // We only want to move data if the number of nodes in the zone are more than the RF
+            // of the zone.
+            if (nodesInZone > rfInZone) {
+              createWaitForDataMoveTask()
+                  .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+            }
+          }
           createTServerTaskForNode(currentNode, "stop")
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
