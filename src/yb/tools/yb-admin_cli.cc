@@ -224,36 +224,58 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         return Status::OK();
       });
 
+  static const auto kIncludeDBType = "include_db_type";
+  static const auto kIncludeTableId = "include_table_id";
+
   Register(
-      "list_tables", "",
-      [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->ListTables(false /* include_db_type */),
+      "list_tables", Format(" [$0] [$1]", kIncludeDBType, kIncludeTableId),
+      [client](const CLIArguments& args) -> Status {
+        bool include_db_type = false;
+        bool include_table_id = false;
+        const std::array<std::pair<const char*, bool*>, 2> flags{
+            std::make_pair(kIncludeDBType, &include_db_type),
+            std::make_pair(kIncludeTableId, &include_table_id)
+        };
+        for (const auto& arg :  args) {
+          for (const auto& flag : flags) {
+            if (flag.first == arg) {
+              *flag.second = true;
+            }
+          }
+        }
+        RETURN_NOT_OK_PREPEND(client->ListTables(include_db_type, include_table_id),
                               "Unable to list tables");
         return Status::OK();
       });
 
+  // Deprecated list_tables commands with arguments should be used instead.
   Register(
       "list_tables_with_db_types", "",
       [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->ListTables(true /* include_db_type */),
-                              "Unable to list tables");
+        RETURN_NOT_OK_PREPEND(
+            client->ListTables(true /* include_db_type */, false /* include_table_id*/),
+            "Unable to list tables");
         return Status::OK();
       });
 
   Register(
-      "list_tablets", " <keyspace> <table_name> [max_tablets] (default 10, set 0 for max)",
+      "list_tablets",
+      " <(<keyspace> <table_name>)|<table_id>> [max_tablets] (default 10, set 0 for max)",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 4) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int max = -1;
-        if (args.size() > 4) {
-          max = VERIFY_RESULT(CheckedStoi(args[4]));
-        }
-        RETURN_NOT_OK_PREPEND(client->ListTablets(table_name, max),
-                              Substitute("Unable to list tablets of table $0",
-                                         table_name.ToString()));
+        const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
+            client, args.begin() + 2, args.end(),
+            [&max](auto i, const auto& end) -> Status {
+              if (std::next(i) == end) {
+                max = VERIFY_RESULT(CheckedStoi(*i));
+                return Status::OK();
+              }
+              return ClusterAdminCli::kInvalidArguments;
+            }
+        ));
+        RETURN_NOT_OK_PREPEND(
+            client->ListTablets(table_name, max),
+            Substitute("Unable to list tablets of table $0", table_name.ToString()));
         return Status::OK();
       });
 
@@ -332,13 +354,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_table", " <keyspace> <table_name>",
+      "delete_table", " <(<keyspace> <table_name>)|<table_id>>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
-
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin() + 2, args.end()));
         RETURN_NOT_OK_PREPEND(client->DeleteTable(table_name),
                               Substitute("Unable to delete table $0", table_name.ToString()));
         return Status::OK();
@@ -356,13 +375,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_index", " <keyspace> <index_name>",
+      "delete_index", " <(<keyspace> <index_name>)|<index_id>>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
-
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin() + 2, args.end()));
         RETURN_NOT_OK_PREPEND(client->DeleteIndex(table_name),
                               Substitute("Unable to delete index $0", table_name.ToString()));
         return Status::OK();
@@ -380,18 +396,21 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "flush_table", " <keyspace> <table_name> [timeout_in_seconds] (default 20)",
+      "flush_table", " <(<keyspace> <table_name>)|<table_id>> [timeout_in_seconds] (default 20)",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4 && args.size() != 5) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int timeout_secs = 20;
-        if (args.size() > 4) {
-          timeout_secs = VERIFY_RESULT(CheckedStoi(args[4]));
-        }
-
-        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs,
+        const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
+            client, args.begin() + 2, args.end(),
+            [&timeout_secs](auto i, const auto& end) -> Status {
+              if (std::next(i) == end) {
+                timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
+                return Status::OK();
+              }
+              return ClusterAdminCli::kInvalidArguments;
+            }
+        ));
+        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name,
+                                                 timeout_secs,
                                                  false /* is_compaction */),
                               Substitute("Unable to flush table $0", table_name.ToString()));
         return Status::OK();
@@ -414,19 +433,22 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "compact_table", " <keyspace> <table_name> [timeout_in_seconds] (default 20)",
+      "compact_table", " <(<keyspace> <table_name>)|<table_id>> [timeout_in_seconds] (default 20)",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4 && args.size() != 5) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
         int timeout_secs = 20;
-        if (args.size() > 4) {
-          timeout_secs = VERIFY_RESULT(CheckedStoi(args[4]));
-        }
-
+        const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
+            client, args.begin() + 2, args.end(),
+            [&timeout_secs](auto i, const auto& end) -> Status {
+              if (std::next(i) == end) {
+                timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
+                return Status::OK();
+              }
+              return ClusterAdminCli::kInvalidArguments;
+            }
+        ));
         // We use the same FlushTables RPC to trigger compaction.
-        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs,
+        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name,
+                                                 timeout_secs,
                                                  true /* is_compaction */),
                               Substitute("Unable to compact table $0", table_name.ToString()));
         return Status::OK();
@@ -568,12 +590,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "list_leader_counts", " <keyspace> <table_name>",
+      "list_leader_counts", " <(<keyspace> <table_name>)|<table_id>>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin() + 2, args.end()));
         RETURN_NOT_OK_PREPEND(client->ListLeaderCounts(table_name),
                               "Unable to get leader counts");
         return Status::OK();
@@ -626,14 +646,51 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 }
 
-Result<YBTableName> ResolveTableName(ClusterAdminClientClass* client,
-                                     const string& full_namespace_name,
-                                     const string& table_name) {
-  const auto typed_name = VERIFY_RESULT(ParseNamespaceName(full_namespace_name));
-  const auto& namespace_info = VERIFY_RESULT_REF(client->GetNamespaceInfo(typed_name.db_type,
-                                                                          typed_name.name));
-  return YBTableName(
-      namespace_info.database_type(), namespace_info.id(), namespace_info.name(), table_name);
+Result<std::vector<client::YBTableName>> ResolveTableNames(ClusterAdminClientClass* client,
+                                                           CLIArgumentsIterator i,
+                                                           const CLIArgumentsIterator& end,
+                                                           TailArgumentsProcessor tail_processor) {
+  auto resolver = VERIFY_RESULT(client->BuildTableNameResolver());
+  auto tail = i;
+  // Greedy algorithm of taking as much tables as possible.
+  for (; i != end; ++i) {
+    const auto result = resolver.Feed(*i);
+    if (!result.ok()) {
+      // If tail arguments were not processed suppose it is bad table
+      // and return its parsing error instead.
+      if (tail_processor && tail_processor(tail, end).ok()) {
+        break;
+      }
+      return result.status();
+    }
+    if (*result) {
+      tail = std::next(i);
+    }
+  }
+  // Handle case when no table name is followed keyspace.
+  if (tail != end) {
+    if (tail_processor) {
+      RETURN_NOT_OK(tail_processor(tail, end));
+    } else {
+      return STATUS(InvalidArgument, "Table name is missed");
+    }
+  }
+  auto tables = std::move(resolver.values());
+  if (tables.empty()) {
+    return STATUS(InvalidArgument, "Empty list of tables");
+  }
+  return tables;
+}
+
+Result<client::YBTableName> ResolveSingleTableName(ClusterAdminClientClass* client,
+                                                   CLIArgumentsIterator i,
+                                                   const CLIArgumentsIterator& end,
+                                                   TailArgumentsProcessor tail_processor) {
+  auto tables = VERIFY_RESULT(ResolveTableNames(client, i, end, tail_processor));
+  if (tables.size() != 1) {
+    return STATUS_FORMAT(InvalidArgument, "Single table expected, $0 found", tables.size());
+  }
+  return std::move(tables.front());
 }
 
 }  // namespace tools

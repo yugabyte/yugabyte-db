@@ -59,26 +59,20 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "create_snapshot",
-      " <keyspace> <table_name> [<keyspace> <table_name>]... [flush_timeout_in_seconds]"
-      " (default 60, set 0 to skip flushing)",
+      " <(<keyspace> <table_name>)|<table_id>> [<(<keyspace> <table_name>)|<table_id>>]..."
+      " [flush_timeout_in_seconds] (default 60, set 0 to skip flushing)",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 4) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-
-        const int num_tables = (args.size() - 2)/2;
-        vector<YBTableName> tables;
-        tables.reserve(num_tables);
-
-        for (int i = 0; i < num_tables; ++i) {
-          tables.push_back(VERIFY_RESULT(ResolveTableName(client, args[2 + i*2], args[3 + i*2])));
-        }
-
         int timeout_secs = 60;
-        if (args.size() % 2 == 1) {
-          timeout_secs = VERIFY_RESULT(CheckedStoi(args[args.size() - 1]));
-        }
-
+        const auto tables = VERIFY_RESULT(ResolveTableNames(
+            client, args.begin() + 2, args.end(),
+            [&timeout_secs](auto i, const auto& end) -> Status {
+              if (std::next(i) == end) {
+                timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
+                return Status::OK();
+              }
+              return ClusterAdminCli::kInvalidArguments;
+            }
+        ));
         RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, timeout_secs),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));
@@ -155,12 +149,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "list_replica_type_counts", " <keyspace> <table_name>",
+      "list_replica_type_counts", " <(<keyspace> <table_name>)|<table_id>>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin() + 2, args.end()));
         RETURN_NOT_OK_PREPEND(client->ListReplicaTypeCounts(table_name),
                               "Unable to list live and read-only replica counts");
         return Status::OK();

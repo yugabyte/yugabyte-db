@@ -1302,24 +1302,8 @@ Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
   return data_->SetReplicationInfo(this, replication_info, deadline);
 }
 
-Status YBClient::ListTables(vector<YBTableName>* tables,
-                            const string& filter,
-                            bool exclude_ysql) {
-  std::vector<std::pair<std::string, YBTableName>> tables_with_ids;
-  RETURN_NOT_OK(ListTablesWithIds(&tables_with_ids, filter, exclude_ysql));
-  tables->clear();
-  tables->reserve(tables_with_ids.size());
-  for (const auto& table_with_id : tables_with_ids) {
-    tables->emplace_back(table_with_id.second);
-  }
-  return Status::OK();
-}
-
-Status YBClient::ListTablesWithIds(
-    std::vector<std::pair<std::string, YBTableName>>* tables_with_ids,
-    const std::string& filter,
-    bool exclude_ysql) {
-  tables_with_ids->clear();
+Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
+                                                      bool exclude_ysql) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
@@ -1327,6 +1311,8 @@ Status YBClient::ListTablesWithIds(
     req.set_name_filter(filter);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
+  std::vector<YBTableName> result;
+  result.reserve(resp.tables_size());
   for (int i = 0; i < resp.tables_size(); i++) {
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
     DCHECK(table_info.has_namespace_());
@@ -1335,21 +1321,17 @@ Status YBClient::ListTablesWithIds(
     if (exclude_ysql && table_info.table_type() == TableType::PGSQL_TABLE_TYPE) {
       continue;
     }
-    tables_with_ids->emplace_back(
-        table_info.id(),
-        YBTableName(master::GetDatabaseTypeForTable(table_info.table_type()),
-                    table_info.namespace_().id(),
-                    table_info.namespace_().name(),
-                    table_info.id(),
-                    table_info.name()));
+    result.emplace_back(master::GetDatabaseTypeForTable(table_info.table_type()),
+                        table_info.namespace_().id(),
+                        table_info.namespace_().name(),
+                        table_info.id(),
+                        table_info.name());
   }
-  return Status::OK();
+  return result;
 }
 
 Result<bool> YBClient::TableExists(const YBTableName& table_name) {
-  vector<YBTableName> tables;
-  RETURN_NOT_OK(ListTables(&tables, table_name.table_name()));
-  for (const YBTableName& table : tables) {
+  for (const YBTableName& table : VERIFY_RESULT(ListTables(table_name.table_name()))) {
     if (table == table_name) {
       return true;
     }
