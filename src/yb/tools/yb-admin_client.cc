@@ -35,6 +35,11 @@
 #include <sstream>
 #include <type_traits>
 
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/composite_key.hpp>
+#include <boost/multi_index/global_fun.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 #include <boost/tti/has_member_function.hpp>
 
 #include "yb/common/redis_constants_common.h"
@@ -118,7 +123,7 @@ static constexpr const char* kDBTypePrefixUnknown = "unknown";
 static constexpr const char* kDBTypePrefixCql = "ycql";
 static constexpr const char* kDBTypePrefixYsql = "ysql";
 static constexpr const char* kDBTypePrefixRedis = "yedis";
-
+static constexpr const char* kTableIDPrefix = "tableid";
 
 string FormatHostPort(const HostPortPB& host_port) {
   return Format("$0:$1", host_port.host(), host_port.port());
@@ -170,7 +175,251 @@ Result<Response> ResponseResult(Response&& response,
   return std::move(response);
 }
 
+const char* DatabasePrefix(YQLDatabase db) {
+  switch(db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
+    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
+    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypePrefixUnknown;
+}
+
+Result<TypedNamespaceName> ResolveNamespaceName(const Slice& prefix, const Slice& name) {
+  auto db_type = YQL_DATABASE_UNKNOWN;
+  if (!prefix.empty()) {
+    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
+        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
+        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
+        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
+    for (const auto& p : type_prefixes) {
+      if (prefix == p.first) {
+        db_type = p.second;
+        break;
+      }
+    }
+
+    if (db_type == YQL_DATABASE_UNKNOWN) {
+      return STATUS_FORMAT(InvalidArgument, "Invalid db type name '$0'", prefix);
+    }
+  } else {
+    db_type = (name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS : YQL_DATABASE_CQL);
+  }
+  return TypedNamespaceName{.db_type = db_type, .name = name.cdata()};
+}
+
+Slice GetTableIdAsSlice(const YBTableName& table_name) {
+  return table_name.table_id();
+}
+
+Slice GetNamespaceIdAsSlice(const YBTableName& table_name) {
+  return table_name.namespace_id();
+}
+
+Slice GetTableNameAsSlice(const YBTableName& table_name) {
+  return table_name.table_name();
+}
+
+std::string FullNamespaceName(const master::NamespaceIdentifierPB& ns) {
+  return Format("$0.$1", DatabasePrefix(ns.database_type()), ns.name());
+}
+
+struct NamespaceKey {
+  explicit NamespaceKey(const master::NamespaceIdentifierPB& ns)
+      : db_type(ns.database_type()), name(ns.name()) {
+  }
+
+  NamespaceKey(YQLDatabase d, const Slice& n)
+      : db_type(d), name(n) {
+  }
+
+  YQLDatabase db_type;
+  Slice name;
+};
+
+struct NamespaceComparator {
+  using is_transparent = void;
+
+  bool operator()(const master::NamespaceIdentifierPB& lhs,
+                  const master::NamespaceIdentifierPB& rhs) const {
+    return (*this)(NamespaceKey(lhs), NamespaceKey(rhs));
+  }
+
+  bool operator()(const master::NamespaceIdentifierPB& lhs, const NamespaceKey& rhs) const {
+    return (*this)(NamespaceKey(lhs), rhs);
+  }
+
+  bool operator()(const NamespaceKey& lhs, const master::NamespaceIdentifierPB& rhs) const {
+    return (*this)(lhs, NamespaceKey(rhs));
+  }
+
+  bool operator()(const NamespaceKey& lhs, const NamespaceKey& rhs) const {
+    return lhs.db_type < rhs.db_type ||
+           (lhs.db_type == rhs.db_type && lhs.name.compare(rhs.name) < 0);
+  }
+};
+
+struct DotStringParts {
+  Slice prefix;
+  Slice value;
+};
+
+DotStringParts SplitByDot(const std::string& str) {
+  const size_t dot_pos = str.find('.');
+  DotStringParts result{.prefix = Slice(), .value = str};
+  if (dot_pos != string::npos) {
+    result.prefix = Slice(str.data(), dot_pos);
+    result.value.remove_prefix(dot_pos + 1);
+  }
+  return result;
+}
+
 }  // anonymous namespace
+
+class TableNameResolver::Impl {
+ public:
+  struct TableIdTag;
+  struct TableNameTag;
+  using Values = std::vector<client::YBTableName>;
+
+  Impl(std::vector<YBTableName> tables, vector<master::NamespaceIdentifierPB> namespaces)
+      : current_namespace_(nullptr) {
+    std::move(tables.begin(), tables.end(), std::inserter(tables_, tables_.end()));
+    std::move(namespaces.begin(), namespaces.end(), std::inserter(namespaces_, namespaces_.end()));
+  }
+
+  Result<bool> Feed(const std::string& str) {
+    const auto result = FeedImpl(str);
+    if (!result.ok()) {
+      current_namespace_ = nullptr;
+    }
+    return result;
+  }
+
+  Values& values() {
+    return values_;
+  }
+
+ private:
+  Result<bool> FeedImpl(const std::string& str) {
+    auto parts = SplitByDot(str);
+    if (parts.prefix == kTableIDPrefix) {
+      RETURN_NOT_OK(ProcessTableId(parts.value));
+      return true;
+    } else {
+      if (!current_namespace_) {
+        RETURN_NOT_OK(ProcessNamespace(parts.prefix, parts.value));
+      } else {
+        if (parts.prefix.empty()) {
+          RETURN_NOT_OK(ProcessTableName(parts.value));
+          return true;
+        }
+        return STATUS(InvalidArgument, "Wrong table name " + str);
+      }
+    }
+    return false;
+  }
+
+  CHECKED_STATUS ProcessNamespace(const Slice& prefix, const Slice& value) {
+    DCHECK(!current_namespace_);
+    const auto ns = VERIFY_RESULT(ResolveNamespaceName(prefix, value));
+    const auto i = namespaces_.find(NamespaceKey(ns.db_type, ns.name));
+    if (i != namespaces_.end()) {
+      current_namespace_ = &*i;
+      return Status::OK();
+    }
+    return STATUS_FORMAT(
+        InvalidArgument, "Namespace '$0' of type '$1' not found",
+        ns.name, DatabasePrefix(ns.db_type));
+  }
+
+  CHECKED_STATUS ProcessTableId(const Slice& table_id) {
+    const auto& idx = tables_.get<TableIdTag>();
+    const auto i = idx.find(table_id);
+    if (i == idx.end()) {
+      return STATUS_FORMAT(InvalidArgument, "Table with id '$0' not found", table_id);
+    }
+    if (current_namespace_ && current_namespace_->id() != i->namespace_id()) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Table with id '$0' belongs to different namespace '$1'",
+          table_id, FullNamespaceName(*current_namespace_));
+    }
+    AppendTable(*i);
+    return Status::OK();
+  }
+
+  CHECKED_STATUS ProcessTableName(const Slice& table_name) {
+    DCHECK(current_namespace_);
+    const auto& idx = tables_.get<TableNameTag>();
+    const auto key = boost::make_tuple(Slice(current_namespace_->id()), table_name);
+    // For some reason idx.equal_range(key) failed to compile.
+    const auto range = std::make_pair(idx.lower_bound(key), idx.upper_bound(key));
+    switch (std::distance(range.first, range.second)) {
+      case 0:
+        return STATUS_FORMAT(
+            InvalidArgument, "Table with name '$0' not found in namespace '$1'",
+            table_name, FullNamespaceName(*current_namespace_));
+      case 1:
+        AppendTable(*range.first);
+        return Status::OK();
+      default:
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Namespace '$0' has multiple tables named '$1', specify table id instead",
+            FullNamespaceName(*current_namespace_), table_name);
+    }
+  }
+
+  void AppendTable(const YBTableName& table) {
+    current_namespace_ = nullptr;
+    values_.push_back(table);
+  }
+
+  using TableContainer = boost::multi_index_container<YBTableName,
+      boost::multi_index::indexed_by<
+          boost::multi_index::ordered_unique<
+              boost::multi_index::tag<TableIdTag>,
+              boost::multi_index::global_fun<const YBTableName&, Slice, &GetTableIdAsSlice>,
+              Slice::Comparator
+          >,
+          boost::multi_index::ordered_non_unique<
+              boost::multi_index::tag<TableNameTag>,
+              boost::multi_index::composite_key<
+                  YBTableName,
+                  boost::multi_index::global_fun<const YBTableName&, Slice, &GetNamespaceIdAsSlice>,
+                  boost::multi_index::global_fun<const YBTableName&, Slice, &GetTableNameAsSlice>
+              >,
+              boost::multi_index::composite_key_compare<
+                  Slice::Comparator,
+                  Slice::Comparator
+              >
+          >
+      >
+  >;
+
+  TableContainer tables_;
+  std::set<master::NamespaceIdentifierPB, NamespaceComparator> namespaces_;
+  const master::NamespaceIdentifierPB* current_namespace_;
+  Values values_;
+};
+
+TableNameResolver::TableNameResolver(std::vector<client::YBTableName> tables,
+                                     std::vector<master::NamespaceIdentifierPB> namespaces)
+    : impl_(new Impl(std::move(tables), std::move(namespaces))) {
+}
+
+TableNameResolver::TableNameResolver(TableNameResolver&&) = default;
+
+TableNameResolver::~TableNameResolver() = default;
+
+Result<bool> TableNameResolver::Feed(const std::string& value) {
+  return impl_->Feed(value);
+}
+
+std::vector<client::YBTableName>& TableNameResolver::values() {
+  return impl_->values();
+}
 
 ClusterAdminClient::ClusterAdminClient(string addrs, int64_t timeout_millis)
     : master_addr_list_(std::move(addrs)),
@@ -863,42 +1112,29 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   return Status::OK();
 }
 
-const char* DatabasePrefix(YQLDatabase db) {
-  switch(db) {
-    case YQL_DATABASE_UNKNOWN: break;
-    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
-    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
-    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
-  }
-  CHECK(false) << "Unexpected db type " << db;
-  return kDBTypePrefixUnknown;
-}
-
-Status ClusterAdminClient::ListTables(bool include_db_type) {
-  vector<YBTableName> tables;
-  RETURN_NOT_OK(yb_client_->ListTables(&tables));
-  if (include_db_type) {
-    vector<string> full_names;
-    const auto& namespace_metadata = VERIFY_RESULT_REF(GetNamespaceMap());
-    for (const auto& table : tables) {
+Status ClusterAdminClient::ListTables(bool include_db_type, bool include_table_id) {
+  const auto tables = VERIFY_RESULT(yb_client_->ListTables());
+  const auto& namespace_metadata = VERIFY_RESULT_REF(GetNamespaceMap());
+  vector<string> names;
+  for (const auto& table : tables) {
+    std::stringstream str;
+    if (include_db_type) {
       const auto db_type_iter = namespace_metadata.find(table.namespace_id());
       if (db_type_iter != namespace_metadata.end()) {
-        full_names.push_back(Format("$0.$1",
-                               DatabasePrefix(db_type_iter->second.database_type()),
-                               table));
+        str << DatabasePrefix(db_type_iter->second.database_type()) << '.';
       } else {
-        LOG(WARNING) << "Table in unknown namespace found "
-                     << table.ToString()
-                     << ", probably it has been just created";
+        LOG(WARNING) << "Table in unknown namespace found " << table.ToString();
+        continue;
       }
     }
-    sort(full_names.begin(), full_names.end());
-    copy(full_names.begin(), full_names.end(), std::ostream_iterator<string>(cout, "\n"));
-  } else {
-    for (const auto& table : tables) {
-      cout << table.ToString() << endl;
+    str << table.ToString();
+    if (include_table_id) {
+      str << ' ' << table.table_id();
     }
+    names.push_back(str.str());
   }
+  sort(names.begin(), names.end());
+  copy(names.begin(), names.end(), std::ostream_iterator<string>(cout, "\n"));
   return Status::OK();
 }
 
@@ -1333,17 +1569,16 @@ Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers,
 
 Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInfo(
     YQLDatabase db_type, const std::string& namespace_name) {
-  LOG(INFO) << Format("Resolving namespace id for '$0' of type '$1'",
-                      namespace_name, DatabasePrefix(db_type));
+  LOG(INFO) << Format(
+      "Resolving namespace id for '$0' of type '$1'", namespace_name, DatabasePrefix(db_type));
   for (const auto& item : VERIFY_RESULT_REF(GetNamespaceMap())) {
     const auto& namespace_info = item.second;
     if (namespace_info.database_type() == db_type && namespace_name == namespace_info.name()) {
       return namespace_info;
     }
   }
-  return STATUS(NotFound,
-                Format("Namespace '$0' of type '$1' not found",
-                       namespace_name, DatabasePrefix(db_type)));
+  return STATUS_FORMAT(
+      NotFound, "Namespace '$0' of type '$1' not found", namespace_name, DatabasePrefix(db_type));
 }
 
 Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterClusterConfig() {
@@ -1388,10 +1623,16 @@ Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespace
   if (namespace_map_.empty()) {
     auto v = VERIFY_RESULT(yb_client_->ListNamespaces());
     for (auto& ns : v) {
-      namespace_map_.emplace(string(ns.id()), std::move(ns));
+      auto ns_id = ns.id();
+      namespace_map_.emplace(std::move(ns_id), std::move(ns));
     }
   }
   return const_cast<const ClusterAdminClient::NamespaceMap&>(namespace_map_);
+}
+
+Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver() {
+  return TableNameResolver(VERIFY_RESULT(yb_client_->ListTables()),
+                           VERIFY_RESULT(yb_client_->ListNamespaces()));
 }
 
 string RightPadToUuidWidth(const string &s) {
@@ -1399,33 +1640,8 @@ string RightPadToUuidWidth(const string &s) {
 }
 
 Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name) {
-  YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
-  const size_t dot_pos = full_namespace_name.find('.');
-  if (dot_pos != string::npos) {
-    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
-        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
-        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
-        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
-    const Slice namespace_type(full_namespace_name.data(), dot_pos);
-    for (const auto& prefix : type_prefixes) {
-      if (namespace_type == prefix.first) {
-        db_type = prefix.second;
-        break;
-      }
-    }
-    if (db_type == YQL_DATABASE_UNKNOWN) {
-      return STATUS(InvalidArgument, Format("Invalid db type name '$0'", namespace_type));
-    }
-  } else {
-    db_type = (full_namespace_name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS
-        : YQL_DATABASE_CQL);
-  }
-
-  const size_t name_start = (dot_pos == string::npos ? 0 : (dot_pos + 1));
-  return TypedNamespaceName{
-      db_type,
-      std::string(full_namespace_name.data() + name_start,
-                  full_namespace_name.length() - name_start)};
+  const auto parts = SplitByDot(full_namespace_name);
+  return ResolveNamespaceName(parts.prefix, parts.value);
 }
 
 }  // namespace tools

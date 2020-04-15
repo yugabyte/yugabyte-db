@@ -81,9 +81,21 @@ class ClusterAdminCli {
   std::map<std::string, size_t> command_indexes_;
 };
 
-Result<client::YBTableName> ResolveTableName(ClusterAdminClientClass* client,
-                                             const string& full_namespace_name,
-                                             const string& table_name);
+using CLIArgumentsIterator = ClusterAdminCli::CLIArguments::const_iterator;
+using TailArgumentsProcessor =
+    std::function<Status(CLIArgumentsIterator, const CLIArgumentsIterator&)>;
+
+Result<std::vector<client::YBTableName>> ResolveTableNames(
+    ClusterAdminClientClass* client,
+    CLIArgumentsIterator i,
+    const CLIArgumentsIterator& end,
+    TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
+
+Result<client::YBTableName> ResolveSingleTableName(
+    ClusterAdminClientClass* client,
+    CLIArgumentsIterator i,
+    const CLIArgumentsIterator& end,
+    TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
 
 }  // namespace tools
 }  // namespace yb
