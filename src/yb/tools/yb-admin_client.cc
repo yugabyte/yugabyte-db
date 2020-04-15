@@ -41,6 +41,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
 
@@ -485,12 +487,18 @@ Status ClusterAdminClient::GetLeaderBlacklistCompletion() {
 
 Status ClusterAdminClient::GetIsLoadBalancerIdle() {
   CHECK(initted_);
-  const auto resp = VERIFY_RESULT(InvokeRpc(
+  const auto result = InvokeRpc(
       &MasterServiceProxy::IsLoadBalancerIdle, master_proxy_.get(),
-      master::IsLoadBalancerIdleRequestPB()));
+      master::IsLoadBalancerIdleRequestPB());
 
-  cout << "Idle = " << !resp.has_error() << endl;
-  return Status::OK();
+  if (result.ok() ||
+      master::MasterError(result.status()) ==
+        master::MasterErrorPB::LOAD_BALANCER_RECENTLY_ACTIVE) {
+    cout << "Idle = " << result.ok() << endl;
+    return Status::OK();
+  }
+
+  return result.status();
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
