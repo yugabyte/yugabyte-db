@@ -298,6 +298,43 @@ class AbstractBackupStorage(object):
         return []
 
 
+class AzBackupStorage(AbstractBackupStorage):
+    def __init__(self, options):
+        super(AzBackupStorage, self).__init__(options)
+
+    @staticmethod
+    def storage_type():
+        return 'az'
+
+    def _command_list_prefix(self):
+        return "AZCOPY_SPA_CLIENT_SECRET=$(<{}) azcopy login --service-principal " \
+            "--application-id {} --tenant-id={} && azcopy cp".format(
+                self.options.cloud_cfg_file_path, os.getenv("AZURE_APP_ID"),
+                os.getenv("AZURE_TENANT_ID"))
+
+    def upload_file_cmd(self, src, dest):
+        # azcopy requires quotes around the src and dest. This format is necessary to do so.
+        src = "'{}'".format(src)
+        dest = "'{}'".format(dest)
+        return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
+
+    def download_file_cmd(self, src, dest):
+        src = "'{}'".format(src)
+        dest = "'{}'".format(dest)
+        return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
+
+    def upload_dir_cmd(self, src, dest):
+        # azcopy will download the top-level directory as well as the contents without "/*".
+        src = "'{}'".format(os.path.join(src, '*'))
+        dest = "'{}'".format(dest)
+        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
+
+    def download_dir_cmd(self, src, dest):
+        src = "'{}'".format(os.path.join(src, '*'))
+        dest = "'{}'".format(dest)
+        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
+
+
 class GcsBackupStorage(AbstractBackupStorage):
     def __init__(self, options):
         super(GcsBackupStorage, self).__init__(options)
@@ -389,7 +426,8 @@ class NfsBackupStorage(AbstractBackupStorage):
 BACKUP_STORAGE_ABSTRACTIONS = {
     S3BackupStorage.storage_type(): S3BackupStorage,
     NfsBackupStorage.storage_type(): NfsBackupStorage,
-    GcsBackupStorage.storage_type(): GcsBackupStorage
+    GcsBackupStorage.storage_type(): GcsBackupStorage,
+    AzBackupStorage.storage_type(): AzBackupStorage
 }
 
 
@@ -568,6 +606,22 @@ class YBBackup:
             with open(self.cloud_cfg_file_path, 'w') as cloud_cfg:
                 cloud_cfg.write(credentials)
             options.cloud_cfg_file_path = self.cloud_cfg_file_path
+        elif self.is_az():
+            if not os.getenv('AZURE_APP_ID'):
+                raise BackupException(
+                    "Set Application ID for Azure Storage in AZURE_APP_ID environment variable.")
+            if not os.getenv('AZURE_TENANT_ID'):
+                raise BackupException(
+                    "Set Tenant ID for Azure Storage in AZURE_TENANT_ID environment variable.")
+
+            credentials = os.getenv('AZCOPY_SPA_CLIENT_SECRET')
+            if not credentials:
+                raise BackupException(
+                    "Set Client Secret for Azure Storage in AZCOPY_SPA_CLIENT_SECRET environment "
+                    "variable.")
+            with open(self.cloud_cfg_file_path, 'w') as cloud_cfg:
+                cloud_cfg.write(credentials)
+            options.cloud_cfg_file_path = self.cloud_cfg_file_path
 
         self.storage = BACKUP_STORAGE_ABSTRACTIONS[self.args.storage_type](options)
 
@@ -585,11 +639,14 @@ class YBBackup:
     def is_gcs(self):
         return self.args.storage_type == GcsBackupStorage.storage_type()
 
-    def is_cloud(self):
-        return self.args.storage_type != NfsBackupStorage.storage_type()
+    def is_az(self):
+        return self.args.storage_type == AzBackupStorage.storage_type()
 
     def is_k8s(self):
         return self.args.k8s_config is not None
+
+    def is_cloud(self):
+        return self.args.storage_type != NfsBackupStorage.storage_type()
 
     def get_leader_master_ip(self):
         if not self.leader_master_ip:
