@@ -722,8 +722,9 @@ std::pair<bool, int> AnalyzeResponse(const Ops& ops) {
     if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {
       ++result.second;
     } else {
-      EXPECT_EQ(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH, op->response().status());
-      result.first = true;
+      if (QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH == op->response().status()) {
+        result.first = true;
+      }
     }
   }
   return result;
@@ -764,7 +765,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
           continue;
         }
         // Endian-swap the key to match the way the insert generates keys.
-        int32_t key = bswap_32(rng.Uniform(max));
+        int32_t key = bswap_32(rng.Uniform(max-1));
         QLAddInt32HashValue(req, key);
         table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), i);
       }
@@ -773,8 +774,9 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
       ASSERT_OK(session->Apply(op));
     }
 
-    if (should_stop || ops.size() >= 50) {
-      FlushSessionOrDie(session);
+    if (should_stop || ops.size() >= 10) {
+      Status s = session->Flush();
+      ASSERT_TRUE(s.ok() || s.IsBusy() || s.IsIOError());
       auto result = AnalyzeResponse(ops);
       ops.clear();
       processed += result.second;
@@ -792,8 +794,8 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
     }
   }
 
-  ASSERT_GT(processed, 0);
   LOG(INFO) << "Processed: " << processed << " of type " << QLWriteRequestPB::QLStmtType_Name(type);
+  ASSERT_GT(processed, 0);
 }
 
 // Thread which loops reading data from the table.
@@ -842,12 +844,16 @@ TEST_P(AlterTableTest, TestAlterUnderWriteLoad) {
 
   // Add columns until we reach 10.
   for (int i = 2; i < 10; i++) {
+    MonoDelta delay;
     if (AllowSlowTests()) {
       // In slow test mode, let more writes accumulate in between
       // alters, so that we get enough writes to cause flushes,
       // compactions, etc.
-      SleepFor(MonoDelta::FromSeconds(3));
+      delay = MonoDelta::FromSeconds(3);
+    } else {
+      delay = MonoDelta::FromMilliseconds(100);
     }
+    SleepFor(delay);
 
     ASSERT_OK(AddNewI32Column(kTableName, strings::Substitute("c$0", i)));
   }
