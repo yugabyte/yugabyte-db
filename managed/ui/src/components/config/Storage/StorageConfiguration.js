@@ -50,6 +50,26 @@ const storageConfigTypes = {
       label: "GCS Credentials",
       placeHolder: "GCS Credentials JSON"
     }]
+  },
+  AZ: {
+    title: "Azure Storage",
+    fields: [{
+      id: "BACKUP_LOCATION",
+      label: "Container URL",
+      placeHolder: "Container URL"
+    }, {
+      id: "AZURE_APP_ID",
+      label: "Application ID",
+      placeholder: "Application ID"
+    }, {
+      id: "AZURE_TENANT_ID",
+      label: "Tenant ID",
+      placeholder: "Tenant ID"
+    }, {
+      id: "AZCOPY_SPA_CLIENT_SECRET",
+      label: "Client Secret",
+      placeholder: "Client Secret"
+    }]
   }
 };
 
@@ -61,6 +81,8 @@ class StorageConfiguration extends Component {
         return <img src={awss3Logo} alt="AWS S3" className="aws-logo" />;
       case "GCS":
         return <h3><i className="fa fa-database"></i>GCS</h3>;
+      case "AZ":
+        return <h3><i className="fa fa-database"></i>Azure Storage</h3>;
       default:
         return <h3><i className="fa fa-database"></i>NFS</h3>;
     }

@@ -189,6 +189,19 @@
       gcloud_install_path: "/usr"
     when: install_backup_packages and cloud_type != "gcp"
 
+  - name: Download and install azcopy
+    become: yes
+    become_method: sudo
+    unarchive:
+      src: "{{ backup_azcopy_src }}"
+      dest: /usr/bin
+      remote_src: yes
+      mode: 0755
+      exclude:
+        - ThirdPartyNotice.txt
+      extra_opts: [--strip-components=1] # Remove tarball directory from extracted path.
+    when: install_backup_packages
+
   when: not air_gap
 
 - name: Register our custom SSH port "{{ custom_ssh_port }}" with SELinux
