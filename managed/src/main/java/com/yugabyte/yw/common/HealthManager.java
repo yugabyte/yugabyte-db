@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.Provider;
 
 import com.google.inject.Inject;
@@ -46,7 +47,8 @@ public class HealthManager extends DevopsBase {
       String destination,
       Long potentialStartTimeMs,
       Boolean sendMailAlways,
-      Boolean reportOnlyErrors) {
+      Boolean reportOnlyErrors,
+      SmtpData smtpData) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -70,15 +72,37 @@ public class HealthManager extends DevopsBase {
     }
     // Start with a copy of the cloud config env vars.
     HashMap extraEnvVars = new HashMap<>(provider.getConfig());
-    String emailUsername = appConfig.getString("yb.health.ses_email_username");
-    if (emailUsername != null) {
-      extraEnvVars.put("YB_ALERTS_USERNAME", emailUsername);
-    }
-    String emailPassword = appConfig.getString("yb.health.ses_email_password");
-    if (emailPassword != null) {
-      extraEnvVars.put("YB_ALERTS_PASSWORD", emailPassword);
-    }
+
     String email = appConfig.getString("yb.health.default_email");
+    if (smtpData != null) {
+      if (smtpData.smtpServer != null) {
+        extraEnvVars.put("SMTP_SERVER", smtpData.smtpServer);
+      }
+      if (smtpData.smtpPort != -1) {
+        extraEnvVars.put("SMTP_PORT", String.valueOf(smtpData.smtpPort));
+      }
+      if (smtpData.emailFrom != null) {
+        email = smtpData.emailFrom;
+      }
+      if (smtpData.smtpUsername != null) {
+        extraEnvVars.put("YB_ALERTS_USERNAME", smtpData.smtpUsername);
+      }
+      if (smtpData.smtpPassword != null) {
+        extraEnvVars.put("YB_ALERTS_PASSWORD", smtpData.smtpPassword);
+      }
+      extraEnvVars.put("SMTP_USE_SSL", String.valueOf(smtpData.useSSL));
+      extraEnvVars.put("SMTP_USE_TLS", String.valueOf(smtpData.useTLS));
+    } else {
+      String emailUsername = appConfig.getString("yb.health.ses_email_username");
+      String emailPassword = appConfig.getString("yb.health.ses_email_password");
+      if (emailUsername != null) {
+        extraEnvVars.put("YB_ALERTS_USERNAME", emailUsername);
+      }
+      if (emailPassword != null) {
+        extraEnvVars.put("YB_ALERTS_PASSWORD", emailPassword);
+      }
+    }
+
     if (email != null) {
       extraEnvVars.put("YB_ALERTS_EMAIL", email);
     }

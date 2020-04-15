@@ -113,7 +113,7 @@ public class HealthManagerTest extends FakeDBApplication {
             System.out.println("running, reportOnlyErrors = " + reportOnlyErrors.toString());
              healthManager.runCommand(
                   provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
-                  sendStatus, reportOnlyErrors);
+                  sendStatus, reportOnlyErrors, null);
               HashMap extraEnvVars = new HashMap<>(provider.getConfig());
               if (envVal != null) {
                 extraEnvVars.put("YB_ALERTS_USERNAME", envVal);

@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
+import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -167,6 +168,10 @@ public class HealthChecker {
     Boolean hasErrors = false;
     try {
       JsonNode healthJSON = Util.convertStringToJson(response);
+      if (healthJSON.get("mail_error") != null) {
+         LOG.warn("Health check had the following errors during mailing: " +
+                  healthJSON.path("mail_error").asText());
+      }
       for (JsonNode entry : healthJSON.path("data")) {
         String nodeName = entry.path("node").asText();
         String checkName = entry.path("message").asText();
@@ -184,7 +189,7 @@ public class HealthChecker {
         prometheusVal.set(checkResult ? 1 : 0);
       }
       LOG.info("Health check for universe " + u.name +
-               (hasErrors ? " reported errors." : "reported success."));
+               (hasErrors ? " reported errors." : " reported success."));
      } catch (Exception e) {
       LOG.warn("Failed to convert health check response to prometheus metrics " + e.getMessage());
     }
@@ -237,24 +242,29 @@ public class HealthChecker {
       if (shouldSendStatusUpdate) {
         lastStatusUpdateTimeMap.put(c.uuid, now);
       }
-      checkAllUniverses(c, config, shouldSendStatusUpdate);
+      CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(c.uuid);
+      SmtpData smtpData = null;
+      if (smtpConfig != null) {
+        smtpData =  Json.fromJson(smtpConfig.data, SmtpData.class);
+      }
+      checkAllUniverses(c, config, shouldSendStatusUpdate, smtpData);
     }
   }
 
   public void checkAllUniverses(
-      Customer c, CustomerConfig config, boolean shouldSendStatusUpdate) {
+      Customer c, CustomerConfig config, boolean shouldSendStatusUpdate, SmtpData smtpData) {
     // Process all of a customer's universes.
     for (Universe u : c.getUniverses()) {
       try {
-        checkSingleUniverse(u, c, config, shouldSendStatusUpdate);
+        checkSingleUniverse(u, c, config, shouldSendStatusUpdate, smtpData);
       } catch (Exception ex) {
         LOG.error("Error running health check for universe " + u.universeUUID, ex);
       }
      }
   }
 
-  public void checkSingleUniverse(
-      Universe u, Customer c, CustomerConfig config, boolean shouldSendStatusUpdate) {
+  public void checkSingleUniverse(Universe u, Customer c, CustomerConfig config,
+                                  boolean shouldSendStatusUpdate, SmtpData smtpData) {
     // Validate universe data and make sure nothing is in progress.
     UniverseDefinitionTaskParams details = u.getUniverseDetails();
     if (details == null) {
@@ -405,7 +415,8 @@ public class HealthChecker {
         (destinations.size() == 0 || silenceEmails) ? null : String.join(",", destinations),
         potentialStartTime,
         sendMailAlways,
-        reportOnlyErrors
+        reportOnlyErrors,
+        smtpData
     );
 
     if (response.code == 0) {

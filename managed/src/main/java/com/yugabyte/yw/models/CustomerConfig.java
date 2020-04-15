@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 public class CustomerConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfig.class);
   public static final String ALERTS_PREFERENCES = "preferences";
+  public static final String SMTP_INFO = "smtp info";
   public static final String CALLHOME_PREFERENCES = "callhome level";
 
   public enum ConfigType {
@@ -117,11 +118,29 @@ public class CustomerConfig extends Model {
     return customerConfig;
   }
 
+  public static CustomerConfig createSmtpConfig(UUID customerUUID, JsonNode payload) {
+    CustomerConfig customerConfig = new CustomerConfig();
+    customerConfig.type = ConfigType.ALERTS;
+    customerConfig.name = SMTP_INFO;
+    customerConfig.customerUUID = customerUUID;
+    customerConfig.data = payload;
+    customerConfig.save();
+    return customerConfig;
+  }
+
   public static CustomerConfig getAlertConfig(UUID customerUUID) {
     return CustomerConfig.find.where()
       .eq("customer_uuid", customerUUID)
       .eq("type", ConfigType.ALERTS.toString())
       .eq("name", ALERTS_PREFERENCES)
+      .findUnique();
+  }
+
+  public static CustomerConfig getSmtpConfig(UUID customerUUID) {
+    return CustomerConfig.find.where()
+      .eq("customer_uuid", customerUUID)
+      .eq("type", ConfigType.ALERTS.toString())
+      .eq("name", SMTP_INFO)
       .findUnique();
   }
 
