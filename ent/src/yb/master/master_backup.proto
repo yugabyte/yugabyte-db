@@ -30,6 +30,7 @@ message SysSnapshotEntryPB {
     FAILED = 5;
     CANCELLED = 6;
     RESTORING = 7;
+    RESTORED = 8;
   }
 
   // Note: The id of the snapshot is not stored here as it is already part of

@@ -298,6 +298,11 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = Table
 
 tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);
 
+void ShutdownAllTServers(MiniCluster* cluster);
+CHECKED_STATUS StartAllTServers(MiniCluster* cluster);
+void ShutdownAllMasters(MiniCluster* cluster);
+CHECKED_STATUS StartAllMasters(MiniCluster* cluster);
+
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

@@ -447,7 +447,7 @@ void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   if (abort_task) {
-    task->AbortAndReturnPrevState();
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Table closing"));
   }
 }
 
@@ -483,7 +483,7 @@ void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
   // to acquire the same lock to remove itself from pending_tasks_.
   for (const auto& task : abort_tasks) {
     VLOG(1) << __func__ << " Aborting task " << task.get() << " " << task->description();
-    task->AbortAndReturnPrevState();
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Table closing"));
   }
 }
 

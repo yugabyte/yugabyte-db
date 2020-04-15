@@ -2102,7 +2102,13 @@ Status Tablet::ModifyFlushedFrontier(
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
-  DCHECK_EQ(frontier, *regular_db_->GetFlushedFrontier());
+  {
+    auto flushed_frontier = regular_db_->GetFlushedFrontier();
+    const auto& consensus_flushed_frontier = *down_cast<docdb::ConsensusFrontier*>(
+        flushed_frontier.get());
+    DCHECK_EQ(frontier.op_id(), consensus_flushed_frontier.op_id());
+    DCHECK_EQ(frontier.hybrid_time(), consensus_flushed_frontier.hybrid_time());
+  }
 
   if (FLAGS_tablet_verify_flushed_frontier_after_modifying &&
       mode == rocksdb::FrontierModificationMode::kForce) {
@@ -2790,20 +2796,32 @@ Result<ScopedReadOperation> ScopedReadOperation::Create(
   if (retention_policy) {
     RETURN_NOT_OK(retention_policy->RegisterReaderTimestamp(read_time.read));
   }
-  return ScopedReadOperation(tablet, require_lease, read_time);
+  return ScopedReadOperation(tablet, read_time);
 }
 
 ScopedReadOperation::ScopedReadOperation(
-    AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time)
+    AbstractTablet* tablet, const ReadHybridTime& read_time)
     : tablet_(tablet), read_time_(read_time) {
 }
 
 ScopedReadOperation::~ScopedReadOperation() {
+  Reset();
+}
+
+void ScopedReadOperation::operator=(ScopedReadOperation&& rhs) {
+  Reset();
+  tablet_ = rhs.tablet_;
+  read_time_ = rhs.read_time_;
+  rhs.tablet_ = nullptr;
+}
+
+void ScopedReadOperation::Reset() {
   if (tablet_) {
     auto* retention_policy = tablet_->RetentionPolicy();
     if (retention_policy) {
       retention_policy->UnregisterReaderTimestamp(read_time_.read);
     }
+    tablet_ = nullptr;
   }
 }
 

@@ -818,6 +818,8 @@ class ScopedReadOperation {
     rhs.tablet_ = nullptr;
   }
 
+  void operator=(ScopedReadOperation&& rhs);
+
   static Result<ScopedReadOperation> Create(
       AbstractTablet* tablet,
       RequireLease require_lease,
@@ -832,9 +834,11 @@ class ScopedReadOperation {
 
   Status status() const { return status_; }
 
+  void Reset();
+
  private:
   explicit ScopedReadOperation(
-      AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time);
+      AbstractTablet* tablet, const ReadHybridTime& read_time);
 
   AbstractTablet* tablet_;
   ReadHybridTime read_time_;

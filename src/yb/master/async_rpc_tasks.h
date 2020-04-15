@@ -121,7 +121,7 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  MonitoredTaskState AbortAndReturnPrevState() override;
+  MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
 
   MonitoredTaskState state() const override {
     return state_.load(std::memory_order_acquire);
@@ -158,10 +158,19 @@ class RetryingTSRpcTask : public MonitoredTask {
     return state_.compare_exchange_strong(expected, new_state);
   }
 
-  void TransitionToTerminalState(MonitoredTaskState expected, MonitoredTaskState terminal_state);
+  void TransitionToTerminalState(
+      MonitoredTaskState expected, MonitoredTaskState terminal_state, const Status& status);
   bool TransitionToWaitingState(MonitoredTaskState expected);
 
-  void AbortTask();
+  // Transition this task state from running to complete.
+  void TransitionToCompleteState();
+
+  // Transition this task state from expected to failed with specified status.
+  void TransitionToFailedState(MonitoredTaskState expected, const Status& status);
+
+  virtual void Finished(const Status& status) {}
+
+  void AbortTask(const Status& status);
 
   virtual MonoTime ComputeDeadline();
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
@@ -434,7 +443,7 @@ class CommonInfoForRaftTask : public RetryingTSRpcTask {
 
  protected:
   // Used by SendOrReceiveData. Return's false if RPC should not be sent.
-  virtual bool PrepareRequest(int attempt) = 0;
+  virtual CHECKED_STATUS PrepareRequest(int attempt) = 0;
 
   TabletServerId permanent_uuid() const;
 
@@ -485,7 +494,7 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
   std::string type_name() const override { return "AddServer ChangeConfig"; }
 
  protected:
-  bool PrepareRequest(int attempt) override;
+  CHECKED_STATUS PrepareRequest(int attempt) override;
 
  private:
   // PRE_VOTER or PRE_OBSERVER (for async replicas).
@@ -505,7 +514,7 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
   std::string type_name() const override { return "RemoveServer ChangeConfig"; }
 
  protected:
-  bool PrepareRequest(int attempt) override;
+  CHECKED_STATUS PrepareRequest(int attempt) override;
 };
 
 // Task to step down tablet server leader and optionally to remove it from an overly-replicated
@@ -535,7 +544,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   std::string new_leader_uuid() const { return new_leader_uuid_; }
 
  protected:
-  bool PrepareRequest(int attempt) override;
+  CHECKED_STATUS PrepareRequest(int attempt) override;
   bool SendRequest(int attempt) override;
   void HandleResponse(int attempt) override;
 

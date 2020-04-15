@@ -243,6 +243,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                        const std::string& snapshot_id,
                                        TabletSnapshotOperationCallback callback) override;
 
+  rpc::Scheduler& Scheduler() override;
+
+  bool IsLeader() override;
+
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);
 
@@ -313,6 +317,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS RestoreNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
 
   CHECKED_STATUS DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id);
+
+  void Started() override;
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
