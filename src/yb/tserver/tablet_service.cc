@@ -2326,13 +2326,13 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
     data_entry->set_state(status.state());
 
     auto tablet = peer->shared_tablet();
-    uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
+    uint64_t num_sst_files = tablet ? tablet->GetCurrentVersionNumSSTFiles() : 0;
     data_entry->set_num_sst_files(num_sst_files);
 
     uint64_t num_log_segments = peer->GetNumLogSegments();
     data_entry->set_num_log_segments(num_log_segments);
 
-    auto num_memtables = tablet->GetNumMemtables();
+    auto num_memtables = tablet ? tablet->GetNumMemtables() : std::make_pair(0, 0);
     data_entry->set_num_memtables_intents(num_memtables.first);
     data_entry->set_num_memtables_regular(num_memtables.second);
   }

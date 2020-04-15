@@ -60,9 +60,10 @@ add_executable(yb-admin
   ${YB_ADMIN_SRCS_EXTENSIONS})
 target_link_libraries(yb-admin
   yb-admin_lib
+  master_error
   ${LINK_LIBS})
 
-add_library(yb-admin_lib 
+add_library(yb-admin_lib
   yb-admin_client.cc
   yb-admin_util.cc
   ${YB_ADMIN_LIB_SRCS_EXTENSIONS})

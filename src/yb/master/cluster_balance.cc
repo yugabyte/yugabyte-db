@@ -21,6 +21,7 @@
 
 #include "yb/consensus/quorum_util.h"
 #include "yb/master/master.h"
+#include "yb/master/master_error.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
@@ -326,8 +327,14 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
 }
 
 Status ClusterLoadBalancer::IsIdle() const {
-  return (IsLoadBalancerEnabled() && !is_idle_.load(std::memory_order_acquire)) ?
-    STATUS(IllegalState, "Task or error encountered recently.") : Status::OK();
+  if (IsLoadBalancerEnabled() && !is_idle_.load(std::memory_order_acquire)) {
+    return STATUS(
+        IllegalState,
+        "Task or error encountered recently.",
+        MasterError(MasterErrorPB::LOAD_BALANCER_RECENTLY_ACTIVE));
+  }
+
+  return Status::OK();
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
