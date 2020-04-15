@@ -35,6 +35,11 @@
 #include "utils/timestamp.h"
 #include "utils/lsyscache.h"
 #include "utils/guc.h"
+
+#define IsHashInitialize()	(!pgss || !pgss_hash || !pgss_object_hash || !pgss_agghash || !pgss_buckethash || !pgss_waiteventshash)
+
+#define MAX_BACKEND_PROCESES (MaxBackends + NUM_AUXILIARY_PROCS + max_prepared_xacts)
+
 /* Time difference in miliseconds */
 #define	TIMEVAL_DIFF(start, end) (((double) end.tv_sec + (double) end.tv_usec / 1000000.0) \
 	- ((double) start.tv_sec + (double) start.tv_usec / 1000000.0)) * 1000
@@ -237,11 +242,25 @@ typedef struct pgssSharedState
 	Size			extent;				/* current extent of query file */
 	int				n_writers;			/* number of active writers to query file */
 	uint64			current_wbucket;
-	unsigned long	prev_bucket_usec;
-	unsigned long	bucket_overflow[MAX_BUCKETS];
-	unsigned long	bucket_entry[MAX_BUCKETS];
+	uint64			prev_bucket_usec;
+	uint64			bucket_overflow[MAX_BUCKETS];
+	uint64			bucket_entry[MAX_BUCKETS];
 	QueryFifo		query_fifo[MAX_BUCKETS];
 } pgssSharedState;
+
+#define ResetSharedState(x) \
+do { \
+		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
+		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
+		x->n_writers = 0; \
+		x->current_wbucket = 0; \
+		x->prev_bucket_usec = 0; \
+		memset(&x->bucket_overflow, 0, MAX_BUCKETS * sizeof(uint64)); \
+		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
+		memset(&x->query_fifo, 0, MAX_BUCKETS * sizeof(uint64)); \
+} while(0)
+
+
 
 unsigned char *pgss_qbuf[MAX_BUCKETS];
 
@@ -279,25 +298,39 @@ typedef struct pgssJumbleState
 	int			highest_extern_param_id;
 } pgssJumbleState;
 
-/*---- GUC variables ----*/
-
 typedef enum
 {
-	PGSS_TRACK_NONE,			/* track no statements */
-	PGSS_TRACK_TOP,				/* only top level statements */
-	PGSS_TRACK_ALL				/* all statements, including nested ones */
+	pgsm_track_NONE,			/* track no statements */
+	pgsm_track_TOP,				/* only top level statements */
+	pgsm_track_ALL				/* all statements, including nested ones */
 } PGSSTrackLevel;
 
 static const struct config_enum_entry track_options[] =
 {
-	{"none", PGSS_TRACK_NONE, false},
-	{"top", PGSS_TRACK_TOP, false},
-	{"all", PGSS_TRACK_ALL, false},
+	{"none", pgsm_track_NONE, false},
+	{"top", pgsm_track_TOP, false},
+	{"all", pgsm_track_ALL, false},
 	{NULL, 0, false}
 };
 
 #define pgss_enabled() \
-	(pgss_track == PGSS_TRACK_ALL || \
-	(pgss_track == PGSS_TRACK_TOP && nested_level == 0))
+	(pgsm_track == pgsm_track_ALL || \
+	(pgsm_track == pgsm_track_TOP && nested_level == 0))
 
 #endif
+
+/* guc.c */
+void init_guc(void);
+
+/*---- GUC variables ----*/
+int  pgsm_max;				/* max # statements to track */
+int  pgsm_track;             /* tracking level */
+bool pgsm_track_utility;     /* whether to track utility commands */
+int  pgsm_bucket_time;       /* bucket maximum time */
+int  pgsm_max_buckets;       /* total number of buckets */
+int  pgsm_object_cache;      /* total number of objects cache */
+bool pgsm_normalized_query;  /* save normaized query or not */
+int  pgsm_query_max_len;     /* max query length */
+int  pgsm_query_buf_size;    /* maximum size of the query */
+double pgsm_respose_time_lower_bound;
+double pgsm_respose_time_step;
