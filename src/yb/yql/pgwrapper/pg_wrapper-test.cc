@@ -278,11 +278,10 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestCompactHistoryWithTxn)) {
   {
     auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-    vector<std::pair<string, YBTableName>> tables;
-    ASSERT_OK(client->ListTablesWithIds(&tables));
+    const auto tables = ASSERT_RESULT(client->ListTables());
     for (const auto& table : tables) {
-      if (table.second.has_table() && table.second.table_name() == "mytbl") {
-        table_id = table.first;
+      if (table.has_table() && table.table_name() == "mytbl") {
+        table_id = table.table_id();
         break;
       }
     }

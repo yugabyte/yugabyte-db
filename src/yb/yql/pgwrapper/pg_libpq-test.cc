@@ -769,8 +769,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
   bool table_found = false;
   // TODO(dmitry): Find table by name instead of checking all the tables when catalog_mangager
   // will be able to find YSQL tables
-  std::vector<yb::client::YBTableName> tables;
-  ASSERT_OK(client->ListTables(&tables));
+  const auto tables = ASSERT_RESULT(client->ListTables());
   for (const auto& t : tables) {
     if (t.namespace_name() == "postgres" && t.table_name() == table_name) {
       table_found = true;
@@ -890,8 +889,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
 namespace {
 Result<string> GetTableIdByTableName(
     client::YBClient* client, const string& namespace_name, const string& table_name) {
-  std::vector<yb::client::YBTableName> tables;
-  RETURN_NOT_OK(client->ListTables(&tables));
+  const auto tables = VERIFY_RESULT(client->ListTables());
   for (const auto& t : tables) {
     if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
       return t.table_id();

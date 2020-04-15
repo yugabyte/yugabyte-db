@@ -315,9 +315,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   // Check that the master no longer exposes the table in any way:
 
   // 1) Should not list it in ListTables.
-  vector<YBTableName> table_names;
-  ASSERT_OK(client_->ListTables(&table_names, /* filter */ "", /* exclude_ysql */ true));
-  ASSERT_EQ(master::kNumSystemTables, table_names.size());
+  const auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ "", /* exclude_ysql */ true));
+  ASSERT_EQ(master::kNumSystemTables, tables.size());
 
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;

@@ -32,6 +32,9 @@
 #ifndef YB_TOOLS_YB_ADMIN_CLIENT_H
 #define YB_TOOLS_YB_ADMIN_CLIENT_H
 
+#include <string>
+#include <vector>
+
 #include <boost/optional.hpp>
 
 #include "yb/client/client.h"
@@ -64,6 +67,21 @@ namespace tools {
 struct TypedNamespaceName {
   YQLDatabase db_type;
   std::string name;
+};
+
+class TableNameResolver {
+ public:
+  TableNameResolver(std::vector<client::YBTableName> tables,
+                    std::vector<master::NamespaceIdentifierPB> namespaces);
+  TableNameResolver(TableNameResolver&&);
+  ~TableNameResolver();
+
+  Result<bool> Feed(const std::string& value);
+  std::vector<client::YBTableName>& values();
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 class ClusterAdminClient {
@@ -107,7 +125,7 @@ class ClusterAdminClient {
   CHECKED_STATUS DumpMasterState(bool to_console);
 
   // List all the tables.
-  CHECKED_STATUS ListTables(bool include_db_type);
+  CHECKED_STATUS ListTables(bool include_db_type, bool include_table_id);
 
   // List all tablets of this table
   CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets);
@@ -194,6 +212,8 @@ class ClusterAdminClient {
       const std::string& dest_ts_uuid);
 
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
+
+  Result<TableNameResolver> BuildTableNameResolver();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

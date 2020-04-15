@@ -91,8 +91,7 @@ TEST_F(AdminCliTest, TestCreateSnapshot) {
   const string& keyspace = table_.name().namespace_name();
 
   // There is custom table.
-  vector<YBTableName> tables;
-  ASSERT_OK(client_->ListTables(&tables, /* filter */ table_name, /* exclude_ysql */ true));
+  const auto tables = ASSERT_RESULT(client_->ListTables(table_name, /* exclude_ysql */ true));
   ASSERT_EQ(1, tables.size());
 
   ListSnapshotsRequestPB req;
@@ -160,9 +159,8 @@ TEST_F(AdminCliTest, TestImportSnapshot) {
         "import_snapshot", snapshot_file, namespace_name, table_name}));
     // Wait for the new snapshot completion.
     VERIFY_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
-
-    vector<YBTableName> tables;
-    RETURN_NOT_OK(client_->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
+    const auto tables = VERIFY_RESULT(client_->ListTables(/* filter */ "",
+                                                          /* exclude_ysql */ true));
     for (const auto& t : tables) {
       if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
         return Status::OK();
@@ -185,7 +183,6 @@ TEST_F(AdminCliTest, TestExportImportSnapshot) {
   // Default table that gets created.
   const string& table_name = table_.name().table_name();
   const string& keyspace = table_.name().namespace_name();
-  vector<YBTableName> tables;
 
   // Create snapshot of default table that gets created.
   ASSERT_OK(RunAdminToolCommand({"create_snapshot", keyspace, table_name}));
@@ -198,12 +195,12 @@ TEST_F(AdminCliTest, TestExportImportSnapshot) {
 
   ASSERT_OK(client_->DeleteTable(
       YBTableName(YQL_DATABASE_CQL, keyspace, table_name), /* wait */ true));
-  ASSERT_OK(client_->ListTables(&tables, /* filter */ table_name, /* exclude_ysql */ true));
+  auto tables = ASSERT_RESULT(client_->ListTables(table_name, /* exclude_ysql */ true));
   ASSERT_EQ(0, tables.size());
 
   ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file, keyspace, table_name}));
 
-  ASSERT_OK(client_->ListTables(&tables, /* filter */ table_name, /* exclude_ysql */ true));
+  tables = ASSERT_RESULT(client_->ListTables(table_name, /* exclude_ysql */ true));
   ASSERT_EQ(1, tables.size());
 
   LOG(INFO) << "Test TestExportImportSnapshot finished.";
@@ -217,10 +214,9 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   const string& table_name = table_.name().table_name();
   const string& keyspace = table_.name().namespace_name();
   const string& index_name = index_.name().table_name();
-  vector<YBTableName> tables;
 
   // Check there are 2 tables.
-  ASSERT_OK(client_->ListTables(&tables, /* filter */ table_name, /* exclude_ysql */ true));
+  auto tables = ASSERT_RESULT(client_->ListTables(table_name, true /* exclude_ysql */));
   ASSERT_EQ(2, tables.size());
 
   // Create snapshot of default table and the attached index that gets created.
@@ -234,7 +230,7 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
 
   ASSERT_OK(client_->DeleteTable(
       YBTableName(YQL_DATABASE_CQL, keyspace, table_name), /* wait */ true));
-  ASSERT_OK(client_->ListTables(&tables, /* filter */ table_name, /* exclude_ysql */ true));
+  tables = ASSERT_RESULT(client_->ListTables(table_name /* filter */, true /* exclude_ysql */));
   ASSERT_EQ(0, tables.size());
 
   // Import table and index with original names.
@@ -242,7 +238,7 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
 
-  ASSERT_OK(client_->ListTables(&tables, /* filter */ table_name, /* exclude_ysql */ true));
+  tables = ASSERT_RESULT(client_->ListTables(table_name /* filter */, true /* exclude_ysql */));
   ASSERT_EQ(2, tables.size());
 
   // Import table and index with renaming.
@@ -252,7 +248,7 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
 
-  ASSERT_OK(client_->ListTables(&tables, /* filter */ table_name, /* exclude_ysql */ true));
+  tables = ASSERT_RESULT(client_->ListTables(table_name /* filter */, true /* exclude_ysql */));
   ASSERT_EQ(4, tables.size());
 }
 
