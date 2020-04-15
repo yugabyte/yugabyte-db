@@ -966,6 +966,42 @@ TEST_F_EX(CppCassandraDriverTest, TestTableCreateUniqueIndexUserEnforced,
                          IncludeAllColumns::kTrue, UserEnforced::kTrue);
 }
 
+TEST_F_EX(CppCassandraDriverTest, TestCreateJsonbIndex,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, CassandraJson> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (1, '{\"f1\": \"one\", \"f2\": \"one\"}');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (2, '{\"f1\": \"two\", \"f2\": \"two\"}');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (3, '{\"f1\": \"three\", \"f2\": \"three\"}');"));
+
+  LOG(INFO) << "Creating index";
+  auto s = session_.ExecuteQuery(
+      "create unique index test_table_index_by_v_f1 on test_table (v->>'f1');");
+  ASSERT_TRUE(s.ok() || s.IsTimedOut());
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v_f1");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  auto main_table_size =
+      ASSERT_RESULT(GetTableSize(&session_, "test_table"));
+  auto index_table_size =
+      ASSERT_RESULT(GetTableSize(&session_, "test_table_index_by_v_f1"));
+  ASSERT_EQ(main_table_size, index_table_size);
+}
+
 TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPasses,
           CppCassandraDriverTestIndex) {
   TestTable<cass_int32_t, string> table;
