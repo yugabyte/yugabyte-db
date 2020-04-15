@@ -41,18 +41,21 @@ MAX_CONCURRENT_PROCESSES = 10
 MAX_TRIES = 2
 
 # This hardcoded as the ses:FromAddress in the IAM policy.
-EMAIL_SERVER = "email-smtp.us-west-2.amazonaws.com"
-EMAIL_PORT = 465
+EMAIL_SERVER = os.environ.get("SMTP_SERVER", "email-smtp.us-west-2.amazonaws.com")
+EMAIL_PORT = os.environ.get("SMTP_PORT", None)
 # These need to be setup as env vars from YW or in the env if running manually. If not specified
 # then sending the email will fail, but reporting the status will still work just fine.
 EMAIL_FROM = os.environ.get("YB_ALERTS_EMAIL")
-EMAIL_USERNAME = os.environ.get("YB_ALERTS_USERNAME")
-EMAIL_PASSWORD = os.environ.get("YB_ALERTS_PASSWORD")
-
+EMAIL_USERNAME = os.environ.get("YB_ALERTS_USERNAME", None)
+EMAIL_PASSWORD = os.environ.get("YB_ALERTS_PASSWORD", None)
+SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "true")
+SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "false")
 
 ###################################################################################################
 # Reporting
 ###################################################################################################
+
+
 def generate_ts():
     return local_time().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -99,6 +102,7 @@ class Entry:
 
 class Report:
     def __init__(self, yb_version):
+        self.mail_error = None
         self.entries = []
         self.start_ts = generate_ts()
         self.yb_version = yb_version
@@ -130,6 +134,8 @@ class Report:
             "data": [e.as_json() for e in self.entries if not only_errors or e.has_error],
             "has_error": True in [e.has_error for e in self.entries]
         }
+        if self.mail_error is not None:
+            j["mail_error"] = self.mail_error
         return json.dumps(j, indent=2)
 
     def __str__(self):
@@ -589,9 +595,22 @@ def send_mail(report, subject, destination, nodes, universe_name, report_only_er
     # the last part of a multipart MIME message is the preferred part
     msg.attach(MIMEText(body, 'html'))
 
-    s = smtplib.SMTP_SSL(EMAIL_SERVER, EMAIL_PORT)
+    if SMTP_USE_SSL.lower() == 'true':
+        if EMAIL_PORT is not None:
+            s = smtplib.SMTP_SSL(EMAIL_SERVER, int(EMAIL_PORT))
+        else:
+            # Port defaults to 465
+            s = smtplib.SMTP_SSL(EMAIL_SERVER)
+    else:
+        if EMAIL_PORT is not None:
+            s = smtplib.SMTP(EMAIL_SERVER, int(EMAIL_PORT))
+        else:
+            s = smtplib.SMTP(EMAIL_SERVER)
+        if SMTP_USE_TLS.lower() == 'true':
+            s.starttls()
     s.ehlo()
-    s.login(EMAIL_USERNAME, EMAIL_PASSWORD)
+    if EMAIL_USERNAME is not None and EMAIL_PASSWORD is not None:
+        s.login(EMAIL_USERNAME, EMAIL_PASSWORD)
     dest_list = destination.split(',')
     s.sendmail(sender, dest_list, msg.as_string())
     s.quit()
@@ -768,6 +787,7 @@ def main():
             )
         except Exception as e:
             logging.error("Sending email failed with: {}".format(str(e)))
+            report.mail_error = str(e)
     report.write_to_log(args.log_file)
 
     # Write to stdout to be caught by YW subprocess.

@@ -46,7 +46,25 @@ public class CustomerRegisterFormData {
     public Boolean reportOnlyErrors = false;
   }
 
+  static public class SmtpData {
+    public String smtpServer = null;
+
+    public int smtpPort = -1;
+
+    public String emailFrom = null;
+
+    public String smtpUsername = null;
+
+    public String smtpPassword = null;
+
+    public boolean useSSL = true;
+
+    public boolean useTLS = false;
+  }
+
   public AlertingData alertingData;
+
+  public SmtpData smtpData;
 
   @Constraints.Pattern(message="Must be one of NONE, LOW, MEDIUM, HIGH", value="\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
   public String callhomeLevel = "MEDIUM";
