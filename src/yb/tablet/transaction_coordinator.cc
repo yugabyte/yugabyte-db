@@ -38,6 +38,7 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
 
 #include "yb/server/clock.h"
@@ -821,7 +822,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
        Counter* expired_metric)
       : context_(*context),
         expired_metric_(*expired_metric),
-        log_prefix_(consensus::MakeTabletLogPrefix(context->tablet_id(), permanent_uuid)) {
+        log_prefix_(consensus::MakeTabletLogPrefix(context->tablet_id(), permanent_uuid)),
+        poller_(log_prefix_, std::bind(&Impl::Poll, this)) {
   }
 
   virtual ~Impl() {
@@ -829,21 +831,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void Shutdown() {
-    {
-      std::unique_lock<std::mutex> lock(managed_mutex_);
-      if (!closing_) {
-        closing_ = true;
-        if (poll_task_id_ != rpc::kUninitializedScheduledTaskId) {
-          context_.client_future().get()->messenger()->scheduler().Abort(poll_task_id_);
-        }
-      }
-      cond_.wait(lock, [this] { return poll_task_id_ == rpc::kUninitializedScheduledTaskId; });
-      // There could be rare case when poll left mutex and is executing postponed actions.
-      // So we should wait that it also completed.
-      while (running_polls_ != 0) {
-        std::this_thread::sleep_for(10ms);
-      }
-    }
+    poller_.Shutdown();
     rpcs_.Shutdown();
   }
 
@@ -1078,10 +1066,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void Start() {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
-    if (!closing_) {
-      SchedulePoll();
-    }
+    poller_.Start(
+        &context_.client_future().get()->messenger()->scheduler(),
+        std::chrono::microseconds(kTimeMultiplier * FLAGS_transaction_check_interval_usec));
   }
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
@@ -1293,29 +1280,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     return expired_metric_;
   }
 
-  void SchedulePoll() {
-    poll_task_id_ = context_.client_future().get()->messenger()->scheduler().Schedule(
-        std::bind(&Impl::Poll, this, _1),
-        std::chrono::microseconds(NonTsanVsTsan(1, 4) * FLAGS_transaction_check_interval_usec));
-  }
-
-  void Poll(const Status& status) {
-    ++running_polls_;
-    auto se = ScopeExit([this] {
-      --running_polls_;
-    });
+  void Poll() {
     auto now = context_.clock().Now();
 
     auto leader_term = context_.LeaderTerm();
     PostponedLeaderActions actions;
     {
       std::lock_guard<std::mutex> lock(managed_mutex_);
-      if (!status.ok() || closing_) {
-        LOG_WITH_PREFIX(INFO) << "Poll stopped: " << status;
-        poll_task_id_ = rpc::kUninitializedScheduledTaskId;
-        cond_.notify_one();
-        return;
-      }
       postponed_leader_actions_.leader_term = leader_term;
 
       auto& index = managed_transactions_.get<LastTouchTag>();
@@ -1338,8 +1309,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
             leader_term != OpId::kUnknownTerm, now_physical);
       }
       postponed_leader_actions_.Swap(&actions);
-
-      SchedulePoll();
     }
     ExecutePostponedLeaderActions(&actions);
   }
@@ -1365,11 +1334,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   // Actions that should be executed after mutex is unlocked.
   PostponedLeaderActions postponed_leader_actions_;
 
-  bool closing_ = false;
-  rpc::ScheduledTaskId poll_task_id_ = rpc::kUninitializedScheduledTaskId;
-  std::atomic<int64_t> running_polls_{0};
-  std::condition_variable cond_;
-
+  rpc::Poller poller_;
   rpc::Rpcs rpcs_;
 };
 

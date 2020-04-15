@@ -20,6 +20,10 @@
 #include <unordered_map>
 #include <sstream>
 
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/member.hpp>
+
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/test_util.h"

@@ -21,6 +21,8 @@
 
 #include "yb/master/master_fwd.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 
@@ -58,6 +60,10 @@ class SnapshotCoordinatorContext {
 
   virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
 
+  virtual rpc::Scheduler& Scheduler() = 0;
+
+  virtual bool IsLeader() = 0;
+
   virtual ~SnapshotCoordinatorContext() = default;
 };
 
@@ -88,6 +94,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   // Load snapshot data from system catalog RocksDB entry.
   CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data);
+
+  void Start();
+
+  void Shutdown();
 
  private:
   class Impl;

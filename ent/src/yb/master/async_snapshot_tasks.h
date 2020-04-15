@@ -54,6 +54,7 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
 
   scoped_refptr<TabletInfo> tablet_;
   const std::string snapshot_id_;

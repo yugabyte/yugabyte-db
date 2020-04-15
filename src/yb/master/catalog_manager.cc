@@ -558,6 +558,9 @@ Status CatalogManager::Init(bool is_first_run) {
     CHECK_EQ(kStarting, state_);
     state_ = kRunning;
   }
+
+  Started();
+
   return Status::OK();
 }
 

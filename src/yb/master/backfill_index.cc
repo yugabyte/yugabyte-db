@@ -397,7 +397,7 @@ std::string BackfillTableJob::description() const {
   }
 }
 
-MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState() {
+MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(const Status& status) {
   auto old_state = state();
   while (!IsStateTerminal(old_state)) {
     if (state_.compare_exchange_strong(old_state,
@@ -846,17 +846,16 @@ void GetSafeTimeForTablet::HandleResponse(int attempt) {
       case TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA:
       case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
         LOG(WARNING) << "TS " << permanent_uuid() << ": GetSafeTime failed for tablet "
-                     << tablet_->ToString() << " no further retry: " << status.ToString();
-        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
+                     << tablet_->ToString() << " no further retry: " << status;
+        TransitionToFailedState(MonitoredTaskState::kRunning, status);
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": GetSafeTime failed for tablet "
-                     << tablet_->ToString() << ": " << status.ToString() << " code "
-                     << resp_.error().code();
+                     << tablet_->ToString() << ": " << status << " code "<< resp_.error().code();
         break;
     }
   } else {
-    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+    TransitionToCompleteState();
     VLOG(1) << "TS " << permanent_uuid() << ": GetSafeTime complete on tablet "
             << tablet_->ToString();
   }
@@ -952,8 +951,8 @@ void BackfillChunk::HandleResponse(int attempt) {
       case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
         LOG(WARNING) << "TS " << permanent_uuid() << ": backfill failed for tablet "
                      << backfill_tablet_->tablet()->ToString()
-                     << " no further retry: " << status.ToString();
-        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
+                     << " no further retry: " << status;
+        TransitionToFailedState(MonitoredTaskState::kRunning, status);
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": backfill failed for tablet "
@@ -962,7 +961,7 @@ void BackfillChunk::HandleResponse(int attempt) {
         break;
     }
   } else {
-    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+    TransitionToCompleteState();
     VLOG(1) << "TS " << permanent_uuid() << ": backfill complete on tablet "
             << backfill_tablet_->tablet()->ToString();
   }
