@@ -1,14 +1,15 @@
 ---
-title: Release history
-linkTitle: Release history
+title: Earlier releases
+linkTitle: Earlier releases
 description: Release history
 headcontent: History of important YugabyteDB releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
 menu:
   latest:
-    identifier: releases
-    weight: 2588 
+    identifier: earlier-releases
+    parent: releases
+    weight: 2590 
 ---
 
 Download YugabyteDB using the table below and then follow the [Quick Start](../quick-start/) instructions to get started.
