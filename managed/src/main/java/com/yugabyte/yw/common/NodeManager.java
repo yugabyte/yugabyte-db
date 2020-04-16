@@ -323,7 +323,12 @@ public class NodeManager extends DevopsBase {
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
 
           if (taskParam.updateMasterAddrsOnly) {
-            gflags.put("tserver_master_addrs", masterAddresses);
+            if (processType.equals(ServerType.MASTER.name())) {
+              gflags.put("master_addresses", masterAddresses);
+            } else {
+              gflags.put("tserver_master_addrs", masterAddresses);
+            }
+
           } else {
             gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
             gflags.put("metric_node_name", taskParam.nodeName);

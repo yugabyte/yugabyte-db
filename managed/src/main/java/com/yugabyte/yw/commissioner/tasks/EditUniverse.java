@@ -259,6 +259,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Change the master addresses in the conf file for the new tservers.
       createConfigureServerTasks(newTservers, false /* isShell */, true /* updateMasterAddrs */);
 
+      // Change the master addresses in the conf file for the new masters.
+      createConfigureServerTasks(newMasters, false /* isShell */, true /* updateMasterAddrs */,
+                                 true /* isMaster */);
+
       // Wait for the master leader to hear from all tservers.
       createWaitForTServerHeartBeatsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

@@ -580,6 +580,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
                                                  boolean isMasterInShellMode,
                                                  boolean updateMasterAddrsOnly) {
+    return createConfigureServerTasks(nodes, isMasterInShellMode,
+                                      updateMasterAddrsOnly /* updateMasterAddrs */,
+                                      false /* isMaster */);
+  }
+
+  public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
+                                                 boolean isMasterInShellMode,
+                                                 boolean updateMasterAddrsOnly,
+                                                 boolean isMaster) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -618,7 +627,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.updateMasterAddrsOnly = updateMasterAddrsOnly;
       if (updateMasterAddrsOnly) {
         params.type = UpgradeTaskType.GFlags;
-        params.setProperty("processType", ServerType.TSERVER.toString());
+        if (isMaster) {
+          params.setProperty("processType", ServerType.MASTER.toString());
+        } else {
+          params.setProperty("processType", ServerType.TSERVER.toString());
+        }
       }
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = new AnsibleConfigureServers();
