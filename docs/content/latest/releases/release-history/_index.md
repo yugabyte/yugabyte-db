@@ -1,5 +1,5 @@
 ---
-title: Release **history**
+title: Release history
 linkTitle: Release history
 description: Release history
 headcontent: History of important YugabyteDB releases.
