@@ -1646,7 +1646,11 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 		bool				found = false;
 		char				*type_str;
 
+#if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
+		attr = tupdesc->attrs[i];
+#else
 		attr = TupleDescAttr(tupdesc, i);
+#endif
 
 		/* skip dropped or system columns */
 		if (attr->attisdropped || attr->attnum < 0)
@@ -1673,7 +1677,11 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 			{
 				Form_pg_attribute	iattr;
 
+#if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
+				iattr = idxdesc->attrs[j];
+#else
 				iattr = TupleDescAttr(idxdesc, j);
+#endif
 				if (strcmp(NameStr(attr->attname), NameStr(iattr->attname)) == 0)
 					found = true;
 			}
