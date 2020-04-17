@@ -33,6 +33,7 @@ NEW_OLD_UUID_RE = re.compile(UUID_RE_STR + '[ ]*\t' + UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 FS_DATA_DIRS_ARG_PREFIX = '--fs_data_dirs='
 IMPORTED_TABLE_RE = re.compile('Table being imported: ([^\.]*)\.(.*)')
+RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
 
 SNAPSHOT_KEYSPACE_RE = re.compile("^[ \t]*Keyspace:.* name='(.*)' type")
 SNAPSHOT_TABLE_RE = re.compile("^[ \t]*Table:.* name='(.*)' type")
@@ -1573,8 +1574,16 @@ class YBBackup:
 
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
-        self.run_yb_admin(['restore_snapshot', snapshot_id])
-        self.wait_for_snapshot(snapshot_id, 'restoring', RESTORE_SNAPSHOT_TIMEOUT_SEC, False)
+
+        output = self.run_yb_admin(['restore_snapshot', snapshot_id])
+        restoration_id = snapshot_id
+        for line in output.splitlines():
+            restoration_match = RESTORATION_RE.match(line)
+            if restoration_match:
+                restoration_id = restoration_match.group(1)
+                logging.info('Found restoration id: ' + restoration_id)
+
+        self.wait_for_snapshot(restoration_id, 'restoring', RESTORE_SNAPSHOT_TIMEOUT_SEC, False)
 
         logging.info('Restored backup successfully!')
         print json.dumps({"success": True})

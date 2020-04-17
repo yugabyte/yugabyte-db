@@ -426,6 +426,13 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
       Format("tableid.$0", tables.front().table_id()),
       extra_table.namespace_name(), extra_table.table_name()),
                             &output));
+  ASSERT_NE(output.find("Started snapshot creation"), string::npos);
+
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(
+          GetAdminToolPath(), "-master_addresses", master_address,
+          "list_snapshots", "SHOW_DETAILS"),
+      &output));
   ASSERT_NE(output.find(extra_table.table_name()), string::npos);
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
 }
