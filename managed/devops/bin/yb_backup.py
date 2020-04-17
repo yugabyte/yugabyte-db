@@ -583,18 +583,22 @@ class YBBackup:
         options = BackupOptions(self.args)
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
-            if not os.getenv('AWS_ACCESS_KEY_ID'):
+            if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
+                with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
+                    s3_cfg.write('[default]\n' +
+                                 'access_key = ' + '\n' +
+                                 'secret_key = ' + '\n' +
+                                 'security_token = ' + '\n')
+            elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
+                with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
+                    s3_cfg.write('[default]\n' +
+                                 'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
+                                 'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n')
+            else:
                 raise BackupException(
-                    "Set AWS access key for S3 in AWS_ACCESS_KEY_ID environment variable.")
+                    "Missing either AWS access key or secret key for S3 "
+                    "in AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY environment variables.")
 
-            if not os.getenv('AWS_SECRET_ACCESS_KEY'):
-                raise BackupException(
-                    "Set AWS secret key for S3 in AWS_SECRET_ACCESS_KEY environment variable.")
-
-            with open(self.cloud_cfg_file_path, 'w') as cloud_cfg:
-                cloud_cfg.write('[default]\n' +
-                                'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
-                                'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n')
             os.chmod(self.cloud_cfg_file_path, 0o400)
             options.cloud_cfg_file_path = self.cloud_cfg_file_path
         elif self.is_gcs():
