@@ -551,6 +551,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.assignPublicIP = cloudInfo.assignPublicIP;
       params.useTimeSync = cloudInfo.useTimeSync;
       params.cmkArn = taskParams().cmkArn;
+      params.ipArnString = userIntent.awsArnString;
+
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);

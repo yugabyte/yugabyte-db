@@ -271,6 +271,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean enableVolumeEncryption = false;
 
+    public String awsArnString;
+
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.

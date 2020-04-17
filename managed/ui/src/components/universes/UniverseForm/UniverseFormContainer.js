@@ -155,8 +155,8 @@ const formFieldNames =
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
     'primary.volumeSize', 'primary.storageType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
     'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest',
-    'primary.selectEncryptionAtRestConfig', 'primary.mountPoints', 'async.universeName',
-    'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes', 'async.instanceType',
+    'primary.selectEncryptionAtRestConfig', 'primary.mountPoints', 'primary.awsArnString',
+    'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes', 'async.instanceType',
     'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL',
     'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints', 'masterGFlags',
     'tserverGFlags', 'instanceTags', 'asyncClusters'];
@@ -229,6 +229,7 @@ function mapStateToProps(state, ownProps) {
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false,
       "enableEncryptionAtRest": false,
+      "awsArnString": "",
       "selectEncryptionAtRestConfig": null
     },
     "async": {
@@ -266,12 +267,12 @@ function mapStateToProps(state, ownProps) {
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
       'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL',
-      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig',
-      'primary.tlsCertificateId', 'async.universeName', 'async.provider', 'async.providerType',
-      'async.regionList', 'async.replicationFactor', 'async.numNodes', 'async.instanceType',
-      'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.diskIops',
-      'async.numVolumes', 'async.volumeSize',  'async.storageType', 'async.assignPublicIP',
-      'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt',
+      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest',
+      'primary.selectEncryptionAtRestConfig', 'primary.tlsCertificateId', 'primary.awsArnString', 'async.universeName',
+      'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
+      'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion',
+      'async.accessKeyCode', 'async.diskIops', 'async.numVolumes', 'async.volumeSize',  'async.storageType',
+      'async.assignPublicIP', 'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt',
       'async.mountPoints', 'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags'
     )
   };
