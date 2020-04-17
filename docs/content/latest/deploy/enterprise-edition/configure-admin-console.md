@@ -1,7 +1,8 @@
 ---
-title: Configure Admin Console
+title: Configure the YugaWare Admin Console
+headerTitle: Configure Admin Console
 linkTitle: 3. Configure Admin Console
-description: Configure Admin Console
+description: Configure YugaWare, the Admin Console, for your YugabyteDB clusters.
 aliases:
   - deploy/enterprise-edition/configure-admin-console/
 menu:
@@ -47,17 +48,17 @@ By clicking on the top right drop-down list or going directly to [http://yugawar
 
 Next step is to configure one or more cloud providers in YugaWare as documented [here](../configure-cloud-providers/).
 
-## Backup data
+## Back up data
 
 We recommend a weekly machine snapshot and weekly backups of `/opt/yugabyte`.
 
-Doing a machine snapshot and backing up the above directory before performing an update is recommended as well.
+Before performing an update is, you should create a machine snapshot and back up the `/opt/yugabyte` directory.
 
 ## Upgrade
 
-Upgrades to YugaWare are managed seamlessly in the Replicated UI. Whenever a new YugaWare version is available for upgrade, the Replicated UI will show the same. You can apply the upgrade anytime you wish.
+Upgrades to YugaWare are managed seamlessly in the Replicated UI. When a new YugaWare version is available for upgrade, the Replicated UI will show the same. You can apply the upgrade at your convenience.
 
-Upgrades to Replicated are as simple as rerunning the Replicated install command. This will upgrade Replicated components with the latest build.
+To upgrade Replicated, rerun the Replicated install command. This will upgrade Replicated components with the latest build.
 
 ## Uninstall
 
@@ -67,7 +68,7 @@ Stop and remove the YugaWare application on Replicated first.
 $ /usr/local/bin/replicated apps
 ```
 
-Replace <appid> with the application ID of yugaware from the command above.
+Replace <appid> with the application ID of YugaWare from the command above.
 
 ```sh
 $ /usr/local/bin/replicated app <appid> stop
@@ -79,7 +80,8 @@ Remove the YugaWare application.
 $ /usr/local/bin/replicated app <appid> rm
 ```
 
-Remove all yugaware containers
+Remove all yugaware containers.
+
 ```sh
 $ docker images | grep "yuga" | awk '{print $3}' | xargs docker rmi -f
 ```
@@ -94,9 +96,9 @@ Nex, uninstall Replicated itself by following instructions documented [here](htt
 
 ## Troubleshoot
 
-### SELinux turned on on YugaWare host
+### SELinux turned on the YugaWare host
 
-If your host has SELinux turned on, then docker-engine may not be able to connect with the host. Run the following commands to open the ports using firewall exceptions.
+If your host has SELinux turned on, then docker-engine may not be able to connect with the host. To open the ports using firewall exceptions, run the following command.
 
 ```sh
 sudo firewall-cmd --zone=trusted --add-interface=docker0
@@ -122,7 +124,7 @@ Generate a key pair.
 $ ssh-keygen -t rsa
 ```
 
-Setup passwordless SSH to the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
+Set up passwordless SSH to the data nodes with private IP addresses: `10.1.13.150`, `10.1.13.151`, `10.1.13.152`.
 
 ```sh
 $ for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do
@@ -156,7 +158,7 @@ Disk: /dev/sda2       208G  5.1G  203G   3% /
 
 ### Create mount paths on the data nodes
 
-Create mount paths on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152.
+Create mount paths on the data nodes with private IP addresses: `10.1.13.150`, `10.1.13.151`, `10.1.13.152`.
 
 ```sh
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105; do ssh $IP mkdir -p /mnt/data0; done
@@ -164,7 +166,7 @@ for IP in 10.1.12.103 10.1.12.104 10.1.12.105; do ssh $IP mkdir -p /mnt/data0; d
 
 ### SELinux turned on for data nodes
 
-Add firewall exceptions on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152.
+Add firewall exceptions on the data nodes with private IP addresses: `10.1.13.150`, `10.1.13.151`, `10.1.13.152`.
 
 ```sh
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105

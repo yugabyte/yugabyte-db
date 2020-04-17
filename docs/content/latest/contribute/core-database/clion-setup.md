@@ -2,7 +2,7 @@
 title: Configure a CLion project
 headerTitle: Configure a CLion project
 linkTitle: Configure a CLion project
-description: Configure a CLion project
+description: Configure a CLion project for building YugabyteDB using cmake or ninja.
 image: /images/section_icons/index/quick_start.png
 headcontent: CLion project setup.
 type: page
@@ -20,7 +20,7 @@ There are two options for build systems that you can use with YugabyteDB, `cmake
 * `make` is well-supported by CLion, but slower for rebuild comparing to ninja.
 * `ninja` is faster, but CLion has limited support for `ninja` (for example, it doesn't allow you to [rebuild individual files](https://youtrack.jetbrains.com/issue/CPP-17622)).
 
-#### Configure a CLion project for YugabyteDB
+### Configure a CLion project for YugabyteDB
 
 1. Click **File > Open…** to open the project root directory.
 2. Select `build/debug-clang-dynamic` (or `build/debug-clang-dynamic-ninja` if you want to use `ninja`) as the **Generation path** in **Preferences > Build, Execution, Deployment/CMake”**: 

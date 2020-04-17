@@ -2,7 +2,7 @@
 title: DocDB performance enhancements to RocksDB
 headerTitle: Performance
 linkTitle: Performance
-description: Learn about how DocDB enhances RocksDB for scale and performance.
+description: Learn how DocDB enhances RocksDB for scale and performance.
 aliases:
   - /latest/architecture/concepts/docdb/performance/
 menu:
