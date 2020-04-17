@@ -1,5 +1,5 @@
 ---
-title: Google Kubernetes Engine (GKE)
+title: Deploy Google Kubernetes Engine (GKE)
 headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Deploy a single multi-region YugabyteDB cluster on that spans three GKE clusters, each running in a different region.

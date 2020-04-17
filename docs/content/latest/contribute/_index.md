@@ -2,7 +2,7 @@
 title: Get involved with YugabyteDB
 headerTitle: Get involved with YugabyteDB
 linkTitle: Get involved
-description: Get involved with YugabyteDB
+description: Contribute to the YugabyteDB code and documentation.
 image: /images/section_icons/index/quick_start.png
 headcontent: Contribute code and docs to improve YugabyteDB.
 type: page

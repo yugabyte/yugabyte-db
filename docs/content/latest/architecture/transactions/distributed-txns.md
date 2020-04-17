@@ -1,8 +1,8 @@
 ---
-title: Distributed transactions
-linkTitle: Distributed transactions
+title: Distributed ACID transactions
 headerTitle: Distributed ACID transactions
-description: Distributed ACID transactions are transactions that modify multiple rows in more than one shard. YugabyteDB supports distributed transactions, enabling strongly consistent secondary indexes and multi-table/row ACID operations
+linkTitle: Distributed transactions
+description: Distributed ACID transactions modify multiple rows in more than one shard.
 menu:
   latest:
     identifier: architecture-distributed-acid-transactions

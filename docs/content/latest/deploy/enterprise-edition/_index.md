@@ -2,7 +2,7 @@
 title: Deploy the Yugabyte Platform for mission-critical deployments
 headerTitle: Yugabyte Platform
 linkTitle: Yugabyte Platform
-description: Use YugaWare and the Yugabyte Platform to deploy and manage mission-critical YugabyteDB clusters
+description: Use YugaWare and the Yugabyte Platform to deploy and manage mission-critical YugabyteDB clusters.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:

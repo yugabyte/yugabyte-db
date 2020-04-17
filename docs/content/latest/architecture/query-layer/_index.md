@@ -2,7 +2,7 @@
 title: YugabyteDB query layer (YQL)
 headerTitle: Query layer
 linkTitle: Query layer
-description: Learn about how YugabyteDB's extensible query layer implements YSQL and YCQL.
+description: Learn how YugabyteDB's extensible query layer implements YSQL and YCQL.
 image: /images/section_icons/index/api.png
 headcontent: 
 aliases:

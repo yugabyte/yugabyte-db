@@ -2,7 +2,7 @@
 title: DocDB store
 headerTitle: DocDB store
 linkTitle: DocDB store
-description: Learn about the architecture of the DocDB, the YugabyteDB distributed document store that is responsible for sharding, replication, transactions, and persistence.
+description: Learn about the YugabyteDB distributed document store that is responsible for sharding, replication, transactions, and persistence.
 image: /images/section_icons/architecture/concepts.png
 aliases:
   - /architecture/concepts/docdb/
