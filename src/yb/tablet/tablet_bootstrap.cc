@@ -788,9 +788,14 @@ Status TabletBootstrap::PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {
 Status TabletBootstrap::PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
   tserver::SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
   RETURN_NOT_OK(replay_state_->UpdateSplitOpId(*replicate_msg, tablet_->tablet_id()));
+  // We might be asked to replay SPLIT_OP even if it was applied and flushed when
+  // FLAGS_force_recover_flushed_frontier is set.
   if (split_request->tablet_id() != tablet_->tablet_id()) {
-    // We might be asked to replay SPLIT_OP designated for ancestor tablet(s), just ignore it in
-    // this case.
+    // Ignore SPLIT_OP designated for ancestor tablet(s).
+    return Status::OK();
+  } else if (tablet_->metadata()->tablet_data_state() ==
+             TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    // Ignore SPLIT_OP if tablet has been already split.
     return Status::OK();
   }
   SplitOperationState state(

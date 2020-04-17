@@ -727,6 +727,8 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
         round->replicate_msg()->split_request().tablet_id(), cmeta_->tablet_id(), InvalidArgument,
         "Received split op for a different tablet.");
     split_op_id_ = yb::OpId::FromPB(round->replicate_msg()->id());
+    // TODO(tsplit): if we get failures past this point we can't undo the tablet state.
+    // Might be need some tool to be able to remove SPLIT_OP from Raft log.
   }
 
   pending_operations_.push_back(round);

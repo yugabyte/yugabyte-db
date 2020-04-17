@@ -172,7 +172,8 @@ void TabletSplitITest::WaitForTabletSplitCompletion() {
           return false;
         }
         num_peers_leader_ready += leader_status == consensus::LeaderStatus::LEADER_AND_READY;
-        num_peers_split += tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT;
+        num_peers_split +=
+            tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
       }
       LOG(INFO) << "num_peers_running: " << num_peers_running;
       LOG(INFO) << "num_peers_split: " << num_peers_split;
@@ -194,7 +195,8 @@ void TabletSplitITest::CheckTabletReplicasData(size_t num_rows) {
   const auto value_column_id = table_.ColumnId(kValueColumn);
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
     const auto* tablet = peer->tablet();
-    if (tablet->metadata()->tablet_data_state() != tablet::TabletDataState::TABLET_DATA_SPLIT) {
+    if (tablet->metadata()->tablet_data_state()
+        != tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       const Schema& schema = tablet->metadata()->schema();
       auto client_schema = schema.CopyWithoutColumnIds();
       auto iter = ASSERT_RESULT(tablet->NewRowIterator(client_schema, boost::none));
@@ -219,7 +221,9 @@ void TabletSplitITest::CheckTabletReplicasData(size_t num_rows) {
 }
 
 void TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tablet_id) {
+  google::FlagSaver saver;
   FLAGS_do_not_start_election_test_only = true;
+
   size_t tablet_split_insert_error_count = 0;
   size_t not_the_leader_insert_error_count = 0;
   for (auto mini_ts : cluster_->mini_tablet_servers()) {
@@ -305,6 +309,8 @@ TEST_F(TabletSplitITest, SplitSingleTablet) {
   CheckTabletReplicasData(kNumRows);
 
   CheckSourceTabletAfterSplit(source_tablet_id);
+
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 }  // namespace yb

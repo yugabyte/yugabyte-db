@@ -525,7 +525,8 @@ CHECKED_STATUS MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock);
 // Checks whether tablet data storage is ready for function, i.e. its creation or bootstrap process
 // has been completed and tablet is not deleted and not in process of being deleted.
 inline bool CanServeTabletData(TabletDataState state) {
-  return state == TabletDataState::TABLET_DATA_READY || state == TabletDataState::TABLET_DATA_SPLIT;
+  return state == TabletDataState::TABLET_DATA_READY ||
+         state == TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
 }
 
 } // namespace tablet

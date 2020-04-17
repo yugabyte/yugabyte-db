@@ -284,7 +284,7 @@ using tablet::RUNNING;
 using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
 using tablet::TABLET_DATA_READY;
-using tablet::TABLET_DATA_SPLIT;
+using tablet::TABLET_DATA_SPLIT_COMPLETED;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
 using tablet::TabletPeer;
@@ -824,7 +824,7 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
-  auto* tablet = op_state->tablet();
+  auto* tablet = CHECK_NOTNULL(op_state->tablet());
   const auto tablet_id = tablet->tablet_id();
   const auto* request = op_state->request();
   SCHECK_EQ(
@@ -839,13 +839,7 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
           op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
 
-  TabletPeerPtr tablet_peer;
-  RETURN_NOT_OK(GetTabletPeer(tablet_id, &tablet_peer));
-
-  auto& meta = *CHECK_NOTNULL(tablet_peer->tablet()->metadata());
-  meta.set_tablet_data_state(tablet::TABLET_DATA_SPLIT);
-  // TODO(split): if we get failures past this point we can't undo the tablet data state.
-  RETURN_NOT_OK(meta.Flush());
+  auto& meta = *CHECK_NOTNULL(tablet->metadata());
 
   // TODO(tsplit): We can later implement better per-disk distribution during compaction of split
   // tablets.
@@ -911,6 +905,9 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
     tcmeta.peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(tcmeta.raft_group_metadata, NEW_PEER));
   }
 
+  meta.set_tablet_data_state(tablet::TABLET_DATA_SPLIT_COMPLETED);
+  RETURN_NOT_OK(meta.Flush());
+
   for (auto& tcmeta : tcmetas) {
     RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(std::bind(
         &TSTabletManager::OpenTablet, this, tcmeta.raft_group_metadata,
@@ -963,7 +960,7 @@ Status HandleReplacingStaleTablet(
                                             last_logged_term));
       break;
     }
-    case TABLET_DATA_SPLIT:
+    case TABLET_DATA_SPLIT_COMPLETED:
     case TABLET_DATA_READY: {
       if (tablet_id == master::kSysCatalogTabletId) {
         LOG(FATAL) << LogPrefix(tablet_id, uuid) << " Remote bootstrap: "
