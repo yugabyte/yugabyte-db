@@ -67,6 +67,8 @@ using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
 using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
+using master::ListSnapshotRestorationsRequestPB;
+using master::ListSnapshotRestorationsResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::ListTabletServersRequestPB;
@@ -96,14 +98,12 @@ Status ClusterAdminClient::ListSnapshots(bool show_details) {
   }
 
   if (resp.snapshots_size()) {
-    cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep
-         << "State" << endl;
+    cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << endl;
   } else {
     cout << "No snapshots" << endl;
   }
 
-  for (int i = 0; i < resp.snapshots_size(); ++i) {
-    SnapshotInfoPB& snapshot = *resp.mutable_snapshots(i);
+  for (SnapshotInfoPB& snapshot : *resp.mutable_snapshots()) {
     cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
 
     if (show_details) {
@@ -137,27 +137,26 @@ Status ClusterAdminClient::ListSnapshots(bool show_details) {
     }
   }
 
+  rpc.Reset();
+  rpc.set_timeout(timeout_);
+  ListSnapshotRestorationsRequestPB rest_req;
+  ListSnapshotRestorationsResponsePB rest_resp;
+  RETURN_NOT_OK(master_backup_proxy_->ListSnapshotRestorations(rest_req, &rest_resp, &rpc));
+
+  if (rest_resp.restorations_size()) {
+    cout << RightPadToUuidWidth("Restoration UUID") << kColumnSep << "State" << endl;
+  } else {
+    cout << "No snapshot restorations" << endl;
+  }
+
+  for (const SnapshotInfoPB& snapshot : rest_resp.restorations()) {
+    cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
+  }
+
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateSnapshot(const vector<YBTableName>& tables,
-                                          int flush_timeout_secs) {
-  if (flush_timeout_secs > 0) {
-    for (const YBTableName& table_name : tables) {
-      // Flush table before the snapshot creation.
-      const Status s = FlushTable(table_name, flush_timeout_secs, false /* is_compaction */);
-      // Expected statuses:
-      //   OK - table was successfully flushed
-      //   NotFound - flush request was finished & deleted
-      //   TimedOut - flush request failed by timeout
-      if (s.IsTimedOut()) {
-        cout << s.ToString(false) << " (ignored)" << endl;
-      } else if (!s.ok() && !s.IsNotFound()) {
-        return s;
-      }
-    }
-  }
-
+Status ClusterAdminClient::CreateSnapshot(const vector<YBTableName>& tables) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
   CreateSnapshotRequestPB req;
@@ -192,7 +191,8 @@ Status ClusterAdminClient::RestoreSnapshot(const string& snapshot_id) {
     return StatusFromPB(resp.error().status());
   }
 
-  cout << "Started restoring snapshot: " << snapshot_id << endl;
+  cout << "Started restoring snapshot: " << snapshot_id << endl
+       << "Restoration id: " << FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()) << endl;
   return Status::OK();
 }
 
@@ -288,6 +288,12 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         break;
       }
       case SysRowEntry::TABLE: {
+        if (tables.size() > 0 && table_index >= tables.size()) {
+          return STATUS_FORMAT(InvalidArgument,
+                               "There is no name for table (including indexes) number: $0",
+                               table_index);
+        }
+
         auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
         orig_table_name.set_table_name(meta.name());
 

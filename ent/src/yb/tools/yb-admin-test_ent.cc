@@ -234,7 +234,8 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   ASSERT_EQ(0, tables.size());
 
   // Import table and index with original names.
-  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file, keyspace, table_name}));
+  ASSERT_OK(RunAdminToolCommand({
+      "import_snapshot", snapshot_file, keyspace, table_name, keyspace, index_name}));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
 
