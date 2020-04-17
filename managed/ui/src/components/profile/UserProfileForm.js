@@ -100,8 +100,6 @@ export default class UserProfileForm extends Component {
             this.setState({statusUpdated: true});
           }}
           render={({
-            values,
-            handleChange,
             handleSubmit,
             isSubmitting,
           }) => (

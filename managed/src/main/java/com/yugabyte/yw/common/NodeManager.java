@@ -385,6 +385,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--cmk_res_name");
             commandArgs.add(taskParam.cmkArn);
           }
+          if (taskParam.ipArnString != null) {
+            commandArgs.add("--iam_profile_arn");
+            commandArgs.add(taskParam.ipArnString);
+          }
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         if (nodeTaskParam.deviceInfo != null) {

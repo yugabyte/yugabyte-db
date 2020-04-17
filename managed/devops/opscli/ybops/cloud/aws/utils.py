@@ -890,6 +890,10 @@ def create_instance(args):
         ebs["Encrypted"] = True
         ebs["KmsKeyId"] = args.cmk_res_name
 
+    if args.iam_profile_arn is not None:
+        vars["IamInstanceProfile"] = {
+            "Arn": args.iam_profile_arn
+        }
     volumes.append({
         "DeviceName": "/dev/sda1",
         "Ebs": ebs

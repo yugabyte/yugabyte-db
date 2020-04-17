@@ -209,6 +209,7 @@ class UniverseForm extends Component {
         enableYSQL: self.getYSQLstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
+        awsArnString: formValues[clusterType].awsArnString,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,

@@ -89,6 +89,7 @@ export default class ClusterFields extends Component {
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
+    this.handleAwsArnChange = this.handleAwsArnChange.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
@@ -571,6 +572,11 @@ export default class ClusterFields extends Component {
     }
   }
 
+  handleAwsArnChange(event) {
+    const { updateFormField } = this.props;
+    updateFormField('primary.awsArnString', event.target.value);
+  }
+
   handleSelectAuthConfig(value) {
     const { updateFormField, clusterType } = this.props;
     updateFormField(`${clusterType}.selectEncryptionAtRestConfig`, value);
@@ -954,15 +960,14 @@ export default class ClusterFields extends Component {
     let enableEncryptionAtRest = <span />;
     let selectEncryptionAtRestConfig = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
-
+    const disableToggleOnChange = clusterType !== "primary";
     if (isDefinedNotNull(currentProvider) &&
        (currentProvider.code === "aws" || currentProvider.code === "gcp" ||
         currentProvider.code === "onprem" || currentProvider.code === "kubernetes")){
-      const disableOnChange = clusterType !== "primary";
       enableYSQL = (
         <Field name={`${clusterType}.enableYSQL`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableYSQL}
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
@@ -971,7 +976,7 @@ export default class ClusterFields extends Component {
       enableNodeToNodeEncrypt = (
         <Field name={`${clusterType}.enableNodeToNodeEncrypt`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableNodeToNodeEncrypt}
           onToggle={this.toggleEnableNodeToNodeEncrypt}
           label="Enable Node-to-Node TLS"
@@ -980,7 +985,7 @@ export default class ClusterFields extends Component {
       enableClientToNodeEncrypt = (
         <Field name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}
           label="Enable Client-to-Node TLS"
@@ -989,7 +994,7 @@ export default class ClusterFields extends Component {
       enableEncryptionAtRest = (
         <Field name={`${clusterType}.enableEncryptionAtRest`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableEncryptionAtRest}
           onToggle={this.toggleEnableEncryptionAtRest}
           label="Enable Encryption at Rest"
@@ -1042,11 +1047,10 @@ export default class ClusterFields extends Component {
         (currentProvider.code === "aws" || currentProvider.code === "gcp")) {
       // Assign public ip would be only enabled for primary and that same
       // value will be used for async as well.
-      const disableOnChange = clusterType !== "primary";
       assignPublicIP = (
         <Field name={`${clusterType}.assignPublicIP`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.assignPublicIP}
           onToggle={this.toggleAssignPublicIP}
           label="Assign Public IP"
@@ -1302,6 +1306,17 @@ export default class ClusterFields extends Component {
             </Col>
             }
           </Row>
+          {isDefinedNotNull(currentProvider) && currentProvider.code === "aws" &&
+            <Row>
+              <Col sm={5} md={4}>
+                <div className="form-right-aligned-labels">
+                  <Field name={`${clusterType}.awsArnString`}
+                      type="text" component={YBTextInputWithLabel}
+                      label="Instance Profile ARN" isReadOnly={isFieldReadOnly} />
+                </div>
+              </Col>
+            </Row>
+          }
         </div>
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
