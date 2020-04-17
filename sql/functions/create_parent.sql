@@ -706,8 +706,12 @@ IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 TH
     */
 
     -- Same INCLUDING list is used in create_partition_*(). INDEXES is handled when partition is attached if it's supported.
-    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS)'
+    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS '
         , v_parent_schema, v_default_partition, v_parent_schema, v_parent_tablename);
+    IF current_setting('server_version_num')::int >= 120000 THEN
+        v_sql := v_sql || ' INCLUDING GENERATED ';
+    END IF;
+    v_sql := v_sql || ')';
     EXECUTE v_sql;
     v_sql := format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I DEFAULT'
         , v_parent_schema, v_parent_tablename, v_parent_schema, v_default_partition);

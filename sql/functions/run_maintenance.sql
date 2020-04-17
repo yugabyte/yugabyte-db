@@ -26,7 +26,7 @@ v_last_partition_created        boolean;
 v_last_partition_id             bigint;
 v_last_partition_timestamp      timestamptz;
 v_max_id_parent                 bigint;
-v_max_time_parent               timestamptz;
+v_max_time_default               timestamptz;
 v_new_search_path               text := '@extschema@,pg_temp';
 v_next_partition_id             bigint;
 v_next_partition_timestamp      timestamptz;
@@ -222,19 +222,18 @@ LOOP
         END IF; -- end infinite time check
 
         -- Check for values in the parent/default table. If they are there and greater than all child values, use that instead
-        -- This allows maintenance to continue working properly if there is a large gap in data insertion. Data will remain in parent, but new tables will be created
-        EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_default_tablename) INTO v_max_time_parent;
+        -- This allows maintenance to continue working properly if there is a large gap in data insertion. Data will remain in default, but new tables will be created
+        EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_default_tablename) INTO v_max_time_default;
         IF p_debug THEN
-            RAISE NOTICE 'run_maint: v_current_partition_timestamp: %, v_max_time_parent: %', v_current_partition_timestamp, v_max_time_parent;
+            RAISE NOTICE 'run_maint: v_current_partition_timestamp: %, v_max_time_default: %', v_current_partition_timestamp, v_max_time_default;
         END IF;
-        IF v_max_time_parent > v_current_partition_timestamp THEN
-            SELECT suffix_timestamp INTO v_current_partition_timestamp FROM @extschema@.show_partition_name(v_row.parent_table, v_max_time_parent::text);
-        END IF;
-
-        IF v_current_partition_timestamp IS NULL THEN 
+        IF v_current_partition_timestamp IS NULL AND v_max_time_default IS NULL THEN 
             -- Partition set is completely empty and infinite time partitions not set
             -- Nothing to do
             CONTINUE;
+        END IF;
+        IF v_current_partition_timestamp IS NULL OR (v_max_time_default > v_current_partition_timestamp) THEN
+            SELECT suffix_timestamp INTO v_current_partition_timestamp FROM @extschema@.show_partition_name(v_row.parent_table, v_max_time_default::text);
         END IF;
 
         -- If this is a subpartition, determine if the last child table has been made. If so, mark it as full so future maintenance runs can skip it
@@ -403,5 +402,3 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
-

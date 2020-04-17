@@ -193,6 +193,11 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                                 , v_parent_schema
                                 , v_parent_tablename);
 
+    IF current_setting('server_version_num')::int >= 120000 THEN
+        v_sql := v_sql || ' INCLUDING GENERATED ';
+    END IF;
+
+
     SELECT sub_partition_type, sub_control INTO v_sub_partition_type, v_sub_control 
     FROM @extschema@.part_config_sub 
     WHERE sub_parent = p_parent_table;

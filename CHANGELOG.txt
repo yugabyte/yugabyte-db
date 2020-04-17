@@ -1,3 +1,11 @@
+4.3.1
+BUG FIXES
+=========
+-- Add support for inheriting GENERATED columns from the parent table to the child tables. Thanks to @Dishwasha on Github for reporting the issue! (Github PR #302)
+
+-- Fix handling of data existing in the default partition with time-based partitioning when that data is further ahead of any data that exists in non-default children. New child tables may not have been created as expected. Thanks to @adrianlzt on Github for reporting the issue! (Github Issue #303)
+
+
 4.3.0
 NEW FEATURES
 ============
