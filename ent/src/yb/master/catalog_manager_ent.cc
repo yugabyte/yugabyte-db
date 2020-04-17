@@ -1153,7 +1153,11 @@ rpc::Scheduler& CatalogManager::Scheduler() {
 }
 
 bool CatalogManager::IsLeader() {
-  auto consensus = tablet_peer()->shared_consensus();
+  auto peer = tablet_peer();
+  if (!peer) {
+    return false;
+  }
+  auto consensus = peer->shared_consensus();
   if (!consensus) {
     return false;
   }
