@@ -10,27 +10,12 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { isDefinedNotNull } from "utils/ObjectUtils";
+import AwsStorageConfiguration from './AwsStorageConfiguration';
 
 import awss3Logo from './images/aws-s3.png';
 import { isNonEmptyObject, isEmptyObject } from '../../../utils/ObjectUtils';
 
 const storageConfigTypes = {
-  S3: {
-    title: "S3 Storage",
-    fields: [{
-      id: "AWS_ACCESS_KEY_ID",
-      label: "Access Key",
-      placeHolder: "AWS Access Key"
-    }, {
-      id: "AWS_SECRET_ACCESS_KEY",
-      label: "Access Secret",
-      placeHolder: "AWS Access Secret"
-    }, {
-      id: "BACKUP_LOCATION",
-      label: "S3 Bucket",
-      placeHolder: "S3 Bucket"
-    }]
-  },
   NFS: {
     title: "NFS Storage",
     fields: [{
@@ -73,20 +58,18 @@ const storageConfigTypes = {
   }
 };
 
-class StorageConfiguration extends Component {
-
-  getTabTitle = (configName) => {
-    switch (configName) {
-      case "S3":
-        return <img src={awss3Logo} alt="AWS S3" className="aws-logo" />;
-      case "GCS":
-        return <h3><i className="fa fa-database"></i>GCS</h3>;
-      case "AZ":
-        return <h3><i className="fa fa-database"></i>Azure Storage</h3>;
-      default:
-        return <h3><i className="fa fa-database"></i>NFS</h3>;
-    }
+const getTabTitle = (configName) => {
+  switch (configName) {
+    case "S3":
+      return <img src={awss3Logo} alt="AWS S3" className="aws-logo" />;
+    case "GCS":
+      return <h3><i className="fa fa-database"></i>GCS</h3>;
+    default:
+      return <h3><i className="fa fa-database"></i>NFS</h3>;
   }
+}
+
+class StorageConfiguration extends Component {
 
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs.data.find(config => config.name.toLowerCase() === name);
@@ -95,7 +78,11 @@ class StorageConfiguration extends Component {
   wrapFields = (configFields, configName, configControls) => {
     const configNameFormatted = configName.toLowerCase();
     return (
-      <Tab eventKey={configNameFormatted} title={ this.getTabTitle(configName) } key={configNameFormatted+"-tab"} unmountOnExit={true}>
+      <Tab eventKey={configNameFormatted}
+        title={ getTabTitle(configName) }
+        key={configNameFormatted+"-tab"}
+        unmountOnExit={true}
+      >
         <Row className="config-section-header" key={configNameFormatted}>
           <Col lg={8}>
             { configFields }
@@ -113,10 +100,20 @@ class StorageConfiguration extends Component {
   addStorageConfig = (values, action, props) => {
     const type = (props.activeTab && props.activeTab.toUpperCase()) || Object.keys(storageConfigTypes)[0];
     Object.keys(values).forEach((key) => { if (typeof values[key] === 'string' || values[key] instanceof String) values[key] = values[key].trim(); });
+    const dataPayload = { ...values };
+    if (props.activeTab === 's3') {
+      if (values["IAM_INSTANCE_PROFILE"]) {
+        delete dataPayload["AWS_ACCESS_KEY_ID"];
+        delete dataPayload["AWS_SECRET_ACCESS_KEY"];
+      }
+      if ("IAM_INSTANCE_PROFILE" in dataPayload) {
+        dataPayload["IAM_INSTANCE_PROFILE"] = dataPayload["IAM_INSTANCE_PROFILE"].toString();
+      }
+    }
     this.props.addCustomerConfig({
       "type": "STORAGE",
       "name": type,
-      "data": values
+      "data": dataPayload
     });
   }
 
@@ -148,7 +145,11 @@ class StorageConfiguration extends Component {
     }
 
     if (getPromiseState(customerConfigs).isSuccess() || getPromiseState(customerConfigs).isEmpty()) {
-      const configs = [];
+      const configs = [
+        <Tab eventKey={"s3"} title={getTabTitle("S3")} key={"s3-tab"} unmountOnExit={true}>
+          <AwsStorageConfiguration {...this.props} />
+        </Tab>
+      ];
       Object.keys(storageConfigTypes).forEach((configName) => {
         const config = customerConfigs.data.find(config => config.name === configName);
         if (isDefinedNotNull(config)) {
