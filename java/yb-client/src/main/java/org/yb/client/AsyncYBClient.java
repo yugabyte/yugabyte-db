@@ -296,10 +296,14 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   public Deferred<PingResponse> ping(final HostAndPort hp) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
-      throw new IllegalStateException("Could not create a client to " + hp.toString());
+      return Deferred.fromError(new IllegalStateException("Could not create a client to "
+              + hp.toString()));
     }
     PingRequest rpc = new PingRequest();
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -310,10 +314,14 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   public Deferred<SetFlagResponse> setFlag(final HostAndPort hp, String flag, String value) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
-      throw new IllegalStateException("Could not create a client to " + hp.toString());
+      return Deferred.fromError(new IllegalStateException("Could not create a client to "
+              + hp.toString()));
     }
     SetFlagRequest rpc = new SetFlagRequest(flag, value);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -324,10 +332,14 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   public Deferred<GetMasterAddressesResponse> getMasterAddresses(final HostAndPort hp) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
-      throw new IllegalStateException("Could not create a client to " + hp.toString());
+      return Deferred.fromError(new IllegalStateException("Could not create a client to "
+              + hp.toString()));
     }
     GetMasterAddressesRequest rpc = new GetMasterAddressesRequest();
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -344,10 +356,14 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object for the response from server.
    */
   public Deferred<CreateCDCStreamResponse> createCDCStream(final HostAndPort hp, String tableId) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
-      throw new IllegalStateException("Could not create a client to " + hp.toString());
+      return Deferred.fromError(new IllegalStateException("Could not create a client to "
+              + hp.toString()));
     }
     CreateCDCStreamRequest rpc = new CreateCDCStreamRequest(this.masterTable, tableId);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -371,10 +387,14 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<Void> getChanges(
           HostAndPort hp, YBTable table, String streamId, String tabletId, long term,
           long index, Callback<Void, GetChangesResponse> cb) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
-      throw new IllegalStateException("Could not create a client to " + hp.toString());
+      return Deferred.fromError(
+              new IllegalStateException("Could not create a client to " + hp.toString()));
     }
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term, index);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -390,10 +410,14 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object for the response from server.
    */
   public Deferred<IsServerReadyResponse> isServerReady(final HostAndPort hp, boolean isTserver) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
-      throw new IllegalStateException("Could not create a client to " + hp.toString());
+      return Deferred.fromError(
+              new IllegalStateException("Could not create a client to " + hp.toString()));
     }
 
     IsServerReadyRequest rpc =
@@ -434,7 +458,10 @@ public class AsyncYBClient implements AutoCloseable {
                                        final String name,
                                        Schema schema,
                                        CreateTableOptions builder) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     if (builder == null) {
       builder = new CreateTableOptions();
     }
@@ -444,7 +471,7 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(create).addCallbackDeferring(
         new Callback<Deferred<YBTable>, CreateTableResponse>() {
       @Override
-      public Deferred<YBTable> call(CreateTableResponse createTableResponse) throws Exception {
+      public Deferred<YBTable> call(CreateTableResponse createTableResponse) {
         return openTable(keyspace, name);
       }
     });
@@ -454,9 +481,11 @@ public class AsyncYBClient implements AutoCloseable {
    * Create a CQL keyspace.
    * @param name of the keyspace.
    */
-  public Deferred<CreateKeyspaceResponse> createKeyspace(String keyspace)
-      throws Exception {
-    checkIsClosed();
+  public Deferred<CreateKeyspaceResponse> createKeyspace(String keyspace) {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     CreateKeyspaceRequest request = new CreateKeyspaceRequest(this.masterTable, keyspace);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
@@ -466,9 +495,12 @@ public class AsyncYBClient implements AutoCloseable {
    * Create a keyspace (namespace) for the specified database type.
    * @param name of the keyspace.
    */
-  public Deferred<CreateKeyspaceResponse> createKeyspace(String keyspace, YQLDatabase databaseType)
-      throws Exception {
-    checkIsClosed();
+  public Deferred<CreateKeyspaceResponse> createKeyspace(String keyspace,
+                                                         YQLDatabase databaseType) {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     CreateKeyspaceRequest request = new CreateKeyspaceRequest(this.masterTable,
                                                               keyspace,
                                                               databaseType);
@@ -483,7 +515,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object to track the progress of the deleteTable command
    */
   public Deferred<DeleteTableResponse> deleteTable(final String keyspace, final String name) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     DeleteTableRequest delete = new DeleteTableRequest(this.masterTable, name, keyspace);
     delete.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(delete);
@@ -501,7 +536,10 @@ public class AsyncYBClient implements AutoCloseable {
    */
   public Deferred<AlterTableResponse> alterTable(String keyspace, String name,
                                                  AlterTableOptions ato) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     AlterTableRequest alter = new AlterTableRequest(this.masterTable, name, ato, keyspace);
     alter.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(alter);
@@ -514,9 +552,11 @@ public class AsyncYBClient implements AutoCloseable {
    * @param name the table's name, if the table was renamed then that name must be checked against
    * @return a deferred object to track the progress of the isAlterTableDone command
    */
-  public Deferred<IsAlterTableDoneResponse> isAlterTableDone(String keyspace, String name)
-      throws Exception {
-    checkIsClosed();
+  public Deferred<IsAlterTableDoneResponse> isAlterTableDone(String keyspace, String name) {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     IsAlterTableDoneRequest request = new IsAlterTableDoneRequest(this.masterTable, name, keyspace);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
@@ -527,7 +567,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields a list of tablet servers
    */
   public Deferred<ListTabletServersResponse> listTabletServers() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     ListTabletServersRequest rpc = new ListTabletServersRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -538,7 +581,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields a list of masters
    */
   public Deferred<ListMastersResponse> listMasters() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     ListMastersRequest rpc = new ListMastersRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -549,7 +595,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields the cluster configuration.
    */
   public Deferred<GetMasterClusterConfigResponse> getMasterClusterConfig() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     GetMasterClusterConfigRequest rpc = new GetMasterClusterConfigRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -561,7 +610,10 @@ public class AsyncYBClient implements AutoCloseable {
    */
   public Deferred<ChangeMasterClusterConfigResponse> changeMasterClusterConfig(
       Master.SysClusterConfigEntryPB config) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     ChangeMasterClusterConfigRequest rpc = new ChangeMasterClusterConfigRequest(
         this.masterTable, config);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -573,7 +625,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields the response to the config change.
    */
   public Deferred<ChangeLoadBalancerStateResponse> changeLoadBalancerState(boolean isEnable) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     ChangeLoadBalancerStateRequest rpc = new ChangeLoadBalancerStateRequest(
         this.masterTable, isEnable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -585,7 +640,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields the move completion info.
    */
   public Deferred<GetLoadMovePercentResponse> getLoadMoveCompletion() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     GetLoadMovePercentRequest rpc = new GetLoadMovePercentRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -596,7 +654,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields the move completion info.
    */
   public Deferred<GetLoadMovePercentResponse> getLeaderBlacklistCompletion() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     GetLeaderBlacklistPercentRequest rpc = new GetLeaderBlacklistPercentRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -608,7 +669,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields if the load is balanced.
    */
   public Deferred<IsLoadBalancedResponse> getIsLoadBalanced(int numServers) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     IsLoadBalancedRequest rpc = new IsLoadBalancedRequest(this.masterTable, numServers);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -619,7 +683,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields if the load is balanced.
    */
   public Deferred<IsLoadBalancerIdleResponse> getIsLoadBalancerIdle() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     IsLoadBalancerIdleRequest rpc = new IsLoadBalancerIdleRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -630,7 +697,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields if the leader load is balanced.
    */
   public Deferred<AreLeadersOnPreferredOnlyResponse> getAreLeadersOnPreferredOnly() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     AreLeadersOnPreferredOnlyRequest rpc = new AreLeadersOnPreferredOnlyRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -640,7 +710,10 @@ public class AsyncYBClient implements AutoCloseable {
    * Check if initdb executed by the master is done running.
    */
   public Deferred<IsInitDbDoneResponse> getIsInitDbDone() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     IsInitDbDoneRequest rpc = new IsInitDbDoneRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -662,8 +735,10 @@ public class AsyncYBClient implements AutoCloseable {
    * Update the master addresses list.
    */
   protected void updateMasterAdresses(String host, int port, boolean isAdd) {
-    checkIsClosed();
-    if (isAdd) {
+    if (closed) {
+      throw new IllegalStateException("Cannot proceed, the client to " + getMasterAddresses() +
+              " has already been closed.");
+    } else if (isAdd) {
       masterAddresses.add(HostAndPort.fromParts(host, port));
     } else {
       int idx = masterAddresses.indexOf(HostAndPort.fromParts(host, port));
@@ -678,11 +753,14 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields a leader step down response.
    */
   public Deferred<LeaderStepDownResponse> masterLeaderStepDown(
-      String leaderUuid, String tabletId) throws Exception {
-    checkIsClosed();
+          String leaderUuid, String tabletId) {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     if (leaderUuid == null || tabletId == null) {
-      throw new IllegalArgumentException("Invalid leader/tablet argument during step down " +
-                                         "request. Leader = " + leaderUuid);
+      return Deferred.fromError(new IllegalArgumentException("Invalid leader/tablet argument " +
+              "during step down request. Leader = " + leaderUuid));
     }
 
     LeaderStepDownRequest rpc = new LeaderStepDownRequest(this.masterTable, leaderUuid, tabletId);
@@ -694,8 +772,11 @@ public class AsyncYBClient implements AutoCloseable {
    * Enable encryption at rest in memory
    */
   public Deferred<ChangeEncryptionInfoInMemoryResponse> enableEncryptionAtRestInMemory(
-          final String versionId) throws Exception {
-    checkIsClosed();
+          final String versionId) {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     ChangeEncryptionInfoInMemoryRequest rpc = new ChangeEncryptionInfoInMemoryRequest(
             this.masterTable, versionId, true);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -705,9 +786,11 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * Disable encryption at rest in memory
    */
-  public Deferred<ChangeEncryptionInfoInMemoryResponse> disableEncryptionAtRestInMemory()
-          throws Exception {
-    checkIsClosed();
+  public Deferred<ChangeEncryptionInfoInMemoryResponse> disableEncryptionAtRestInMemory() {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     ChangeEncryptionInfoInMemoryRequest rpc = new ChangeEncryptionInfoInMemoryRequest(
             this.masterTable, "", false);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -716,7 +799,10 @@ public class AsyncYBClient implements AutoCloseable {
 
 
   public Deferred<ChangeEncryptionInfoResponse> enableEncryptionAtRest(String keyFile) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     ChangeEncryptionInfoRequest rpc = new ChangeEncryptionInfoRequest(
             this.masterTable, keyFile, true);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -724,25 +810,35 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   public Deferred<ChangeEncryptionInfoResponse> disableEncryptionAtRest() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     ChangeEncryptionInfoRequest rpc = new ChangeEncryptionInfoRequest(this.masterTable, "", false);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
 
-  public Deferred<IsEncryptionEnabledResponse> isEncryptionEnabled() throws Exception {
-    checkIsClosed();
+  public Deferred<IsEncryptionEnabledResponse> isEncryptionEnabled() {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     IsEncryptionEnabledRequest rpc = new IsEncryptionEnabledRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
 
   public Deferred<AddUniverseKeysResponse> addUniverseKeys(
-          Map<String, byte[]> universeKeys, HostAndPort hp) throws Exception {
-    checkIsClosed();
+          Map<String, byte[]> universeKeys, HostAndPort hp) {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
-      throw new IllegalStateException("Could not create a client to " + hp.toString());
+      return Deferred.fromError(new IllegalStateException("Could not create a client to " +
+              hp.toString()));
     }
     AddUniverseKeysRequest rpc = new AddUniverseKeysRequest(universeKeys);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -752,11 +848,15 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   public Deferred<HasUniverseKeyInMemoryResponse> hasUniverseKeyInMemory(
-          String universeKeyId, HostAndPort hp) throws Exception {
-    checkIsClosed();
+          String universeKeyId, HostAndPort hp) {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
-      throw new IllegalStateException("Could not create a client to " + hp.toString());
+      return Deferred.fromError(new IllegalStateException("Could not create a client to "
+              + hp.toString()));
     }
     HasUniverseKeyInMemoryRequest rpc = new HasUniverseKeyInMemoryRequest(universeKeyId);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -777,9 +877,11 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields a change config response.
    */
   public Deferred<ChangeConfigResponse> changeMasterConfig(
-      String host, int port, String changeUuid, boolean isAdd, boolean useHost)
-      throws Exception {
-    checkIsClosed();
+      String host, int port, String changeUuid, boolean isAdd, boolean useHost) {
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     // The sendRpcToTablet will retry to get the correct leader, so we do not set dest_uuid
     // here. Seemed very intrusive to change request's leader uuid contents during rpc retry.
     ChangeConfigRequest rpc = new ChangeConfigRequest(
@@ -853,7 +955,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   public Deferred<Boolean> tableExists(final String keyspace, final String name) {
     if (name == null) {
-      throw new IllegalArgumentException("The table name cannot be null");
+      return Deferred.fromError(new IllegalArgumentException("The table name cannot be null"));
     }
     return getTableSchema(keyspace, name).addCallbackDeferring(new Callback<Deferred<Boolean>,
         GetTableSchemaResponse>() {
@@ -871,7 +973,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   public Deferred<Boolean> tableExistsByUUID(final String tableUUID) {
     if (tableUUID == null) {
-      throw new IllegalArgumentException("The table UUID cannot be null");
+      return Deferred.fromError(new IllegalArgumentException("The table UUID cannot be null"));
     }
     return getTableSchemaByUUID(tableUUID).addCallbackDeferring(new Callback<Deferred<Boolean>,
         GetTableSchemaResponse>() {
@@ -890,7 +992,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a YBTable if the table exists, else a MasterErrorException
    */
   public Deferred<YBTable> openTable(final String keyspace, final String name) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
 
     final OpenTableHelperRPC helper = new OpenTableHelperRPC();
 
@@ -917,7 +1022,10 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a YBTable if the table exists, else a MasterErrorException
    */
   public Deferred<YBTable> openTableByUUID(final String tableUUID) {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
 
     final OpenTableHelperRPC helper = new OpenTableHelperRPC();
 
@@ -1824,7 +1932,10 @@ public class AsyncYBClient implements AutoCloseable {
    * The Deferred doesn't actually hold any content.
    */
   public Deferred<ArrayList<Void>> shutdown() {
-    checkIsClosed();
+    if (closed) {
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
+    }
     closed = true;
 
     // This is part of step 2.  We need to execute this in its own thread
@@ -1860,11 +1971,12 @@ public class AsyncYBClient implements AutoCloseable {
     return disconnectEverything().addCallback(new ReleaseResourcesCB());
   }
 
-  private void checkIsClosed() {
+  private Deferred<Exception> checkIsClosed() {
     if (closed) {
-      throw new IllegalStateException("Cannot proceed, the client to " + getMasterAddresses() +
-                                      " has already been closed.");
+      return Deferred.fromError(new IllegalStateException("Cannot proceed, the client to " +
+              getMasterAddresses() + " has already been closed."));
     }
+    return null;
   }
 
   /**
