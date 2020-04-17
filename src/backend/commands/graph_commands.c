@@ -34,6 +34,7 @@
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
+#include "commands/label_commands.h"
 #include "utils/graphid.h"
 
 /*
@@ -51,6 +52,7 @@ PG_FUNCTION_INFO_V1(create_graph);
 
 Datum create_graph(PG_FUNCTION_ARGS)
 {
+    char *graph;
     Name graph_name;
     Oid nsp_id;
 
@@ -64,7 +66,14 @@ Datum create_graph(PG_FUNCTION_ARGS)
     nsp_id = create_schema_for_graph(graph_name);
 
     insert_graph(graph_name, nsp_id);
+
+    //Increment the Command counter before create the generic labels.
     CommandCounterIncrement();
+
+    //Create the default label tables
+    graph = graph_name->data;
+    create_label(graph, AG_DEFAULT_LABEL_VERTEX, LABEL_TYPE_VERTEX, NIL);
+    create_label(graph, AG_DEFAULT_LABEL_EDGE, LABEL_TYPE_EDGE, NIL);
 
     ereport(NOTICE,
             (errmsg("graph \"%s\" has been created", NameStr(*graph_name))));

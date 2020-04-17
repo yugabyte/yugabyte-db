@@ -22,6 +22,13 @@
 #define LABEL_TYPE_VERTEX 'v'
 #define LABEL_TYPE_EDGE 'e'
 
-Oid create_label(char *graph_name, char *label_name, char label_type);
+#define AG_DEFAULT_LABEL_EDGE "_ag_label_edge"
+#define AG_DEFAULT_LABEL_VERTEX "_ag_label_vertex"
+
+#define IS_AG_DEFAULT_LABEL(x) \
+    (!strcmp(x, AG_DEFAULT_LABEL_EDGE) || !strcmp(x, AG_DEFAULT_LABEL_VERTEX))
+
+Oid create_label(char *graph_name, char *label_name, char label_type,
+                 List *parents);
 
 #endif

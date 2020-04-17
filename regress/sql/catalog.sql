@@ -83,8 +83,8 @@ SELECT alter_graph('graphx', 'RENAME', 'GRAPHX');
 SELECT alter_graph('GraphX', 'RENAME', 'GraphB');
 
 -- Remove graphs.
-SELECT drop_graph('GraphX');
-SELECT drop_graph('GraphB');
+SELECT drop_graph('GraphX', true);
+SELECT drop_graph('GraphB', true);
 
 -- Verify that renaming a graph that does not exist fails.
 SELECT alter_graph('GraphB', 'RENAME', 'GraphA');

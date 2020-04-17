@@ -53,8 +53,10 @@ SELECT * FROM cypher('g', $$CREATE (:v)$$) AS r(a agtype);
 
 -- DROP SCHEMA ... CASCADE should fail
 DROP SCHEMA g CASCADE;
-NOTICE:  drop cascades to 2 other objects
+NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to sequence g._label_id_seq
+drop cascades to table g._ag_label_vertex
+drop cascades to table g._ag_label_edge
 drop cascades to table g.v
 ERROR:  table "v" is for label "v"
 -- DROP TABLE ... should fail
@@ -63,10 +65,15 @@ ERROR:  table "v" is for label "v"
 -- should fail (cascade = false)
 SELECT drop_graph('g');
 ERROR:  cannot drop schema g because other objects depend on it
-DETAIL:  table g.v depends on schema g
+DETAIL:  table g._ag_label_vertex depends on schema g
+table g._ag_label_edge depends on schema g
+table g.v depends on schema g
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 SELECT drop_graph('g', true);
-NOTICE:  drop cascades to table g.v
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table g._ag_label_vertex
+drop cascades to table g._ag_label_edge
+drop cascades to table g.v
 NOTICE:  graph "g" has been dropped
  drop_graph 
 ------------
@@ -167,14 +174,20 @@ ERROR:  graph "graphx" does not exist
 SELECT alter_graph('GraphX', 'RENAME', 'GraphB');
 ERROR:  schema "GraphB" already exists
 -- Remove graphs.
-SELECT drop_graph('GraphX');
+SELECT drop_graph('GraphX', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table "GraphX"._ag_label_vertex
+drop cascades to table "GraphX"._ag_label_edge
 NOTICE:  graph "GraphX" has been dropped
  drop_graph 
 ------------
  
 (1 row)
 
-SELECT drop_graph('GraphB');
+SELECT drop_graph('GraphB', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table "GraphB"._ag_label_vertex
+drop cascades to table "GraphB"._ag_label_edge
 NOTICE:  graph "GraphB" has been dropped
  drop_graph 
 ------------
@@ -212,16 +225,18 @@ SELECT * FROM cypher('g', $$CREATE (:v1)$$) AS r(a agtype);
 (0 rows)
 
 SELECT name, id, kind, relation FROM ag_label;
- name | id | kind | relation 
-------+----+------+----------
- v1   |  1 | v    | g.v1
-(1 row)
+       name       | id | kind |      relation      
+------------------+----+------+--------------------
+ _ag_label_vertex |  1 | v    | g._ag_label_vertex
+ _ag_label_edge   |  2 | e    | g._ag_label_edge
+ v1               |  3 | v    | g.v1
+(3 rows)
 
 -- skip label id 2 to test the logic that gets an unused label id after cycle
 SELECT nextval('g._label_id_seq');
  nextval 
 ---------
-       2
+       4
 (1 row)
 
 -- label id is now 3
@@ -231,11 +246,13 @@ SELECT * FROM cypher('g', $$CREATE (:v3)$$) as r(a agtype);
 (0 rows)
 
 SELECT name, id, kind, relation FROM ag_label;
- name | id | kind | relation 
-------+----+------+----------
- v1   |  1 | v    | g.v1
- v3   |  3 | v    | g.v3
-(2 rows)
+       name       | id | kind |      relation      
+------------------+----+------+--------------------
+ _ag_label_vertex |  1 | v    | g._ag_label_vertex
+ _ag_label_edge   |  2 | e    | g._ag_label_edge
+ v1               |  3 | v    | g.v1
+ v3               |  5 | v    | g.v3
+(4 rows)
 
 -- to use 65535 as the next label id, set label id to 65534
 SELECT setval('g._label_id_seq', 65534);
@@ -251,12 +268,14 @@ SELECT * FROM cypher('g', $$CREATE (:v65535)$$) as r(a agtype);
 (0 rows)
 
 SELECT name, id, kind, relation FROM ag_label;
-  name  |  id   | kind | relation 
---------+-------+------+----------
- v1     |     1 | v    | g.v1
- v3     |     3 | v    | g.v3
- v65535 | 65535 | v    | g.v65535
-(3 rows)
+       name       |  id   | kind |      relation      
+------------------+-------+------+--------------------
+ _ag_label_vertex |     1 | v    | g._ag_label_vertex
+ _ag_label_edge   |     2 | e    | g._ag_label_edge
+ v1               |     3 | v    | g.v1
+ v3               |     5 | v    | g.v3
+ v65535           | 65535 | v    | g.v65535
+(5 rows)
 
 -- after cycle, label id is now 2
 SELECT * FROM cypher('g', $$CREATE (:v2)$$) as r(a agtype);
@@ -265,17 +284,21 @@ SELECT * FROM cypher('g', $$CREATE (:v2)$$) as r(a agtype);
 (0 rows)
 
 SELECT name, id, kind, relation FROM ag_label;
-  name  |  id   | kind | relation 
---------+-------+------+----------
- v1     |     1 | v    | g.v1
- v3     |     3 | v    | g.v3
- v65535 | 65535 | v    | g.v65535
- v2     |     2 | v    | g.v2
-(4 rows)
+       name       |  id   | kind |      relation      
+------------------+-------+------+--------------------
+ _ag_label_vertex |     1 | v    | g._ag_label_vertex
+ _ag_label_edge   |     2 | e    | g._ag_label_edge
+ v1               |     3 | v    | g.v1
+ v3               |     5 | v    | g.v3
+ v65535           | 65535 | v    | g.v65535
+ v2               |     4 | v    | g.v2
+(6 rows)
 
 SELECT drop_graph('g', true);
-NOTICE:  drop cascades to 4 other objects
-DETAIL:  drop cascades to table g.v1
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table g._ag_label_vertex
+drop cascades to table g._ag_label_edge
+drop cascades to table g.v1
 drop cascades to table g.v3
 drop cascades to table g.v65535
 drop cascades to table g.v2

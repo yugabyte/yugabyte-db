@@ -42,6 +42,9 @@ SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
 --MATCH does not support edges
 SELECT * FROM cypher_create.e;
 
+--Validate every vertex has the correct label
+SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
+
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a int);

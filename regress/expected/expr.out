@@ -744,6 +744,9 @@ SELECT agtype_typecast_numeric(null);
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table expr._ag_label_vertex
+drop cascades to table expr._ag_label_edge
 NOTICE:  graph "expr" has been dropped
  drop_graph 
 ------------

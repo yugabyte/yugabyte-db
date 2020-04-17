@@ -23,9 +23,10 @@ NOTICE:  graph "cypher_create" has been created
 (1 row)
 
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a agtype);
-ERROR:  cannot create a vertex without a label
-LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a a...
-                                                       ^
+ a 
+---
+(0 rows)
+
 -- vertex graphid
 SELECT * FROM cypher('cypher_create', $$CREATE (:v)$$) AS (a agtype);
  a 
@@ -45,9 +46,9 @@ SELECT * FROM cypher('cypher_create', $$CREATE (:v {key: 'value'})$$) AS (a agty
 SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
                                        n                                       
 -------------------------------------------------------------------------------
- {"id": 281474976710657, "label": "v", "properties": {}}::vertex
- {"id": 281474976710658, "label": "v", "properties": {}}::vertex
- {"id": 281474976710659, "label": "v", "properties": {"key": "value"}}::vertex
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"key": "value"}}::vertex
 (3 rows)
 
 --edges without labels are not supported
@@ -65,10 +66,10 @@ SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[:e]-(:v)$$) AS (a agtype);
 SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
                                        n                                       
 -------------------------------------------------------------------------------
- {"id": 281474976710657, "label": "v", "properties": {}}::vertex
- {"id": 281474976710658, "label": "v", "properties": {}}::vertex
- {"id": 281474976710659, "label": "v", "properties": {"key": "value"}}::vertex
- {"id": 281474976710660, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"key": "value"}}::vertex
+ {"id": 844424930131972, "label": "v", "properties": {}}::vertex
 (4 rows)
 
 --MATCH does not support edges
@@ -76,6 +77,17 @@ SELECT * FROM cypher_create.e;
  id | start_id | end_id | properties 
 ----+----------+--------+------------
 (0 rows)
+
+--Validate every vertex has the correct label
+SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
+                                       n                                       
+-------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"key": "value"}}::vertex
+ {"id": 844424930131972, "label": "v", "properties": {}}::vertex
+(5 rows)
 
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
@@ -90,8 +102,10 @@ LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a a...
                       ^
 HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to table cypher_create.v
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table cypher_create._ag_label_vertex
+drop cascades to table cypher_create._ag_label_edge
+drop cascades to table cypher_create.v
 drop cascades to table cypher_create.e
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 

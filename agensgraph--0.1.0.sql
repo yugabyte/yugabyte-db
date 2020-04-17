@@ -299,6 +299,13 @@ IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION _label_name(graph_oid oid, graphid)
+RETURNS cstring
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 --
 -- agtype type and its support functions
 --

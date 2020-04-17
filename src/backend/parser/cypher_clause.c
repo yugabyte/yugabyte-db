@@ -34,6 +34,7 @@
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 
 #include "catalog/ag_graph.h"
@@ -45,6 +46,7 @@
 #include "parser/cypher_expr.h"
 #include "parser/cypher_item.h"
 #include "parser/cypher_parse_node.h"
+#include "utils/ag_cache.h"
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
 #include "utils/graphid.h"
@@ -443,10 +445,7 @@ static void transform_cypher_node(cypher_parsestate *cpstate,
     // NOTE: for now, nodes without a label are not supported
     if (!node->label)
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("nodes without a label are not supported"),
-                 parser_errposition(pstate, node->location)));
+        node->label = "_ag_label_vertex";
     }
 
     // NOTE: for now, nodes with a property condition are not supported
@@ -481,21 +480,37 @@ static Node *make_vertex_expr(cypher_parsestate *cpstate, RangeTblEntry *rte,
                               char *label)
 {
     ParseState *pstate = (ParseState *)cpstate;
+    Oid label_name_func_oid;
     Oid func_oid;
     Node *id;
-    Const *label_const;
+    Const *graph_oid_const;
     Node *props;
-    List *args;
+    List *args, *label_name_args;
     FuncExpr *func_expr;
+    FuncExpr *label_name_func_expr;
 
     func_oid = get_ag_func_oid("_agtype_build_vertex", 3, GRAPHIDOID,
                                CSTRINGOID, AGTYPEOID);
 
     id = scanRTEForColumn(pstate, rte, "id", -1, 0, NULL);
-    label_const = makeConst(UNKNOWNOID, -1, InvalidOid, -2,
-                            CStringGetDatum(pstrdup(label)), false, false);
+
+    label_name_func_oid = get_ag_func_oid("_label_name", 2, OIDOID,
+                                          GRAPHIDOID);
+
+    graph_oid_const = makeConst(OIDOID, -1, InvalidOid, sizeof(Oid),
+                                ObjectIdGetDatum(cpstate->graph_oid), false,
+                                true);
+
+    label_name_args = list_make2(graph_oid_const, id);
+
+    label_name_func_expr = makeFuncExpr(label_name_func_oid, CSTRINGOID,
+                                        label_name_args, InvalidOid,
+                                        InvalidOid, COERCE_EXPLICIT_CALL);
+    label_name_func_expr->location = -1;
+
     props = scanRTEForColumn(pstate, rte, "properties", -1, 0, NULL);
-    args = list_make3(id, label_const, props);
+
+    args = list_make3(id, label_name_func_expr, props);
 
     func_expr = makeFuncExpr(func_oid, AGTYPEOID, args, InvalidOid, InvalidOid,
                              COERCE_EXPLICIT_CALL);
@@ -603,12 +618,24 @@ static List *transform_cypher_create_path(cypher_parsestate *cpstate,
 
             if (!edge->label)
                 ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                        errmsg("cannot create a edge without a label"),
-                        parser_errposition(&cpstate->pstate, edge->location)));
+                                errmsg("cannot create a edge without a label"),
+                                parser_errposition(&cpstate->pstate,
+                                                   edge->location)));
 
             // create the label entry if it does not exist
             if (!label_exists(edge->label, cpstate->graph_oid))
-                create_label(cpstate->graph_name, edge->label, LABEL_TYPE_EDGE);
+            {
+                List *parent;
+                RangeVar *rv;
+
+                rv = get_label_range_var(cpstate->graph_name, cpstate->graph_oid,
+                                        AG_DEFAULT_LABEL_EDGE);
+
+                parent = list_make1(rv);
+
+                create_label(cpstate->graph_name, edge->label, LABEL_TYPE_EDGE,
+                             parent);
+            }
 
             //exit, only create the first vertex for now
             return transformed_path;
@@ -635,13 +662,21 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
     TargetEntry *te;
 
     if (!node->label)
-        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                        errmsg("cannot create a vertex without a label"),
-                        parser_errposition(&cpstate->pstate, node->location)));
+        node->label = AG_DEFAULT_LABEL_VERTEX;
 
     // create the label entry if it does not exist
     if (!label_exists(node->label, cpstate->graph_oid))
-        create_label(cpstate->graph_name, node->label, LABEL_TYPE_VERTEX);
+    {
+        List *parent;
+        RangeVar *rv;
+
+        rv = get_label_range_var(cpstate->graph_name, cpstate->graph_oid,
+                                 AG_DEFAULT_LABEL_VERTEX);
+
+        parent = list_make1(rv);
+
+        create_label(cpstate->graph_name, node->label, LABEL_TYPE_VERTEX, parent);
+    }
 
     // lock the relation of the label
     rv = makeRangeVar(cpstate->graph_name, node->label, -1);

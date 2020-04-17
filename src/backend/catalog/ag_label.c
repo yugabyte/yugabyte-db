@@ -24,6 +24,7 @@
 #include "access/stratnum.h"
 #include "catalog/indexing.h"
 #include "fmgr.h"
+#include "nodes/makefuncs.h"
 #include "storage/lockdefs.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -33,6 +34,7 @@
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
+#include "commands/label_commands.h"
 #include "utils/ag_cache.h"
 #include "utils/graphid.h"
 
@@ -157,6 +159,37 @@ char *get_label_relation_name(const char *label_name, Oid label_graph)
     return get_rel_name(get_label_relation(label_name, label_graph));
 }
 
+PG_FUNCTION_INFO_V1(_label_name);
+
+/*
+ * Using the graph name and the vertex/edge's graphid, find
+ * the correct label name from ag_catalog.label
+ */
+Datum _label_name(PG_FUNCTION_ARGS)
+{
+    char *label_name;
+    label_cache_data *label_cache;
+    Oid graph;
+    uint32 label_id;
+
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+        ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+                        errmsg("graph_oid and label_id must not be null")));
+
+    graph = PG_GETARG_OID(0);
+
+    label_id = (int32)(((uint64)AG_GETARG_GRAPHID(1)) >> ENTRY_ID_BITS);
+
+    label_cache = search_label_graph_id_cache(graph, label_id);
+
+    label_name = NameStr(label_cache->name);
+
+    if (IS_AG_DEFAULT_LABEL(label_name))
+        PG_RETURN_CSTRING("");
+
+    PG_RETURN_CSTRING(label_name);
+}
+
 PG_FUNCTION_INFO_V1(_label_id);
 
 Datum _label_id(PG_FUNCTION_ARGS)
@@ -189,4 +222,19 @@ bool label_id_exists(Oid label_graph, int32 label_id)
         return true;
     else
         return false;
+}
+
+/*
+ * Creates A RangeVar for the given label.
+ */
+RangeVar *get_label_range_var(char *graph_name, Oid graph_oid, char *label_name)
+{
+    char *relname;
+    label_cache_data *label_cache;
+
+    label_cache = search_label_name_graph_cache(label_name, graph_oid);
+
+    relname = get_rel_name(label_cache->relation);
+
+    return makeRangeVar(graph_name, relname, -1);
 }

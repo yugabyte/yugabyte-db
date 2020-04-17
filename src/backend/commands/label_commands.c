@@ -16,6 +16,7 @@
 
 #include "postgres.h"
 
+#include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
@@ -23,6 +24,7 @@
 #include "catalog/pg_class_d.h"
 #include "commands/defrem.h"
 #include "commands/sequence.h"
+#include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
@@ -56,7 +58,8 @@
 
 static void create_table_for_label(char *graph_name, char *label_name,
                                    char *schema_name, char *rel_name,
-                                   char *seq_name, char label_type);
+                                   char *seq_name, char label_type,
+                                   List *parents);
 
 // common
 static List *create_edge_table_elements(char *graph_name, char *label_name,
@@ -69,11 +72,16 @@ static void create_sequence_for_label(RangeVar *seq_range_var);
 static Constraint *build_pk_constraint(void);
 static Constraint *build_id_default(char *graph_name, char *label_name,
                                     char *schema_name, char *seq_name);
+static FuncCall *build_id_default_func_expr(char *graph_name, char *label_name,
+                                            char *schema_name, char *seq_name);
 static Constraint *build_not_null_constraint(void);
 static Constraint *build_properties_default(void);
 static void alter_sequence_owned_by_for_label(RangeVar *seq_range_var,
                                               char *rel_name);
 static int32 get_new_label_id(Oid graph_oid, Oid nsp_id);
+static void change_label_id_default(char *graph_name, char *label_name,
+                                    char *schema_name, char *seq_name,
+                                    Oid relid);
 
 // drop
 static void remove_relation(List *qname);
@@ -82,7 +90,13 @@ static void range_var_callback_for_remove_relation(const RangeVar *rel,
                                                    Oid odl_rel_oid,
                                                    void *arg);
 
-Oid create_label(char *graph_name, char *label_name, char label_type)
+/*
+ * For the new label, create an entry in ag_catalog.ag_label, create a
+ * new table and sequence. Returns the oid from the new tuple in
+ * ag_catalog.ag_label.
+ */
+Oid create_label(char *graph_name, char *label_name, char label_type,
+                 List *parents)
 {
     graph_cache_data *cache_data;
     Oid graph_oid;
@@ -113,16 +127,21 @@ Oid create_label(char *graph_name, char *label_name, char label_type)
 
     // create a table for the new label
     create_table_for_label(graph_name, label_name, schema_name, rel_name,
-                           seq_name, label_type);
+                           seq_name, label_type, parents);
+
+    // record the new label in ag_label
+    relation_id = get_relname_relid(rel_name, nsp_id);
+
+    // If a label has parents, switch the parents id default, with its own.
+    if (list_length(parents) != 0)
+        change_label_id_default(graph_name, label_name, schema_name, seq_name,
+                                relation_id);
 
     // associate the sequence with the "id" column
     alter_sequence_owned_by_for_label(seq_range_var, rel_name);
 
     // get a new "id" for the new label
     label_id = get_new_label_id(graph_oid, nsp_id);
-
-    // record the new label in ag_label
-    relation_id = get_relname_relid(rel_name, nsp_id);
 
     label_oid = insert_label(label_name, graph_oid, label_id, label_type,
                              relation_id);
@@ -140,7 +159,8 @@ Oid create_label(char *graph_name, char *label_name, char label_type)
 // )
 static void create_table_for_label(char *graph_name, char *label_name,
                                    char *schema_name, char *rel_name,
-                                   char *seq_name, char label_type)
+                                   char *seq_name, char label_type,
+                                   List *parents)
 {
     CreateStmt *create_stmt;
     PlannedStmt *wrapper;
@@ -150,18 +170,24 @@ static void create_table_for_label(char *graph_name, char *label_name,
     // relpersistence is set to RELPERSISTENCE_PERMANENT by makeRangeVar()
     create_stmt->relation = makeRangeVar(schema_name, rel_name, -1);
 
-    if (label_type == 'e')
+    /*
+     * When a new table has parents, do not create a column definition list.
+     * Use the parents' column definition list instead, via Postgres'
+     * inheritance system.
+     */
+    if (list_length(parents) != 0)
+        create_stmt->tableElts = NIL;
+    else if (label_type == LABEL_TYPE_EDGE)
         create_stmt->tableElts = create_edge_table_elements(
             graph_name, label_name, schema_name, rel_name, seq_name);
-    else if (label_type == 'v')
+    else if (label_type == LABEL_TYPE_VERTEX)
         create_stmt->tableElts = create_vertex_table_elements(
             graph_name, label_name, schema_name, rel_name, seq_name);
     else
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
                         errmsg("undefined label type \'%c\'", label_type)));
 
-
-    create_stmt->inhRelations = NIL;
+    create_stmt->inhRelations = parents;
     create_stmt->partbound = NULL;
     create_stmt->ofTypename = NULL;
     create_stmt->constraints = NIL;
@@ -269,7 +295,9 @@ static void create_sequence_for_label(RangeVar *seq_range_var)
     CommandCounterIncrement();
 }
 
-// PRIMARY KEY
+/*
+ * Builds the primary key constraint for when a table is created.
+ */
 static Constraint *build_pk_constraint(void)
 {
     Constraint *pk;
@@ -285,12 +313,12 @@ static Constraint *build_pk_constraint(void)
     return pk;
 }
 
-// "ag_catalog"."_graphid"(
-//   "ag_catalog"."_label_id"(`graph_name`, `label_name`),
-//   "nextval"('`schema_name`.`seq_name`'::"regclass")
-// )
-static Constraint *build_id_default(char *graph_name, char *label_name,
-                                    char *schema_name, char *seq_name)
+/*
+ * Construct a FuncCall node that will create the default logic for the label's
+ * id.
+ */
+static FuncCall *build_id_default_func_expr(char *graph_name, char *label_name,
+                                            char *schema_name, char *seq_name)
 {
     List *label_id_func_name;
     A_Const *graph_name_const;
@@ -306,9 +334,8 @@ static Constraint *build_id_default(char *graph_name, char *label_name,
     List *graphid_func_name;
     List *graphid_func_args;
     FuncCall *graphid_func;
-    Constraint *id_default;
 
-    // "ag_catalog"."_label_id"(`graph_name`, `label_name`)
+    // Build a node that gets the label id
     label_id_func_name = list_make2(makeString("ag_catalog"),
                                     makeString("_label_id"));
     graph_name_const = makeNode(A_Const);
@@ -322,7 +349,7 @@ static Constraint *build_id_default(char *graph_name, char *label_name,
     label_id_func_args = list_make2(graph_name_const, label_name_const);
     label_id_func = makeFuncCall(label_id_func_name, label_id_func_args, -1);
 
-    // "nextval"('`schema_name`.`seq_name`'::"regclass")
+    //Build a node that will get the next val from the label's sequence
     nextval_func_name = SystemFuncName("nextval");
     qualified_seq_name = quote_qualified_identifier(schema_name, seq_name);
     qualified_seq_name_const = makeNode(A_Const);
@@ -336,11 +363,29 @@ static Constraint *build_id_default(char *graph_name, char *label_name,
     nextval_func_args = list_make1(regclass_cast);
     nextval_func = makeFuncCall(nextval_func_name, nextval_func_args, -1);
 
-    // "ag_catalog"."_graphid"(...)
+    /*
+     * Build a node that contructs the graphid from the label id function
+     * and the next val function for the given sequence.
+     */
     graphid_func_name = list_make2(makeString("ag_catalog"),
                                    makeString("_graphid"));
     graphid_func_args = list_make2(label_id_func, nextval_func);
     graphid_func = makeFuncCall(graphid_func_name, graphid_func_args, -1);
+
+    return graphid_func;
+}
+
+/*
+ * Construct a default constraint on the id column for a newly created table
+ */
+static Constraint *build_id_default(char *graph_name, char *label_name,
+                                    char *schema_name, char *seq_name)
+{
+    FuncCall *graphid_func;
+    Constraint *id_default;
+
+    graphid_func = build_id_default_func_expr(graph_name, label_name,
+                                              schema_name, seq_name);
 
     id_default = makeNode(Constraint);
     id_default->contype = CONSTR_DEFAULT;
@@ -382,6 +427,44 @@ static Constraint *build_properties_default(void)
     props_default->cooked_expr = NULL;
 
     return props_default;
+}
+
+/*
+ * Alter the default constraint on the label's id to the use the given
+ * sequence.
+ */
+static void change_label_id_default(char *graph_name, char *label_name,
+                                    char *schema_name, char *seq_name,
+                                    Oid relid)
+{
+    ParseState *pstate;
+    AlterTableStmt *tbl_stmt;
+    AlterTableCmd *tbl_cmd;
+    RangeVar *rv;
+    FuncCall *func_call;
+
+    func_call = build_id_default_func_expr(graph_name, label_name, schema_name,
+                                           seq_name);
+
+    rv = makeRangeVar(schema_name, label_name, -1);
+
+    pstate = make_parsestate(NULL);
+    pstate->p_sourcetext = "(generated ALTER TABLE command)";
+
+    tbl_stmt = makeNode(AlterTableStmt);
+    tbl_stmt->relation = rv;
+    tbl_stmt->missing_ok = false;
+
+    tbl_cmd = makeNode(AlterTableCmd);
+    tbl_cmd->subtype = AT_ColumnDefault;
+    tbl_cmd->name = "id";
+    tbl_cmd->def = (Node *)func_call;
+
+    tbl_stmt->cmds = list_make1(tbl_cmd);
+
+    AlterTable(relid, AccessExclusiveLock, tbl_stmt);
+
+    CommandCounterIncrement();
 }
 
 // CREATE SEQUENCE `seq_range_var` OWNED BY `schema_name`.`rel_name`."id"

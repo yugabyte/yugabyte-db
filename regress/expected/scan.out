@@ -371,7 +371,10 @@ ERROR:  unsupported Unicode escape value at or near "\U0001D706"
 LINE 2: RETURN "\U0001D706"
                 ^
 DETAIL:  Unicode escape values cannot be used for code point values above 007F when the server encoding is not UTF8.
-SELECT drop_graph('scan');
+SELECT drop_graph('scan', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table scan._ag_label_vertex
+drop cascades to table scan._ag_label_edge
 NOTICE:  graph "scan" has been dropped
  drop_graph 
 ------------
@@ -489,7 +492,10 @@ $$) AS t(a text);
 ERROR:  unexpected character at or near "$"
 LINE 2: RETURN $0
                ^
-SELECT drop_graph('scan');
+SELECT drop_graph('scan', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table scan._ag_label_vertex
+drop cascades to table scan._ag_label_edge
 NOTICE:  graph "scan" has been dropped
  drop_graph 
 ------------

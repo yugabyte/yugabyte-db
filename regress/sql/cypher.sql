@@ -65,4 +65,4 @@ SELECT (SELECT * FROM cypher('cypher', $$RETURN 0$$) AS r(c agtype));
 SELECT * FROM cypher('cypher', $$RETURN true$$) AS (c bool);
 SELECT * FROM cypher('cypher', $$RETURN 0$$) AS (c oid);
 
-SELECT drop_graph('cypher');
+SELECT drop_graph('cypher', true);

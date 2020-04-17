@@ -40,9 +40,9 @@ SELECT * FROM cypher('cypher_match', $$CREATE (:v {i: 1})$$) AS (a agtype);
 SELECT * FROM cypher('cypher_match', $$MATCH (n:v) RETURN n$$) AS (n agtype);
                                    n                                   
 -----------------------------------------------------------------------
- {"id": 281474976710657, "label": "v", "properties": {}}::vertex
- {"id": 281474976710658, "label": "v", "properties": {"i": 0}}::vertex
- {"id": 281474976710659, "label": "v", "properties": {"i": 1}}::vertex
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
 (3 rows)
 
 SELECT * FROM cypher('cypher_match', $$MATCH (n:v) RETURN n.i$$) AS (i agtype);

@@ -252,7 +252,7 @@ SELECT * FROM cypher('scan', $$
 RETURN "\U0001D706"
 $$) AS t(a text);
 
-SELECT drop_graph('scan');
+SELECT drop_graph('scan', true);
 
 \c contrib_regression
 
@@ -339,4 +339,4 @@ SELECT * FROM cypher('scan', $$
 RETURN $0
 $$) AS t(a text);
 
-SELECT drop_graph('scan');
+SELECT drop_graph('scan', true);

@@ -40,7 +40,10 @@ ERROR:  expression item must be aliased
 LINE 2: WITH 1 + 1
              ^
 HINT:  Items can be aliased by using AS.
-SELECT drop_graph('cypher_with');
+SELECT drop_graph('cypher_with', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table cypher_with._ag_label_vertex
+drop cascades to table cypher_with._ag_label_edge
 NOTICE:  graph "cypher_with" has been dropped
  drop_graph 
 ------------

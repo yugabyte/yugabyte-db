@@ -30,4 +30,4 @@ WITH 1 + 1
 RETURN i
 $$) AS (i int);
 
-SELECT drop_graph('cypher_with');
+SELECT drop_graph('cypher_with', true);
