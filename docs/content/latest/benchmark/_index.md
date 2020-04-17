@@ -2,7 +2,7 @@
 title: Benchmark YugabyteDB with YCSB and TPC-C
 headerTitle: Benchmark YugabyteDB
 linkTitle: Benchmark
-description: Benchmark YugabyteDB with YCSB or concurrent transactions with TPC-C
+description: Benchmark YugabyteDB with YCSB and TPC-C
 image: /images/section_icons/explore/high_performance.png
 headcontent:
 section: USER GUIDES
@@ -77,16 +77,16 @@ aliases:
       </a>
     </div>
 
-    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="resilience/">
-        <div class="head">
-          <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-          <div class="title">Resilience</div>
-        </div>
-        <div class="body">
-          Perform fault tolerance and failure tests on your YugabyteDB clusters.
-        </div>
-      </a>
-    </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="resilience/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Resilience</div>
+      </div>
+      <div class="body">
+        Perform fault tolerance and failure tests on your YugabyteDB clusters.
+      </div>
+    </a>
+  </div>
 
 </div>

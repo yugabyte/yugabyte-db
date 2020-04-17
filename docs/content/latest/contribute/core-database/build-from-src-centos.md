@@ -1,8 +1,8 @@
 ---
-title: Build the source code on CentOS
+title: Build from source code on CentOS
 headerTitle: Build the source code
 linkTitle: Build the source
-description: Build the source code
+description: Build YugabyteDB from source code on CentOS.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 type: page
