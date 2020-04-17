@@ -67,15 +67,15 @@ enum TabletDataState {
   // The tablet has been deleted, and now just consists of a "tombstone".
   TABLET_DATA_TOMBSTONED = 3;
 
-  // This tablet split has been started or already completed. In this state tablet could only
-  // be used as a remote bootstrap source for some time (follower_unavailable_considered_failed_sec)
-  // and then will be shutdown.
+  // This tablet split has been completed. In this state tablet could only be used as a remote
+  // bootstrap source for some time (follower_unavailable_considered_failed_sec) and then will be
+  // shutdown.
   // TODO(tsplit): After https://github.com/yugabyte/yugabyte-db/issues/1461:
-  // - implement deleting tablet in state TABLET_DATA_SPLIT after
+  // - implement deleting tablet in state TABLET_DATA_SPLIT_COMPLETED after
   //   follower_unavailable_considered_failed_sec.
   // - add integration test for remote bootstrap from source split tablet before/after
   // follower_unavailable_considered_failed_sec.
-  TABLET_DATA_SPLIT = 4;
+  TABLET_DATA_SPLIT_COMPLETED = 4;
 }
 
 // Table information.

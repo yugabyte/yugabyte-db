@@ -449,7 +449,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     const auto tablet_data_state = status.tablet_data_state();
     if (tablet_data_state != TabletDataState::TABLET_DATA_COPYING &&
         tablet_data_state != TabletDataState::TABLET_DATA_READY &&
-        tablet_data_state != TabletDataState::TABLET_DATA_SPLIT) {
+        tablet_data_state != TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       continue;
     }
 

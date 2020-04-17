@@ -695,7 +695,7 @@ string TabletPeer::HumanReadableState() const {
   // to show.
   } else if (!CanServeTabletData(data_state)) {
     return TabletDataState_Name(data_state);
-  } else if (data_state == TabletDataState::TABLET_DATA_SPLIT) {
+  } else if (data_state == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     return RaftGroupStatePB_Name(state) + " (split)";
   }
   // Otherwise, the tablet's data is in a "normal" state, so we just display

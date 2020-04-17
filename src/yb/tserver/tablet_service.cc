@@ -1321,7 +1321,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       std::move(operation_state), tablet.leader_term, context_ptr->GetClientDeadline());
 }
 
-Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
+Status TabletServiceImpl::CheckPeerIsReady(
+    const TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet) {
   shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   if (!consensus) {
     return STATUS(
@@ -1333,12 +1334,16 @@ Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
   if (!s.ok()) {
     return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
-  if (tablet_peer.tablet()->metadata()->tablet_data_state() ==
-      tablet::TabletDataState::TABLET_DATA_SPLIT) {
+
+  auto* tablet = tablet_peer.tablet();
+  SCHECK(tablet != nullptr, IllegalState, "Expected tablet peer to have a tablet");
+  const auto tablet_data_state = tablet->metadata()->tablet_data_state();
+  if (!allow_split_tablet &&
+      tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     return STATUS(
         IllegalState,
         Format(
-            "The tablet $0 is in process of splitting or already split.", tablet_peer.tablet_id()),
+            "The tablet $0 is in $1 state.", tablet->tablet_id(), tablet_data_state),
         TabletServerError(TabletServerErrorPB::TABLET_SPLIT));
     // TODO(tsplit): If we get FS corruption on 1 node, we can just delete that tablet copy and
     // bootstrap from a good leader. If there's a way that all peers replicated the SPLIT and
@@ -1349,14 +1354,7 @@ Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
 }
 
 Status TabletServiceImpl::CheckPeerIsLeader(const TabletPeer& tablet_peer) {
-  RETURN_NOT_OK(LeaderTerm(tablet_peer));
-  return Status::OK();
-}
-
-Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer) {
-  RETURN_NOT_OK(CheckPeerIsReady(tablet_peer));
-
-  return CheckPeerIsLeader(tablet_peer);
+  return ResultToStatus(LeaderTerm(tablet_peer));
 }
 
 bool TabletServiceImpl::GetTabletOrRespond(
@@ -1368,7 +1366,8 @@ bool TabletServiceImpl::GetTabletOrRespond(
 template <class Req, class Resp>
 bool TabletServiceImpl::DoGetTabletOrRespond(
     const Req* req, Resp* resp, rpc::RpcContext* context,
-    std::shared_ptr<tablet::AbstractTablet>* tablet, TabletPeerPtr tablet_peer) {
+    std::shared_ptr<tablet::AbstractTablet>* tablet, TabletPeerPtr tablet_peer,
+    AllowSplitTablet allow_split_tablet) {
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), req->tablet_id());
   } else {
@@ -1382,7 +1381,7 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
     tablet_peer = std::move(*tablet_peer_result);
   }
 
-  Status s = CheckPeerIsReady(*tablet_peer);
+  Status s = CheckPeerIsReady(*tablet_peer, allow_split_tablet);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, context);
     return false;
@@ -2367,7 +2366,9 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
   VLOG(1) << "Full request: " << req->DebugString();
 
   std::shared_ptr<tablet::AbstractTablet> abstract_tablet;
-  if (!DoGetTabletOrRespond(req, resp, &context, &abstract_tablet)) {
+  if (!DoGetTabletOrRespond(
+          req, resp, &context, &abstract_tablet, /* tablet_peer = */ nullptr,
+          AllowSplitTablet::kTrue)) {
     return;
   }
   auto checksum = CalcChecksum(down_cast<tablet::Tablet*>(abstract_tablet.get()));

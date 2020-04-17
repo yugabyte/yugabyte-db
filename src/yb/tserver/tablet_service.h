@@ -60,6 +60,8 @@ class TabletServer;
 
 struct ReadContext;
 
+YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
+
 class TabletServiceImpl : public TabletServerServiceIf {
  public:
   typedef std::vector<tablet::TabletPeerPtr> TabletPeers;
@@ -137,21 +139,25 @@ class TabletServiceImpl : public TabletServerServiceIf {
  private:
   friend class ReadCompletionTask;
 
-  // Check if the tablet peer is the leader and is in ready state for servicing IOs.
-  CHECKED_STATUS CheckPeerIsLeaderAndReady(const tablet::TabletPeer& tablet_peer);
-
   CHECKED_STATUS CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
 
-  CHECKED_STATUS CheckPeerIsReady(const tablet::TabletPeer& tablet_peer);
+  // Checks if the peer is ready for servicing IOs.
+  // allow_split_tablet specifies whether to reject requests to tablets which have been already
+  // split.
+  CHECKED_STATUS CheckPeerIsReady(
+      const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
 
   // If tablet_peer is already set, we assume that LookupTabletPeerOrRespond has already been
   // called, and only perform additional checks, such as readiness, leadership, bounded staleness,
   // etc.
+  // allow_split_tablet specifies whether to reject requests to tablets which have been already
+  // split.
   template <class Req, class Resp>
   bool DoGetTabletOrRespond(
       const Req* req, Resp* resp, rpc::RpcContext* context,
       std::shared_ptr<tablet::AbstractTablet>* tablet,
-      tablet::TabletPeerPtr tablet_peer = nullptr);
+      tablet::TabletPeerPtr tablet_peer = nullptr,
+      AllowSplitTablet allow_split_tablet = AllowSplitTablet::kFalse);
 
   virtual WARN_UNUSED_RESULT bool GetTabletOrRespond(
       const ReadRequestPB* req,
