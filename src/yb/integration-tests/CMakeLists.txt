@@ -70,6 +70,9 @@ add_dependencies(integration-tests
 add_library(cdc_test_util cdc_test_util.cc)
 target_link_libraries(cdc_test_util yb_test_util cdc_service_proto tserver)
 
+add_library(cql_test_util cql_test_util.cc)
+target_link_libraries(cql_test_util cassandra yb_test_util)
+
 # Tests
 set(YB_TEST_LINK_LIBS
     integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util ${YB_MIN_TEST_LIBS})
@@ -123,9 +126,11 @@ ADD_YB_TEST(log_version-test)
 ADD_YB_TEST(load_balancer-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
-set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
+set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra cql_test_util)
 set(CASS_DRIVER_VERSION "2.9.0-yb-4")
-set(CASS_DRIVER_INTERNAL_INCLUDE "${YB_THIRDPARTY_DIR}/src/cassandra-cpp-driver-${CASS_DRIVER_VERSION}/src")
+set(CASS_DRIVER_INTERNAL_INCLUDE
+    "${YB_THIRDPARTY_DIR}/src/cassandra-cpp-driver-${CASS_DRIVER_VERSION}/src")
+
 ADD_YB_TEST(cassandra_cpp_driver-test)
 target_include_directories(cassandra_cpp_driver-test PUBLIC
   ${CASS_DRIVER_INTERNAL_INCLUDE}
@@ -134,6 +139,10 @@ target_include_directories(cassandra_cpp_driver-test PUBLIC
 if("${COMPILER_FAMILY}" STREQUAL "gcc8")
   target_compile_options(cassandra_cpp_driver-test PUBLIC "-Wno-class-memaccess")
 endif()
+
+ADD_YB_TEST(cql-index-test)
+target_include_directories(cql-index-test PUBLIC ${CASS_DRIVER_INTERNAL_INCLUDE})
+target_link_libraries(cql-index-test yb-cql)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 

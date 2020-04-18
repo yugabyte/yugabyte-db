@@ -35,6 +35,8 @@
 #include "yb/server/clock.h"
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/cql_test_util.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/logging.h"
@@ -73,442 +75,22 @@ DECLARE_int64(external_mini_cluster_max_log_bytes);
 
 namespace yb {
 
-//------------------------------------------------------------------------------
-
-class CassandraBatch;
-class CassandraSession;
-class CassandraStatement;
-struct cass_json_t;
-
-// Cassandra CPP driver has his own functions to release objects, so we should use them for it.
-template <class T, void (*Func)(T*)>
-class FuncDeleter {
- public:
-  void operator()(T* t) const {
-    if (t) {
-      Func(t);
-    }
-  }
-};
-
-class CassandraValue {
- public:
-  explicit CassandraValue(const CassValue* value) : value_(value) {}
-
-  template <class Out>
-  void Get(Out* out) const;
-
-  template <class Out>
-  Out As() const {
-    Out result;
-    Get(&result);
-    return result;
-  }
-
-  std::string ToString() const;
-
- private:
-  const CassValue* value_;
-};
-
-typedef std::unique_ptr<
-    CassIterator, FuncDeleter<CassIterator, &cass_iterator_free>> CassIteratorPtr;
-
-class CassandraRowIterator {
- public:
-  explicit CassandraRowIterator(CassIterator* iterator) : cass_iterator_(iterator) {}
-
-  bool Next() {
-    return cass_iterator_next(cass_iterator_.get()) != cass_false;
-  }
-
-  template <class Out>
-  void Get(Out* out) const {
-    Value().Get(out);
-  }
-
-  CassandraValue Value() const {
-    return CassandraValue(cass_iterator_get_column(cass_iterator_.get()));
-  }
-
- private:
-  CassIteratorPtr cass_iterator_;
-};
-
-class CassandraRow {
- public:
-  explicit CassandraRow(const CassRow* row) : cass_row_(row) {}
-
-  template <class Out>
-  void Get(size_t index, Out* out) const {
-    return Value(index).Get(out);
-  }
-
-  CassandraValue Value(size_t index) const {
-    return CassandraValue(cass_row_get_column(cass_row_, index));
-  }
-
-  CassandraRowIterator CreateIterator() const {
-    return CassandraRowIterator(cass_iterator_from_row(cass_row_));
-  }
-
-  void TakeIterator(CassIteratorPtr iterator) {
-    cass_iterator_ = std::move(iterator);
-  }
-
- private:
-  const CassRow* cass_row_; // owned by iterator
-  CassIteratorPtr cass_iterator_;
-};
-
-class CassandraIterator {
- public:
-  explicit CassandraIterator(CassIterator* iterator) : cass_iterator_(iterator) {}
-
-  bool Next() {
-    return cass_iterator_next(cass_iterator_.get()) != cass_false;
-  }
-
-  CassandraRow Row() {
-    return CassandraRow(cass_iterator_get_row(cass_iterator_.get()));
-  }
-
-  void MoveToRow(CassandraRow* row) {
-    row->TakeIterator(std::move(cass_iterator_));
-  }
-
- private:
-  CassIteratorPtr cass_iterator_;
-};
-
-typedef std::unique_ptr<
-    const CassResult, FuncDeleter<const CassResult, &cass_result_free>> CassResultPtr;
-
-class CassandraResult {
- public:
-  explicit CassandraResult(const CassResult* result) : cass_result_(result) {}
-
-  CassandraIterator CreateIterator() const {
-    return CassandraIterator(cass_iterator_from_result(cass_result_.get()));
-  }
-
- private:
-  CassResultPtr cass_result_;
-};
-
-typedef std::unique_ptr<
-    const CassPrepared, FuncDeleter<const CassPrepared, &cass_prepared_free>> CassPreparedPtr;
-
-class CassandraPrepared {
- public:
-  explicit CassandraPrepared(const CassPrepared* prepared) : prepared_(prepared) {}
-
-  CassandraStatement Bind();
-
- private:
-  CassPreparedPtr prepared_;
-};
-
-typedef std::unique_ptr<
-    CassFuture, FuncDeleter<CassFuture, &cass_future_free>> CassFuturePtr;
-
-class CassandraFuture {
- public:
-  explicit CassandraFuture(CassFuture* future) : future_(future) {}
-
-  bool Ready() const {
-    return cass_future_ready(future_.get());
-  }
-
-  CHECKED_STATUS Wait() {
-    cass_future_wait(future_.get());
-    return CheckErrorCode();
-  }
-
-  CHECKED_STATUS WaitFor(MonoDelta duration) {
-    if (!cass_future_wait_timed(future_.get(), duration.ToMicroseconds())) {
-      return STATUS(TimedOut, "Future timed out");
-    }
-
-    return CheckErrorCode();
-  }
-
-  CassandraResult Result() {
-    return CassandraResult(cass_future_get_result(future_.get()));
-  }
-
-  CassandraPrepared Prepared() {
-    return CassandraPrepared(cass_future_get_prepared(future_.get()));
-  }
-
- private:
-  CHECKED_STATUS CheckErrorCode() {
-    const CassError rc = cass_future_error_code(future_.get());
-    VLOG(2) << "Last operation RC: " << rc;
-
-    if (rc != CASS_OK) {
-      const char* message = nullptr;
-      size_t message_sz = 0;
-      cass_future_error_message(future_.get(), &message, &message_sz);
-      if (rc == CASS_ERROR_LIB_REQUEST_TIMED_OUT) {
-        return STATUS(TimedOut, Slice(message, message_sz));
-      }
-      return STATUS(RuntimeError, Slice(message, message_sz));
-    }
-
-    return Status::OK();
-  }
-
-  CassFuturePtr future_;
-};
-
-typedef std::unique_ptr<
-    CassStatement, FuncDeleter<CassStatement, &cass_statement_free>> CassStatementPtr;
-
-class CassandraStatement {
- public:
-  explicit CassandraStatement(CassStatement* statement)
-      : cass_statement_(statement) {}
-
-  explicit CassandraStatement(const std::string& query, size_t parameter_count = 0)
-      : cass_statement_(cass_statement_new(query.c_str(), parameter_count)) {}
-
-  void Bind(size_t index, const string& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
-  }
-
-  void Bind(size_t index, const cass_bool_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_bool(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_float_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_float(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_double_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_double(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_int32_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_int32(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_int64_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_int64(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_json_t& v);
-
-  CassStatement* get() const {
-    return cass_statement_.get();
-  }
-
- private:
-  friend class CassandraBatch;
-  friend class CassandraSession;
-
-  CassStatementPtr cass_statement_;
-};
-
-typedef std::unique_ptr<CassBatch, FuncDeleter<CassBatch, &cass_batch_free>> CassBatchPtr;
-
-class CassandraBatch {
- public:
-  explicit CassandraBatch(CassBatchType type) : cass_batch_(cass_batch_new(type)) {}
-
-  void Add(CassandraStatement* statement) {
-    cass_batch_add_statement(cass_batch_.get(), statement->cass_statement_.get());
-  }
-
- private:
-  friend class CassandraSession;
-
-  CassBatchPtr cass_batch_;
-};
-
-struct DeleteSession {
-  void operator()(CassSession* session) const {
-    if (session != nullptr) {
-      WARN_NOT_OK(CassandraFuture(cass_session_close(session)).Wait(), "Close session");
-      cass_session_free(session);
-    }
-  }
-};
-
-typedef std::unique_ptr<CassSession, DeleteSession> CassSessionPtr;
-
-class CassandraSession {
- public:
-  CassandraSession() = default;
-
-  CHECKED_STATUS Connect(CassCluster* cluster) {
-    cass_session_.reset(CHECK_NOTNULL(cass_session_new()));
-    return CassandraFuture(cass_session_connect(cass_session_.get(), cluster)).Wait();
-  }
-
-  static Result<CassandraSession> Create(CassCluster* cluster) {
-    LOG(INFO) << "Create new session ...";
-    CassandraSession result;
-    RETURN_NOT_OK(result.Connect(cluster));
-    LOG(INFO) << "Create new session - DONE";
-    return result;
-  }
-
-  CHECKED_STATUS Execute(const CassandraStatement& statement) {
-    CassandraFuture future(cass_session_execute(
-        cass_session_.get(), statement.cass_statement_.get()));
-    return future.Wait();
-  }
-
-  Result<CassandraResult> ExecuteWithResult(const CassandraStatement& statement) {
-    CassandraFuture future(cass_session_execute(
-        cass_session_.get(), statement.cass_statement_.get()));
-    RETURN_NOT_OK(future.Wait());
-    return future.Result();
-  }
-
-  CassandraFuture ExecuteGetFuture(const CassandraStatement& statement) {
-    return CassandraFuture(
-        cass_session_execute(cass_session_.get(), statement.cass_statement_.get()));
-  }
-
-  CassandraFuture ExecuteGetFuture(const string& query) {
-    LOG(INFO) << "Execute query: " << query;
-    return ExecuteGetFuture(CassandraStatement(query));
-  }
-
-  CHECKED_STATUS ExecuteQuery(const string& query) {
-    LOG(INFO) << "Execute query: " << query;
-    return Execute(CassandraStatement(query));
-  }
-
-  Result<CassandraResult> ExecuteWithResult(const string& query) {
-    LOG(INFO) << "Execute query: " << query;
-    return ExecuteWithResult(CassandraStatement(query));
-  }
-
-  template <class Action>
-  CHECKED_STATUS ExecuteAndProcessOneRow(
-      const CassandraStatement& statement, const Action& action) {
-    auto result = VERIFY_RESULT(ExecuteWithResult(statement));
-    auto iterator = result.CreateIterator();
-    if (!iterator.Next()) {
-      return STATUS(IllegalState, "Row does not exists");
-    }
-    auto row = iterator.Row();
-    action(row);
-    if (iterator.Next()) {
-      return STATUS(IllegalState, "Multiple rows returned");
-    }
-    return Status::OK();
-  }
-
-  template <class Action>
-  CHECKED_STATUS ExecuteAndProcessOneRow(const std::string& query, const Action& action) {
-    return ExecuteAndProcessOneRow(CassandraStatement(query), action);
-  }
-
-  CHECKED_STATUS ExecuteBatch(const CassandraBatch& batch) {
-    return SubmitBatch(batch).Wait();
-  }
-
-  CassandraFuture SubmitBatch(const CassandraBatch& batch) {
-    return CassandraFuture(
-        cass_session_execute_batch(cass_session_.get(), batch.cass_batch_.get()));
-  }
-
-  Result<CassandraPrepared> Prepare(
-      const string& prepare_query, MonoDelta timeout = MonoDelta::kZero) {
-    VLOG(2) << "Execute prepare request: " << prepare_query << ", timeout: " << timeout;
-    auto deadline = CoarseMonoClock::now() + timeout;
-    for (;;) {
-      CassandraFuture future(cass_session_prepare(cass_session_.get(), prepare_query.c_str()));
-      auto wait_result = future.Wait();
-      if (wait_result.ok()) {
-        return future.Prepared();
-      }
-
-      if (timeout == MonoDelta::kZero || CoarseMonoClock::now() > deadline) {
-        return wait_result;
-      }
-      std::this_thread::sleep_for(100ms);
-    }
-  }
-
-  void Reset() {
-    cass_session_.reset();
-  }
-
- private:
-  CassSessionPtr cass_session_;
-};
-
-CassandraStatement CassandraPrepared::Bind() {
-  return CassandraStatement(cass_prepared_bind(prepared_.get()));
-}
-
-const MonoDelta kTimeOut = RegularBuildVsSanitizers(12s, 60s);
-
-class CppCassandraDriver {
- public:
-  explicit CppCassandraDriver(
-      const ExternalMiniCluster& mini_cluster, bool use_partition_aware_routing) {
-
-#define USE_LOCAL_CLUSTER 0
-#if USE_LOCAL_CLUSTER // Local cluster for testing
-    const uint16_t port = 9042;
-    const string hosts = "127.0.0.1,127.0.0.2,127.0.0.3";
-#else
-    const uint16_t port = mini_cluster.tablet_server(0)->cql_rpc_port();
-    string hosts = mini_cluster.tablet_server(0)->bind_host();
-
-    for (int i = 1; i < mini_cluster.num_tablet_servers(); ++i) {
-      hosts += ',' + mini_cluster.tablet_server(i)->bind_host();
-    }
-#endif
-
-    // Enable detailed tracing inside driver.
-    if (VLOG_IS_ON(4)) {
-      cass_log_set_level(CASS_LOG_TRACE);
-    }
-
-    LOG(INFO) << "Create Cassandra cluster to " << hosts << " :" << port << " ...";
-    cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
-    CHECK_EQ(CASS_OK, cass_cluster_set_contact_points(cass_cluster_, hosts.c_str()));
-    CHECK_EQ(CASS_OK, cass_cluster_set_port(cass_cluster_, port));
-    cass_cluster_set_request_timeout(cass_cluster_, kTimeOut.ToMilliseconds());
-
-    // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.
-    cass_cluster_set_partition_aware_routing(
-        cass_cluster_, use_partition_aware_routing ? cass_true : cass_false, 3);
-  }
-
-  ~CppCassandraDriver() {
-    LOG(INFO) << "Terminating driver...";
-
-    if (cass_cluster_) {
-      cass_cluster_free(cass_cluster_);
-      cass_cluster_ = nullptr;
-    }
-
-    LOG(INFO) << "Terminating driver - DONE";
-  }
-
-  Result<CassandraSession> CreateSession() {
-    return CassandraSession::Create(cass_cluster_);
-  }
-
- private:
-  CassCluster* cass_cluster_ = nullptr;
-};
+namespace util {
+
+template<class T>
+string type_name() { return "unknown"; } // COMPILATION ERROR: Specialize it for your type!
+// Supported types - get type name:
+template<> string type_name<string>() { return "text"; }
+template<> string type_name<cass_bool_t>() { return "boolean"; }
+template<> string type_name<cass_float_t>() { return "float"; }
+template<> string type_name<cass_double_t>() { return "double"; }
+template<> string type_name<cass_int32_t>() { return "int"; }
+template<> string type_name<cass_int64_t>() { return "bigint"; }
+template<> string type_name<CassandraJson>() { return "jsonb"; }
+
+} // namespace util
 
 //------------------------------------------------------------------------------
-
-Result<CassandraSession> EstablishSession(CppCassandraDriver* driver) {
-  auto session = VERIFY_RESULT(driver->CreateSession());
-  RETURN_NOT_OK(session.ExecuteQuery("USE test;"));
-  return session;
-}
 
 class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
  public:
@@ -519,7 +101,12 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     // Start up with 3 (default) tablet servers.
     ASSERT_NO_FATALS(StartCluster(ExtraTServerFlags(), ExtraMasterFlags(), 3, NumMasters()));
 
-    driver_.reset(CHECK_NOTNULL(new CppCassandraDriver(*cluster_, UsePartitionAwareRouting())));
+    std::vector<std::string> hosts;
+    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      hosts.push_back(cluster_->tablet_server(i)->bind_host());
+    }
+    driver_.reset(new CppCassandraDriver(
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting()));
 
     // Create and use default keyspace.
     session_ = ASSERT_RESULT(driver_->CreateSession());
@@ -647,148 +234,6 @@ class CppCassandraDriverTestIndexNonResponsiveTServers : public CppCassandraDriv
         "--index_backfill_rpc_max_delay_ms=1"};
   }
 };
-
-//------------------------------------------------------------------------------
-
-struct cass_json_t {
-  cass_json_t() = default;
-  cass_json_t(const string& s) : str_(s) {} // NOLINT
-  cass_json_t(const char* s) : str_(s) {} // NOLINT
-
-  cass_json_t& operator =(const string& s) {
-    str_ = s;
-    return *this;
-  }
-  cass_json_t& operator =(const char* s) {
-    return operator =(string(s));
-  }
-
-  bool operator ==(const cass_json_t& j) const { return str_ == j.str_; }
-  bool operator !=(const cass_json_t& j) const { return !operator ==(j); }
-  bool operator <(const cass_json_t& j) const { return str_ < j.str_; }
-
-  string str_;
-};
-
-std::ostream& operator <<(std::ostream& s, const cass_json_t& v) {
-  return s << v.str_;
-}
-
-void CassandraStatement::Bind(size_t index, const cass_json_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_string(cass_statement_.get(), index, v.str_.c_str()));
-}
-
-//------------------------------------------------------------------------------
-
-namespace util {
-
-template<class T>
-string type_name() { return "unknown"; } // COMPILATION ERROR: Specialize it for your type!
-// Supported types - get type name:
-template<> string type_name<string>() { return "text"; }
-template<> string type_name<cass_bool_t>() { return "boolean"; }
-template<> string type_name<cass_float_t>() { return "float"; }
-template<> string type_name<cass_double_t>() { return "double"; }
-template<> string type_name<cass_int32_t>() { return "int"; }
-template<> string type_name<cass_int64_t>() { return "bigint"; }
-template<> string type_name<cass_json_t>() { return "jsonb"; }
-
-// Supported types - read value:
-void read(const CassValue* val, string* v) {
-  const char* s = nullptr;
-  size_t sz = 0;
-  CHECK_EQ(CASS_OK, cass_value_get_string(val, &s, &sz));
-  *v = string(s, sz);
-}
-
-void read(const CassValue* val, Slice* v) {
-  const cass_byte_t* data = nullptr;
-  size_t size = 0;
-  CHECK_EQ(CASS_OK, cass_value_get_bytes(val, &data, &size));
-  *v = Slice(data, size);
-}
-
-void read(const CassValue* val, cass_bool_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_bool(val, v));
-}
-
-void read(const CassValue* val, cass_float_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_float(val, v));
-}
-
-void read(const CassValue* val, cass_double_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_double(val, v));
-}
-
-void read(const CassValue* val, cass_int32_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_int32(val, v));
-}
-
-void read(const CassValue* val, cass_int64_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_int64(val, v));
-}
-
-void read(const CassValue* val, cass_json_t* v) {
-  read(val, &v->str_);
-}
-
-void read(const CassValue* val, CassUuid* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_uuid(val, v));
-}
-
-void read(const CassValue* val, CassInet* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_inet(val, v));
-}
-
-} // namespace util
-
-template <class Out>
-void CassandraValue::Get(Out* out) const {
-  util::read(value_, out);
-}
-
-std::string CassandraValue::ToString() const {
-  auto value_type = cass_value_type(value_);
-  switch (value_type) {
-    case CASS_VALUE_TYPE_BLOB:
-      return As<Slice>().ToDebugHexString();
-    case CASS_VALUE_TYPE_VARCHAR:
-      return As<std::string>();
-    case CASS_VALUE_TYPE_BIGINT:
-      return std::to_string(As<cass_int64_t>());
-    case CASS_VALUE_TYPE_INT:
-      return std::to_string(As<cass_int32_t>());
-    case CASS_VALUE_TYPE_UUID: {
-      char buffer[CASS_UUID_STRING_LENGTH];
-      cass_uuid_string(As<CassUuid>(), buffer);
-      return buffer;
-    }
-    case CASS_VALUE_TYPE_INET: {
-      char buffer[CASS_INET_STRING_LENGTH];
-      cass_inet_string(As<CassInet>(), buffer);
-      return buffer;
-    }
-    case CASS_VALUE_TYPE_MAP: {
-      std::string result = "{";
-      CassIteratorPtr iterator(cass_iterator_from_map(value_));
-      bool first = true;
-      while (cass_iterator_next(iterator.get())) {
-        if (first) {
-          first = false;
-        } else {
-          result += ", ";
-        }
-        result += CassandraValue(cass_iterator_get_map_key(iterator.get())).ToString();
-        result += " => ";
-        result += CassandraValue(cass_iterator_get_map_value(iterator.get())).ToString();
-      }
-      result += "}";
-      return result;
-    }
-    default:
-      return "Not supported: " + std::to_string(to_underlying(value_type));
-  }
-}
 
 //------------------------------------------------------------------------------
 
@@ -1114,24 +559,24 @@ TEST_F(CppCassandraDriverTest, TestBasicTypes) {
 }
 
 TEST_F(CppCassandraDriverTest, TestJsonBType) {
-  typedef TestTable<string, cass_json_t> MyTable;
+  typedef TestTable<string, CassandraJson> MyTable;
   MyTable table;
   ASSERT_OK(table.CreateTable(&session_, "test.json", {"key", "json"}, {"key"}));
 
-  MyTable::ColumnsTuple input("test", "{\"a\":1}");
+  MyTable::ColumnsTuple input("test", CassandraJson("{\"a\":1}"));
   table.Insert(&session_, input);
 
-  MyTable::ColumnsTuple output("test", "");
+  MyTable::ColumnsTuple output("test", CassandraJson(""));
   table.SelectOneRow(&session_, &output);
   table.Print("RESULT OUTPUT", output);
 
   LOG(INFO) << "Checking selected values...";
   ExpectEqualTuples(input, output);
 
-  get<1>(input) = "{\"b\":1}"; // 'json'
+  get<1>(input) = CassandraJson("{\"b\":1}"); // 'json'
   table.Update(&session_, input);
 
-  MyTable::ColumnsTuple updated_output("test", "");
+  MyTable::ColumnsTuple updated_output("test", CassandraJson(""));
   table.SelectOneRow(&session_, &updated_output);
   table.Print("UPDATED RESULT OUTPUT", updated_output);
 
@@ -1216,11 +661,11 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
       "}";
 
 
-  typedef TestTable<string, cass_json_t> MyTable;
+  typedef TestTable<string, CassandraJson> MyTable;
   MyTable table;
   ASSERT_OK(table.CreateTable(&session_, "basic", {"key", "json"}, {"key"}));
 
-  MyTable::ColumnsTuple input("test", long_json);
+  MyTable::ColumnsTuple input("test", CassandraJson(long_json));
   table.Insert(&session_, input);
 
   ASSERT_OK(session_.ExecuteQuery(
@@ -1236,12 +681,12 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
   ASSERT_OK(session_.ExecuteQuery("INSERT INTO basic(key, json) values ('test8', '{\"b\" : 1}');"));
 
   for (const string& key : {"test", "test0"} ) {
-    MyTable::ColumnsTuple output(key, "");
+    MyTable::ColumnsTuple output(key, CassandraJson(""));
     table.SelectOneRow(&session_, &output);
     table.Print("RESULT OUTPUT", output);
 
     LOG(INFO) << "Checking selected JSON object for key=" << key;
-    const string json = get<1>(output).str_; // 'json'
+    const string json = get<1>(output).value(); // 'json'
 
     ASSERT_EQ(json,
         "{"
@@ -2588,7 +2033,7 @@ TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
           batch.Add(&statement);
         }
         auto future = session.SubmitBatch(batch);
-        auto status = future.WaitFor(kTimeOut / 2);
+        auto status = future.WaitFor(kCassandraTimeOut / 2);
         if (status.IsTimedOut()) {
           auto pw = ++pending_writes;
           auto mpw = max_pending_writes.load();
