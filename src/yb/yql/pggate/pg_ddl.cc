@@ -361,6 +361,7 @@ PgDropIndex::~PgDropIndex() {
 
 Status PgDropIndex::Exec() {
   Status s = pg_session_->DropIndex(table_id_);
+  pg_session_->InvalidateTableCache(table_id_);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
   }

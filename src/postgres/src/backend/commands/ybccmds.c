@@ -951,29 +951,51 @@ YBCDropIndex(Oid relationId)
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
-		HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
-											 relationId,
-											 &colocated));
+	{
+		bool not_found = false;
+		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
+														   relationId,
+														   &colocated),
+									 &not_found);
+	}
 
 	/* Create table-level tombstone for colocated tables */
 	if (colocated)
 	{
-		HandleYBStatus(YBCPgNewTruncateColocated(MyDatabaseId,
-												 relationId,
-												 false,
-												 &handle));
-		HandleYBStmtStatus(YBCPgDmlBindTable(handle), handle);
-		int rows_affected_count = 0;
-		HandleYBStmtStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
-						   handle);
-		HandleYBStatus(YBCPgDeleteStatement(handle));
+		bool not_found = false;
+		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(MyDatabaseId,
+															   relationId,
+															   false,
+															   &handle),
+									 &not_found);
+		const bool valid_handle = !not_found;
+		if (valid_handle) {
+			HandleYBStmtStatusIgnoreNotFound(YBCPgDmlBindTable(handle),
+											 handle,
+											 &not_found);
+			int rows_affected_count = 0;
+			HandleYBStmtStatusIgnoreNotFound(
+				YBCPgDmlExecWriteOp(handle, &rows_affected_count),
+				handle,
+				&not_found);
+			HandleYBStatus(YBCPgDeleteStatement(handle));
+		}
 	}
 
 	/* Drop the index table */
-	HandleYBStatus(YBCPgNewDropIndex(MyDatabaseId,
-									 relationId,
-									 false,	   /* if_exists */
-									 &handle));
-	HandleYBStmtStatus(YBCPgExecDropIndex(handle), handle);
-	HandleYBStatus(YBCPgDeleteStatement(handle));
+	{
+		bool not_found = false;
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(MyDatabaseId,
+													   relationId,
+													   false, /* if_exists */
+													   &handle),
+									 &not_found);
+		const bool valid_handle = !not_found;
+		if (valid_handle) {
+			HandleYBStmtStatusIgnoreNotFound(YBCPgExecDropIndex(handle),
+											 handle,
+											 &not_found);
+			HandleYBStatus(YBCPgDeleteStatement(handle));
+		}
+	}
 }
