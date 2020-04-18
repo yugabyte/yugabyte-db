@@ -43,17 +43,9 @@ const storageConfigTypes = {
       label: "Container URL",
       placeHolder: "Container URL"
     }, {
-      id: "AZURE_APP_ID",
-      label: "Application ID",
-      placeholder: "Application ID"
-    }, {
-      id: "AZURE_TENANT_ID",
-      label: "Tenant ID",
-      placeholder: "Tenant ID"
-    }, {
-      id: "AZCOPY_SPA_CLIENT_SECRET",
-      label: "Client Secret",
-      placeholder: "Client Secret"
+      id: "AZURE_STORAGE_SAS_TOKEN",
+      label: "SAS Token",
+      placeholder: "SAS Token"
     }]
   }
 };

@@ -307,30 +307,27 @@ class AzBackupStorage(AbstractBackupStorage):
         return 'az'
 
     def _command_list_prefix(self):
-        return "AZCOPY_SPA_CLIENT_SECRET=$(<{}) azcopy login --service-principal " \
-            "--application-id {} --tenant-id={} && azcopy cp".format(
-                self.options.cloud_cfg_file_path, os.getenv("AZURE_APP_ID"),
-                os.getenv("AZURE_TENANT_ID"))
+        return "azcopy cp"
 
     def upload_file_cmd(self, src, dest):
         # azcopy requires quotes around the src and dest. This format is necessary to do so.
         src = "'{}'".format(src)
-        dest = "'{}'".format(dest)
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
 
     def download_file_cmd(self, src, dest):
-        src = "'{}'".format(src)
+        src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         dest = "'{}'".format(dest)
         return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
         src = "'{}'".format(os.path.join(src, '*'))
-        dest = "'{}'".format(dest)
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
 
     def download_dir_cmd(self, src, dest):
-        src = "'{}'".format(os.path.join(src, '*'))
+        src = "'{}'".format(os.path.join(src, '*') + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         dest = "'{}'".format(dest)
         return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
 
@@ -611,21 +608,13 @@ class YBBackup:
                 cloud_cfg.write(credentials)
             options.cloud_cfg_file_path = self.cloud_cfg_file_path
         elif self.is_az():
-            if not os.getenv('AZURE_APP_ID'):
+            sas_token = os.getenv('AZURE_STORAGE_SAS_TOKEN')
+            if not sas_token:
                 raise BackupException(
-                    "Set Application ID for Azure Storage in AZURE_APP_ID environment variable.")
-            if not os.getenv('AZURE_TENANT_ID'):
+                    "Set SAS for Azure Storage in AZURE_STORAGE_SAS_TOKEN environment variable.")
+            if '?sv' not in sas_token:
                 raise BackupException(
-                    "Set Tenant ID for Azure Storage in AZURE_TENANT_ID environment variable.")
-
-            credentials = os.getenv('AZCOPY_SPA_CLIENT_SECRET')
-            if not credentials:
-                raise BackupException(
-                    "Set Client Secret for Azure Storage in AZCOPY_SPA_CLIENT_SECRET environment "
-                    "variable.")
-            with open(self.cloud_cfg_file_path, 'w') as cloud_cfg:
-                cloud_cfg.write(credentials)
-            options.cloud_cfg_file_path = self.cloud_cfg_file_path
+                    "SAS tokens must begin with '?sv'.")
 
         self.storage = BACKUP_STORAGE_ABSTRACTIONS[self.args.storage_type](options)
 
@@ -651,6 +640,10 @@ class YBBackup:
 
     def is_cloud(self):
         return self.args.storage_type != NfsBackupStorage.storage_type()
+
+    def has_cfg_file(self):
+        return self.args.storage_type in [
+            GcsBackupStorage.storage_type(), S3BackupStorage.storage_type()]
 
     def get_leader_master_ip(self):
         if not self.leader_master_ip:
@@ -860,7 +853,7 @@ class YBBackup:
         :param server_ip: IP address or host name of the server to SSH into.
         :return: the standard output of the SSH command
         """
-        if upload_cloud_cfg and self.is_cloud():
+        if upload_cloud_cfg and self.has_cfg_file():
             self.upload_cloud_config(server_ip)
 
         if self.args.verbose:
