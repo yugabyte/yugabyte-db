@@ -13,6 +13,7 @@ import { isDefinedNotNull } from "utils/ObjectUtils";
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 
 import awss3Logo from './images/aws-s3.png';
+import azureLogo from './images/azure_logo.svg';
 import { isNonEmptyObject, isEmptyObject } from '../../../utils/ObjectUtils';
 
 const storageConfigTypes = {
@@ -56,6 +57,8 @@ const getTabTitle = (configName) => {
       return <img src={awss3Logo} alt="AWS S3" className="aws-logo" />;
     case "GCS":
       return <h3><i className="fa fa-database"></i>GCS</h3>;
+    case "AZ":
+      return <img src={azureLogo} alt="Azure" className="azure-logo" />;
     default:
       return <h3><i className="fa fa-database"></i>NFS</h3>;
   }
