@@ -17,7 +17,7 @@ create_backup() {
   output_path=$1
   data_dir=$2
   exclude_prometheus_flag=" "
-  if [[ "$3" ]]; then
+  if [[ "$3" = true ]]; then
     exclude_prometheus_flag=" --exclude prometheus* "
   fi
   tar="${output_path}/backup_${now}.tgz"
