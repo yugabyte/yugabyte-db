@@ -31,7 +31,8 @@
       "submodules/yugabyte-installation/bin/yb-ctl",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
-      "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
     "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
     "postgres": ["$BUILD_ROOT/postgres/*"],
@@ -52,7 +53,8 @@
       "build-support/post_install.sh",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
-      "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
     "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
