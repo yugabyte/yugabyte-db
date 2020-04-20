@@ -185,7 +185,7 @@ If you are running in a resource-constrained environment or a local environment,
 ```sh
 $ helm install yugabytedb/yugabyte \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
-resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb_demo --name yb-demo
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo --name yb-demo
 ```
 
 **For Helm 3:**
