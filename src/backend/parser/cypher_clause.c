@@ -93,6 +93,8 @@ static List *transform_cypher_create_path(cypher_parsestate *cpstate,
                                           cypher_path *cp);
 static cypher_target_node *
 transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node);
+static cypher_target_node *
+transform_create_cypher_edge(cypher_parsestate *cpstate, cypher_relationship *edge);
 
 // transform
 #define transform_prev_cypher_clause(cpstate, prev_clause) \
@@ -581,8 +583,6 @@ static List *transform_cypher_create_pattern(cypher_parsestate *cpstate,
     ListCell *lc;
     List *transformed_pattern = NIL;
 
-    Assert(list_length(pattern) == 1);
-
     foreach (lc, pattern)
     {
         List *transformed_path;
@@ -616,29 +616,9 @@ static List *transform_cypher_create_path(cypher_parsestate *cpstate,
         {
             cypher_relationship *edge = lfirst(lc);
 
-            if (!edge->label)
-                ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                errmsg("cannot create a edge without a label"),
-                                parser_errposition(&cpstate->pstate,
-                                                   edge->location)));
+            cypher_target_node *rel = transform_create_cypher_edge(cpstate, edge);
 
-            // create the label entry if it does not exist
-            if (!label_exists(edge->label, cpstate->graph_oid))
-            {
-                List *parent;
-                RangeVar *rv;
-
-                rv = get_label_range_var(cpstate->graph_name, cpstate->graph_oid,
-                                        AG_DEFAULT_LABEL_EDGE);
-
-                parent = list_make1(rv);
-
-                create_label(cpstate->graph_name, edge->label, LABEL_TYPE_EDGE,
-                             parent);
-            }
-
-            //exit, only create the first vertex for now
-            return transformed_path;
+            transformed_path = lappend(transformed_path, rel);
         }
         else
         {
@@ -651,6 +631,83 @@ static List *transform_cypher_create_path(cypher_parsestate *cpstate,
 }
 
 static cypher_target_node *
+transform_create_cypher_edge(cypher_parsestate *cpstate, cypher_relationship *edge)
+{
+    cypher_target_node *rel = palloc(sizeof(cypher_target_node));
+    List *targetList = NIL;
+    Expr *id, *properties;
+    Relation label_relation;
+    RangeVar *rv;
+    RangeTblEntry *rte;
+    TargetEntry *te;
+
+    rel->type = LABEL_KIND_EDGE;
+
+    if (edge->dir == CYPHER_REL_DIR_NONE)
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("only directed relationships are allowed in CREATE"),
+                        parser_errposition(&cpstate->pstate, edge->location)));
+
+    rel->dir = edge->dir;
+
+    if (!edge->label)
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("relationships must be specify a label in CREATE."),
+                            parser_errposition(&cpstate->pstate, edge->location)));
+
+    // create the label entry if it does not exist
+    if (!label_exists(edge->label, cpstate->graph_oid))
+    {
+        List *parent;
+        RangeVar *rv;
+
+        rv = get_label_range_var(cpstate->graph_name, cpstate->graph_oid,
+                                 AG_DEFAULT_LABEL_EDGE);
+
+        parent = list_make1(rv);
+
+        create_label(cpstate->graph_name, edge->label, LABEL_TYPE_EDGE, parent);
+    }
+
+    // lock the relation of the label
+    rv = makeRangeVar(cpstate->graph_name, edge->label, -1);
+    label_relation = parserOpenTable(&cpstate->pstate, rv, RowExclusiveLock);
+
+    // Store the relid
+    rel->relid = RelationGetRelid(label_relation);
+
+    rte = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
+                                        NULL, false, false);
+    rte->requiredPerms = ACL_INSERT;
+
+    // Build Id expression, always use the default logic
+    id = (Expr *)build_column_default(label_relation, Anum_ag_label_edge_table_id);
+
+    te = makeTargetEntry(id, InvalidAttrNumber, "id", false);
+    targetList = lappend(targetList, te);
+
+    // Build properties expression, if no map is given, use the default logic
+    if (edge->props)
+        properties = (Expr *)transform_cypher_expr(cpstate, edge->props,
+                                                   EXPR_KIND_INSERT_TARGET);
+    else
+        properties = (Expr *)build_column_default(
+            label_relation, Anum_ag_label_edge_table_properties);
+
+    te = makeTargetEntry(properties, InvalidAttrNumber, "properties", false);
+
+    targetList = lappend(targetList, te);
+    rel->targetList = targetList;
+
+    // Keep the lock
+    heap_close(label_relation, NoLock);
+
+    rel->expr_states = NIL;
+
+    return rel;
+}
+
+static cypher_target_node *
 transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
 {
     cypher_target_node *rel = palloc(sizeof(cypher_target_node));
@@ -660,6 +717,8 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
     RangeVar *rv;
     RangeTblEntry *rte;
     TargetEntry *te;
+
+    rel->type = LABEL_KIND_VERTEX;
 
     if (!node->label)
         node->label = AG_DEFAULT_LABEL_VERTEX;
@@ -689,11 +748,8 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
                                         NULL, false, false);
     rte->requiredPerms = ACL_INSERT;
 
-    // Store the relid
-    rel->relid = RelationGetRelid(label_relation);
-
     // Build Id expression, always use the default logic
-    id = (Expr *)build_column_default(label_relation, Anum_ag_label_table_id);
+    id = (Expr *)build_column_default(label_relation, Anum_ag_label_vertex_table_id);
 
     te = makeTargetEntry(id, InvalidAttrNumber, "id", false);
     targetList = lappend(targetList, te);
@@ -704,7 +760,7 @@ transform_create_cypher_node(cypher_parsestate *cpstate, cypher_node *node)
                                                    EXPR_KIND_INSERT_TARGET);
     else
         properties = (Expr *)build_column_default(
-            label_relation, Anum_ag_label_table_properties);
+            label_relation, Anum_ag_label_vertex_table_properties);
 
     te = makeTargetEntry(properties, InvalidAttrNumber, "properties", false);
 

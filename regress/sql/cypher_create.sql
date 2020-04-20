@@ -30,17 +30,49 @@ SELECT * FROM cypher('cypher_create', $$CREATE (:v {key: 'value'})$$) AS (a agty
 
 SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
 
+-- Left relationship
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id:"right rel, initial node"})-[:e {id:"right rel"}]->(:v {id:"right rel, end node"})
+$$) AS (a agtype);
+
+-- Right relationship
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id:"left rel, initial node"})<-[:e {id:"left rel"}]-(:v {id:"left rel, end node"})
+$$) AS (a agtype);
+
+-- Pattern creates a path from the initial node to the last node
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id: "path, initial node"})-[:e {id: "path, edge one"}]->(:v {id:"path, middle node"})-[:e {id:"path, edge two"}]->(:v {id:"path, last node"})
+$$) AS (a agtype);
+
+-- middle vertex points to the initial and last vertex
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id: "divergent, initial node"})<-[:e {id: "divergent, edge one"}]-(:v {id: "divergent middle node"})-[:e {id: "divergent, edge two"}]->(:v {id: "divergent, end node"})
+$$) AS (a agtype);
+
+-- initial and last vertex point to the middle vertex
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id: "convergent, initial node"})-[:e {id: "convergent, edge one"}]->(:v {id: "convergent middle node"})<-[:e {id: "convergent, edge two"}]-(:v {id: "convergent, end node"})
+$$) AS (a agtype);
+
+-- Validate Paths work correctly
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id: "paths, vertex one"})-[:e {id: "paths, edge one"}]->(:v {id: "paths, vertex two"}),
+           (:v {id: "paths, vertex three"})-[:e {id: "paths, edge two"}]->(:v {id: "paths, vertex four"})
+$$) AS (a agtype);
+
+--edge with double relationship will throw an error
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)<-[:e]->()$$) AS (a agtype);
+
+--edge with no relationship will throw an error
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[:e]-()$$) AS (a agtype);
+
 --edges without labels are not supported
-SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) AS (a agtype);
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]->(:v)$$) AS (a agtype);
 
---paths will only create the first vertex
-SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[:e]-(:v)$$) AS (a agtype);
-
---Validate only the first vertex was created
-SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
-
---MATCH does not support edges
 SELECT * FROM cypher_create.e;
+
+SELECT * FROM cypher_create.v;
 
 --Validate every vertex has the correct label
 SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
@@ -50,4 +82,5 @@ SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a int);
 SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a agtype, b int);
 
+-- intial and last vertex point to the middle vertex
 SELECT drop_graph('cypher_create', true);

@@ -174,12 +174,15 @@ typedef struct cypher_string_match
 
 typedef struct cypher_target_node
 {
+    char type;
     ResultRelInfo *resultRelInfo;
     TupleTableSlot *elemTupleSlot;
     Oid relid;
     List *targetList;
     List *expr_states;
+    cypher_rel_dir dir;
 } cypher_target_node;
+
 
 typedef struct cypher_typecast
 {

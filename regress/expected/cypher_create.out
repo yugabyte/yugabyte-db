@@ -51,43 +51,136 @@ SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
  {"id": 844424930131971, "label": "v", "properties": {"key": "value"}}::vertex
 (3 rows)
 
---edges without labels are not supported
-SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) AS (a agtype);
-ERROR:  cannot create a edge without a label
-LINE 1: ...LECT * FROM cypher('cypher_create', $$CREATE (:v)-[]-()$$) A...
-                                                             ^
---paths will only create the first vertex
-SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[:e]-(:v)$$) AS (a agtype);
+-- Left relationship
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id:"right rel, initial node"})-[:e {id:"right rel"}]->(:v {id:"right rel, end node"})
+$$) AS (a agtype);
  a 
 ---
 (0 rows)
 
---Validate only the first vertex was created
-SELECT * FROM cypher('cypher_create', $$MATCH (n:v) RETURN n$$) AS (n agtype);
-                                       n                                       
--------------------------------------------------------------------------------
- {"id": 844424930131969, "label": "v", "properties": {}}::vertex
- {"id": 844424930131970, "label": "v", "properties": {}}::vertex
- {"id": 844424930131971, "label": "v", "properties": {"key": "value"}}::vertex
- {"id": 844424930131972, "label": "v", "properties": {}}::vertex
-(4 rows)
-
---MATCH does not support edges
-SELECT * FROM cypher_create.e;
- id | start_id | end_id | properties 
-----+----------+--------+------------
+-- Right relationship
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id:"left rel, initial node"})<-[:e {id:"left rel"}]-(:v {id:"left rel, end node"})
+$$) AS (a agtype);
+ a 
+---
 (0 rows)
+
+-- Pattern creates a path from the initial node to the last node
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id: "path, initial node"})-[:e {id: "path, edge one"}]->(:v {id:"path, middle node"})-[:e {id:"path, edge two"}]->(:v {id:"path, last node"})
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- middle vertex points to the initial and last vertex
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id: "divergent, initial node"})<-[:e {id: "divergent, edge one"}]-(:v {id: "divergent middle node"})-[:e {id: "divergent, edge two"}]->(:v {id: "divergent, end node"})
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- initial and last vertex point to the middle vertex
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id: "convergent, initial node"})-[:e {id: "convergent, edge one"}]->(:v {id: "convergent middle node"})<-[:e {id: "convergent, edge two"}]-(:v {id: "convergent, end node"})
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- Validate Paths work correctly
+SELECT * FROM cypher('cypher_create', $$
+    CREATE (:v {id: "paths, vertex one"})-[:e {id: "paths, edge one"}]->(:v {id: "paths, vertex two"}),
+           (:v {id: "paths, vertex three"})-[:e {id: "paths, edge two"}]->(:v {id: "paths, vertex four"})
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--edge with double relationship will throw an error
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)<-[:e]->()$$) AS (a agtype);
+ERROR:  syntax error at or near ">"
+LINE 1: ... FROM cypher('cypher_create', $$CREATE (:v)<-[:e]->()$$) AS ...
+                                                             ^
+--edge with no relationship will throw an error
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[:e]-()$$) AS (a agtype);
+ERROR:  only directed relationships are allowed in CREATE
+LINE 1: ...LECT * FROM cypher('cypher_create', $$CREATE (:v)-[:e]-()$$)...
+                                                             ^
+--edges without labels are not supported
+SELECT * FROM cypher('cypher_create', $$CREATE (:v)-[]->(:v)$$) AS (a agtype);
+ERROR:  relationships must be specify a label in CREATE.
+LINE 1: ...LECT * FROM cypher('cypher_create', $$CREATE (:v)-[]->(:v)$$...
+                                                             ^
+SELECT * FROM cypher_create.e;
+        id        |    start_id     |     end_id      |           properties           
+------------------+-----------------+-----------------+--------------------------------
+ 1125899906842625 | 844424930131972 | 844424930131973 | {"id": "right rel"}
+ 1125899906842626 | 844424930131975 | 844424930131974 | {"id": "left rel"}
+ 1125899906842627 | 844424930131977 | 844424930131978 | {"id": "path, edge two"}
+ 1125899906842628 | 844424930131976 | 844424930131977 | {"id": "path, edge one"}
+ 1125899906842629 | 844424930131980 | 844424930131981 | {"id": "divergent, edge two"}
+ 1125899906842630 | 844424930131980 | 844424930131979 | {"id": "divergent, edge one"}
+ 1125899906842631 | 844424930131984 | 844424930131983 | {"id": "convergent, edge two"}
+ 1125899906842632 | 844424930131982 | 844424930131983 | {"id": "convergent, edge one"}
+ 1125899906842633 | 844424930131985 | 844424930131986 | {"id": "paths, edge one"}
+ 1125899906842634 | 844424930131987 | 844424930131988 | {"id": "paths, edge two"}
+(10 rows)
+
+SELECT * FROM cypher_create.v;
+       id        |             properties             
+-----------------+------------------------------------
+ 844424930131969 | {}
+ 844424930131970 | {}
+ 844424930131971 | {"key": "value"}
+ 844424930131972 | {"id": "right rel, initial node"}
+ 844424930131973 | {"id": "right rel, end node"}
+ 844424930131974 | {"id": "left rel, initial node"}
+ 844424930131975 | {"id": "left rel, end node"}
+ 844424930131976 | {"id": "path, initial node"}
+ 844424930131977 | {"id": "path, middle node"}
+ 844424930131978 | {"id": "path, last node"}
+ 844424930131979 | {"id": "divergent, initial node"}
+ 844424930131980 | {"id": "divergent middle node"}
+ 844424930131981 | {"id": "divergent, end node"}
+ 844424930131982 | {"id": "convergent, initial node"}
+ 844424930131983 | {"id": "convergent middle node"}
+ 844424930131984 | {"id": "convergent, end node"}
+ 844424930131985 | {"id": "paths, vertex one"}
+ 844424930131986 | {"id": "paths, vertex two"}
+ 844424930131987 | {"id": "paths, vertex three"}
+ 844424930131988 | {"id": "paths, vertex four"}
+(20 rows)
 
 --Validate every vertex has the correct label
 SELECT * FROM cypher('cypher_create', $$MATCH (n) RETURN n$$) AS (n agtype);
-                                       n                                       
--------------------------------------------------------------------------------
+                                                n                                                
+-------------------------------------------------------------------------------------------------
  {"id": 281474976710657, "label": "", "properties": {}}::vertex
  {"id": 844424930131969, "label": "v", "properties": {}}::vertex
  {"id": 844424930131970, "label": "v", "properties": {}}::vertex
  {"id": 844424930131971, "label": "v", "properties": {"key": "value"}}::vertex
- {"id": 844424930131972, "label": "v", "properties": {}}::vertex
-(5 rows)
+ {"id": 844424930131972, "label": "v", "properties": {"id": "right rel, initial node"}}::vertex
+ {"id": 844424930131973, "label": "v", "properties": {"id": "right rel, end node"}}::vertex
+ {"id": 844424930131974, "label": "v", "properties": {"id": "left rel, initial node"}}::vertex
+ {"id": 844424930131975, "label": "v", "properties": {"id": "left rel, end node"}}::vertex
+ {"id": 844424930131976, "label": "v", "properties": {"id": "path, initial node"}}::vertex
+ {"id": 844424930131977, "label": "v", "properties": {"id": "path, middle node"}}::vertex
+ {"id": 844424930131978, "label": "v", "properties": {"id": "path, last node"}}::vertex
+ {"id": 844424930131979, "label": "v", "properties": {"id": "divergent, initial node"}}::vertex
+ {"id": 844424930131980, "label": "v", "properties": {"id": "divergent middle node"}}::vertex
+ {"id": 844424930131981, "label": "v", "properties": {"id": "divergent, end node"}}::vertex
+ {"id": 844424930131982, "label": "v", "properties": {"id": "convergent, initial node"}}::vertex
+ {"id": 844424930131983, "label": "v", "properties": {"id": "convergent middle node"}}::vertex
+ {"id": 844424930131984, "label": "v", "properties": {"id": "convergent, end node"}}::vertex
+ {"id": 844424930131985, "label": "v", "properties": {"id": "paths, vertex one"}}::vertex
+ {"id": 844424930131986, "label": "v", "properties": {"id": "paths, vertex two"}}::vertex
+ {"id": 844424930131987, "label": "v", "properties": {"id": "paths, vertex three"}}::vertex
+ {"id": 844424930131988, "label": "v", "properties": {"id": "paths, vertex four"}}::vertex
+(21 rows)
 
 -- column definition list for CREATE clause must contain a single agtype
 -- attribute
@@ -101,6 +194,7 @@ ERROR:  column definition list for CREATE clause must contain a single agtype at
 LINE 1: SELECT * FROM cypher('cypher_create', $$CREATE ()$$) AS (a a...
                       ^
 HINT:  ... cypher($$ ... CREATE ... $$) AS t(c agtype) ...
+-- intial and last vertex point to the middle vertex
 SELECT drop_graph('cypher_create', true);
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
