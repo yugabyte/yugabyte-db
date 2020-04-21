@@ -34,6 +34,8 @@ class rw_semaphore;
 
 namespace tablet {
 
+YB_DEFINE_ENUM(CreateIntentsCheckpointIn, (kSubDir)(kUseIntentsDbSuffix));
+
 class TabletSnapshots : public TabletComponent {
  public:
   explicit TabletSnapshots(Tablet* tablet);
@@ -54,7 +56,12 @@ class TabletSnapshots : public TabletComponent {
   //------------------------------------------------------------------------------------------------
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
-  CHECKED_STATUS CreateCheckpoint(const std::string& dir);
+  // use_subdir_for_intents specifies whether to create intents DB checkpoint inside
+  // <dir>/<kIntentsSubdir> or <dir>.<kIntentsDBSuffix>
+  CHECKED_STATUS CreateCheckpoint(
+      const std::string& dir,
+      CreateIntentsCheckpointIn create_intents_checkpoint_in =
+          CreateIntentsCheckpointIn::kUseIntentsDbSuffix);
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return TEST_last_rocksdb_checkpoint_dir_; }

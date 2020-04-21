@@ -410,6 +410,10 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
   return bytes_evicted;
 }
 
+Status LogCache::FlushIndex() {
+  return log_->GetLogReader()->FlushIndex();
+}
+
 void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {
   if (entry.tracked) {
     tracker_->Release(entry.mem_usage);

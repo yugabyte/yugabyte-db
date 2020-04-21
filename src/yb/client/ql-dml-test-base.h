@@ -129,10 +129,16 @@ class KeyValueTableTest : public QLDmlTestBase {
 
   virtual int NumTablets();
 
+  // Sets number of tablets to use for test table creation.
+  void SetNumTablets(int num_tablets) {
+    num_tablets_ = num_tablets;
+  }
+
   static const std::string kKeyColumn;
   static const std::string kValueColumn;
   TableHandle table_;
   TableHandle index_;
+  int num_tablets_ = CalcNumTablets(3);
 };
 
 CHECKED_STATUS CheckOp(YBqlOp* op);

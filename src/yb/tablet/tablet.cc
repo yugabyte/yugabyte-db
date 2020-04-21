@@ -2719,7 +2719,8 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
   auto metadata = VERIFY_RESULT(metadata_->CreateSubtabletMetadata(
       tablet_id, partition, key_bounds.lower.data(), key_bounds.upper.data()));
 
-  RETURN_NOT_OK(snapshots_->CreateCheckpoint(metadata->rocksdb_dir()));
+  RETURN_NOT_OK(snapshots_->CreateCheckpoint(
+      metadata->rocksdb_dir(), CreateIntentsCheckpointIn::kSubDir));
 
   // We want flushed frontier to cover split_op_id, so during bootstrap of after-split tablets
   // we don't replay split operation.

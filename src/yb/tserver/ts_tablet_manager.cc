@@ -839,6 +839,9 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
           op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
 
+  auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
+  RETURN_NOT_OK(tablet_peer->raft_consensus()->FlushLogIndex());
+
   auto& meta = *CHECK_NOTNULL(tablet->metadata());
 
   // TODO(tsplit): We can later implement better per-disk distribution during compaction of split
@@ -1540,6 +1543,13 @@ bool TSTabletManager::LookupTablet(const string& tablet_id,
                                    TabletPeerPtr* tablet_peer) const {
   SharedLock<RWMutex> shared_lock(lock_);
   return LookupTabletUnlocked(tablet_id, tablet_peer);
+}
+
+Result<std::shared_ptr<tablet::TabletPeer>> TSTabletManager::LookupTablet(
+    const std::string& tablet_id) const {
+  TabletPeerPtr tablet_peer;
+  SCHECK(LookupTablet(tablet_id, &tablet_peer), NotFound, Format("Tablet $0 not found", tablet_id));
+  return tablet_peer;
 }
 
 bool TSTabletManager::LookupTabletUnlocked(const string& tablet_id,

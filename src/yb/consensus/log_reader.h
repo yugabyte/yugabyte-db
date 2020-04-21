@@ -135,6 +135,8 @@ class LogReader {
   // Returns the number of segments.
   const int num_segments() const;
 
+  CHECKED_STATUS FlushIndex();
+
   std::string ToString() const;
 
   const std::string& LogPrefix() const {

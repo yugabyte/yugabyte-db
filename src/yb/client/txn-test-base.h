@@ -53,6 +53,8 @@ class TransactionTestBase : public KeyValueTableTest {
  protected:
   void SetUp() override;
 
+  void CreateTable();
+
   virtual uint64_t log_segment_size_bytes() const;
 
   CHECKED_STATUS WriteRows(

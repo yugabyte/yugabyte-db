@@ -193,7 +193,7 @@ void KeyValueTableTest::CreateIndex(Transactional transactional,
 }
 
 int KeyValueTableTest::NumTablets() {
-  return CalcNumTablets(3);
+  return num_tablets_;
 }
 
 Result<YBqlWriteOpPtr> KeyValueTableTest::WriteRow(
