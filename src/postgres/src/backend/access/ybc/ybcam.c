@@ -404,19 +404,37 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
  */
 static void
 ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
-								 YbScanDesc ybScan, YbScanPlan scan_plan)
+				 YbScanDesc ybScan, YbScanPlan scan_plan)
 {
 	int i;
 	memset(scan_plan, 0, sizeof(*scan_plan));
 
 	/*
-	 * Setup control-parameters for YugaByte preparing statements for different types of scan.
-	 * - "querying_systable": Support for special cases for SystemTable in YugaByte.
-	 * - "index_oid, index_only_scan, use_secondary_index": Different index scans.
-	 * NOTE: Primary index is a special case as there isn't a primary index table in YugaByte.
+	 * Setup control-parameters for Yugabyte preparing statements for different
+	 * types of scan.
+	 * - "querying_colocated_table": Support optimizations for (system and
+	 *   user) colocated tables
+	 * - "index_oid, index_only_scan, use_secondary_index": Different index
+	 *   scans.
+	 * NOTE: Primary index is a special case as there isn't a primary index
+	 * table in YugaByte.
 	 */
 	ybScan->index = index;
-	ybScan->prepare_params.querying_systable = IsSystemRelation(relation);
+
+	ybScan->prepare_params.querying_colocated_table =
+		IsSystemRelation(relation);
+	if (!ybScan->prepare_params.querying_colocated_table &&
+		MyDatabaseColocated)
+	{
+		bool colocated = false;
+		bool notfound;
+		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
+														   RelationGetRelid(relation),
+														   &colocated),
+									 &notfound);
+		ybScan->prepare_params.querying_colocated_table |= colocated;
+	}
+
 	if (index)
 	{
 		ybScan->prepare_params.index_oid = RelationGetRelid(index);
@@ -577,9 +595,9 @@ static int int_compar_cb(const void *v1, const void *v2)
 
 /* Use the scan-descriptor and scan-plan to setup scan key for filtering */
 static void	ybcSetupScanKeys(Relation relation,
-														 Relation index,
-														 YbScanDesc ybScan,
-														 YbScanPlan scan_plan)
+							 Relation index,
+							 YbScanDesc ybScan,
+							 YbScanPlan scan_plan)
 {
 	/*
 	 * Find the scan keys that are the primary key.
@@ -658,9 +676,9 @@ static void	ybcSetupScanKeys(Relation relation,
 
 /* Use the scan-descriptor and scan-plan to setup binds for the queryplan */
 static void ybcBindScanKeys(Relation relation,
-														Relation index,
-														YbScanDesc ybScan,
-														YbScanPlan scan_plan) {
+							Relation index,
+							YbScanDesc ybScan,
+							YbScanPlan scan_plan) {
 	Oid		dboid    = YBCGetDatabaseOid(relation);
 	Oid		relid    = RelationGetRelid(relation);
 

@@ -178,14 +178,15 @@ typedef struct PgSysColumns {
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
 //       use_secondary_index = false
 //
-// Attribute "querying_systable"
-//   - If 'true', SELECT from SQL system catalogs.
-//   - Note that these catalogs are specifically for Postgres API and not YugaByte system-tables.
+// Attribute "querying_colocated_table"
+//   - If 'true', SELECT from SQL system catalogs or colocated tables.
+//   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
+//     system-tables.
 typedef struct PgPrepareParameters {
   YBCPgOid index_oid;
   bool index_only_scan;
   bool use_secondary_index;
-  bool querying_systable;
+  bool querying_colocated_table;
 } YBCPgPrepareParameters;
 
 // Structure to hold the execution-control parameters.
