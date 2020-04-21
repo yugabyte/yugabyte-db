@@ -717,7 +717,8 @@ class YBBackup:
                                   output)
         return snapshot_id
 
-    def wait_for_snapshot(self, snapshot_id, op, timeout_sec, update_table_list):
+    def wait_for_snapshot(self, snapshot_id, op, timeout_sec, update_table_list,
+                          complete_state='COMPLETE'):
         """
         Waits for the given snapshot to finish being created or restored.
         """
@@ -746,7 +747,7 @@ class YBBackup:
                 if not snapshot_done:
                     if line.find(snapshot_id) == 0:
                         (found_snapshot_id, state) = line.split()
-                        if found_snapshot_id == snapshot_id and state == 'COMPLETE':
+                        if found_snapshot_id == snapshot_id and state == complete_state:
                             snapshot_done = True
                             if not update_table_list:
                                 break
@@ -1576,14 +1577,19 @@ class YBBackup:
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
 
         output = self.run_yb_admin(['restore_snapshot', snapshot_id])
+        # Transaction-aware snapshots use special restaration id with final state RESTORED,
+        # while previous implementation uses snapshot id and it's state COMPLETE.
         restoration_id = snapshot_id
+        complete_restoration_state = 'COMPLETE'
         for line in output.splitlines():
             restoration_match = RESTORATION_RE.match(line)
             if restoration_match:
                 restoration_id = restoration_match.group(1)
+                complete_restoration_state = 'RESTORED'
                 logging.info('Found restoration id: ' + restoration_id)
 
-        self.wait_for_snapshot(restoration_id, 'restoring', RESTORE_SNAPSHOT_TIMEOUT_SEC, False)
+        self.wait_for_snapshot(restoration_id, 'restoring', RESTORE_SNAPSHOT_TIMEOUT_SEC, False,
+                               complete_restoration_state)
 
         logging.info('Restored backup successfully!')
         print json.dumps({"success": True})
