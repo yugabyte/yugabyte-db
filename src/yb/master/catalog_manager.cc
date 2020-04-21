@@ -296,6 +296,11 @@ DEFINE_test_flag(bool, hang_on_namespace_transition, false,
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
+DEFINE_bool(master_drop_table_after_task_response, true,
+            "Mark a table as DELETED as soon as we get all the responses from all the TS.");
+TAG_FLAG(master_drop_table_after_task_response, advanced);
+TAG_FLAG(master_drop_table_after_task_response, runtime);
+
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 DEFINE_test_flag(bool, tablegroup_master_only, false,
@@ -558,8 +563,10 @@ CatalogManager::CatalogManager(Master* master)
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
-           .Build(&worker_pool_));
+           .Build(&leader_initialization_pool_));
   CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
+  CHECK_OK(ThreadPoolBuilder("async-tasks")
+           .Build(&async_task_pool_));
 
   if (master_) {
     sys_catalog_.reset(new SysCatalogTable(
@@ -636,7 +643,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
 
 Status CatalogManager::ElectedAsLeaderCb() {
   time_elected_leader_ = MonoTime::Now();
-  return worker_pool_->SubmitClosure(
+  return leader_initialization_pool_->SubmitClosure(
       Bind(&CatalogManager::LoadSysCatalogDataTask, Unretained(this)));
 }
 
@@ -724,7 +731,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
 }
 
 CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
-  if (!worker_pool_->WaitFor(timeout)) {
+  if (!async_task_pool_->WaitFor(timeout)) {
     return STATUS(TimedOut, "Worker Pool hasn't finished processing tasks");
   }
   return Status::OK();
@@ -1423,13 +1430,14 @@ void CatalogManager::CompleteShutdown() {
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
-  // Shutdown the Catalog Manager background tasks (CM only) thread pool.
   if (background_tasks_thread_pool_) {
     background_tasks_thread_pool_->Shutdown();
   }
-  // Shutdown the Catalog Manager worker (CM<->TS) pool.
-  if (worker_pool_) {
-    worker_pool_->Shutdown();
+  if (leader_initialization_pool_) {
+    leader_initialization_pool_->Shutdown();
+  }
+  if (async_task_pool_) {
+    async_task_pool_->Shutdown();
   }
 
   // Mark all outstanding table tasks as aborted and wait for them to fail.
@@ -3266,8 +3274,9 @@ void CatalogManager::SendTruncateTabletRequest(const scoped_refptr<TabletInfo>& 
   LOG_WITH_PREFIX(INFO) << "Truncating tablet " << tablet->id();
   auto call = std::make_shared<AsyncTruncate>(master_, AsyncTaskPool(), tablet);
   tablet->table()->AddTask(call);
-  auto status = ScheduleTask(call);
-  WARN_NOT_OK(status, Substitute("Failed to send truncate request for tablet $0", tablet->id()));
+  WARN_NOT_OK(
+      ScheduleTask(call),
+      Substitute("Failed to send truncate request for tablet $0", tablet->id()));
 }
 
 Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
@@ -3591,63 +3600,65 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   return Status::OK();
 }
 
+unique_ptr<TableInfo::lock_type> CatalogManager::MaybeTransitionTableToDeleted(
+    scoped_refptr<TableInfo> table) {
+  if (table->HasTasks()) {
+    return nullptr;
+  }
+  {
+    auto lock = table->LockForRead();
+
+    // For any table in DELETING state, we will want to mark it as DELETED once all its respective
+    // tablets have been successfully removed from tservers.
+    if (!lock->data().is_deleting()) {
+      return nullptr;
+    }
+  }
+  // The current relevant order of operations during a DeleteTable is:
+  // 1) Mark the table as DELETING
+  // 2) Abort the current table tasks
+  // 3) Per tablet, send DeleteTable requests to all TS, then mark that tablet as DELETED
+  //
+  // This creates a race, wherein, after 2, HasTasks can be false, but we still have not
+  // gotten to point 3, which would add further tasks for the deletes.
+  //
+  // However, HasTasks is cheaper than AreAllTabletsDeleted...
+  if (!table->AreAllTabletsDeleted() &&
+      !IsSystemTable(*table) &&
+      !IsColocatedUserTable(*table)) {
+    return nullptr;
+  }
+
+  auto lock = table->LockForWrite();
+  if (lock->data().is_deleting()) {
+    // Update the metadata for the on-disk state.
+    LOG(INFO) << "Marking table as DELETED: " << table->ToString();
+    lock->mutable_data()->set_state(SysTablesEntryPB::DELETED,
+        Substitute("Deleted with tablets at $0", LocalTimeAsString()));
+    return lock;
+  }
+  return nullptr;
+}
+
 void CatalogManager::CleanUpDeletedTables() {
   // TODO(bogdan): Cache tables being deleted to make this iterate only over those?
   vector<scoped_refptr<TableInfo>> tables_to_delete;
+  // Garbage collecting.
+  // Going through all tables under the global lock, copying them to not hold lock for too long.
+  TableInfoMap copy_of_table_by_id_map;
   {
     std::lock_guard<LockType> l_map(lock_);
-    // Garbage collecting.
-    // Going through all tables under the global lock.
-    for (const auto& it : *table_ids_map_) {
-      scoped_refptr<TableInfo> table(it.second);
-
-      if (!table->HasTasks()) {
-        // Lock the candidate table and check the tablets under the lock.
-        auto l = table->LockForRead();
-
-        // For normal runtime operations, this should only contain tables in DELETING state.
-        // However, for master failover, the catalog loaders currently have to bring in tables in
-        // memory even in DELETED state, for safely loading the respective tablets for them
-        //
-        // Eventually, for these DELETED tables, we'll want to also remove them from memory.
-        if (l->data().is_deleting()) {
-          // The current relevant order of operations during a DeleteTable is:
-          // 1) Mark the table as DELETING
-          // 2) Abort the current table tasks
-          // 3) Per tablet, send DeleteTable requests to all TS, then mark that tablet as DELETED
-          //
-          // This creates a race, wherein, after 2, HasTasks can be false, but we still have not
-          // gotten to point 3, which would add further tasks for the deletes.
-          //
-          // However, HasTasks is cheaper than AreAllTabletsDeleted...
-          if (table->AreAllTabletsDeleted() ||
-              IsSystemTableUnlocked(*table) ||
-              IsColocatedUserTable(*table)) {
-            tables_to_delete.push_back(table);
-            // TODO(bogdan): uncomment this once we also untangle catalog loader logic.
-            // Since we have lock_, this table cannot be in the map AND be DELETED.
-            // DCHECK(!l->data().is_deleted());
-          }
-        }
-      }
-    }
+    copy_of_table_by_id_map = *table_ids_map_;
   }
   // Mark the tables as DELETED and remove them from the in-memory maps.
   vector<TableInfo*> tables_to_update_on_disk;
-  for (auto table : tables_to_delete) {
-    table->mutable_metadata()->StartMutation();
-    // TODO: Turn this into a DCHECK again once we fix the catalog loaders to not need to load
-    // DELETED tables as well.
-    if (table->metadata().state().pb.state() == SysTablesEntryPB::DELETING) {
-      // Update the metadata for the on-disk state.
-      LOG(INFO) << "Marking table as DELETED: " << table->ToString();
-      table->mutable_metadata()->mutable_dirty()->set_state(SysTablesEntryPB::DELETED,
-          Substitute("Deleted with tablets at $0", LocalTimeAsString()));
+  vector<unique_ptr<TableInfo::lock_type>> table_locks;
+  for (const auto& it : copy_of_table_by_id_map) {
+    const auto& table = it.second;
+    auto lock = MaybeTransitionTableToDeleted(table);
+    if (lock) {
+      table_locks.push_back(std::move(lock));
       tables_to_update_on_disk.push_back(table.get());
-    } else {
-      // TODO(bogdan): We need to abort here, until we remove it from the map, otherwise we'd leave
-      // this lock locked...
-      table->mutable_metadata()->AbortMutation();
     }
   }
   if (tables_to_update_on_disk.size() > 0) {
@@ -3656,27 +3667,14 @@ void CatalogManager::CleanUpDeletedTables() {
       LOG(WARNING) << "Error marking tables as DELETED: " << s.ToString();
       return;
     }
+    // Update the table in-memory info as DELETED after we've removed them from the maps.
+    for (auto& lock : table_locks) {
+      lock->Commit();
+    }
+    // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
+    // TODO: SysCatalog::DeleteItem() if we've DELETED all user tables in a DELETING namespace.
+    // TODO: Also properly handle namespace_ids_map_.erase(table->namespace_id())
   }
-  // Delete from in-memory maps.
-  // TODO(bogdan):
-  // - why do we not delete these from disk?
-  // - do we even need to remove these? seems the loaders read them from disk into maps anyway...
-  // - what about the tablets? is it ok to have TabletInfos with missing tables for them?
-  // {
-  //   std::lock_guard<LockType> l_map(lock_);
-  //   for (auto table : tables_to_delete) {
-  // TODO(bogdan): Come back to this once we figure out all concurrency issues.
-  //     table_ids_map_.erase(table->id());
-  //   }
-  // }
-  // Update the table in-memory info as DELETED after we've removed them from the maps.
-  for (auto table : tables_to_update_on_disk) {
-    table->mutable_metadata()->CommitMutation();
-  }
-  // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
-
-  // TODO: SysCatalog::DeleteItem() if we've DELETED all user tables in a DELETING namespace.
-  // TODO: Also properly handle namespace_ids_map_.erase(table->namespace_id())
 }
 
 Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
@@ -4377,11 +4375,6 @@ NamespaceName CatalogManager::GetNamespaceName(const scoped_refptr<TableInfo>& t
 }
 
 bool CatalogManager::IsSystemTable(const TableInfo& table) const {
-  SharedLock<LockType> l(lock_);
-  return IsSystemTableUnlocked(table);
-}
-
-bool CatalogManager::IsSystemTableUnlocked(const TableInfo& table) const {
   TabletInfos tablets;
   table.GetAllTablets(&tablets);
   for (const auto& tablet : tablets) {
@@ -4401,7 +4394,7 @@ bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
 
 bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
-    if (!IsSystemTableUnlocked(table) && !IsSequencesSystemTable(table) &&
+    if (!IsSystemTable(table) && !IsSequencesSystemTable(table) &&
         GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName &&
         !IsColocatedParentTable(table) &&
         !IsTablegroupParentTable(table)) {
@@ -4468,7 +4461,8 @@ bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
 }
 
 void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid,
-                                                const TabletId& tablet_id) {
+                                                const TabletId& tablet_id,
+                                                scoped_refptr<TableInfo> table) {
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
@@ -4478,6 +4472,25 @@ void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uu
   } else {
     LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
     ts_desc->ClearPendingTabletDelete(tablet_id);
+  }
+  if (FLAGS_master_drop_table_after_task_response) {
+    // Since this is called after every successful async DeleteTablet, it's possible if all tasks
+    // complete, for us to mark the table as DELETED asap. This is desirable as clients will wait
+    // for this before returning success to the user.
+    //
+    // However, if tasks fail, timeout, or are aborted, we still have the background thread as a
+    // catch all.
+    auto lock = MaybeTransitionTableToDeleted(table);
+    if (!lock) {
+      return;
+    }
+    vector<TableInfo*> tables_to_delete({table.get()});
+    Status s = sys_catalog_->UpdateItems(tables_to_delete, leader_ready_term());
+    if (!s.ok()) {
+      LOG(WARNING) << "Error marking table as DELETED: " << s.ToString();
+      return;
+    }
+    lock->Commit();
   }
 }
 
@@ -4937,7 +4950,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     for (auto& rpc : rpcs) {
       DCHECK(rpc->table());
       rpc->table()->AddTask(rpc);
-      WARN_NOT_OK(rpc->Run(), Substitute("Failed to send $0", rpc->description()));
+      WARN_NOT_OK(ScheduleTask(rpc), Substitute("Failed to send $0", rpc->description()));
     }
     rpcs.clear();
   } // Loop to process the next batch until fully iterated.
@@ -5654,7 +5667,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
       RSTATUS_DCHECK(
           !l->data().pb.is_pg_shared_table(), Corruption, "Shared table found in database");
 
-      if (IsSystemTableUnlocked(*table)) {
+      if (IsSystemTable(*table)) {
         sys_table_ids.insert(table->id());
       }
 
@@ -6673,11 +6686,8 @@ void CatalogManager::DeleteTabletReplicas(
 
 Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<TableInfo>& table) {
   // Do not delete the system catalog tablet.
-  {
-    SharedLock<LockType> catalog_lock(lock_);
-    if (IsSystemTableUnlocked(*table)) {
-      return STATUS(InvalidArgument, "It is not allowed to delete tablets of the system tables.");
-    }
+  if (IsSystemTable(*table)) {
+    return STATUS(InvalidArgument, "It is not allowed to delete system tables");
   }
   // Do not delete the tablet of a colocated table.
   if (IsColocatedUserTable(*table)) {
@@ -6743,6 +6753,7 @@ void CatalogManager::SendDeleteTabletRequest(
 
   auto status = ScheduleTask(call);
   WARN_NOT_OK(status, Substitute("Failed to send delete request for tablet $0", tablet_id));
+  // TODO(bogdan): does the pending delete semantics need to change?
   if (status.ok()) {
     ts_desc->AddPendingTabletDelete(tablet_id);
   }
@@ -6756,7 +6767,7 @@ void CatalogManager::SendLeaderStepDownRequest(
       master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, should_remove,
       new_leader_uuid);
   tablet->table()->AddTask(task);
-  Status status = task->Run();
+  Status status = ScheduleTask(task);
   WARN_NOT_OK(status, Substitute("Failed to send new $0 request", task->type_name()));
 }
 
@@ -6768,8 +6779,7 @@ void CatalogManager::SendRemoveServerRequest(
   auto task = std::make_shared<AsyncRemoveServerTask>(
       master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid);
   tablet->table()->AddTask(task);
-  Status status = task->Run();
-  WARN_NOT_OK(status, Substitute("Failed to send new $0 request", task->type_name()));
+  WARN_NOT_OK(ScheduleTask(task), Substitute("Failed to send new $0 request", task->type_name()));
 }
 
 void CatalogManager::SendAddServerRequest(
@@ -6778,9 +6788,10 @@ void CatalogManager::SendAddServerRequest(
   auto task = std::make_shared<AsyncAddServerTask>(master_, AsyncTaskPool(), tablet, member_type,
       cstate, change_config_ts_uuid);
   tablet->table()->AddTask(task);
-  Status status = task->Run();
-  WARN_NOT_OK(status, Substitute("Failed to send AddServer of tserver $0 to tablet $1",
-                                 change_config_ts_uuid, tablet.get()->ToString()));
+  WARN_NOT_OK(
+      ScheduleTask(task),
+      Substitute("Failed to send AddServer of tserver $0 to tablet $1",
+                 change_config_ts_uuid, tablet.get()->ToString()));
 }
 
 void CatalogManager::GetPendingServerTasksUnlocked(
@@ -7290,7 +7301,7 @@ void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets
       auto task = std::make_shared<AsyncCreateReplica>(master_, AsyncTaskPool(),
           peer.permanent_uuid(), tablet);
       tablet->table()->AddTask(task);
-      WARN_NOT_OK(task->Run(), "Failed to send new tablet request");
+      WARN_NOT_OK(ScheduleTask(task), "Failed to send new tablet request");
     }
   }
 }
@@ -8269,7 +8280,14 @@ scoped_refptr<TableInfo> CatalogManager::NewTableInfo(TableId id) {
 }
 
 Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
-  return task->Run();
+  Status s = async_task_pool_->SubmitFunc([task]() {
+      WARN_NOT_OK(task->Run(), "Failed task");
+  });
+  // If we are not able to enqueue, abort the task.
+  if (!s.ok()) {
+    task->AbortAndReturnPrevState(s);
+  }
+  return s;
 }
 
 Result<vector<TableDescription>> CatalogManager::CollectTables(

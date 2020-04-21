@@ -885,7 +885,8 @@ Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
   auto call = std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet);
   tablet->table()->AddTask(call);
   RETURN_NOT_OK_PREPEND(
-      master_->catalog_manager()->ScheduleTask(call), "Failed to send backfill done request");
+      master_->catalog_manager()->ScheduleTask(call),
+      "Failed to send backfill done request");
   return Status::OK();
 }
 
