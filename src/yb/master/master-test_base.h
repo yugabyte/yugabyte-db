@@ -187,6 +187,8 @@ class MasterTestBase : public YBTest {
                         const std::string& new_name,
                         AlterNamespaceResponsePB* resp);
 
+  Status DeleteNamespaceWait(IsDeleteNamespaceDoneRequestPB const& del_req);
+
   RpcController* ResetAndGetController() {
     controller_->Reset();
     return controller_.get();

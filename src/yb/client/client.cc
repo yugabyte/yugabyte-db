@@ -695,8 +695,27 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
     req.set_database_type(*database_type);
     req.mutable_namespace_()->set_database_type(*database_type);
   }
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteNamespace);
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  Status s = data_->SyncLeaderMasterRpc<DeleteNamespaceRequestPB, DeleteNamespaceResponsePB>(
+      deadline, req, &resp, nullptr, "DeleteNamespace", &MasterServiceProxy::DeleteNamespace);
+  if (resp.has_error()) {
+    s = StatusFromPB(resp.error().status());
+  }
+  RETURN_NOT_OK(s);
+
+  // Verify that, once this request returns, the namespace has been successfully marked as deleted.
+  RETURN_NOT_OK(data_->WaitForDeleteNamespaceToFinish(this, namespace_name, database_type,
+      CoarseMonoClock::Now() + default_admin_operation_timeout()));
+
   return Status::OK();
+}
+
+Status YBClient::IsDeleteNamespaceInProgress(const std::string& namespace_name,
+                                             const boost::optional<YQLDatabase>& database_type,
+                                             bool *delete_in_progress) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->IsDeleteNamespaceInProgress(this, namespace_name, database_type, deadline,
+                                            delete_in_progress);
 }
 
 YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
