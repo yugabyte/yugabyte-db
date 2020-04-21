@@ -77,6 +77,12 @@ DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
              "created.");
 DECLARE_int32(master_rpc_timeout_ms);
 
+DEFINE_bool(enable_transaction_snapshots, true,
+            "The flag enables usage of transaction aware snapshots.");
+TAG_FLAG(enable_transaction_snapshots, hidden);
+TAG_FLAG(enable_transaction_snapshots, advanced);
+TAG_FLAG(enable_transaction_snapshots, runtime);
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -277,7 +283,7 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
   LOG(INFO) << "Servicing CreateSnapshot request: " << req->ShortDebugString();
   RETURN_NOT_OK(CheckOnline());
 
-  if (req->transaction_aware()) {
+  if (FLAGS_enable_transaction_snapshots && req->transaction_aware()) {
     return CreateTransactionAwareSnapshot(*req, resp, rpc);
   }
 
