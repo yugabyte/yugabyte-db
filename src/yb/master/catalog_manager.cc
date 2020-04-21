@@ -3659,20 +3659,25 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
 Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
     const TabletInfo& source_tablet_info, const PartitionPB& partition) {
-  const auto table_lock = source_tablet_info.LockForRead();
+  const auto tablet_lock = source_tablet_info.LockForRead();
 
   const auto& table = source_tablet_info.table();
   TabletInfo* new_tablet = CreateTabletInfo(table.get(), partition);
-  const auto& source_tablet_meta = table_lock->data().pb;
+  const auto& source_tablet_meta = tablet_lock->data().pb;
 
   auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
   new_tablet_meta.set_state(SysTabletsEntryPB::CREATING);
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
   new_tablet_meta.set_split_depth(source_tablet_meta.split_depth() + 1);
-  new_tablet->mutable_metadata()->CommitMutation();
+  // TODO(tsplit): consider and handle failure scenarios, for example:
+  // - Crash or leader failover before sending out the split tasks.
+  // - Long enough partition while trying to send out the splits so that they timeout and
+  //   not get executed.
   {
     std::lock_guard<LockType> l(lock_);
+    table->AddTablet(new_tablet);
+    new_tablet->mutable_metadata()->CommitMutation();
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
   }
@@ -4268,11 +4273,6 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
           VLOG(1) << "Tablet " << tablet->ToString() << " is now online";
           tablet_lock->mutable_data()->set_state(SysTabletsEntryPB::RUNNING,
               "Tablet reported with an active leader");
-          // TODO(tsplit): consider and handle failure scenarios, for example:
-          // - Crash or leader failover before sending out the split tasks.
-          // - Long enough partition while trying to send out the splits so that they timeout and
-          //   not get executed.
-          tablet->table()->MaybeAddTabletForSplit(tablet.get(), tablet_lock.get());
           tablet_was_mutated = true;
         }
 
@@ -6456,7 +6456,11 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       cstate = l_tablet->data().pb.committed_consensus_state();
     }
 
-    locs_pb->mutable_partition()->CopyFrom(tablet->metadata().state().pb.partition());
+    const auto& metadata = tablet->metadata().state().pb;
+    locs_pb->mutable_partition()->CopyFrom(metadata.partition());
+    if (metadata.has_split_depth()) {
+      locs_pb->set_split_depth(metadata.split_depth());
+    }
   }
 
   locs_pb->set_tablet_id(tablet->tablet_id());
@@ -6531,6 +6535,7 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
 Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
                                          GetTableLocationsResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
+  VLOG(4) << "GetTableLocations: " << req->ShortDebugString();
 
   // If start-key is > end-key report an error instead of swap the two
   // since probably there is something wrong app-side.

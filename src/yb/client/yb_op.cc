@@ -99,6 +99,14 @@ bool YBOperation::IsYsqlCatalogOp() const {
   return table_->schema().table_properties().is_ysql_catalog_table();
 }
 
+void YBOperation::MarkTablePartitionsAsStale() {
+  table_->MarkPartitionsAsStale();
+}
+
+Result<bool> YBOperation::MaybeRefreshTablePartitions() {
+  return table_->MaybeRefreshPartitions();
+}
+
 //--------------------------------------------------------------------------------------------------
 // YBRedisOp
 //--------------------------------------------------------------------------------------------------

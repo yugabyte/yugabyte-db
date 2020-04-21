@@ -299,29 +299,6 @@ void TableInfo::AddTablet(TabletInfo *tablet) {
   AddTabletUnlocked(tablet);
 }
 
-void TableInfo::MaybeAddTabletForSplit(TabletInfo* tablet, TabletInfo::lock_type* tablet_lock) {
-  const auto& tablet_meta = tablet_lock->data().pb;
-  if (!tablet_meta.has_split_depth()) {
-    return;
-  }
-  const auto& partition_key_start = tablet_meta.partition().partition_key_start();
-
-  std::lock_guard<decltype(lock_)> l(lock_);
-  auto it = tablet_map_.find(partition_key_start);
-  if (it == tablet_map_.end()) {
-    tablet_map_.emplace(partition_key_start, tablet);
-  } else {
-    const auto old_split_depth = it->second->LockForRead()->data().pb.split_depth();
-    if (tablet_meta.split_depth() > old_split_depth) {
-      VLOG(1) << "Replacing tablet " << it->second->tablet_id()
-              << " (split_depth = " << old_split_depth << ")"
-              << " with post-split tablet " << tablet->tablet_id()
-              << " (split_depth = " << tablet_meta.split_depth() << ")";
-      it->second = tablet;
-    }
-  }
-}
-
 void TableInfo::AddTablets(const vector<TabletInfo*>& tablets) {
   std::lock_guard<decltype(lock_)> l(lock_);
   for (TabletInfo *tablet : tablets) {
@@ -330,11 +307,21 @@ void TableInfo::AddTablets(const vector<TabletInfo*>& tablets) {
 }
 
 void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
-  TabletInfo* old = nullptr;
-  if (UpdateReturnCopy(&tablet_map_,
-                       tablet->metadata().dirty().pb.partition().partition_key_start(),
-                       tablet, &old)) {
-    VLOG(1) << "Replaced tablet " << old->tablet_id() << " with " << tablet->tablet_id();
+  const auto& tablet_meta = tablet->metadata().dirty().pb;
+  const auto& partition_key_start = tablet_meta.partition().partition_key_start();
+  auto it = tablet_map_.find(partition_key_start);
+  if (it == tablet_map_.end()) {
+    tablet_map_.emplace(partition_key_start, tablet);
+  } else {
+    const auto old_split_depth = it->second->LockForRead()->data().pb.split_depth();
+    if (tablet_meta.split_depth() < old_split_depth) {
+      return;
+    }
+    VLOG(1) << "Replacing tablet " << it->second->tablet_id()
+            << " (split_depth = " << old_split_depth << ")"
+            << " with tablet " << tablet->tablet_id()
+            << " (split_depth = " << tablet_meta.split_depth() << ")";
+    it->second = tablet;
     // TODO: can we assert that the replaced tablet is not in Running state?
     // May be a little tricky since we don't know whether to look at its committed or
     // uncommitted state.

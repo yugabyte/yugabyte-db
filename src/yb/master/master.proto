@@ -763,6 +763,9 @@ message TabletLocationsPB {
   optional bytes table_id = 7;
   // Table ids for all the tables on this tablet.
   repeated bytes table_ids = 8;
+
+  // For tablets which are results of splitting we set this to split parent split_depth + 1.
+  optional uint64 split_depth = 9;
 }
 
 // Info about a single tablet server, returned to the client as part
