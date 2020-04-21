@@ -50,9 +50,10 @@ public class TestSparkLocality extends BaseCQLTest {
     // Setup input table.
     session.execute("CREATE KEYSPACE ybdemo_keyspace");
     session.execute("USE ybdemo_keyspace");
-    session.execute("CREATE TABLE CassandraKeyValue(k text primary key, v blob)");
+    session.execute("CREATE TABLE CassandraKeyValue(k text primary key, v1 blob, v2 jsonb)");
     for (int i = 0; i < ROWS_COUNT; i++) {
-      session.execute("INSERT INTO CassandraKeyValue(k,v) VALUES('" + i + "', 0xabcdef012345)");
+      session.execute("INSERT INTO CassandraKeyValue(k, v1, v2) VALUES" +
+                              "('" + i + "', 0xabcdef012345, '{\"a\" : "+ i +" }')");
     }
 
     // Set up the app.
