@@ -72,6 +72,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
 
@@ -117,6 +118,9 @@ DECLARE_int32(master_discovery_timeout_ms);
 
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 DEFINE_int32(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
+
+DEFINE_test_flag(int32, TEST_sys_catalog_write_rejection_percentage, 0,
+  "Reject specified percentage of sys catalog writes.");
 
 namespace yb {
 namespace master {
@@ -589,6 +593,11 @@ Status SysCatalogTable::WaitUntilRunning() {
 }
 
 CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
+  if (PREDICT_FALSE(FLAGS_TEST_sys_catalog_write_rejection_percentage > 0) &&
+      RandomUniformInt(1, 99) <= FLAGS_TEST_sys_catalog_write_rejection_percentage) {
+    return STATUS(InternalError, "Injected random failure for testing.");
+  }
+
   auto resp = std::make_shared<tserver::WriteResponsePB>();
   // If this is a PG write, them the pgsql write batch is not empty.
   //

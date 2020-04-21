@@ -274,7 +274,7 @@ DEFINE_test_flag(int32, simulate_slow_system_tablet_bootstrap_secs, 0,
 DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
     "Return an error from ListTables if a namespace id is not found in the map");
 
-DEFINE_test_flag(bool, hang_on_namespace_creation, false,
+DEFINE_test_flag(bool, TEST_hang_on_namespace_transition, false,
     "Used in tests to simulate a lapse between issuing a namespace op and final processing.");
 
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
@@ -3379,6 +3379,9 @@ void CatalogManager::CleanUpDeletedTables() {
     table->mutable_metadata()->CommitMutation();
   }
   // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
+
+  // TODO: SysCatalog::DeleteItem() if we've DELETED all user tables in a DELETING namespace.
+  // TODO: Also properly handle namespace_ids_map_.erase(table->namespace_id())
 }
 
 Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
@@ -3912,7 +3915,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     NamespaceIdentifierPB ns_identifier;
     ns_identifier.set_id(ltm->data().namespace_id());
     auto s = FindNamespaceUnlocked(ns_identifier, &ns);
-    if (ns.get() == nullptr) {
+    if (ns.get() == nullptr || ns->state() != SysNamespaceEntryPB::RUNNING) {
       if (PREDICT_FALSE(FLAGS_return_error_if_namespace_not_found)) {
         RETURN_NAMESPACE_NOT_FOUND(s, resp);
       }
@@ -4698,7 +4701,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   }
 
   if ((db_type == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) ||
-      PREDICT_FALSE(GetAtomicFlag(&FLAGS_hang_on_namespace_creation))) {
+      PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_hang_on_namespace_transition))) {
     // Process the subsequent work in the background thread (normally PGSQL).
     LOG(INFO) << "Keyspace create enqueued for later processing: " << ns->ToString();
     RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
@@ -4743,7 +4746,7 @@ void CatalogManager::ProcessPendingNamespace(
     }
   }
 
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_hang_on_namespace_creation))) {
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_hang_on_namespace_transition))) {
     LOG(INFO) << "Artificially waiting (" << FLAGS_catalog_manager_bg_task_wait_ms
               << "ms) on namespace creation for " << id;
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms));
@@ -4809,11 +4812,11 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
   RETURN_NOT_OK(CheckOnline());
 
   scoped_refptr<NamespaceInfo> ns;
-  auto nsPB = req->namespace_();
+  auto ns_pb = req->namespace_();
 
   // 1. Lookup the namespace and verify it exists.
   TRACE("Looking up keyspace");
-  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(nsPB, &ns), resp);
+  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(ns_pb, &ns), resp);
 
   TRACE("Locking keyspace");
   auto l = ns->LockForRead();
@@ -4854,7 +4857,7 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
     default:
       Status s = STATUS_SUBSTITUTE(IllegalState,
           "IsCreateNamespaceDone failure: state=$0", metadata.state());
-      LOG(INFO) << s.ToString();
+      LOG(WARNING) << s.ToString();
       resp->set_done(true);
       return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
   }
@@ -4866,7 +4869,6 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
 Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                        DeleteNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
-  // TODO(NIC): Put Namespace in DELETING state when done.
   LOG(INFO) << "Servicing DeleteNamespace request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
@@ -4884,15 +4886,16 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
   }
   {
-    // Don't allow deletion if the namespace is still being setup.
+    // Don't allow deletion if the namespace is in a transient state.
     auto cur_state = ns->state();
-    if (cur_state != SysNamespaceEntryPB::RUNNING) {
+    if (cur_state != SysNamespaceEntryPB::RUNNING && cur_state != SysNamespaceEntryPB::FAILED) {
       Status s = STATUS_SUBSTITUTE(TryAgain,
           "Namespace deletion not allowed when State = $0", cur_state);
       return SetupError(resp->mutable_error(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, s);
     }
   }
 
+  // PGSQL has a completely forked implementation because it allows non-empty namespaces on delete.
   if (ns->database_type() == YQL_DATABASE_PGSQL) {
     return DeleteYsqlDatabase(req, resp, rpc);
   }
@@ -4937,6 +4940,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     }
   }
 
+  // [Delete]. Skip the DELETING->DELETED state, since no tables are present in this namespace.
   TRACE("Updating metadata on disk");
   // Update sys-catalog.
   Status s = sys_catalog_->DeleteItem(ns.get(), leader_ready_term_);
@@ -4948,11 +4952,19 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
-  RemoveFromNamespaceMaps(*ns, rpc);
-
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   l->Commit();
+
+  // Remove the namespace from all CatalogManager mappings.
+  {
+    std::lock_guard<LockType> l_map(lock_);
+    if (namespace_names_mapper_[ns->database_type()].erase(ns->name()) < 1 ||
+        namespace_ids_map_.erase(ns->id()) < 1) {
+      LOG(WARNING) << Format("Could not remove namespace from maps, name=$0, id=$1",
+                             ns->name(), ns->id());
+    }
+  }
 
   // Delete any permissions granted on this keyspace to any role. See comment in DeleteTable() for
   // more details.
@@ -4968,7 +4980,7 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
                                           DeleteNamespaceResponsePB* resp,
                                           rpc::RpcContext* rpc) {
   // Lookup database.
-  scoped_refptr<NamespaceInfo> database;
+  scoped_refptr <NamespaceInfo> database;
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &database), resp);
 
   // Make sure this is a YSQL database.
@@ -4978,45 +4990,92 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
   }
 
+  // Set the Namespace to DELETING.
+  TRACE("Locking database");
+  auto l = database->LockForWrite();
+  SysNamespaceEntryPB &metadata = database->mutable_metadata()->mutable_dirty()->pb;
+  if (metadata.state() == SysNamespaceEntryPB::RUNNING ||
+      metadata.state() == SysNamespaceEntryPB::FAILED) {
+    metadata.set_state(SysNamespaceEntryPB::DELETING);
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(database.get(), leader_ready_term_));
+    TRACE("Marked keyspace for deletion in sys-catalog");
+    // Commit the namespace in-memory state.
+    l->Commit();
+  } else {
+    Status s = STATUS_SUBSTITUTE(IllegalState,
+        "Keyspace ($0) has invalid state ($1), aborting delete",
+        database->name(), metadata.state());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+  }
+
+  return background_tasks_thread_pool_->SubmitFunc(
+    std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, this, database));
+}
+
+void CatalogManager::DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database) {
+  TEST_PAUSE_IF_FLAG(TEST_hang_on_namespace_transition);
+
   // Lock database before removing content.
   TRACE("Locking database");
   auto l = database->LockForWrite();
+  SysNamespaceEntryPB &metadata = database->mutable_metadata()->mutable_dirty()->pb;
 
-  // TODO(NIC): 1. Put Database in DELETING state
-  //            2. Everything below this should be async, and use IsDeleteNamespaceDone paradigm.
+  // A DELETED Namespace has finished but was tombstoned to avoid immediately reusing the same ID.
+  // We consider a restart enough time, so we just need to remove it from the SysCatalog.
+  if (metadata.state() == SysNamespaceEntryPB::DELETED) {
+    Status s = sys_catalog_->DeleteItem(database.get(), leader_ready_term_);
+    WARN_NOT_OK(s, "SysCatalog DeleteItem for Namespace");
+    if (!s.ok()) {
+      return;
+    }
+  } else if (metadata.state() == SysNamespaceEntryPB::DELETING) {
+    // Delete all tables in the database.
+    TRACE("Delete all tables in YSQL database");
+    Status s = DeleteYsqlDBTables(database);
+    WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
+    if (!s.ok()) {
+      // Move to FAILED so DeleteNamespace can be reissued by the user.
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+      l->Commit();
+      return;
+    }
 
-  // Delete all tables in the database.
-  TRACE("Delete all tables in YSQL database");
-  RETURN_NOT_OK(DeleteYsqlDBTables(database, resp, rpc));
-
-  // Dropping database.
-  TRACE("Updating metadata on disk");
-  // Update sys-catalog.
-  Status s = sys_catalog_->DeleteItem(database.get(), leader_ready_term_);
-  if (!s.ok()) {
-    // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s.ToString();
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    // Once all user-facing data has been offlined, move the Namespace to DELETED state.
+    metadata.set_state(SysNamespaceEntryPB::DELETED);
+    s = sys_catalog_->UpdateItem(database.get(), leader_ready_term_);
+    WARN_NOT_OK(s, "SysCatalog Update for Namespace");
+    if (!s.ok()) {
+      // Move to FAILED so DeleteNamespace can be reissued by the user.
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+      l->Commit();
+      return;
+    }
+    TRACE("Marked keyspace as deleted in sys-catalog");
+  } else {
+    LOG(WARNING) << "Keyspace (" << database->name() << ") has invalid state ("
+                 << metadata.state() << "), aborting delete";
+    return;
   }
 
-  RemoveFromNamespaceMaps(*database, rpc);
+  // Remove namespace from CatalogManager name mapping.  Will remove ID map after all Tables gone.
+  {
+    std::lock_guard<LockType> l_map(lock_);
+    if (namespace_names_mapper_[database->database_type()].erase(database->name()) < 1) {
+      LOG(WARNING) << Format("Could not remove namespace from maps, name=$0, id=$1",
+                             database->name(), database->id());
+    }
+  }
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   l->Commit();
 
   // DROP completed. Return status.
-  LOG(INFO) << "Successfully deleted YSQL database " << database->ToString()
-            << " per request from " << RequestorString(rpc);
-  return Status::OK();
+  LOG(INFO) << "Successfully deleted YSQL database " << database->ToString();
 }
 
 // IMPORTANT: If modifying, consider updating DeleteTable(), the singular deletion API.
-Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
-                                          DeleteNamespaceResponsePB* resp,
-                                          rpc::RpcContext* rpc) {
+Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database) {
   TabletInfoPtr sys_tablet_info;
   vector<pair<scoped_refptr<TableInfo>, unique_ptr<TableInfo::lock_type>>> tables;
   unordered_set<TableId> sys_table_ids;
@@ -5056,6 +5115,16 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   }
   // Remove the system tables from the system catalog TabletInfo.
   RETURN_NOT_OK(RemoveTableIdsFromTabletInfo(sys_tablet_info, sys_table_ids));
+
+  // Batch remove all relevant CDC streams. Handle before we delete the tables they reference.
+  TRACE("Deleting CDC streams on table");
+  vector<TableId> id_list;
+  id_list.reserve(tables.size());
+  for (auto &table_and_lock : tables) {
+    id_list.push_back(table_and_lock.first->id());
+  }
+  RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
+
   // Set all table states to DELETING as one batch RPC call.
   TRACE("Sending delete table batch RPC to sys catalog");
   vector<TableInfo *> tables_rpc;
@@ -5074,7 +5143,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
                                      s.ToString()));
     LOG(WARNING) << s.ToString();
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    return CheckIfNoLongerLeader(s);
   }
   for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
@@ -5084,15 +5153,6 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     table->AbortTasks();
   }
 
-  // Batch remove all CDC streams subscribed to the newly DELETING tables.
-  TRACE("Deleting CDC streams on table");
-  vector<TableId> id_list;
-  id_list.reserve(tables.size());
-  for (auto &table_and_lock : tables) {
-    id_list.push_back(table_and_lock.first->id());
-  }
-  RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
-
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
@@ -5101,6 +5161,45 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 
   // Invoke any background tasks and return (notably, table cleanup).
   background_tasks_->Wake();
+  return Status::OK();
+}
+
+// Get the information about an in-progress delete operation.
+Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestPB* req,
+                                             IsDeleteNamespaceDoneResponsePB* resp) {
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<NamespaceInfo> ns;
+  auto ns_pb = req->namespace_();
+
+  // 1. Lookup the namespace and verify it exists.
+  TRACE("Looking up keyspace");
+  Status s = FindNamespace(ns_pb, &ns);
+  if (!s.ok()) {
+    // Namespace no longer exists means success.
+    LOG(INFO) << "Servicing IsDeleteNamespaceDone request for "
+              << ns_pb.DebugString() << ": deleted (not found)";
+    resp->set_done(true);
+    return Status::OK();
+  }
+
+  TRACE("Locking keyspace");
+  auto l = ns->LockForRead();
+  auto& metadata = l->data().pb;
+
+  if (metadata.state() == SysNamespaceEntryPB::DELETED) {
+    resp->set_done(true);
+  } else if (metadata.state() == SysNamespaceEntryPB::DELETING) {
+    resp->set_done(false);
+  } else {
+    Status s = STATUS_SUBSTITUTE(IllegalState,
+        "Servicing IsDeleteTableDone request for $0: NOT deleted (state=$1)",
+        ns_pb.DebugString(), metadata.state());
+    LOG(WARNING) << s.ToString();
+    // Done != Successful.  We just want to let the user know the delete has finished processing.
+    resp->set_done(true);
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+  }
   return Status::OK();
 }
 
@@ -5184,6 +5283,10 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
     auto ltm = namespace_info.LockForRead();
     // If the request asks for namespaces for a specific database type, filter by the type.
     if (req->has_database_type() && namespace_info.database_type() != req->database_type()) {
+      continue;
+    }
+    // Only return RUNNING namespaces.
+    if (namespace_info.state() != SysNamespaceEntryPB::RUNNING) {
       continue;
     }
 
@@ -7379,16 +7482,6 @@ void CatalogManager::HandleNewTableId(const TableId& table_id) {
 
 scoped_refptr<TableInfo> CatalogManager::NewTableInfo(TableId id) {
   return make_scoped_refptr<TableInfo>(id, tasks_tracker_);
-}
-
-void CatalogManager::RemoveFromNamespaceMaps(const NamespaceInfo& ns, rpc::RpcContext* rpc) {
-  TRACE("Removing from namespace maps");
-  std::lock_guard<LockType> l_map(lock_);
-  if (namespace_names_mapper_[ns.database_type()].erase(ns.name()) < 1 ||
-      namespace_ids_map_.erase(ns.id()) < 1) {
-    PANIC_RPC(rpc,
-              Format("Could not remove namespace from maps, name=$0, id=$1", ns.name(), ns.id()));
-  }
 }
 
 Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {

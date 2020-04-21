@@ -315,22 +315,25 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
-  // TODO(NIC): Create IsDeleteNamespaceDone.
+  // Get the information about an in-progress delete operation.
+  CHECKED_STATUS IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestPB* req,
+                                       IsDeleteNamespaceDoneResponsePB* resp);
 
   // Alter the specified Namespace.
   CHECKED_STATUS AlterNamespace(const AlterNamespaceRequestPB* req,
                                 AlterNamespaceResponsePB* resp,
                                 rpc::RpcContext* rpc);
 
-  // Delete YSQL database tables.
+  // User API to Delete YSQL database tables.
   CHECKED_STATUS DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
                                     DeleteNamespaceResponsePB* resp,
                                     rpc::RpcContext* rpc);
 
+  // Work to delete YSQL database tables, handled asynchronously from the User API call.
+  void DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database);
+
   // Delete all tables in YSQL database.
-  CHECKED_STATUS DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
-                                    DeleteNamespaceResponsePB* resp,
-                                    rpc::RpcContext* rpc);
+  CHECKED_STATUS DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database);
 
   // List all the current namespaces.
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
@@ -1221,7 +1224,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id);
-  void RemoveFromNamespaceMaps(const NamespaceInfo& ns, rpc::RpcContext* rpc);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

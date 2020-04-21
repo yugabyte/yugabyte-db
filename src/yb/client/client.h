@@ -367,6 +367,11 @@ class YBClient {
                                  const boost::optional<YQLDatabase>& database_type = boost::none,
                                  const std::string& namespace_id = "");
 
+  // Set 'delete_in_progress' to true if a DeleteNamespace operation is in-progress.
+  CHECKED_STATUS IsDeleteNamespaceInProgress(const std::string& namespace_name,
+                                             const boost::optional<YQLDatabase>& database_type,
+                                             bool *delete_in_progress);
+
   YBNamespaceAlterer* NewNamespaceAlterer(const string& namespace_name,
                                           const std::string& namespace_id);
 

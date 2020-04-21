@@ -1340,7 +1340,18 @@ message DeleteNamespaceResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
-// TODO(NIC): Add IsDeleteNamespaceDone.
+
+message IsDeleteNamespaceDoneRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+}
+
+message IsDeleteNamespaceDoneResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // true if the delete operation completed, false otherwise
+  optional bool done = 2;
+}
 
 message AlterNamespaceRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
@@ -1774,6 +1785,8 @@ service MasterService {
   rpc IsCreateNamespaceDone(IsCreateNamespaceDoneRequestPB)
       returns (IsCreateNamespaceDoneResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
+  rpc IsDeleteNamespaceDone(IsDeleteNamespaceDoneRequestPB)
+      returns (IsDeleteNamespaceDoneResponsePB);
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
   rpc GetNamespaceInfo(GetNamespaceInfoRequestPB) returns (GetNamespaceInfoResponsePB);
