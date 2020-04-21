@@ -152,7 +152,7 @@ class PgDml : public PgStatement {
   PgPrepareParameters prepare_params_ = { kInvalidOid /* index_oid */,
                                           false /* index_only_scan */,
                                           false /* use_secondary_index */,
-                                          false /* querying_systable */ };
+                                          false /* querying_colocated_table */ };
 
   // -----------------------------------------------------------------------------------------------
   // Data members for nested query: This is used for an optimization in PgGate.
