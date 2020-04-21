@@ -505,9 +505,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         new_host = args[3];
         new_port = VERIFY_RESULT(CheckedStoi(args[4]));
 
-        bool use_hostport = false;
+        // For REMOVE_SERVER, default to using host:port to identify server
+        // to make it easier to remove down hosts
+        bool use_hostport = (change_type == "REMOVE_SERVER");
         if (args.size() == 6) {
-          use_hostport = atoi(args[5].c_str()) != 0;
+          use_hostport = (atoi(args[5].c_str()) != 0);
         }
         RETURN_NOT_OK_PREPEND(client->ChangeMasterConfig(change_type, new_host, new_port,
                                                          use_hostport),
