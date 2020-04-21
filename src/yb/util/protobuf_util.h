@@ -68,8 +68,19 @@ inline bool AppendPBToString(const google::protobuf::MessageLite &msg, faststrin
   inline std::string ToString(EnumType value) { \
     return PBEnumToString(value); \
   } \
-  inline std::ostream& operator << (std::ostream& out, EnumType value) { \
+  __attribute__((unused)) inline std::ostream& operator << (std::ostream& out, EnumType value) { \
     return out << PBEnumToString(value); \
   }
+
+template<typename T>
+std::vector<T> GetAllPbEnumValues() {
+  const auto* desc = google::protobuf::GetEnumDescriptor<T>();
+  std::vector<T> result;
+  result.reserve(desc->value_count());
+  for (int i = 0; i < desc->value_count(); ++i) {
+    result.push_back(T(desc->value(i)->number()));
+  }
+  return result;
+}
 
 #endif  // YB_UTIL_PROTOBUF_UTIL_H

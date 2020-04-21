@@ -195,6 +195,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   bool LookupTablet(const std::string& tablet_id,
                     std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;
 
+  // Lookup the given tablet peer by its ID.
+  // Returns NotFound error if the tablet is not found.
+  Result<std::shared_ptr<tablet::TabletPeer>> LookupTablet(const std::string& tablet_id) const;
+
   // Same as LookupTablet but doesn't acquired the shared lock.
   bool LookupTabletUnlocked(const std::string& tablet_id,
                             std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;

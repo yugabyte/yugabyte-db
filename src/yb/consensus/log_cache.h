@@ -170,6 +170,8 @@ class LogCache {
   // Start memory tracking of following operations in case they are still present in cache.
   void TrackOperationsMemory(const OpIds& op_ids);
 
+  CHECKED_STATUS FlushIndex();
+
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
   FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimit);

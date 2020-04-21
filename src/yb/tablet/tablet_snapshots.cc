@@ -293,7 +293,8 @@ Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
   return Status::OK();
 }
 
-Status TabletSnapshots::CreateCheckpoint(const std::string& dir) {
+Status TabletSnapshots::CreateCheckpoint(
+    const std::string& dir, const CreateIntentsCheckpointIn create_intents_checkpoint_in) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter());
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -320,7 +321,8 @@ Status TabletSnapshots::CreateCheckpoint(const std::string& dir) {
   if (status.ok()) {
     status = rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir);
   }
-  if (status.ok() && has_intents_db()) {
+  if (status.ok() && has_intents_db() &&
+      create_intents_checkpoint_in == CreateIntentsCheckpointIn::kUseIntentsDbSuffix) {
     status = Env::Default()->RenameFile(temp_intents_dir, final_intents_dir);
   }
 

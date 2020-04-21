@@ -118,6 +118,9 @@ class LogIndex::IndexChunk : public RefCountedThreadSafe<LogIndex::IndexChunk> {
   void GetEntry(int entry_index, PhysicalEntry* ret);
   void SetEntry(int entry_index, const PhysicalEntry& entry);
 
+  // Flush memory-mapped chunk to file.
+  Status Flush();
+
  private:
   const string path_;
   int fd_;
@@ -175,6 +178,14 @@ void LogIndex::IndexChunk::SetEntry(int entry_index, const PhysicalEntry& phys) 
   DCHECK_LT(entry_index, kEntriesPerIndexChunk);
 
   memcpy(mapping_ + sizeof(PhysicalEntry) * entry_index, &phys, sizeof(PhysicalEntry));
+}
+
+Status LogIndex::IndexChunk::Flush() {
+  if (mapping_ != nullptr) {
+    auto result = msync(mapping_, kChunkFileSize, MS_SYNC);
+    return CheckError(result, "msync");
+  }
+  return Status::OK();
 }
 
 ////////////////////////////////////////////////////////////
@@ -297,6 +308,24 @@ void LogIndex::GC(int64_t min_index_to_retain) {
       open_chunks_.erase(chunk_idx);
     }
   }
+}
+
+Status LogIndex::Flush() {
+  std::vector<scoped_refptr<IndexChunk>> chunks_to_flush;
+
+  {
+    std::lock_guard<simple_spinlock> l(open_chunks_lock_);
+    chunks_to_flush.reserve(open_chunks_.size());
+    for (auto& it : open_chunks_) {
+      chunks_to_flush.push_back(it.second);
+    }
+  }
+
+  for (auto& chunk : chunks_to_flush) {
+    RETURN_NOT_OK(chunk->Flush());
+  }
+
+  return Status::OK();
 }
 
 string LogIndexEntry::ToString() const {
