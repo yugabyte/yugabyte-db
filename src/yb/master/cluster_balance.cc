@@ -1146,7 +1146,7 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   // * system tables: they are virtual tables not hosted by tservers.
   // * colocated user tables: they occupy the same tablet as their colocated parent table, so load
   //   balancing just the colocated parent table is sufficient.
-  return (catalog_manager_->IsSystemTableUnlocked(table) ||
+  return (catalog_manager_->IsSystemTable(table) ||
           catalog_manager_->IsColocatedUserTable(table));
 }
 
