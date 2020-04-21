@@ -186,6 +186,8 @@ class RetryingTSRpcTask : public MonitoredTask {
   void DoRpcCallback();
 
   // Called when the async task unregisters either successfully or unsuccessfully.
+  //
+  // Note: This is the last thing function called, to guarantee it's the last work done by the task.
   virtual void UnregisterAsyncTaskCallback();
 
   Master* const master_;

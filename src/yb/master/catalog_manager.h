@@ -468,7 +468,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
-  bool IsSystemTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(lock_);
 
   // Is the table a user created table?
   bool IsUserTable(const TableInfo& table) const;
@@ -497,7 +496,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
-  void NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid, const TableId& table_id);
+  //
+  // Async tasks should call this when they finish. The last such tablet peer notification will
+  // trigger trying to transition the table from DELETING to DELETED state.
+  void NotifyTabletDeleteFinished(
+      const TabletServerId& tserver_uuid, const TableId& table_id, scoped_refptr<TableInfo> table);
+
+  // For a DeleteTable, we first mark tables as DELETING then move them to DELETED once all
+  // outstanding tasks are complete and the TS side tablets are deleted.
+  // For system tables or colocated tables, we just need outstanding tasks to be done.
+  //
+  // If all conditions are met, returns a lock in WRITE mode on this table, else nullptr.
+  std::unique_ptr<TableInfo::lock_type> MaybeTransitionTableToDeleted(
+      scoped_refptr<TableInfo> table);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.
@@ -654,7 +665,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   std::string GenerateIdUnlocked(boost::optional<const SysRowEntry::Type> entity_type = boost::none)
       REQUIRES_SHARED(lock_);
 
-  ThreadPool* AsyncTaskPool() { return worker_pool_.get(); }
+  ThreadPool* AsyncTaskPool() { return async_task_pool_.get(); }
 
   PermissionsManager* permissions_manager() {
     return permissions_manager_.get();
@@ -688,8 +699,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
 
-  // For now just indirect to running the task.
-  // TODO(bogdan): Eventually schedule on a threadpool in a followup refactor.
+  // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
 
   // Time since this peer became master leader. Caller should verify that it is leader before.
@@ -1240,7 +1250,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // NOTE: Presently, this thread pool must contain only a single
   // thread (to correctly serialize invocations of ElectedAsLeaderCb
   // upon closely timed consecutive elections).
-  gscoped_ptr<ThreadPool> worker_pool_;
+  gscoped_ptr<ThreadPool> leader_initialization_pool_;
+
+  // Thread pool to do the async RPC task work.
+  gscoped_ptr<ThreadPool> async_task_pool_;
 
   // This field is updated when a node becomes leader master,
   // waits for all outstanding uncommitted metadata (table and tablet metadata)
