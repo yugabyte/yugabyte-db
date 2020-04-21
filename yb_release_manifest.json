@@ -55,6 +55,9 @@
       "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
     ],
     "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
-    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"]
+    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
+    "share": [
+      "sample/*.sql"
+    ]
   }
 }
