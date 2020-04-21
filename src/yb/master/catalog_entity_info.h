@@ -354,13 +354,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
 
-  // If tablet is a result of split:
-  // 1) If tablet is not sharing start partition key with other tablets - add it.
-  // 2) If tablet is sharing start partition key with some tablet - only add it if split_depth of
-  //    new tablet is higher.
-  // Requires `tablet` to be locked and its lock.
-  void MaybeAddTabletForSplit(TabletInfo* tablet, TabletInfo::lock_type* tablet_lock);
-
   // Add multiple tablets to this table.
   void AddTablets(const std::vector<TabletInfo*>& tablets);
 

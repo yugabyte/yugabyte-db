@@ -21,6 +21,7 @@
 #include "yb/master/master.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status.h"
 
 DEFINE_int32(
     max_num_tablets_for_table, 5000,
@@ -141,10 +142,12 @@ const PartitionSchema& YBTable::partition_schema() const {
 }
 
 const std::vector<std::string>& YBTable::GetPartitions() const {
+  SharedLock<decltype(mutex_)> lock(mutex_);
   return partitions_;
 }
 
 int32_t YBTable::GetPartitionCount() const {
+  SharedLock<decltype(mutex_)> lock(mutex_);
   return partitions_.size();
 }
 
@@ -175,6 +178,7 @@ std::unique_ptr<YBqlReadOp> YBTable::NewQLRead() {
 }
 
 size_t YBTable::FindPartitionStartIndex(const std::string& partition_key, size_t group_by) const {
+  SharedLock<decltype(mutex_)> lock(mutex_);
   auto it = std::lower_bound(partitions_.begin(), partitions_.end(), partition_key);
   if (it == partitions_.end() || *it > partition_key) {
     DCHECK(it != partitions_.begin());
@@ -188,12 +192,44 @@ size_t YBTable::FindPartitionStartIndex(const std::string& partition_key, size_t
 
 const std::string& YBTable::FindPartitionStart(
     const std::string& partition_key, size_t group_by) const {
+  SharedLock<decltype(mutex_)> lock(mutex_);
   size_t idx = FindPartitionStartIndex(partition_key, group_by);
   return partitions_[idx];
 }
 
-Status YBTable::Open() {
+Result<bool> YBTable::MaybeRefreshPartitions() {
+  if (!partitions_are_stale_) {
+    return false;
+  }
+  std::unique_lock<decltype(partitions_refresh_mutex_)> refresh_lock(partitions_refresh_mutex_);
+  if (!partitions_are_stale_) {
+    // Has been refreshed by concurrent thread.
+    return true;
+  }
+  auto partitions = FetchPartitions();
+  if (!partitions.ok()) {
+    return partitions.status();
+  }
+  {
+    std::unique_lock<rw_spinlock> partitions_lock(mutex_);
+    partitions_.swap(*partitions);
+  }
+  partitions_are_stale_ = false;
+  return true;
+}
+
+void YBTable::MarkPartitionsAsStale() {
+  partitions_are_stale_ = true;
+}
+
+bool YBTable::ArePartitionsStale() const {
+  return partitions_are_stale_;
+}
+
+Result<std::vector<std::string>> YBTable::FetchPartitions() {
   // TODO: fetch the schema from the master here once catalog is available.
+  std::vector<std::string> partitions;
+
   master::GetTableLocationsRequestPB req;
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   master::GetTableLocationsResponsePB resp;
@@ -269,13 +305,11 @@ Status YBTable::Open() {
     if (!s.ok()) {
       YB_LOG_EVERY_N_SECS(WARNING, 10) << "Error getting table locations: " << s << ", retrying.";
     } else if (resp.tablet_locations_size() > 0) {
-      DCHECK(partitions_.empty());
-      partitions_.clear();
-      partitions_.reserve(resp.tablet_locations().size());
+      partitions.reserve(resp.tablet_locations().size());
       for (const auto& tablet_location : resp.tablet_locations()) {
-        partitions_.push_back(tablet_location.partition().partition_key_start());
+        partitions.push_back(tablet_location.partition().partition_key_start());
       }
-      std::sort(partitions_.begin(), partitions_.end());
+      std::sort(partitions.begin(), partitions.end());
       break;
     }
 
@@ -290,8 +324,15 @@ Status YBTable::Open() {
   RETURN_NOT_OK_PREPEND(PBToClientTableType(resp.table_type(), &table_type_),
     strings::Substitute("Invalid table type for table '$0'", info_.table_name.ToString()));
 
-  VLOG(1) << "Open Table " << info_.table_name.ToString() << ", found "
+  VLOG(2) << "Fetched partitions for table " << info_.table_name.ToString() << ", found "
           << resp.tablet_locations_size() << " tablets";
+  return partitions;
+}
+
+Status YBTable::Open() {
+  partitions_are_stale_ = true;
+  bool refreshed = VERIFY_RESULT(MaybeRefreshPartitions());
+  SCHECK(refreshed, IllegalState, "Expected to fetch partitions on YBTable::Open");
   return Status::OK();
 }
 

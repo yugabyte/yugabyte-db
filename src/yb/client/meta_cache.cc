@@ -282,6 +282,16 @@ bool RemoteTablet::stale() const {
   return stale_;
 }
 
+void RemoteTablet::MarkAsSplit() {
+  std::lock_guard<rw_spinlock> lock(mutex_);
+  is_split_ = true;
+}
+
+bool RemoteTablet::is_split() const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  return is_split_;
+}
+
 bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& status) {
   std::lock_guard<rw_spinlock> lock(mutex_);
   VLOG_WITH_PREFIX(2) << "Current remote replicas in meta cache: "
@@ -690,7 +700,7 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
   std::vector<std::pair<LookupTabletCallback, internal::RemoteTabletPtr>> to_notify;
 
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
     for (const TabletLocationsPB& loc : locations) {
       for (const std::string& table_id : loc.table_ids()) {
         auto& table_data = tables_[table_id];
@@ -721,10 +731,22 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
 
           Partition partition;
           Partition::FromPB(loc.partition(), &partition);
-          remote = new RemoteTablet(tablet_id, partition);
+          remote = new RemoteTablet(
+              tablet_id, partition, loc.split_depth());
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
-          CHECK(tablets_by_key.emplace(partition.partition_key_start(), remote).second);
+          // TODO(tsplit): cover this functionality with test.
+          auto emplace_result = tablets_by_key.emplace(partition.partition_key_start(), remote);
+          if (!emplace_result.second) {
+            if (emplace_result.first->second->split_depth() < remote->split_depth()) {
+              // Only replace with tablet of higher split_depth.
+              emplace_result.first->second = remote;
+            } else {
+              // If split_depth is the same - it should be the same tablet.
+              CHECK(emplace_result.first->second->split_depth() != remote->split_depth() ||
+                    emplace_result.first->second->tablet_id() == tablet_id);
+            }
+          }
         }
         remote->Refresh(ts_cache_, loc.replicas());
 
@@ -763,6 +785,15 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
   return result;
 }
 
+void MetaCache::InvalidateTableCache(const TableId& table_id) {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  tables_.erase(table_id);
+  // TODO(tsplit): Instead of silently removing callbacks for lookups in progress - handle
+  // this case appropriately.
+  // TODO(tsplit): Optimize to retry only necessary lookups inside ProcessTabletLocations,
+  // detect which need to be retried by GetTableLocationsResponsePB.partition_version.
+}
+
 void MetaCache::LookupFailed(
     const YBTable* table, const std::string& partition_group_start, const Status& status) {
   VLOG(1) << "Lookup for table " << table->id() << " and partition "
@@ -771,7 +802,7 @@ void MetaCache::LookupFailed(
   std::vector<LookupTabletCallback> to_notify;
   CoarseTimePoint max_deadline;
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
     auto it = tables_.find(table->id());
     if (it == tables_.end()) {
       return;
@@ -988,7 +1019,7 @@ bool MetaCache::FastLookupTabletByKeyUnlocked(
   auto result = LookupTabletByKeyFastPathUnlocked(table, partition_start);
   if (result && result->HasLeader()) {
     lock->unlock();
-    VLOG(3) << "Fast lookup: found tablet " << result->tablet_id();
+    VLOG(4) << "Fast lookup: found tablet " << result->tablet_id();
     callback(result);
     return true;
   }
@@ -1002,6 +1033,8 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback) NO_THREAD_SAFETY_ANALYSIS {
   const auto& partition_start = table->FindPartitionStart(partition_key);
+  VLOG_WITH_FUNC(4) << "partition_key: " << Slice(partition_key).ToDebugHexString()
+                    << " partition_start: " << Slice(partition_start).ToDebugHexString();
 
   rpc::Rpcs::Handle rpc;
   {
@@ -1034,7 +1067,7 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
 }
 
 RemoteTabletPtr MetaCache::LookupTabletByIdFastPath(const TabletId& tablet_id) {
-  SharedLock<decltype(mutex_)> l(mutex_);
+  SharedLock<decltype(mutex_)> lock(mutex_);
   auto it = tablets_by_id_.find(tablet_id);
   if (it != tablets_by_id_.end()) {
     return it->second;
@@ -1050,7 +1083,7 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
     // Fast path: lookup in the cache.
     scoped_refptr<RemoteTablet> result = LookupTabletByIdFastPath(tablet_id);
     if (result && result->HasLeader()) {
-      VLOG(3) << "Fast lookup: found tablet " << result->tablet_id();
+      VLOG(4) << "Fast lookup: found tablet " << result->tablet_id();
       callback(result);
       return;
     }

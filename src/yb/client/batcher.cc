@@ -282,6 +282,10 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   auto in_flight_op = std::make_shared<InFlightOp>(yb_op);
   RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
 
+  if (VERIFY_RESULT(yb_op->MaybeRefreshTablePartitions())) {
+    client_->data_->meta_cache_->InvalidateTableCache(yb_op->table()->id());
+  }
+
   if (yb_op->table()->partition_schema().IsHashPartitioning()) {
     switch (yb_op->type()) {
       case YBOperation::Type::QL_READ:

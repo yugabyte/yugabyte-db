@@ -12,7 +12,9 @@
 //
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
 
@@ -24,6 +26,8 @@
 
 #include "yb/master/catalog_manager.h"
 
+#include "yb/yql/cql/ql/util/statement_result.h"
+
 #include "yb/rpc/messenger.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -34,6 +38,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/protobuf_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 
@@ -162,6 +167,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> TabletSplitITest::WriteR
 }
 
 Status TabletSplitITest::WaitForTabletSplitCompletion() {
+  LOG(INFO) << "Waiting for tablet split to be completed...";
   return WaitFor([this] {
       auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
       size_t num_peers_running = 0;
@@ -205,6 +211,7 @@ Status TabletSplitITest::WaitForTabletSplitCompletion() {
 }
 
 void TabletSplitITest::CheckPostSplitTabletReplicasData(size_t num_rows) {
+  LOG(INFO) << "Checking post-split tablet replicas data...";
   const auto replication_factor = cluster_->num_tablet_servers();
 
   std::vector<size_t> keys(num_rows, replication_factor);
@@ -241,6 +248,7 @@ void TabletSplitITest::CheckPostSplitTabletReplicasData(size_t num_rows) {
 }
 
 void TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tablet_id) {
+  LOG(INFO) << "Checking source tablet behavior after split...";
   google::FlagSaver saver;
   FLAGS_do_not_start_election_test_only = true;
 
@@ -301,11 +309,63 @@ Result<scoped_refptr<master::TabletInfo>> TabletSplitITest::GetSingleTestTabletI
   return tablet_infos.front();
 }
 
+namespace {
+
+Result<size_t> SelectRowsCount(
+    const client::YBSessionPtr& session, const client::TableHandle& table) {
+  LOG(INFO) << "Running full scan on test table...";
+  session->SetTimeout(5s);
+  QLPagingStatePB paging_state;
+  size_t row_count = 0;
+  for (;;) {
+    const auto op = table.NewReadOp();
+    auto* const req = op->mutable_request();
+    req->set_return_paging_state(true);
+    if (paging_state.has_table_id()) {
+      if (paging_state.has_read_time()) {
+        ReadHybridTime read_time = ReadHybridTime::FromPB(paging_state.read_time());
+        if (read_time) {
+          session->SetReadPoint(read_time);
+        }
+      }
+      session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+      *req->mutable_paging_state() = std::move(paging_state);
+    }
+    Status s;
+    RETURN_NOT_OK(WaitFor([&] {
+      s = session->ApplyAndFlush(op);
+      if (s.ok()) {
+        return true;
+      }
+      for (auto& error : session->GetPendingErrors()) {
+        if (error->status().IsTryAgain()) {
+          return false;
+        }
+      }
+      return true;
+    }, 15s, "Waiting for session flush"));
+    RETURN_NOT_OK(s);
+    auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
+    row_count += rowblock->row_count();
+    if (!op->response().has_paging_state()) {
+      break;
+    }
+    paging_state = op->response().paging_state();
+  }
+  return row_count;
+}
+
+} // namespace
+
 // Tests splitting of the single tablet in following steps:
-// 1. Creates single-tablet table and populates it with specified number of rows.
-// 2. Send SplitTablet RPC to the tablet leader.
-// 3. After tablet split is completed - check that new tablets have exactly the same rows.
-// 4. Check that source tablet is rejecting reads and writes.
+// - Create single-tablet table and populates it with specified number of rows.
+// - Do full scan using `select count(*)`.
+// - Send SplitTablet RPC to the tablet leader.
+// - After tablet split is completed - check that new tablets have exactly the same rows.
+// - Check that source tablet is rejecting reads and writes.
+// - Do full scan using `select count(*)`.
+// - Restart cluster.
+// - ClusterVerifier will check cluster integrity at the end of the test.
 
 TEST_P(TabletSplitITest, SplitSingleTablet) {
   constexpr auto kNumRows = 1000;
@@ -318,6 +378,9 @@ TEST_P(TabletSplitITest, SplitSingleTablet) {
   // TODO(tsplit): test split during long-running transactions.
 
   auto min_max_hash_code = ASSERT_RESULT(WriteRows(kNumRows));
+
+  auto rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table_));
+  ASSERT_EQ(rows_count, kNumRows);
 
   const auto split_hash_code = (min_max_hash_code.first + min_max_hash_code.second) / 2;
   LOG(INFO) << "Split hash code: " << split_hash_code;
@@ -336,6 +399,20 @@ TEST_P(TabletSplitITest, SplitSingleTablet) {
   ASSERT_NO_FATALS(CheckPostSplitTabletReplicasData(kNumRows));
 
   ASSERT_NO_FATALS(CheckSourceTabletAfterSplit(source_tablet_id));
+
+  master::GetTableLocationsResponsePB resp;
+  master::GetTableLocationsRequestPB req;
+  client::kTableName.SetIntoTableIdentifierPB(req.mutable_table());
+  req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+  ASSERT_OK(catalog_mgr->GetTableLocations(&req, &resp));
+  LOG(INFO) << "Table locations:";
+  for (auto& tablet : resp.tablet_locations()) {
+    LOG(INFO) << "Tablet: " << tablet.tablet_id()
+              << " partition: " << tablet.partition().ShortDebugString();
+  }
+
+  rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table_));
+  ASSERT_EQ(rows_count, kNumRows);
 
   ASSERT_OK(cluster_->RestartSync());
 }
