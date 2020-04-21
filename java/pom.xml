@@ -85,7 +85,7 @@
     <!-- Library dependencies -->
     <async.version>1.4.1</async.version>
     <cassandra-driver-core.version>3.2.0-yb-19</cassandra-driver-core.version>
-    <spark-cassandra-connector.version>2.0.5-yb-7</spark-cassandra-connector.version>
+    <spark-cassandra-connector.version>2.4-yb-2</spark-cassandra-connector.version>
     <lz4.version>1.3.0</lz4.version>
     <snappy.version>1.1.4</snappy.version>
     <commons-cli.version>1.2</commons-cli.version>
@@ -325,12 +325,12 @@
     <dependencies>
       <dependency>
         <groupId>org.apache.spark</groupId>
-        <artifactId>spark-core_2.10</artifactId>
+        <artifactId>spark-core_2.11</artifactId>
         <version>${spark.version}</version>
       </dependency>
       <dependency>
         <groupId>org.apache.spark</groupId>
-        <artifactId>spark-sql_2.10</artifactId>
+        <artifactId>spark-sql_2.11</artifactId>
         <version>${spark.version}</version>
       </dependency>
       <dependency>
@@ -460,7 +460,7 @@
       </dependency>
       <dependency>
         <groupId>com.yugabyte.spark</groupId>
-        <artifactId>spark-cassandra-connector_2.10</artifactId>
+        <artifactId>spark-cassandra-connector_2.11</artifactId>
         <version>${spark-cassandra-connector.version}</version>
       </dependency>
       <dependency>
