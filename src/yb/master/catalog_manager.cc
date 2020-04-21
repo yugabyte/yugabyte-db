@@ -3010,7 +3010,8 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     indexed_table_name->set_table_name(indexed_table->name());
   }
   const bool disable_index_backfill = GetAtomicFlag(&FLAGS_disable_index_backfill);
-  if (disable_index_backfill) {
+  const bool is_pg_table = indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
+  if (disable_index_backfill || is_pg_table) {
     return DeleteIndexInfoFromTable(indexed_table_id, index_table_id);
   }
 
