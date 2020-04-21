@@ -156,7 +156,7 @@ namespace yb {
 static const char* const kMasterBinaryName = "yb-master";
 static const char* const kTabletServerBinaryName = "yb-tserver";
 static double kProcessStartTimeoutSeconds = 60.0;
-static MonoDelta kTabletServerRegistrationTimeout = 10s;
+static MonoDelta kTabletServerRegistrationTimeout = 60s;
 
 static const int kHeapProfileSignal = SIGUSR1;
 
