@@ -255,6 +255,27 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   }
 
   /**
+   * Same as the previous test but relies on raw PREPARE/EXECUTE rather than JDBC-backed prepared
+   * statement.
+   */
+  @Test
+  public void selectStarShortExecute_simpleQueryMode() throws Exception {
+    new RegularStatementTester(
+        newConnectionBuilder().setPreferQueryMode("simple"),
+        "EXECUTE select_stmt(0)",
+        getShortString(),
+        false /* expectRestartErrors */) {
+
+      @Override
+      public Statement createStatement(Connection conn) throws Exception {
+        Statement stmt = super.createStatement(conn);
+        stmt.execute("PREPARE select_stmt (int) AS SELECT * FROM test_rr WHERE i >= $1 LIMIT 10");
+        return stmt;
+      };
+    }.runTest();
+  }
+
+  /**
    * Doing SELECT * operation on long strings, we MIGHT get read restart errors.
    * <p>
    * We expect data retrieved to be longer than what PG output buffer could handle, thus making
@@ -455,10 +476,11 @@ public class TestPgReadRestarts extends BasePgSQLTest {
         int selectsRestartRequired = 0;
         int selectsSucceeded = 0;
         boolean onlyEmptyResults = true;
-        try (Connection conn = cb.connect()) {
+        try (Connection conn = cb.connect();
+            Stmt stmt = createStatement(conn)) {
           for (/* No setup */; !insertFuture.isDone(); ++selectsAttempted) {
             if (Thread.interrupted()) return; // Skips all post-loop checks
-            try (Stmt stmt = createStatement(conn)) {
+            try {
               List<Row> rows = getRowList(executeQuery(stmt));
               if (!rows.isEmpty()) {
                 onlyEmptyResults = false;
@@ -512,12 +534,13 @@ public class TestPgReadRestarts extends BasePgSQLTest {
           int selectsAttempted = 0;
           int selectsFirstOpRestartRequired = 0;
           int selectsSucceeded = 0;
-          try (Connection selectTxnConn = cb.newBuilder().setIsolationLevel(isolation).connect()) {
+          try (Connection selectTxnConn = cb.newBuilder().setIsolationLevel(isolation).connect();
+              Stmt stmt = createStatement(selectTxnConn)) {
             selectTxnConn.setAutoCommit(false);
             for (/* No setup */; !insertFuture.isDone(); ++selectsAttempted) {
               if (Thread.interrupted()) return; // Skips all post-loop checks
               int numCompletedOps = 0;
-              try (Stmt stmt = createStatement(selectTxnConn)) {
+              try {
                 List<Row> rows1 = getRowList(executeQuery(stmt));
                 ++numCompletedOps;
                 if (Thread.interrupted()) return; // Skips all post-loop checks
