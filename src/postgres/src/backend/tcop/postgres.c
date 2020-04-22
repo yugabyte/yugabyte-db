@@ -3946,7 +3946,7 @@ yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
 		command_tag = prepared_stmt->plansource->commandTag;
 	}
 
-	return strncmp(command_tag, "SELECT", 6) == 0
+	return strncmp(command_tag, "SELECT", 6) == 0;
 }
 
 /*
