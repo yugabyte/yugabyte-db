@@ -15,6 +15,26 @@ import * as Yup from "yup";
 
 import '../common.scss';
 
+const schemaValidation =  Yup.object().shape({
+  backupTableUUID: Yup.string().when('tableKeyspace', {
+    is: (tableKeyspace) => !tableKeyspace,
+    then: Yup.string().required('Backup keyspace or table is required')
+  }),
+  tableKeyspace: Yup.string().when('backupTableUUID', {
+    is: (backupTableUUID) => !backupTableUUID,
+    then: Yup.string().required('Backup keyspace or table is required')
+  }),
+  storageConfigUUID: Yup.string()
+  .required('Storage Config is Required'),
+  enableSSE: Yup.bool(),
+  schedulingFrequency: Yup.number('Frequency must be a number'),
+  cronExpression: Yup.string().test({
+    name: "isValidCron",
+    test: (value) => (value && cron.isValidCron(value)) || !value,
+    message: 'Does not looks like a valid cron expression'
+  })
+}, ['backupTableUUID', 'tableKeyspace']);
+
 export default class CreateBackup extends Component {
   static propTypes = {
     tableInfo: PropTypes.object
@@ -29,34 +49,37 @@ export default class CreateBackup extends Component {
       universeTables
     } = this.props;
 
-    if (isDefinedNotNull(values.backupTableUUID) &&
-        values.backupTableUUID.length &&
-        isDefinedNotNull(values.storageConfigUUID)) {
+    if (isDefinedNotNull(values.storageConfigUUID)) {
       const payload = {
         "storageConfigUUID": values.storageConfigUUID,
         "sse": values.enableSSE,
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
       };
-      if (values.backupTableUUID[0] === "fulluniverse") {
+      if (isDefinedNotNull(values.backupTableUUID) && values.backupTableUUID.length) {
+        if (values.backupTableUUID[0] === "fulluniverse") {
+          createUniverseBackup(universeUUID, payload);
+        } else if (values.backupTableUUID.length > 1) {
+          payload.tableUUIDList = values.backupTableUUID;
+          createUniverseBackup(universeUUID, payload);
+        } else {
+          const backupTable = universeTables
+                                .find((table) => table.tableUUID === values.backupTableUUID[0]);
+          payload.tableName = backupTable.tableName;
+          payload.keyspace = backupTable.keySpace;
+          payload.actionType = "CREATE";
+          createTableBackup(universeUUID, values.backupTableUUID, payload);
+        }
+      } else if (values.tableKeyspace) {
+        payload.keyspace = values.tableKeyspace.value;
         createUniverseBackup(universeUUID, payload);
-      } else if (values.backupTableUUID.length > 1) {
-        payload.tableUUIDList = values.backupTableUUID;
-        createUniverseBackup(universeUUID, payload);
-      } else {
-        const backupTable = universeTables
-                              .find((table) => table.tableUUID === values.backupTableUUID[0]);
-        payload.tableName = backupTable.tableName;
-        payload.keyspace = backupTable.keySpace;
-        payload.actionType = "CREATE";
-        createTableBackup(universeUUID, values.backupTableUUID, payload);
       }
       onHide();
       browserHistory.push('/universes/' + universeUUID + "/backups");
     }
   };
 
-  backupItemChanged = (props, option) => {
+  backupTableChanged = (props, option) => {
     if (isNonEmptyObject(option) && option.value === "fulluniverse") {
       props.form.setFieldValue(props.field.name, option);
     } else if (isNonEmptyArray(option)) {
@@ -79,7 +102,10 @@ export default class CreateBackup extends Component {
       return {value: config.configUUID, label: config.name + " Storage"};
     });
     const initialValues = this.props.initialValues;
+
+
     let tableOptions = [];
+    const keyspaceOptions = [{ value: '', label: 'None'}];
     let modalTitle = "Create Backup";
     if (isNonEmptyObject(tableInfo)) {
       tableOptions = [{
@@ -89,7 +115,9 @@ export default class CreateBackup extends Component {
       modalTitle = modalTitle + " for " + tableInfo.keySpace + "." + tableInfo.tableName;
       initialValues.backupTableUUID = tableOptions[0];
     } else {
+      const keyspaces = new Set();
       tableOptions = universeTables.map((tableInfo) => {
+        keyspaces.add(tableInfo.keySpace);
         return {value: tableInfo.tableUUID, label: tableInfo.keySpace + "." + tableInfo.tableName};
       }).sort((a, b) => a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1);
       tableOptions = [
@@ -104,6 +132,9 @@ export default class CreateBackup extends Component {
           options: tableOptions
         }
       ];
+      keyspaces.forEach(key => {
+        keyspaceOptions.push({ value: key, label: key});
+      });
     }
 
     initialValues.schedulingFrequency = "";
@@ -139,24 +170,11 @@ export default class CreateBackup extends Component {
             this.createBackup(payload);
           }}
           initialValues={initialValues}
-          validationSchema={
-            Yup.object().shape({
-              backupTableUUID: Yup.string()
-              .required('Backup Table is Required'),
-              storageConfigUUID: Yup.string()
-              .required('Storage Config is Required'),
-              enableSSE: Yup.bool(),
-              schedulingFrequency: Yup.number('Frequency must be a number'),
-              cronExpression: Yup.string().test({
-                name: "isValidCron",
-                test: (value) => (value && cron.isValidCron(value)) || !value,
-                message: 'Does not looks like a valid cron expression'
-              })
-            })
-          }
-          render={props => {
-            const isSchedulingFrequencyReadOnly = props.values.cronExpression !== "";
-            const isCronExpressionReadOnly = props.values.schedulingFrequency !== "";
+          validationSchema={schemaValidation}
+          render={({values: { cronExpression, schedulingFrequency, backupTableUUID }}) => {
+            const isSchedulingFrequencyReadOnly = cronExpression !== "";
+            const isCronExpressionReadOnly = schedulingFrequency !== "";
+            const isTableSelected = backupTableUUID && backupTableUUID.length && backupTableUUID[0].value !== 'fulluniverse';
 
             // params for backupTableUUID <Field>
             // NOTE: No entire keyspace selection implemented
@@ -205,9 +223,17 @@ export default class CreateBackup extends Component {
                 name="storageConfigUUID"
                 component={YBFormSelect}
                 label={"Storage"}
-                onInputChanged={this.storageConfigChanged}
                 options={storageOptions}
               />
+              {!!keyspaceOptions.length &&
+                <Field
+                  name="tableKeyspace"
+                  component={YBFormSelect}
+                  label="Table keyspace"
+                  options={keyspaceOptions}
+                  isDisabled={isTableSelected} // Disable if backup table is specified
+                />
+              }
               <Field
                 name="backupTableUUID"
                 component={YBFormSelect}
@@ -218,7 +244,7 @@ export default class CreateBackup extends Component {
                 label={`Tables to backup`}
                 options={tableOptions}
                 isMulti={true}
-                onChange={this.backupItemChanged}
+                onChange={this.backupTableChanged}
                 readOnly={isNonEmptyObject(tableInfo)}
               />
               <Field

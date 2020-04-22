@@ -54,27 +54,26 @@ class ScheduleDisplayItem extends Component {
       schedule.cronExpression = cronstrue.toString(schedule.cronExpression);
     }
 
-    const taskType = (() => {
-      switch (schedule.taskType) {
-        case "BackupUniverse":
-          return "Table Backup";
-        case "MultiTableBackup":
-          return "Full Universe Backup";
-        default:
-          break;
-      }
-    })();
-
-    const tableDetails = (() => {
-      switch (schedule.taskType) {
-        case "BackupUniverse":
-          return `${schedule.taskParams.keyspace}.${schedule.taskParams.tableName}`;
-        case "MultiTableBackup":
-          return "All";
-        default:
-          break;
-      }
-    })();
+    let taskType = '';
+    let keyspace = '';
+    let tableDetails = '';
+    if (schedule.taskType === 'BackupUniverse') {
+      taskType = 'Table Backup';
+      tableDetails = `${schedule.taskParams.keyspace}.${schedule.taskParams.tableName}`;
+    } else if (schedule.taskType === 'MultiTableBackup' && schedule.taskParams.keyspace) {
+      taskType = 'Full Universe Backup';
+      keyspace = schedule.taskParams.keyspace;
+      tableDetails = 'All';
+    } else if (schedule.taskType === 'MultiTableBackup') {
+      taskType = 'Full Universe Backup';
+      keyspace = 'All';
+      tableDetails = 'All';
+    } else {
+      console.error(`Unknown task type: ${schedule.taskType}`);
+      taskType = 'Unknown';
+      keyspace = (schedule.taskParams && schedule.taskParams.keyspace) || 'N/A';
+      tableDetails = (schedule.taskParams && schedule.taskParams.tableName) || 'N/A';
+    }
 
     return (
       <Col xs={12} sm={6} md={6} lg={4}>
@@ -111,7 +110,9 @@ class ScheduleDisplayItem extends Component {
             <DescriptionItem title={"Server-Side Encryption"}>
               <span>{schedule.taskParams.sse ? "On" : "Off"}</span>
             </DescriptionItem>
-
+            <DescriptionItem title={"Keyspace"}>
+              <span>{keyspace}</span>
+            </DescriptionItem>
             <DescriptionItem title={"Table"}>
               <span>{tableDetails}</span>
             </DescriptionItem>
