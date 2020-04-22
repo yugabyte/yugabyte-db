@@ -30,7 +30,10 @@ import Releases from './pages/Releases';
 import { isDefinedNotNull } from './utils/ObjectUtils';
 
 const clearCredentials = () => {
-  localStorage.clear();
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('apiToken');
+  localStorage.removeItem('customerId');
+  localStorage.removeItem('userId');
   Cookies.remove('apiToken');
   Cookies.remove('authToken');
   Cookies.remove('customerId');
