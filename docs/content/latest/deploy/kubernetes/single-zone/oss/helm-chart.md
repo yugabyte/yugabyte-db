@@ -245,7 +245,7 @@ NOTES:
   kubectl exec --namespace yb-demo -it yb-tserver-0 bash
 
 5. Run YSQL shell from inside of a tablet server:
-  kubectl exec --namespace yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
+  kubectl exec --namespace yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh  -h yb-tserver-0.yb-tservers.yb-demo
 
 6. Cleanup YugabyteDB Pods
   helm delete yb-demo --purge
@@ -310,7 +310,7 @@ REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESC
 To connect and use the YSQL Shell `ysqlsh`, run the following command.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
+$ kubectl exec -n yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
 To connect and use the YCQL Shell `cqlsh`, run the following command.

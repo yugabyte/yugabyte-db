@@ -120,7 +120,7 @@ Make a copy of the sample CRD file (`cluster.yaml`)  and modify it as needed. Fo
 When all of the pods in YugabyteDB cluster are running, you can use the YSQL shell to access the YSQL API, which is PostgreSQL-compliant.
 
 ```console
-kubectl exec -it yb-tserver-rook-yugabytedb-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-rook-yugabytedb-0  --echo-queries
+kubectl exec -it yb-tserver-rook-yugabytedb-0 -- /home/yugabyte/bin/ysqlsh  -h yb-tserver-rook-yugabytedb-0  --echo-queries
 ```
 
 For details on the YSQL API, see:
