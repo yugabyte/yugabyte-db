@@ -162,7 +162,7 @@ Yugabyte products incorporate third party software, which includes the copyright
 |  jsr166e | 1.1.0 | CC0-1.0 |
 |  netty-reactive-streams | 1.0.5 | Apache-2.0 |
 |  netty-reactive-streams-http | 1.0.5 | Apache-2.0 |
-|  spark-cassandra-connector_2.10 | 2.0.5-yb-7 | Apache-2.0 |
+|  spark-cassandra-connector_2.10 | 2.4-yb-2 | Apache-2.0 |
 |  commons-beanutils-core | 1.8.0 | Apache-2.0 |
 |  metrics-core | 3.1.2 | Apache-2.0 |
 |  metrics-graphite | 3.1.2 | Apache-2.0 |
