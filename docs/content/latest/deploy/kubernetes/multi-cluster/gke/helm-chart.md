@@ -489,7 +489,7 @@ To connect and use the YSQL Shell (`ysqlsh`), run the following command.
 
 ```sh
 $ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1 \
- -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo-us-west1-b
+ -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
 To connect and use the YCQL Shell (`cqlsh`), run the following command.

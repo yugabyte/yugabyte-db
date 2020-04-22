@@ -28,7 +28,7 @@ kubectl --namespace yb-demo cp ./data/users.sql yb-tserver-0:/home/yugabyte/data
 Run ysqlsh to connect to the service.
 
 ```sh
-$ kubectl --namespace yb-demo exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0  --echo-queries
+$ kubectl --namespace yb-demo exec -it yb-tserver-0  -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0  --echo-queries
 ```
 
 ```
