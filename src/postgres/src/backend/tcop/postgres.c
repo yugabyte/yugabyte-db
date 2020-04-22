@@ -3804,11 +3804,14 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 	}
 }
 
-static const char* yb_parse_command_tag(const char *query_string)
+/*
+ * Parse query tree via pg_parse_query, suppressing log messages below ERROR level.
+ * This is useful e.g. for avoiding "not supported yet and will be ignored" warnings.
+ */
+static List* yb_parse_query_silently(const char *query_string)
 {
 	List* parsetree_list;
 
-	// Suppress logging of warnings emitted during parsing.
 	int prev_log_min_messages    = log_min_messages;
 	int prev_client_min_messages = client_min_messages;
 	PG_TRY();
@@ -3826,6 +3829,13 @@ static const char* yb_parse_command_tag(const char *query_string)
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+	return parsetree_list;
+}
+
+static const char* yb_parse_command_tag(const char *query_string)
+{
+	List* parsetree_list = yb_parse_query_silently(query_string);
 
 	if (list_length(parsetree_list) > 0) {
 		RawStmt* raw_parse_tree = linitial_node(RawStmt, parsetree_list);
@@ -3919,10 +3929,24 @@ yb_is_read_restart_possible(int attempt, const PortalRestartData* restart_data)
 	// Can only restart SELECT queries
 	if (!restart_data->query_string)
 		return false;
-	if (strncmp(restart_data->command_tag, "SELECT", 6) != 0)
-		return false;
 
-	return true;
+	const char* command_tag = restart_data->command_tag;
+
+	// If we're executing a prepared statement, we're interested in the command tag of the
+	// underlying statment.
+	if (strncmp(command_tag, "EXECUTE", 7) == 0)
+	{
+		List* parsetree_list = yb_parse_query_silently(restart_data->query_string);
+		if (list_length(parsetree_list) == 0)
+			return false;
+		ExecuteStmt* execute_stmt = (ExecuteStmt*) linitial_node(RawStmt, parsetree_list)->stmt;
+		PreparedStatement* prepared_stmt = FetchPreparedStatement(execute_stmt->name, false);
+		if (prepared_stmt == NULL)
+			return false;
+		command_tag = prepared_stmt->plansource->commandTag;
+	}
+
+	return strncmp(command_tag, "SELECT", 6) == 0
 }
 
 /*
