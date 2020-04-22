@@ -145,6 +145,8 @@ void SetVerboseLogLevel(int level);
 // workaround conflicts.
 Status SetInternalSignalNumber(int signum);
 
+using MasterAddressSource = std::function<std::vector<std::string>()>;
+
 // Creates a new YBClient with the desired options.
 //
 // Note that YBClients are shared amongst multiple threads and, as such,
@@ -208,6 +210,10 @@ class YBClientBuilder {
   YBClientBuilder& set_tserver_uuid(const TabletServerId& uuid);
 
   YBClientBuilder& set_parent_mem_tracker(const std::shared_ptr<MemTracker>& mem_tracker);
+
+  YBClientBuilder& set_master_address_flag_name(const std::string& value);
+
+  YBClientBuilder& AddMasterAddressSource(const MasterAddressSource& source);
 
   // Creates the client.
   // Will use specified messenger if not nullptr.

@@ -41,6 +41,11 @@ class AsyncClientInitialiser {
 
   YBClient* client() const;
 
+
+  YBClientBuilder& builder() {
+    return client_builder_;
+  }
+
   const std::shared_future<client::YBClient*>& get_client_future() const {
     return client_future_;
   }
