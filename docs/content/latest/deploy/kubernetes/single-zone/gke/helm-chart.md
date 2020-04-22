@@ -176,8 +176,8 @@ $ helm search repo yugabytedb/yugabyte
 **Output:**
 
 ```sh
-NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
-yugabytedb/yugabyte 2.1.0        2.1.0.0-b18  YugabyteDB is the high-performance distr...
+NAME                CHART VERSION APP VERSION DESCRIPTION                                       
+yugabytedb/yugabyte 2.1.4         2.1.4.0-b5  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -238,7 +238,7 @@ NOTES:
   kubectl exec --namespace yb-demo -it yb-tserver-0 bash
 
 5. Run YSQL shell from inside of a tablet server:
-  kubectl exec --namespace yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
+  kubectl exec --namespace yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 
 6. Cleanup YugabyteDB Pods
   helm delete yb-demo --purge
@@ -294,8 +294,8 @@ $ helm history yb-demo -n yb-demo
 **Output:**
 
 ```sh
-REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION     
-1         Thu Feb 13 13:29:13 2020  deployed  yugabyte-2.0.12 2.0.12.0-b10  Install complete
+REVISION  UPDATED                   STATUS    CHART           APP VERSION DESCRIPTION     
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.1.4  2.1.4.0-b5  Install complete
 ```
 
 ## Connect using YugabyteDB Shells
@@ -303,7 +303,7 @@ REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESC
 To connect and use the YSQL Shell `ysqlsh`, run the following command.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
+$ kubectl exec -n yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
 To connect and use the YCQL Shell `cqlsh`, run the following command.
