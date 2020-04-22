@@ -101,11 +101,13 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   CHECK(!running_);
   CHECK(!master_);
 
-  HostPort local_host_port;
-  RETURN_NOT_OK(local_host_port.ParseString(
-      server::TEST_RpcBindEndpoint(index_, rpc_port), rpc_port));
   auto master_addresses = std::make_shared<server::MasterAddresses>();
-  master_addresses->push_back({local_host_port});
+  if (pass_master_addresses_) {
+    HostPort local_host_port;
+    RETURN_NOT_OK(local_host_port.ParseString(
+        server::TEST_RpcBindEndpoint(index_, rpc_port), rpc_port));
+    master_addresses->push_back({local_host_port});
+  }
   MasterOptions opts(master_addresses);
 
   Status start_status = StartOnPorts(rpc_port, web_port, &opts);
@@ -157,16 +159,18 @@ Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web
   CHECK(!master_);
 
   auto peer_addresses = std::make_shared<server::MasterAddresses>();
-  peer_addresses->resize(peer_ports.size());
+  if (pass_master_addresses_) {
+    peer_addresses->resize(peer_ports.size());
 
-  int index = 0;
-  for (uint16_t peer_port : peer_ports) {
-    auto& addresses = (*peer_addresses)[index];
-    ++index;
-    addresses.push_back(VERIFY_RESULT(HostPort::FromString(
-        server::TEST_RpcBindEndpoint(index, peer_port), peer_port)));
-    addresses.push_back(VERIFY_RESULT(HostPort::FromString(
-        server::TEST_RpcAddress(index, server::Private::kFalse), peer_port)));
+    int index = 0;
+    for (uint16_t peer_port : peer_ports) {
+      auto& addresses = (*peer_addresses)[index];
+      ++index;
+      addresses.push_back(VERIFY_RESULT(HostPort::FromString(
+          server::TEST_RpcBindEndpoint(index, peer_port), peer_port)));
+      addresses.push_back(VERIFY_RESULT(HostPort::FromString(
+          server::TEST_RpcAddress(index, server::Private::kFalse), peer_port)));
+    }
   }
   MasterOptions opts(peer_addresses);
 

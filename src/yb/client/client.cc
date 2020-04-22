@@ -330,8 +330,18 @@ YBClientBuilder& YBClientBuilder::set_parent_mem_tracker(const MemTrackerPtr& me
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::set_master_address_flag_name(const std::string& value) {
+  data_->master_address_flag_name_ = value;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::set_skip_master_leader_resolution(bool value) {
   data_->skip_master_leader_resolution_ = value;
+  return *this;
+}
+
+YBClientBuilder& YBClientBuilder::AddMasterAddressSource(const MasterAddressSource& source) {
+  data_->master_address_sources_.push_back(source);
   return *this;
 }
 
@@ -353,7 +363,9 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);
   c->data_->metric_entity_ = data_->metric_entity_;
 
+  c->data_->master_address_flag_name_ = data_->master_address_flag_name_;
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
+  c->data_->master_address_sources_ = data_->master_address_sources_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
   c->data_->skip_master_flagfile_ = data_->skip_master_flagfile_;
   c->data_->default_admin_operation_timeout_ = data_->default_admin_operation_timeout_;

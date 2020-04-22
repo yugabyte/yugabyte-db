@@ -32,6 +32,7 @@
 #ifndef YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
 #define YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,9 @@ class YBClientBuilder::Data {
  public:
   Data();
   ~Data();
+
+  // Flag name to fetch master addresses from flagfile.
+  std::string master_address_flag_name_;
 
   // This is a REST endpoint from which the list of master hosts and ports can be queried. This
   // takes precedence over both 'master_server_addrs_file_' and 'master_server_addrs_'.
@@ -89,6 +93,9 @@ class YBClientBuilder::Data {
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
   bool skip_master_leader_resolution_ = false;
+
+  // See YBClient::Data::master_address_sources_
+  std::vector<MasterAddressSource> master_address_sources_;
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };

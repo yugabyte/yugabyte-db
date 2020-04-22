@@ -360,7 +360,13 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
       return;
     }
-    lock_and_iterator.transaction().Abort(client(), std::move(callback), &lock_and_iterator.lock);
+    auto client_result = client();
+    if (!client_result.ok()) {
+      callback(client_result.status());
+      return;
+    }
+    lock_and_iterator.transaction().Abort(
+        *client_result, std::move(callback), &lock_and_iterator.lock);
   }
 
   CHECKED_STATUS CheckAborted(const TransactionId& id) {
@@ -484,13 +490,18 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       state.set_transaction_id(data.transaction_id.data(), data.transaction_id.size());
       state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
       state.add_tablets(participant_context_.tablet_id());
+      auto client_result = client();
+      if (!client_result.ok()) {
+        LOG_WITH_PREFIX(WARNING) << "Get client failed: " << client_result.status();
+        return;
+      }
 
       auto handle = rpcs_.Prepare();
       if (handle != rpcs_.InvalidHandle()) {
         *handle = UpdateTransaction(
             TransactionRpcDeadline(),
             nullptr /* remote_tablet */,
-            client(),
+            *client_result,
             &req,
             [this, handle](const Status& status,
                            const tserver::UpdateTransactionResponsePB& resp) {
@@ -1083,8 +1094,19 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     load_cond_.notify_all();
   }
 
-  client::YBClient* client() const {
-    return participant_context_.client_future().get();
+  Result<client::YBClient*> client() const {
+    auto cached_value = client_cache_.load(std::memory_order_acquire);
+    if (cached_value != nullptr) {
+      return cached_value;
+    }
+    auto future_status = participant_context_.client_future().wait_for(
+        TransactionRpcTimeout().ToSteadyDuration());
+    if (future_status != std::future_status::ready) {
+      return STATUS(TimedOut, "Client not ready");
+    }
+    auto result = participant_context_.client_future().get();
+    client_cache_.store(result, std::memory_order_release);
+    return result;
   }
 
   const std::string& LogPrefix() const override {
@@ -1288,6 +1310,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
   HybridTime waiting_for_min_running_ht_ = HybridTime::kMax;
   std::atomic<bool> shutdown_done_{false};
+
+  mutable std::atomic<client::YBClient*> client_cache_{nullptr};
 };
 
 TransactionParticipant::TransactionParticipant(

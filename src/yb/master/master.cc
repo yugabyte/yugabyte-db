@@ -41,6 +41,8 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/raft_consensus.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
@@ -51,6 +53,7 @@
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master-path-handlers.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
@@ -174,6 +177,28 @@ Status Master::Init() {
       metric_entity(),
       mem_tracker(),
       messenger());
+  async_client_init_->builder().set_master_address_flag_name("master_addresses");
+  async_client_init_->builder().AddMasterAddressSource([this] {
+    std::vector<std::string> result;
+    consensus::ConsensusStatePB state;
+    auto status = catalog_manager_->GetCurrentConfig(&state);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to get current config: " << status;
+      return result;
+    }
+    for (const auto& peer : state.config().peers()) {
+      std::vector<std::string> peer_addresses;
+      for (const auto& list : {peer.last_known_private_addr(), peer.last_known_broadcast_addr()}) {
+        for (const auto& entry : list) {
+          peer_addresses.push_back(HostPort::FromPB(entry).ToString());
+        }
+      }
+      if (!peer_addresses.empty()) {
+        result.push_back(JoinStrings(peer_addresses, ","));
+      }
+    }
+    return result;
+  });
   async_client_init_->Start();
 
   state_ = kInitialized;

@@ -66,6 +66,10 @@ class MiniMaster {
   // bound to, call MiniMaster::bound_addr()
   CHECKED_STATUS Start(bool simulate_fs_create_failure = false);
 
+  void set_pass_master_addresses(bool value) {
+    pass_master_addresses_ = value;
+  }
+
   CHECKED_STATUS StartDistributedMaster(const std::vector<uint16_t>& peer_ports);
 
   CHECKED_STATUS WaitForCatalogManagerInit();
@@ -107,6 +111,7 @@ class MiniMaster {
   gscoped_ptr<Master> master_;
   int index_;
   std::unique_ptr<Tunnel> tunnel_;
+  bool pass_master_addresses_ = true;
 };
 
 } // namespace master
