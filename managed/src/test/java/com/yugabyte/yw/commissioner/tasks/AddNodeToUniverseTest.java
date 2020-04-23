@@ -169,7 +169,9 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     TaskType.ModifyBlackList,
     TaskType.WaitForLoadBalance,
     TaskType.AnsibleConfigureServers,
+    TaskType.SetFlagInMemory,
     TaskType.AnsibleConfigureServers,
+    TaskType.SetFlagInMemory,
     TaskType.SetNodeState,
     TaskType.UniverseUpdateSucceeded
   );
@@ -185,6 +187,8 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
     Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+    Json.toJson(ImmutableMap.of()),
+    Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),

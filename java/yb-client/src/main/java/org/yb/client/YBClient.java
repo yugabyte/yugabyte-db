@@ -774,11 +774,24 @@ public class YBClient implements AutoCloseable {
    * @return true if the server successfully set the flag
    */
   public boolean setFlag(HostAndPort hp, String flag, String value) throws Exception {
+    return setFlag(hp, flag, value, false);
+  }
+
+  /**
+   * Set a gflag of a given server.
+   * @param hp the host and port of the server
+   * @param flag the flag to be set.
+   * @param value the value to set the flag to
+   * @param force if the flag needs to be set even if it is not marked runtime safe
+   * @return true if the server successfully set the flag
+   */
+  public boolean setFlag(HostAndPort hp, String flag, String value,
+                         boolean force) throws Exception {
     if (flag == null || flag.isEmpty() || value == null || value.isEmpty() || hp == null) {
       LOG.warn("Invalid arguments for hp: {}, flag {}, or value: {}", hp.toString(), flag, value);
       return false;
     }
-    Deferred<SetFlagResponse> d = asyncClient.setFlag(hp, flag, value);
+    Deferred<SetFlagResponse> d = asyncClient.setFlag(hp, flag, value, force);
     return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
   }
 

@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -204,8 +205,13 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     // Configure all tservers to pick the new master node ip as well.
     createConfigureServerTasks(tserverNodes, false /* isShell */, true /* updateMasterAddr */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    // Update the master addresses in memory.
+    createSetFlagInMemoryTasks(tserverNodes, ServerType.TSERVER, true /* force flag update */,
+                               null /* no gflag to update */, true /* updateMasterAddr */);
     // Change the master addresses in the conf file for the all masters to reflect the changes.
     createConfigureServerTasks(masterNodes, false /* isShell */, true /* updateMasterAddrs */,
         true /* isMaster */).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    createSetFlagInMemoryTasks(masterNodes, ServerType.MASTER, true /* force flag update */,
+                               null /* no gflag to update */, true /* updateMasterAddr */);
   }
 }

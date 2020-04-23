@@ -144,6 +144,8 @@ public abstract class CommissionerBaseTest extends WithApplication {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
       when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
+      when(mockClient.setFlag(any(HostAndPort.class), any(), any(), anyBoolean()))
+          .thenReturn(true);
     } catch (Exception e) {
       e.printStackTrace();
     }
