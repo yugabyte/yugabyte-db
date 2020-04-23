@@ -77,18 +77,18 @@ DEFINE_test_flag(bool, TEST_log_cache_skip_eviction, false,
 
 using strings::Substitute;
 
-namespace yb {
-namespace consensus {
-
 METRIC_DEFINE_gauge_int64(tablet, log_cache_num_ops, "Log Cache Operation Count",
-                          MetricUnit::kOperations,
+                          yb::MetricUnit::kOperations,
                           "Number of operations in the log cache.");
 METRIC_DEFINE_gauge_int64(tablet, log_cache_size, "Log Cache Memory Usage",
-                          MetricUnit::kBytes,
+                          yb::MetricUnit::kBytes,
                           "Amount of memory in use for caching the local log.");
 METRIC_DEFINE_counter(tablet, log_cache_disk_reads, "Log Cache Disk Reads",
-                      MetricUnit::kEntries,
+                      yb::MetricUnit::kEntries,
                       "Amount of operations read from disk.");
+
+namespace yb {
+namespace consensus {
 
 namespace {
 
@@ -293,7 +293,9 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
   std::unique_lock<simple_spinlock> l(lock_);
   int64_t next_index = after_op_index + 1;
-  int64_t to_index = to_op_index > 0 ? to_op_index + 1 : next_sequential_op_index_;
+  int64_t to_index = to_op_index > 0
+      ? std::min(to_op_index + 1, next_sequential_op_index_)
+      : next_sequential_op_index_;
 
   // Return as many operations as we can, up to the limit.
   int64_t remaining_space = max_size_bytes;
