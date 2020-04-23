@@ -21,6 +21,7 @@
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
+#include "yb/gutil/macros.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/util/logging.h"
@@ -181,16 +182,41 @@ void PreparerImpl::Run() {
   }
 }
 
+namespace {
+
+bool ShouldApplySeparately(OperationType operation_type) {
+  switch (operation_type) {
+    // For certain operations types we have to apply them in a batch of their own.
+    // E.g. ChangeMetadataOperation::Prepare calls Tablet::CreatePreparedChangeMetadata, which
+    // acquires the schema lock. Because of this, we must not attempt to process two
+    // ChangeMetadataOperations in one batch, otherwise we'll deadlock.
+    //
+    // Also, for infrequently occuring operations batching has little performance benefit in
+    // general.
+    case OperationType::kChangeMetadata: FALLTHROUGH_INTENDED;
+    case OperationType::kSnapshot: FALLTHROUGH_INTENDED;
+    case OperationType::kTruncate: FALLTHROUGH_INTENDED;
+    case OperationType::kSplit: FALLTHROUGH_INTENDED;
+    case OperationType::kEmpty: FALLTHROUGH_INTENDED;
+    case OperationType::kHistoryCutoff:
+      return true;
+
+    case OperationType::kWrite: FALLTHROUGH_INTENDED;
+    case OperationType::kUpdateTransaction:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(OperationType, operation_type);
+}
+
+}  // anonymous namespace
+
 void PreparerImpl::ProcessItem(OperationDriver* item) {
   CHECK_NOTNULL(item);
 
   if (item->is_leader_side()) {
-    // ChangeMetadataOperation::Prepare calls Tablet::CreatePreparedChangeMetadata, which acquires
-    // the schema lock. Because of this, we must not attempt to process two ChangeMetadataOperations
-    // in one batch, otherwise we'll deadlock.
     auto operation_type = item->operation_type();
-    const bool apply_separately = operation_type == OperationType::kChangeMetadata ||
-                                  operation_type == OperationType::kEmpty;
+
+    const bool apply_separately = ShouldApplySeparately(operation_type);
     const int64_t bound_term = apply_separately ? -1 : item->consensus_round()->bound_term();
 
     // Don't add more than the max number of operations to a batch, and also don't add
