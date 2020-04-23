@@ -24,11 +24,19 @@ class SetFlagRequest extends YRpc<SetFlagResponse> {
 
   private String flag;
   private String value;
+  private boolean force = false;
 
   public SetFlagRequest(String flag, String value) {
     super(null);
     this.flag = flag;
     this.value = value;
+  }
+
+  public SetFlagRequest(String flag, String value, boolean force) {
+    super(null);
+    this.flag = flag;
+    this.value = value;
+    this.force = force;
   }
 
   @Override
@@ -37,6 +45,7 @@ class SetFlagRequest extends YRpc<SetFlagResponse> {
     final ServerBase.SetFlagRequestPB.Builder builder = ServerBase.SetFlagRequestPB.newBuilder();
     builder.setFlag(flag);
     builder.setValue(value);
+    builder.setForce(force);
 
     return toChannelBuffer(header, builder.build());
   }

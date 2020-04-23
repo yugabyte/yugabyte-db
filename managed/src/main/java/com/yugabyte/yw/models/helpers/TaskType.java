@@ -102,6 +102,8 @@ public enum TaskType {
 
   RemoveUniverseEntry("subtasks.RemoveUniverseEntry"),
 
+  SetFlagInMemory("subtasks.SetFlagInMemory"),
+
   SetNodeState("subtasks.SetNodeState"),
 
   SwamperTargetsFileUpdate("subtasks.SwamperTargetsFileUpdate"),
