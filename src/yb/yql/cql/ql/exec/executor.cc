@@ -2074,7 +2074,8 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
   for (const auto& index_table : tnode->pk_only_indexes()) {
     const IndexInfo* index =
         VERIFY_RESULT(tnode->table()->index_map().FindIndex(index_table->id()));
-    const bool index_ready_to_accept = (is_upsert ? index->AllowWrites() : index->AllowDelete());
+    const bool index_ready_to_accept = (is_upsert ? index->HasWritePermission()
+                                                  : index->HasDeletePermission());
     if (!index_ready_to_accept) {
       VLOG(2) << "Index not ready to apply operaton " << index->ToString();
       // We are in the process of backfilling the index. It should not be updated with a

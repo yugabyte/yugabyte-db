@@ -1981,7 +1981,7 @@ Status Tablet::FlushIndexBatchIfRequired(
   auto client = client_future_.get();
   auto session = std::make_shared<YBSession>(client);
   const HybridTime kBackfillAt(50);
-  session->WriteWithHybridTime(kBackfillAt);
+  session->SetHybridTimeForWrite(kBackfillAt);
 
   std::unordered_set<
       client::YBqlWriteOpPtr, client::YBqlWriteOp::PrimaryKeyComparator,

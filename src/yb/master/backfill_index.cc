@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <bitset>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <unordered_map>
@@ -195,7 +196,7 @@ Status MultiStageAlterTable::UpdateIndexPermission(
               index_table_id, IndexPermissions_Name(new_perm));
         }
         idx_pb->set_index_permissions(new_perm);
-        VLOG(1) << "Updating index permissions "
+        VLOG(1) << "Updating index permissions"
                 << " from " << IndexPermissions_Name(old_perm) << " to "
                 << IndexPermissions_Name(new_perm) << " schema_version from " << old_schema_version
                 << " to " << old_schema_version + 1 << ". New index info would be "
@@ -572,7 +573,7 @@ void BackfillTable::Done(const Status& s) {
                   "Failed to mark backfill as failed.");
     } else {
       LOG_WITH_PREFIX(INFO)
-          << "Some body else already aborted the index backfill.";
+          << "Somebody else already aborted the index backfill.";
     }
     return;
   }
