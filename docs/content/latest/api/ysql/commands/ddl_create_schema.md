@@ -2,7 +2,6 @@
 title: CREATE SCHEMA statement [YSQL]
 headerTitle: CREATE SCHEMA
 linkTitle: CREATE SCHEMA
-summary: Create schema
 description: Use the CREATE SCHEMA statement to create a new schema in the current database.
 menu:
   latest:

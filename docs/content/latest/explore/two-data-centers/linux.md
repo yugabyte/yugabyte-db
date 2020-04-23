@@ -1,8 +1,8 @@
 ---
-title: Explore two data center (2DC) deployment using Linux
+title: Explore two data center (2DC) deployment on Linux
 headerTitle: Two data center (2DC) deployment
 linkTitle: Two data center (2DC)
-description: Simulate a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters in Linux.
+description: Simulate a geo-distributed two data center (2DC) deployment with two local YugabyteDB clusters on Linux.
 aliases:
   - /latest/explore/two-data-centers-linux/
 menu:

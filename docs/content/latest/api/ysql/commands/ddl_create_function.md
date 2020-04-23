@@ -2,7 +2,6 @@
 title: CREATE FUNCTION statement [YSQL]
 headerTitle: CREATE FUNCTION
 linkTitle: CREATE FUNCTION
-summary: Create a new function in a database
 description: Use the CREATE FUNCTION statement to define a new function in a database.
 menu:
   latest:

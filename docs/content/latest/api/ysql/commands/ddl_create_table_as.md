@@ -2,7 +2,6 @@
 title: CREATE TABLE AS statement [YSQL]
 headerTitle: CREATE TABLE AS
 linkTitle: CREATE TABLE AS
-summary: Create a new table from a query result
 description: Use the CREATE TABLE AS statement to create a new table using the output of a subquery.
 menu:
   latest:

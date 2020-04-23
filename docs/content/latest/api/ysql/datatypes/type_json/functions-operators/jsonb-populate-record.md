@@ -21,7 +21,7 @@ input value:       anyelement, jsonb
 return value:      anyelement
 ```
 
-**Notes:** Require that the supplied JSON value is an _object_. The data type of the `record` must be defined as a schema-level `type` whose name is passed via the function's first formal parameter using the locution `null:type_identifier`. The JSON value is passed via the second formal parameter.
+**Notes:** Require that the supplied JSON value is an _object_. The data type of the `record` must be defined as a schema-level `type` whose name is passed via the function's first formal parameter using the locution `null:type_identifier`. The JSON value is passed using the second formal parameter.
 
 Use this _ysqlsh_ script to create the required types `t1` and `t2`, and then to execute the `assert`.
 

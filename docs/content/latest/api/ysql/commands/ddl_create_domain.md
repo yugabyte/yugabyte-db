@@ -2,8 +2,7 @@
 title: CREATE DOMAIN statement [YSQL]
 headerTitle: CREATE DOMAIN
 linkTitle: CREATE DOMAIN
-summary: Create a new domain in a database
-description: Use the CREATE DOMAIN statement to create a user-defined data type with optional constraints, such as range of valid values, DEFAULT, NOT NULL, and CHECK.
+description: Use the CREATE DOMAIN statement to create a user-defined data type with optional constraints.
 menu:
   latest:
     identifier: api-ysql-commands-create-domain

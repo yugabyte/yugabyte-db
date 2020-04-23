@@ -2,7 +2,6 @@
 title: = (equality operator) [JSON]
 headerTitle: = (equality operator)
 linkTitle: = (equality)
-summary: Equality - the `=` operator
 description: Test if two jsonb values are equal using the JSON equality operator (=).
 menu:
   latest:

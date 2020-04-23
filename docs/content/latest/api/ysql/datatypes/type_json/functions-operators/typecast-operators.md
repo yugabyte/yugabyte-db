@@ -3,7 +3,6 @@ title: "::jsonb, ::json, and ::text (JSON typecast operators)"
 headerTitle: "::jsonb, ::json, and ::text (typecast operators)"
 linkTitle: "::jsonb, ::json, and ::text (typecast operators)"
 description: Typecast between any pair of text, json, and jsonb.
-summary: Typecast operators - `::jsonb`, `::json`, and `::text`
 menu:
   latest:
     identifier: typecast-operators

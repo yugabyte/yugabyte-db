@@ -2,8 +2,7 @@
 title: DROP FUNCTION statement [YSQL]
 headerTitle: DROP FUNCTION
 linkTitle: DROP FUNCTION
-summary: Use the DROP FUNCTION statement to remove a function from a database.
-description: 
+description: Remove a function from a database.
 menu:
   latest:
     identifier: api-ysql-commands-drop-function

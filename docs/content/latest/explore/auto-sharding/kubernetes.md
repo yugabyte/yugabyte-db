@@ -1,8 +1,8 @@
 ---
-title: Explore auto sharding [Kubernetes (Minikube)]
+title: Explore auto sharding on Kubernetes
 headerTitle: Auto sharding
 linkTitle: Auto sharding
-description: Follow this tutorial to learn how YugabyteDB automatically splits tables into shards (tablets).
+description: Follow this tutorial (on Kubernetes) to learn how YugabyteDB automatically splits tables into shards (tablets).
 aliases:
   - /latest/explore/auto-sharding-kubernetes/
 menu:

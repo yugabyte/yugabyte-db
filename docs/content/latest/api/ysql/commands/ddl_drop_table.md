@@ -2,8 +2,7 @@
 title: DROP TABLE statement [YSQL]
 headerTitle: DROP TABLE
 linkTitle: DROP TABLE
-summary: Remove a table
-description: Use the `DROP TABLE` statement to remove one or more tables (with all of their data) from the database.
+description: Use the DROP TABLE statement to remove one or more tables (with all of their data) from the database.
 menu:
   latest:
     identifier: api-ysql-commands-drop-table

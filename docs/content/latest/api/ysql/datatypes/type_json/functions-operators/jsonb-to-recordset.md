@@ -2,8 +2,7 @@
 title: jsonb_to_recordset() and json_to_recordset()
 headerTitle: jsonb_to_recordset() and json_to_recordset()
 linkTitle: jsonb_to_recordset()
-description: Convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records.
-summary: jsonb_to_recordset() and json_to_recordset()
+description: Convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records. Offers no practical advantage over the jsonb_populate_recordset() variant.
 menu:
   latest:
     identifier: jsonb-to-recordset

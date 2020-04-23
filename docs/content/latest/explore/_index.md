@@ -2,7 +2,7 @@
 title: Explore core features
 headerTitle: Explore core features
 linkTitle: Explore core features
-description: Explore linear scalability, fault tolerance, global distribution, auto-sharding, follower leads, observability, colocated tables, and change data capture (CDC).
+description: Explore the core features of YugabyteDB on macOS, Linux, Docker, and Kubernetes (Minikube).
 headcontent:
 image: /images/section_icons/index/explore.png
 aliases:
