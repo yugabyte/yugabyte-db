@@ -38,13 +38,13 @@ showAsideToc: true
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql).
+- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow the steps in [Quick start](../../../explore-ysql).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
-- have gcc 4.1.2 or later, clang 3.4 or later installed.
+- have `gcc` 4.1.2 or later, clang 3.4 or later installed.
 
 ## Install the C++ driver (libpqxx)
 
-Download the source from [here](https://github.com/jtv/libpqxx) and build the binaries as follows. Detailed instructions are provided [here](https://github.com/jtv/libpqxx).
+Download the source from the [libpqxx](https://github.com/jtv/libpqxx) and build the binaries as follows. If needed, detailed steps are provided in the [README](https://github.com/jtv/libpqxx/blob/master/README.md) file.
 
 ### Get the source
 

@@ -2,7 +2,7 @@
 title: Configure Microsoft Azure for YugabyteDB using YugaWare
 headerTitle: Configure cloud providers
 linkTitle: 4. Configure cloud providers
-description: Configure Microsoft Azure for YugabyteDB clusters using the YugaWare Admin Console
+description: Configure Microsoft Azure for YugabyteDB clusters using YugaWare
 menu:
   latest:
     identifier: configure-cloud-providers-3-azure
@@ -43,7 +43,7 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="/latest/deploy/enterprise-edition/configure-cloud-providers/on-premises" class="nav-link">
+    <a href="/latest/deploy/enterprise-edition/configure-cloud-providers/onprem" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
