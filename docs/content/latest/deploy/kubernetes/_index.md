@@ -53,6 +53,18 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+   <a class="section-link icon-offset" href="clients/">
+     <div class="head">
+       <img class="icon" src="/images/section_icons/deploy/system.png" aria-hidden="true" />
+       <div class="title">Connect clients to clusters</div>
+     </div>
+     <div class="body">
+       Connect remote clients to YugabyteDB in Kubernetes clusters.
+     </div>
+   </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
    <a class="section-link icon-offset" href="best-practices/">
      <div class="head">
        <img class="icon" src="/images/section_icons/deploy/system.png" aria-hidden="true" />
