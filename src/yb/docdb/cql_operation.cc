@@ -472,27 +472,27 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 }
 
 // Check if a duplicate value is inserted into a unique index.
-Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApplyData& data) {
+Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in \n"
           << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
   // We only need to check backwards for backfilled entries.
   bool ret =
-      VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kForward)) ||
+      VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
       (request_.is_backfilling() &&
-       VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kBackward)));
+       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kBackward)));
   if (!ret) {
     VLOG(3) << "No collisions found";
   }
   return ret;
 }
 
-Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
+Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, Direction direction) {
   VLOG(2) << "Looking for collision while going " << yb::ToString(direction)
           << ". Trying to insert " << *pk_doc_key_;
   auto requested_read_time = data.read_time;
   if (direction == Direction::kForward) {
-    return DuplicateUniqueIndexValue(data, requested_read_time);
+    return HasDuplicateUniqueIndexValue(data, requested_read_time);
   }
 
   auto iter = CreateIntentAwareIterator(
@@ -512,11 +512,11 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
   if (!oldest_past_min_ht.is_valid()) {
     return false;
   }
-  return DuplicateUniqueIndexValue(
+  return HasDuplicateUniqueIndexValue(
       data, ReadHybridTime::SingleTime(oldest_past_min_ht));
 }
 
-Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
+Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
   DocQLScanSpec spec(*unique_index_key_schema_, *pk_doc_key_, request_.query_id(), true);
@@ -802,7 +802,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   }
 
   VLOG(3) << "insert_into_unique_index_ is " << insert_into_unique_index_;
-  if (insert_into_unique_index_ && VERIFY_RESULT(DuplicateUniqueIndexValue(data))) {
+  if (insert_into_unique_index_ && VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
     VLOG(3) << "set_applied is set to " << false << " for over " << yb::ToString(existing_row);
     response_->set_applied(false);
     response_->set_status(QLResponsePB::YQL_STATUS_OK);
@@ -1091,14 +1091,16 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       index_key_changed = true;
     } else {
       QLWriteRequestPB* index_request =
-          (index->AllowWrites() ? NewIndexRequest(index, QLWriteRequestPB::QL_STMT_INSERT, new_row)
-                                : nullptr);
+          (index->HasWritePermission() ? NewIndexRequest(index,
+                                                         QLWriteRequestPB::QL_STMT_INSERT,
+                                                         new_row)
+                                       : nullptr);
       RETURN_NOT_OK(PrepareIndexWriteAndCheckIfIndexKeyChanged(
           this, existing_row, new_row, index, index_request, &index_key_changed));
     }
 
     // If the index key is changed, delete the current key.
-    if (index_key_changed && index->AllowDelete()) {
+    if (index_key_changed && index->HasDeletePermission()) {
       QLWriteRequestPB* index_request =
           NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE, new_row);
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {

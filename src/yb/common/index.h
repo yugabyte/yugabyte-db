@@ -80,24 +80,24 @@ class IndexInfo {
   // - Otherwise, return -1.
   int32_t IsExprCovered(const std::string& expr_content) const;
 
-  // Are read operations allowed to use the index? Reads are not allowed until
+  // Are read operations allowed to use the index?  During CREATE INDEX, reads are not allowed until
   // the index backfill is successfully completed.
-  bool AllowReads() const { return index_permissions_ == INDEX_PERM_READ_WRITE_AND_DELETE; }
+  bool HasReadPermission() const { return index_permissions_ == INDEX_PERM_READ_WRITE_AND_DELETE; }
 
-  // Should write operations to the index be allowed to update the index table.
-  bool AllowWrites() const {
+  // Should write operations to the index update the index table?  This includes INSERT and UPDATE.
+  bool HasWritePermission() const {
     return index_permissions_ >= INDEX_PERM_WRITE_AND_DELETE &&
            index_permissions_ <= INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING;
   }
 
-  // Should delete operations to the index be allowed to update the index table.
-  bool AllowDelete() const {
+  // Should delete operations to the index update the index table?  This includes DELETE and UPDATE.
+  bool HasDeletePermission() const {
     return index_permissions_ >= INDEX_PERM_DELETE_ONLY &&
            index_permissions_ <= INDEX_PERM_DELETE_ONLY_WHILE_REMOVING;
   }
 
-  // Is the index being backfilled.
-  bool Backfilling() const { return index_permissions_ == INDEX_PERM_DO_BACKFILL; }
+  // Is the index being backfilled?
+  bool IsBackfilling() const { return index_permissions_ == INDEX_PERM_DO_BACKFILL; }
 
   std::string ToString() const {
     IndexInfoPB pb;
