@@ -233,9 +233,29 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   tables = ASSERT_RESULT(client_->ListTables(table_name /* filter */, true /* exclude_ysql */));
   ASSERT_EQ(0, tables.size());
 
-  // Import table and index with original names.
+  // Import table and index with original names - using the old names.
   ASSERT_OK(RunAdminToolCommand({
       "import_snapshot", snapshot_file, keyspace, table_name, keyspace, index_name}));
+  // Wait for the new snapshot completion.
+  ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
+
+  tables = ASSERT_RESULT(client_->ListTables(table_name /* filter */, true /* exclude_ysql */));
+  ASSERT_EQ(2, tables.size());
+  ASSERT_OK(client_->DeleteTable(
+      YBTableName(YQL_DATABASE_CQL, keyspace, table_name), /* wait */ true));
+
+  // Import table and index with original names - not providing any names.
+  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file}));
+  // Wait for the new snapshot completion.
+  ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
+
+  tables = ASSERT_RESULT(client_->ListTables(table_name /* filter */, true /* exclude_ysql */));
+  ASSERT_EQ(2, tables.size());
+  ASSERT_OK(client_->DeleteTable(
+      YBTableName(YQL_DATABASE_CQL, keyspace, table_name), /* wait */ true));
+
+  // Import table and index with original names - providing only old table name.
+  ASSERT_OK(RunAdminToolCommand({"import_snapshot", snapshot_file, keyspace, table_name}));
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots(&BackupServiceProxy()));
 

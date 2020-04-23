@@ -271,6 +271,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
 
   YBTableName orig_table_name;
   int table_index = 0;
+  bool renaming = false;
   for (SysRowEntry& entry : *snapshot_info->mutable_entry()->mutable_entries()) {
     const YBTableName table_name = table_index < tables.size()
         ? tables[table_index] : YBTableName();
@@ -284,16 +285,11 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
             table_name.namespace_name() != orig_table_name.namespace_name()) {
           meta.set_name(table_name.namespace_name());
           entry.set_data(meta.SerializeAsString());
+          renaming = true;
         }
         break;
       }
       case SysRowEntry::TABLE: {
-        if (tables.size() > 0 && table_index >= tables.size()) {
-          return STATUS_FORMAT(InvalidArgument,
-                               "There is no name for table (including indexes) number: $0",
-                               table_index);
-        }
-
         auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
         orig_table_name.set_table_name(meta.name());
 
@@ -301,6 +297,11 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         if (!table_name.empty() && table_name.table_name() != orig_table_name.table_name()) {
           meta.set_name(table_name.table_name());
           entry.set_data(meta.SerializeAsString());
+          renaming = true;
+        } else if (renaming && table_name.empty()) {
+          return STATUS_FORMAT(InvalidArgument,
+                               "There is no name for table (including indexes) number: $0",
+                               table_index);
         }
 
         if (meta.indexed_table_id().empty()) {
