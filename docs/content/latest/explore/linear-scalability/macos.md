@@ -1,8 +1,8 @@
 ---
-title: Explore linear scalability using macOS
+title: Explore linear scalability on macOS
 headerTitle: Linear scalability
 linkTitle: Linear scalability
-description: Learn how to scale a local three-node YugabyteDB cluster while a workload is running.
+description: Learn how to scale a local three-node YugabyteDB cluster (on macOS) while a workload is running.
 aliases:
   - /explore/linear-scalability/
   - /latest/explore/linear-scalability/

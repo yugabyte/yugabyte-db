@@ -2,7 +2,7 @@
 title: Statements
 headerTitle: Statements
 description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL).
-summary: Statements
+headcontent:
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

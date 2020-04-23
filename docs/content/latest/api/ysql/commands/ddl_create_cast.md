@@ -2,7 +2,6 @@
 title: CREATE CAST statement [YSQL]
 headerTitle: CREATE CAST
 linkTitle: CREATE CAST
-summary: Create a new cast
 description: Use the CREATE CAST statement to create a new cast.
 menu:
   latest:

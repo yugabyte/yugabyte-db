@@ -2,7 +2,6 @@
 title: CREATE DATABASE statement [YSQL]
 headerTitle: CREATE DATABASE
 linkTitle: CREATE DATABASE
-summary: Create a new database
 description: Use the CREATE DATABASE statement to create a database that functions as a grouping mechanism for database objects, such as tables.
 menu:
   latest:

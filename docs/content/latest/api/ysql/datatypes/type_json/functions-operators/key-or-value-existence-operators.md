@@ -3,7 +3,6 @@ title: "?, ?|, and ?& (key or value existence operators) [JSON]"
 headerTitle: "?, ?|, and ?& (key or value existence operators)"
 linkTitle: "?, ?|, and ?& (key or value existence)"
 description: Test if JSONB values exist as keys in an object or as string value(s) in array.
-summary: Existence of keys or values
 menu:
   latest:
     identifier: key-or-value-existence-operators

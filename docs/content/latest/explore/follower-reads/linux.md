@@ -1,8 +1,8 @@
 ---
-title: Explore follower reads in YugabyteDB using Linux
+title: Explore follower reads on Linux
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Learn how you can use follower reads to lower read latencies in distributed SQL YugabyteDB clusters.
+description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters on Linux.
 aliases:
   - /latest/explore/follower-reads-linux/
 menu:

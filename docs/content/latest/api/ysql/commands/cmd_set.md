@@ -2,7 +2,6 @@
 title: SET statement [YSQL]
 headerTitle: SET
 linkTitle: SET 
-summary: Set a session or system variable
 description: Use the SET statement to update a run-time control parameter.
 menu:
   latest:

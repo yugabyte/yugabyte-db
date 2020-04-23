@@ -2,7 +2,6 @@
 title: DROP OPERATOR statement [YSQL]
 headerTitle: DROP OPERATOR
 linkTitle: DROP OPERATOR
-summary: Remove an operator
 description: Use the DROP OPERATOR statement to remove an operator.
 menu:
   latest:

@@ -1,8 +1,8 @@
 ---
-title: Explore auto sharding [Linux]
+title: Explore auto sharding on Linux
 headerTitle: Auto sharding
 linkTitle: Auto sharding
-description: Follow this tutorial to learn how YugabyteDB automatically splits tables into shards.
+description: Follow this Linux-based tutorial to learn how YugabyteDB automatically splits tables into shards.
 aliases:
   - /latest/explore/auto-sharding-linux/
 menu:

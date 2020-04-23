@@ -2,7 +2,6 @@
 title: DROP DOMAIN statement [YSQL]
 headerTitle: DROP DOMAIN
 linkTitle: DROP DOMAIN
-summary: Remove a domain
 description: Use the DROP DOMAIN statement to remove a domain from the database.
 menu:
   latest:

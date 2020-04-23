@@ -2,7 +2,6 @@
 title: DROP PROCEDURE statement [YSQL]
 headerTitle: DROP PROCEDURE
 linkTitle: DROP PROCEDURE
-summary: Remove a procedure
 description: Use the DROP PROCEDURE statement to remove a procedure from a database.
 menu:
   latest:

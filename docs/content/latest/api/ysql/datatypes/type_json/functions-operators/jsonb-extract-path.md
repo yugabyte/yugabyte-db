@@ -3,7 +3,6 @@ title: jsonb_extract_path() and json_extract_path() [JSON]
 headerTitle: jsonb_extract_path() and json_extract_path()
 linkTitle: jsonb_extract_path()
 description: Provide identical functionality to the "#>" operator.
-summary: jsonb_extract_path() and json_extract_path()
 menu:
   latest:
     identifier: jsonb-extract-path
