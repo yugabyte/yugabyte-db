@@ -415,6 +415,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   bool is_voter = false;
   bool is_new;
   int64_t next_index;
+  int64_t to_index;
   HybridTime propagated_safe_time;
 
   // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
@@ -478,7 +479,18 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     if (member_type) *member_type = peer->member_type;
     if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
     *needs_remote_bootstrap = peer->needs_remote_bootstrap;
+
     next_index = peer->next_index;
+    if (peer->last_num_messages_sent >= 0) {
+      // Previous request to peer has not been acked. Reduce number of entries to be sent
+      // in this attempt using exponential backoff. Note that to_index is inclusive.
+      to_index = next_index + std::max<int64_t>((peer->last_num_messages_sent >> 1) - 1, 0);
+    } else {
+      // Previous request to peer has been acked or a heartbeat response has been received.
+      // Transmit as many entries as allowed.
+      to_index = 0;
+    }
+
     if (peer->member_type == RaftPeerPB::VOTER) {
       is_voter = true;
     }
@@ -511,8 +523,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   if (!is_new) {
     // The batch of messages to send to the peer.
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
-
-    auto result = ReadFromLogCache(next_index - 1, 0 /* to_index */, max_batch_size, uuid);
+    auto result = ReadFromLogCache(next_index - 1, to_index, max_batch_size, uuid);
     if (PREDICT_FALSE(!result.ok())) {
       if (PREDICT_TRUE(result.status().IsNotFound())) {
         std::string msg = Format("The logs necessary to catch up peer $0 have been "
@@ -529,6 +540,16 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // messages. At that point we'll need to do something smarter here, like copy or ref-count.
     for (const auto& msg : result->messages) {
       request->mutable_ops()->AddAllocated(msg.get());
+    }
+
+    {
+      LockGuard lock(queue_lock_);
+      auto peer = FindPtrOrNull(peers_map_, uuid);
+      if (PREDICT_FALSE(peer == nullptr)) {
+        return STATUS(NotFound, "Peer not tracked.");
+      }
+
+      peer->last_num_messages_sent = result->messages.size();
     }
 
     ScopedTrackedConsumption consumption;
@@ -975,6 +996,9 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     // Update the peer status based on the response.
     peer->is_new = false;
     peer->last_successful_communication_time = MonoTime::Now();
+
+    // Reset so that next transmission is not considered a re-transmission.
+    peer->last_num_messages_sent = -1;
 
     if (response.has_status()) {
       const auto& status = response.status();

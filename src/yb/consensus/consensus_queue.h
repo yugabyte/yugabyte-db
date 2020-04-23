@@ -142,6 +142,9 @@ class PeerMessageQueue {
     // Next index to send to the peer.  This corresponds to "nextIndex" as specified in Raft.
     int64_t next_index = kInvalidOpIdIndex;
 
+    // Number of ops starting from next_index_ to retransmit.
+    int64_t last_num_messages_sent = -1;
+
     // The last operation that we've sent to this peer and that it acked. Used for watermark
     // movement.
     OpId last_received;
