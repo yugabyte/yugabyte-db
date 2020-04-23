@@ -117,7 +117,7 @@ If your AMI already has the needed hooks for mounting the devices as directories
 
 #### Locate drives
 
-On each of those nodes, first locate the SSD device(s) that’ll be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.)
+On each of those nodes, first locate the SSD devices to be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.).
 
 ```sh
 $ lsblk
@@ -169,11 +169,11 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-The above should print “xfs” for each of the nodes/drives.
+The above should print “xfs” for each of the nodes or drives.
 
 #### Configure Drives
 
-Add `/etc/fstab` entry to mount the drive(s) on each of the nodes. This example assumes there’s one drive that we will mount at the `/mnt/d0` location.
+Add `/etc/fstab` entry to mount the drives on each of the nodes. This example assumes there’s one drive that we will mount at the `/mnt/d0` location.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -296,9 +296,9 @@ core file size          (blocks, -c) unlimited
 
 ## 2. Install YugabyteDB
 
-Note: The installation need NOT be undertaken by the root or the ADMIN_USER (centos). In the examples below, however, these commands are run as the ADMIN_USER.
+Note: The installation need NOT be undertaken by the root or the `ADMIN_USER` (`centos`). In the examples below, however, these commands are run as the `ADMIN_USER`.
 
-Create `yb-software` & `yb-conf` directory in a directory of your choice. In this example, we use ADMIN_USER’s home directory.
+Create `yb-software` & `yb-conf` directory in a directory of your choice. In this example, we use the `ADMIN_USER` home directory.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -352,7 +352,7 @@ The advantage of using symbolic links (symlinks) is that, when you later need to
 
 ## 3. Prepare YB-Master configuration files
 
-This step prepares the config files for the 3 masters. The config files need to, among other things, have the right information to indicate which Cloud/Region/AZ each master is in.
+This step prepares the configuration files for the three masters. The configuration files need to, among other things, have the right information to indicate which cloud, region, or availability zone each master is in.
 
 ### Create YB-Master1 configuration file
 
@@ -404,7 +404,7 @@ This step prepares the config files for the 3 masters. The config files need to,
 
 ### Verify
 
-Verify that all the configuration vars look right and environment vars were substituted correctly.
+Verify that all the configuration variables look right and environment variables were substituted correctly.
 
 ```sh
 for ip in $MASTER_NODES; do \
@@ -494,7 +494,7 @@ done
 
 ## 5. Start YB-Master servers
 
-Note: On the first time when all three YB-Master servers are started, it creates the cluster. If a YB-Master server is restarted (after cluster has been created) such as during a rolling upgrade of software it simply rejoins the cluster.
+Note: On the first time that all three YB-Master servers are started, it creates the cluster. If a YB-Master server is restarted (after cluster has been created), such as during a rolling upgrade of software, it simply rejoins the cluster.
 
 ```sh
 for ip in $MASTER_NODES; do \
@@ -607,7 +607,7 @@ replication_info {
 }
 ```
 
-Suppose your deployment is multi-region rather than multi-zone, one additional option to consider is to set a preferred location for all the tablet leaders using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
+Suppose your deployment is multi-region rather than multi-zone, one additional option to consider is to set a preferred location for all the tablet leaders using the [yb-admin set_preferred_zones](../../../../admin/yb-admin/#set-preferred-zones) command. For multi-row or multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
 
 The following command sets the preferred zone to `aws.us-west.us-west-2c`:
 
@@ -659,8 +659,8 @@ replication_info {
 
 ## 8. Test PostgreSQL-compatible YSQL API
 
-Connect to the cluster using the YSQL shell (`ysqlsh`) that comes pre-bundled in the `bin` directory.
-If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../../admin/ysqlsh/).
+Connect to the cluster using the YSQL shell (`ysqlsh`) that is installed in the `bin` directory.
+If you want to use `ysqlsh` from a different node, follow the steps on the [ysqlsh](../../../../admin/ysqlsh/) page.
 
 From any node, execute the following command.
 
@@ -698,7 +698,7 @@ Output should be the following:
 
 ### Using cqlsh
 
-Connect to the cluster using the YCQL shell (`cqlsh`) that comes pre-bundled in the `bin` directory. If you need to try `cqlsh` from a different node, you can download `cqlsh` using instructions documented [here](../../../../admin/cqlsh/).
+Connect to the cluster using the YCQL shell (`cqlsh`) that comes installed in the `bin` directory. If you want to use `cqlsh` from a different node, follow the steps found on the [cqlsh](../../../../admin/cqlsh/) page.
 
 From any node, execute the following command.
 

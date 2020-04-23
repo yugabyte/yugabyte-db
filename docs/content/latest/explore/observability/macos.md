@@ -7,6 +7,7 @@ aliases:
   - /latest/explore/cloud-native/observability/
   - /latest/explore/observability/
   - /latest/explore/observability-macos/
+  - /latest/explore/cloud-native/binary/observability/
 menu:
   latest:
     identifier: observability-1-macos
