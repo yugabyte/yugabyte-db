@@ -1,8 +1,8 @@
 ---
-title: What's new in 2.1.3
-headerTitle: What's new in 2.1.3
-linkTitle: What's new in 2.1.3
-description: What's new
+title: What's new in 2.1.5
+headerTitle: What's new in 2.1.5
+linkTitle: What's new in 2.1.5
+description: Enhancements, changes, and fixes.
 headcontent: What's new, resolved, and enhanced
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
@@ -13,19 +13,19 @@ menu:
     weight: 2589 
 ---
 
-Released April 09, 2020.
+Released April 22, 2020.
 
 ## Downloads
 
 ### Binaries
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.3.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.5.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp; 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.3.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.5.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -35,77 +35,64 @@ Released April 09, 2020.
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.3.0-b26
+docker pull yugabytedb/yugabyte:2.1.5.0-b26
 ```
 
 ## YSQL Changes
-* [YSQL] Parallel queries across tablets for SELECT COUNT|MIN|MAX|SUM (*|col_id) FROM. [#3624](https://github.com/yugabyte/yugabyte-db/issues/3624)
-* [YSQL] Fixed bug when processing PgsqlConditionPB::operands::column_id. [#3937](https://github.com/yugabyte/yugabyte-db/issues/3937)
-* [YSQL] IndexScan returns all rows when there is no match. [#3896](https://github.com/yugabyte/yugabyte-db/issues/3896)
-* [YSQL] Partial support for operator families, ALTER OPERATOR and ALTER EXTENSION. [#2711](https://github.com/yugabyte/yugabyte-db/issues/2711)
-* [YSQL] Handle transaction conflict status in case of parallel read operations. [#3991](https://github.com/yugabyte/yugabyte-db/issues/3991)
-* [YSQL][YCQL] Wrong results when using DocDB reverse scans with paging  [#4004](https://github.com/yugabyte/yugabyte-db/issues/4004)
-* [YSQL] Flush buffered operations before calculating query time. [#3696](https://github.com/yugabyte/yugabyte-db/issues/3696)
+
+- The `yugabyte-client` package now includes a `share` folder (containing `.sql` files) for use by Yugabyte Cloud and other remote client users. [#4264]
+- [YSQL] Find and list YSQL tables in `yb-admin` commands now uses table ID instead of table names. [#1687]
+- [YSQL] The `DROP INDEX` statement now ignores index backfill.
+- [YSQL] The `DROP INDEX` statement now ignores DocDB `NotFound` errors when it doesn't have table metadata, but postgres does. [#4249]
+- [YSQL] Force single row update prepare statements to use a custom plan that requires boundPrams to be sent for creation and execution. [#4219]
+- Do not return error in output of `yb-admin get_is_load_balancer_idle` if load balancer is busy. [#3949]
+- Log MVCC history on all invariant violations
+- colocation: use range keys by default. [#3034]
+- Minor fixes to TS `/utilz` endpoint and adding YSQL statements link [#4106]
+- [YSQL] Generate `scanspec` for range partitioned tables using condition expression [#4033]
+- Fix formatting issue with yb-admin output and master web UI [#4224]
+- Remove unnecessary read RPC requests to YB-TServer when query has LIMIT clause [#4040](https://github.com/yugabyte/yugabyte-db/issues/4040)
+- Colocation: Avoid excessive RPC requests for drop and truncate [#3387](https://github.com/yugabyte/yugabyte-db/issues/3387)
 
 ## YCQL
-* [YCQL] Send proper error when we query system.peers_v2 table. [#3862](https://github.com/yugabyte/yugabyte-db/issues/3862)
 
+- Create C++ CQL index test. [#4058]
 
 ## System improvements
-* Implement paging for index backfill. [#3879](https://github.com/yugabyte/yugabyte-db/issues/3879)
-* Rename indices to indexs in the context of index-backfill. [#3901](https://github.com/yugabyte/yugabyte-db/issues/3901)
-* Cleaner error reporting from process main. [#3876](https://github.com/yugabyte/yugabyte-db/issues/3876)
-* Fix determining the oldest SST file for intent cleanup. [#3917](https://github.com/yugabyte/yugabyte-db/issues/3917)
-* Fix the TS UI transactions link. [#3922](https://github.com/yugabyte/yugabyte-db/issues/3922)
-* Fix transaction status resolution with old peer version. [#3916](https://github.com/yugabyte/yugabyte-db/issues/3916)
-* Add nodiscard attribute to Status class. [#3918](https://github.com/yugabyte/yugabyte-db/issues/3918)
-* [docdb] Deregister callback for common mem trackers from root mem tracker in destructor of vector. [#3750](https://github.com/yugabyte/yugabyte-db/issues/3750)
-* First phase of transaction aware snapshot. [#1032](https://github.com/yugabyte/yugabyte-db/issues/1032)
-* [cdc] Fix data races in CDC Poller. [#3771](https://github.com/yugabyte/yugabyte-db/issues/3771)
-* [YSQL] Fix for PgGate shutdown race on shutdown_done flag. [#3779](https://github.com/yugabyte/yugabyte-db/issues/3779)
-* Initial multi node yugabyted version. [2057](https://github.com/yugabyte/yugabyte-db/issues/2057)
-* Enable checksum verification for meta blocks of encrypted files. [#3974](https://github.com/yugabyte/yugabyte-db/issues/3974)
-* Batch copy table operations that happen during create database. [#3743](https://github.com/yugabyte/yugabyte-db/issues/3743)
-* yb-admin: flush_table_by_id, compact_table_by_id [#3814](https://github.com/yugabyte/yugabyte-db/issues/3814)
-* [docdb][ysql] Reuse iterators during txn conflict resolution. [#3521](https://github.com/yugabyte/yugabyte-db/issues/3521)
-* Persist backfilling timestamp across master failures. [#3611](https://github.com/yugabyte/yugabyte-db/issues/3611)
-* Relax requirement on number of log segments in QLTransactionTest.PreserveLogs. [#3989](https://github.com/yugabyte/yugabyte-db/issues/3989)
-* Fix encryption format for newly created files. [#3976](https://github.com/yugabyte/yugabyte-db/issues/3976)
-* Move remote bootstrap call to OpenTablet to the threadpool. [#3012](https://github.com/yugabyte/yugabyte-db/issues/3012)
-* Support the ability to fetch the oldest timestamp record that is more recent than a specified time. [#4019](https://github.com/yugabyte/yugabyte-db/issues/4019)
-* A flag for veryfing meta block checksums. [#4023](https://github.com/yugabyte/yugabyte-db/issues/4023)
-* Stop cleaning intents SST files if previous file was not actually deleted. [#3917](https://github.com/yugabyte/yugabyte-db/issues/3917)
-* Fix MakeFuture utility. [#3781](https://github.com/yugabyte/yugabyte-db/issues/3781)
-* Restore transaction aware snapshot. [#1032](https://github.com/yugabyte/yugabyte-db/issues/1032)
-* Fix demo destroy behavior with Python 2.7.5. [#3993](https://github.com/yugabyte/yugabyte-db/issues/3993)
-* Adding health check for the Tserver. [#3540](https://github.com/yugabyte/yugabyte-db/issues/3540)
-* Don't block remote bootstrap service during session init. [#4035](https://github.com/yugabyte/yugabyte-db/issues/4035)
-* YBClient sbould wait for all sync operation to complete upon shutdown. [#3989](https://github.com/yugabyte/yugabyte-db/issues/3989)
-* Inherited permissions shouldn't replace granted permissions in the client's cache. [#4062](https://github.com/yugabyte/yugabyte-db/issues/4062)
-* Fix race condition on ParseTree::stale_. [#3083](https://github.com/yugabyte/yugabyte-db/issues/3083)
-* Handle RPC register failure in TransactionStatusResolver. [#4064](https://github.com/yugabyte/yugabyte-db/issues/4064)
-* Handle tablet not running in /transactions page. [#4071](https://github.com/yugabyte/yugabyte-db/issues/4071)
-* Propagate history cutoff from leader. [#1032](https://github.com/yugabyte/yugabyte-db/issues/1032)
-* Allow yb-admin to work with any non-leader master. [#4000](https://github.com/yugabyte/yugabyte-db/issues/4000)
-* Transaction aware snapshot persistence. [#1032](https://github.com/yugabyte/yugabyte-db/issues/1032)
-* Optimize returning results from tserver to postgres. [#3926](https://github.com/yugabyte/yugabyte-db/issues/3926)
-* Allow tracing recent operations in MvccManager. [#4108](https://github.com/yugabyte/yugabyte-db/issues/4108)
-* Persist ALTER ROLE changes to disk. [#4105](https://github.com/yugabyte/yugabyte-db/issues/4105)
-* colocation: cache db colocated in postgres [#4101](https://github.com/yugabyte/yugabyte-db/issues/4101)
 
+- Fixed expected restoration state in the `yb_backup.py` script.
+- Fixed tablet splitting for `SNAPSHOT_ISOLATION`. [#4169]
+- Updated `tablet-split-itest` to `test` for the successful restart after the split and fixed this scenario.
+- Update `yb-master` conf on new masters after edit and add node. [#3636, #4242, 4245]
+- Add backup-related code changes for snapshots [#3836], including:
+  - Change `yb-admin import_snapshot` to return an error if there are less new table names than backed up tables. For example, if you rename only two of three tables, an error will be generated.
+  - Change `yb-admin restore_snapshot` and `yb-admin list_snapshot` to output `restoration-id`. The `restoration-id` is useful for verifying completed restorations.
+- Fix access to reset tablet peer. [#3989]
+- Release and remove node should not error if SSH times out. [#4171]
+- Select the nodes with the highest index during a remove. [#3292]
+- GetSafeTime should wait instead of adding to safe time. [#3977]
+- Add retry logic to snapshot operations [#1032]
+- Add TLS encryption support to yb-ts-cli [GH PR PORT] [#2877]
+- Upgraded yugabyte-installation submodule. [#4234]
 
 ## Platform
-* Fix edit flow to show encryption at rest flags properly. [#3910](https://github.com/yugabyte/yugabyte-db/issues/3910)
-* Add support for disabling readonly users. [#3794](https://github.com/yugabyte/yugabyte-db/issues/3794)
-* Add API to get client certificate. [#3984](https://github.com/yugabyte/yugabyte-db/issues/3984)
-* Create GCP provider with shared VPC and allow specifying subnets per region. [#3383](https://github.com/yugabyte/yugabyte-db/issues/3383)
-* Update AWS price info && stop auto-running update script. 
-* Remove devops `subnetId` requirement when specifying a VPC when creating GCP provider. 
-* Add node ip to all created universes
-* Omit master servers from being counted toward total node/pod count. [#4009](https://github.com/yugabyte/yugabyte-db/issues/4009)
-* Update master selection logic. [#3999](https://github.com/yugabyte/yugabyte-db/issues/3999)
-* Prevent data move if there is no data to move. [#4046](https://github.com/yugabyte/yugabyte-db/issues/4046)
-* UI to set region-subnet mapping when creating GCP provider for existing VPCs. [#3381](https://github.com/yugabyte/yugabyte-db/issues/3381)
+
+- Fix for `yb_platform_backup.sh`.
+- Add back up and restore of YugaWare using `yb_platform_backup.sh` script. [#4208]
+- Change `yb_backup.py` to use the `yb-admin` changes for backup-related changes for snapshot (see [System improvements](#system-improvements) above).
+- Customize the SMTP server for sending alert messages using configuration entries for `smtpData` (`smtpServer`, `smtpPort`, `emailFrom`, `smtpUsername`, `smtpPassword`, `useSSL`, and `useTLS`). [#4201]
+Deprecated 'table_flush_timeout' in yb-admin create_snapshot command.
+- [YW] Add Azure logo to backup option tab.
+- ??? Use SAS token for Azure Blob backups.
+- [YW] Add toggle for IAM role in provider storage configuration. [#4204]
+- [YW] Add new toggle and text field that get displayed when AWS provider in create universe. [#4199]
+-
+
+
+- Add create and restore backup support for Azure Blob Storage with SAS tokens. [#3721]
+- Fix `eslint` errors and React errors in console due to impure render function
+- GCP providers may be created from host credentials + host VPC in all cases [#4177]
+- Follow up to 6dda06333f for fixing single table backups when specifying from Tables tab [#3680]
 
 {{< note title="Note" >}}
 

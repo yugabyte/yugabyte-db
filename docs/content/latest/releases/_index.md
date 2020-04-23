@@ -2,8 +2,8 @@
 title: Releases
 headerTitle: Releases
 linkTitle: Releases
-description: Release history
-headcontent: History of important YugabyteDB releases.
+description: What's new in the latest and earlier YugabyteDB releases.
+headcontent: What's new in the latest and earlier YugabyteDB releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
 menu:
@@ -21,7 +21,7 @@ menu:
         <div class="title">What's new</div>
       </div>
       <div class="body">
-        What's new, resolved issues, enhancements.
+        Enhancements, resolved issues, in the current release.
       </div>
     </a>
   </div>
