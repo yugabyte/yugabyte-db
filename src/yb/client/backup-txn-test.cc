@@ -41,6 +41,8 @@ using Snapshots = google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>;
 using ImportedSnapshotData = google::protobuf::RepeatedPtrField<
     master::ImportSnapshotMetaResponsePB::TableMetaPB>;
 
+constexpr auto kWaitTimeout = 15s;
+
 class BackupTxnTest : public TransactionTestBase {
  protected:
   void SetUp() override {
@@ -123,7 +125,7 @@ class BackupTxnTest : public TransactionTestBase {
 
     return WaitFor([this, &restoration_id] {
       return IsRestorationDone(restoration_id);
-    }, 10s * kTimeMultiplier, "Restoration done");
+    }, kWaitTimeout * kTimeMultiplier, "Restoration done");
   }
 
   Result<Snapshots> ListSnapshots(
@@ -196,7 +198,7 @@ class BackupTxnTest : public TransactionTestBase {
 
   CHECKED_STATUS WaitSnapshotInState(
       const TxnSnapshotId& snapshot_id, SysSnapshotEntryPB::State state,
-      MonoDelta duration = 5s) {
+      MonoDelta duration = kWaitTimeout) {
     auto state_name = SysSnapshotEntryPB::State_Name(state);
     SysSnapshotEntryPB::State last_state = SysSnapshotEntryPB::UNKNOWN;
     auto status = WaitFor([this, &snapshot_id, state, &last_state]() -> Result<bool> {
@@ -212,7 +214,8 @@ class BackupTxnTest : public TransactionTestBase {
     return status;
   }
 
-  CHECKED_STATUS WaitSnapshotDone(const TxnSnapshotId& snapshot_id, MonoDelta duration = 5s) {
+  CHECKED_STATUS WaitSnapshotDone(
+      const TxnSnapshotId& snapshot_id, MonoDelta duration = kWaitTimeout) {
     return WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, duration);
   }
 
@@ -331,14 +334,14 @@ TEST_F(BackupTxnTest, Delete) {
 
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
     auto snapshots = VERIFY_RESULT(ListSnapshots());
-    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
-    if (snapshots[0].entry().state() == SysSnapshotEntryPB::DELETED) {
+    if (snapshots.empty()) {
       return true;
     }
+    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
     SCHECK_EQ(snapshots[0].entry().state(), SysSnapshotEntryPB::DELETING, IllegalState,
               "Wrong snapshot state");
     return false;
-  }, 10s * kTimeMultiplier, "Complete delete snapshot"));
+  }, kWaitTimeout * kTimeMultiplier, "Complete delete snapshot"));
 
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
@@ -355,7 +358,7 @@ TEST_F(BackupTxnTest, Delete) {
       }
     }
     return true;
-  }, 10s * kTimeMultiplier, "Delete on tablets"));
+  }, kWaitTimeout * kTimeMultiplier, "Delete on tablets"));
 }
 
 TEST_F(BackupTxnTest, ImportMeta) {
@@ -373,7 +376,7 @@ TEST_F(BackupTxnTest, ImportMeta) {
 
   ASSERT_OK(WaitFor([this, import_data] {
     return IsSnapshotImportDone(import_data);
-  }, 10s * kTimeMultiplier, "Complete import snapshot"));
+  }, kWaitTimeout * kTimeMultiplier, "Complete import snapshot"));
 
   ASSERT_OK(table_.Open(kTableName, client_.get()));
 
@@ -430,6 +433,26 @@ TEST_F(BackupTxnTest, Failure) {
   ASSERT_OK(StartAllMasters(cluster_.get()));
 
   ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED, 30s));
+}
+
+TEST_F(BackupTxnTest, Restart) {
+  FLAGS_timestamp_history_retention_interval_sec =
+      std::chrono::duration_cast<std::chrono::seconds>(kWaitTimeout).count() *
+      kTimeMultiplier;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  FLAGS_flush_rocksdb_on_shutdown = false;
+
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+
+  ShutdownAllMasters(cluster_.get());
+
+  // Wait 2 rounds to be sure that very recent history cutoff committed.
+  std::this_thread::sleep_for((FLAGS_timestamp_history_retention_interval_sec + 1) * 1s);
+
+  ASSERT_OK(StartAllMasters(cluster_.get()));
+
+  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
 }
 
 } // namespace client

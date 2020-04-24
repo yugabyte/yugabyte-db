@@ -408,7 +408,7 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   }
 
   auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
-      entries, master_->clock()->MaxGlobalNow(), rpc->GetClientDeadline()));
+      entries, req.imported(), master_->clock()->MaxGlobalNow(), rpc->GetClientDeadline()));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   return Status::OK();
 }
@@ -464,8 +464,12 @@ Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRe
   if (!req->restoration_id().empty()) {
     restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(req->restoration_id()));
   }
+  TxnSnapshotId snapshot_id = TxnSnapshotId::Nil();
+  if (!req->snapshot_id().empty()) {
+    snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
+  }
 
-  return snapshot_coordinator_.ListRestorations(restoration_id, resp);
+  return snapshot_coordinator_.ListRestorations(restoration_id, snapshot_id, resp);
 }
 
 Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,

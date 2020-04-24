@@ -406,6 +406,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   // All indexes already are in the request. Do not add them twice.
   snapshot_req.set_add_indexes(false);
   snapshot_req.set_transaction_aware(true);
+  snapshot_req.set_imported(true);
   // Create new snapshot.
   rpc.Reset();
   RETURN_NOT_OK(master_backup_proxy_->CreateSnapshot(snapshot_req, &snapshot_resp, &rpc));
