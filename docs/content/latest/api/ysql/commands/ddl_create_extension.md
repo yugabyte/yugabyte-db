@@ -70,4 +70,4 @@ CREATE EXTENSION
 
 ## See also
 
-TODO
+- [Extensions page](../../extensions)
