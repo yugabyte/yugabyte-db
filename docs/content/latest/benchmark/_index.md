@@ -40,6 +40,18 @@ aliases:
       </div>
     </a>
   </div>
+ 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="sysbench-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Sysbench</div>
+      </div>
+      <div class="body">
+        Performance test using Sysbench.
+      </div>
+    </a>
+  </div>
   
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="key-value-workload-ycql/">
