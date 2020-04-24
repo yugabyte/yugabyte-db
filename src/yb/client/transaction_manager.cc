@@ -77,19 +77,13 @@ class PickStatusTabletTask {
 
   void Run() {
     // TODO(dtxn) async
-    std::vector<TabletId> tablets;
-    auto status = client_->GetTablets(kTransactionTableName, 0, &tablets, /* ranges */ nullptr);
-    if (!status.ok()) {
-      VLOG(1) << "Failed to get tablets of txn status table: " << status;
-      callback_(status);
+    auto tablets_result = GetTransactionTableTablets();
+    if (!tablets_result) {
+      VLOG(1) << "Failed to get tablets of txn status table: " << tablets_result.status();
+      callback_(tablets_result.status());
       return;
     }
-    if (tablets.empty()) {
-      Status s = STATUS_FORMAT(IllegalState, "No tablets in table $0", kTransactionTableName);
-      VLOG(1) << s;
-      callback_(s);
-      return;
-    }
+    const auto tablets = std::move(*tablets_result);
     auto expected = TransactionTableStatus::kExists;
     if (table_state_->status.compare_exchange_strong(
         expected, TransactionTableStatus::kUpdating, std::memory_order_acq_rel)) {
@@ -109,6 +103,27 @@ class PickStatusTabletTask {
   }
 
  private:
+  Result<std::vector<TabletId>> GetTransactionTableTablets() {
+    std::vector<TabletId> tablets;
+    if (!FetchTransactionTableTablets(&tablets).ok()) {
+      // Tablets for txn status table are not ready yet.
+      // Wait for table creation completion and try again.
+      RETURN_NOT_OK(client_->WaitForCreateTableToFinish(kTransactionTableName));
+      RETURN_NOT_OK(FetchTransactionTableTablets(&tablets));
+    }
+    SCHECK(!tablets.empty(), IllegalState, Format("No tablets in table $0", kTransactionTableName));
+    return std::move(tablets);
+  }
+
+  CHECKED_STATUS FetchTransactionTableTablets(std::vector<TabletId>* tablets) {
+    return client_->GetTablets(kTransactionTableName,
+                               0 /* max_tablets */,
+                               tablets,
+                               nullptr /* ranges */,
+                               nullptr /* locations */,
+                               false /* update_tablets_cache */,
+                               true /* require_tablets_running */);
+  }
 
   YBClient* client_;
   TransactionTableState* table_state_;

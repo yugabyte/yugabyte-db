@@ -272,6 +272,9 @@ class YBClient {
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress);
 
+  // Wait for create table is not in progress.
+  CHECKED_STATUS WaitForCreateTableToFinish(const YBTableName& table_name);
+
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
   CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
@@ -496,7 +499,8 @@ class YBClient {
                             std::vector<TabletId>* tablet_uuids,
                             std::vector<std::string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations = nullptr,
-                            bool update_tablets_cache = false);
+                            bool update_tablets_cache = false,
+                            bool require_tablets_running = false);
 
 
   Status GetTabletsFromTableId(
@@ -505,7 +509,8 @@ class YBClient {
 
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
-                            google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
+                            google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
+                            bool require_tablets_running = false);
 
   CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
                                    master::TabletLocationsPB* tablet_location);

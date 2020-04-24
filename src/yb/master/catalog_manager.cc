@@ -753,8 +753,8 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
       // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
       // the number of primary (non-read-replica) tablet servers until that happens.
       while (true) {
-        Status s = CreateTransactionsStatusTableIfNeeded(/* rpc */ nullptr);
-        if (s.ok() || s.IsAlreadyPresent()) {
+        const auto s = CreateTransactionsStatusTableIfNeeded(/* rpc */ nullptr);
+        if (s.ok()) {
           break;
         }
         LOG(WARNING) << "Failed creating transaction status table, waiting: " << s;

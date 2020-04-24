@@ -206,6 +206,9 @@ DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC 
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
 
+DEFINE_test_flag(int32, TEST_txn_status_table_tablet_creation_delay_ms, 0,
+                 "Extra delay to slowdown creation of transaction status table tablet.");
+
 namespace yb {
 namespace tserver {
 
@@ -966,6 +969,11 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
                                           CreateTabletResponsePB* resp,
                                           rpc::RpcContext context) {
+  if (PREDICT_FALSE(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms > 0 &&
+                    req->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE)) {
+    std::this_thread::sleep_for(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms * 1ms);
+  }
+
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
     return;
   }
