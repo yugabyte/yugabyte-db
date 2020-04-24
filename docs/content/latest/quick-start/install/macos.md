@@ -128,16 +128,16 @@ showAsideToc: true
 Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-2.1.3.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-2.1.5.0-darwin.tar.gz
 ```
 
 To unpack the archive file and change to the YugabyteDB home directory, run the following command.
 
 ```sh
-$ tar xvfz yugabyte-2.1.3.0-darwin.tar.gz && cd yugabyte-2.1.3.0/
+$ tar xvfz yugabyte-2.1.5.0-darwin.tar.gz && cd yugabyte-2.1.5.0/
 ```
 
-## Configure 
+## Configure
 
 Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
 

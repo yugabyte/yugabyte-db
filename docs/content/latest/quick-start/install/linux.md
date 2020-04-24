@@ -83,19 +83,18 @@ showAsideToc: true
 you can soon end up creating a large number of files in the current shell. 
 Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
 
-
 ## Download YugabyteDB
 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.1.3.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.1.5.0-linux.tar.gz
     ```
 
 2. Extract the YugabyteDB package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.1.3.0-linux.tar.gz && cd yugabyte-2.1.3.0/
+    $ tar xvfz yugabyte-2.1.5.0-linux.tar.gz && cd yugabyte-2.1.5.0/
     ```
 
 ## Configure YugabyteDB
