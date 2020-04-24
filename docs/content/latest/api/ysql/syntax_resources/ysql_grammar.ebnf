@@ -380,6 +380,13 @@ create_domain ::= 'CREATE' 'DOMAIN' name [ 'AS' ] data_type
 domain_constraint ::= [ 'CONSTRAINT' constraint_name ]
     ( 'NOT' 'NULL' | 'NULL' | 'CHECK' '(' expression ')' ) ;
 
+(* CREATE EXTENSION *)
+create_extension = 'CREATE' 'EXTENSION' [ 'IF' 'NOT' 'EXISTS' ]
+                   extension_name [ 'WITH' ]
+                   [ 'SCHEMA' schema_name ]
+                   [ 'VERSION' version ]
+                   [ 'CASCADE' ] ;
+
 (* CREATE FUNCTION *)
 create_function =  'CREATE' [ 'OR' 'REPLACE' ] 'FUNCTION'
                    name '(' [ arg_decl { ',' arg_decl } ] ')' \
@@ -1193,3 +1200,5 @@ storage_type = data_type ;
 using_expression = expression ;
 check_expression = expression ;
 new_name = name ;
+
+version = '<text literal>' ;

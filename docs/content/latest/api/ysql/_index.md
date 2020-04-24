@@ -39,6 +39,7 @@ DDL statements define the structures in a database, change their definitions, as
 | [`CREATE AGGREGATE`](commands/ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE CAST`](commands/ddl_create_cast) | Create a new cast |
 | [`CREATE DATABASE`](commands/ddl_create_database) | Create a new database |
+| [`CREATE EXTENSION`](commands/ddl_create_extension) | Load an extension |
 | [`CREATE FUNCTION`](commands/ddl_create_function) | Create a new function |
 | [`CREATE INDEX`](commands/ddl_create_index) | Create a new index |
 | [`CREATE OPERATOR`](commands/ddl_create_operator) | Create a new operator |

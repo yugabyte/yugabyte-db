@@ -37,6 +37,7 @@ Yugabyte Structured Query Language (YSQL), the PostgreSQL-compatible SQL dialect
 | [`CREATE CAST`](ddl_create_cast) | Create a new cast |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
+| [`CREATE EXTENSION`](ddl_create_extension) | Load an extension |
 | [`CREATE FUNCTION`](ddl_create_function) | Create a new function |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
 | [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
