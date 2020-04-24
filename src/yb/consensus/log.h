@@ -106,7 +106,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // After a successful Open() the Log is ready to receive entries.
   static CHECKED_STATUS Open(const LogOptions &options,
                              const std::string& tablet_id,
-                             const std::string& tablet_wal_path,
+                             const std::string& wal_dir,
                              const std::string& peer_uuid,
                              const Schema& schema,
                              uint32_t schema_version,
@@ -169,7 +169,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // REQUIRES: The Log must be closed.
   static CHECKED_STATUS DeleteOnDiskData(Env* env,
                                          const std::string& tablet_id,
-                                         const std::string& tablet_wal_path,
+                                         const std::string& wal_dir,
                                          const std::string& peer_uuid);
 
   // Returns a reader that is able to read through the previous segments. The reader pointer is
@@ -314,8 +314,7 @@ class Log : public RefCountedThreadSafe<Log> {
     kAllocationFinished // Next segment ready
   };
 
-  Log(LogOptions options, std::string log_path,
-      std::string tablet_id, std::string tablet_wal_path, std::string peer_uuid,
+  Log(LogOptions options, std::string wal_dir, std::string tablet_id, std::string peer_uuid,
       const Schema& schema, uint32_t schema_version,
       const scoped_refptr<MetricEntity>& metric_entity, ThreadPool* append_thread_pool);
 
@@ -381,16 +380,15 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   LogOptions options_;
-  std::string log_dir_;
+
+  // The dir path where the write-ahead log for this tablet is stored.
+  std::string wal_dir_;
 
   // The ID of the tablet this log is dedicated to.
   std::string tablet_id_;
 
   // Peer this log is dedicated to.
   std::string peer_uuid_;
-
-  // The path where the write-ahead log for this tablet is stored.
-  std::string tablet_wal_path_;
 
   // Lock to protect modifications to schema_ and schema_version_.
   mutable rw_spinlock schema_lock_;

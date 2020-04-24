@@ -394,7 +394,7 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   // because it has a cached header.
   std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_->env(),
-                            make_scoped_refptr(new LogIndex(log_->log_dir_)),
+                            make_scoped_refptr(new LogIndex(log_->wal_dir_)),
                             kTestTablet, tablet_wal_path_, fs_manager_->uuid(), nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
