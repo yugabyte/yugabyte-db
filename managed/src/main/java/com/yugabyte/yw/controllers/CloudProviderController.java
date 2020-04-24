@@ -644,12 +644,18 @@ public class CloudProviderController extends AuthenticatedController {
         if (!shouldUseHostCredentials && contents != null) {
           config = Json.fromJson(contents, Map.class);
         }
+
         // Default to not using host VPC.
         boolean shouldUseHostVpc = configNode.has("use_host_vpc")
                                      && configNode.get("use_host_vpc").asBoolean();
         contents = configNode.get("project_id");
         if (!shouldUseHostVpc && contents != null && !contents.textValue().isEmpty()) {
           config.put("project_id", contents.textValue());
+        }
+
+        contents = configNode.get("YB_FIREWALL_TAGS");
+        if (contents != null && !contents.textValue().isEmpty()) {
+          config.put("YB_FIREWALL_TAGS", contents.textValue());
         }
       } else {
         config = Json.fromJson(configNode, Map.class);
