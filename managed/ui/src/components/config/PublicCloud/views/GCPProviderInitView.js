@@ -84,6 +84,9 @@ class GCPProviderInitView extends Component {
         perRegionMetadata[item.region] = { "subnetId": item.subnet}
       );
     }
+    if (isNonEmptyString(vals.firewall_tags)) {
+      gcpCreateConfig["YB_FIREWALL_TAGS"] = vals.firewall_tags;
+    }
     const providerName = vals.accountName;
     const configText = vals.gcpConfig;
     if (vals.credential_input === "local_service_account") {
@@ -249,6 +252,15 @@ class GCPProviderInitView extends Component {
                     <Field name="network_setup" component={YBSelectWithLabel}
                       options={network_setup_options}
                       onInputChanged={this.networkSetupChanged} />
+                  </Col>
+                </Row>
+                <Row>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Firewall Tags</div>
+                  </Col>
+                  <Col lg={7}>
+                  <Field name="firewall_tags" placeHolder="my-firewall-tag-1,my-firewall-tag-2"
+                           component={YBTextInputWithLabel} className={"gcp-provider-input-field"}/>
                   </Col>
                 </Row>
                 {gcpProjectField}
