@@ -14,13 +14,20 @@ aliases:
 showAsideToc: true
 isTocNested: true
 ---
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-{{< note title="Note" >}}
+  <li >
+    <a href="/latest/benchmark/tpcc-ysql/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
 
-This is a fork of the sysbench utility with a few additions to better reflect
-the database's distributed nature.
+</ul>
 
-{{< /note >}}
+Sysbench is a popular tool for benchmarking system capabilities like CPU, memory and I/O as well as databases like Postgres and MySQL.
+Follow the steps below to run sysbench against YugabyteDB.
+The version we are using is forked from the [official](https://github.com/akopytov/sysbench) version with a few additions to better reflect YugabyteDB's distributed nature.
 
 ## Step 1. Get Sysbench.
 
