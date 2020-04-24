@@ -104,6 +104,12 @@ DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
 
+DEFINE_bool(enable_consensus_exponential_backoff, false,
+            "Whether exponential backoff based on number of retransmissions at tablet leader "
+            "for number of entries to replicate to lagging follower is enabled.");
+TAG_FLAG(enable_consensus_exponential_backoff, advanced);
+TAG_FLAG(enable_consensus_exponential_backoff, runtime);
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
@@ -481,7 +487,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     *needs_remote_bootstrap = peer->needs_remote_bootstrap;
 
     next_index = peer->next_index;
-    if (peer->last_num_messages_sent >= 0) {
+    if (FLAGS_enable_consensus_exponential_backoff && peer->last_num_messages_sent >= 0) {
       // Previous request to peer has not been acked. Reduce number of entries to be sent
       // in this attempt using exponential backoff. Note that to_index is inclusive.
       to_index = next_index + std::max<int64_t>((peer->last_num_messages_sent >> 1) - 1, 0);
