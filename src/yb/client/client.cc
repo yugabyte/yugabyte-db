@@ -448,6 +448,11 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
                                         create_in_progress);
 }
 
+Status YBClient::WaitForCreateTableToFinish(const YBTableName& table_name) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->WaitForCreateTableToFinish(this, table_name, "" /* table_id */, deadline);
+}
+
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
   return TruncateTables({table_id}, wait);
 }
@@ -1125,7 +1130,8 @@ Status YBClient::GetTabletsFromTableId(const string& table_id,
 
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
-                            RepeatedPtrField<TabletLocationsPB>* tablets) {
+                            RepeatedPtrField<TabletLocationsPB>* tablets,
+                            bool require_tablets_running) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   if (table_name.has_table()) {
@@ -1139,6 +1145,7 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   } else if (max_tablets > 0) {
     req.set_max_returned_locations(max_tablets);
   }
+  req.set_require_tablets_running(require_tablets_running);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
   return Status::OK();
@@ -1165,9 +1172,10 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             vector<TabletId>* tablet_uuids,
                             vector<string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations,
-                            bool update_tablets_cache) {
+                            bool update_tablets_cache,
+                            bool require_tablets_running) {
   RepeatedPtrField<TabletLocationsPB> tablets;
-  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets));
+  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, require_tablets_running));
   tablet_uuids->reserve(tablets.size());
   if (ranges != nullptr) {
     ranges->reserve(tablets.size());
