@@ -750,7 +750,8 @@ TEST_F(RaftConsensusITest, TestCatchupAfterOpsEvicted) {
 // to replicate to an unresponsive follower.
 TEST_F(RaftConsensusITest, TestCatchupOpsReadFromDisk) {
   vector<string> extra_flags = {
-      "--log_cache_size_limit_mb=1"s
+      "--log_cache_size_limit_mb=1"s,
+      "--enable_consensus_exponential_backoff=true"s
   };
   ASSERT_NO_FATALS(BuildAndStart(extra_flags));
   TServerDetails* replica = tablet_replicas_.begin()->second;
