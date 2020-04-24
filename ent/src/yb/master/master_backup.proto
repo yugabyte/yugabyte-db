@@ -61,6 +61,10 @@ message CreateSnapshotRequestPB {
 
   // Automatically add table indexes into the snapshot.
   optional bool add_indexes = 3 [default = false];
+
+  // Interpet this snapshot as imported:
+  // Snapshot will be created as COMPLETE and no tablet operations will be performed.
+  optional bool imported = 4;
 }
 
 message CreateSnapshotResponsePB {

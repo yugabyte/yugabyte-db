@@ -56,6 +56,8 @@ message TabletSnapshotOpRequestPB {
 
   // Extra data assigned for this snapshot request, so instance it could contain SysRowEntries.
   google.protobuf.Any extra_data = 8;
+
+  bool imported = 9;
 }
 
 message TabletSnapshotOpResponsePB {

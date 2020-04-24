@@ -74,7 +74,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
-      const SysRowEntries& entries, HybridTime snapshot_hybrid_time, CoarseTimePoint deadline);
+      const SysRowEntries& entries, bool imported, HybridTime snapshot_hybrid_time,
+      CoarseTimePoint deadline);
 
   CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
 
@@ -90,7 +91,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId& snapshot_id);
 
   CHECKED_STATUS ListRestorations(
-      const TxnSnapshotRestorationId& snapshot_id, ListSnapshotRestorationsResponsePB* resp);
+      const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
+      ListSnapshotRestorationsResponsePB* resp);
 
   // Load snapshot data from system catalog RocksDB entry.
   CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data);

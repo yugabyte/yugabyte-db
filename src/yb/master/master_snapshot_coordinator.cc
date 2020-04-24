@@ -91,13 +91,18 @@ class StateWithTablets {
 
   virtual ~StateWithTablets() = default;
 
+  template <class TabletIds>
+  void InitTabletIds(const TabletIds& tablet_ids, SysSnapshotEntryPB::State state) {
+    for (const auto& id : tablet_ids) {
+      tablets_.emplace(id, state);
+    }
+    num_tablets_in_initial_state_ = state == initial_state_ ? tablet_ids.size() : 0;
+  }
+
   // Initialize tablet states using tablet ids, i.e. put all tablets in initial state.
   template <class TabletIds>
   void InitTabletIds(const TabletIds& tablet_ids) {
-    for (const auto& id : tablet_ids) {
-      tablets_.emplace(id, initial_state_);
-    }
-    num_tablets_in_initial_state_ = tablet_ids.size();
+    InitTabletIds(tablet_ids, initial_state_);
   }
 
   // Initialize tablet states from serialized data.
@@ -192,6 +197,8 @@ class StateWithTablets {
   }
 
   void Done(const TabletId& tablet_id, const Status& status) {
+    VLOG(4) << __func__ << "(" << tablet_id << ", " << status << ")";
+
     auto it = tablets_.find(tablet_id);
     if (it == tablets_.end()) {
       LOG(DFATAL) << "Finished " << InitialStateName() <<  " snapshot at unknown tablet "
@@ -200,7 +207,8 @@ class StateWithTablets {
     }
     if (!it->running) {
       LOG(DFATAL) << "Finished " << InitialStateName() <<  " snapshot at " << tablet_id
-                  << " that is not in running state";
+                  << " that is not running and in state "
+                  << SysSnapshotEntryPB::State_Name(it->state) << ": " << status;
       return;
     }
     tablets_.modify(it, [](TabletData& data) { data.running = false; });
@@ -321,7 +329,8 @@ class SnapshotState : public StateWithTablets {
       const tserver::TabletSnapshotOpRequestPB& request)
       : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
         id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()) {
-    InitTabletIds(request.tablet_id());
+    InitTabletIds(request.tablet_id(),
+                  request.imported() ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
     request.extra_data().UnpackTo(&entries_);
   }
 
@@ -332,6 +341,10 @@ class SnapshotState : public StateWithTablets {
         id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()) {
     InitTablets(entry.tablet_snapshots());
     *entries_.mutable_entries() = entry.entries();
+  }
+
+  const TxnSnapshotId& id() const {
+    return id_;
   }
 
   HybridTime snapshot_hybrid_time() const {
@@ -411,8 +424,16 @@ class RestorationState : public StateWithTablets {
       SnapshotCoordinatorContext* context, const TxnSnapshotRestorationId& restoration_id,
       SnapshotState* snapshot)
       : StateWithTablets(context, SysSnapshotEntryPB::RESTORING),
-        restoration_id_(restoration_id) {
+        restoration_id_(restoration_id), snapshot_id_(snapshot->id()) {
     InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
+  }
+
+  const TxnSnapshotRestorationId& restoration_id() const {
+    return restoration_id_;
+  }
+
+  const TxnSnapshotId& snapshot_id() const {
+    return snapshot_id_;
   }
 
   CHECKED_STATUS ToPB(SnapshotInfoPB* out) {
@@ -440,6 +461,7 @@ class RestorationState : public StateWithTablets {
   }
 
   TxnSnapshotRestorationId restoration_id_;
+  TxnSnapshotId snapshot_id_;
 };
 
 struct NoOp {
@@ -523,7 +545,8 @@ class MasterSnapshotCoordinator::Impl {
       : context_(*context), poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
-      const SysRowEntries& entries, HybridTime snapshot_hybrid_time, CoarseTimePoint deadline) {
+      const SysRowEntries& entries, bool imported, HybridTime snapshot_hybrid_time,
+      CoarseTimePoint deadline) {
     auto synchronizer = std::make_shared<Synchronizer>();
     auto operation_state = std::make_unique<tablet::SnapshotOperationState>(/* tablet= */ nullptr);
     auto request = operation_state->AllocateRequest();
@@ -538,6 +561,7 @@ class MasterSnapshotCoordinator::Impl {
     request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
     auto snapshot_id = TxnSnapshotId::GenerateRandom();
     request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    request->set_imported(imported);
 
     request->mutable_extra_data()->PackFrom(entries);
 
@@ -555,6 +579,9 @@ class MasterSnapshotCoordinator::Impl {
       int64_t leader_term, const tablet::SnapshotOperationState& state) {
     // TODO(txn_backup) retain logs with this operation while doing snapshot
     auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(state.request()->snapshot_id()));
+
+    VLOG(1) << __func__ << "(" << id << ", " << state.ToString() << ")";
+
     auto snapshot = std::make_unique<SnapshotState>(&context_, id, *state.request());
 
     TabletSnapshotOperations operations;
@@ -580,17 +607,23 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data) {
+    VLOG(1) << __func__ << "(" << snapshot_id << ", " << data.ShortDebugString() << ")";
+
     auto snapshot = std::make_unique<SnapshotState>(&context_, snapshot_id, data);
 
     std::lock_guard<std::mutex> lock(mutex_);
-    auto emplace_result = snapshots_.emplace(snapshot_id, std::move(snapshot));
-    if (!emplace_result.second) {
+    auto it = snapshots_.find(snapshot_id);
+    if (it == snapshots_.end()) {
+      snapshots_.emplace(snapshot_id, std::move(snapshot));
+    } else {
       // During sys catalog bootstrap we replay WAL, that could contain "create snapshot" operation.
-      // In this case we add snapshot to snapshots_ and write it data into RocksDB.
-      // Bootstrap sys catalog tries to load all entries from RocksDB, so could find recently
-      // added entry and try to Load it.
-      // So we could just ignore it in this case.
-      return Status::OK();
+      // After that we load sys catalog, that contain those snapshots operations.
+      // So we could see that same snapshot operation from 2 sources.
+      //   1) Raft logs
+      //   2) Stored in system catalog
+      //
+      // We should use latter, because they could contain updates.
+      it->second = std::move(snapshot);
     }
 
     return Status::OK();
@@ -600,7 +633,11 @@ class MasterSnapshotCoordinator::Impl {
     std::lock_guard<std::mutex> lock(mutex_);
     if (snapshot_id.IsNil()) {
       for (const auto& p : snapshots_) {
-        RETURN_NOT_OK(p.second->ToPB(resp->add_snapshots()));
+        // Do not list deleted snapshots.
+        auto aggreaged_state = p.second->AggregatedState();
+        if (!aggreaged_state.ok() || *aggreaged_state != SysSnapshotEntryPB::DELETED) {
+          RETURN_NOT_OK(p.second->ToPB(resp->add_snapshots()));
+        }
       }
       return Status::OK();
     }
@@ -655,11 +692,14 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   CHECKED_STATUS ListRestorations(
-      const TxnSnapshotRestorationId& restoration_id, ListSnapshotRestorationsResponsePB* resp) {
+      const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
+      ListSnapshotRestorationsResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (restoration_id.IsNil()) {
+    if (!restoration_id) {
       for (const auto& p : restorations_) {
-        RETURN_NOT_OK(p.second->ToPB(resp->add_restorations()));
+        if (!snapshot_id || p.second->snapshot_id() == snapshot_id) {
+          RETURN_NOT_OK(p.second->ToPB(resp->add_restorations()));
+        }
       }
       return Status::OK();
     }
@@ -788,8 +828,9 @@ MasterSnapshotCoordinator::MasterSnapshotCoordinator(SnapshotCoordinatorContext*
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}
 
 Result<TxnSnapshotId> MasterSnapshotCoordinator::Create(
-    const SysRowEntries& entries, HybridTime snapshot_hybrid_time, CoarseTimePoint deadline) {
-  return impl_->Create(entries, snapshot_hybrid_time, deadline);
+    const SysRowEntries& entries, bool imported, HybridTime snapshot_hybrid_time,
+    CoarseTimePoint deadline) {
+  return impl_->Create(entries, imported, snapshot_hybrid_time, deadline);
 }
 
 Status MasterSnapshotCoordinator::CreateReplicated(
@@ -818,8 +859,9 @@ Result<TxnSnapshotRestorationId> MasterSnapshotCoordinator::Restore(
 }
 
 Status MasterSnapshotCoordinator::ListRestorations(
-    const TxnSnapshotRestorationId& restoration_id, ListSnapshotRestorationsResponsePB* resp) {
-  return impl_->ListRestorations(restoration_id, resp);
+    const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
+    ListSnapshotRestorationsResponsePB* resp) {
+  return impl_->ListRestorations(restoration_id, snapshot_id, resp);
 }
 
 Status MasterSnapshotCoordinator::Load(const TxnSnapshotId& id, const SysSnapshotEntryPB& data) {
