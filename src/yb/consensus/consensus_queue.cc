@@ -559,7 +559,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     *msgs_holder = ReplicateMsgsHolder(
         request->mutable_ops(), std::move(result->messages), std::move(consumption));
 
-    if (propagated_safe_time && !result->have_more_messages) {
+    if (propagated_safe_time && !result->have_more_messages && to_index == 0) {
       // Get the current local safe time on the leader and propagate it to the follower.
       request->set_propagated_safe_time(propagated_safe_time.ToUint64());
     } else {
