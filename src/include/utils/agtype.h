@@ -344,6 +344,15 @@ typedef struct agtype_parse_state
     agtype_value cont_val;
     Size size;
     struct agtype_parse_state *next;
+    /*
+     * This holds the last append_value scalar copy or the last append_element
+     * scalar copy - it can only be one of the two. It is needed because when
+     * an object or list is built, the upper level object or list will get a
+     * copy of the result value on close. Our routines modify the value after
+     * close and need this to update that value if necessary. Which is the
+     * case for some casts.
+     */
+    agtype_value *last_updated_value;
 } agtype_parse_state;
 
 /*

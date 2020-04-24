@@ -53,7 +53,9 @@ static inline void agtype_lex(agtype_lex_context *lex);
 static inline void agtype_lex_string(agtype_lex_context *lex);
 static inline void agtype_lex_number(agtype_lex_context *lex, char *s,
                                      bool *num_err, int *total_len);
-static void parse_annotation(agtype_lex_context *lex, void *func, char **annotation);
+static void parse_scalar_annotation(agtype_lex_context *lex, void *func,
+                                    char **annotation);
+static void parse_annotation(agtype_lex_context *lex, agtype_sem_action *sem);
 static inline void parse_scalar(agtype_lex_context *lex,
                                 agtype_sem_action *sem);
 static void parse_object_field(agtype_lex_context *lex,
@@ -239,7 +241,8 @@ void parse_agtype(agtype_lex_context *lex, agtype_sem_action *sem)
     lex_expect(AGTYPE_PARSE_END, lex, AGTYPE_TOKEN_END);
 }
 
-static void parse_annotation(agtype_lex_context *lex, void *func, char **annotation)
+static void parse_scalar_annotation(agtype_lex_context *lex, void *func,
+                                    char **annotation)
 {
     /* check next token for annotations (typecasts, etc.) */
     if (lex_peek(lex) == AGTYPE_TOKEN_ANNOTATION)
@@ -258,6 +261,32 @@ static void parse_annotation(agtype_lex_context *lex, void *func, char **annotat
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                      errmsg("invalid value for annotation")));
+    }
+}
+
+static void parse_annotation(agtype_lex_context *lex, agtype_sem_action *sem)
+{
+    char *annotation = NULL;
+    agtype_annotation_action afunc = sem->agtype_annotation;
+
+    /* check next token for annotations (typecasts, etc.) */
+    if (lex_peek(lex) == AGTYPE_TOKEN_ANNOTATION)
+    {
+        /* eat the annotation token */
+        lex_accept(lex, AGTYPE_TOKEN_ANNOTATION, NULL);
+        if (lex_peek(lex) == AGTYPE_TOKEN_IDENTIFIER)
+        {
+            /* eat the identifier token and get the annotation value */
+            lex_accept(lex, AGTYPE_TOKEN_IDENTIFIER, &annotation);
+        }
+        else
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("invalid value for annotation")));
+
+        /* pass to annotation callback */
+        if (afunc != NULL)
+            (*afunc)(sem->semstate, annotation);
     }
 }
 
@@ -306,8 +335,8 @@ static inline void parse_scalar(agtype_lex_context *lex,
         report_parse_error(AGTYPE_PARSE_VALUE, lex);
     }
 
-    /* parse annotations (typecasts, etc.) */
-    parse_annotation(lex, sfunc, &annotation);
+    /* parse annotations (typecasts) */
+    parse_scalar_annotation(lex, sfunc, &annotation);
 
     if (sfunc != NULL)
         (*sfunc)(sem->semstate, val, tok, annotation);
@@ -367,7 +396,6 @@ static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem)
     agtype_struct_action ostart = sem->object_start;
     agtype_struct_action oend = sem->object_end;
     agtype_token_type tok;
-    char *annotation = NULL;
 
     check_stack_depth();
 
@@ -404,16 +432,11 @@ static void parse_object(agtype_lex_context *lex, agtype_sem_action *sem)
 
     lex->lex_level--;
 
-    /* parse annotations (typecasts, etc.) */
-    parse_annotation(lex, oend, &annotation);
-
-    if (annotation != NULL)
-         ereport(ERROR,
-                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                  errmsg("annotations not supported for objects")));
-
     if (oend != NULL)
         (*oend)(sem->semstate);
+
+    /* parse annotations (typecasts) */
+    parse_annotation(lex, sem);
 }
 
 static void parse_array_element(agtype_lex_context *lex,
@@ -455,7 +478,6 @@ static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem)
      */
     agtype_struct_action astart = sem->array_start;
     agtype_struct_action aend = sem->array_end;
-    char *annotation = NULL;
 
     check_stack_depth();
 
@@ -483,16 +505,11 @@ static void parse_array(agtype_lex_context *lex, agtype_sem_action *sem)
 
     lex->lex_level--;
 
-    /* parse annotations (typecasts, etc.) */
-    parse_annotation(lex, aend, &annotation);
-
-    if (annotation != NULL)
-         ereport(ERROR,
-                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                  errmsg("annotations not supported for arrays")));
-
     if (aend != NULL)
         (*aend)(sem->semstate);
+
+    /* parse annotations (typecasts) */
+    parse_annotation(lex, sem);
 }
 
 /*

@@ -80,6 +80,7 @@ typedef void (*agtype_aelem_action)(void *state, bool isnull);
 typedef void (*agtype_scalar_action)(void *state, char *token,
                                      agtype_token_type tokentype,
                                      char *annotation);
+typedef void (*agtype_annotation_action)(void *state, char *annotation);
 
 /*
  * Semantic Action structure for use in parsing agtype.
@@ -104,6 +105,8 @@ typedef struct agtype_sem_action
     agtype_aelem_action array_element_start;
     agtype_aelem_action array_element_end;
     agtype_scalar_action scalar;
+    /* annotations (typecast) */
+    agtype_annotation_action agtype_annotation;
 } agtype_sem_action;
 
 /*

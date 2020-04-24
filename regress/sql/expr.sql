@@ -365,6 +365,9 @@ SELECT * FROM cypher('expr', $$
 RETURN 2.71::numeric
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
+RETURN '2.71'::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
 RETURN (2.71::numeric)::numeric
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
@@ -388,6 +391,9 @@ $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
 RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::numeric
 $$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2::numeric, null])
+$$) AS r(result agtype);
 SELECT agtype_typecast_numeric('null'::agtype);
 SELECT agtype_typecast_numeric(null);
 -- these should fail
@@ -400,6 +406,13 @@ $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
 RETURN ('infinity'::numeric)::numeric
 $$) AS r(result agtype);
+-- verify that output can be accepted and reproduced correctly via agtype_in
+SELECT agtype_in('2.71::numeric');
+SELECT agtype_in('[0, {"e": 2.718281::numeric, "one": 1, "pie": 3.1415927}, 2::numeric, null]');
+SELECT * FROM cypher('expr', $$
+RETURN (['NaN'::numeric, {one: 1, pie: 3.1415927, nan: 'nAn'::numeric}, 2::numeric, null])
+$$) AS r(result agtype);
+SELECT agtype_in('[NaN::numeric, {"nan": NaN::numeric, "one": 1, "pie": 3.1415927}, 2::numeric, null]');
 
 --
 -- Test from an agtype value to agtype float
@@ -450,6 +463,77 @@ $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
 RETURN 'infi'::float
 $$) AS r(result agtype);
+-- verify that output can be accepted and reproduced correctly via agtype_in
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1::float, pie: 3.1415927, e: 2.718281::numeric}, 2::numeric, null])
+$$) AS r(result agtype);
+SELECT agtype_in('[0, {"e": 2.718281::numeric, "one": 1.0, "pie": 3.1415927}, 2::numeric, null]');
+SELECT * FROM cypher('expr', $$
+RETURN (['NaN'::float, {one: 'inf'::float, pie: 3.1415927, e: 2.718281::numeric}, 2::numeric, null])
+$$) AS r(result agtype);
+SELECT agtype_in('[NaN, {"e": 2.718281::numeric, "one": Infinity, "pie": 3.1415927}, 2::numeric, null]');
+
+--
+-- Test typecast :: transform and execution logic for object (vertex & edge)
+--
+SELECT * FROM cypher('expr', $$
+RETURN {id:0, label:"vertex 0", properties:{}}::vertex
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {vertex_0:{id:0, label:"vertex 0", properties:{}}::vertex}
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {name:"container 0", vertices:[{vertex_0:{id:0, label:"vertex 0", properties:{}}::vertex}, {vertex_0:{id:0, label:"vertex 0", properties:{}}::vertex}]}
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {id:3, label:"edge 0", properties:{}, start_id:0, end_id:1}::edge
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {edge_0:{id:3, label:"edge 0", properties:{}, start_id:0, end_id:1}::edge}
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {name:"container 1", edges:[{id:3, label:"edge 0", properties:{}, start_id:0, end_id:1}::edge, {id:4, label:"edge 1", properties:{}, start_id:1, end_id:0}::edge]}
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {name:"path 1", path:[{id:0, label:"vertex 0", properties:{}}::vertex, {id:2, label:"edge 0", properties:{}, start_id:0, end_id:1}::edge, {id:1, label:"vertex 1", properties:{}}::vertex]}
+$$) AS r(result agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+RETURN NULL::vertex
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN NULL::edge
+$$) AS r(result agtype);
+SELECT agtype_typecast_vertex('null'::agtype);
+SELECT agtype_typecast_vertex(null);
+SELECT agtype_typecast_edge('null'::agtype);
+SELECT agtype_typecast_edge(null);
+-- should all fail
+SELECT * FROM cypher('expr', $$
+RETURN {id:0, labelz:"vertex 0", properties:{}}::vertex
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {id:0, label:"vertex 0"}::vertex
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {id:"0", label:"vertex 0", properties:{}}::vertex
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {}::vertex
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {id:3, labelz:"edge 0", properties:{}, start_id:0, end_id:1}::edge
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {id:3, label:"edge 0", start_id:0, end_id:1}::edge
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN {}::edge
+$$) AS r(result agtype);
+-- make sure that output can be read back in and reproduce the output
+SELECT agtype_in('{"name": "container 0", "vertices": [{"vertex_0": {"id": 0, "label": "vertex 0", "properties": {}}::vertex}, {"vertex_0": {"id": 0, "label": "vertex 0", "properties": {}}::vertex}]}');
+SELECT agtype_in('{"name": "container 1", "edges": [{"id": 3, "label": "edge 0", "end_id": 1, "start_id": 0, "properties": {}}::edge, {"id": 4, "label": "edge 1", "end_id": 0, "start_id": 1, "properties": {}}::edge]}');
+SELECT agtype_in('{"name": "path 1", "path": [{"id": 0, "label": "vertex 0", "properties": {}}::vertex, {"id": 2, "label": "edge 0", "end_id": 1, "start_id": 0, "properties": {}}::edge, {"id": 1, "label": "vertex 1", "properties": {}}::vertex]}');
 
 --
 -- Cleanup

@@ -595,7 +595,24 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
 
     /* get the oid of the requested typecast function */
     len = strlen(ctypecast->typecast);
-    if (len == 7 && pg_strncasecmp(ctypecast->typecast, "numeric", 7) == 0)
+    if (len == 4 && pg_strncasecmp(ctypecast->typecast, "edge", len) == 0)
+    {
+        func_agtype_typecast_operator_oid =
+            get_ag_func_oid("agtype_typecast_edge", 1, AGTYPEOID);
+    }
+    else if (len == 4 && pg_strncasecmp(ctypecast->typecast, "path", len) == 0)
+    {
+        func_agtype_typecast_operator_oid =
+            get_ag_func_oid("agtype_typecast_path", 1, AGTYPEOID);
+    }
+    else if (len == 6 &&
+             pg_strncasecmp(ctypecast->typecast, "vertex", len) == 0)
+    {
+        func_agtype_typecast_operator_oid =
+            get_ag_func_oid("agtype_typecast_vertex", 1, AGTYPEOID);
+    }
+    else if (len == 7 &&
+             pg_strncasecmp(ctypecast->typecast, "numeric", len) == 0)
     {
         func_agtype_typecast_operator_oid =
             get_ag_func_oid("agtype_typecast_numeric", 1, AGTYPEOID);

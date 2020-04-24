@@ -659,6 +659,7 @@ static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
         }
         (*pstate)->cont_val.val.array.elems =
             palloc(sizeof(agtype_value) * (*pstate)->size);
+        (*pstate)->last_updated_value = NULL;
         break;
     case WAGT_BEGIN_OBJECT:
         Assert(!scalar_val);
@@ -669,6 +670,7 @@ static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
         (*pstate)->size = 4;
         (*pstate)->cont_val.val.object.pairs =
             palloc(sizeof(agtype_pair) * (*pstate)->size);
+        (*pstate)->last_updated_value = NULL;
         break;
     case WAGT_KEY:
         Assert(scalar_val->type == AGTV_STRING);
@@ -771,8 +773,10 @@ static void append_value(agtype_parse_state *pstate, agtype_value *scalar_val)
 
     Assert(object->type == AGTV_OBJECT);
 
-    object->val.object.pairs[object->val.object.num_pairs++].value =
-        *scalar_val;
+    object->val.object.pairs[object->val.object.num_pairs].value = *scalar_val;
+
+    pstate->last_updated_value =
+        &object->val.object.pairs[object->val.object.num_pairs++].value;
 }
 
 /*
@@ -801,7 +805,9 @@ static void append_element(agtype_parse_state *pstate,
                                           sizeof(agtype_value) * pstate->size);
     }
 
-    array->val.array.elems[array->val.array.num_elems++] = *scalar_val;
+    array->val.array.elems[array->val.array.num_elems] = *scalar_val;
+    pstate->last_updated_value =
+        &array->val.array.elems[array->val.array.num_elems++];
 }
 
 /*
