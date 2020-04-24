@@ -77,7 +77,12 @@ static void update_agg_counters(uint64 bucket_id, uint64 queryid, uint64 id, AGG
 static pgssAggEntry *agg_entry_alloc(pgssAggHashKey *key);
 void add_object_entry(uint64 queryid, char *objects);
 
+#if PG_VERSION_NUM >= 130000
+static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams);
+#else
 static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param);
+#endif
+
 static void pgss_shmem_startup(void);
 static void pgss_shmem_shutdown(int code, Datum arg);
 static void pgss_post_parse_analyze(ParseState *pstate, Query *query);
@@ -86,9 +91,14 @@ static void pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint
 static void pgss_ExecutorFinish(QueryDesc *queryDesc);
 static void pgss_ExecutorEnd(QueryDesc *queryDesc);
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
-					ProcessUtilityContext context, ParamListInfo params,
-					QueryEnvironment *queryEnv,
-					DestReceiver *dest, char *completionTag);
+                                ProcessUtilityContext context, ParamListInfo params,
+                                QueryEnvironment *queryEnv,
+                                DestReceiver *dest,
+#if PG_VERSION_NUM >= 130000
+                                QueryCompletion *qc);
+#else
+                                char *completionTag);
+#endif
 static uint64 pgss_hash_string(const char *str, int len);
 static void pgss_store(const char *query, uint64 queryId,
 		   int query_location, int query_len,
@@ -564,7 +574,12 @@ static void
 pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					ProcessUtilityContext context,
 					ParamListInfo params, QueryEnvironment *queryEnv,
-					DestReceiver *dest, char *completionTag)
+					DestReceiver *dest,
+#if PG_VERSION_NUM >= 130000
+					QueryCompletion *qc)
+#else
+					char *completionTag)
+#endif
 {
 	Node	   *parsetree = pstmt->utilityStmt;
 
@@ -602,11 +617,19 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 			if (prev_ProcessUtility)
 				prev_ProcessUtility(pstmt, queryString,
 									context, params, queryEnv,
+#if PG_VERSION_NUM >= 130000
+									dest, qc);
+#else
 									dest, completionTag);
+#endif
 			else
 				standard_ProcessUtility(pstmt, queryString,
 										context, params, queryEnv,
+#if PG_VERSION_NUM >= 130000
+										dest, qc);
+#else
 										dest, completionTag);
+#endif
 			nested_level--;
 		}
 		PG_CATCH();
@@ -618,13 +641,15 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
 		INSTR_TIME_SET_CURRENT(duration);
 		INSTR_TIME_SUBTRACT(duration, start);
-
+#if PG_VERSION_NUM >= 130000
+		rows = (qc && qc->commandTag == CMDTAG_COPY) ? qc->nprocessed : 0;
+#else
 		/* parse command tag to retrieve the number of affected rows. */
-		if (completionTag &&
-			strncmp(completionTag, "COPY ", 5) == 0)
+		if (completionTag && strncmp(completionTag, "COPY ", 5) == 0)
 			rows = pg_strtouint64(completionTag + 5, NULL, 10);
 		else
 			rows = 0;
+#endif
 
 		/* calc differences of buffer counters. */
 		bufusage.shared_blks_hit =
@@ -668,11 +693,20 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		if (prev_ProcessUtility)
 			prev_ProcessUtility(pstmt, queryString,
 								context, params, queryEnv,
+#if PG_VERSION_NUM >= 130000
+								dest, qc);
+#else
 								dest, completionTag);
-		else
+#endif
+
+			else
 			standard_ProcessUtility(pstmt, queryString,
 									context, params, queryEnv,
-									dest, completionTag);
+#if PG_VERSION_NUM >= 130000
+									dest, qc);
+#else
+								dest, completionTag);
+#endif
 	}
 }
 
@@ -2576,19 +2610,27 @@ store_query(uint64 queryid, const char *query, uint64 query_len)
     pgss->query_fifo[pgss->current_wbucket].head = next;
 }
 
-static PlannedStmt *
-pgss_planner_hook(Query *parse, int opt, ParamListInfo param)
+#if PG_VERSION_NUM >= 130000
+static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
+#else
+static PlannedStmt *pgss_planner_hook(Query *parse, int opt, ParamListInfo param)
+#endif
 {
     if (MyProc)
     {
         int i = MyProc - ProcGlobal->allProcs;
-		if (pgssWaitEventEntries[i]->key.queryid != parse->queryId)
-			pgssWaitEventEntries[i]->key.queryid = parse->queryId;
+        if (pgssWaitEventEntries[i]->key.queryid != parse->queryId)
+		    pgssWaitEventEntries[i]->key.queryid = parse->queryId;
 	}
+#if PG_VERSION_NUM >= 130000
     if (planner_hook_next)
-        return planner_hook_next(parse, opt, param);
-
-    return standard_planner(parse, opt, param);
+        return planner_hook_next(parse, query_string, cursorOptions, boundParams);
+    return standard_planner(parse, query_string, cursorOptions, boundParams);
+#else
+    if (planner_hook_next)
+		return planner_hook_next(parse, opt, param);
+	return standard_planner(parse, opt, param);
+#endif
 }
 
 static void
