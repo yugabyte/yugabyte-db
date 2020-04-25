@@ -2,17 +2,17 @@
 title: Earlier releases
 linkTitle: Earlier releases
 description: Release history
-headcontent: History of important YugabyteDB releases.
+headcontent: Download links and release information for earlier releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
 menu:
   latest:
     identifier: earlier-releases
-    parent: releases
     weight: 2590 
 ---
 
-Download YugabyteDB using the table below and then follow the [Quick Start](../../quick-start/) instructions to get started.
+Download earlier YugabyteDB releases from the listing below. Information on the latest release is available
+in [What's new in 2.1.5](../whats-new/).
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------

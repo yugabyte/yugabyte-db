@@ -2,18 +2,19 @@
 title: What's new in 2.1.5
 headerTitle: What's new in 2.1.5
 linkTitle: What's new in 2.1.5
-description: Enhancements, changes, and fixes.
-headcontent: What's new, resolved, and enhanced
+description: Enhancements, changes, and resolved issues in the latest YugabyteDB release.
+headcontent: Features, enhancements, and resolved issues in the latest release.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
 menu:
   latest:
     identifier: whats-new
-    parent: releases
     weight: 2589 
 ---
 
-Released April 24, 2020.
+**Released:** April 24, 2020.
+
+**New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
 ## Downloads
 
@@ -38,40 +39,37 @@ Released April 24, 2020.
 docker pull yugabytedb/yugabyte:2.1.5.0-b14
 ```
 
-## YSQL Changes
+## YSQL changes
 
-- [YSQL] Read restart for `EXECUTE` statement if the prepared statement is `SELECT`. [#4205]
-- colocation: Optimization that pushes index lookup down to DocDB. [#3609]
-- colocation: Use range keys by default for colocated tables and indexes. [#3034]
-- The `yugabyte-client` package now includes a `share` folder (containing `.sql` files) for use by Yugabyte Cloud and other remote client users. [#4264]
-- [YSQL] Find and list YSQL tables in `yb-admin` commands now use table ID instead of table names. [#1687]
+- [YSQL] Read restart for `EXECUTE` statement if the prepared statement is `SELECT`. [#4205](https://github.com/yugabyte/yugabyte-db/issues/4205)
+- [YSQL] Find and list YSQL tables in `yb-admin` commands now use table ID instead of table names. [#1687](https://github.com/yugabyte/yugabyte-db/issues/1687)
 - [YSQL] The `DROP INDEX` statement now ignores index backfill.
-- [YSQL] The `DROP INDEX` statement now ignores DocDB `NotFound` errors when it doesn't have table metadata, but postgres does. [#4249]
-- [YSQL] Force single row update prepare statements to use a custom plan that requires `boundParams` to be sent for creation and execution. [#4219]
-- Do not return error in output of `yb-admin get_is_load_balancer_idle` if load balancer is busy. [#3949]
-- Log MVCC history on all invariant violations
-- Change `yb-tserver` `/utilz` endpoint page to display "Live Ops" instead of "RPCs" and add YSQL statements link [#4106](https://github.com/yugabyte/yugabyte-db/pull/4106)
+- [YSQL] The `DROP INDEX` statement now ignores DocDB `NotFound` errors when it doesn't have table metadata, but postgres does. [#4249](https://github.com/yugabyte/yugabyte-db/issues/4249)
+- [YSQL] Force single row update prepare statements to use a custom plan that requires `boundParams` to be sent for creation and execution. [#4219](https://github.com/yugabyte/yugabyte-db/issues/4219)
 - [YSQL] Improve performance of multi-column primary keys by generating `scanspec` for range partitioned tables using condition expression. [#4033](https://github.com/yugabyte/yugabyte-db/pull/4033)
-- Fix formatting issue with `yb-admin` output and master web UI [#4224]
-- Remove unnecessary read RPC requests to YB-TServer when query has LIMIT clause [#4040](https://github.com/yugabyte/yugabyte-db/issues/4040)
-- Colocation: Avoid excessive RPC requests for drop and truncate [#3387](https://github.com/yugabyte/yugabyte-db/issues/3387)
 
 ## System improvements
 
 - Improve tablet splitting [#4169](https://github.com/yugabyte/yugabyte-db/issues/4169), including:
   - Add support for transaction-enabled tables.
   - Add WAL index flush before copying WAL during table splitting.
+- colocation: Optimization that pushes index lookup down to DocDB. [#3609](https://github.com/yugabyte/yugabyte-db/issues/3609)
+- colocation: Use range keys by default for colocated tables and indexes. [#3034](https://github.com/yugabyte/yugabyte-db/issues/3034)
+- colocation: Avoid excessive RPC requests for drop and truncate [#3387](https://github.com/yugabyte/yugabyte-db/issues/3387)
 - On starting a new master (in edit and add node), update master addresses correctly in `yb-master` and `yb-tserver` configuration files. [#3636](https://github.com/yugabyte/yugabyte-db/issues/3636), [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242), and [#4245](https://github.com/yugabyte/yugabyte-db/issues/4245)
 - Add backup-related code changes for snapshots [#3836](https://github.com/yugabyte/yugabyte-db/issues/3836), including:
   - Change `yb-admin import_snapshot` to return an error if there are less new table names than backed up tables. For example, if you rename only two of three tables, an error will be generated.
   - Change `yb-admin restore_snapshot` and `yb-admin list_snapshot` to output `restoration-id` (useful for verifying completed restorations).
 - Support `yb-admin import_snapshot` renaming only a few tables (but not all), but keeping the specified table name the same as the old table name. [#4280](https://github.com/yugabyte/yugabyte-db/issues/4280)
 - Deprecate `table_flush_timeout`in the `yb-admin create_snapshot` command.
+- Do not return error in output of `yb-admin get_is_load_balancer_idle` if load balancer is busy. [#3949]
+- Change `yb-tserver` `/utilz` endpoint page to display "Live Ops" instead of "RPCs" and add YSQL statements link [#4106](https://github.com/yugabyte/yugabyte-db/pull/4106)
 - Fix access to reset tablet peer during shutdown. [#3989](https://github.com/yugabyte/yugabyte-db/issues/3989)
 - GetSafeTime should wait instead of adding to safe time. [#3977](https://github.com/yugabyte/yugabyte-db/issues/3977)
 - Add retry logic to snapshot operations. [#1032](https://github.com/yugabyte/yugabyte-db/issues/1032)
 - Add TLS encryption support to `yb-ts-cli` (adds `--certs_dir_name` flag) for sending secure RPC requests to the servers. [#2877](https://github.com/yugabyte/yugabyte-db/issues/2877)
 - Fix `yb-ctl` failing when passing `vmodule` in `--master_flags` . [#4234](https://github.com/yugabyte/yugabyte-db/issues/4234)
+- The `yugabyte-client` package now includes a `share` folder (containing `.sql` files) for use by Yugabyte Cloud and other remote client users. [#4264](https://github.com/yugabyte/yugabyte-db/issues/4264)
 
 ## Yugabyte Platform
 
@@ -81,8 +79,7 @@ docker pull yugabytedb/yugabyte:2.1.5.0-b14
 - Fix expected restoration state in the `yb_backup.py` script.
 - Allow users to select multiple single tables to backup in addition to specifying a full universe backup. [#3680](https://github.com/yugabyte/yugabyte-db/issues/3680)
 - Customize the SMTP server for sending alert messages using configuration entries for `smtpData` (`smtpServer`, `smtpPort`, `emailFrom`, `smtpUsername`, `smtpPassword`, `useSSL`, and `useTLS`). [#4201](https://github.com/yugabyte/yugabyte-db/issues/4201)
-- [YW] Add option to specify table keyspace when creating manual or scheduled backups. [#3342]()
-- [YW] Add Azure logo to backup option tab.
+- [YW] Add option to specify table keyspace when creating manual or scheduled backups. [#3342](https://github.com/yugabyte/yugabyte-db/issues/3342)
 - For Azure Storage blob backups, use SAS tokens instead of Service Principal client secrets.
 - Add create and restore backup support for Azure Blob Storage with SAS tokens. [#3721](https://github.com/yugabyte/yugabyte-db/issues/3721)
 - [YW] Add **IAM Role** toggle in provider storage configuration to use the IAM role instead of requiring an **Access Key** and **Secret**. [#4204](https://github.com/yugabyte/yugabyte-db/issues/4204)
