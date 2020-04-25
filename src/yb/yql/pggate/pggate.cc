@@ -1009,5 +1009,9 @@ void PgApiImpl::ClearForeignKeyReferenceCache() {
   pg_session_->InvalidateForeignKeyReferenceCache();
 }
 
+void PgApiImpl::SetTimeout(const int timeout_ms) {
+  pg_session_->SetTimeout(timeout_ms);
+}
+
 } // namespace pggate
 } // namespace yb

@@ -165,6 +165,12 @@ void Batcher::SetTimeout(MonoDelta timeout) {
   timeout_ = timeout;
 }
 
+void Batcher::SetSingleRpcTimeout(MonoDelta timeout) {
+  CHECK_GE(timeout, MonoDelta::kZero);
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  single_rpc_timeout_ = timeout;
+}
+
 bool Batcher::HasPendingOperations() const {
   std::lock_guard<decltype(mutex_)> lock(mutex_);
   return !ops_.empty();
@@ -628,11 +634,13 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
                     hybrid_time_for_write_, std::move(ops)};
   switch (op_group) {
     case OpGroup::kWrite:
-      return std::make_shared<WriteRpc>(&data);
+      return std::make_shared<WriteRpc>(&data, single_rpc_timeout_);
     case OpGroup::kLeaderRead:
-      return std::make_shared<ReadRpc>(&data);
+      return std::make_shared<ReadRpc>(&data, YBConsistencyLevel::STRONG, single_rpc_timeout_);
     case OpGroup::kConsistentPrefixRead:
-      return std::make_shared<ReadRpc>(&data, YBConsistencyLevel::CONSISTENT_PREFIX);
+      return std::make_shared<ReadRpc>(&data,
+                                       YBConsistencyLevel::CONSISTENT_PREFIX,
+                                       single_rpc_timeout_);
   }
   FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
 }
