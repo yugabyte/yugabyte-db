@@ -103,7 +103,7 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
     txn_status_manager_->RequestStatusAt(
         {&transaction_id, read_time_.read, read_time_.global_limit, read_time_.serial_no,
               &kRequestReason,
-              TransactionLoadFlags{TransactionLoadFlag::kMustExist, TransactionLoadFlag::kCleanup},
+              TransactionLoadFlags{TransactionLoadFlag::kCleanup},
               callback});
     future.wait();
     auto txn_status_result = future.get();
@@ -113,7 +113,7 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
     }
     if (txn_status_result.status().IsNotFound()) {
       // We have intent w/o metadata, that means that transaction was already cleaned up.
-      LOG(WARNING) << "Intent for transaction w/o metadata: " << transaction_id;
+      LOG(INFO) << "Intent for transaction w/o metadata: " << transaction_id;
       return HybridTime::kMin;
     }
     LOG(WARNING)
