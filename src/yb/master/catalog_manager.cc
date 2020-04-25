@@ -5384,7 +5384,7 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
     // Do not update replicas in the NOT_STARTED or BOOTSTRAPPING state (unless they are stale).
     bool use_existing = false;
     TabletReplica* existing_replica;
-    if (peer.permanent_uuid() == sender_uuid) {
+    if (peer.permanent_uuid() != sender_uuid) {
       auto it = prev_rl.find(ts_desc->permanent_uuid());
       if (it != prev_rl.end()) {
         existing_replica = &it->second;
