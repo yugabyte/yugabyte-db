@@ -310,7 +310,7 @@ class ConflictResolver {
         0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
-        TransactionLoadFlags{TransactionLoadFlag::kMustExist, TransactionLoadFlag::kCleanup},
+        TransactionLoadFlags{TransactionLoadFlag::kCleanup},
         [&transaction, &latch](Result<TransactionStatusResult> result) {
           if (result.ok()) {
             transaction.ProcessStatus(*result);
