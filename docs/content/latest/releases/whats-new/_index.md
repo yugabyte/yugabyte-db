@@ -56,10 +56,6 @@ docker pull yugabytedb/yugabyte:2.1.5.0-b14
 - Remove unnecessary read RPC requests to YB-TServer when query has LIMIT clause [#4040](https://github.com/yugabyte/yugabyte-db/issues/4040)
 - Colocation: Avoid excessive RPC requests for drop and truncate [#3387](https://github.com/yugabyte/yugabyte-db/issues/3387)
 
-## YCQL
-
-- Create C++ CQL index test. [#4058]
-
 ## System improvements
 
 - Improve tablet splitting [#4169](https://github.com/yugabyte/yugabyte-db/issues/4169), including:
@@ -77,7 +73,7 @@ docker pull yugabytedb/yugabyte:2.1.5.0-b14
 - Add TLS encryption support to `yb-ts-cli` (adds `--certs_dir_name` flag) for sending secure RPC requests to the servers. [#2877](https://github.com/yugabyte/yugabyte-db/issues/2877)
 - Fix `yb-ctl` failing when passing `vmodule` in `--master_flags` . [#4234](https://github.com/yugabyte/yugabyte-db/issues/4234)
 
-## Platform
+## Yugabyte Platform
 
 - When shrinking a universe, remove nodes in descending index order. [#3292](https://github.com/yugabyte/yugabyte-db/issues/3292)
 - Add back up and restore of Yugabyte Platform using `yb_platform_backup.sh` script. [#4208](https://github.com/yugabyte/yugabyte-db/issues/4208)
