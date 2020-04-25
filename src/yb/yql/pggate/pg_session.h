@@ -275,6 +275,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
       bool use_cache = false);
 
+  // Sets the specified timeout in the rpc service.
+  void SetTimeout(int timeout_ms);
+
  private:
   CHECKED_STATUS FlushBufferedOperationsImpl();
   CHECKED_STATUS FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool transactional);

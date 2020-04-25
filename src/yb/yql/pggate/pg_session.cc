@@ -406,7 +406,11 @@ PgSession::PgSession(
       tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
 
+  // Sets the timeout for each rpc as well as the whole operation to
+  // 'FLAGS_pg_yb_session_timeout_ms'.
   session_->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
+  session_->SetSingleRpcTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
+
   session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
@@ -924,6 +928,11 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
 
 Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
   return client_->TabletServerCount(tserver_count, primary_only, use_cache);
+}
+
+void PgSession::SetTimeout(const int timeout_ms) {
+  session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
+  session_->SetSingleRpcTimeout(MonoDelta::FromMilliseconds(timeout_ms));
 }
 
 }  // namespace pggate

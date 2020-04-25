@@ -419,6 +419,9 @@ class PgApiImpl {
   CHECKED_STATUS DeleteForeignKeyReference(YBCPgOid table_id, std::string&& ybctid);
   void ClearForeignKeyReferenceCache();
 
+  // Sets the specified timeout in the rpc service.
+  void SetTimeout(int timeout_ms);
+
   struct MessengerHolder {
     std::unique_ptr<rpc::SecureContext> security_context;
     std::unique_ptr<rpc::Messenger> messenger;
