@@ -92,3 +92,5 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [Klins](https://github.com/carlos-username)
 * [junwei0117](https://github.com/junwei0117)
 * [colinlouie](https://github.com/colinlouie)
+* [hstenzel](https://github.com/hstenzel)
+
