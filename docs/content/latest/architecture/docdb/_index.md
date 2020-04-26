@@ -1,7 +1,7 @@
 ---
-title: DocDB store
-headerTitle: DocDB store
-linkTitle: DocDB store
+title: DocDB storage layer
+headerTitle: DocDB storage layer
+linkTitle: DocDB storage layer
 description: Learn about the YugabyteDB distributed document store that is responsible for sharding, replication, transactions, and persistence.
 image: /images/section_icons/architecture/concepts.png
 aliases:
@@ -22,29 +22,6 @@ YugabyteDB's sharding and replication architecture is inspired by <a href="https
 {{</note >}}
 
 <div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="sharding/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts/sharding.png" aria-hidden="true" />
-        <div class="title">Sharding</div>
-      </div>
-      <div class="body">
-        Sharding the data in every table into tablets.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="replication/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts/replication.png" aria-hidden="true" />
-        <div class="title">Replication</div>
-      </div>
-      <div class="body">
-        Replicating the data in every table with Raft consensus.
-      </div>
-    </a>
-  </div>
 
  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="persistence/">

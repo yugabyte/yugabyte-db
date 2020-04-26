@@ -1,8 +1,8 @@
 ---
-title: DocDB transactions
-headerTitle: DocDB transactions
-linkTitle: DocDB transactions
-description: DocDB transactions
+title: Transactions Layer
+headerTitle: Transactions Layer
+linkTitle: Transactions Layer
+description: Transactions Layer
 image: /images/section_icons/architecture/distributed_acid.png
 headcontent: 
 aliases:
@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: architecture-acid-transactions
     parent: architecture
-    weight: 1150
+    weight: 1120
 ---
 
 {{< note title="Note" >}}
