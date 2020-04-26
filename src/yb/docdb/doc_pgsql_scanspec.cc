@@ -17,6 +17,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_expr.h"
+#include "yb/docdb/doc_scanspec_util.h"
 #include "yb/rocksdb/db/compaction.h"
 
 namespace yb {
@@ -247,29 +248,7 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
 }
 
 std::vector<PrimitiveValue> DocPgsqlScanSpec::range_components(const bool lower_bound) const {
-  std::vector<PrimitiveValue> result;
-
-  if (range_bounds_ != nullptr) {
-    const std::vector<QLValuePB> range_values = range_bounds_->range_values(lower_bound);
-    result.reserve(range_values.size());
-    size_t column_idx = schema_.num_hash_key_columns();
-    for (const auto& value : range_values) {
-      const auto& column = schema_.column(column_idx);
-      if (IsNull(value)) {
-        result.emplace_back(lower_bound ? ValueType::kLowest : ValueType::kHighest);
-      } else {
-        result.emplace_back(PrimitiveValue::FromQLValuePB(value, column.sorting_type()));
-      }
-      column_idx++;
-    }
-  }
-
-  if (!lower_bound) {
-    // We add +inf as an extra component to make sure this is greater than all keys in range.
-    // For lower bound, this is true already, because dockey + suffix is > dockey
-    result.emplace_back(PrimitiveValue(ValueType::kHighest));
-  }
-  return result;
+  return GetRangeKeyScanSpec(schema_, range_bounds_.get(), lower_bound);
 }
 
 // Return inclusive lower/upper range doc key considering the start_doc_key.

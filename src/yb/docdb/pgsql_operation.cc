@@ -441,6 +441,7 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
   Schema projection;
   Schema index_projection;
   common::YQLRowwiseIteratorIf *iter;
+  const Schema* scan_schema;
 
   RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
   RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
@@ -456,8 +457,10 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
     const size_t idx = index_schema->find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
     ybbasectid_id = index_schema->column_id(idx);
+    scan_schema = index_schema;
   } else {
     iter = table_iter_.get();
+    scan_schema = &schema;
   }
 
   if (FLAGS_trace_docdb_calls) {
@@ -534,7 +537,8 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
   }
   *restart_read_ht = iter->RestartReadHt();
 
-  RETURN_NOT_OK(SetPagingStateIfNecessary(iter, fetched_rows, row_count_limit, scan_time_exceeded));
+  RETURN_NOT_OK(SetPagingStateIfNecessary(
+      iter, fetched_rows, row_count_limit, scan_time_exceeded, scan_schema));
 
   return fetched_rows;
 }
@@ -575,7 +579,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatch(const common::YQLStorageIf& ql_s
 Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
                                                      size_t fetched_rows,
                                                      const size_t row_count_limit,
-                                                     const bool scan_time_exceeded) {
+                                                     const bool scan_time_exceeded,
+                                                     const Schema* schema) {
   if (fetched_rows >= row_count_limit || scan_time_exceeded) {
     SubDocKey next_row_key;
     RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
@@ -585,10 +590,16 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
     // reading from this tablet.
     if (request_.return_paging_state()) {
       if (!next_row_key.doc_key().empty()) {
+        const auto& keybytes = next_row_key.Encode();
         PgsqlPagingStatePB* paging_state = response_.mutable_paging_state();
-        paging_state->set_next_partition_key(
-            PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
-        paging_state->set_next_row_key(next_row_key.Encode().data());
+        DSCHECK(schema != nullptr, IllegalState, "Missing schema");
+        if (schema->num_hash_key_columns() > 0) {
+          paging_state->set_next_partition_key(
+              PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+        } else {
+          paging_state->set_next_partition_key(keybytes.data());
+        }
+        paging_state->set_next_row_key(keybytes.data());
       }
     }
   }

@@ -1017,7 +1017,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	if (rawDefaults || stmt->constraints)
 		AddRelationNewConstraints(rel, rawDefaults, stmt->constraints,
-								  true, true, false);
+															true, true, false);
 
 	ObjectAddressSet(address, RelationRelationId, relationId);
 

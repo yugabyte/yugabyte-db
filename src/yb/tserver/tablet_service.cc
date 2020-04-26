@@ -1224,7 +1224,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   TRACE("Start Write");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
-  DVLOG(3) << "Received Write RPC: " << req->DebugString();
+  VLOG(2) << "Received Write RPC: " << req->DebugString();
   UpdateClock(*req, server_->Clock());
 
   auto tablet = LookupLeaderTabletOrRespond(
@@ -1589,7 +1589,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
       "tablet_id", req->tablet_id());
-  DVLOG(3) << "Received Read RPC: " << req->DebugString();
+  VLOG(2) << "Received Read RPC: " << req->DebugString();
 
   // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
   // the first request to a given tablet by a particular transaction assume that the tablet already

@@ -389,6 +389,15 @@ Status PgApiImpl::CreateTableSetNumTablets(PgStatement *handle, int32_t num_tabl
   return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
 }
 
+Status PgApiImpl::CreateTableAddSplitRow(PgStatement *handle, int num_cols,
+                                           YBCPgTypeEntity **types, uint64_t *data) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgCreateTable*>(handle)->AddSplitRow(num_cols, types, data);
+}
+
 Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.

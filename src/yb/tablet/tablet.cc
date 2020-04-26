@@ -1487,6 +1487,58 @@ Status Tablet::HandlePgsqlReadRequest(
       deadline, read_time, pgsql_read_request, *txn_op_ctx, result);
 }
 
+// Returns true if the query can be satisfied by rows present in current tablet.
+// Returns false if query requires other tablets to also be scanned. Examples of this include:
+//   (1) full table scan queries
+//   (2) queries that whose key conditions are such that the query will require a multi tablet
+//       scan.
+Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request) const {
+  if (!pgsql_read_request.ybctid_column_value().value().binary_value().empty() ||
+      !pgsql_read_request.partition_column_values().empty()) {
+    return true;
+  }
+
+  const Schema schema = metadata_->schema();
+  if (schema.has_pgtable_id() || schema.has_cotable_id())  {
+    // This is a colocated table.
+    return true;
+  }
+
+  if (schema.num_hash_key_columns() == 0) {
+    if (schema.num_range_key_columns() == pgsql_read_request.range_column_values_size()) {
+      // PK is contained within this tablet.
+      return true;
+    }
+  }
+  return false;
+}
+
+Result<bool> Tablet::HasScanReachedMaxPartitionKey(
+    const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const {
+  if (metadata_->schema().num_hash_key_columns() > 0) {
+    uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    if (pgsql_read_request.has_max_hash_code() &&
+        next_hash_code > pgsql_read_request.max_hash_code()) {
+      return true;
+    }
+  } else if (pgsql_read_request.has_max_partition_key() &&
+             !pgsql_read_request.max_partition_key().empty()) {
+
+    docdb::DocKey partition_doc_key(metadata_->schema());
+    VERIFY_RESULT(partition_doc_key.DecodeFrom(
+        partition_key, docdb::DocKeyPart::WHOLE_DOC_KEY, docdb::AllowSpecial::kTrue));
+    docdb::DocKey max_partition_doc_key(metadata_->schema());
+    VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
+        pgsql_read_request.max_partition_key(), docdb::DocKeyPart::WHOLE_DOC_KEY,
+        docdb::AllowSpecial::kTrue));
+
+    if (partition_doc_key.CompareTo(max_partition_doc_key) >= 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                                 const size_t row_count,
                                                 PgsqlResponsePB* response) const {
@@ -1497,22 +1549,18 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
   // haven't hit it, or we are asked to return paging state even when we have hit the limit.
   // Otherwise, leave the paging state empty which means we are completely done reading for the
   // whole SELECT statement.
-  if (pgsql_read_request.partition_column_values().empty() &&
-      pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
+  const bool single_tablet_query = VERIFY_RESULT(IsQueryOnlyForTablet(pgsql_read_request));
+  if (!single_tablet_query &&
       !response->has_paging_state() &&
       (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
        pgsql_read_request.return_paging_state())) {
 
     // Check we did not reach the last tablet.
     const string& next_partition_key = metadata_->partition().partition_key_end();
-    if (!next_partition_key.empty()) {
-      uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(next_partition_key);
-
-      // Check we did not reach the max partition key.
-      if (!pgsql_read_request.has_max_hash_code() ||
-          next_hash_code <= pgsql_read_request.max_hash_code()) {
-        response->mutable_paging_state()->set_next_partition_key(next_partition_key);
-      }
+    const bool end_scan = next_partition_key.empty() ||
+        VERIFY_RESULT(HasScanReachedMaxPartitionKey(pgsql_read_request, next_partition_key));
+    if (!end_scan) {
+      response->mutable_paging_state()->set_next_partition_key(next_partition_key);
     }
   }
 

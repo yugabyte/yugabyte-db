@@ -4263,6 +4263,7 @@ SplitClause:
       	}
       | AT VALUES '(' yb_split_points ')'
         {
+          parser_ybc_beta_feature(@1, "split_at");
       	  $$ = makeNode(OptSplit);
       	  $$->split_type = SPLIT_POINTS;
       	  $$->num_tablets = -1;

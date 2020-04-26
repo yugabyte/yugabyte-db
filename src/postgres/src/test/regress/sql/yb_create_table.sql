@@ -429,5 +429,58 @@ CREATE TABLE tbl14 (
 	primary key (a asc)
 ) SPLIT AT VALUES ((MINVALUE), (0), (MAXVALUE));
 
+CREATE TABLE tbl15 (
+	a			int4,
+	b			int4,
+	c			int4,
+	primary key (a asc, b desc)
+) SPLIT AT VALUES ((-10), (0, 0), (23, 4), (50));
+
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc)
+) SPLIT AT VALUES((100), (200, 5), (200));
+
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc nulls first)
+) SPLIT AT VALUES((100), (200, 5), (200));
+
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc nulls last)
+) SPLIT AT VALUES((100), (200, 5), (200));
+
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b desc)
+) SPLIT AT VALUES((100), (200), (200, 5));
+
+CREATE TABLE tbl17(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls first)
+) SPLIT AT VALUES((100), (200), (200, 5));
+
+CREATE TABLE tbl18(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls last)
+) SPLIT AT VALUES((100), (200), (200, 5));
+
+-- This is invalid because we cannot have duplicate split rows
+CREATE TABLE tbl19(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls last)
+) SPLIT AT VALUES((100), (200, 5), (200, 5));
+
 -- TODO(jason): remove when issue #1721 is closed or closing.
 DISCARD TEMP;

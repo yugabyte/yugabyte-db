@@ -183,6 +183,9 @@ class PgApiImpl {
 
   CHECKED_STATUS CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets);
 
+  CHECKED_STATUS CreateTableAddSplitRow(PgStatement *handle, int num_cols,
+                                        YBCPgTypeEntity **types, uint64_t *data);
+
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
   CHECKED_STATUS NewAlterTable(const PgObjectId& table_id,

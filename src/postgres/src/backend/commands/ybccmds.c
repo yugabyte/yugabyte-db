@@ -260,6 +260,7 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 			Oid *col_attrtypes = palloc(sizeof(Oid) * num_key_cols);
 			int32 *col_attrtypmods = palloc(sizeof(int32) * num_key_cols);
 			ScanKeyData *col_comparators = palloc(sizeof(ScanKeyData) * num_key_cols);
+			YBCPgTypeEntity **type_entities = palloc(sizeof(YBCPgTypeEntity *) * num_key_cols);
 
 			bool *skips = palloc0(sizeof(bool) * desc->natts);
 			int col_num = 0;
@@ -291,6 +292,8 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 						/* Record information on the attribute */
 						col_attrtypes[col_num] = att->atttypid;
 						col_attrtypmods[col_num] = att->atttypmod;
+						type_entities[col_num] = (YBCPgTypeEntity*)YBCDataTypeFromOidMod(
+								att->attnum, att->atttypid);
 
 						/* Get the comparator */
 						Oid opclass = GetDefaultOpClass(att->atttypid, BTREE_AM_OID);
@@ -313,10 +316,6 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 				col_num++;
 			}
 
-			/* Array of per-column splits from the previous split point */
-			PartitionRangeDatum **prev_splits = palloc0(sizeof(PartitionRangeDatum*)
-														* num_key_cols);
-
 			/* Parser state for type conversion and validation */
 			ParseState *pstate = make_parsestate(NULL);
 
@@ -326,19 +325,18 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 			foreach(cell1, split_options->split_points)
 			{
 				List *split_point = (List *) lfirst(cell1);
-				if (list_length(split_point) != num_key_cols)
-				{
-					ereport(ERROR, (errmsg("Split points must specify a split at "
-										   "each primary key column")));
-				}
+				int split_columns = list_length(split_point);
 
-				/* So far, is the current split point less (-1), equal (0), or greater (1)
-				 * than the previous split point */
-				int curall_vs_prev = -1;
+				if (split_columns > num_key_cols)
+				{
+					ereport(ERROR, (errmsg("Split points cannot be more than the number of "
+										   "primary key columns")));
+				}
 
 				/* Within a split point, go through the splits for each column */
 				int split_num = 0;
 				ListCell *cell2;
+			  	Datum *datums = palloc(sizeof(Datum) * split_columns);
 				foreach(cell2, split_point)
 				{
 					/* Get the column's split */
@@ -362,6 +360,7 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 						}
 
 						split->value = value;
+						datums[split_num] = ((Const*)value)->constvalue;
 					}
 					/* TODO (george): maybe we'll allow MINVALUE/MAXVALUE in the future,
 					 * but for now it is illegal */
@@ -369,83 +368,12 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 					{
 						ereport(ERROR, (errmsg("Split points must specify finite values")));
 					}
-
-					/* Compare current value to previous value
-					 * If current split < previous corresponding split, could be a problem */
-					PartitionRangeDatum *prev_split = prev_splits[split_num];
-					int curcol_vs_prev = 1;
-					if (prev_split)
-					{
-						/* Comparing to MINIMUM */
-						if (prev_split->kind == PARTITION_RANGE_DATUM_MINVALUE)
-						{
-							curcol_vs_prev = (split->kind == PARTITION_RANGE_DATUM_MINVALUE) ?
-											 0 : 1;
-						}
-							/* Comparing to a specified value */
-						else if (prev_split->kind == PARTITION_RANGE_DATUM_VALUE)
-						{
-							if (split->kind == PARTITION_RANGE_DATUM_MINVALUE)
-							{
-								curcol_vs_prev = -1;
-							}
-							else if (split->kind == PARTITION_RANGE_DATUM_VALUE)
-							{
-								/* First check <, then ==, and if neither it is > */
-								ScanKey comparator = &col_comparators[split_num];
-								Datum cmp_op = ((Const*)(split->value))->constvalue;
-								Datum cmp_ref = ((Const*)(prev_split->value))->constvalue;
-								curcol_vs_prev = FunctionCall2Coll(&comparator->sk_func,
-																   comparator->sk_collation,
-																   cmp_op,
-																   cmp_ref);
-							}
-							else if (split->kind == PARTITION_RANGE_DATUM_MAXVALUE)
-							{
-								curcol_vs_prev = 1;
-							}
-						}
-							/* Comparing to MAXIMUM */
-						else if (prev_split->kind == PARTITION_RANGE_DATUM_MAXVALUE)
-						{
-							curcol_vs_prev = (split->kind == PARTITION_RANGE_DATUM_MAXVALUE) ?
-											 0 : -1;
-						}
-					}
-
-					/* Make sure we maintain sorted order */
-					if (curcol_vs_prev >= 0)
-					{
-						/* Haven't compared any columns yet */
-						if (curall_vs_prev == -1)
-						{
-							curall_vs_prev = curcol_vs_prev;
-						}
-
-						/* Equal so far, now greater */
-						if (curall_vs_prev == 0 && curcol_vs_prev == 1)
-						{
-							curall_vs_prev = 1;
-						}
-					}
-					else if (curcol_vs_prev == -1)
-					{
-						/* If greater so far, in earlier columns which take precedence, fine.
-						 * Otherwise we are out of order. */
-						if (curall_vs_prev != 1)
-						{
-							ereport(ERROR, (errmsg("Split points must be in sorted order")));
-						}
-					}
-
-					/* Finished handling this particular column split */
-					prev_splits[split_num++] = split;
+					split_num++;
 				}
 
-				/* TODO (george): Add split point with pggate */
+				YBCPgCreateTableAddSplitRow(handle, split_columns, type_entities, (uint64_t *)datums);
 			}
 
-			ereport(WARNING, (errmsg("Range split points are not supported, ignoring")));
 			break;
 		default:
 			ereport(ERROR, (errmsg("Illegal memory state for SPLIT options")));

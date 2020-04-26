@@ -1110,5 +1110,31 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
   ASSERT_LT(rpcs_during, 150);
 }
 
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
+  const string kDatabaseName ="yugabyte";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  string ns_id;
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute("CREATE TABLE range(a int, PRIMARY KEY(a ASC)) " \
+      "SPLIT AT VALUES ((100), (1000))"));
+
+  // Get database and table IDs
+  for (const auto& ns : ASSERT_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
+    if (ns.name() == kDatabaseName) {
+      ns_id = ns.id();
+      break;
+    }
+  }
+  ASSERT_FALSE(ns_id.empty());
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "range"));
+
+  // Validate that number of tablets created is 3.
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+}
+
 } // namespace pgwrapper
 } // namespace yb

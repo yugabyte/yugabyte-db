@@ -401,30 +401,27 @@ CREATE TABLE tbl2 (
 	a			int4,
 	primary key (a asc)
 ) SPLIT AT VALUES ((4), (25), (100));
-WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl3 (
 	a			int4,
 	primary key (a asc)
 ) SPLIT AT VALUES ((25), (100), (4));
-ERROR:  Split points must be in sorted order
+ERROR:  Invalid argument: Split rows ordering does not match column ordering
 CREATE TABLE tbl4 (
 	a			int4,
 	b			text,
 	primary key (a asc, b)
 ) SPLIT AT VALUES ((1, 'c'), (1, 'cb'), (2, 'a'));
-WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl5 (
 	a			int4,
 	b			text,
 	primary key (b asc)
 ) SPLIT AT VALUES (('a'), ('aba'), ('ac'));
-WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl6 (
 	a			int4,
 	b			text,
 	primary key (b asc)
 ) SPLIT AT VALUES (('a'), (2, 'aba'), ('ac'));
-ERROR:  Split points must specify a split at each primary key column
+ERROR:  Split points cannot be more than the number of primary key columns
 CREATE TABLE tbl7 (
 	a			int4,
 	primary key (a asc)
@@ -450,13 +447,12 @@ CREATE TABLE tbl11 (
 	c			int4,
 	primary key (a asc, b desc)
 ) SPLIT AT VALUES ((-7, 1), (0, 0), (23, 4));
-WARNING:  Range split points are not supported, ignoring
 CREATE TABLE tbl12 (
 	a			int4,
 	b			text,
 	primary key (b desc)
 ) SPLIT AT VALUES (('bienvenidos'), ('goodbye'), ('hello'), ('hola'));
-WARNING:  Range split points are not supported, ignoring
+ERROR:  Invalid argument: Split rows ordering does not match column ordering
 CREATE TABLE tbl13 (
 	a			text,
 	b			date,
@@ -468,5 +464,54 @@ CREATE TABLE tbl14 (
 	primary key (a asc)
 ) SPLIT AT VALUES ((MINVALUE), (0), (MAXVALUE));
 ERROR:  Split points must specify finite values
+CREATE TABLE tbl15 (
+	a			int4,
+	b			int4,
+	c			int4,
+	primary key (a asc, b desc)
+) SPLIT AT VALUES ((-10), (0, 0), (23, 4), (50));
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc)
+) SPLIT AT VALUES((100), (200, 5), (200));
+ERROR:  Invalid argument: Split rows ordering does not match column ordering
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc nulls first)
+) SPLIT AT VALUES((100), (200, 5), (200));
+ERROR:  Invalid argument: Split rows ordering does not match column ordering
+-- This is invalid because split rows do not honor column b's ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b asc nulls last)
+) SPLIT AT VALUES((100), (200, 5), (200));
+ERROR:  Invalid argument: Split rows ordering does not match column ordering
+CREATE TABLE tbl16(
+  a int,
+  b int,
+  primary key(a asc, b desc)
+) SPLIT AT VALUES((100), (200), (200, 5));
+CREATE TABLE tbl17(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls first)
+) SPLIT AT VALUES((100), (200), (200, 5));
+CREATE TABLE tbl18(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls last)
+) SPLIT AT VALUES((100), (200), (200, 5));
+-- This is invalid because we cannot have duplicate split rows
+CREATE TABLE tbl19(
+  a int,
+  b int,
+  primary key(a asc, b desc nulls last)
+) SPLIT AT VALUES((100), (200, 5), (200, 5));
+ERROR:  Invalid argument: Cannot have duplicate split rows
 -- TODO(jason): remove when issue #1721 is closed or closing.
 DISCARD TEMP;

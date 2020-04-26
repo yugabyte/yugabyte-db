@@ -187,17 +187,17 @@ void ybcBindColumnCondEq(YbScanDesc ybScan, bool is_hash_key, TupleDesc bind_des
 									ybScan->stmt_owner);
 }
 
-static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum, 
+static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum,
     bool start_valid, Datum value, bool end_valid, Datum value_end)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
 
-	YBCPgExpr ybc_expr = start_valid ? YBCNewConstant(ybScan->handle, atttypid, value, 
+	YBCPgExpr ybc_expr = start_valid ? YBCNewConstant(ybScan->handle, atttypid, value,
       false /* isnull */) : NULL;
-	YBCPgExpr ybc_expr_end = end_valid ? YBCNewConstant(ybScan->handle, atttypid, value_end, 
+	YBCPgExpr ybc_expr_end = end_valid ? YBCNewConstant(ybScan->handle, atttypid, value_end,
       false /* isnull */) : NULL;
 
-  HandleYBStmtStatusWithOwner(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum, ybc_expr, 
+  HandleYBStmtStatusWithOwner(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum, ybc_expr,
         ybc_expr_end),
       ybScan->handle,
       ybScan->stmt_owner);
@@ -481,7 +481,7 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 			/*
 			 * IndexScan ( SysTable / UserTable)
 			 * - YugaByte will use the binds to query base-ybctid in the index table, which is then used
-			 *   to query data from the main table. 
+			 *   to query data from the main table.
 			 * - The target table descriptor, where data is read and returned, is the main table.
 			 * - The binding table descriptor, whose column is bound to values, is the index table.
 			 */
@@ -492,9 +492,9 @@ ybcSetupScanPlan(Relation relation, Relation index, bool xs_want_itup,
 
 	/*
 	 * Setup bind and target attnum of ScanKey.
-	 * - The target-attnum comes from the table that is being read by the scan 
+	 * - The target-attnum comes from the table that is being read by the scan
 	 * - The bind-attnum comes from the table that is being scan by the scan.
-	 * 
+	 *
 	 * Examples:
 	 * - For IndexScan(SysTable, Index), SysTable is used for targets, but Index is for binds.
 	 * - For IndexOnlyScan(Table, Index), only Index is used to setup both target and bind.
@@ -551,7 +551,7 @@ static bool ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int 
     case BTGreaterEqualStrategyNumber:
     case BTGreaterStrategyNumber:
       /* range key */
-      return (!bms_is_member(idx, scan_plan->hash_key) && 
+      return (!bms_is_member(idx, scan_plan->hash_key) &&
           bms_is_member(idx, scan_plan->primary_key));
 
     default:
@@ -561,19 +561,19 @@ static bool ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int 
 }
 
 static bool
-ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum, ScanKey key, 
+ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum, ScanKey key,
     bool is_search_array_only, bool is_hash_or_primary_key) {
   /*
    * TODO: support the different search options like SK_SEARCHNULL and SK_SEARCHNOTNULL.
    */
 
-  if (IsSystemRelation(relation)) 
+  if (IsSystemRelation(relation))
   {
     return key->sk_flags == 0 && key->sk_strategy == BTEqualStrategyNumber;
-  } 
-  else 
+  }
+  else
   {
-    return (key->sk_flags == 0 || (is_search_array_only && is_hash_or_primary_key)) && 
+    return (key->sk_flags == 0 || (is_search_array_only && is_hash_or_primary_key)) &&
       ybc_should_pushdown_op(scan_plan, attnum, key->sk_strategy);
   }
 }
@@ -707,7 +707,7 @@ static void ybcBindScanKeys(Relation relation,
       int idx = scan_plan->bind_key_attnums[i] - FirstLowInvalidHeapAttributeNumber;
 
       if (!bms_is_member(idx, scan_plan->sk_cols))
-        continue;
+		    continue;
 
       if (max_idx < idx)
         max_idx = idx;
@@ -729,8 +729,8 @@ static void ybcBindScanKeys(Relation relation,
     Datum end[max_idx]; /* VLA - scratch space */
 
     /*
-		 * find an order of relevant keys such that for the same column, an EQUAL 
-     * condition is encountered before IN or BETWEEN. is_column_bound is then used 
+		 * find an order of relevant keys such that for the same column, an EQUAL
+     * condition is encountered before IN or BETWEEN. is_column_bound is then used
      * to establish priority order EQUAL > IN > BETWEEN.
 		 */
     int noffsets = 0;
@@ -792,10 +792,11 @@ static void ybcBindScanKeys(Relation relation,
       {
         case BTEqualStrategyNumber:
           /* Bind the scan keys */
-          if (ybScan->key[i].sk_flags == 0) {
-            ybcBindColumnCondEq(ybScan, is_hash_key, scan_plan->bind_desc,
+          if (ybScan->key[i].sk_flags == 0)
+          {
+						ybcBindColumnCondEq(ybScan, is_hash_key, scan_plan->bind_desc,
 																scan_plan->bind_key_attnums[i], ybScan->key[i].sk_argument);
-            is_column_bound[idx] = true; 
+						is_column_bound[idx] = true;
           } else if (is_search_array_only && is_primary_key) {
             /* based on _bt_preprocess_array_keys() */
             ArrayType  *arrayval;
@@ -838,8 +839,8 @@ static void ybcBindScanKeys(Relation relation,
             /* We could pfree(elem_nulls) now, but not worth the cycles */
 
             /* If there's no non-nulls, the scan qual is unsatisfiable */
-            /* TODO(rajukumaryb): when num_nonnulls is zero, the query should not be 
-             * sent to DocDB as it will return rows that will all be dropped. 
+            /* TODO(rajukumaryb): when num_nonnulls is zero, the query should not be
+             * sent to DocDB as it will return rows that will all be dropped.
              * Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL); */
             if (num_nonnulls == 0)
               break;
@@ -862,7 +863,7 @@ static void ybcBindScanKeys(Relation relation,
              */
             ybcBindColumnCondIn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
 																num_elems, elem_values);
-            is_column_bound[idx] = true; 
+            is_column_bound[idx] = true;
           } else {
             /* unreachable */
           }
@@ -873,14 +874,14 @@ static void ybcBindScanKeys(Relation relation,
           if (start_valid[idx]) {
             /* take max of old value and new value */
             bool is_gt = DatumGetBool(FunctionCall2Coll(&ybScan->key[i].sk_func,
-																												ybScan->key[i].sk_collation, 
+																												ybScan->key[i].sk_collation,
 																												start[idx],
 																												ybScan->key[i].sk_argument));
             if (!is_gt) {
               start[idx] = ybScan->key[i].sk_argument;
             }
-          } 
-          else 
+          }
+          else
           {
             start[idx] = ybScan->key[i].sk_argument;
             start_valid[idx] = true;
@@ -889,18 +890,18 @@ static void ybcBindScanKeys(Relation relation,
 
         case BTLessStrategyNumber:
         case BTLessEqualStrategyNumber:
-          if (end_valid[idx]) 
+          if (end_valid[idx])
           {
             /* take min of old value and new value */
             bool is_lt = DatumGetBool(FunctionCall2Coll(&ybScan->key[i].sk_func,
-																												ybScan->key[i].sk_collation, 
+																												ybScan->key[i].sk_collation,
 																												end[idx],
 																												ybScan->key[i].sk_argument));
             if (!is_lt) {
               end[idx] = ybScan->key[i].sk_argument;
             }
-          } 
-          else 
+          }
+          else
           {
             end[idx] = ybScan->key[i].sk_argument;
             end_valid[idx] = true;
@@ -916,16 +917,16 @@ static void ybcBindScanKeys(Relation relation,
     for (int idx = 1 - FirstLowInvalidHeapAttributeNumber; idx < max_idx; idx++)
     {
       /* Do not bind more than one condition to a column */
-      if (is_column_bound[idx]) 
+      if (is_column_bound[idx])
         continue;
 
       if (!start_valid[idx] && !end_valid[idx])
         continue;
 
       ybcBindColumnCondBetween(ybScan,
-															 scan_plan->bind_desc, idx + FirstLowInvalidHeapAttributeNumber, 
+															 scan_plan->bind_desc, idx + FirstLowInvalidHeapAttributeNumber,
 															 start_valid[idx], start[idx], end_valid[idx], end[idx]);
-      is_column_bound[idx] = true; 
+      is_column_bound[idx] = true;
     }
   }
 }
@@ -1285,7 +1286,7 @@ HeapTuple ybc_systable_getnext(SysScanDesc scan_desc)
 
 	HeapTuple tuple = ybc_getnext_heaptuple(scan_desc->ybscan, true /* is_forward_scan */,
 											&recheck);
-	
+
 	Assert(!recheck);
 
 	return tuple;
@@ -1327,7 +1328,7 @@ HeapTuple ybc_heap_getnext(HeapScanDesc scan_desc)
 
 	HeapTuple tuple = ybc_getnext_heaptuple(scan_desc->ybscan, true /* is_forward_scan */,
 											&recheck);
-	
+
 	Assert(!recheck);
 
 	return tuple;
