@@ -78,24 +78,11 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="docdb/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="articles">5 articles</div>
-        <div class="title">DocDB store</div>
-      </div>
-      <div class="body">
-          Sharding, replication, persistence, performance, and colocated tables.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="transactions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
         <div class="articles">4 articles</div>
-        <div class="title">DocDB transactions</div>
+        <div class="title">Transactions layer</div>
       </div>
       <div class="body">
         Review transaction model and how transactional consistency is ensured at various isolation levels.
@@ -104,25 +91,40 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc-architecture/">
+    <a class="section-link icon-offset" href="docdb-sharding/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Change data capture (CDC)</div>
+        <div class="articles">4 articles</div>
+        <div class="title">DocDB sharding layer</div>
       </div>
       <div class="body">
-        Understand how change data capture (CDC) delivers asynchronous replication between YugabyteDB and target consumers.
+        How sharding works in DocDB.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="2dc-deployments/">
+    <a class="section-link icon-offset" href="docdb-replication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Two data center (2DC) deployments</div>
+        <div class="articles">4 articles</div>
+        <div class="title">DocDB replication layer</div>
       </div>
       <div class="body">
-        Learn how two data center (2DC) deployments, built on change data capture (CDC), deliver unidirectional and bidirectional replication of data changes.
+        How replication works in DocDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="docdb/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="articles">5 articles</div>
+        <div class="title">DocDB store</div>
+      </div>
+      <div class="body">
+          Sharding, replication, persistence, performance, and colocated tables.
       </div>
     </a>
   </div>
