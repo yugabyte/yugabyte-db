@@ -31,6 +31,7 @@ set(DOCDB_ENCODING_SRCS
         primitive_value.cc
         primitive_value_util.cc
         intent.cc
+        doc_scanspec_util.cc
         )
 
 set(DOCDB_ENCODING_DEPS

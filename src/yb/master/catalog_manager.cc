@@ -2087,9 +2087,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         }
       }
     } else if (req.partition_schema().has_range_schema()) {
-      vector<YBPartialRow> split_rows;
+      vector<std::string> split_rows;
+      for (const auto& row : req.partition_schema().range_schema().split_rows()) {
+        split_rows.push_back(row);
+      }
+
       RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
-      DCHECK_EQ(1, partitions.size());
+      DCHECK_EQ(split_rows.size() + 1, partitions.size());
     } else {
       DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
     }

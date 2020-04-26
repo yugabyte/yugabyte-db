@@ -57,7 +57,6 @@ template<typename KeyTypeWrapper> struct IntKeysTestSetup;
 } // namespace client
 
 class Schema;
-class PartialRowPB;
 
 // A row which may only contain values for a subset of the columns.
 // This type contains a normal contiguous row, plus a bitfield indicating

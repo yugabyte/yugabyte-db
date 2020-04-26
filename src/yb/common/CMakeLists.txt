@@ -98,7 +98,6 @@ set(COMMON_SRCS
   entity_ids.cc
   key_encoder.cc
   partial_row.cc
-  partition.cc
   row_key-util.cc
   row_mark.cc
   schema.cc
@@ -160,12 +159,27 @@ ADD_YB_LIBRARY(yb_common
   DEPS ${COMMON_LIBS})
 add_dependencies(yb_common yb_bfql yb_bfpg)
 
+set(PARTITION_SRCS
+  partition.cc
+  )
+
+set(PARTITION_DEPS
+  yb_common
+  yb_util
+  yb_docdb_encoding
+  )
+
+ADD_YB_LIBRARY(yb_partition
+  SRCS ${PARTITION_SRCS}
+  DEPS ${PARTITION_DEPS}
+  )
+
 add_library(yb_common_test_util
             transaction-test-util.cc)
 target_link_libraries(yb_common_test_util
                       yb_common)
 
-set(YB_TEST_LINK_LIBS yb_common ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common yb_partition ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(partial_row-test)

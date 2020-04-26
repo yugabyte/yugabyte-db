@@ -20,8 +20,11 @@
 #include "yb/client/namespace_alterer.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/primitive_value.h"
 
 namespace yb {
 namespace pggate {
@@ -171,6 +174,79 @@ Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
   return Status::OK();
 }
 
+Status PgCreateTable::AddSplitRow(int num_cols, YBCPgTypeEntity **types, uint64_t *data) {
+  if (hash_schema_.is_initialized()) {
+    return STATUS(InvalidArgument, "Hash columns cannot have split points");
+  }
+  if (range_columns_.empty() || num_cols > range_columns_.size()) {
+    return STATUS(
+        InvalidArgument, "Split points cannot be more than number of primary key columns");
+  }
+
+  std::vector<QLValuePB> row;
+  row.reserve(range_columns_.size());
+  int i = 0;
+  for (; i < num_cols; i++) {
+    PgConstant point(types[i], data[i], false);
+    QLValuePB ql_value;
+    RETURN_NOT_OK(point.Eval(&ql_value));
+    row.push_back(std::move(ql_value));
+  }
+
+  // Populate QLValuePB  for the remaining range columns
+  while (i < range_columns_.size()) {
+    QLValuePB ql_value;
+    row.push_back(std::move(ql_value));
+    i++;
+  }
+
+  split_rows_.push_back(std::move(row));
+  return Status::OK();
+}
+
+Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBSchema& schema) {
+  std::vector<std::string> rows;
+  std::vector<docdb::PrimitiveValue> prev_range_components;
+  for (const auto& row : split_rows_) {
+    std::vector<docdb::PrimitiveValue> range_components;
+    range_components.reserve(range_columns_.size());
+    int i = 0;
+    bool compare_columns = true;
+    for (const auto& column : range_columns_) {
+      const client::YBColumnSchema& column_schema = schema.Column(schema.FindColumn(column));
+
+      if (row[i].value_case() == QLValuePB::VALUE_NOT_SET) {
+        range_components.emplace_back(docdb::ValueType::kLowest);
+      } else {
+        range_components.push_back(docdb::PrimitiveValue::FromQLValuePB(
+            row[i], column_schema.sorting_type()));
+      }
+
+      // Validate that split rows honor column ordering.
+      if (compare_columns && !prev_range_components.empty()) {
+        int compare = prev_range_components[i].CompareTo(range_components[i]);
+        if (compare > 0) {
+          return STATUS(InvalidArgument, "Split rows ordering does not match column ordering");
+        } else if (compare < 0) {
+          // Don't need to compare further columns
+          compare_columns = false;
+        }
+      }
+      i++;
+    }
+
+    prev_range_components = range_components;
+    const auto& keybytes = docdb::DocKey(std::move(range_components)).Encode();
+
+    // Validate that there are no duplicate split rows.
+    if (rows.size() > 0 && keybytes.data() == rows.back()) {
+      return STATUS(InvalidArgument, "Cannot have duplicate split rows");
+    }
+    rows.push_back(std::move(keybytes.data()));
+  }
+  return rows;
+}
+
 Status PgCreateTable::Exec() {
   // Construct schema.
   client::YBSchema schema;
@@ -188,6 +264,7 @@ Status PgCreateTable::Exec() {
   }
 
   RETURN_NOT_OK(schema_builder_.Build(&schema));
+  std::vector<std::string> split_rows = VERIFY_RESULT(BuildSplitRows(schema));
 
   // Create table.
   shared_ptr<client::YBTableCreator> table_creator(pg_session_->NewTableCreator());
@@ -205,7 +282,7 @@ Status PgCreateTable::Exec() {
   if (hash_schema_) {
     table_creator->hash_schema(*hash_schema_);
   } else if (!is_pg_catalog_table_) {
-    table_creator->set_range_partition_columns(range_columns_);
+    table_creator->set_range_partition_columns(range_columns_, split_rows);
   }
 
   // For index, set indexed (base) table id.

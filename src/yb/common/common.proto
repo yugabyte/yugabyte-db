@@ -345,6 +345,8 @@ message PartitionSchemaPB {
     // Column identifiers of columns included in the range. All columns must be
     // a component of the primary key.
     repeated ColumnIdentifierPB columns = 1;
+    // Split points for range tables.
+    repeated string split_rows = 2;
   }
 
   message HashBucketSchemaPB {

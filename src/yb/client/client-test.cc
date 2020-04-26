@@ -2107,7 +2107,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   EXPECT_OK(schemaBuilder.Build(&schema));
   Status s = table_creator->table_name(pgsql_table_name)
       .table_id(kPgsqlTableId)
-      .schema(&schema_)
+      .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(PGSQL_TABLE_TYPE)
       .num_tablets(1)
@@ -2131,7 +2131,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   // Create a YQL table using range partition.
   s = table_creator->table_name(yql_table_name)
-      .schema(&schema_)
+      .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(YQL_TABLE_TYPE)
       .num_tablets(1)

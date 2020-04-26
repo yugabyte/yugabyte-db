@@ -39,6 +39,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/row_key-util.h"
 #include "yb/common/wire_protocol.pb.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/hash/hash.h"
 #include "yb/gutil/strings/join.h"
@@ -135,6 +136,7 @@ void SetColumnIdentifiers(const vector<ColumnId>& column_ids,
       identifiers->Add()->set_id(column_id);
     }
 }
+
 } // namespace
 
 Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
@@ -545,6 +547,49 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
   return Status::OK();
 }
 
+Status PartitionSchema::CreatePartitions(
+    const std::vector<std::string>& split_rows,
+    const Schema& schema, std::vector<Partition>* partitions) const {
+  DSCHECK(!schema.num_hash_key_columns(), IllegalState,
+      "Cannot create partitions using split rows for hash partitioned tables");
+  *partitions = vector<Partition>();
+
+  unordered_set<int> range_column_idxs;
+  for (ColumnId column_id : range_schema_.column_ids) {
+    int column_idx = schema.find_column_by_id(column_id);
+    if (column_idx == Schema::kColumnNotFound) {
+      return STATUS(InvalidArgument, Substitute("Range partition column ID $0 "
+                                                "not found in table schema.", column_id));
+    }
+    if (!InsertIfNotPresent(&range_column_idxs, column_idx)) {
+      return STATUS(InvalidArgument, "Duplicate column in range partition",
+                    schema.column(column_idx).name());
+    }
+  }
+
+  // Create the start range keys.
+  set<string> start_keys;
+  string start_key;
+  for (const auto& row : split_rows) {
+    // Check for a duplicate split row.
+    if (!InsertIfNotPresent(&start_keys, row)) {
+      return STATUS(InvalidArgument, "Duplicate split row", row);
+    }
+
+    Partition partition;
+    partition.partition_key_start_.append(start_key);
+    partition.partition_key_end_.append(row);
+    partitions->push_back(partition);
+    start_key = row;
+  }
+
+  // Add the final partition
+  Partition partition;
+  partition.partition_key_start_.append(start_key);
+  partitions->push_back(partition);
+  return Status::OK();
+}
+
 template<typename Row>
 Status PartitionSchema::PartitionContainsRowImpl(const Partition& partition,
                                                  const Row& row,
@@ -653,10 +698,34 @@ Status PartitionSchema::DecodeHashBuckets(Slice* encoded_key,
   return Status::OK();
 }
 
+string PartitionSchema::RangePartitionDebugString(const Partition& partition,
+                                                  const Schema& schema) const {
+  CHECK(!schema.num_hash_key_columns());
+  std::string s;
+  s.append("range: [(");
+  if (partition.partition_key_start().empty()) {
+    s.append("<start>");
+  } else {
+    s.append(docdb::DocKey::DebugSliceToString(partition.partition_key_start()));
+  }
+  s.append(", ");
+  if (partition.partition_key_end().empty()) {
+    s.append("<end>");
+  } else {
+    s.append(docdb::DocKey::DebugSliceToString(partition.partition_key_end()));
+  }
+  s.append("))");
+  return s;
+}
+
 string PartitionSchema::PartitionDebugString(const Partition& partition,
                                              const Schema& schema) const {
-  string s;
 
+  if (schema.num_hash_key_columns() == 0) {
+    return RangePartitionDebugString(partition, schema);
+  }
+
+  string s;
   if (hash_schema_) {
     switch (*hash_schema_) {
       case YBHashSchema::kRedisHash: FALLTHROUGH_INTENDED;

@@ -158,6 +158,10 @@ Status PgExpr::Eval(PgDml *pg_stmt, QLValuePB *result) {
   return Status::OK();
 }
 
+Status PgExpr::Eval(QLValuePB *result) {
+  return Status::OK();
+}
+
 void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int index,
                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
                            PgTuple *pg_tuple) {
@@ -594,6 +598,10 @@ Status PgConstant::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 
 Status PgConstant::Eval(PgDml *pg_stmt, QLValuePB *result) {
   CHECK(pg_stmt != nullptr);
+  return Eval(result);
+}
+
+Status PgConstant::Eval(QLValuePB *result) {
   CHECK(result != nullptr);
   *result = ql_value_;
   return Status::OK();

@@ -168,6 +168,8 @@ class PgCreateTable : public PgDdl {
   // Specify the number of tablets explicitly.
   virtual CHECKED_STATUS SetNumTablets(int32_t num_tablets);
 
+  virtual CHECKED_STATUS AddSplitRow(int num_cols, YBCPgTypeEntity **types, uint64_t *data);
+
   // Execute.
   virtual CHECKED_STATUS Exec();
 
@@ -181,6 +183,8 @@ class PgCreateTable : public PgDdl {
                                            ColumnSchema::SortingType::kNotSpecified);
 
  private:
+  Result<std::vector<std::string>> BuildSplitRows(const client::YBSchema& schema);
+
   client::YBTableName table_name_;
   const PgObjectId table_id_;
   int32_t num_tablets_;
@@ -190,6 +194,7 @@ class PgCreateTable : public PgDdl {
   bool colocated_ = true;
   boost::optional<YBHashSchema> hash_schema_;
   std::vector<std::string> range_columns_;
+  std::vector<std::vector<QLValuePB>> split_rows_; // Split rows for range tables
   client::YBSchemaBuilder schema_builder_;
 };
 

@@ -113,7 +113,8 @@ YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::strin
 }
 
 YBTableCreator& YBTableCreator::set_range_partition_columns(
-    const std::vector<std::string>& columns) {
+    const std::vector<std::string>& columns,
+    const std::vector<std::string>& split_rows) {
   PartitionSchemaPB::RangeSchemaPB* range_schema =
     partition_schema_.mutable_range_schema();
   range_schema->Clear();
@@ -121,6 +122,9 @@ YBTableCreator& YBTableCreator::set_range_partition_columns(
     range_schema->add_columns()->set_name(col_name);
   }
 
+  for (const auto& row : split_rows) {
+    range_schema->add_split_rows(row);
+  }
   return *this;
 }
 

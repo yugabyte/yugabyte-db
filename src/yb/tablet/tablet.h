@@ -627,6 +627,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
 
+  Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request) const;
+
+  Result<bool> HasScanReachedMaxPartitionKey(
+      const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const;
+
   // Lock protecting schema_ and key_schema_.
   //
   // Writers take this lock in shared mode before decoding and projecting
