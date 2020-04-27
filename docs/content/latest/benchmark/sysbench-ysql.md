@@ -17,7 +17,7 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/tpcc-ysql/" class="nav-link active">
+    <a href="/latest/benchmark/sysbench-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -25,11 +25,11 @@ isTocNested: true
 
 </ul>
 
-Sysbench is a popular tool for benchmarking system capabilities like CPU, memory and I/O as well as databases like Postgres and MySQL.
-Follow the steps below to run sysbench against YugabyteDB.
-The version we are using is forked from the [official](https://github.com/akopytov/sysbench) version with a few additions to better reflect YugabyteDB's distributed nature.
+Sysbench is a popular tool for benchmarking databases like Postgres and MySQL, as well as system capabilities like CPU, memory and I/O.
+Follow the steps below to run Sysbench against YugabyteDB.
+The version we are using is forked from the [official](https://github.com/akopytov/sysbench) version with a few modifications to better reflect YugabyteDB's distributed nature.
 
-## Step 1. Get Sysbench.
+## Step 1. Install Sysbench.
 
 You can do this by running the following commands.
 
@@ -41,21 +41,21 @@ $ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
 ```
 
 {{< note title="Note" >}}
-The above steps installs the sysbench utility in '/usr/local/bin'
+The above steps will install the sysbench utility in '/usr/local/bin'
 {{< /note >}}
 
 ## Step 2. Start YugabyteDB
 
 Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
 
-## Step 3. Run the benchmark
+## Step 3. Run all OLTP workloads
 
 There is a handly shell script 'run_sysbench.sh' that loads the data and runs the various workloads.
 ```sh
 ./run_sysbench.sh
 ```
 
-## Manually run the workloads
+### Manually run the workloads
 
 Before starting the workload we need to load the data first.
 
