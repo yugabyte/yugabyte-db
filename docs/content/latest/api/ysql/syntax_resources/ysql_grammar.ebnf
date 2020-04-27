@@ -735,6 +735,11 @@ drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 (* 'DROP' 'DOMAIN' *)
 drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;
 
+(* 'DROP' 'EXTENSION' *)
+drop_extension = 'DROP' 'EXTENSION' [ 'IF' 'EXISTS' ]
+                 name { ',' name }
+                 [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* DROP FUNCTION *)
 drop_function = 'DROP' ( 'FUNCTION' | 'PROCEDURE' ) [ 'IF' 'EXISTS' ] \
                         ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] )
