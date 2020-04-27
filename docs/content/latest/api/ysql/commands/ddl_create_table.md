@@ -86,19 +86,48 @@ Using this qualifier will create a temporary table. Temporary tables are only vi
 
 ### SPLIT INTO
 
-The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. Pre-splitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
+For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
+
+Pre-splitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
-By default, yugabyteDB pre-splits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
+By default, YugabyteDB pre-splits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
 
 {{< /note >}}
+
+### SPLIT AT VALUES
+
+{{< note title="Note" >}}
+
+The `SPLIT AT VALUES` feature is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
+
+For range-partitioned tables, you can use the `SPLIT AT VALUES` clause to set split points to pre-split range-sharded tables.
+
+**Example**
+
+```postgresql
+CREATE TABLE tbl(
+  a int,
+  b int,
+  primary key(a asc, b desc)
+) SPLIT AT VALUES((100), (200), (200, 5));
+```
+
+In the example above, there are three split points and so four tablets will be created:
+
+- tablet 1: `a=<lowest>, b=<lowest>` to `a=100, b=<lowest>`
+- tablet 2: `a=100, b=<lowest>` to `a=200, b=<lowest>`
+- tablet 3: `a=200, b=<lowest>` to `a=200, b=5`
+- tablet 4: `a=200, b=5` to `a=<highest>, b=<highest>`
 
 ### COLOCATED
 
 {{< note title="Note" >}}
 
-This feature is currently in [Beta](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+This feature is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< /note >}}
 
