@@ -103,7 +103,6 @@ export default class CreateBackup extends Component {
     });
     const initialValues = this.props.initialValues;
 
-
     let tableOptions = [];
     const keyspaceOptions = [{ value: '', label: 'None'}];
     let modalTitle = "Create Backup";
@@ -171,10 +170,11 @@ export default class CreateBackup extends Component {
           }}
           initialValues={initialValues}
           validationSchema={schemaValidation}
-          render={({values: { cronExpression, schedulingFrequency, backupTableUUID }}) => {
+          render={({values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID }}) => {
             const isSchedulingFrequencyReadOnly = cronExpression !== "";
             const isCronExpressionReadOnly = schedulingFrequency !== "";
             const isTableSelected = backupTableUUID && backupTableUUID.length && backupTableUUID[0].value !== 'fulluniverse';
+            const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
 
             // params for backupTableUUID <Field>
             // NOTE: No entire keyspace selection implemented
@@ -231,7 +231,7 @@ export default class CreateBackup extends Component {
                   component={YBFormSelect}
                   label="Table keyspace"
                   options={keyspaceOptions}
-                  isDisabled={isTableSelected} // Disable if backup table is specified
+                  isDisabled={isTableSelected || tableInfo} // Disable if backup table is specified
                 />
               }
               <Field
@@ -247,11 +247,11 @@ export default class CreateBackup extends Component {
                 onChange={this.backupTableChanged}
                 readOnly={isNonEmptyObject(tableInfo)}
               />
-              <Field
+              {s3StorageSelected && <Field
                 name="enableSSE"
                 component={YBFormToggle}
                 label={"Enable Server-Side Encryption"}
-              />              
+              />}
             </Fragment>);
           }}
         />
