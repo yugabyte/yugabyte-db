@@ -12,7 +12,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** April 24, 2020.
+**Released:** April 27, 2020.
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
