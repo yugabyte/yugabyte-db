@@ -51,9 +51,9 @@ showAsideToc: true
 
 1. One of the following operating systems
 
-  - <i class="icon-centos"></i> CentOS 7
+    - <i class="icon-centos"></i> CentOS 7
 
-  - <i class="icon-ubuntu"></i> Ubuntu 16.04+
+    - <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
 
 2. Verify that you have Python 2 or 3 installed.
 
