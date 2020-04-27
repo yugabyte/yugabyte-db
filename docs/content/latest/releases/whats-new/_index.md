@@ -39,7 +39,7 @@ menu:
 docker pull yugabytedb/yugabyte:2.1.5.0-b14
 ```
 
-## YSQL changes
+## YSQL
 
 - [BETA] The `CREATE TABLE` statement now supports the [`SPLIT AT VALUES` clause](../../api/ysql/commands/ddl_create_table/#split-at-values). [#1486](https://github.com/yugabyte/yugabyte-db/issues/1486)
 - Read restart for `EXECUTE` statement if the prepared statement is `SELECT`. [#4205](https://github.com/yugabyte/yugabyte-db/issues/4205)
