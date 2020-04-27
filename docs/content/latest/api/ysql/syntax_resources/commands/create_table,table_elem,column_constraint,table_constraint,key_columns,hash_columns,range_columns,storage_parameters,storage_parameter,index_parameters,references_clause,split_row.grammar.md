@@ -3,7 +3,9 @@ create_table ::= CREATE [ TEMPORARY | TEMP ] TABLE [ IF NOT EXISTS ]
                  table_name ( [ table_elem [ , ... ] ] ) 
                  [ WITH ( { COLOCATED = { 'true' | 'false' }
                             | storage_parameters } )
-                   | WITHOUT OIDS ] [ SPLIT ( INTO integer TABLETS ) ]
+                   | WITHOUT OIDS ] 
+                 [ SPLIT { INTO integer TABLETS
+                           | AT VALUES ( split_row [ , ... ] ) } ]
 
 table_elem ::= column_name data_type [ column_constraint [ ... ] ]
                | table_constraint
@@ -41,4 +43,6 @@ references_clause ::= REFERENCES table_name [ column_name [ , ... ] ]
                       [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]  
                       [ ON DELETE key_action ] 
                       [ ON UPDATE key_action ]
+
+split_row ::= ( column_value [ , ... ] )
 ```
