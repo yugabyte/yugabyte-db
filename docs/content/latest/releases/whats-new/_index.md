@@ -36,7 +36,7 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.5.0-b14
+docker pull yugabytedb/yugabyte:2.1.5.0-b17
 ```
 
 ## YSQL
