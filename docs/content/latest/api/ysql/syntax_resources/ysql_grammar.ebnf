@@ -586,7 +586,10 @@ create_table ::= 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS'
                  '(' [ table_elem { ',' table_elem } ] ')'
                  [ 'WITH' '(' ( 'COLOCATED' '=' ('true' | 'false') | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ]
-                 [ 'SPLIT' '(' 'INTO' integer 'TABLETS' ')' ] ;
+                 [ 'SPLIT' ( 'INTO' integer 'TABLETS'
+                      | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ] ;
+
+split_row = '(' column_value { ',' column_value } ')';
 
 table_elem ::= ( column_name data_type [ column_constraint { column_constraint } ] ) | table_constraint ;
 
@@ -1063,6 +1066,7 @@ function_arguments = [ text_literal { ',' text_literal } ] ;
 text_literal = '<Text Literal>' ;
 
 int_literal = '<Integer Literal>' ;
+integer = '<Integer Literal>' ;
 
 numeric_literal = '<Numeric Literal>' ;
 
@@ -1149,6 +1153,8 @@ param_name ::= '<Text Literal>' ;
 param_value ::= '<Text Literal>' ;
 
 code ::= '<Text Literal>' ;
+
+column_value = '<column value>' ;
 
 aggregate_argmode = 'IN' | 'VARIADIC' ;
 sfunc = function_name ;
