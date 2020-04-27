@@ -41,27 +41,27 @@ docker pull yugabytedb/yugabyte:2.1.5.0-b14
 
 ## YSQL changes
 
-- [YSQL] Read restart for `EXECUTE` statement if the prepared statement is `SELECT`. [#4205](https://github.com/yugabyte/yugabyte-db/issues/4205)
-- [YSQL] Find and list YSQL tables in `yb-admin` commands now use table ID instead of table names. [#1687](https://github.com/yugabyte/yugabyte-db/issues/1687)
-- [YSQL] The `DROP INDEX` statement now ignores index backfill.
-- [YSQL] The `DROP INDEX` statement now ignores DocDB `NotFound` errors when it doesn't have table metadata, but postgres does. [#4249](https://github.com/yugabyte/yugabyte-db/issues/4249)
-- [YSQL] Force single row update prepare statements to use a custom plan that requires `boundParams` to be sent for creation and execution. [#4219](https://github.com/yugabyte/yugabyte-db/issues/4219)
-- [YSQL] Improve performance of multi-column primary keys by generating `scanspec` for range partitioned tables using condition expression. [#4033](https://github.com/yugabyte/yugabyte-db/pull/4033)
+- Read restart for `EXECUTE` statement if the prepared statement is `SELECT`. [#4205](https://github.com/yugabyte/yugabyte-db/issues/4205)
+- Find and list YSQL tables in `yb-admin` commands now use table ID instead of table names. [#1687](https://github.com/yugabyte/yugabyte-db/issues/1687)
+- The `DROP INDEX` statement now ignores index backfill.
+- The `DROP INDEX` statement now ignores DocDB `NotFound` errors when it doesn't have table metadata, but postgres does. [#4249](https://github.com/yugabyte/yugabyte-db/issues/4249)
+- Force single row update prepare statements to use a custom plan that requires `boundParams` to be sent for creation and execution. [#4219](https://github.com/yugabyte/yugabyte-db/issues/4219)
+- Improve performance of multi-column primary keys by generating `scanspec` for range partitioned tables using condition expression. [#4033](https://github.com/yugabyte/yugabyte-db/pull/4033)
 
 ## System improvements
 
 - Improve tablet splitting [#4169](https://github.com/yugabyte/yugabyte-db/issues/4169), including:
   - Add support for transaction-enabled tables.
   - Add WAL index flush before copying WAL during table splitting.
-- colocation: Optimization that pushes index lookup down to DocDB. [#3609](https://github.com/yugabyte/yugabyte-db/issues/3609)
-- colocation: Use range keys by default for colocated tables and indexes. [#3034](https://github.com/yugabyte/yugabyte-db/issues/3034)
-- colocation: Avoid excessive RPC requests for drop and truncate [#3387](https://github.com/yugabyte/yugabyte-db/issues/3387)
-- On starting a new master (in edit and add node), update master addresses correctly in `yb-master` and `yb-tserver` configuration files. [#3636](https://github.com/yugabyte/yugabyte-db/issues/3636), [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242), and [#4245](https://github.com/yugabyte/yugabyte-db/issues/4245)
+- [colocation] Optimization that pushes index lookup down to DocDB. [#3609](https://github.com/yugabyte/yugabyte-db/issues/3609)
+- [colocation] Use range keys by default for colocated tables and indexes. [#3034](https://github.com/yugabyte/yugabyte-db/issues/3034)
+- [colocation] Avoid excessive RPC requests for drop and truncate [#3387](https://github.com/yugabyte/yugabyte-db/issues/3387)
+- On starting a new `yb-master` (in edit and add node), update master addresses correctly in `yb-master` and `yb-tserver` configuration files. [#3636](https://github.com/yugabyte/yugabyte-db/issues/3636), [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242), and [#4245](https://github.com/yugabyte/yugabyte-db/issues/4245)
 - Add backup-related code changes for snapshots [#3836](https://github.com/yugabyte/yugabyte-db/issues/3836), including:
   - Change `yb-admin import_snapshot` to return an error if there are less new table names than backed up tables. For example, if you rename only two of three tables, an error will be generated.
   - Change `yb-admin restore_snapshot` and `yb-admin list_snapshot` to output `restoration-id` (useful for verifying completed restorations).
 - Support `yb-admin import_snapshot` renaming only a few tables (but not all), but keeping the specified table name the same as the old table name. [#4280](https://github.com/yugabyte/yugabyte-db/issues/4280)
-- Deprecate `table_flush_timeout`in the `yb-admin create_snapshot` command.
+- Deprecate `table_flush_timeout` in the `yb-admin create_snapshot` command.
 - Do not return error in output of `yb-admin get_is_load_balancer_idle` if load balancer is busy. [#3949]
 - Change `yb-tserver` `/utilz` endpoint page to display "Live Ops" instead of "RPCs" and add YSQL statements link [#4106](https://github.com/yugabyte/yugabyte-db/pull/4106)
 - Fix access to reset tablet peer during shutdown. [#3989](https://github.com/yugabyte/yugabyte-db/issues/3989)
