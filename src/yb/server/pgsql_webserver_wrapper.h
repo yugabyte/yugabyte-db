@@ -72,6 +72,7 @@ void RegisterRpczEntries(void (*rpczFunction)(), void (*freerpczFunction)(), int
                          rpczEntry **rpczEntriesPointer);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
+void RegisterResetYsqlStatStatements(void (*fn)());
 void WriteStatArrayElemToJson(void* p1, void* p2);
 
 #ifdef __cplusplus

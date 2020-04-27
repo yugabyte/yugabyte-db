@@ -32,6 +32,7 @@ static int *num_backends;
 yb::MetricEntity::AttributeMap prometheus_attr;
 static void (*pullRpczEntries)();
 static void (*pullYsqlStatementStats)(void *);
+static void (*resetYsqlStatementStats)();
 static void (*freeRpczEntries)();
 static rpczEntry **rpczResultPointer;
 
@@ -110,6 +111,27 @@ static void PgStatStatementsHandler(const Webserver::WebRequest& req, std::strin
     writer.StartArray();
     pullYsqlStatementStats(&writer);
     writer.EndArray();
+  } else {
+    writer.String("PG Stat Statements module is disabled.");
+  }
+
+  writer.EndObject();
+}
+
+static void PgStatStatementsResetHandler(const Webserver::WebRequest& req,
+                                         std::stringstream* output) {
+  JsonWriter::Mode json_mode;
+  string arg = FindWithDefault(req.parsed_args, "compact", "false");
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
+              JsonWriter::COMPACT : JsonWriter::PRETTY;
+  JsonWriter writer(output, json_mode);
+
+  writer.StartObject();
+
+  writer.String("statements");
+  if (resetYsqlStatementStats) {
+    resetYsqlStatementStats();
+    writer.String("PG Stat Statements reset.");
   } else {
     writer.String("PG Stat Statements module is disabled.");
   }
@@ -243,6 +265,10 @@ extern "C" {
     pullYsqlStatementStats = getYsqlStatementStats;
   }
 
+  void RegisterResetYsqlStatStatements(void (*fn)()) {
+    resetYsqlStatementStats = fn;
+  }
+
   void RegisterRpczEntries(void (*rpczFunction)(), void (*freerpczFunction)(),
                            int *num_backends_ptr, rpczEntry **rpczEntriesPointer) {
     rpczResultPointer = rpczEntriesPointer;
@@ -260,6 +286,8 @@ extern "C" {
     webserver->RegisterPathHandler("/rpcz", "RPCs in progress", PgRpczHandler, false, false);
     webserver->RegisterPathHandler("/statements", "PG Stat Statements", PgStatStatementsHandler,
         false, false);
+    webserver->RegisterPathHandler("/statements-reset", "Reset PG Stat Statements",
+        PgStatStatementsResetHandler, false, false);
     return ToYBCStatus(webserver->Start());
   }
 };

@@ -492,6 +492,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     double value;
   }
 
+  protected void resetStatementStat() throws Exception {
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      URL url = new URL(String.format("http://%s:%d/statements-reset",
+                                      ts.getLocalhostIP(),
+                                      ts.getPgsqlWebPort()));
+      Scanner scanner = new Scanner(url.openConnection().getInputStream());
+      scanner.close();
+    }
+  }
+
   protected AgregatedValue getStatementStat(String statName) throws Exception {
     AgregatedValue value = new AgregatedValue();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
@@ -531,6 +541,28 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     assertEquals(oldValue + stmtMetricDelta, newValue);
+  }
+
+  protected void verifyStatementStats(Statement statement, String stmt, String statName,
+                                      long numLoops, long oldValue) throws Exception {
+    for (int i = 0; i < numLoops; i++) {
+      statement.execute(stmt);
+    }
+
+    long newValue = getStatementStat(statName).count;
+    assertEquals(oldValue + numLoops, newValue);
+  }
+
+  protected void verifyStatementStatWithReset(Statement statement, String stmt, String statName,
+                                              long numLoopsBeforeReset, long numLoopsAfterReset)
+                                                throws Exception {
+    long oldValue = getStatementStat(statName).count;
+    verifyStatementStats(statement, stmt, statName, numLoopsBeforeReset, oldValue);
+
+    resetStatementStat();
+
+    oldValue = 0;
+    verifyStatementStats(statement, stmt, statName, numLoopsAfterReset, oldValue);
   }
 
   private JsonArray[] getRawMetric(
