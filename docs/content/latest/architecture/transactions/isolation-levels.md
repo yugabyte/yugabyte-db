@@ -14,16 +14,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-ransaction isolation is foundational to handling concurrent transactions in databases. The [SQL-92 standard](https://en.wikipedia.org/wiki/SQL-92) defines four levels of transaction isolation, `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED` and `READ UNCOMMITTED` in decreasing order of strictness.
+Transaction isolation is foundational to handling concurrent transactions in databases. The [SQL-92 standard](https://en.wikipedia.org/wiki/SQL-92) defines four levels of transaction isolation, `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED` and `READ UNCOMMITTED` in decreasing order of strictness.
 
-YugabyteDB supports two transaction isolation levels - `SNAPSHOT` (which is mapped to the SQL isolation level `REPEATABLE READ`) and `SERIALIZABLE` (which maps to the SQL isolation level of the same name). Thus, YugabyteDB supports the two strictest of the above four isolation levels. These isolation levels are described below:
+YugabyteDB supports two transaction isolation levels - `SERIALIZABLE` (which maps to the SQL isolation level of the same name) and `SNAPSHOT` (which is mapped to the SQL isolation level `REPEATABLE READ`). Thus, YugabyteDB supports the two strictest of the above four isolation levels. These isolation levels are described below:
 
 - [`SNAPSHOT` Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) guarantees that all reads made in a transaction will see a consistent snapshot of the database, and the transaction itself will successfully commit only if no updates it has made conflict with any concurrent updates made by transactions that committed since that snapshot.
 - [`SERIALIZABLE` Isolation](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable) guarantees that transactions run in a way equivalent to a serial (sequential) schedule.
 
-In YugabyteDB, transaction isolation level support differs between the YSQL and YCQL APIs.
+Note that transaction isolation level support differs between the YSQL and YCQL APIs.
 
-- [YSQL](../../../api/ysql/) supports both `SERIALIZABLE` and `SNAPSHOT` isolation levels (they map to the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READ` respectively).
+- [YSQL](../../../api/ysql/) supports both SERIALIZABLE and SNAPSHOT isolation levels (they map to the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READ` respectively). Snapshot Isolation level is the default for YSQL.
 - [YCQL](../../../api/ycql//dml_transaction/) supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
 
 {{< note title="Note" >}}

@@ -25,43 +25,40 @@ YugabyteDB offers strong consistency guarantees in the face of a variety of fail
 
 In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugabyteDB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugabyteDB is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugabyteDB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugabyteDB is an insignificant contributor to its downtime, then users are correct to not worry about it.
 
-### Single-key linearizability
+### Single-row linearizability
 
-YugabyteDB supports single-key linearizable writes. Linearizability is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key: 
+YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single row: 
 
 - Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
 - If operation A completes before operation B begins, then B should logically take effect after A.
 
-### Multi-key ACID transactions
+### Multi-row ACID transactions
 
-YugabyteDB supports multi-key transactions with both Serializable and Snapshot isolation.
+YugabyteDB supports multi-row transactions with both Serializable and Snapshot isolation.
 
-- The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Note that YSQL Serializable support was added in [v1.2.6](../../releases/v1.2.6/).
+- The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` (default) respectively. 
 - The [YCQL](../../api/ycql/dml_transaction/) API supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
 
 {{< tip title="Read more about consistency" >}}
 
 - Achieving [consistency with Raft consensus](../docdb/replication/).
 - How [fault tolerance and high availability](../core-functions/high-availability/) are achieved.
-- [Single-key linearizable transactions](../transactions/single-row-transactions/) in YugabyteDB.
+- [Single-row linearizable transactions](../transactions/single-row-transactions/) in YugabyteDB.
 - The architecture of [distributed transactions](../transactions/single-row-transactions/).
 
 {{< /tip >}}
 
 ## Query APIs
 
-YugabyteDB does not reinvent storage APIs. It is wire-compatible with existing APIs and extends functionality. The following APIs are supported:
+YugabyteDB does not reinvent data client APIs. It is wire-compatible with existing APIs and extends functionality. The following APIs are supported.
 
-- **YSQL** — ANSI-SQL compliant and is wire-compatible with PostgreSQL
-- **YCQL** (or the *Yugabyte Cloud Query Language*) which is a semi-relational API with Cassandra roots
+### YSQL
 
-### Distributed SQL
-
-The YSQL API is PostgreSQL-compatible as noted before. It reuses PostgreSQL code base.
+[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Note that [reuses the native query layer](https://blog.yugabyte.com/why-we-built-yugabytedb-by-reusing-the-postgresql-query-layer/) of the PostgreSQL open source project.
 
 - New changes do not break existing PostgreSQL functionality
 
-- Designed with migrations to newer PostgreSQL versions over time as an explicit goal. This means that new features are implemented in a modular fashion in the YugabyteDB codebase to enable rapidly integrating with new PostgreSQL features in an on-going fashion.
+- Designed with migrations to newer PostgreSQL versions over time as an explicit goal. This means that new features are implemented in a modular fashion in the YugabyteDB codebase to enable rapid integration with new PostgreSQL features as an ongoing process.
 
 - Support wide SQL functionality:
   - All data types
@@ -73,6 +70,10 @@ The YSQL API is PostgreSQL-compatible as noted before. It reuses PostgreSQL code
   - Views
   - Stored procedures
   - Triggers
+
+### YCQL
+
+[YCQL](../../api/ycql/) is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. 
 
 {{< tip title="Read more" >}}
 
@@ -93,9 +94,9 @@ Written in C++ to ensure high performance and the ability to leverage large memo
 Achieving [high performance in YugabyteDB](../docdb/performance/).
 {{< /tip >}}
 
-## Geo-distributed
+## Geo-distributed deployments
 
-### Multi-region deployments
+### Multi-region configurations
 
 YugabyteDB should work well in deployments where the nodes of the cluster span:
 
@@ -109,7 +110,7 @@ In order to achieve this, a number of features would be required. For example, c
 - Cluster-aware, with ability to handle node failures seamlessly
 - Topology-aware, with ability to route traffic seamlessly
 
-## Cloud native
+## Cloud native architecture
 
 YugabyteDB is a cloud-native database. It has been designed with the following cloud-native principles in mind:
 

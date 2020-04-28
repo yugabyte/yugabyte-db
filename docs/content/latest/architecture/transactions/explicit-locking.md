@@ -1,7 +1,7 @@
 ---
-title: Explicit Locking
-headerTitle: Explicit Locking
-linkTitle: Explicit Locking
+title: Explicit locking
+headerTitle: Explicit locking
+linkTitle: Explicit locking
 description: Learn about support for explicit locks in YugabyteDB.
 menu:
   latest:

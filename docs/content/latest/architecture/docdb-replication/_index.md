@@ -6,7 +6,7 @@ description: Learn about the YugabyteDB distributed document store that is respo
 image: /images/section_icons/architecture/concepts.png
 aliases:
   - /latest/architecture/docdb/replication/
-headcontent: YugabyteDB distributed document store responsible for sharding, replication, transactions, and persistence.
+headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
 menu:
   latest:
     identifier: architecture-docdb-replication
@@ -14,19 +14,19 @@ menu:
     weight: 1135
 ---
 
-This section describes how replication works in DocDB. The data in a DocDB table is split into tablets. By default, each tablet is synchronously replicated using the Raft algorithm across various nodes or fault domains (such as availability zones/racks/regions/cloud providers). 
-
-
-There are other advanced replication features in YugabyteDB. These include two forms of asynchronous replication of data:
-* **xCluster Replication** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (master-slave) or  bidirectional replication across two clusters.
-* **Read replicas** The in-cluster asynchronous replicas are called read replicas.
-
 {{< note title="Note" >}}
 
-* Synchronous replication in YugabyteDB synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>. 
-* Asynchronous replication in YugabyteDB is inspired by RDBMS databases such as Oracle, MySQL and PostgreSQL.
+* YugabyteDB's synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>. 
+* YugabyteDB asynchronous replication architecture is inspired by RDBMS databases such as Oracle, MySQL and PostgreSQL.
 
 {{</note >}}
+
+This section describes how replication works in DocDB. The data in a DocDB table is split into tablets. By default, each tablet is synchronously replicated using the Raft algorithm across various nodes or fault domains (such as availability zones/racks/regions/cloud providers). 
+
+There are other advanced replication features in YugabyteDB. These include two forms of asynchronous replication of data:
+* **xCluster replication** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (master-slave) or  bidirectional replication across two clusters.
+* **Read replicas** The in-cluster asynchronous replicas are called read replicas.
+
 
 <div class="row">
 
@@ -37,11 +37,10 @@ There are other advanced replication features in YugabyteDB. These include two f
         <div class="title">Default replication</div>
       </div>
       <div class="body">
-        Replicating the data in every table with Raft consensus.
+        In-cluster synchronous replication with Raft consensus.
       </div>
     </a>
   </div>
-
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="xcluster-replication/">

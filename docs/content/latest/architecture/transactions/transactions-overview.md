@@ -98,13 +98,13 @@ The architecture section covers the set of explicit locking modes currently supp
 End user statements map to one of the following types of transactions inside YugabyteDB. The mapping of the user statements to transaction types is done seamlessly, the user does not need to be aware of the different types of transactions.
 
 
-### Single row transactions
+### Single-row transactions
 
 The transaction manager of YugabyteDB automatically detects transactions that update a single row (as opposed to transactions that update rows across tablets or nodes). In order to achieve high performance, the updates to a single row directly update the row without having to interact with the transaction status tablet using the *single row transaction path*, also called the *fast path*. Read more about [the single row transactions IO path](../single-row-transactions).
 
 {{< note title="Note" >}}
 
-Because single row transactions do not have to update the transaction status table, they are much higher in performance than distributed transactions discussed in the next section. As a result, mapping 
+Because single row transactions do not have to update the transaction status table, they are much higher in performance than distributed transactions discussed in the next section. 
 
 {{</note >}}
 
