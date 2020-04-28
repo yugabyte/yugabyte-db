@@ -63,6 +63,7 @@ Yugabyte Structured Query Language (YSQL), the PostgreSQL-compatible SQL dialect
 | [`DROP CAST`](ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
+| [`DROP EXTENSION`](ddl_drop_extension) | Delete an extension |
 | [`DROP FUNCTION`](ddl_drop_function) | Delete a function |
 | [`DROP GROUP`](dcl_drop_group) | Delete a group (role) |
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
