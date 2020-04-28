@@ -13,19 +13,10 @@ isTocNested: true
 showAsideToc: true
 ---
 
-<<<<<<< HEAD
 YugabyteDB can be configured to use multiple storage disks by setting the [`--fs_data_dirs`](../../../reference/configuration/yb-tserver) flag.
 This introduces the possibility of disk failure and recovery issues.
 
 ## Cluster replication recovery
-=======
-YugabyteDB can be configured to use multiple storage disks by setting the [`--fs_data_dirs`](../../../reference/configuration/yb-tserver/#fs-data-dirs) configuration option.
-This introduces the possibility of disk failure and recovery issues.
-
-## Cluster replication recovery
-
-The `yb-tserver` service automatically detects disk failures and attempts to spread the data from the failed disk to other healthy nodes in the cluster. In a single-zone setup with a replication factor (RF) of `3`: if you started with four nodes or more, then there would be at least three nodes left after one failed. In this case, rereplication is automatically started if a YB-TServer or disk is down for 10 minutes.
->>>>>>> 5c36d1cdc... Updates based on new Markdown renderer and setting changes
 
 The `yb-tserver` service automatically detects disk failures and attempts to spread the data from the failed disk to other healthy nodes in the cluster. In a single-zone setup with a replication factor (RF) of `3`: if you started with four nodes or more, then there would be at least three nodes left after one failed. In this case, re-replication is automatically started if a YB-TServer or disk is down for 10 minutes.
 
