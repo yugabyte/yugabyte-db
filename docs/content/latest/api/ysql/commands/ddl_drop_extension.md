@@ -56,10 +56,31 @@ Use the `DROP EXTENSION` statement to remove an extension from the database.
 
 ```postgresql
 DROP EXTENSION IF EXISTS cube;
+```
+
+```
+NOTICE:  extension "cube" does not exist, skipping
+```
+
+```postgresql
 CREATE EXTENSION cube;
 CREATE EXTENSION earthdistance;
 DROP EXTENSION IF EXISTS cube RESTRICT;
+```
+
+```
+ERROR:  cannot drop extension cube because other objects depend on it
+DETAIL:  extension earthdistance depends on function cube_out(cube)
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.<Paste>
+```
+
+```postgresql
 DROP EXTENSION IF EXISTS cube CASCADE;
+```
+
+```
+NOTICE:  drop cascades to extension earthdistance
+DROP EXTENSION
 ```
 
 ## See also
