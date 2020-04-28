@@ -52,7 +52,7 @@ Start your YugabyteDB cluster by following the steps in [Quick start](https://do
 
 There is a handly shell script 'run_sysbench.sh' that loads the data and runs the various workloads.
 ```sh
-./run_sysbench.sh
+./run_sysbench.sh <ip>
 ```
 
 ### Manually run the workloads
@@ -60,13 +60,13 @@ There is a handly shell script 'run_sysbench.sh' that loads the data and runs th
 Before starting the workload we need to load the data first.
 
 ```sh
-sysbench oltp_read_only --table-size=1000000 --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=127.0.0.1 --pgsql-port=5433 --pgsql-user=yugabyte --pgsql-db=yugabyte prepare
+sysbench oltp_point_select --table-size=1000000 --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=127.0.0.1 --pgsql-port=5433 --pgsql-user=yugabyte --pgsql-db=yugabyte prepare
 ```
 
 Then we can run the workload as follows
 
 ```sh
-sysbench oltp_read_only --table-size=1000000 --range_key_partitioning=true --db-driver=pgsql --pgsql-host=127.0.0.1 --pgsql-port=5433 --pgsql-user=yugabyte --pgsql-db=yugabyte --threads=64 --time=120 --warmup-time=120 run
+sysbench oltp_point_select --table-size=1000000 --range_key_partitioning=true --db-driver=pgsql --pgsql-host=127.0.0.1 --pgsql-port=5433 --pgsql-user=yugabyte --pgsql-db=yugabyte --threads=64 --time=120 --warmup-time=120 run
 ```
 
 The choice of different workloads are:
