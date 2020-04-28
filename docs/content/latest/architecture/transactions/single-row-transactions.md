@@ -1,8 +1,8 @@
 ---
-title: Single row transactions
-headerTitle: Single row ACID transactions
-linkTitle: Single row transactions
-description: Learn how YugabyteDB offers ACID semantics for mutations involving a single row or rows that fall within the same shard (partition, tablet).
+title: Single-row transactions
+headerTitle: Single-row ACID transactions
+linkTitle: Single-row transactions
+description: Learn how YugabyteDB offers ACID semantics for mutations involving a single row or rows that are located within a single shard.
 aliases:
   - /architecture/transactions/single-row-transactions/
 menu:
@@ -15,8 +15,7 @@ showAsideToc: true
 ---
 
 YugabyteDB offers ACID semantics for mutations involving a single row or rows that fall
-within the same shard (partition, tablet). These mutations incur only one network roundtrip between
-the distributed consensus peers.
+within the same shard (partition, tablet). These mutations incur only one network roundtrip between the distributed consensus peers.
 
 Even read-modify-write operations within a single row or single shard, such as the following incur
 only one round trip in YugabyteDB.
@@ -27,17 +26,11 @@ only one round trip in YugabyteDB.
    UPDATE ... IF EXISTS
 ```
 
-Note that this is unlike Apache Cassandra, which uses a concept called lightweight transactions to achieve
-correctness for these read-modify-write operations and incurs [4-network round trip
-latency](https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlLtwtTransactions.html).
+Note that this is unlike Apache Cassandra, which uses a concept called lightweight transactions to achieve correctness for these read-modify-write operations and incurs [4-network round trip latency](https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlLtwtTransactions.html).
 
 ## Reading the latest data from a recently elected leader
 
-In a steady state, when the leader is appending and replicating log entries, the latest
-majority-replicated entry is exactly the committed one.  However, it is a bit more complicated right
-after a leader change.  When a new leader is elected in a tablet, it appends a no-op entry to the
-tablet's Raft log and replicates it, as described in the Raft protocol. Before this no-op entry is
-replicated, we consider the tablet unavailable for reading up-to-date values and accepting
+In a steady state, when the leader is appending and replicating log entries, the latest majority-replicated entry is exactly the committed one.  However, it is a bit more complicated right after a leader change.  When a new leader is elected in a tablet, it appends a no-op entry to the tablet's Raft log and replicates it, as described in the Raft protocol. Before this no-op entry is replicated, we consider the tablet unavailable for reading up-to-date values and accepting
 read-modify-write operations.  This is because the new tablet leader needs to be able to guarantee
 that all previous Raft-committed entries are applied to RocksDB and other persistent and in-memory
 data structures, and it is only possible after we know that all entries in the new leader's log are
@@ -65,8 +58,7 @@ The leader lease mechanism in YugabyteDB prevents this inconsistency. It works a
   which is stored in terms of **local monotonic time**
   ([CLOCK_MONOTONIC](https://linux.die.net/man/3/clock_gettime) in Linux).  The leader considers
   itself as a special case of a "peer" for this purpose.  Then, as it receives responses from
-  followers, it maintains the majority-replicated watermark of these expiration times **as stored at
-  request sending time**. The leader adopts this majority-replicated watermark as its lease
+  followers, it maintains the majority-replicated watermark of these expiration times **as stored at request sending time**. The leader adopts this majority-replicated watermark as its lease
   expiration time, and uses it when deciding whether it can serve consistent read requests or accept
   writes.
 
@@ -153,9 +145,7 @@ maximum of:
   * If there are no uncommitted entries in the Raft log: the minimum of the current hybrid time and **replicated_ht_lease_exp**.
 
 In other words, the last committed entry's hybrid time is always safe to read at, but for higher
-hybrid times, the majority-replicated hybrid time leader lease is an upper bound. That is because we
-can only guarantee that no future leader will commit an entry with hybrid time less than **ht** if
-**ht < replicated_ht_lease_exp**.
+hybrid times, the majority-replicated hybrid time leader lease is an upper bound. That is because we can only guarantee that no future leader will commit an entry with hybrid time less than **ht** if **ht < replicated_ht_lease_exp**.
 
 Note that when reading from a single tablet, we never have to wait for the chosen **ht_read** to
 become safe to read at because it is chosen as such already. However, if we decide to read a
@@ -169,12 +159,9 @@ committed.
 ## Propagating safe time from leader to followers for follower-side reads
 
 YugabyteDB supports reads from followers to satisfy use cases that require an extremely low read
-latency that can only be achieved by serving read requests in the data center closest to the client.
-This comes at the expense of potentially slightly stale results, and this is a trade-off that
-application developers have to make. Similarly to strongly-consistent leader-side reads,
-follower-side read operations also have to pick a read timestamp, which has to be safe to read at.
-As before, "safe time to read at" means that no future writes are supposed to change the view of the
-data as of the read timestamp.  However, only the leader is able to compute the safe using the
+latency that can only be achieved by serving read requests in the data center closest to the client. This feature comes at the expense of potentially slightly stale results, and this is a trade-off that application developers have to make. Similarly to strongly-consistent leader-side reads, follower-side read operations also have to pick a read timestamp, which has to be safe to read at.
+
+As before, "safe time to read at" means that no future writes are supposed to change the view of the data as of the read timestamp.  However, only the leader is able to compute the safe using the
 algorithm described in the previous section.  Therefore, we propagate the latest safe time from
 leaders to followers on AppendEntries RPCs. This means, for example, that follower-side reads
 handled by a partitioned-away follower will see a "frozen" snapshot of the data, including values

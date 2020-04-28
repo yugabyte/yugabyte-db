@@ -16,8 +16,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-DocDB replicates data in order to survive failures while continuing to maintain consistency of
-data and not requiring operator intervention.
+DocDB automatically replicates data synchronously in order to survive failures while maintaining data consistency and avoiding operator intervention. It does so using the Raft distributed consensus protocol.
 
 ## Overview
 
@@ -48,7 +47,6 @@ Replication of data in DocDB is achieved at the level of tablets, using **tablet
 
 
 Each tablet comprises of a set of tablet-peers - each of which stores one copy of the data belonging to the tablet. There are as many tablet-peers for a tablet as the replication factor, and they form a Raft group. The tablet-peers are hosted on different nodes to allow data redundancy on node failures. Note that the replication of data between the tablet-peers is **strongly consistent**.
-
 
 The figure below illustrates three tablet-peers that belong to a tablet (tablet 1). The tablet-peers are hosted on different YB-TServers and form a Raft group for leader election, failure detection and replication of the write-ahead logs.
 

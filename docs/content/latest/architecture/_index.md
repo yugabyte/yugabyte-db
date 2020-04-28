@@ -2,9 +2,9 @@
 title: Architecture
 headerTitle: Architecture
 linkTitle: Architecture
-description: Learn about the YugabyteDB architecture, including query, sharding, replication, transactions, and storage layers.
+description: Learn about the YugabyteDB architecture, including query, transactions, sharding, replication, and storage layers.
 image: /images/section_icons/index/architecture.png
-headcontent: YugabyteDB architecture including the query, sharding, replication, transactions, and storage layers.
+headcontent: YugabyteDB architecture including the query, transactions, sharding, replication, and storage layers.
 section: CONCEPTS
 menu:
   latest:
@@ -30,7 +30,7 @@ menu:
     <a class="section-link icon-offset" href="concepts/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="articles">4 articles</div>
+        <div class="articles">3 articles</div>
         <div class="title">Key concepts</div>
       </div>
       <div class="body">
@@ -81,8 +81,8 @@ menu:
     <a class="section-link icon-offset" href="transactions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="articles">4 articles</div>
-        <div class="title">Transactions layer</div>
+        <div class="articles">6 articles</div>
+        <div class="title">DocDB transactions layer</div>
       </div>
       <div class="body">
         Review transaction model and how transactional consistency is ensured at various isolation levels.
@@ -94,7 +94,7 @@ menu:
     <a class="section-link icon-offset" href="docdb-sharding/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="articles">4 articles</div>
+        <div class="articles">3 articles</div>
         <div class="title">DocDB sharding layer</div>
       </div>
       <div class="body">
@@ -107,7 +107,7 @@ menu:
     <a class="section-link icon-offset" href="docdb-replication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="articles">4 articles</div>
+        <div class="articles">3 articles</div>
         <div class="title">DocDB replication layer</div>
       </div>
       <div class="body">
@@ -120,11 +120,11 @@ menu:
     <a class="section-link icon-offset" href="docdb/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="articles">5 articles</div>
-        <div class="title">DocDB store</div>
+        <div class="articles">3 articles</div>
+        <div class="title">DocDB storage layer</div>
       </div>
       <div class="body">
-          Sharding, replication, persistence, performance, and colocated tables.
+          How persistence storage works in DocDB.
       </div>
     </a>
   </div>
