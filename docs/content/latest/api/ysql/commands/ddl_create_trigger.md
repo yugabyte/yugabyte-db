@@ -2,7 +2,6 @@
 title: CREATE TRIGGER statement [YSQL]
 headerTitle: CREATE TRIGGER
 linkTitle: CREATE TRIGGER
-summary: CREATE TRIGGER
 description: Use the CREATE TRIGGER statement to define a new trigger.
 menu:
   latest:

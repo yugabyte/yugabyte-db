@@ -1,7 +1,7 @@
 ---
 title: CREATE ROLE statement [YSQL]
+headerTitle: CREATE ROLE
 linkTitle: CREATE ROLE
-summary: Roles (users and groups)
 description: Use the CREATE ROLE statement to add a new role to a YugabyteDB database cluster.
 menu:
   latest:

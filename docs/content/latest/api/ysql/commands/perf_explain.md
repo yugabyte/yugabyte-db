@@ -3,7 +3,6 @@ title: EXPLAIN statement [YSQL]
 headerTitle: EXPLAIN
 linkTitle: EXPLAIN
 description: Use the EXPLAIN statement to show the execution plan for an statement. If the ANALYZE option is used, the statement will be executed, rather than just planned.
-summary: EXPLAIN
 menu:
   latest:
     identifier: api-ysql-commands-explain

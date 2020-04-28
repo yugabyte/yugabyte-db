@@ -2,7 +2,6 @@
 title: CREATE TYPE statement [YSQL]
 headerTitle: CREATE TYPE
 linkTitle: CREATE TYPE
-summary: Create a new type in a database
 description: Use the CREATE TYPE statement to create a new user-defined type in a database.
 menu:
   latest:

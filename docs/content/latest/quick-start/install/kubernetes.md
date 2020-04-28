@@ -1,7 +1,8 @@
 ---
-title: 1. Install YugabyteDB
+title: Install YugabyteDB on Kubernetes
+headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
-description: Install YugabyteDB
+description: Download and install YugabyteDB on Kubernetes in less than five minutes.
 aliases:
   - /quick-start/install/
 menu:

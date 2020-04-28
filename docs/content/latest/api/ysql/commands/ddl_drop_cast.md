@@ -2,7 +2,6 @@
 title: DROP CAST statement [YSQL]
 headerTitle: DROP CAST
 linkTitle: DROP CAST
-summary: Remove a cast
 description: Use the DROP CAST statement to remove a cast.
 menu:
   latest:

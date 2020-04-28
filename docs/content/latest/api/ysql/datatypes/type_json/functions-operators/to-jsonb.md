@@ -2,7 +2,6 @@
 title: to_jsonb() and to_json()
 headerTitle: to_jsonb()
 linkTitle: to_jsonb()
-summary: to_jsonb() 
 description: Convert a single SQL value of any primitive or compound data type, that allows a JSON representation, to a semantically equivalent jsonb value.
 menu:
   latest:

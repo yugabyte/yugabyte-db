@@ -2,7 +2,6 @@
 title: DROP SEQUENCE statement [YSQL]
 headerTitle: DROP SEQUENCE
 linkTitle: DROP SEQUENCE
-summary: Drop a sequence in the current schema
 description: Use the DROP SEQUENCE statement to delete a sequence in the current schema.
 menu:
   latest:

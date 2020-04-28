@@ -2,7 +2,6 @@
 title: COPY statement [YSQL]
 headerTitle: COPY
 linkTitle: COPY
-summary: COPY
 description: Transfer data between tables and files with the COPY, COPY TO, and COPY FROM statements.
 menu:
   latest:

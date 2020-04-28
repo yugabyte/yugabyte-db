@@ -1,9 +1,8 @@
 ---
-title: Connect to clusters
+title: Connect clients to YugabyteDB clusters
+headerTitle: Connect to clusters
 linkTitle: Connect to clusters
-description: Connect to clusters
-headcontent:
-image: /images/section_icons/deploy/enterprise.png
+description: Connect to clusters in Yugabyte Cloud using locally installed YugabyteDB clients.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:

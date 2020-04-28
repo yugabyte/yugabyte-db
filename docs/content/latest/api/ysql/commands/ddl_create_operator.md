@@ -2,7 +2,6 @@
 title: CREATE OPERATOR statement [YSQL]
 headerTitle: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
-summary: Create a new operator
 description: Use the CREATE OPERATOR statement to create a new operator.
 menu:
   latest:

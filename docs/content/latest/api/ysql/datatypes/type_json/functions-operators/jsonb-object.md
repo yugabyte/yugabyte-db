@@ -3,7 +3,6 @@ title: jsonb_object()  and json_object() [JSON]
 headerTitle: jsonb_object() and json_object()
 linkTitle: jsonb_object() 
 description: Create a JSON object from SQL arrays that specify keys with their values of SQL data type text.
-summary: jsonb_object() and json_object()
 menu:
   latest:
     identifier: jsonb-object

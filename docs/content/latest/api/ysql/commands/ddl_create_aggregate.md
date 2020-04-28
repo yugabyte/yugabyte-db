@@ -2,7 +2,6 @@
 title: CREATE AGGREGATE statement [YSQL]
 headerTitle: CREATE AGGREGATE
 linkTitle: CREATE AGGREGATE
-summary: Create a new aggregate
 description: Use the CREATE AGGREGATE statement to create a new aggregate function.
 menu:
   latest:

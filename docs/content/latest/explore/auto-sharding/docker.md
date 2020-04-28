@@ -1,8 +1,8 @@
 ---
-title: Explore auto sharding [Docker]
+title: Explore auto sharding on Docker
 headerTitle: Auto sharding
 linkTitle: Auto sharding
-description: Follow this tutorial to learn how YugabyteDB automatically splits tables into shards.
+description: Follow this tutorial (on Docker) to learn how YugabyteDB automatically splits tables into shards.
 aliases:
   - /latest/explore/auto-sharding-docker/
 menu:
