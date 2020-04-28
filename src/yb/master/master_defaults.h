@@ -34,6 +34,7 @@ static const char* const kSystemDistributedNamespaceName = "system_distributed";
 static const char* const kSystemTracesNamespaceName = "system_traces";
 
 static const char* const kSystemPeersTableName = "peers";
+static const char* const kSystemPeersV2TableName = "peers_v2";
 static const char* const kSystemLocalTableName = "local";
 static const char* const kSystemPartitionsTableName = "partitions";
 static const char* const kSystemSizeEstimatesTableName = "size_estimates";

@@ -626,6 +626,7 @@ bool PTSelectStmt::IsReadableByAllSystemTable() const {
   } else if (keyspace == master::kSystemNamespaceName) {
     if (table == master::kSystemLocalTableName ||
         table == master::kSystemPeersTableName ||
+        table == master::kSystemPeersV2TableName ||
         table == master::kSystemPartitionsTableName) {
       return true;
     }
