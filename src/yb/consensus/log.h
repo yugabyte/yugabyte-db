@@ -288,6 +288,12 @@ class Log : public RefCountedThreadSafe<Log> {
     return cdc_min_replicated_index_.load(std::memory_order_acquire);
   }
 
+  CHECKED_STATUS FlushIndex();
+
+  // Copies log to a new dir.
+  // Flushes necessary files and uses hard links where it is safe.
+  CHECKED_STATUS CopyTo(const std::string& dest_wal_dir);
+
  private:
   friend class LogTest;
   friend class LogTestBase;

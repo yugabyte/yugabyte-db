@@ -413,7 +413,11 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
 }
 
 Status LogCache::FlushIndex() {
-  return log_->GetLogReader()->FlushIndex();
+  return log_->FlushIndex();
+}
+
+CHECKED_STATUS LogCache::CopyLogTo(const std::string& dest_dir) {
+  return log_->CopyTo(dest_dir);
 }
 
 void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {

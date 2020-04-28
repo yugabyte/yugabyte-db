@@ -57,6 +57,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/logging.h"
@@ -1046,6 +1047,38 @@ Status Log::DeleteOnDiskData(Env* env,
   return Status::OK();
 }
 
+Status Log::FlushIndex() {
+  if (!log_index_) {
+    return Status::OK();
+  }
+  return log_index_->Flush();
+}
+
+Status Log::CopyTo(const std::string& dest_wal_dir) {
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options_.env, dest_wal_dir),
+                        Format("Failed to create tablet WAL dir $0", dest_wal_dir));
+  // Make sure log segment we have so far are immutable, so we can hardlink them instead of copying.
+  RETURN_NOT_OK(AllocateSegmentAndRollOver());
+  RETURN_NOT_OK(log_index_->Flush());
+
+  auto* const env = options_.env;
+  const auto files = VERIFY_RESULT(env->GetChildren(wal_dir_, ExcludeDots::kTrue));
+
+  for (const auto& file : files) {
+    const auto src_path = JoinPathSegments(wal_dir_, file);
+    const auto dest_path = JoinPathSegments(dest_wal_dir, file);
+
+    // Segment files are immutable, so we can use hardlinks.
+    if (FsManager::IsWalSegmentFileName(file)) {
+      RETURN_NOT_OK(env->LinkFile(src_path, dest_path));
+    } else {
+      RETURN_NOT_OK_PREPEND(
+          CopyFile(env, src_path, dest_path), Format("Failed to copy file: $0", src_path));
+    }
+  }
+  return Status::OK();
+}
+
 uint64_t Log::NextSegmentDesiredSize() {
   return std::min(cur_max_segment_size_ * 2, max_segment_size_);
 }
@@ -1081,7 +1114,7 @@ Status Log::SwitchToAllocatedSegment() {
   // Increment "next" log segment seqno.
   active_segment_sequence_number_++;
   const string new_segment_path =
-      FsManager::GetWalSegmentFileName(wal_dir_, active_segment_sequence_number_);
+      FsManager::GetWalSegmentFilePath(wal_dir_, active_segment_sequence_number_);
 
   RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
   RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));

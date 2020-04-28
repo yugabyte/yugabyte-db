@@ -673,7 +673,7 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   DataIdPB data_id;
   data_id.set_type(DataIdPB::LOG_SEGMENT);
   data_id.set_wal_segment_seqno(wal_segment_seqno);
-  const string dest_path = fs_manager().GetWalSegmentFileName(meta_->wal_dir(), wal_segment_seqno);
+  const string dest_path = fs_manager().GetWalSegmentFilePath(meta_->wal_dir(), wal_segment_seqno);
   const auto temp_dest_path = dest_path + ".tmp";
   bool ok = false;
   auto se = ScopeExit([this, &temp_dest_path, &ok] {
