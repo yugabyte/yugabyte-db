@@ -2,7 +2,7 @@
 title: Chinook sample database
 headerTitle: Chinook sample database
 linkTitle: Chinook
-description: Use the Chinook sample database for a media store to explore and learn YugabyteDB.
+description: Explore and learn YugabyteDB using this PostgreSQL-compatible sample database for a media store.
 menu:
   latest:
     identifier: chinook

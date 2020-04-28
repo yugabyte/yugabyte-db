@@ -2,7 +2,7 @@
 title: Northwind sample database
 headerTitle: Northwind sample database
 linkTitle: Northwind
-description: Use the Northwind sample database to explore and learn YugabyteDB.
+description: Explore and learn YugabyteDB using this popular PostgreSQL-compatible Northwind sample database.
 menu:
   latest:
     identifier: northwind

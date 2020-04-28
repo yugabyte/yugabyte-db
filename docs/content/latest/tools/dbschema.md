@@ -1,8 +1,8 @@
 ---
-title: Use DbSchema with YugabyteDB YSQL
+title: Configure DbSchema for YugabyteDB YSQL
 headerTitle: DbSchema
 linkTitle: DbSchema
-description: Use DbSchema to work with distributed SQL databases in YugabyteDB.
+description: Configure DbSchema to interact with distributed SQL databases on PostgreSQL-compatible YugabyteDB.
 menu:
   latest:
     identifier: dbschema

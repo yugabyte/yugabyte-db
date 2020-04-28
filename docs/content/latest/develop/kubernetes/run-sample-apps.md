@@ -1,4 +1,4 @@
-[Yugastore](https://github.com/yugabyte/yugastore) app is a sample ecommerce application built using a microservices design pattern. React UI, Node.js Express app framework and YugabyteDB (YCQL and YEDIS) are used as the underlying technology stack.
+[Yugastore](https://github.com/yugabyte/yugastore) app is a sample e-commerce application built using a microservices design pattern. React UI, Node.js, Express application framework, and YugabyteDB (YCQL and YEDIS) are used as the underlying technology stack.
 
 ## 1. Create a cluster
 
@@ -79,6 +79,7 @@ $ minikube service  yb-master-ui --url
 ```
 http://192.168.99.100:31283
 ```
+
 The above output is the Admin UI URL and visiting the Tablet Servers page there will show you the current state of the cluster.
 
 ![yugastore running](/images/quick_start/k8s-yugastore-running.png)

@@ -1,8 +1,8 @@
 ---
-title: Authentication in YugabyteDB
+title: Authentication
 headerTitle: Authentication
 linkTitle: Authentication
-description: Verify that users and clients are who they say they are.
+description: Verify that your YugabyteDB users and clients are who they say they are.
 headcontent: Verify that users and clients are who they say they are.
 image: /images/section_icons/secure/authorization.png
 menu:

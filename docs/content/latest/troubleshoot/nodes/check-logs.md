@@ -1,8 +1,8 @@
 ---
-title: Inspect logs
-linkTitle: Inspect logs
+title: Inspect YugabyteDB logs
 headerTitle: Inspect YugabyteDB logs
-description: Inspect YugabyteDB logs
+linkTitle: Inspect logs
+description: Inspect and manage YugabyteDB logs for YB-Master and YB-TServer.
 aliases:
   - /troubleshoot/nodes/check-logs/
 menu:

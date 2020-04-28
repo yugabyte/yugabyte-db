@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB drivers
+title: Drivers reference
 headerTitle: Drivers
 linkTitle: Drivers
-description: Use drivers to power applications with YugabyteDB.
+description: Use these custom YugabyteDB and PostgreSQL drivers to power distributed SQL applications.
 headcontent: Use drivers to power applications with YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE

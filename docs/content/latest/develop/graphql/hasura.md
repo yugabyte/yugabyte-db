@@ -1,7 +1,8 @@
 ---
-title: Hasura
+title:  Use GraphQL to add data and run queries with Hasura GraphQL Engine
+headerTitle: Hasura
 linkTitle: Hasura
-description: Hasura GraphQL engine
+description: Follow this tutorial to quickly integrate Hasura GraphQL engine with YugabyteDB and use GraphQL to add data and run queries.
 menu:
   latest:
     identifier: hasura

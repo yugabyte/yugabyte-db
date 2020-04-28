@@ -1,8 +1,8 @@
 ---
-title: Use DBeaver with YugabyteDB YSQL
+title: Configure DBeaver for YugabyteDB YSQL
 headerTitle: DBeaver
 linkTitle: DBeaver
-description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
+description: Use this multi-platform database tool with distributed SQL databases on PostgreSQL-compatible YugabyteDB.
 menu:
   latest:
     identifier: dbeaver

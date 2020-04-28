@@ -1,6 +1,6 @@
 ---
-title: Troubleshoot YugabyteDB
-headerTitle: Troubleshoot YugabyteDB
+title: Troubleshoot cluster and node issues
+headerTitle: Troubleshoot
 linkTitle: Troubleshoot
 description: Diagnose and solve YugabyteDB cluster and node issues.
 image: /images/section_icons/index/troubleshoot.png

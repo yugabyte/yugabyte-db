@@ -1,8 +1,8 @@
 ---
-title: Connectors
+title: Connectors reference
 headerTitle: Connectors
 linkTitle: Connectors 
-description: Use connectors to connect YugabyteDB to external systems.
+description: Use these YugabyteDB connectors to connect to external systems.
 headcontent: Use connectors to connect YugabyteDB to external systems.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE

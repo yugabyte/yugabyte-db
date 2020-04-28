@@ -1,9 +1,17 @@
 ---
+<<<<<<< HEAD:docs/content/latest/reference/configuration/_index.md
 title: YugabyteDB configuration reference
 headerTitle: Configuration
 linkTitle: Configuration
 description: Configuration reference for core database services, including yb-tserver, yb-master, and yugabyted.
 headcontent: Configuration of the core database services.
+=======
+title: Configuration reference
+headerTitle: Configuration
+linkTitle: Configuration
+description: Configuration reference for core YugabyteDB services, including yt-tserver, yb-master, and yugabyted.
+headcontent: Configuration reference for the core database services.
+>>>>>>> 5c36d1cdc... Updates based on new Markdown renderer and setting changes:docs/content/latest/reference/configuration/_index.html
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
 menu:
