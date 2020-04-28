@@ -29,7 +29,6 @@ The replication factor of a read replica cluster can be an even number as well. 
 
 {{</note >}}
 
-
 ## Writing to read replicas
 
 An application can send write requests to read replicas, but these write requests get internally redirected to the source of truth. This is because the read replicas are aware of the topology of the cluster.

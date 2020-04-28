@@ -18,7 +18,7 @@ menu:
     <a class="section-link icon-offset" href="design-goals/">
       <div class="head">
         <img class="icon" src="/images/section_icons/introduction/core_features.png" aria-hidden="true" />
-        <div class="title">Design Goals</div>
+        <div class="title">Design goals</div>
       </div>
       <div class="body">
           The design goals around which YugabyteDB is built.

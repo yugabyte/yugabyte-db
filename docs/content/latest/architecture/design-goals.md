@@ -91,7 +91,9 @@ Written in C++ to ensure high performance and the ability to leverage large memo
 - Ability to handle ever growing event data use-cases well
 
 {{< tip title="Read More" >}}
+
 Achieving [high performance in YugabyteDB](../docdb/performance/).
+
 {{< /tip >}}
 
 ## Geo-distributed deployments
