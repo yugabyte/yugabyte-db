@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: architecture-distributed-acid-transactions
     parent: architecture-acid-transactions
-    weight: 1153
+    weight: 1155
 aliases:
   - /architecture/transactions/distributed-txns/
   - /architecture/concepts/transactions/
