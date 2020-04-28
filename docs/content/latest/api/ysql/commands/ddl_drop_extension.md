@@ -65,3 +65,4 @@ DROP EXTENSION IF EXISTS cube CASCADE;
 ## See also
 
 - [Extensions page](../../extensions)
+- [`CREATE EXTENSION`](../ddl_create_extension)
