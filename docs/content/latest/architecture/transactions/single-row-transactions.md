@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: architecture-single-row-transactions
     parent: architecture-acid-transactions
-    weight: 1152
+    weight: 1154
 isTocNested: false
 showAsideToc: true
 ---
@@ -30,30 +30,6 @@ only one round trip in YugabyteDB.
 Note that this is unlike Apache Cassandra, which uses a concept called lightweight transactions to achieve
 correctness for these read-modify-write operations and incurs [4-network round trip
 latency](https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlLtwtTransactions.html).
-
-## Hybrid time as an MVCC timestamp
-
-YugabyteDB implements [multiversion concurrency control (MVCC)](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) and internally keeps track of multiple versions of values corresponding to the same key, for example, of a particular column in a particular row. The details of how multiple versions of the same key are stored in each replica's DocDB are described in [Persistence on top of RocksDB](../../concepts/docdb/persistence). The last part of each key is a timestamp, which allows to quickly navigate to a particular version of a key in the RocksDB
-key-value store.
-
-The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of YugabyteDB's transaction model rely on these properties of Hybrid Time, e.g.:
-
-* Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep
-  increasing, even if there are leader changes. This is because the new leader always has all
-  committed entries from previous leaders, and it makes sure to update its hybrid clock with the
-  timestamp of the last committed entry before appending new entries. This property simplifies the
-  logic of selecting a safe hybrid time to pick for single-tablet read requests.
-
-* A request trying to read data from a tablet at a particular hybrid time needs to make sure that no
-  changes happen in the tablet with timestamps lower than the read timestamp, which could lead to an
-  inconsistent result set. The need to read from a tablet at a particular timestamp arises during
-  transactional reads across multiple tablets. This condition becomes easier to satisfy due to the
-  fact that the read timestamp is chosen as the current hybrid time on the YB-TServer processing the
-  read request, so hybrid time on the leader of the tablet we're reading from immediately gets
-  updated to a value that is at least as high as than the read timestamp.  Then the read request
-  only has to wait for any relevant entries in the Raft queue with timestamps lower than the read
-  timestamp to get replicated and applied to RocksDB, and it can proceed with processing the read
-  request after that.
 
 ## Reading the latest data from a recently elected leader
 

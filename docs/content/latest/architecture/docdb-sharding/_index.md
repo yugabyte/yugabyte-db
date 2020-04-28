@@ -39,7 +39,7 @@ Read more about the [tradeoffs in the various sharding strategies considered](ht
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="replication/">
+    <a class="section-link icon-offset" href="tablet-splitting/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts/replication.png" aria-hidden="true" />
         <div class="title">Tablet splitting</div>

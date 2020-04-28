@@ -14,21 +14,41 @@ menu:
     weight: 1120
 ---
 
-{{< note title="Note" >}}
-
-YugabyteDB's distributed ACID transaction architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
-
-{{</note >}}
 
 <div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="transactions-overview/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="title">Transactions Overview</div>
+      </div>
+      <div class="body">
+        An overview of transactions support in YugabyteDB.
+      </div>
+    </a>
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="isolation-levels/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Isolation levels</div>
+        <div class="title">Transaction Isolation</div>
       </div>
       <div class="body">
-        Understanding supported transaction isolation levels (the "I" in ACID).
+        Understanding the supported supported transaction isolation levels in YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="explicit-locking/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="title">Explicit row-locks</div>
+      </div>
+      <div class="body">
+        Learn about how YugabyteDB uses a combination of optimistic and pessimistic concurrency control to support explicit row-locking.
       </div>
     </a>
   </div>
@@ -40,7 +60,7 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
         <div class="title">Single row transactions</div>
       </div>
       <div class="body">
-        How single row transactions work in YugabyteDB
+        How single row transactions work in YugabyteDB.
       </div>
     </a>
   </div>
@@ -52,7 +72,7 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
         <div class="title">Distributed transactions</div>
       </div>
       <div class="body">
-        How distributed (aka multi-shard) transactions work in YugabyteDB
+        How distributed transactions work in YugabyteDB.
       </div>
     </a>
   </div>
@@ -68,4 +88,5 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
       </div>
     </a>
   </div>
+
 </div>
