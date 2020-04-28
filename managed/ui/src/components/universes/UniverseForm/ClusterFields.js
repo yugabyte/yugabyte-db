@@ -1129,12 +1129,14 @@ export default class ClusterFields extends Component {
     if (self.props.universe.currentPlacementStatus) {
       placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
     }
+    const configTemplate = self.props.universe.universeConfigTemplate;
+    const showPlacementStatus = configTemplate && !!getPrimaryCluster(configTemplate);
     const azSelectorTable = (
       <div>
         <AZSelectorTable {...this.props} clusterType={clusterType}
           numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
           maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(currentProviderUUID)} isKubernetesUniverse={this.state.isKubernetesUniverse} />
-        {placementStatus}
+        {showPlacementStatus && placementStatus}
       </div>);
 
     if (clusterType === "primary") {

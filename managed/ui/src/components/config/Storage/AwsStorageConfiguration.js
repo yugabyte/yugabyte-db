@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBTextInput, YBButton, YBToggle } from '../../common/forms/fields';
 import { Field } from 'redux-form';
-import { YBConfirmModal } from '../../modals'
+import { YBConfirmModal } from '../../modals';
 import { isDefinedNotNull, isEmptyObject } from "utils/ObjectUtils";
 
 class AwsStorageConfiguration extends Component {
@@ -26,7 +26,7 @@ class AwsStorageConfiguration extends Component {
       showDeleteStorageConfig
     } = this.props;
     const { iamRoleEnabled } = this.state;
-    const s3Config = customerConfigs.data.find(config => config.name === "S3")
+    const s3Config = customerConfigs.data.find(config => config.name === "S3");
     const config = s3Config ? s3Config.data : {};
     const allowKeyEdits = !isEmptyObject(s3Config) || iamRoleEnabled;
     return (
@@ -118,26 +118,26 @@ class AwsStorageConfiguration extends Component {
         {!isEmptyObject(s3Config) &&
           <Col lg={4}>
             <div>
-            <YBButton btnText={"Delete Configuration"}
-                      disabled={ submitting || loading || isEmptyObject(s3Config) }
-                      btnClass={"btn btn-default"}
-                      onClick={!isEmptyObject(s3Config) ?
-                        showDeleteStorageConfig.bind(this, s3Config.name) :
-                        null}
-            />
-            {isDefinedNotNull(config) &&
-              <YBConfirmModal
-                name="delete-storage-config"
-                title={"Confirm Delete"}
-                onConfirm={handleSubmit(() => deleteCustomerConfig(s3Config.configUUID))}
-                currentModal={"delete" + s3Config.name + "StorageConfig"}
-                visibleModal={this.props.visibleModal}
-                hideConfirmModal={this.props.hideDeleteStorageConfig}
-              >
-                Are you sure you want to delete {config.name} Storage Configuration?
-              </YBConfirmModal>
-            }
-          </div>
+              <YBButton btnText={"Delete Configuration"}
+                        disabled={ submitting || loading || isEmptyObject(s3Config) }
+                        btnClass={"btn btn-default"}
+                        onClick={!isEmptyObject(s3Config) ?
+                          showDeleteStorageConfig.bind(this, s3Config.name) :
+                          null}
+              />
+              {isDefinedNotNull(config) &&
+                <YBConfirmModal
+                  name="delete-storage-config"
+                  title={"Confirm Delete"}
+                  onConfirm={handleSubmit(() => deleteCustomerConfig(s3Config.configUUID))}
+                  currentModal={"delete" + s3Config.name + "StorageConfig"}
+                  visibleModal={this.props.visibleModal}
+                  hideConfirmModal={this.props.hideDeleteStorageConfig}
+                >
+                  Are you sure you want to delete {config.name} Storage Configuration?
+                </YBConfirmModal>
+              }
+            </div>
           </Col>
         }
       </Row>

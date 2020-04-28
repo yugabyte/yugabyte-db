@@ -62,7 +62,7 @@ const getTabTitle = (configName) => {
     default:
       return <h3><i className="fa fa-database"></i>NFS</h3>;
   }
-}
+};
 
 class StorageConfiguration extends Component {
 

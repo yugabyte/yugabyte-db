@@ -354,10 +354,8 @@ class UniverseForm extends Component {
           <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell active-stepper-cell' : 'stepper-cell'}>
             1. Primary Cluster
           </FlexShrink>
-          <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}
-            data-yb-beta
-          >
-            2. Read Replica (Beta)
+          <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}>
+            2. Read Replica
           </FlexShrink>
         </FlexContainer>
       </h2>);
@@ -388,7 +386,7 @@ class UniverseForm extends Component {
     }
 
     if (this.state.currentView === "Primary" && type !== "Edit" && type !== "Async") {
-      asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" data-yb-beta btnText={"Configure Read Replica (Beta)"} onClick={this.configureReadOnlyCluster}/>;
+      asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Configure Read Replica"} onClick={this.configureReadOnlyCluster}/>;
     }
 
     const {universe: {currentUniverse: {data: {universeDetails}}}, modal } = this.props;
@@ -398,7 +396,7 @@ class UniverseForm extends Component {
       if(readOnlyCluster) {
         asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Delete this configuration"} onClick={showDeleteReadReplicaModal}/>;
       } else {
-        //asyncReplicaBtn = <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={"Add Read Replica (Beta)"} onClick={this.configureReadOnlyCluster}/>;
+        //asyncReplicaBtn = <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={"Add Read Replica"} onClick={this.configureReadOnlyCluster}/>;
       }
     }
     let submitTextLabel = "";
@@ -407,9 +405,9 @@ class UniverseForm extends Component {
     } else {
       if (type === "Async") {
         if(readOnlyCluster) {
-          submitTextLabel = "Edit Read Replica (Beta)" ;
+          submitTextLabel = "Edit Read Replica" ;
         } else {
-          submitTextLabel = "Add Read Replica (Beta)";
+          submitTextLabel = "Add Read Replica";
         }
       } else {
         submitTextLabel = "Save";
