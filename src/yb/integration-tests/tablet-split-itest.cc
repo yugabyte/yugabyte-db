@@ -207,7 +207,7 @@ Status TabletSplitITest::WaitForTabletSplitCompletion() {
       return num_peers_running == replication_factor * expected_num_tablets &&
              num_peers_split == replication_factor &&
              num_peers_leader_ready == expected_num_tablets;
-    }, 10s, "Wait for tablet split to be completed");
+    }, 10s * kTimeMultiplier, "Wait for tablet split to be completed");
 }
 
 void TabletSplitITest::CheckPostSplitTabletReplicasData(size_t num_rows) {
@@ -368,7 +368,7 @@ Result<size_t> SelectRowsCount(
 // - ClusterVerifier will check cluster integrity at the end of the test.
 
 TEST_P(TabletSplitITest, SplitSingleTablet) {
-  constexpr auto kNumRows = 1000;
+  constexpr auto kNumRows = 500;
 
   SetNumTablets(1);
   CreateTable();
@@ -414,6 +414,11 @@ TEST_P(TabletSplitITest, SplitSingleTablet) {
   rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table_));
   ASSERT_EQ(rows_count, kNumRows);
 
+  // TODO(tsplit): remove client recreation after required support for post-split tablets is
+  // implemented.
+  ASSERT_OK(CreateClient());
+  ASSERT_OK(WriteRows(kNumRows));
+
   ASSERT_OK(cluster_->RestartSync());
 }
 
@@ -430,8 +435,7 @@ std::string TestParamToString(const testing::TestParamInfo<IsolationLevel>& isol
 INSTANTIATE_TEST_CASE_P(
     IsolationLevel,
     TabletSplitITest,
-    // TODO(tsplit): fix for SERIALIZABLE and use GetAllPbEnumValues<IsolationLevel>().
-    ::testing::Values(IsolationLevel::NON_TRANSACTIONAL, IsolationLevel::SNAPSHOT_ISOLATION),
+    ::testing::ValuesIn(GetAllPbEnumValues<IsolationLevel>()),
     TestParamToString);
 
 }  // namespace yb

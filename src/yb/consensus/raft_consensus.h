@@ -235,6 +235,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   CHECKED_STATUS FlushLogIndex();
 
+  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
+
   RetryableRequestsCounts TEST_CountRetryableRequests();
 
   void TEST_RejectMode(RejectMode value) {

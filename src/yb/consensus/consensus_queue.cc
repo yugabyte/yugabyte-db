@@ -1419,6 +1419,10 @@ Status PeerMessageQueue::FlushLogIndex() {
   return log_cache_.FlushIndex();
 }
 
+Status PeerMessageQueue::CopyLogTo(const std::string& dest_dir) {
+  return log_cache_.CopyLogTo(dest_dir);
+}
+
 void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
   log_cache_.TrackOperationsMemory(op_ids);
 }

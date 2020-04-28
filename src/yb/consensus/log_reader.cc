@@ -588,13 +588,6 @@ const int LogReader::num_segments() const {
   return segments_.size();
 }
 
-Status LogReader::FlushIndex() {
-  if (!log_index_) {
-    return Status::OK();
-  }
-  return log_index_->Flush();
-}
-
 string LogReader::ToString() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   string ret = "Reader's SegmentSequence: \n";

@@ -852,8 +852,6 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
   const auto wal_root_dir =
       VERIFY_RESULT(GetAssignedRootDirForTablet(TabletDirType::kWal, table_id, tablet_id));
 
-  auto* const env = fs_manager_->env();
-
   auto tcmetas = PrepareTabletCreationMetaDataForSplit(*request, *tablet);
 
   RETURN_NOT_OK(StartSubtabletsSplit(meta, &tcmetas));
@@ -891,16 +889,8 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperationState* op_state) 
     cmeta->set_tablet_id(new_tablet_id);
     RETURN_NOT_OK(cmeta->Flush());
 
-    // Copy WAL.
-    // TODO(tsplit): recheck if we really need to copy WAL (might be needed at least for retryable
-    // requests?). Also check if there's any weirdness with WAL dir being hard link copied,
-    // when it also contains some mmaped index files.
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
-    RETURN_NOT_OK(CopyDirectory(
-        env, tablet->metadata()->wal_dir(), dest_wal_dir, UseHardLinks::kTrue,
-        CreateIfMissing::kTrue));
-    RETURN_NOT_OK_PREPEND(
-        env->SyncDir(dest_wal_dir), Format("Failed to sync WAL directory $0", dest_wal_dir));
+    RETURN_NOT_OK(tablet_peer->raft_consensus()->CopyLogTo(dest_wal_dir));
 
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());

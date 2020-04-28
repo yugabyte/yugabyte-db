@@ -162,8 +162,14 @@ class FsManager {
 
   static std::string GetTabletWalRecoveryDir(const std::string& tablet_wal_path);
 
-  static std::string GetWalSegmentFileName(const std::string& tablet_wal_path,
-                                    uint64_t sequence_number);
+  static std::string GetWalSegmentFileName(uint64_t sequence_number);
+
+  static bool IsWalSegmentFileName(const std::string& file_name);
+
+  static std::string GetWalSegmentFilePath(
+      const string& wal_path, uint64_t sequence_number) {
+    return JoinPathSegments(wal_path, GetWalSegmentFileName(sequence_number));
+  }
 
   // Return the directory where Raft group superblocks should be stored.
   std::string GetRaftGroupMetadataDir() const;

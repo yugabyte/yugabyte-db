@@ -355,6 +355,8 @@ class PeerMessageQueue {
 
   CHECKED_STATUS FlushLogIndex();
 
+  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
+
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);
 
