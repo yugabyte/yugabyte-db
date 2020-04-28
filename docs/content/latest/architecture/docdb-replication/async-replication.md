@@ -1,7 +1,7 @@
 ---
-title: xCluster Replication
-headerTitle: xCluster Replication
-linkTitle: xCluster Replication
+title: xCluster replication
+headerTitle: xCluster replication
+linkTitle: xCluster replication
 description: Asynchronous replication between multiple YugabyteDB clusters.
 aliases:
   - /latest/architecture/docdb/2dc-deployments/

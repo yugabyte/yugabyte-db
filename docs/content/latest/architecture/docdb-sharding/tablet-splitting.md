@@ -1,7 +1,7 @@
 ---
-title: Tablet Splitting
-headerTitle: Tablet Splitting
-linkTitle: Tablet Splitting
+title: Tablet splitting
+headerTitle: Tablet splitting
+linkTitle: Tablet splitting
 description: Learn how YugabyteDB splits tablets.
 menu:
   latest:
@@ -16,16 +16,18 @@ Tablet splitting enables changing the number of tablets at runtime. This enables
 
 ## Overview
 
-There are a number of scenarios where this is useful:
+There are a number of scenarios where this is useful.
 
-### Range Scans
+### Range scans
 In use-cases that scan a range of data, the data is stored in the natural sort order (also known as range-sharding). In these usage patterns, it is often impossible to predict a good split boundary ahead of time. For example:
 
+```
 CREATE TABLE census_stats (
     age INTEGER,
     user_id INTEGER,
     ...
     );
+```    
 In the table above, it is not possible for the database to infer the range of values for age (typically in the 1 to 100 range). It is also impossible to predict the distribution of rows in the table, meaning how many user_id rows will be inserted for each value of age to make an evenly distributed data split. This makes it hard to pick good split points ahead of time.
 
 ### Low-cardinality primary keys
@@ -35,7 +37,7 @@ In use-cases with a low-cardinality of the primary keys (or the secondary index)
 This feature is also useful for use-cases where tables begin small, and thereby start with a few shards. If these tables grow very large, then nodes continuously get added to the cluster. We may reach a scenario where the number of nodes exceeds the number of tablets. Such cases require tablet splitting to effectively re-balance the cluster.
 
 
-## Ways to split tablets
+## Approaches to tablet splitting
 
 DocDB allows the following mechanisms to re-shard data by splitting tablets:
 
@@ -57,7 +59,6 @@ As the name suggests, the table is split at creation time into a desired number 
     ```
     num_tablets_in_table = num_tablets_per_node * num_nodes_at_table_creation_time
     ```
-
 
 {{< note title="Note" >}}
 
@@ -202,4 +203,8 @@ There are a few important things to note here.
 * The tablet leaders are now spread across two nodes, in order to evenly balance the tablets for a table across the nodes in the cluster.
 
 {{</note >}}
+
+## Dynamic splitting
+
+Dynamic splitting is currently a [work-in-progress](https://github.com/yugabyte/yugabyte-db/issues/1004) feature and is not yet available. Design for this feature can be reviewed on [GitHub](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md).
 

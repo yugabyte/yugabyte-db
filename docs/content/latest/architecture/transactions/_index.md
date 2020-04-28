@@ -1,10 +1,10 @@
 ---
-title: Transactions Layer
-headerTitle: Transactions Layer
-linkTitle: Transactions Layer
-description: Transactions Layer
+title: DocDB transactions layer
+headerTitle: DocDB transactions layer
+linkTitle: DocDB transactions layer
+description: DocDB transactions layer
 image: /images/section_icons/architecture/distributed_acid.png
-headcontent: 
+headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
 aliases:
   - /architecture/transactions/
 menu:
@@ -26,7 +26,7 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
     <a class="section-link icon-offset" href="transactions-overview/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Transactions Overview</div>
+        <div class="title">Transactions overview</div>
       </div>
       <div class="body">
         An overview of transactions support in YugabyteDB.
@@ -38,7 +38,7 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
     <a class="section-link icon-offset" href="isolation-levels/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Transaction Isolation</div>
+        <div class="title">Transaction isolation</div>
       </div>
       <div class="body">
         Understanding supported transaction isolation levels (the "I" in ACID).
@@ -50,10 +50,10 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
     <a class="section-link icon-offset" href="explicit-locking/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Explicit row-locks</div>
+        <div class="title">Explicit row locks</div>
       </div>
       <div class="body">
-        Learn about how YugabyteDB uses a combination of optimistic and pessimistic concurrency control to support explicit row-locking.
+        Learn about how YugabyteDB uses a combination of optimistic and pessimistic concurrency control to support explicit row locking.
       </div>
     </a>
   </div>
@@ -62,7 +62,7 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
     <a class="section-link icon-offset" href="single-row-transactions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Single row transactions</div>
+        <div class="title">Single-row transactions</div>
       </div>
       <div class="body">
         How single row transactions work in YugabyteDB

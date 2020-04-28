@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: docdb-colocated-tables
-    parent: docdb
-    weight: 1200
+    parent: architecture-docdb-sharding
+    weight: 1144
 isTocNested: false
 showAsideToc: true
 ---
