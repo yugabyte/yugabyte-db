@@ -1,8 +1,8 @@
 ---
-title: Explore linear scalability using Kubernetes (Minikube)
+title: Explore linear scalability on Kubernetes
 headerTitle: Linear scalability
 linkTitle: Linear scalability
-description: Learn how to scale a local three-node YugabyteDB cluster while a workload is running.
+description: Learn how to scale a local 3-node YugabyteDB cluster (on Kubernetes) while a workload is running.
 aliases:
   - /latest/explore/linear-scalability-kubernetes/
 menu:

@@ -2,7 +2,6 @@
 title: UPDATE statement [YSQL]
 headerTitle: UPDATE
 linkTitle: UPDATE
-summary: Update table data
 description: Use UPDATE to modify values of specified columns in all rows that meet certain conditions. When conditions are not provided in WHERE clause, all rows update.
 menu:
   latest:

@@ -3,7 +3,6 @@ title: DROP POLICY statement [YSQL]
 headerTitle: DROP POLICY
 linkTitle: DROP POLICY
 description: Use the DROP POLICY statement to remove the specified row level security policy from the table.
-summary: Drop row level security policy
 menu:
   latest:
     identifier: api-ysql-commands-drop-policy

@@ -1,8 +1,7 @@
 ---
-title: jsonb_build_object() and json_build_object() [JSON]
-linkTitle: jsonb_build_object() 
-summary: jsonb_build_object() and json_build_object() 
+title: jsonb_build_object() and json_build_object()
 headerTitle: jsonb_build_object() and json_build_object()
+linkTitle: jsonb_build_object() 
 description: Build a JSON object from a variadic list that specifies keys with values of arbitrary SQL data type.
 menu:
   latest:

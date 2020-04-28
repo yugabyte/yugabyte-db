@@ -1,8 +1,8 @@
 ---
-title: Explore observability with Prometheus using Docker
+title: Explore observability with Prometheus on Docker
 headerTitle: Observability with Prometheus
 linkTitle: Observability 
-description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster.
+description: Learn about observability and monitoring with Prometheus in a local three-node YugabyteDB cluster on Docker.
 aliases:
   - /latest/explore/observability-docker/
 menu:

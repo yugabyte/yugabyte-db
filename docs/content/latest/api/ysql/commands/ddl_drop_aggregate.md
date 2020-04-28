@@ -2,7 +2,6 @@
 title: DROP AGGREGATE statement [YSQL]
 headerTitle: DROP AGGREGATE
 linkTitle: DROP AGGREGATE
-summary: Remove an aggregate
 description: Use the DROP AGGREGATE statement to remove an aggregate.
 menu:
   latest:

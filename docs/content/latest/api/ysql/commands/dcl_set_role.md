@@ -3,7 +3,6 @@ title: SET ROLE statement [YSQL]
 headerTitle: SET ROLE
 linkTitle: SET ROLE
 description: Use the SET ROLE statement to set the current user of the current session to be the specified user.
-summary: Roles (users and groups)
 menu:
   latest:
     identifier: api-ysql-commands-set-role

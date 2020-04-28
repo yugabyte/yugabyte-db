@@ -2,7 +2,7 @@
 title: YugabyteDB quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started exploring YugabyteDB's distributed SQL and core features in less than five minutes on macOS, Linux, Docker, and Kubernetes (Minikube).
+description: Get started using YugabyteDB in less than five minutes on macOS, Linux, Docker, and Kubernetes (Minikube).
 image: /images/section_icons/index/quick_start.png
 headcontent: The easiest way to test YugabyteDB's basic features and APIs is to create a local cluster on a single host.
 type: page

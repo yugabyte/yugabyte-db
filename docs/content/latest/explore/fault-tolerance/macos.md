@@ -1,8 +1,8 @@
 ---
-title: Explore fault tolerance in YugabyteDB using macOS
+title: Explore fault tolerance on macOS
 headerTitle: Fault tolerance
 linkTitle: Fault tolerance
-description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster using macOS.
+description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on macOS.
 aliases:
   - /explore/fault-tolerance/
   - /latest/explore/fault-tolerance/
