@@ -1207,3 +1207,4 @@ check_expression = expression ;
 new_name = name ;
 
 version = '<text literal>' ;
+extension_name = name ;
