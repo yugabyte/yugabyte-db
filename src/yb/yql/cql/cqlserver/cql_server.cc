@@ -94,7 +94,9 @@ void CQLServer::RescheduleTimer() {
   auto new_expires = timer_.expires_at() + refresh_interval();
   timer_.expires_at(new_expires, ec);
   if (ec) {
+    // Happens during shutdown.
     LOG(WARNING) << "Failed to reschedule timer: " << ec;
+    return;
   }
   timer_.async_wait(boost::bind(&CQLServer::CQLNodeListRefresh, this,
                                 boost::asio::placeholders::error));
@@ -107,67 +109,69 @@ std::unique_ptr<CQLServerEvent> CQLServer::BuildTopologyChangeEvent(
   return cql_server_event;
 }
 
-void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
-  if (!e) {
-    auto cqlserver_event_list = std::make_shared<CQLServerEventList>();
-    if (tserver_ != nullptr) {
-      // Get all live tservers.
-      std::vector<master::TSInformationPB> live_tservers;
-      Status s = tserver_->GetLiveTServers(&live_tservers);
-      if (!s.ok()) {
-        LOG (WARNING) << s.ToString();
-        RescheduleTimer();
-        return;
-      }
-
-      // Queue NEW_NODE event for all the live tservers.
-      for (const master::TSInformationPB& ts_info : live_tservers) {
-        const auto& hostport_pb = DesiredHostPort(ts_info.registration().common(), CloudInfoPB());
-        if (hostport_pb.host().empty()) {
-          LOG (WARNING) << "Skipping TS since it doesn't have any rpc address: "
-                        << ts_info.DebugString();
-          continue;
-        }
-
-        // Use only the first rpc address.
-        InetAddress addr;
-        if (PREDICT_FALSE(!addr.FromString(hostport_pb.host()).ok())) {
-          LOG(WARNING) << strings::Substitute("Couldn't parse host $0", hostport_pb.host());
-          continue;
-        }
-
-        // We need the CQL port not the tserver port so use the rpc port from the local CQL server.
-        // Note: this relies on the fact that all tservers must use the same CQL port which is not
-        // currently enforced on YB side, but is practically required by the drivers.
-        const auto cql_port = first_rpc_address().port();
-
-        // Queue event for all clients to add a node.
-        //
-        // TODO: the event should be sent only if there is appropriate subscription.
-        //       https://github.com/yugabyte/yugabyte-db/issues/3090
-        cqlserver_event_list->AddEvent(
-            BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode,
-                                     Endpoint(addr.address(), cql_port)));
-      }
-    }
-
-    // Queue node refresh event, to remove any nodes that are down. Note that the 'MOVED_NODE'
-    // event forces the client to refresh its entire cluster topology. The RPC address associated
-    // with the event doesn't have much significance.
-    //
-    // TODO: the event should be sent only if there is appropriate subscription.
-    //       https://github.com/yugabyte/yugabyte-db/issues/3090
-    cqlserver_event_list->AddEvent(
-        BuildTopologyChangeEvent(TopologyChangeEventResponse::kMovedNode, first_rpc_address()));
-
-    Status s = messenger_->QueueEventOnAllReactors(cqlserver_event_list, SOURCE_LOCATION());
-    if (!s.ok()) {
-      LOG (WARNING) << strings::Substitute("Failed to push events: [$0], due to: $1",
-                                           cqlserver_event_list->ToString(), s.ToString());
-    }
-
-    RescheduleTimer();
+void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
+  if (ec) {
+    return;
   }
+
+  auto cqlserver_event_list = std::make_shared<CQLServerEventList>();
+  if (tserver_ != nullptr) {
+    // Get all live tservers.
+    std::vector<master::TSInformationPB> live_tservers;
+    Status s = tserver_->GetLiveTServers(&live_tservers);
+    if (!s.ok()) {
+      LOG (WARNING) << s.ToString();
+      RescheduleTimer();
+      return;
+    }
+
+    // Queue NEW_NODE event for all the live tservers.
+    for (const master::TSInformationPB& ts_info : live_tservers) {
+      const auto& hostport_pb = DesiredHostPort(ts_info.registration().common(), CloudInfoPB());
+      if (hostport_pb.host().empty()) {
+        LOG (WARNING) << "Skipping TS since it doesn't have any rpc address: "
+                      << ts_info.DebugString();
+        continue;
+      }
+
+      // Use only the first rpc address.
+      InetAddress addr;
+      if (PREDICT_FALSE(!addr.FromString(hostport_pb.host()).ok())) {
+        LOG(WARNING) << strings::Substitute("Couldn't parse host $0", hostport_pb.host());
+        continue;
+      }
+
+      // We need the CQL port not the tserver port so use the rpc port from the local CQL server.
+      // Note: this relies on the fact that all tservers must use the same CQL port which is not
+      // currently enforced on YB side, but is practically required by the drivers.
+      const auto cql_port = first_rpc_address().port();
+
+      // Queue event for all clients to add a node.
+      //
+      // TODO: the event should be sent only if there is appropriate subscription.
+      //       https://github.com/yugabyte/yugabyte-db/issues/3090
+      cqlserver_event_list->AddEvent(
+          BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode,
+                                   Endpoint(addr.address(), cql_port)));
+    }
+  }
+
+  // Queue node refresh event, to remove any nodes that are down. Note that the 'MOVED_NODE'
+  // event forces the client to refresh its entire cluster topology. The RPC address associated
+  // with the event doesn't have much significance.
+  //
+  // TODO: the event should be sent only if there is appropriate subscription.
+  //       https://github.com/yugabyte/yugabyte-db/issues/3090
+  cqlserver_event_list->AddEvent(
+      BuildTopologyChangeEvent(TopologyChangeEventResponse::kMovedNode, first_rpc_address()));
+
+  Status s = messenger_->QueueEventOnAllReactors(cqlserver_event_list, SOURCE_LOCATION());
+  if (!s.ok()) {
+    LOG (WARNING) << strings::Substitute("Failed to push events: [$0], due to: $1",
+                                         cqlserver_event_list->ToString(), s.ToString());
+  }
+
+  RescheduleTimer();
 }
 
 }  // namespace cqlserver

@@ -442,7 +442,7 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
   cmeta_->clear_voted_for();
   // OK to flush before clearing the leader, because the leader UUID is not part of
   // ConsensusMetadataPB.
-  CHECK_OK(cmeta_->Flush());
+  RETURN_NOT_OK(cmeta_->Flush());
   ClearLeaderUnlocked();
   last_received_op_id_current_leader_ = yb::OpId();
   return Status::OK();

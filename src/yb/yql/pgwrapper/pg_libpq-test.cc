@@ -325,53 +325,38 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertTruncateForeignKey))
   ASSERT_OK(conn.Execute(
         "CREATE TABLE t2 (k int primary key, t1_k int, FOREIGN KEY (t1_k) REFERENCES t1 (k))"));
 
-  std::atomic<bool> stop(false);
-
   const int kMaxKeys = 1 << 20;
 
   constexpr auto kWriteThreads = 4;
-  std::vector<std::thread> write_threads;
-  while (write_threads.size() != kWriteThreads) {
-    write_threads.emplace_back([this, &stop] {
+  constexpr auto kTruncateThreads = 2;
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kWriteThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
       auto write_conn = ASSERT_RESULT(Connect());
       while (!stop.load(std::memory_order_acquire)) {
         int t1_k = RandomUniformInt(0, kMaxKeys - 1);
         int t1_v = RandomUniformInt(0, kMaxKeys - 1);
-        WARN_NOT_OK(write_conn.ExecuteFormat(
-            "INSERT INTO t1 VALUES ($0, $1)", t1_k, t1_v), "Ignore");
+        auto status = write_conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, $1)", t1_k, t1_v);
         int t2_k = RandomUniformInt(0, kMaxKeys - 1);
-        WARN_NOT_OK(write_conn.ExecuteFormat(
-            "INSERT INTO t2 VALUES ($0, $1)", t2_k, t1_k), "Ignore");
+        status = write_conn.ExecuteFormat("INSERT INTO t2 VALUES ($0, $1)", t2_k, t1_k);
       }
     });
   }
 
-  constexpr auto kTruncateThreads = 2;
-  std::vector<std::thread> truncate_threads;
-  while (truncate_threads.size() != kTruncateThreads) {
-    truncate_threads.emplace_back([this, &stop] {
+  for (int i = 0; i != kTruncateThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
       auto truncate_conn = ASSERT_RESULT(Connect());
       int idx = 0;
       while (!stop.load(std::memory_order_acquire)) {
-        WARN_NOT_OK(truncate_conn.Execute(
-                "TRUNCATE TABLE t1, t2 CASCADE"), "Ignore");
+        auto status = truncate_conn.Execute("TRUNCATE TABLE t1, t2 CASCADE");
         ++idx;
         std::this_thread::sleep_for(100ms);
       }
     });
   }
 
-  auto se = ScopeExit([&stop, &write_threads, &truncate_threads] {
-    stop.store(true, std::memory_order_release);
-    for (auto& thread : write_threads) {
-      thread.join();
-    }
-    for (auto& thread : truncate_threads) {
-      thread.join();
-    }
-  });
-
-  std::this_thread::sleep_for(30s);
+  thread_holder.WaitAndStop(30s);
 }
 
 // Concurrently insert records to table with index.

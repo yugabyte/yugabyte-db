@@ -27,7 +27,6 @@
 #include "yb/docdb/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 
-#include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/yb_pg_errcodes.h"
@@ -93,18 +92,19 @@ class ConflictResolverContext {
 
   virtual std::string ToString() const = 0;
 
- protected:
-  ~ConflictResolverContext() {}
+  virtual ~ConflictResolverContext() = default;
 };
 
-class ConflictResolver {
+class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
  public:
   ConflictResolver(const DocDB& doc_db,
                    TransactionStatusManager* status_manager,
                    PartialRangeKeyIntents partial_range_key_intents,
-                   ConflictResolverContext* context)
+                   std::unique_ptr<ConflictResolverContext> context,
+                   ResolutionCallback callback)
       : doc_db_(doc_db), status_manager_(*status_manager), request_scope_(status_manager),
-        partial_range_key_intents_(partial_range_key_intents), context_(*context) {}
+        partial_range_key_intents_(partial_range_key_intents), context_(std::move(context)),
+        callback_(std::move(callback)) {}
 
   PartialRangeKeyIntents partial_range_key_intents() {
     return partial_range_key_intents_;
@@ -127,9 +127,14 @@ class ConflictResolver {
     return status_manager_.FillPriorities(inout);
   }
 
-  CHECKED_STATUS Resolve() {
-    RETURN_NOT_OK(context_.ReadConflicts(this));
-    return ResolveConflicts();
+  void Resolve() {
+    auto status = context_->ReadConflicts(this);
+    if (!status.ok()) {
+      callback_(status);
+      return;
+    }
+
+    ResolveConflicts();
   }
 
   // Reads conflicts for specified intent from DB.
@@ -186,7 +191,7 @@ class ConflictResolver {
         auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
             Slice(existing_value.data(), TransactionId::StaticSize())));
 
-        if (!context_.IgnoreConflictsWith(transaction_id)) {
+        if (!context_->IgnoreConflictsWith(transaction_id)) {
           conflicts_.insert(transaction_id);
         }
       }
@@ -211,44 +216,63 @@ class ConflictResolver {
   }
 
  private:
-  CHECKED_STATUS ResolveConflicts() {
-    VLOG(3) << context_.ToString() << ", conflicts: " << yb::ToString(conflicts_);
-    if (!conflicts_.empty()) {
-      transactions_.reserve(conflicts_.size());
-      for (const auto& transaction_id : conflicts_) {
-        transactions_.push_back({ transaction_id });
-      }
-
-      return DoResolveConflicts();
+  MUST_USE_RESULT bool CheckResolutionDone(const Result<bool>& result) {
+    if (!result.ok()) {
+      VLOG_WITH_PREFIX(4) << "Abort: " << result.status();
+      callback_(result.status());
+      return true;
     }
 
-    return Status::OK();
+    if (result.get()) {
+      VLOG_WITH_PREFIX(4) << "No conflicts: " << context_->GetResolutionHt();
+      callback_(context_->GetResolutionHt());
+      return true;
+    }
+
+    return false;
   }
 
-  CHECKED_STATUS DoResolveConflicts() {
-    for (;;) {
-      RETURN_NOT_OK(CheckLocalCommits());
+  void ResolveConflicts() {
+    VLOG_WITH_PREFIX(3) << "Conflicts: " << yb::ToString(conflicts_);
+    if (conflicts_.empty()) {
+      callback_(context_->GetResolutionHt());
+      return;
+    }
 
-      FetchTransactionStatuses();
+    transactions_.reserve(conflicts_.size());
+    for (const auto& transaction_id : conflicts_) {
+      transactions_.push_back({ transaction_id });
+    }
 
-      RETURN_NOT_OK(Cleanup());
-      if (transactions_.empty()) {
-        return Status::OK();
-      }
+    DoResolveConflicts();
+  }
 
-      RETURN_NOT_OK(context_.CheckPriority(this, &transactions_));
+  void DoResolveConflicts() {
+    if (CheckResolutionDone(CheckLocalCommits())) {
+      return;
+    }
 
-      RETURN_NOT_OK(AbortTransactions());
+    FetchTransactionStatuses();
+  }
 
-      RETURN_NOT_OK(Cleanup());
-
-      if (transactions_.empty()) {
-        return Status::OK();
-      }
+  void FetchTransactionStatusesDone() {
+    if (CheckResolutionDone(ContinueResolve())) {
+      return;
     }
   }
 
-  CHECKED_STATUS CheckLocalCommits() {
+  Result<bool> ContinueResolve() {
+    if (VERIFY_RESULT(Cleanup())) {
+      return true;
+    }
+
+    RETURN_NOT_OK(context_->CheckPriority(this, &transactions_));
+
+    AbortTransactions();
+    return false;
+  }
+
+  Result<bool> CheckLocalCommits() {
     auto write_iterator = transactions_.begin();
     for (const auto& transaction : transactions_) {
       auto commit_time = status_manager().LocalCommitTime(transaction.id);
@@ -257,32 +281,33 @@ class ConflictResolver {
         ++write_iterator;
         continue;
       }
-      RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, commit_time));
-      VLOG(4) << context_.ToString() << ", locally committed: " << transaction.id;
+      RETURN_NOT_OK(context_->CheckConflictWithCommitted(transaction.id, commit_time));
+      VLOG_WITH_PREFIX(4) << "Locally committed: " << transaction.id;
     }
     transactions_.erase(write_iterator, transactions_.end());
 
-    return Status::OK();
+    return transactions_.empty();
   }
 
   // Removes all transactions that would not conflict with us anymore.
   // Returns failure if we conflict with transaction that cannot be aborted.
-  CHECKED_STATUS Cleanup() {
+  Result<bool> Cleanup() {
     auto write_iterator = transactions_.begin();
     for (const auto& transaction : transactions_) {
       RETURN_NOT_OK(transaction.failure);
       auto status = transaction.status;
       if (status == TransactionStatus::COMMITTED) {
-        RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, transaction.commit_time));
-        VLOG(4) << context_.ToString() << ", committed: " << transaction.id;
+        RETURN_NOT_OK(context_->CheckConflictWithCommitted(
+            transaction.id, transaction.commit_time));
+        VLOG_WITH_PREFIX(4) << "Committed: " << transaction.id;
         continue;
       } else if (status == TransactionStatus::ABORTED) {
         auto commit_time = status_manager().LocalCommitTime(transaction.id);
         if (commit_time.is_valid()) {
-          RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, commit_time));
-          VLOG(4) << context_.ToString() << ", locally committed: " << transaction.id;
+          RETURN_NOT_OK(context_->CheckConflictWithCommitted(transaction.id, commit_time));
+          VLOG_WITH_PREFIX(4) << "Locally committed: " << transaction.id;
         } else {
-          VLOG(4) << context_.ToString() << ", aborted: " << transaction.id;
+          VLOG_WITH_PREFIX(4) << "Aborted: " << transaction.id;
         }
         continue;
       } else {
@@ -295,23 +320,24 @@ class ConflictResolver {
     }
     transactions_.erase(write_iterator, transactions_.end());
 
-    return Status::OK();
+    return transactions_.empty();
   }
 
   void FetchTransactionStatuses() {
     static const std::string kRequestReason = "conflict resolution"s;
-    CountDownLatch latch(transactions_.size());
+    auto self = shared_from_this();
+    pending_requests_.store(transactions_.size());
     for (auto& i : transactions_) {
       auto& transaction = i;
       StatusRequest request = {
         &transaction.id,
-        context_.GetResolutionHt(),
-        context_.GetResolutionHt(),
+        context_->GetResolutionHt(),
+        context_->GetResolutionHt(),
         0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
         TransactionLoadFlags{TransactionLoadFlag::kCleanup},
-        [&transaction, &latch](Result<TransactionStatusResult> result) {
+        [self, &transaction](Result<TransactionStatusResult> result) {
           if (result.ok()) {
             transaction.ProcessStatus(*result);
           } else if (result.status().IsTryAgain()) {
@@ -322,54 +348,61 @@ class ConflictResolver {
           } else {
             transaction.failure = result.status();
           }
-          latch.CountDown();
+          if (self->pending_requests_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            self->FetchTransactionStatusesDone();
+          }
         }
       };
       status_manager().RequestStatusAt(request);
     }
-    latch.Wait();
   }
 
-  CHECKED_STATUS AbortTransactions() {
-    struct AbortContext {
-      size_t left;
-      std::mutex mutex;
-      std::condition_variable cond;
-      Status result;
-    };
-    AbortContext context{ transactions_.size() };
+  void AbortTransactions() {
+    auto self = shared_from_this();
+    pending_requests_.store(transactions_.size());
     for (auto& i : transactions_) {
       auto& transaction = i;
       status_manager().Abort(
           transaction.id,
-          [&transaction, &context](Result<TransactionStatusResult> result) {
-            std::lock_guard<std::mutex> lock(context.mutex);
-            if (result.ok()) {
-              transaction.ProcessStatus(*result);
-            } else if (result.status().IsRemoteError()) {
-              context.result = result.status();
-            } else {
-              LOG(INFO) << "Abort failed, would retry: " << result.status();
-            }
-            if (--context.left == 0) {
-              context.cond.notify_one();
-            }
+          [self, &transaction](Result<TransactionStatusResult> result) {
+        if (result.ok()) {
+          transaction.ProcessStatus(*result);
+        } else if (result.status().IsRemoteError()) {
+          transaction.failure = result.status();
+        } else {
+          LOG(INFO) << self->LogPrefix() << "Abort failed, would retry: " << result.status();
+        }
+        if (self->pending_requests_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+          self->AbortTransactionsDone();
+        }
       });
     }
-    std::unique_lock<std::mutex> lock(context.mutex);
-    context.cond.wait(lock, [&context] { return context.left == 0; });
-    return context.result;
+  }
+
+  void AbortTransactionsDone() {
+    if (CheckResolutionDone(Cleanup())) {
+      return;
+    }
+
+    DoResolveConflicts();
+  }
+
+  std::string LogPrefix() const {
+    return context_->ToString() + ": ";
   }
 
   DocDB doc_db_;
-  BoundedRocksDbIterator intent_iter_;
-  Slice intent_key_upperbound_;
   TransactionStatusManager& status_manager_;
   RequestScope request_scope_;
   PartialRangeKeyIntents partial_range_key_intents_;
-  ConflictResolverContext& context_;
+  std::unique_ptr<ConflictResolverContext> context_;
+  ResolutionCallback callback_;
+
+  BoundedRocksDbIterator intent_iter_;
+  Slice intent_key_upperbound_;
   TransactionIdSet conflicts_;
   std::vector<TransactionData> transactions_;
+  std::atomic<int> pending_requests_{0};
 };
 
 Result<boost::optional<DocKeyHash>> FetchDocKeyHash(const Slice& encoded_key) {
@@ -454,7 +487,7 @@ class StrongConflictChecker {
             value_iter_.key().starts_with(intent_key))) {
       auto existing_key = value_iter_.key();
       auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
-      VLOG(4) << "Check value overwrite: " << transaction_id_
+      VLOG(4) << transaction_id_ << ": Check value overwrite "
               << ", key: " << SubDocKey::DebugSliceToString(intent_key)
               << ", read time: " << read_time_
               << ", found key: " << SubDocKey::DebugSliceToString(value_iter_.key());
@@ -735,30 +768,35 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
 } // namespace
 
-Status ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                   const KeyValueWriteBatchPB& write_batch,
-                                   HybridTime hybrid_time,
-                                   HybridTime read_time,
-                                   const DocDB& doc_db,
-                                   PartialRangeKeyIntents partial_range_key_intents,
-                                   TransactionStatusManager* status_manager,
-                                   Counter* conflicts_metric) {
+void ResolveTransactionConflicts(const DocOperations& doc_ops,
+                                 const KeyValueWriteBatchPB& write_batch,
+                                 HybridTime hybrid_time,
+                                 HybridTime read_time,
+                                 const DocDB& doc_db,
+                                 PartialRangeKeyIntents partial_range_key_intents,
+                                 TransactionStatusManager* status_manager,
+                                 Counter* conflicts_metric,
+                                 ResolutionCallback callback) {
   DCHECK(hybrid_time.is_valid());
-  TransactionConflictResolverContext context(
+  auto context = std::make_unique<TransactionConflictResolverContext>(
       doc_ops, write_batch, hybrid_time, read_time, conflicts_metric);
-  ConflictResolver resolver(doc_db, status_manager, partial_range_key_intents, &context);
-  return resolver.Resolve();
+  auto resolver = std::make_shared<ConflictResolver>(
+      doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
+  // Resolve takes a self reference to extend lifetime.
+  resolver->Resolve();
 }
 
-Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
-                                             HybridTime resolution_ht,
-                                             const DocDB& doc_db,
-                                             PartialRangeKeyIntents partial_range_key_intents,
-                                             TransactionStatusManager* status_manager) {
-  OperationConflictResolverContext context(&doc_ops, resolution_ht);
-  ConflictResolver resolver(doc_db, status_manager, partial_range_key_intents, &context);
-  RETURN_NOT_OK(resolver.Resolve());
-  return context.GetResolutionHt();
+void ResolveOperationConflicts(const DocOperations& doc_ops,
+                               HybridTime resolution_ht,
+                               const DocDB& doc_db,
+                               PartialRangeKeyIntents partial_range_key_intents,
+                               TransactionStatusManager* status_manager,
+                               ResolutionCallback callback) {
+  auto context = std::make_unique<OperationConflictResolverContext>(&doc_ops, resolution_ht);
+  auto resolver = std::make_shared<ConflictResolver>(
+      doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
+  // Resolve takes a self reference to extend lifetime.
+  resolver->Resolve();
 }
 
 #define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \

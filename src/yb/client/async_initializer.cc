@@ -78,12 +78,14 @@ void AsyncClientInitialiser::InitClient() {
       LOG(INFO) << "Successfully built ybclient";
       client_holder_.reset(result->release());
       client_promise_.set_value(client_holder_.get());
-      break;
+      return;
     }
 
     LOG(ERROR) << "Failed to initialize client: " << result.status();
     std::this_thread::sleep_for(1s);
   }
+
+  client_promise_.set_value(nullptr);
 }
 
 }  // namespace client
