@@ -750,6 +750,19 @@ oracle.replace_null_strings([raise_warnings boolean])
 Optional boolean argument is used as indicator so these functions should to
 raise warning when row was changed inside these functions.
 
+----
+CREATE TABLE test(id serial, name varchar, surname varchar);
+CREATE TRIGGER test_trg
+  BEFORE INSERT OR UPDATE
+  ON test
+  FOR EACH ROW
+  EXECUTE PROCEDURE oracle.replace_empty_strings();
+
+INSERT INTO test(name, surname) VALUES('', 'Stehule');
+
+-- name will be replaced by NULL
+----
+
 == Emulated views
 
 * oracle.user_tab_columns
