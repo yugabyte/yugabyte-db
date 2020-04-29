@@ -2,7 +2,7 @@
 title: Benchmark YSQL performance using TPC-C
 headerTitle: TPC-C
 linkTitle: TPC-C
-description: Benchmark YugabyteDB YSQL performance using TPC-C
+description: Benchmark YSQL performance using TPC-C
 headcontent: Benchmark YugabyteDB using TPC-C
 menu:
   latest:

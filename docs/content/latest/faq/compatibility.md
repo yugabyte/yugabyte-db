@@ -56,14 +56,15 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 
 ### Features present in YCQL but not present in CQL
 
-1. [JSONB](../../develop/learn/data-types/) column type for modeling document data
-2. [Distributed transactions](../../develop/learn/acid-transactions/) for multi-row ACID transactions
-3. [Official Jepsen tests](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/) to prove correctness under extreme failure conditions
+1. Strongly-consistent reads and writes for a single row as an absolute guarantee. This is because YugabyteDB is a Consistent & Partition-tolerant (CP) database as opposed to Apache Cassandra which is an Available & Partition-tolerant (AP) databse. [Official Jepsen tests](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/) prove this correctness aspect under extreme failure conditions.
+2. [JSONB](../../develop/learn/data-types/) column type for modeling document data
+3. [Distributed transactions](../../develop/learn/acid-transactions/) for multi-row ACID transactions.
 
 ### Features present in both YCQL and CQL but YCQL provides stricter guarantees
 
 1. [Secondary indexes](../../develop/learn/data-modeling/) are by default strongly consistent since internally they use distributed transactions.
 2. [INTEGER](../../api/ycql/type_int/) and [COUNTER](../../api/ycql/type_int/) data types are equivalent and both can be incremented without any lightweight transactions.
+3. Timeline-consistent tunably-stale reads that maintain ordering guarantees from either a follower replica in the primary cluster or a observer replica in the read replica cluster.
 
 ### CQL features that are either unnecessary or disallowed in YCQL
 

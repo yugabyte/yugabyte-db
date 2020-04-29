@@ -2,8 +2,8 @@
 title: Benchmark YSQL performance using YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YugabyteDB YSQL performance using YCSB.
-headcontent: Benchmark YugabyteDB YSQL performance using YCSB.
+description: Benchmark YSQL performance using YCSB.
+headcontent: Benchmark YSQL performance using YCSB.
 menu:
   latest:
     identifier: ycsb-1-ysql
@@ -49,7 +49,7 @@ For more information about YCSB, see:
 
 {{< /note >}}
 
-## Step 1. Download the YCSB binaries
+## 1. Download the YCSB binaries
 
 You can do this by running the following commands.
 
@@ -64,11 +64,11 @@ $ cd YCSB
 The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
 {{< /note >}}
 
-## Step 2. Start YugabyteDB
+## 2. Start YugabyteDB
 
-Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
+Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
 
-## Step 3. Configure YCSB connection properties
+## 3. Configure YCSB connection properties
 
 Set the following connection configurations in `db.properties`:
 
@@ -85,7 +85,7 @@ The other configuration parameters, are described in detail at [this page](https
 The db.url field should be populated with the IPs of all the tserver nodes that are part of the cluster.
 {{< /note >}}
 
-## Step 4. Run the workloads
+## 4. Run all the workloads
 There is a handy script(run_sql.sh) that loads and runs all the workloads.
 First we need to supply the paths to the ycsb binary and the ysqlsh binary(which is distributed as part of the database package) along with the IP of the tserver node.
 Then you simply run the workloads as:
@@ -100,19 +100,7 @@ The script creates 2 result files per workload, one for the loading and one for 
 To get the maximum performance out of the system, you would have to tune the threadcount parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, we used a threadcount of 32 for the loading phase and 256 for the execution phase.
 {{< /note >}}
 
-### Expected Results
-When run on a 3 node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
-
-|            | Throughput (ops/sec) | Latency (ms)
--------------|-----------|----------|
-WorkloadA | 37377 | 1.5ms read 12 ms update
-WorkloadB | 66875 | 4ms read 7.6ms update
-WorkloadC | 77068 | 3.5ms read
-WorkloadD | 63676 | 4ms read 7ms insert
-WorkloadE | 63686 | 3.8ms scan
-WorkloadF | 29500 | 2ms read 15ms read-modify-write
-
-## Manually running the workloads
+## 4. Run individual workloads (optional)
 
 Create the database and table using the `ysqlsh` tool.
 The `ysqlsh` tool is distributed as part of the database package.
@@ -139,3 +127,15 @@ To run the other workloads (for example, `workloadb`), all you need to do is cha
 ```sh
 $ ./bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloadb
 ```
+
+## 5. Expected results
+When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+
+| Workload           | Throughput (ops/sec) | Latency (ms)
+-------------|-----------|----------|
+WorkloadA | 37377 | 1.5ms read, 12 ms update
+WorkloadB | 66875 | 4ms read, 7.6ms update
+WorkloadC | 77068 | 3.5ms read
+WorkloadD | 63676 | 4ms read, 7ms insert
+WorkloadE | 63686 | 3.8ms scan
+WorkloadF | 29500 | 2ms read, 15ms read-modify-write
