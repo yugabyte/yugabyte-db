@@ -2,7 +2,7 @@
 title: string_to_array()
 linkTitle: string_to_array()
 headerTitle: string_to_array()
-description: Bla bla
+description: string_to_array()
 menu:
   latest:
     identifier: string-to-array
@@ -10,13 +10,105 @@ menu:
 isTocNested: false
 showAsideToc: false
 ---
+**Purpose:** return a one-dimensional `text[]` array by splitting the input `text` value into subvalues using the specified `text` value as the delimiter. Optionally allows a specified `text` value to be interpreted as `null`.
 
-To_Do Try this:
+**Signature:** 
+
+```
+input value:       text, text [, text]
+return value:      text[]
+```
+**Example:**
 
 ```postgresql
-select string_to_array('xx~^~yy~^~zz', '~^~', 'yy');
-select pg_typeof(string_to_array('xx~^~yy~^~zz', '~^~', 'yy')); -->> text[]
+select string_to_array(
+  'a|b|?|c', -- the to-be-split string
+  '|',       -- the character(s) to be taken as the delimiter
+  '?'        -- the character(s) to be taken to denote NULL
+) as "string_to_array result";
 ```
 
+It produces thus result:
 
+```
+ string_to_array result 
+------------------------
+ {a,b,NULL,c}
+```
+
+**Semantics:**
+
+The  `DO` block below uses badly-designed `text` values for the delimiter and the null indicator, thus:
+
+- the delimiter: `' !'::text`
+
+- the null indicator: `'~ '::text`
+
+The code shows how this can lead to an outcome that takes the human quite an effort to predict when the input contains this sequence:
+
+&#160;&#160;&#160; &#60;tilda&#62;&#60;space&#62;&#60;exclamationPoint&#62;
+
+Effort is needed because the delimiter `text` value ends with the same character, &#60;space&#62;, that the null indicator `text` value starts with. You therefore need to know, and mentally apply, the priority rule:
+
+- _First_, the delimiter `text` value is consumed; _and only then_ is the null indicator `text` value consumed.
+
+The example uses just such a troublesome input. The troublesome sequence is shown in typewriter font here:
+
+&#160;&#160;&#160; dog house !~  !x! `~ !` cat flap !  !
+
+Yugabyte recommends, therefore, that when you can choose the `text` values for the delimiter and for the null indicator, you simply choose two different single characters. This is what the simple example, above, does. Of course, you must be sure that neither occurs in any of the `text` values that you want to convert into `text[]` arrays.
+
+These considerations, together with the fact that it can produce only a `text[]` output, mean that the `string_to_array()` function has limited usefulness.
+
+```postgresql
+do $body$
+declare
+  delim_text  constant text := ' !';
+  null_text   constant text := '~ ';
+
+  input_text  constant text := 'dog house !~  !x! ~ ! cat flap !  !';
+
+  result constant text[] :=
+    string_to_array(input_text, delim_text, null_text);
+
+  good_delim_text constant text := '|';
+  good_null_text  constant text := '?';
+
+  delim_first_text constant text :=
+    replace(replace(
+      input_text,
+      delim_text, good_delim_text),
+      null_text,  good_null_text);
+
+  null_first_text constant text := 
+    replace(replace(
+      input_text,
+      null_text,  good_null_text),
+      delim_text, good_delim_text);
+
+  delim_first_result constant text[] :=
+    string_to_array(delim_first_text, good_delim_text, good_null_text);
+
+  null_first_result constant text[] :=
+    string_to_array(null_first_text, good_delim_text, good_null_text);
+
+  -- Notice that one of the special characters, "!", remains in
+  -- both expected_result and unexpected_result.
+  -- If 
+  expected_result constant text[] :=
+    '{"dog house",NULL,"x! ~"," cat flap"," ",""}';
+  unexpected_result constant text[] :=
+    '{"dog house",NULL,"x! ?! cat flap"," ",""}';
+
+begin
+  assert
+  (result             =  expected_result)    and
+  (delim_first_result =  expected_result)    and
+  (null_first_result  <> delim_first_result) and
+  (null_first_result  =  unexpected_result) and
+    true,
+  'unexpected';
+end;
+$body$;
+```
 

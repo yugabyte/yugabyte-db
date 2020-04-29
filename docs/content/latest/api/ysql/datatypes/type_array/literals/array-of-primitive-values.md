@@ -2,7 +2,7 @@
 title: The literal for an array of primitive values
 linkTitle: Array of primitive values
 headerTitle: The literal for an array of primitive values
-description: Bla bla
+description: The literal for an array of primitive values
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

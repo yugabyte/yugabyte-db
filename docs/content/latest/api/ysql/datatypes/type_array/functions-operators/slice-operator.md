@@ -2,7 +2,7 @@
 title: The array slice operator
 linkTitle: Array slice operator 
 headerTitle: The array slice operator
-description: Bla bla
+description: The array slice operator
 menu:
   latest:
     identifier: array-slice-operator

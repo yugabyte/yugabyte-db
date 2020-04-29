@@ -2,7 +2,7 @@
 title: Array concatenation functions and operators
 linkTitle: Array concatenation
 headerTitle: Array concatenation functions and operators
-description: Bla bla
+description: Array concatenation functions and operators
 menu:
   latest:
     identifier: array-concatenation

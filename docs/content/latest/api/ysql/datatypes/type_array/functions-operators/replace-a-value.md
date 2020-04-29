@@ -2,7 +2,7 @@
 title: array_replace()
 linkTitle: array_replace() / set value
 headerTitle: array_replace() and setting an array value explicitly
-description: Bla bla
+description: array_replace() and setting an array value explicitly
 menu:
   latest:
     identifier: array-replace-a-value

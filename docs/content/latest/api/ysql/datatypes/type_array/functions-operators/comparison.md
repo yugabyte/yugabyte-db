@@ -2,7 +2,7 @@
 title: Array comparison
 linkTitle: Array comparison
 headerTitle: Operators for comparing two arrays
-description: Bla bla
+description: Operators for comparing two arrays
 menu:
   latest:
     identifier: array-comparison

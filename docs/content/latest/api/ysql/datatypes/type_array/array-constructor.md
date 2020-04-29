@@ -12,12 +12,12 @@ isTocNested: false
 showAsideToc: false
 ---
 
-**Purpose:** The array[] value constructor is a special variadic function that creates an array value from scratch using an expression for each of the array's values.
+**Purpose:** The array[] value constructor is a special variadic function that creates an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an array literal—but in this case, this must be the _only_ value in the construcor's list. 
 
 **Signature** 
 
 ```
-input value:       anyelement, [anyelement]*
+input value:       [anyarray | [ anyelement, [anyelement]* ]
 return value:      anyarray
 ```
 
@@ -27,20 +27,162 @@ These two functions also create an array value from scratch:
 
 - The _[array_fill()](../functions-operators/array-fill/)_ builtin SQL function creates a "blank canvas" array of the specified shape with all values set the same to what you want.
 
-- The _[array_agg()](../functions-operators/array-agg-unnest/#array-agg)_ builtin SQL function creates an array (of an implied _"row"_ type) from a SQL subquery.
+- The _[array_agg()](../functions-operators/array-agg-unnest/#array-agg)_ builtin SQL function creates an array (of. in general, an implied _"row"_ type) from a SQL subquery.
 
 ## Example:
 
-To_Do
+```postgresql
+create type rt as (f1 int, f2 text);
+select array[(1, 'a')::rt, (2, 'b')::rt, (3, 'dog \ house')::rt]::rt[] as arr;
+```
+This is the result:
+```
+                    arr                     
+--------------------------------------------
+ {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
+```
+Whenever an array value is showin in _ysqlsh_, it is implicitly `::text` typecasted. If the use of double quotes and backslashes surprises, or confuses you, then see the whole of the section on array literals, [here](../literals/). Users who are familiar with the rules that this section describes often find it expedient, for example when prototyping code that builds an array literal, simply to create an example value first, _ad hoc_, using the `array[]` constructor, like the code above does, to see an example of the syntax that their code must create programmatically.
 
 ## Using the array[] constructor in PL/pgSQL code
 
+The example below attemps to make many teaching points in one piece of code.
+
+- The acual syntax, when the expressions that the `array[]` constructor uses are all literals, is far simpler than the syntax that governs how to construct an array literal.
+- You can use all of YSQL's array functionality in PL/pgSQL code, just as you can in SQL statements. The code creates and invokes a table function, and not just a banal `DO` block,  to emphasize this interoperability point.
+- Array-like functionality is essential in any programming language.
+- The `array[]` constructor is most valuable when the expressions that it uses are composed using declared variables, and especially formal parameters, that are used to build whtever values are intended. In this example, the values have the user-defined data type `rt`. In other words, the `array[]` constructor is particularly valuable when you build an array programmatically from scalar values that you know first at run time.
+- It vividly demonstrates the semantic effect of the `array[]` constructor like this:
+```
+declare
+  r     rt[];
+  two_d rt[];
+begin
+  ...
+  assert (array_dims(r) = '[1:3]'), 'assert failed';
+  one_d_1 := array[r[1], r[2], r[3]];
+  assert (one_d_1 = r), 'assert failed';
+```
+The `array_dims()` function is documented  [here](../functions-operators/properties#array-dims).
+
+Run this to create the required user-defined _"row"_ type and the table function and then to invoke it.
+
 ```postgresql
-prepare stmt(int[]) as insert into t(arr) values($1);
+-- Don't create "type rt" if it's still there followng the previous example.
+create type rt as (f1 int, f2 text);
+
+create function some_arrays()
+  returns table(arr text)
+  language plpgsql
+as $body$
+declare
+  i1 constant int := 1;
+  t1 constant text := 'a';
+  r1 constant rt := (i1, t1);
+
+  i2 constant int := 2;
+  t2 constant text := 'b';
+  r2 constant rt := (i2, t2);
+
+  i3 constant int := 3;
+  t3 constant text := 'dog \ house';
+  r3 constant rt := (i3, t3);
+
+  a1 constant rt[] := array[r1, r2, r3];
+begin
+  arr := a1::text;
+  return next;
+
+  declare
+    r rt[];
+    one_d_1 rt[];
+    one_d_2 rt[];
+    one_d_3 rt[];
+    two_d   rt[];
+    n int not null := 0;
+  begin
+    ----------------------------------------------
+    -- Show how arrays are useful, in the classic
+    -- sense, as what EVERY programming language
+    -- needs to hand a number of items when the
+    -- number isn't known until run time.
+    for j in 1..3 loop
+      n := j + 100;
+      r[j] := (n, chr(n));
+    end loop;
+
+    -- This further demonstrates the semantics
+    -- of the array[] constructor.
+    assert (array_dims(r) = '[1:3]'), 'assert failed';
+    one_d_1 := array[r[1], r[2], r[3]];
+    assert (one_d_1 = r), 'assert failed';
+    ----------------------------------------------
+
+    one_d_2 := array[(104, chr(104)), (105, chr(105)), (106, chr(106))];
+    one_d_3 := array[(107, chr(107)), (108, chr(108)), (109, chr(109))];
+
+    -- Show how the expressions that define the outcome
+    -- of the array[] constructor can themselves be arrays.
+    two_d := array[one_d_1, one_d_2, one_d_3];
+    arr := two_d::text;
+    return next;
+  end;
+  
+end;
+$body$;
+
+select arr from some_arrays();
+```
+It produces two rows. This is the first:
+
+```
+                    arr                     
+--------------------------------------------
+ {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
 
-To_Do
+This is identical to the result for the simple example shown above. The readabity of the second row is improved enormously by adding some whitespace manually:
+
+```
+{
+  {"(101,e)","(102,f)","(103,g)"},
+  {"(104,h)","(105,i)","(106,j)"},
+  {"(107,k)","(108,l)","(109,m)"}
+}
+```
 
 ## Using the array[] constructor in a prepared statement
 
-To_Do
+This example empasizes the value of using the `array[]` constructor over using an array literal because it lets you use expressions like `chr()` within it.
+```postgresql
+-- Don't create "type rt" if it's still there followng the previous examples.
+create type rt as (f1 int, f2 text);
+create table t(k serial primary key, arr rt[]);
+
+prepare stmt(rt[]) as insert into t(arr) values($1);
+
+-- It's essintial to typecast the individual "rt" values.
+execute stmt(array[(104, chr(104))::rt, (105, chr(105))::rt, (106, chr(106))::rt]);
+```
+This execution of the prepared statement, using an array literal as the actual argument, is sematically equivalent;
+```postgresql
+execute stmt('{"(104,h)","(105,i)","(106,j)"}');
+```
+But here, of course, you just have to know in advance that `chr(104)` is `h`, and so on. Prove that the results of the two executions of the prepared statement are identical thus:
+
+```postgresql
+select
+  (
+    (select arr from t where k = 1)
+    =
+    (select arr from t where k = 2)
+  )::text as result;
+```
+
+It shows this:
+
+```
+ result 
+--------
+ true
+```
+

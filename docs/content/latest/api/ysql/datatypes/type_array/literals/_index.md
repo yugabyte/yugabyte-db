@@ -2,7 +2,7 @@
 title: Create an array value using a literal
 linkTitle: Literals
 headerTitle: Create an array value using a literal
-description: Bla bla
+description: Create an array value using a literal
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -42,7 +42,7 @@ The convention used by _ysqlsh_, inherited from PostgreSQL's _psql_, is to displ
 
 We shall see that explicit typecasting is critically important when array literals are used.
 
-## Array literals for array datatypes with primitive, and then compound, values
+## Array literals for array datatypes with primitive, and then composite, values
 
 These three examples introduce the topic informally. First an array of primitive `int` values:
 ```postgresql
@@ -68,7 +68,7 @@ create type rt as (a int, b int);
 
 select '{"(1, 2)", "(3, 4)", "(5, 6)"}'::rt[];
 ```
-It procudes this output:
+It produces this output:
 ```
  {"(1,2)","(3,4)","(5,6)"}
 ```
@@ -90,7 +90,6 @@ The [second subsection](./importance-of-typecasting/) revisits the crtically imp
 
 The [third subsection](./row/) gives the rules for the literal for a value of a _"row"_ type. These rules are essential to the understanding of  the next section.
 
-The [fourth subsection](./array-of-rows/) gives the rules for array literals whose values are compound (i.e. are of row data types).
+The [fourth subsection](./array-of-rows/) gives the rules for array literals whose values are composite (i.e. a _"row"_ type).
 
-
-
+The [fifth subsection](./rules-summary/) summarises the rules for literals of arrays of primitive and _"row"_ type values.

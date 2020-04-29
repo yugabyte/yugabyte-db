@@ -2,7 +2,7 @@
 title: array_fill()
 linkTitle: array_fill()
 headerTitle: array_fill()
-description: Bla bla
+description: array_fill()
 menu:
   latest:
     identifier: array-fill

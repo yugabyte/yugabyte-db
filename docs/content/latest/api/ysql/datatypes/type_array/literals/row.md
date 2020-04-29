@@ -2,7 +2,7 @@
 title: The literal for a row
 linkTitle: Row
 headerTitle: The literal for a "row" type value
-description: Bla bla
+description: The literal for a "row" type value
 menu:
   latest:
     identifier: row
@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-> **Monday 27-Apr-2009. This section is still work-in-progress. The text and example needed to complete it are ready in draft. The work to incorporate this is relatively small.**
+> **Monday 27-Apr-2020. To_Do. This section is still work-in-progress. The text and example needed to complete it are ready in draft. The work to incorporate this is relatively small.**
 
 **Note: What the PostgreSQL documentation says about _"row"_ types and _"record"_ types.**
 

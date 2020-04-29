@@ -24,9 +24,9 @@ showAsideToc: false
 
 ## Synopsis
 
-A multidimensional array lets you store a large compound value in a single field (row-column intersection) in a table; and it lets you assign such a value to a PL/pgSQL variable, or pass it via a procedure's, or a function's, formal parameter. 
+A multidimensional array lets you store a large composite value in a single field (row-column intersection) in a table; and it lets you assign such a value to a PL/pgSQL variable, or pass it via a procedure's, or a function's, formal parameter. 
 
-You can see from the declarations below that every value in an array is non-negotiably of the same data type—either a primitive data type like `text` or `numeric`, or a user-defined scalar or compound data type (like a row).
+You can see from the declarations below that every value in an array is non-negotiably of the same data type—either a primitive data type like `text` or `numeric`, or a user-defined scalar or composite data type (like a _"row"_ type).
 
 An array is, by definition, a rectilinear N-dimensional set of "cells". You can picture a one-dimensional array as a line of cells, a two-dimensional array as a rectangle of cells, and a three-dimensional array as a cuboid of cells. The terms "line", "rectangle", and "cuboid" are the only specific ones. The generic term "N-dimensional array" includes these and all others. The meaning of "rectilinear" is sometimes captured by saying that the shape as no ragged edges or surfaces. If you try to create an array value that is not rectilinear, then you get an error whose detail says _"Multidimensional arrays must have sub-arrays with matching dimensions"_. The number of dimensions that an array has is called its _dimensionality_.
 
@@ -34,7 +34,7 @@ A value within an array is specified by a tuple of _index_ values, like this (fo
 ```
 arr[13][7][5][17]
 ```
-The index is the cell number along the dimension in question. The index values along each dimension are consecutive—in other words, you cannot delete a cell within an existing index. This reflects the fact that an array is rectilinear. However, a value in a cell can, of course, be `null`.
+The index is the cell number along the dimension in question. The index values along each dimension are consecutive—in other words, you cannot delete a cell within an existing array. This reflects the fact that an array is rectilinear. However, a value in a cell can, of course, be `null`.
 
 The leftmost value (`13` in the example) is the index along the first dimension; the rightmost value (`17` in this example) is the index along the Nth dimension—i.e. the fourth dimension in this example. The value of the index of the first cell along a particular dimension is known as the _lower bound_ for that dimension. If you take no special steps when you create an array value, then the lower bound of each dimension is `1`. But, if you find it useful, you can specify any positive or negative integer, or zero, as the lower bound of the specified dimension. The lower bounds of an array are fixed at creation time, and so is its dimensionality.
 
@@ -51,7 +51,7 @@ new_arr := source_arr[3:4][7:9];
 
 The following properties determine the shape of an array. Each can be observed using the listed dedicated builtin SQL function. The first formal parameter (with data type `anyarray`) is the array of interest . When appropriate, there's a second formal parameter (with data type `int`) that specifies the dimension of interest. The return is an `int` value, except in one case where it's a `text` value, as detailed below.
 
--- _[array_ndims()](functions-operators/properties/#array-ndims)_ — returns the dimensionality of the specified array.
+- _[array_ndims()](functions-operators/properties/#array-ndims)_ — returns the dimensionality of the specified array.
 
 - _[array_lower()](functions-operators/properties/#array-lower)_ — returns the lower bound of the specified array on the specified dimension.
 
@@ -67,9 +67,9 @@ The following properties determine the shape of an array. Each can be observed u
  "cardinality" = "length 1" * "length 2" * ... * "length N"
 ```
 
--- _[array_dims()](functions-operators/properties/#array-dims)_ — returns a text representation of the same information as _array_lower()_ and _array_length()_ return, for all dimension in a single `text` value, showing the upper and lower bounds like this: `[3:4][7:9][2:5]` for a three-dimensional array. Use this for human consumption. Use _array_lower()_ and _array_length()_ for programmatic consumption.
+- _[array_dims()](functions-operators/properties/#array-dims)_ — returns a text representation of the same information as _array_lower()_ and _array_length()_ return, for all dimension in a single `text` value, showing the upper and lower bounds like this: `[3:4][7:9][2:5]` for a three-dimensional array. Use this for human consumption. Use _array_lower()_ and _array_length()_ for programmatic consumption.
 
-Arrays are special because YSQL has no ready-made array data types in the way that it has numeric data types like `decimal` and `int`, or character data types like `text` and `varchar`. Rather, you construct the array data type that you need using an array _type constructor_. Here's a simple example:
+Arrays are special because (unlike is the case for, for example, numeric data types like `decimal` and `int`, or character data types like `text` and `varchar`) there are no ready-made array data types. Rather, you construct the array data type that you need using an array _type constructor_. Here's a simple example:
 
 ```postgresql
 create table t1(k int primary key, arr text array[4]);
@@ -84,11 +84,20 @@ create table t2(
   one_dimensional_array int[],
   two_dimensional_array int[10][10]);
 ```
-Notice that it appears, optionally, to let you specify how many values each dimension holds. (The Standard syntax allows the specification of the length of just one dimension.) However, these apparent declarations of intent, too, are simply ignored. Moreover, even the _dimensionality_ is ignored. The value, in a particular row, in a table column with an array data type—or its cousin in a PL/pgSQL program (a variable)—can hold an array value of _any_ dimensionality. This is demonstrated by example in the section _"[The literal for an array of primitive values](./literals/array-of-primitive-values/)"_. This means that declaring an array using the reserved word `array`, which apparently lets you define only a one-dimensional array, and declaring an array using `[]`, which apparently lets you define array of any dimensionality, where one, some, or all of the dimensions are nominally constrained, are entirely equivalent.
+Notice that it appears, optionally, to let you specify how many values each dimension holds. (The Standard syntax allows the specification of the length of just one dimension.) However, these apparent declarations of intent, too, are simply ignored. Moreover, even the _dimensionality_ is ignored. The value, in a particular row, in a table column with an array data type (or its cousin, a variable in a PL/pgSQL program) can hold an array value of _any_ dimensionality. This is demonstrated by example in the section _"[The literal for an array of primitive values](./literals/array-of-primitive-values/)"_. This means that declaring an array using the reserved word `array`, which apparently lets you define only a one-dimensional array, and declaring an array using `[]`, which apparently lets you define array of any dimensionality, where one, some, or all of the dimensions are nominally constrained, are entirely equivalent.
 
 The fact that different rows in the same table column can hold array values of different dimensionality might surprise you. However, this is easily explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value—as a single integer—along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the builtin array functions are supported only for one-dimensional arrays.
 
-Yugabyte recommends that, for uniformity, you choose to use only the general `[]` syntax, using this marking just singly. The `array_ndims()` builtin function lets you define a table constraint to insist that the array dimensionality is fixed for every row in a table column with such a data type. The `array_length()` builtin function lets you insist that each dimension of a multidimensional array has a specified length for every row—or that its length doesn't exceed a specified limit for any row.
+Yugabyte recommends that, for uniformity, you choose to declare arrays only with this syntax:
+
+```
+create table t2(
+  k int primary key,
+  one_dimensional_array int[],
+  two_dimensional_array int[]);
+```
+
+The `array_ndims()` builtin function lets you define a table constraint to insist that the array dimensionality is fixed for every row in a table column with such a data type. The `array_length()` builtin function lets you insist that each dimension of a multidimensional array has a specified length for every row—or that its length doesn't exceed a specified limit for any row.
 
 ## Atomically null vs having all values null
 
@@ -109,7 +118,7 @@ It shows this:
  2 | {NULL}    | [1:1]
 ```
 
-Because `v` has no constraint, it can be `null`, just like when its data type is scalar. This is the case for the row with `k = 1` and we say that, here, `v` is _atomically null_. (This term is usually used only when the data type is compound to distinguish the out come from what we see for the row with `k = 2`where `v` is not atomically null. The array properties of the first row's `v`, like its dimensionality, are all `null`. But for the second row, they have meaningful, `not null`, values. Now try this:
+Because `v` has no constraint, it can be `null`, just like when its data type is scalar. This is the case for the row with `k = 1` and we say that, here, `v` is _atomically null_. (This term is usually used only when the data type is composite to distinguish the out come from what we see for the row with `k = 2`where `v` is not atomically null. The array properties of the first row's `v`, like its dimensionality, are all `null`. But for the second row, they have meaningful, `not null`, values. Now try this:
 ```postgresql
 update t set v = v||'{null}'::int[] where k = 2;
 select k, v, array_dims(v) as dims from t where k = 2;
@@ -162,7 +171,7 @@ Notice that you must define a _"row"_ type as a schema object. But you define th
 
 This main section's subsections carefully describe what is sketched here.
 
-_First_. we create a table with an `int[]` column and populate it with a two-dimensional array by using an array literal.
+_First_, we create a table with an `int[]` column and populate it with a two-dimensional array by using an array literal.
 ```postgresql
 create table t(
   k int primary key, v int[]);

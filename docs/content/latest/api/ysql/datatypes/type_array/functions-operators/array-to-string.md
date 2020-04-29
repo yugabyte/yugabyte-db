@@ -2,7 +2,7 @@
 title: array_to_string()
 linkTitle: array_to_string()
 headerTitle: array_to_string()
-description: Bla bla
+description: array_to_string()
 menu:
   latest:
     identifier: array-to-string
@@ -11,7 +11,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-**Purpose:** return a `text` value computed by representing each array value, traversing these in row-major order, by its `::text` typecast, using supplied delimiter between each such representation. (The result therefore loses all information about the arrays geometric properties.) Optionally represent `null` by the supplied string.
+**Purpose:** return a `text` value computed by representing each array value, traversing these in row-major order, by its `::text` typecast, using the supplied delimiter between each such representation. (The result therefore loses all information about the arrays geometric properties.) Optionally represent `null` by the supplied `text` value.
 
 **Signature:**
 ```
@@ -44,7 +44,9 @@ See the section _"The literal for a 'row' type value"_, [here](../../literals/ro
 Now do this:
 ```postgresql
 select
-  array_to_string(arr, ' | ')
+  array_to_string(
+    arr,     -- the input array
+    ' | ')   -- the delimiter
 from t
 where k = 1;
 ```
@@ -59,7 +61,10 @@ Notice that, maybe to your surprise, the third, `null`, array value is simply no
 Now do this;
 ```postgresql
 select
-  array_to_string(arr, ' | ', '?')
+  array_to_string(
+    arr,     -- the input array
+    ' | ',   -- the delimiter
+    '?')     -- the null indicator
 from t
 where k = 1;
 ```

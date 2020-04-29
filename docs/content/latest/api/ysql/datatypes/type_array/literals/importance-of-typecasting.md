@@ -2,7 +2,7 @@
 title: The critical importance of typecasting
 linkTitle: Importance of typecasting
 headerTitle: The critical importance of explicit typecasting
-description: Bla bla
+description: The critical importance of explicit typecasting
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

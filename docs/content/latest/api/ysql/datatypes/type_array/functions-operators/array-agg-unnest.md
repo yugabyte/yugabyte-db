@@ -2,7 +2,7 @@
 title: array_agg() and unnest()
 linkTitle: array_agg() / unnest()
 headerTitle: array_agg() and unnest()
-description: Bla bla
+description: array_agg() and unnest()
 menu:
   latest:
     identifier: array-agg-unnest
@@ -381,8 +381,11 @@ master_pk, seq;
 - Here's how you achieve the same effect, and check that it worked as intended, in the new regime. Notice that you need to know the value of _"seq"_ for the _"rt"_ object that has the _"detail_name"_ value of interest. This is easy to do by implementing a dedicated PL/pgSQL function that encapsulates `array_replace()` or the replaces a value directly by addressing it using its index. But it's hard to do without that (These methods are described [here](../../functions-operators/replace-a-value/)).
 
 ```postgresql
+with v as (
+  select array_replace(details, '(3,squirrel)', '(3,bobcat)')
+  as new_arr from masters_with_details where master_pk = 2)
 update masters_with_details
-set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
+set details = (select new_arr from v)
 where master_pk = 2;
 
 select
@@ -396,6 +399,16 @@ order by
 master_pk, seq;
 ```
 &#160;&#160;&#160;&#160;The result is identical to the result shown for querying  _"original_data"_ above.
+
+**Note:** The update statement, using as it does a subquery from a view defined in a `with` cluase as the actual arguement for `array_replace()`,  seems to be unnecessarily complex. You might expect to use this:
+
+```
+update masters_with_details
+set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
+where master_pk = 2;
+```
+
+The more complex, but semantically equivalent, locution is used as a workaround for [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296). See the account of the `array_replace()` function, [here](../replace-a-value#array-replace), for more information. The code above will be updated when that issue is fixed.
 
 - Implementing the requirement that the values of _"detail_name"_ must be unique for a given _"masters"_ row is trivial in the old regime:
 ```postgresql

@@ -2,7 +2,7 @@
 title: array_remove()
 linkTitle: array_remove()
 headerTitle: array_remove()
-description: Bla bla
+description: array_remove()
 menu:
   latest:
     identifier: array-remove

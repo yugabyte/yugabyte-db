@@ -2,7 +2,7 @@
 title: The literal for an array of rows
 linkTitle: Array of rows
 headerTitle: The literal for an array of "row" type values
-description: Bla bla
+description: The literal for an array of "row" type values
 menu:
   latest:
     identifier: array-of-rows
@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-> **Monday 27-Apr-2009. This section is still work-in-progress. The text and example needed to complete it are ready in draft. The work to incorporate this is relatively small.**
+> **Monday 27-Apr-2020. To_Do. This section is still work-in-progress. The text and example needed to complete it are ready in draft. The work to incorporate this is relatively small.**
 
 We now combine the understanding of how to write the literal for an array of primitive values with that of how to write the literal for a _"row"_ type value. First, recall this example from the section To_Do:
 

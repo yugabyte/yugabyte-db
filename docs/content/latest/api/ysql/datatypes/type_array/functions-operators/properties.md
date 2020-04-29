@@ -2,7 +2,7 @@
 title: Array properties
 linkTitle: Array properties
 headerTitle: Functions for reporting the geometric properties of an array
-description: Bla bla
+description: Functions for reporting the geometric properties of an array
 menu:
   latest:
     identifier: array-properties

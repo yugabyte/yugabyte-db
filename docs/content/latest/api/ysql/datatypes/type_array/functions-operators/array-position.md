@@ -2,7 +2,7 @@
 title: array_position() and array_positions()
 linkTitle: array_position(), array_positions()
 headerTitle: array_position() and array_positions()
-description: Bla bla
+description: array_position() and array_positions()
 menu:
   latest:
     identifier: array-position
