@@ -47,11 +47,7 @@ extern Oid	equality_oper_funcid(Oid argtype);
 /*
  * Date utils
  */
-#if PG_VERSION_NUM >= 90400
 #define STRING_PTR_FIELD_TYPE const char *const
-#else
-#define STRING_PTR_FIELD_TYPE char *
-#endif
 
 extern STRING_PTR_FIELD_TYPE ora_days[];
 

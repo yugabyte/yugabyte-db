@@ -997,7 +997,7 @@ SELECT pos, token, class, mod FROM plvlex.tokens('select * from a.b.c join d on 
 CREATE TABLE trg_test(a varchar, b int, c varchar, d date, e int);
 
 CREATE TRIGGER trg_test_xx BEFORE INSERT OR UPDATE
-  ON trg_test FOR EACH ROW EXECUTE FUNCTION oracle.replace_empty_strings(true);
+  ON trg_test FOR EACH ROW EXECUTE PROCEDURE oracle.replace_empty_strings(true);
 
 \pset null ***
 
@@ -1011,7 +1011,7 @@ DELETE FROM trg_test;
 DROP TRIGGER trg_test_xx ON trg_test;
 
 CREATE TRIGGER trg_test_xx BEFORE INSERT OR UPDATE
-  ON trg_test FOR EACH ROW EXECUTE FUNCTION oracle.replace_null_strings();
+  ON trg_test FOR EACH ROW EXECUTE PROCEDURE oracle.replace_null_strings();
 
 INSERT INTO trg_test VALUES(NULL, 10, 'AHOJ', NULL, NULL);
 INSERT INTO trg_test VALUES('AHOJ', NULL, NULL, '2020-01-01', 100);

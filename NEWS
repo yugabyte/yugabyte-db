@@ -1,7 +1,14 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2016  Orafce Global Development Group
 
-Version 3.9.0 - 
+Version 3.12.0 -
+* trigger functions oracle.replace_empty_strings and oracle.replace_null_strings
+& remove support for 9.4
+
+Version 3.11.0 - 30. Mar 2020
+* named paths in utl_file package
+
+Version 3.9.0 - 14. Feb 2020
 * minor enhancing user_constraints view
 
 Version 3.8.0 - 22. May 2019
