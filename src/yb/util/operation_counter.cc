@@ -19,6 +19,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/logging.h"
 
 using namespace std::literals;
@@ -121,6 +122,8 @@ bool RWOperationCounter::Increment() {
 }
 
 Status RWOperationCounter::DisableAndWaitForOps(const MonoDelta& timeout, Stop stop) {
+  LongOperationTracker long_operation_tracker(__func__, 1s);
+
   const auto start_time = CoarseMonoClock::now();
   const auto deadline = start_time + timeout;
   std::unique_lock<std::timed_mutex> lock(disable_, deadline);
@@ -169,7 +172,11 @@ Status RWOperationCounter::WaitForOpsToFinish(
   return Status::OK();
 }
 
-ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTimePoint& deadline) {
+ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTimePoint& deadline)
+#ifndef NDEBUG
+    : long_operation_tracker_("ScopedRWOperation", 1s)
+#endif
+    {
   if (counter != nullptr) {
     // The race condition between IsReady() and Increment() is OK, because we are checking if
     // anyone has started an exclusive operation since we did the increment, and don't proceed

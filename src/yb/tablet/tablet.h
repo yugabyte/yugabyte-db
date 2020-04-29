@@ -161,7 +161,9 @@ struct DocDbOpIds {
   std::string ToString() const;
 };
 
-typedef std::function<Status(const TableInfo&)> AddTableListener;
+using AddTableListener = std::function<Status(const TableInfo&)>;
+using DocWriteOperationCallback =
+    boost::function<void(std::unique_ptr<WriteOperation>, const Status&)>;
 
 class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
  public:
@@ -298,7 +300,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
-  CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(WriteOperation* operation);
+  void KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteOperation> operation);
 
   CHECKED_STATUS HandleRedisReadRequest(
       CoarseTimePoint deadline,
@@ -335,7 +337,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
       PgsqlResponsePB* response) const override;
 
-  CHECKED_STATUS KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation);
+  CHECKED_STATUS PreparePgsqlWriteOperations(WriteOperation* operation);
+  void KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteOperation> operation);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
@@ -344,7 +347,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const Schema& projection,
       const boost::optional<TransactionId>& transaction_id,
       const ReadHybridTime read_hybrid_time = {},
-      const TableId& table_id = "") const;
+      const TableId& table_id = "",
+      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
 
@@ -593,7 +597,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
-  CHECKED_STATUS StartDocWriteOperation(WriteOperation* operation);
+  void StartDocWriteOperation(
+      std::unique_ptr<WriteOperation> operation,
+      ScopedRWOperation scoped_read_operation,
+      DocWriteOperationCallback callback);
 
   CHECKED_STATUS OpenKeyValueTablet();
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);

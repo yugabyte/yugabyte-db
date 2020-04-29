@@ -17,9 +17,20 @@
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/random_util.h"
+#include "yb/util/test_util.h"
+
 #include "yb/yql/cql/cqlserver/cql_server.h"
+
+using namespace std::literals;
+
+DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(rpc_workers_limit);
+DECLARE_uint64(transaction_manager_workers_limit);
+DECLARE_uint64(TEST_inject_txn_get_status_delay_ms);
 
 namespace yb {
 
@@ -30,7 +41,7 @@ class CqlIndexTest : public MiniClusterTestWithClient<MiniCluster> {
 
     MiniClusterOptions options;
     options.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), options));
+    cluster_ = std::make_unique<MiniCluster>(env_.get(), options);
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(CreateClient());
@@ -59,6 +70,8 @@ class CqlIndexTest : public MiniClusterTestWithClient<MiniCluster> {
 
  protected:
   void DoTearDown() override {
+    WARN_NOT_OK(cluster_->mini_tablet_server(0)->server()->heartbeater()->Stop(),
+                "Failed to stop heartbeater");
     cql_server_->Shutdown();
     MiniClusterTestWithClient<MiniCluster>::DoTearDown();
   }
@@ -67,15 +80,19 @@ class CqlIndexTest : public MiniClusterTestWithClient<MiniCluster> {
   std::unique_ptr<cqlserver::CQLServer> cql_server_;
 };
 
+CHECKED_STATUS CreateIndexedTable(CassandraSession* session) {
+  RETURN_NOT_OK(session->ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, value INT) WITH transactions = { 'enabled' : true }"));
+  return session->ExecuteQuery("CREATE INDEX idx ON T (value)");
+}
+
 TEST_F(CqlIndexTest, Simple) {
   constexpr int kKey = 1;
   constexpr int kValue = 2;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
 
-  ASSERT_OK(session.ExecuteQuery(
-      "CREATE TABLE t (key INT PRIMARY KEY, value INT) WITH transactions = { 'enabled' : true }"));
-  ASSERT_OK(session.ExecuteQuery("CREATE INDEX idx ON T (value)"));
+  ASSERT_OK(CreateIndexedTable(&session));
 
   ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, value) VALUES (1, 2)"));
   auto result = ASSERT_RESULT(session.ExecuteWithResult("SELECT * FROM t WHERE value = 2"));
@@ -85,6 +102,59 @@ TEST_F(CqlIndexTest, Simple) {
   ASSERT_EQ(row.Value(0).As<cass_int32_t>(), kKey);
   ASSERT_EQ(row.Value(1).As<cass_int32_t>(), kValue);
   ASSERT_FALSE(iter.Next());
+}
+
+class CqlIndexSmallWorkersTest : public CqlIndexTest {
+ public:
+  void SetUp() override {
+    FLAGS_rpc_workers_limit = 4;
+    FLAGS_transaction_manager_workers_limit = 4;
+    CqlIndexTest::SetUp();
+  }
+};
+
+TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
+  constexpr int kThreads = 8;
+  constexpr cass_int32_t kKeys = kThreads / 2;
+  constexpr cass_int32_t kValues = kKeys;
+  constexpr int kNumInserts = kThreads * 5;
+
+  FLAGS_client_read_write_timeout_ms = 10000;
+  SetAtomicFlag(1000, &FLAGS_TEST_inject_txn_get_status_delay_ms);
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(CreateIndexedTable(&session));
+
+  TestThreadHolder thread_holder;
+  std::atomic<int> inserts(0);
+  for (int i = 0; i != kThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &inserts, &stop = thread_holder.stop_flag()] {
+      auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+      auto prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t (key, value) VALUES (?, ?)"));
+      while (!stop.load(std::memory_order_acquire)) {
+        auto stmt = prepared.Bind();
+        stmt.Bind(0, RandomUniformInt<cass_int32_t>(1, kKeys));
+        stmt.Bind(1, RandomUniformInt<cass_int32_t>(1, kValues));
+        auto status = session.Execute(stmt);
+        if (status.ok()) {
+          ++inserts;
+        } else {
+          LOG(INFO) << "Insert failed: " << status;
+        }
+      }
+    });
+  }
+
+  while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
+    if (inserts.load(std::memory_order_acquire) >= kNumInserts) {
+      break;
+    }
+  }
+
+  thread_holder.Stop();
+
+  SetAtomicFlag(0, &FLAGS_TEST_inject_txn_get_status_delay_ms);
 }
 
 } // namespace yb

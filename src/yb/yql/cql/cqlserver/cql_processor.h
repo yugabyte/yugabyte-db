@@ -67,6 +67,8 @@ class CQLProcessor : public ql::QLProcessor {
   // Processing an inbound call.
   void ProcessCall(rpc::InboundCallPtr call);
 
+  void Shutdown();
+
  protected:
   bool NeedReschedule() override;
   void Reschedule(rpc::ThreadPoolTask* task) override;

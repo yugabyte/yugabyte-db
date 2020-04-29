@@ -28,6 +28,9 @@
 
 #include "yb/master/master_defaults.h"
 
+DEFINE_uint64(transaction_manager_workers_limit, 50,
+              "Max number of workers used by transaction manager");
+
 namespace yb {
 namespace client {
 
@@ -154,7 +157,6 @@ class InvokeCallbackTask {
 };
 
 constexpr size_t kQueueLimit = 150;
-constexpr size_t kMaxWorkers = 50;
 
 } // namespace
 
@@ -165,7 +167,7 @@ class TransactionManager::Impl {
       : client_(client),
         clock_(clock),
         table_state_{std::move(local_tablet_filter)},
-        thread_pool_("TransactionManager", kQueueLimit, kMaxWorkers),
+        thread_pool_("TransactionManager", kQueueLimit, FLAGS_transaction_manager_workers_limit),
         tasks_pool_(kQueueLimit),
         invoke_callback_tasks_(kQueueLimit) {
     CHECK(clock);

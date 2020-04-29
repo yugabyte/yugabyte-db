@@ -24,6 +24,7 @@
 #include <boost/mpl/and.hpp>
 
 #include <boost/preprocessor/facilities/apply.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
 
 #include "yb/gutil/strings/numbers.h"

@@ -171,11 +171,16 @@ void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_cod
           .Serialize(compression_scheme, &msg);
       break;
     }
+    case rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN: {
+      // Return OVERLOADED error to redirect CQL client to the next host.
+      ErrorResponse(stream_id_, ErrorResponse::Code::OVERLOADED, "CQL shutting down")
+          .Serialize(compression_scheme, &msg);
+      break;
+    }
     case rpc::ErrorStatusPB::ERROR_APPLICATION: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::ERROR_INVALID_REQUEST: FALLTHROUGH_INTENDED;
-    case rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_DESERIALIZING_REQUEST: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_VERSION_MISMATCH: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_UNAUTHORIZED: FALLTHROUGH_INTENDED;

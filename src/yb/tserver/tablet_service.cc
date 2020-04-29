@@ -2349,10 +2349,10 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 
 namespace {
 
-Result<uint64_t> CalcChecksum(tablet::Tablet* tablet) {
+Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
   const Schema& schema = tablet->metadata()->schema();
   auto client_schema = schema.CopyWithoutColumnIds();
-  auto iter = tablet->NewRowIterator(client_schema, boost::none);
+  auto iter = tablet->NewRowIterator(client_schema, boost::none, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
   QLTableRow value_map;
@@ -2379,7 +2379,8 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
           AllowSplitTablet::kTrue)) {
     return;
   }
-  auto checksum = CalcChecksum(down_cast<tablet::Tablet*>(abstract_tablet.get()));
+  auto checksum = CalcChecksum(
+      down_cast<tablet::Tablet*>(abstract_tablet.get()), context.GetClientDeadline());
   if (!checksum.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), checksum.status(),
                          TabletServerErrorPB::UNKNOWN_ERROR, &context);

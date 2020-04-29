@@ -22,6 +22,10 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 
+#ifndef NDEBUG
+#include "yb/util/debug/long_operation_tracker.h"
+#endif
+
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(Stop);
@@ -125,7 +129,11 @@ class ScopedRWOperation {
                              const CoarseTimePoint& deadline = CoarseTimePoint());
 
   ScopedRWOperation(ScopedRWOperation&& op)
-      : counter_(op.counter_) {
+      : counter_(op.counter_)
+#ifndef NDEBUG
+      , long_operation_tracker_(std::move(op.long_operation_tracker_))
+#endif
+      {
     op.counter_ = nullptr; // Moved ownership.
   }
 
@@ -139,6 +147,9 @@ class ScopedRWOperation {
 
  private:
   RWOperationCounter* counter_ = nullptr;
+#ifndef NDEBUG
+  LongOperationTracker long_operation_tracker_;
+#endif
 };
 
 // RETURN_NOT_OK macro support.

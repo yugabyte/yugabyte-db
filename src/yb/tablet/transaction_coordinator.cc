@@ -51,6 +51,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
@@ -73,6 +74,9 @@ DEFINE_uint64(transaction_resend_applying_interval_usec, 5000000,
 DEFINE_int64(avoid_abort_after_sealing_ms, 20,
              "If transaction was only sealed, we will try to abort it not earlier than this "
                  "period in milliseconds.");
+
+DEFINE_test_flag(uint64, TEST_inject_txn_get_status_delay_ms, 0,
+                 "Inject specified delay to transaction get status requests.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -838,6 +842,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response) {
+    AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
     auto leader_term = context_.LeaderTerm();
     PostponedLeaderActions postponed_leader_actions;
     {
@@ -972,6 +977,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback) {
+    AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
+
     auto id = FullyDecodeTransactionId(transaction_id);
     if (!id.ok()) {
       callback(id.status());
