@@ -1,8 +1,8 @@
 ---
-title: Benchmark YCQL performance using large datasets
+title: Benchmark YCQL performance with large datasets
 headerTitle: Large datasets
 linkTitle: Large datasets
-description: Benchmark YugabyteDB YCQL performance using large datasets
+description: Benchmark YCQL performance with large datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YugabyteDB with large data sets.
 menu:

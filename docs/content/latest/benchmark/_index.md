@@ -1,8 +1,8 @@
 ---
-title: Benchmark YugabyteDB with YCSB and TPC-C
+title: Benchmark YugabyteDB 
 headerTitle: Benchmark YugabyteDB
 linkTitle: Benchmark
-description: Benchmark YugabyteDB with YCSB and TPC-C
+description: Benchmark YugabyteDB using TPC-C, sysbench, YCSB and more.
 image: /images/section_icons/explore/high_performance.png
 headcontent:
 section: USER GUIDES
@@ -24,7 +24,7 @@ aliases:
         <div class="title">TPC-C</div>
       </div>
       <div class="body">
-        Performance test concurrent transactions with TPC-C.
+        Test performance for concurrent transactions with TPC-C.
       </div>
     </a>
   </div>
@@ -36,7 +36,7 @@ aliases:
         <div class="title">YCSB</div>
       </div>
       <div class="body">
-        Performance test using the Yahoo Cloud Serving Benchmark.
+        Test performance using the Yahoo Cloud Serving Benchmark.
       </div>
     </a>
   </div>
@@ -45,10 +45,10 @@ aliases:
     <a class="section-link icon-offset" href="sysbench-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Sysbench</div>
+        <div class="title">sysbench</div>
       </div>
       <div class="body">
-        Performance test using Sysbench.
+        Test performance using sysbench.
       </div>
     </a>
   </div>
@@ -84,7 +84,7 @@ aliases:
           <div class="title">Scalability</div>
         </div>
         <div class="body">
-          Test scalability of your YugabyteDB clusters.
+          Test throughput scalability.
         </div>
       </a>
     </div>
@@ -96,7 +96,7 @@ aliases:
         <div class="title">Resilience</div>
       </div>
       <div class="body">
-        Perform fault tolerance and failure tests on your YugabyteDB clusters.
+        Test resilience under failure conditions created by the Jepsen test suite.
       </div>
     </a>
   </div>

@@ -2,7 +2,7 @@
 title: Benchmark YSQL performance with large datasets
 headerTitle: Large datasets
 linkTitle: Large datasets
-description: Benchmark YugabyteDB YSQL performance with large datasets
+description: Benchmark YSQL performance with large datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Testing YugabyteDB with large data sets.
 menu:

@@ -2,11 +2,11 @@
 title: Benchmark YSQL performance using YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YugabyteDB YSQL performance using YCSB.
-headcontent: Benchmark YugabyteDB YSQL performance using YCSB.
+description: Benchmark YSQL performance using YCSB.
+headcontent: Benchmark YSQL performance using YCSB.
 menu:
   latest:
-    identifier: ycsb-1-ysql
+    identifier: ycsb-2-ysql
     parent: benchmark
     weight: 5
 aliases:
@@ -49,7 +49,7 @@ For more information about YCSB, see:
 
 {{< /note >}}
 
-## Step 1. Download the YCSB binaries
+## 1. Download the YCSB binaries
 
 You can do this by running the following commands.
 
@@ -64,11 +64,11 @@ $ cd YCSB
 The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
 {{< /note >}}
 
-## Step 2. Start YugabyteDB
+## 2. Start YugabyteDB
 
 Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
 
-## Step 3. Configure YCSB connection properties
+## 3. Configure YCSB connection properties
 
 Set the following connection configurations in `db.properties`:
 
@@ -85,7 +85,7 @@ The other configuration parameters, are described in detail at [this page](https
 The db.url field should be populated with the IPs of all the tserver nodes that are part of the cluster.
 {{< /note >}}
 
-## Step 4. Manually running the workloads
+## 4. Run individual workloads 
 
 Create the database and table using the `ysqlsh` tool.
 The `ysqlsh` tool is distributed as part of the database package.
@@ -113,13 +113,13 @@ To run the other workloads (for example, `workloadb`), all you need to do is cha
 $ ./bin/ycsb run jdbc -P yugabyteSQL/db.properties -P workloads/workloadb
 ```
 
-### Expected Results
-When run on a 3 node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+## 5. Expected results
+When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
 
-|            | Throughput (ops/sec) | Latency (ms)
+| Workload           | Throughput (ops/sec) | Latency (ms)
 -------------|-----------|----------|
-WorkloadA | 37377 | 1.5ms read 12 ms update
-WorkloadB | 60801 | 4ms read 7.6ms update
+WorkloadA | 37377 | 1.5ms read, 12 ms update
+WorkloadB | 60801 | 4ms read, 7.6ms update
 WorkloadC | 72152 | 3.5ms read
-WorkloadD | 61226 | 4ms read 7ms insert
-WorkloadF | 29759 | 2ms read 15ms read-modify-write
+WorkloadD | 61226 | 4ms read, 7ms insert
+WorkloadF | 29759 | 2ms read, 15ms read-modify-write
