@@ -1,4 +1,4 @@
 ```
-drop_extension ::= DROP EXTENSION [ IF EXISTS ] name [ , ... ] 
-                   [ CASCADE | RESTRICT ]
+drop_extension ::= DROP EXTENSION [ IF EXISTS ] extension_name 
+                   [ , ... ] [ CASCADE | RESTRICT ]
 ```
