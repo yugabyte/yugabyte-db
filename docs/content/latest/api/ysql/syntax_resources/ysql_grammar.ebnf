@@ -380,6 +380,13 @@ create_domain ::= 'CREATE' 'DOMAIN' name [ 'AS' ] data_type
 domain_constraint ::= [ 'CONSTRAINT' constraint_name ]
     ( 'NOT' 'NULL' | 'NULL' | 'CHECK' '(' expression ')' ) ;
 
+(* CREATE EXTENSION *)
+create_extension = 'CREATE' 'EXTENSION' [ 'IF' 'NOT' 'EXISTS' ]
+                   extension_name [ 'WITH' ]
+                   [ 'SCHEMA' schema_name ]
+                   [ 'VERSION' version ]
+                   [ 'CASCADE' ] ;
+
 (* CREATE FUNCTION *)
 create_function =  'CREATE' [ 'OR' 'REPLACE' ] 'FUNCTION'
                    name '(' [ arg_decl { ',' arg_decl } ] ')' \
@@ -727,6 +734,11 @@ drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 
 (* 'DROP' 'DOMAIN' *)
 drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* 'DROP' 'EXTENSION' *)
+drop_extension = 'DROP' 'EXTENSION' [ 'IF' 'EXISTS' ]
+                 extension_name { ',' extension_name }
+                 [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* DROP FUNCTION *)
 drop_function = 'DROP' ( 'FUNCTION' | 'PROCEDURE' ) [ 'IF' 'EXISTS' ] \
@@ -1193,3 +1205,6 @@ storage_type = data_type ;
 using_expression = expression ;
 check_expression = expression ;
 new_name = name ;
+
+version = '<text literal>' ;
+extension_name = name ;
