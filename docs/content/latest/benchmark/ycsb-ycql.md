@@ -2,12 +2,13 @@
 title: Benchmark YCQL performance using YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YugabyteDB YCQL performance using YCSB.
+description: Benchmark YCQL performance using YCSB.
+headcontent: Benchmark YCQL performance using YCSB.
 aliases:
   - /latest/benchmark/ycsb
 menu:
   latest:
-    identifier: ycsb-2-ycql
+    identifier: ycsb-3-ycql
     parent: benchmark
     weight: 5
 showAsideToc: true
@@ -48,7 +49,7 @@ For more information about YCSB, see:
 
 {{< /note >}}
 
-## Step 1. Download the YCSB binaries
+## 1. Download the YCSB binaries
 
 You can do this by running the following commands.
 
@@ -65,11 +66,11 @@ The binaries are compiled with JAVA 13 and it is recommended to run these binari
 
 {{< /note >}}
 
-## Step 2. Start YugabyteDB
+## 2. Start YugabyteDB
 
 Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
 
-## Step 3. Configure YCSB connection properties
+## 3. Configure YCSB connection properties
 
 Set the following connection configuration options in `db.properties`:
 
@@ -81,7 +82,7 @@ cassandra.username=yugabyte
 
 For details on other configuration parameters, like username, password, connection parameters, etc., see [YugabyteCQL binding](https://github.com/yugabyte/YCSB/tree/master/yugabyteCQL).
 
-## Step 4. Run the workloads
+## 4. Run all the workloads
 
 There is a handy script (`run_cql.sh`) that loads and runs all the workloads.
 First we need to supply the paths to the ycsb binary and the cqlsh binary (which is distributed as part of the database package) along with the IP of the tserver node.
@@ -99,19 +100,7 @@ To get the maximum performance out of the system, you would have to tune the `th
 
 {{< /note >}}
 
-### Expected Results
-When run on a 3 node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
-
-|            | Throughput (ops/sec) | Latency (ms)
--------------|-----------|----------|
-WorkloadA | 108249 | 1ms read 3.5 ms update
-WorkloadB | 141061 | 1.6ms read 4ms update
-WorkloadC | 188111 | 1.3ms read
-WorkloadD | 153165 | 1.5ms read 4.5ms insert
-WorkloadE | 23489 | 10ms scan
-WorkloadF | 80451 | 1ms read 5ms read-modify-write
-
-## Manually run the workloads
+## 4. Run individual workloads (optional)
 
 Create the keyspace and table using the `cqlsh` tool.
 The `cqlsh` tool is distributed as part of the database package.
@@ -138,3 +127,15 @@ To run the other workloads (for example, `workloadb`), all we need to do is chan
 ```sh
 $ ./bin/ycsb run yugabyteCQL -P yugabyteCQL/db.properties -P workloads/workloadb
 ```
+
+## 5. Expected results
+When run on a 3 node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+
+| Workload           | Throughput (ops/sec) | Latency (ms)
+-------------|-----------|----------|
+WorkloadA | 108249 | 1ms read, 3.5 ms update
+WorkloadB | 141061 | 1.6ms read, 4ms update
+WorkloadC | 188111 | 1.3ms read
+WorkloadD | 153165 | 1.5ms read, 4.5ms insert
+WorkloadE | 23489 | 10ms scan
+WorkloadF | 80451 | 1ms read, 5ms read-modify-write
