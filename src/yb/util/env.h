@@ -462,6 +462,9 @@ class Env {
 
   // Get free space available on the path's filesystem.
   virtual Result<uint64_t> GetFreeSpaceBytes(const std::string& path) = 0;
+
+  // Get ulimit
+  virtual CHECKED_STATUS GetUlimit(int resource, int64_t* soft_limit, int64_t* hard_limit) = 0;
  private:
   // No copying allowed
   Env(const Env&);
@@ -787,6 +790,9 @@ class EnvWrapper : public Env {
   }
   Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
     return target_->GetFreeSpaceBytes(path);
+  }
+  CHECKED_STATUS GetUlimit(int resource, int64_t* soft_limit, int64_t* hard_limit) override {
+    return target_->GetUlimit(resource, soft_limit, hard_limit);
   }
  private:
   Env* target_;

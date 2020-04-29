@@ -247,6 +247,7 @@ set(UTIL_SRCS
   timestamp.cc
   trace.cc
   trilean.cc
+  ulimit_info.cc
   universe_key_manager.cc
   url-coding.cc
   user.cc
