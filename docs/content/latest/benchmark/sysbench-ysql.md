@@ -29,7 +29,7 @@ Sysbench is a popular tool for benchmarking databases like Postgres and MySQL, a
 Follow the steps below to run Sysbench against YugabyteDB.
 The version we are using is forked from the [official](https://github.com/akopytov/sysbench) version with a few modifications to better reflect YugabyteDB's distributed nature.
 
-## Step 1. Install Sysbench.
+## Step 1. Install Sysbench
 
 You can do this by running the following commands.
 
@@ -50,10 +50,30 @@ Start your YugabyteDB cluster by following the steps in [Quick start](https://do
 
 ## Step 3. Run all OLTP workloads
 
-There is a handly shell script 'run_sysbench.sh' that loads the data and runs the various workloads.
+There is a handy shell script `run_sysbench.sh` that loads the data and runs the various workloads.
 ```sh
 ./run_sysbench.sh <ip>
 ```
+This script runs all the 8 workloads using 64 threads with the number of tables as 10 and the table size as 100k.
+
+{{< note title="Note" >}}
+Make sure that the `ysqlsh` path is correctly configured in the shell script.
+{{< /note >}}
+
+### Expected Results
+When run on a 3 node cluster with each a c5.4xlarge AWS instance (16 cores and 32GB of RAM) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+
+|            | Throughput (txns/sec) | Latency (ms)
+-------------|-----------|----------|
+OLTP_READ_ONLY | 3276 | 39
+OLTP_READ_WRITE | 487 | 265
+OLTP_WRITE_ONLY | 1818 | 70
+OLTP_POINT_SELECT| 95695 | 1.3
+OLTP_INSERT | 6348 | 20.1
+OLTP_UPDATE_INDEX | 4052 | 31
+OLTP_UPDATE_NON_INDEX | 11496 | 11
+OLTP_DELETE | 67499 | 1.9
+
 
 ### Manually run the workloads
 
