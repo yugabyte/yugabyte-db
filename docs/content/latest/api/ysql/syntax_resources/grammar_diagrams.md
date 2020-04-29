@@ -641,6 +641,14 @@ domain_constraint ::= [ CONSTRAINT constraint_name ]
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="574" height="95" viewbox="0 0 574 95"><path class="connector" d="M0 22h35m98 0h10m122 0h20m-265 0q5 0 5 5v8q0 5 5 5h240q5 0 5-5v-8q0-5 5-5m5 0h30m45 0h10m52 0h137m-254 25q0 5 5 5h5m52 0h177q5 0 5-5m-249-25q5 0 5 5v50q0 5 5 5h5m61 0h10m25 0h10m83 0h10m25 0h5q5 0 5-5v-50q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="98" height="25" rx="7"/><text class="text" x="45" y="22">CONSTRAINT</text><a xlink:href="../grammar_diagrams#constraint-name"><rect class="rule" x="143" y="5" width="122" height="25"/><text class="text" x="153" y="22">constraint_name</text></a><rect class="literal" x="315" y="5" width="45" height="25" rx="7"/><text class="text" x="325" y="22">NOT</text><rect class="literal" x="370" y="5" width="52" height="25" rx="7"/><text class="text" x="380" y="22">NULL</text><rect class="literal" x="315" y="35" width="52" height="25" rx="7"/><text class="text" x="325" y="52">NULL</text><rect class="literal" x="315" y="65" width="61" height="25" rx="7"/><text class="text" x="325" y="82">CHECK</text><rect class="literal" x="386" y="65" width="25" height="25" rx="7"/><text class="text" x="396" y="82">(</text><a xlink:href="../grammar_diagrams#expression"><rect class="rule" x="421" y="65" width="83" height="25"/><text class="text" x="431" y="82">expression</text></a><rect class="literal" x="514" y="65" width="25" height="25" rx="7"/><text class="text" x="524" y="82">)</text><polygon points="570,29 574,29 574,15 570,15" style="fill:black;stroke-width:0"/></svg>
 
+### create_extension
+```
+create_extension ::= CREATE EXTENSION [ IF NOT EXISTS ] extension_name 
+                     [ WITH ] [ SCHEMA schema_name ] 
+                     [ VERSION version ] [ CASCADE ]
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="1206" height="50" viewbox="0 0 1206 50"><path class="connector" d="M0 22h15m67 0h10m91 0h30m32 0h10m45 0h10m64 0h20m-196 0q5 0 5 5v8q0 5 5 5h171q5 0 5-5v-8q0-5 5-5m5 0h10m120 0h30m53 0h20m-88 0q5 0 5 5v8q0 5 5 5h63q5 0 5-5v-8q0-5 5-5m5 0h30m71 0h10m108 0h20m-224 0q5 0 5 5v8q0 5 5 5h199q5 0 5-5v-8q0-5 5-5m5 0h30m75 0h10m63 0h20m-183 0q5 0 5 5v8q0 5 5 5h158q5 0 5-5v-8q0-5 5-5m5 0h30m77 0h20m-112 0q5 0 5 5v8q0 5 5 5h87q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="67" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="92" y="5" width="91" height="25" rx="7"/><text class="text" x="102" y="22">EXTENSION</text><rect class="literal" x="213" y="5" width="32" height="25" rx="7"/><text class="text" x="223" y="22">IF</text><rect class="literal" x="255" y="5" width="45" height="25" rx="7"/><text class="text" x="265" y="22">NOT</text><rect class="literal" x="310" y="5" width="64" height="25" rx="7"/><text class="text" x="320" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#extension-name"><rect class="rule" x="404" y="5" width="120" height="25"/><text class="text" x="414" y="22">extension_name</text></a><rect class="literal" x="554" y="5" width="53" height="25" rx="7"/><text class="text" x="564" y="22">WITH</text><rect class="literal" x="657" y="5" width="71" height="25" rx="7"/><text class="text" x="667" y="22">SCHEMA</text><a xlink:href="../grammar_diagrams#schema-name"><rect class="rule" x="738" y="5" width="108" height="25"/><text class="text" x="748" y="22">schema_name</text></a><rect class="literal" x="896" y="5" width="75" height="25" rx="7"/><text class="text" x="906" y="22">VERSION</text><a xlink:href="../grammar_diagrams#version"><rect class="rule" x="981" y="5" width="63" height="25"/><text class="text" x="991" y="22">version</text></a><rect class="literal" x="1094" y="5" width="77" height="25" rx="7"/><text class="text" x="1104" y="22">CASCADE</text><polygon points="1202,29 1206,29 1206,15 1202,15" style="fill:black;stroke-width:0"/></svg>
+
 ### create_function
 ```
 create_function ::= CREATE [ OR REPLACE ] FUNCTION name ( 
@@ -1275,6 +1283,13 @@ drop_domain ::= DROP DOMAIN [ IF EXISTS ] name [ , ... ]
                 [ CASCADE | RESTRICT ]
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="552" height="100" viewbox="0 0 552 100"><path class="connector" d="M0 52h15m53 0h10m70 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h20m24 0h20q5 0 5 5v20q0 5-5 5m-5 0h50m77 0h22m-109 25q0 5 5 5h5m79 0h5q5 0 5-5m-104-25q5 0 5 5v33q0 5 5 5h89q5 0 5-5v-33q0-5 5-5m5 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="53" height="25" rx="7"/><text class="text" x="25" y="52">DROP</text><rect class="literal" x="78" y="35" width="70" height="25" rx="7"/><text class="text" x="88" y="52">DOMAIN</text><rect class="literal" x="178" y="35" width="32" height="25" rx="7"/><text class="text" x="188" y="52">IF</text><rect class="literal" x="220" y="35" width="64" height="25" rx="7"/><text class="text" x="230" y="52">EXISTS</text><rect class="literal" x="349" y="5" width="24" height="25" rx="7"/><text class="text" x="359" y="22">,</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="334" y="35" width="54" height="25"/><text class="text" x="344" y="52">name</text></a><rect class="literal" x="438" y="35" width="77" height="25" rx="7"/><text class="text" x="448" y="52">CASCADE</text><rect class="literal" x="438" y="65" width="79" height="25" rx="7"/><text class="text" x="448" y="82">RESTRICT</text><polygon points="548,59 552,59 552,45 548,45" style="fill:black;stroke-width:0"/></svg>
+
+### drop_extension
+```
+drop_extension ::= DROP EXTENSION [ IF EXISTS ] extension_name 
+                   [ , ... ] [ CASCADE | RESTRICT ]
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="639" height="100" viewbox="0 0 639 100"><path class="connector" d="M0 52h15m53 0h10m91 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h53m24 0h53q5 0 5 5v20q0 5-5 5m-5 0h50m77 0h22m-109 25q0 5 5 5h5m79 0h5q5 0 5-5m-104-25q5 0 5 5v33q0 5 5 5h89q5 0 5-5v-33q0-5 5-5m5 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="53" height="25" rx="7"/><text class="text" x="25" y="52">DROP</text><rect class="literal" x="78" y="35" width="91" height="25" rx="7"/><text class="text" x="88" y="52">EXTENSION</text><rect class="literal" x="199" y="35" width="32" height="25" rx="7"/><text class="text" x="209" y="52">IF</text><rect class="literal" x="241" y="35" width="64" height="25" rx="7"/><text class="text" x="251" y="52">EXISTS</text><rect class="literal" x="403" y="5" width="24" height="25" rx="7"/><text class="text" x="413" y="22">,</text><a xlink:href="../grammar_diagrams#extension-name"><rect class="rule" x="355" y="35" width="120" height="25"/><text class="text" x="365" y="52">extension_name</text></a><rect class="literal" x="525" y="35" width="77" height="25" rx="7"/><text class="text" x="535" y="52">CASCADE</text><rect class="literal" x="525" y="65" width="79" height="25" rx="7"/><text class="text" x="535" y="82">RESTRICT</text><polygon points="635,59 639,59 639,45 635,45" style="fill:black;stroke-width:0"/></svg>
 
 ### drop_function
 ```
@@ -2410,6 +2425,18 @@ check_expression ::= expression
 ### new_name
 ```
 new_name ::= name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="84" height="35" viewbox="0 0 84 35"><path class="connector" d="M0 22h15m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="15" y="5" width="54" height="25"/><text class="text" x="25" y="22">name</text></a><polygon points="80,29 84,29 84,15 80,15" style="fill:black;stroke-width:0"/></svg>
+
+### version
+```
+version ::= '<text literal>'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="131" height="35" viewbox="0 0 131 35"><path class="connector" d="M0 22h15m101 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="101" height="25" rx="7"/><text class="text" x="25" y="22">&lt;text literal&gt;</text><polygon points="127,29 131,29 131,15 127,15" style="fill:black;stroke-width:0"/></svg>
+
+### extension_name
+```
+extension_name ::= name
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="84" height="35" viewbox="0 0 84 35"><path class="connector" d="M0 22h15m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="15" y="5" width="54" height="25"/><text class="text" x="25" y="22">name</text></a><polygon points="80,29 84,29 84,15 80,15" style="fill:black;stroke-width:0"/></svg>
 
