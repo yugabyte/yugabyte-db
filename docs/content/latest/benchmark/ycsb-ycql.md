@@ -104,12 +104,12 @@ When run on a 3 node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB
 
 |            | Throughput (ops/sec) | Latency (ms)
 -------------|-----------|----------|
-WorkloadA | 37377 | 1.5ms read 12 ms update
-WorkloadB | 150364 | 4ms read 7.6ms update
-WorkloadC | 196039 | 3.5ms read
-WorkloadD | 161595 | 4ms read 7ms insert
-WorkloadE | 24066 | 3.8ms scan
-WorkloadF | 83715 | 2ms read 15ms read-modify-write
+WorkloadA | 108249 | 1ms read 3.5 ms update
+WorkloadB | 141061 | 1.6ms read 4ms update
+WorkloadC | 188111 | 1.3ms read
+WorkloadD | 153165 | 1.5ms read 4.5ms insert
+WorkloadE | 23489 | 10ms scan
+WorkloadF | 80451 | 1ms read 5ms read-modify-write
 
 ## Manually run the workloads
 
