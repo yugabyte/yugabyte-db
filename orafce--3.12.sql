@@ -3526,3 +3526,13 @@ CREATE OR REPLACE FUNCTION oracle.numtodsinterval(double precision, text)
 RETURNS interval AS $$
   SELECT $1 * ('1' || $2)::interval
 $$ LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.replace_empty_strings()
+RETURNS TRIGGER
+AS 'MODULE_PATHNAME','orafce_replace_empty_strings'
+LANGUAGE 'c';
+
+CREATE OR REPLACE FUNCTION oracle.replace_null_strings()
+RETURNS TRIGGER
+AS 'MODULE_PATHNAME','orafce_replace_null_strings'
+LANGUAGE 'c';

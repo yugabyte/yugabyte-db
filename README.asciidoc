@@ -732,6 +732,24 @@ Some byte-based string functions to be used with VARCHAR2 strings
 * strposb(VARCHAR2, VARCHAR2) - returns the location of specified substring in a given string (counting from one)
 * lengthb(VARCHAR2) - returns the length (in bytes) of a given string
 
+== Triggers ==
+
+Oracle doesn't make differences between NULL and empty string (when a value
+is used as text). For Postgres NULL and empty string are different values.
+For simplicity is good to ensure (in Postgres database) use only NULLs (and
+don't use empty strings) or use only empty strings (and don't use NULLs) for
+text type columns. Both variants has some advantages and disadvantages.
+
+This can be enusured with trigger functions:
+
+----
+oracle.replace_empty_strings([raise_warnings boolean])
+oracle.replace_null_strings([raise_warnings boolean])
+----
+
+Optional boolean argument is used as indicator so these functions should to
+raise warning when row was changed inside these functions.
+
 == Emulated views
 
 * oracle.user_tab_columns

@@ -285,4 +285,9 @@ extern PGDLLEXPORT Datum nvarchar2in(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum nvarchar2out(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum nvarchar2(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum nvarchar2recv(PG_FUNCTION_ARGS);
+
+/* from replace_empty_string.c */
+extern PGDLLEXPORT Datum orafce_replace_empty_strings(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_replace_null_strings(PG_FUNCTION_ARGS);
+
 #endif
