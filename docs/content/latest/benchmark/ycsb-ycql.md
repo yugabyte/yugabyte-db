@@ -24,6 +24,13 @@ isTocNested: true
   </li>
 
   <li >
+    <a href="/latest/benchmark/ycsb-jdbc/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL-JDBC
+    </a>
+  </li>
+
+  <li >
     <a href="/latest/benchmark/ycsb-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
@@ -91,6 +98,18 @@ The script creates two result files per workload, one for the loading and one fo
 To get the maximum performance out of the system, you would have to tune the `threadcount` parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32 GB RAM, we used a `threadcount` of 32 for the loading phase and 256 for the execution phase.
 
 {{< /note >}}
+
+### Expected Results
+When run on a 3 node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+
+|            | Throughput (ops/sec) | Latency (ms)
+-------------|-----------|----------|
+WorkloadA | 37377 | 1.5ms read 12 ms update
+WorkloadB | 150364 | 4ms read 7.6ms update
+WorkloadC | 196039 | 3.5ms read
+WorkloadD | 161595 | 4ms read 7ms insert
+WorkloadE | 24066 | 3.8ms scan
+WorkloadF | 83715 | 2ms read 15ms read-modify-write
 
 ## Manually run the workloads
 
