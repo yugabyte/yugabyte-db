@@ -737,7 +737,7 @@ drop_domain ::= 'DROP' 'DOMAIN' [ 'IF' 'EXISTS' ] name { ',' name }  [ 'CASCADE'
 
 (* 'DROP' 'EXTENSION' *)
 drop_extension = 'DROP' 'EXTENSION' [ 'IF' 'EXISTS' ]
-                 name { ',' name }
+                 extension_name { ',' extension_name }
                  [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* DROP FUNCTION *)
