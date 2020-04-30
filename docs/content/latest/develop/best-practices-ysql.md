@@ -49,16 +49,6 @@ since they happen in 1 tablet/node.
 
 If you have a small dataset (<500GB) that requires HA, or a DB with only few scale out tables, then colocation is a good option.
 
-
-### Partial indexes
-[A partial index](../api/ysql/commands/ddl_create_index.md#where-clause) is an index that is built on a subset of a table and includes only rows that satisfy the condition 
-specified in the `WHERE` clause. It can be used to exclude `NULL` or common values from the index. 
-This will speed up any writes to the table since rows containing the common column values don't need to be indexed. 
-It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
-It can also be used to index just the rows of interest. 
-For example, an application maintaining a shipments table may have a column for shipment status. 
-If the application mostly accesses the in-flight shipments, then it can use a partial index to exclude rows whose shipment status is delivered.
-
 ## Performance
 
 ### Connection pooling
@@ -75,6 +65,10 @@ One connection pooler that we've tested is [pgbouncer](https://www.pgbouncer.org
 
 But any connection pooler that works with Postgresql should work with YugabyteDB.
 We're also working to lower the overhead of connections.
+
+### Use partial indexes
+[A partial index](../api/ysql/commands/ddl_create_index.md#where-clause) is an index that is built on a subset of a table and includes only rows that satisfy the condition 
+specified in the `WHERE` clause. This will speed up any writes to the table and reduce the size of the index, thereby improving the speed for read queries that use the index. 
 
 ### Use covering indexes
 When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the 
