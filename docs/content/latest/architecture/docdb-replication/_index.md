@@ -2,11 +2,11 @@
 title: DocDB replication layer
 headerTitle: DocDB replication layer
 linkTitle: DocDB replication layer
-description: Learn about the YugabyteDB distributed document store that is responsible for sharding, replication, transactions, and persistence.
+description: Learn how synchronous and asynchronous replication work in DocDB, including advanced features like xCluster replication and read replicas.
 image: /images/section_icons/architecture/concepts.png
 aliases:
   - /latest/architecture/docdb/replication/
-headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
+headcontent: Learn how synchronous and asynchronous replication work in DocDB.
 menu:
   latest:
     identifier: architecture-docdb-replication

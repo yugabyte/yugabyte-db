@@ -1,7 +1,8 @@
 ---
-title: Google Kubernetes Engine (GKE)
+title: Deploy on Google Kubernetes Engine (GKE) using YAML (local disk)
+headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
-description: Google Kubernetes Engine (GKE)
+description: Deploy a single-zone YugabyteDB cluster on Google Kubernetes Engine (GKE) using YAML (local disk).
 menu:
   latest:
     parent: deploy-kubernetes-sz
@@ -15,24 +16,23 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="/latest/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
-      Helm chart
+      Helm Chart
     </a>
   </li>
   <li >
     <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
-      YAML (Remote Disk)
+      YAML (remote disk)
     </a>
   </li>
    <li >
     <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
-      YAML (Local Disk)
+      YAML (local disk)
     </a>
   </li>
 </ul>
