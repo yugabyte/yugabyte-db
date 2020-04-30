@@ -112,7 +112,7 @@ METRIC_DEFINE_counter(
 
 DECLARE_int32(master_discovery_timeout_ms);
 
-DEFINE_int32(copy_table_batch_size, 10000, "Batch size for copy pg sql tables");
+DEFINE_int32(copy_table_batch_size, -1, "Batch size for copy pg sql tables");
 
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 
