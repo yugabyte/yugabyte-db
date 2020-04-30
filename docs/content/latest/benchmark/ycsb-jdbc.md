@@ -76,7 +76,7 @@ $ export PATH=$PATH:/path/to/ysqlsh
 
 ### 2. Start YugabyteDB
 
-Start your YugabyteDB cluster by following the steps [here](https://docs.yugabyte.com/latest/deploy/manual-deployment/).
+Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
 
 {{< tip title="Tip" >}}
 You will need the IP addresses of the nodes in the cluster for the next step.
