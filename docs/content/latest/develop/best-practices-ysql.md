@@ -114,18 +114,6 @@ It can also be used to index just the rows of interest.
 For example, an application maintaining a shipments table may have a column for shipment status. 
 If the application mostly accesses the in-flight shipments, then it can use a partial index to exclude rows whose shipment status is delivered.
 
-### Use covering indexes
-When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the 
-index. This can result in multiple random reads across the main table.
-
-Sometimes a better way is to include the other columns that we're querying that aren't part of the index 
-using the [`INCLUDE`](../api/ysql/commands/ddl_create_index.md#include-columns) clause.  
-When additional columns are included in the index, they can be used to respond to queries directly using index only scans
-that are faster.
-
-This turns a (possible) random read from the main table to just a filter on the index.
-
-
 ## Performance
 
 ### Connection pooling
@@ -143,6 +131,16 @@ One connection pooler that we've tested is [pgbouncer](https://www.pgbouncer.org
 But any connection pooler that works with Postgresql should work with YugabyteDB.
 We're also working to lower the overhead of connections.
 
+### Use covering indexes
+When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the 
+index. This can result in multiple random reads across the main table.
+
+Sometimes a better way is to include the other columns that we're querying that aren't part of the index 
+using the [`INCLUDE`](../api/ysql/commands/ddl_create_index.md#include-columns) clause.  
+When additional columns are included in the index, they can be used to respond to queries directly using index only scans
+that are faster.
+
+This turns a (possible) random read from the main table to just a filter on the index.
 
 
 ### Column size limit
