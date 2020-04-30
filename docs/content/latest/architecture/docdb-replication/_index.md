@@ -43,7 +43,7 @@ There are other advanced replication features in YugabyteDB. These include two f
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="xcluster-replication/">
+    <a class="section-link icon-offset" href="async-replication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts/replication.png" aria-hidden="true" />
         <div class="title">xCluster replication</div>

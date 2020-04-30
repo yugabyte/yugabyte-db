@@ -2,7 +2,7 @@
 title: Benchmark YCQL performance using YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YCQL performance using YCSB.
+description: Benchmark YCQL performance with YCSB using the new YCQL binding.
 headcontent: Benchmark YCQL performance using YCSB.
 aliases:
   - /latest/benchmark/ycsb
@@ -18,16 +18,16 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/ycsb-ysql/" class="nav-link">
+    <a href="/latest/benchmark/ycsb-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL Binding
+      JDBC Binding
     </a>
   </li>
 
   <li >
-    <a href="/latest/benchmark/ycsb-jdbc/" class="nav-link">
+    <a href="/latest/benchmark/ycsb-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      JDBC Binding
+      YSQL Binding
     </a>
   </li>
 
@@ -50,7 +50,8 @@ For more information about YCSB, see:
 {{< /note >}}
 
 ## Overview
-This uses the YCQL binding to run the YCSB benchmark.
+
+This uses a new YCQL-specific binding to test the YCQL API using the YCSB benchmark.
 
 ## Running the benchmark
 
@@ -187,7 +188,7 @@ When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB
 -------------|-----------|------------|------------|
 Workload A | 1,08,249 | 1ms | 3.5 ms update
 Workload B | 1,41,061 | 1.6ms | 4ms update
-Workload C | 1,88,111 | 1.3ms |
+Workload C | 1,88,111 | 1.3ms | Not applicable
 Workload D | 1,53,165 | 1.5ms | 4.5ms insert
-Workload E | 23,489 | 10ms scan
+Workload E | 23,489 | 10ms scan | Not applicable
 Workload F | 80,451 | 1ms | 5ms read-modify-write
