@@ -1,8 +1,8 @@
 ---
-title: Benchmark YSQL performance using YCSB
+title: Benchmark YSQL performance with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance using YCSB.
+description: Benchmark YSQL performance with YCSB using various workloads.
 headcontent: Benchmark YSQL performance using YCSB.
 menu:
   latest:
@@ -42,7 +42,7 @@ isTocNested: true
 
 {{< note title="Note" >}}
 
-For more information about YCSB, see: 
+For more information about YCSB, see:
 
 * YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
 * Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
@@ -91,7 +91,7 @@ db.user=yugabyte
 db.passwd=
 ```
 
-The other configuration parameters, are described in detail at [this page](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties)
+Details about other configuration parameters are described in [Core Properties](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties) on the [YCSB](https://github.com/brianfrankcooper/YCSB/) repository.
 
 {{< note title="Note" >}}
 The db.url field should be populated with the IPs of all the nodes that are part of the cluster.
@@ -184,7 +184,7 @@ $ ./bin/ycsb run yugabyteSQL -s  \
 
 ### Setup
 
-When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same AZ with the client VM running in the same AZ, we get the following results:
 
 ### 1 Million Rows
 

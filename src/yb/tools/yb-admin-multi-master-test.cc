@@ -92,5 +92,73 @@ TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
   ASSERT_EQ(output1, output2);
 }
 
+TEST_F(YBAdminMultiMasterTest, RemoveDownMaster) {
+  const int kNumInitMasters = 3;
+  const auto admin_path = GetToolPath(kAdminToolName);
+  ASSERT_NO_FATALS(StartCluster({}, {}, 1/*num tservers*/, kNumInitMasters));
+  int idx = -1;
+  const auto master_addrs = cluster_->GetMasterAddresses();
+  ASSERT_OK(cluster_->GetFirstNonLeaderMasterIndex(&idx));
+  const auto addr = cluster_->master(idx)->bound_rpc_addr();
+  ASSERT_OK(cluster_->master(idx)->Pause());
+
+  std::string output2;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      "list_all_masters"), &output2));
+  LOG(INFO) << "list_all_masters \n" << output2;
+  const auto lines2 = StringSplit(output2, '\n');
+  ASSERT_EQ(lines2.size(), kNumInitMasters + 1);
+
+  std::string output3;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      "change_master_config", "REMOVE_SERVER", addr.host(), addr.port()), &output3));
+  LOG(INFO) << "change_master_config: REMOVE_SERVER\n" << output3;
+
+  std::string output4;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      "list_all_masters"), &output4));
+  LOG(INFO) << "list_all_masters \n" << output4;
+  const auto lines4 = StringSplit(output4, '\n');
+  ASSERT_EQ(lines4.size(), kNumInitMasters);
+}
+
+TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
+  const auto admin_path = GetToolPath(kAdminToolName);
+  const int kNumInitMasters = 2;
+  ASSERT_NO_FATALS(StartCluster({}, {}, 1/*num tservers*/, kNumInitMasters));
+  const auto master_addrs = cluster_->GetMasterAddresses();
+
+  std::string output2;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      "list_all_masters"), &output2));
+  LOG(INFO) << "list_all_masters \n" << output2;
+  const auto lines2 = StringSplit(output2, '\n');
+  ASSERT_EQ(lines2.size(), kNumInitMasters + 1);
+
+  ExternalMaster* shell_master = nullptr;
+  cluster_->StartShellMaster(&shell_master);
+  ASSERT_NE(shell_master, nullptr);
+  scoped_refptr<ExternalMaster> shell_master_ref(shell_master);
+  const auto shell_addr = shell_master->bound_rpc_addr();
+
+  std::string output3;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      "change_master_config", "ADD_SERVER", shell_addr.host(), shell_addr.port()), &output3));
+  LOG(INFO) << "change_master_config: ADD_SERVER\n" << output3;
+
+  std::string output4;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
+      "list_all_masters"), &output4));
+  LOG(INFO) << "list_all_masters \n" << output4;
+  const auto lines4 = StringSplit(output4, '\n');
+  ASSERT_EQ(lines4.size(), kNumInitMasters + 2);
+}
+
 }  // namespace tools
 }  // namespace yb

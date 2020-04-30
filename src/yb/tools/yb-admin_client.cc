@@ -130,7 +130,7 @@ string FormatHostPort(const HostPortPB& host_port) {
 }
 
 string FormatFirstHostPort(
-    const google::protobuf::RepeatedPtrField<yb::HostPortPB>& rpc_addresses) {
+    const RepeatedPtrField<HostPortPB>& rpc_addresses) {
   if (rpc_addresses.empty()) {
     return "N/A";
   } else {
@@ -864,12 +864,15 @@ Status ClusterAdminClient::ChangeMasterConfig(
     bool use_hostport) {
   CHECK(initted_);
 
+  VLOG(1) << "ChangeMasterConfig: " << change_type << " | " << peer_host << ":" << peer_port;
   consensus::ChangeConfigType cc_type;
   RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
 
   string peer_uuid;
   if (!use_hostport) {
-    RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
+      VLOG(1) << "ChangeMasterConfig: attempt to get UUID for changed host: "
+              << peer_host << ":" << peer_port;
+      RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
   }
 
   string leader_uuid;
@@ -882,6 +885,8 @@ Status ClusterAdminClient::ChangeMasterConfig(
   // starts an election and gets a new leader master.
   auto changed_leader_addr = leader_addr_;
   if (cc_type == consensus::REMOVE_SERVER && leader_uuid == peer_uuid) {
+    VLOG(1) << "ChangeMasterConfig: request leader " << leader_addr_
+            << " to step down before removal.";
     string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
     sleep(5);  // TODO - wait for exactly the time needed for new leader to get elected.
@@ -900,8 +905,8 @@ Status ClusterAdminClient::ChangeMasterConfig(
     // Go ahead below and send the actual config change message to the new master
   }
 
-  consensus::ConsensusServiceProxy *leader_proxy =
-    new consensus::ConsensusServiceProxy(proxy_cache_.get(), leader_addr_);
+  std::unique_ptr<consensus::ConsensusServiceProxy> leader_proxy(
+    new consensus::ConsensusServiceProxy(proxy_cache_.get(), leader_addr_));
   consensus::ChangeConfigRequestPB req;
 
   RaftPeerPB peer_pb;
@@ -917,8 +922,14 @@ Status ClusterAdminClient::ChangeMasterConfig(
   req.set_use_host(use_hostport);
   *req.mutable_server() = peer_pb;
 
-  RETURN_NOT_OK(InvokeRpc(&consensus::ConsensusServiceProxy::ChangeConfig, leader_proxy, req));
+  VLOG(1) << "ChangeMasterConfig: ChangeConfig for tablet id " << yb::master::kSysCatalogTabletId
+          << " to host " << leader_addr_;
+  RETURN_NOT_OK(InvokeRpc(
+    &consensus::ConsensusServiceProxy::ChangeConfig,
+    leader_proxy.get(),
+    req));
 
+  VLOG(1) << "ChangeMasterConfig: update yb client to reflect config change.";
   if (cc_type == consensus::ADD_SERVER) {
     RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_addr));
   } else {

@@ -62,6 +62,8 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+using namespace std::literals;
+
 namespace yb {
 class HostPort;
 class MonoDelta;
@@ -380,7 +382,8 @@ Status WaitForNumTabletsOnTS(
 Status WaitUntilTabletInState(TServerDetails* ts,
                               const TabletId& tablet_id,
                               tablet::RaftGroupStatePB state,
-                              const MonoDelta& timeout);
+                              const MonoDelta& timeout,
+                              const MonoDelta& list_tablets_timeout = 10s);
 
 // Wait until the specified tablet is in RUNNING state.
 Status WaitUntilTabletRunning(TServerDetails* ts,

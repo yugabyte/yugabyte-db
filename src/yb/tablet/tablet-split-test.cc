@@ -113,7 +113,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
 
   std::vector<TabletPtr> split_tablets;
 
-  Partition partition = tablet()->metadata()->partition();
+  std::shared_ptr<Partition> partition = tablet()->metadata()->partition();
   docdb::KeyBounds key_bounds;
   for (auto i = 1; i <= kNumSplits + 1; ++i) {
     const auto subtablet_id = Format("$0-sub-$1", tablet()->tablet_id(), yb::ToString(i));
@@ -127,19 +127,19 @@ TEST_F(TabletSplitTest, SplitTablet) {
       docdb::KeyBytes encoded_doc_key;
       docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
           split_hash_code, std::vector<docdb::PrimitiveValue>());
-      partition.set_partition_key_end(partition_key);
+      partition->set_partition_key_end(partition_key);
       key_bounds.upper = encoded_doc_key;
     } else {
-      partition.set_partition_key_end("");
+      partition->set_partition_key_end("");
       key_bounds.upper.Clear();
     }
 
     ASSERT_OK(tablet()->CreateSubtablet(
-        subtablet_id, partition, key_bounds, yb::OpId() /* split_op_id */,
+        subtablet_id, *partition, key_bounds, yb::OpId() /* split_op_id */,
         HybridTime() /* split_hybrid_time */));
     split_tablets.push_back(ASSERT_RESULT(harness_->OpenTablet(subtablet_id)));
 
-    partition.set_partition_key_start(partition.partition_key_end());
+    partition->set_partition_key_start(partition->partition_key_end());
     key_bounds.lower = key_bounds.upper;
   }
 

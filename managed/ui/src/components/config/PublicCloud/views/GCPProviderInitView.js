@@ -72,17 +72,18 @@ class GCPProviderInitView extends Component {
     const perRegionMetadata = {};
     if (isNonEmptyString(vals.destVpcId)) {
       gcpCreateConfig["network"] = vals.destVpcId;
-      gcpCreateConfig["use_host_vpc"] = true;
-    } else {
-      gcpCreateConfig["use_host_vpc"] = false;
     }
     if (isNonEmptyString(vals.gcpProjectName)) {
       gcpCreateConfig["project_id"] = vals.gcpProjectName;
     }
+    gcpCreateConfig["use_host_vpc"] = vals.network_setup === "host_vpc";
     if (vals.network_setup !== "new_vpc") {
       vals.regionMapping.forEach((item) =>
         perRegionMetadata[item.region] = { "subnetId": item.subnet}
       );
+    }
+    if (isNonEmptyString(vals.firewall_tags)) {
+      gcpCreateConfig["YB_FIREWALL_TAGS"] = vals.firewall_tags;
     }
     const providerName = vals.accountName;
     const configText = vals.gcpConfig;
@@ -249,6 +250,15 @@ class GCPProviderInitView extends Component {
                     <Field name="network_setup" component={YBSelectWithLabel}
                       options={network_setup_options}
                       onInputChanged={this.networkSetupChanged} />
+                  </Col>
+                </Row>
+                <Row>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Firewall Tags</div>
+                  </Col>
+                  <Col lg={7}>
+                  <Field name="firewall_tags" placeHolder="my-firewall-tag-1,my-firewall-tag-2"
+                           component={YBTextInputWithLabel} className={"gcp-provider-input-field"}/>
                   </Col>
                 </Row>
                 {gcpProjectField}

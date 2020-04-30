@@ -1,9 +1,8 @@
 ---
-title: Benchmark YSQL performance using YCSB
+title: Benchmark YSQL performance with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance using YCSB.
-headcontent: Benchmark YSQL performance using YCSB.
+description: Benchmark YSQL performance with YCSB using the PostgreSQL JDBC driver.
 menu:
   latest:
     identifier: ycsb-2-ysql
