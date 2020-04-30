@@ -43,6 +43,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   CHECKED_STATUS CreateSnapshotMetaFile(const std::string& snapshot_id,
                                         const std::string& file_name);
   CHECKED_STATUS ImportSnapshotMetaFile(const std::string& file_name,
+                                        const TypedNamespaceName& keyspace,
                                         const std::vector<client::YBTableName>& tables);
   CHECKED_STATUS ListReplicaTypeCounts(const client::YBTableName& table_name);
 

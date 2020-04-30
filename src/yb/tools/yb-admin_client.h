@@ -65,7 +65,7 @@ class YBClient;
 namespace tools {
 
 struct TypedNamespaceName {
-  YQLDatabase db_type;
+  YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
   std::string name;
 };
 

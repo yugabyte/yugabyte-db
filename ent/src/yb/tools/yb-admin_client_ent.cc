@@ -255,6 +255,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
 }
 
 Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
+                                                  const TypedNamespaceName& keyspace,
                                                   const vector<YBTableName>& tables) {
   cout << "Read snapshot meta file " << file_name << endl;
 
@@ -271,7 +272,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
 
   YBTableName orig_table_name;
   int table_index = 0;
-  bool renaming = false;
+  bool was_table_renamed = false;
   for (SysRowEntry& entry : *snapshot_info->mutable_entry()->mutable_entries()) {
     const YBTableName table_name = table_index < tables.size()
         ? tables[table_index] : YBTableName();
@@ -281,11 +282,9 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
         orig_table_name.set_namespace_name(meta.name());
 
-        if (!table_name.empty() &&
-            table_name.namespace_name() != orig_table_name.namespace_name()) {
-          meta.set_name(table_name.namespace_name());
+        if (!keyspace.name.empty() && keyspace.name != orig_table_name.namespace_name()) {
+          meta.set_name(keyspace.name);
           entry.set_data(meta.SerializeAsString());
-          renaming = true;
         }
         break;
       }
@@ -293,12 +292,21 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
         orig_table_name.set_table_name(meta.name());
 
+        if (!orig_table_name.has_table()) {
+          return STATUS(IllegalState, "Could not find table name from snapshot metadata");
+        }
+
+        if (!orig_table_name.has_namespace()) {
+          return STATUS(IllegalState, "Could not find keyspace name from snapshot metadata");
+        }
+
         // Update the table name if needed.
         if (!table_name.empty() && table_name.table_name() != orig_table_name.table_name()) {
           meta.set_name(table_name.table_name());
           entry.set_data(meta.SerializeAsString());
-          renaming = true;
-        } else if (renaming && table_name.empty()) {
+          was_table_renamed = true;
+        } else if (was_table_renamed && table_name.empty()) {
+          // Renaming is allowed for all tables OR for no one table.
           return STATUS_FORMAT(InvalidArgument,
                                "There is no name for table (including indexes) number: $0",
                                table_index);
@@ -311,18 +319,13 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
                << meta.indexed_table_id() << ")" << endl;
         }
 
-        if (!orig_table_name.has_namespace()) {
-          return STATUS(IllegalState, "Could not find keyspace name from snapshot metadata");
-        }
-
-        if (!orig_table_name.has_table()) {
-          return STATUS(IllegalState, "Could not find table name from snapshot metadata");
-        }
-
         if (!table_name.empty()) {
           DCHECK(table_name.has_namespace());
           DCHECK(table_name.has_table());
           cout << "Target imported table name: " << table_name.ToString() << endl;
+        } else if (!keyspace.name.empty()) {
+          cout << "Target imported table name: " << keyspace.name << "."
+               << orig_table_name.table_name() << endl;
         }
 
         cout << "Table being imported: " << orig_table_name.ToString() << endl;
