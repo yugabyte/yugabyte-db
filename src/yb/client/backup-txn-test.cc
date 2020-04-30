@@ -11,7 +11,11 @@
 // under the License.
 //
 
+#include "yb/client/session.h"
+#include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
+
+#include "yb/common/transaction_error.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -453,6 +457,64 @@ TEST_F(BackupTxnTest, Restart) {
   ASSERT_OK(StartAllMasters(cluster_.get()));
 
   ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
+}
+
+// Workload writes same value across all keys in a txn, using sevaral txns in concurrently.
+// Checks that after restore all keys/tablets report same value.
+TEST_F(BackupTxnTest, Consistency) {
+  constexpr int kThreads = 5;
+  constexpr int kKeys = 10;
+
+  TestThreadHolder thread_holder;
+  std::atomic<int> value(0);
+
+  for (int i = 0; i != kThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &value] {
+      auto session = CreateSession();
+      while (!stop.load(std::memory_order_acquire)) {
+        auto txn = CreateTransaction();
+        session->SetTransaction(txn);
+        auto v = value.fetch_add(1, std::memory_order_acq_rel);
+        for (int j = 0; j != kKeys; ++j) {
+          ASSERT_OK(WriteRow(session, j, v, WriteOpType::INSERT, Flush::kFalse));
+        }
+        auto status = session->FlushFuture().get();
+        if (status.ok()) {
+          status = txn->CommitFuture().get();
+        }
+        if (!status.ok()) {
+          TransactionError txn_error(status);
+          ASSERT_TRUE(txn_error == TransactionErrorCode::kConflict ||
+                      txn_error == TransactionErrorCode::kAborted) << status;
+        }
+        LOG(INFO) << "Committed: " << txn->id();
+      }
+    });
+  }
+
+  while (value.load(std::memory_order_acquire) < 100) {
+    std::this_thread::sleep_for(5ms);
+  }
+
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+
+  thread_holder.Stop();
+
+  ASSERT_OK(RestoreSnapshot(snapshot_id));
+
+  auto session = CreateSession();
+  int restored_value = -1;
+  for (int j = 0; j != kKeys; ++j) {
+    auto current_value = ASSERT_RESULT(SelectRow(session, j));
+    LOG(INFO) << "Key: " << j << ", value: " << current_value;
+    if (restored_value == -1) {
+      restored_value = current_value;
+    } else {
+      ASSERT_EQ(restored_value, current_value);
+    }
+  }
+
+  LOG(INFO) << "Value: " << restored_value;
 }
 
 } // namespace client
