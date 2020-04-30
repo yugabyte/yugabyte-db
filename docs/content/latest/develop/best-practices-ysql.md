@@ -40,62 +40,7 @@ showAsideToc: true
 ### Hash vs range sharding
 Choosing the type of partitioning in primary-keys and indexes can be hard. 
 There are differences how writes and reads are spread in a distributed database.
-Here are things we have to keep in mind when designing schemas:
-
-#### Consitent hash sharding
-As a team with experience building and running multiple database systems, we have found hash sharding to be ideal 
-for workloads requiring scale. For example, without any exception, all the massively scalable services we ran at Facebook 
-on Apache HBase implemented hash sharding at the application layer and pre-split tables. 
-Without hash sharding, these applications would have hit severe bottlenecks.
-
-With consistent hash sharding, data is evenly and randomly distributed across shards using a partitioning algorithm. 
-Each row of the table is placed into a shard determined by computing a consistent hash on the partition column values of that row. 
-
-**Pros:** This sharding strategy is ideal for massively scalable workloads because it distributes data evenly across all the nodes in the cluster, 
-while retaining ease of adding nodes into the cluster. Recall from earlier that algorithmic hash sharding is very effective also at 
-distributing data across nodes, but the distribution strategy depends on the number of nodes. With consistent hash sharding, 
-there are many more shards than the number of nodes and there is an explicit mapping table maintained tracking the assignment of 
-shards to nodes. When adding new nodes, a subset of shards from existing nodes can be efficiently moved into 
-the new nodes without requiring a massive data reassignment.
-
-**Cons:** Performing range queries could be inefficient. Examples of range queries are finding rows greater than a lower bound 
-or less than an upper bound (as opposed to point lookups).
-
-#### Range sharding
-Range sharding is essential for efficiently supporting queries looking up a range of rows based on column values that are less than, 
-greater than or that lie between some user specified values. Subjecting such queries to a scheme that is not range sharded could be prohibitive in performance, 
-since it might have to perform a full table scan. This makes this strategy essential.
-
-When range sharding is picked in scenarios that do not require the primary keys to be ordered, applications run into scalability 
-bottlenecks as mentioned in the cons section below. An often recommended workaround is to implement hash sharding on top 
-of range sharding. But in practice, users do not always remember to implement hash sharding on top of range sharding.
-
-**Pros**: This type of sharding allows efficiently querying a range of rows by the primary key values. 
-Examples of such a query is to look up all keys that lie between a lower bound and an upper bound.
-
-**Cons**: Range sharding leads to a number of issues in practice at scale, some of which are similar to that of linear hash sharding.  
-Firstly, when starting out with a single shard implies only a single node is taking all the user queries. 
-This often results in a database “warming” problem, where all queries are handled by a single node even if there are 
-multiple nodes in the cluster. The user would have to wait for enough splits to happen and these shards to get 
-redistributed before all nodes in the cluster are being utilized. This can be a big issue in production workloads. 
-This can be mitigated in some cases where the distribution is keys is known ahead of time by pre-splitting the 
-table into multiple shards, however this is hard in practice.
-
-Secondly, globally ordering keys across all the shards often generates hot spots: some shards will get much more activity than others, 
-and the node hosting those will be overloaded relative to others. While these can be mitigated to some extent with active load balancing, 
-this does not always work well in practice because by the time hot shards are redistributed across nodes, 
-the workload could change and introduce new hot spots.
-
-#### Consistent hash as the default sharding strategy
-Defaults are meant to serve the target use case. Users turn to YugabyteDB primarily for scalability reasons. 
-Most use cases requiring scalability often do not need to perform range lookups on the primary key, hence we picked consistent 
-hash sharding as the default in YugabyteDB. User identity (user ids do not need ordering), 
-product catalog (product ids are not related to one another) and stock ticker data (one stock symbol is independent of all other stock symbol) 
-are some common examples.
-
-In cases when range queries become important after the data is already loaded into a hash sharded table, 
-a range sharded secondary index can be created on that column. Once the secondary index is rebuilt, range queries would become efficient.
-
+Here is a [guide](/latest/architecture/docdb-sharding/sharding) on which partitioning strategy to chose.
 
 ### Co-location
 Co-location is a [new feature in beta](../explore/colocated-tables/linux.md) where you can put tables of 
