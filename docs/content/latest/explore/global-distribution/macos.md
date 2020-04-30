@@ -2,7 +2,7 @@
 title: Explore global distribution on macOS
 headerTitle: Global distribution
 linkTitle: Global distribution
-description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on Linux.
+description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on macOS.
 aliases:
   - /explore/global-distribution/
   - /latest/explore/global-distribution/
