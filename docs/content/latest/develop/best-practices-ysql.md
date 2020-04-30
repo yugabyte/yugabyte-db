@@ -152,16 +152,6 @@ Big columns add up when selecting full rows or multiple of them.
 For consistent latency/performance, we suggest keeping the size in the `32MB` range
 or less. This is a combination of [column sizing recommendations](#column-size-limit) for all columns.
 
-### Cluster aware drivers
-We recommend using YugabyteDB's [cluster aware JDBC driver](https://github.com/yugabyte/jdbc-yugabytedb). 
-The driver automatically learns about the nodes being started/added or stopped/removed. 
-This makes applications more robust since the client driver is able to handle cluster changes automatically and connect 
-to appropriate nodes in the cluster. The driver also takes care of connection pooling and maintains a pool for each node.
-
-We are working hard to create cluster-aware clients in most popular languages. 
-
-In the meantime you can use [proxies and load balancers](#ysql-proxy--load-balancer) which work with all drivers.
-
 ### Use multi row inserts wherever possible
 If you're inserting multiple rows, it's faster to batch them together whenever possible. You can start with 128 rows per-batch
 and test different amounts to find the sweet spot.
