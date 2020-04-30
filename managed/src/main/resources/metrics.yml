@@ -1484,7 +1484,7 @@ ysql_server_rpc_per_second:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
   group_by: "service_method"
   layout:
     title: "Total YSQL Ops / Sec"
@@ -1496,7 +1496,8 @@ ysql_server_rpc_per_second:
         "InsertStmt": "Insert"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
-        "OtherStmt": "Other"
+        "OtherStmts": "Other"
+        "Transactions": "Transactions"
 
 ysql_sql_latency:
   metric: "rpc_latency.avg"
@@ -1506,7 +1507,7 @@ ysql_sql_latency:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
   group_by: "service_method"
   layout:
     title: "YSQL Op Latency"
@@ -1519,6 +1520,7 @@ ysql_sql_latency:
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Others"
+        "Transactions": "Transactions"
       ticksuffix: "&nbsp;\u00B5s"
 
 # Unused right now.
@@ -1529,7 +1531,7 @@ ysql_server_rpc_percentile:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
     quantile: "p95"
   group_by: "service_method"
   layout:
@@ -1542,7 +1544,8 @@ ysql_server_rpc_percentile:
         "InsertStmt": "Insert"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
-        "OtherStmt": "Other"
+        "OtherStmts": "Other"
+        "Transactions": "Transactions"
       ticksuffix: "&nbsp;\u00B5s"
 
 #Cassandra Metrics
@@ -1554,7 +1557,7 @@ cql_server_rpc_per_second:
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
   group_by: "service_method"
   layout:
     title: "Total YCQL Ops / Sec"
@@ -1567,6 +1570,7 @@ cql_server_rpc_per_second:
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Other"
+        "Transaction": "Transactions"
 
 cql_sql_latency:
   metric: "rpc_latency.avg"
@@ -1576,7 +1580,7 @@ cql_sql_latency:
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
   group_by: "service_method"
   layout:
     title: "YCQL Op Latency"
@@ -1589,6 +1593,7 @@ cql_sql_latency:
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Others"
+        "Transaction": "Transactions"
       #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
@@ -1598,7 +1603,7 @@ cql_server_rpc_percentile:
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
     quantile: "p95"
   group_by: "service_method"
   layout:
@@ -1612,6 +1617,7 @@ cql_server_rpc_percentile:
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Other"
+        "Transaction": "Transactions"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_sql_latency_breakdown:
