@@ -42,13 +42,6 @@ Choosing the type of partitioning in primary-keys and indexes can be hard.
 There are differences how writes and reads are spread in a distributed database.
 Here is a [guide](/latest/architecture/docdb-sharding/sharding) on which partitioning strategy to chose.
 
-### Co-location
-Co-location is a [new feature in beta](../explore/colocated-tables/linux.md) where you can put tables of 
-a database inside 1 tablet. This increases performance and lowers latency on write transactions, joined queries and aggregations
-since they happen in 1 tablet/node.
-
-If you have a small dataset (<500GB) that requires HA, or a DB with only few scale out tables, then colocation is a good option.
-
 ## Performance
 
 ### Connection pooling
@@ -65,6 +58,11 @@ One connection pooler that we've tested is [pgbouncer](https://www.pgbouncer.org
 
 But any connection pooler that works with Postgresql should work with YugabyteDB.
 We're also working to lower the overhead of connections.
+
+### Co-location
+[Co-location](../explore/colocated-tables/linux.md)puts tables & indexes of a database inside 1 tablet. This increases performance and lowers latency on write transactions, joined queries and aggregations because they happen in 1 tablet/node.
+If you have a small dataset (<500GB) that requires HA, or a DB with only few scale out tables, then colocation is a good option.
+
 
 ### Use partial indexes
 [A partial index](../api/ysql/commands/ddl_create_index.md#where-clause) is an index that is built on a subset of a table and includes only rows that satisfy the condition 
