@@ -2,6 +2,11 @@
 title: Best practices
 linkTitle: Best practices
 description: Best practices when using YugabyteDB
+menu:
+  latest:
+    identifier: best-practices-ysql
+    parent: develop
+    weight: 582
 aliases:
   - /latest/quick-start/best-practices-ysql/
 isTocNested: 4

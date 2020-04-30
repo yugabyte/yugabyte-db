@@ -8,8 +8,6 @@ menu:
     identifier: best-practices-ycql
     parent: develop
     weight: 582
-aliases:
-  - /latest/develop/best-practices/
 isTocNested: 4
 showAsideToc: true
 ---
