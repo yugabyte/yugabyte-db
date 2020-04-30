@@ -63,7 +63,7 @@ Add optional keyword — has no effect.
 
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
-Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/earlier-releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
 
 ## Examples
 

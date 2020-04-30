@@ -5,6 +5,8 @@ linkTitle: What's new in 2.1.5
 description: Enhancements, changes, and resolved issues in the latest YugabyteDB release.
 headcontent: Features, enhancements, and resolved issues in the latest release.
 image: /images/section_icons/quick_start/install.png
+aliases:
+  - /latest/releases/
 section: RELEASES
 menu:
   latest:
@@ -15,6 +17,9 @@ menu:
 **Released:** April 27, 2020.
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
+
+**Looking for earlier releases?** History of earlier releases is available [here](../earlier-releases/).  
+
 
 ## Downloads
 

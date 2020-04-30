@@ -2,10 +2,10 @@
 title: Benchmark YSQL performance with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance with YCSB using the PostgreSQL JDBC driver.
+description: Benchmark YSQL performance with YCSB using the standard JDBC binding.
 menu:
   latest:
-    identifier: ycsb-2-ysql
+    identifier: ycsb-1-ysql
     parent: benchmark
     weight: 5
 aliases:
@@ -17,16 +17,16 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/ycsb-ysql/" class="nav-link">
+    <a href="/latest/benchmark/ycsb-jdbc/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL Binding
+      JDBC Binding
     </a>
   </li>
 
   <li >
-    <a href="/latest/benchmark/ycsb-jdbc/" class="nav-link active">
+    <a href="/latest/benchmark/ycsb-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      JDBC Binding
+      YSQL Binding
     </a>
   </li>
 
@@ -49,7 +49,7 @@ For more information about YCSB, see:
 {{< /note >}}
 
 ## Overview
-This uses the JDBC binding to run the YCSB benchmark.
+This uses the standard JDBC binding to run the YCSB benchmark.
 
 ## Running the benchmark
 
@@ -198,7 +198,7 @@ When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB
 -------------|-----------|------------|------------|
 Workload A | 37,443 | 1.5ms | 12 ms update
 Workload B | 66,875 | 4ms | 7.6ms update
-Workload C | 77,068 | 3.5ms |
+Workload C | 77,068 | 3.5ms | Not applicable
 Workload D | 63,676 | 4ms | 7ms insert
-Workload E | 16,642 | 15ms scan
+Workload E | 16,642 | 15ms scan | Not applicable
 Workload F | 29,500 | 2ms | 15ms read-modify-write

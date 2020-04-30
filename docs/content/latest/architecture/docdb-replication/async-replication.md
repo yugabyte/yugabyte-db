@@ -5,6 +5,7 @@ linkTitle: xCluster replication
 description: Asynchronous replication between multiple YugabyteDB clusters.
 aliases:
   - /latest/architecture/docdb/2dc-deployments/
+  - /latest/architecture/2dc-deployments/
 menu:
   latest:
     identifier: architecture-docdb-async-replication
@@ -20,8 +21,7 @@ xCluster replication enables asynchronous replication between independent Yugaby
 
 YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
 
-For details about configuring a 2DC deployment, see [Replicate between two data centers](../../deploy/multi-dc/2dc-deployment).
-
+For details about configuring a 2DC deployment, see [Replicate between two data centers](../../../deploy/multi-dc/2dc-deployment).
 
 
 {{< note title="Note" >}}
