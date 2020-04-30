@@ -219,15 +219,17 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   // Returns the partition of the Raft group.
-  const Partition& partition() const {
+  std::shared_ptr<Partition> partition() const {
     DCHECK_NE(state_, kNotLoadedYet);
+    std::lock_guard<MutexType> lock(data_mutex_);
     return partition_;
   }
 
   // Returns the primary table id. For co-located tables, the primary table is the table this Raft
   // group was first created for. For single-tenant table, it is the primary table.
-  const TableId& table_id() const {
+  TableId table_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
+    std::lock_guard<MutexType> lock(data_mutex_);
     return primary_table_id_;
   }
 
@@ -490,7 +492,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   mutable Mutex flush_lock_;
 
   RaftGroupId raft_group_id_;
-  Partition partition_;
+  std::shared_ptr<Partition> partition_;
 
   // The primary table id. Primary table is the first table this Raft group is created for.
   // Additional tables can be added to this Raft group to co-locate with this table.

@@ -569,7 +569,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
       n_bytes = HumanReadableNumBytes::ToString(status.estimated_on_disk_size());
     }
     string partition = peer->tablet_metadata()->partition_schema()
-                            .PartitionDebugString(peer->status_listener()->partition(),
+                            .PartitionDebugString(*peer->status_listener()->partition(),
                                                   peer->tablet_metadata()->schema());
 
     auto tablet = peer->shared_tablet();

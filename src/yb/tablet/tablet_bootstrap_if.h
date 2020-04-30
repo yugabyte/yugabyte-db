@@ -94,7 +94,7 @@ class TabletStatusListener {
 
   const std::string table_id() const;
 
-  const Partition& partition() const;
+  std::shared_ptr<Partition> partition() const;
 
   const Schema& schema() const;
 

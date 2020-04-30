@@ -244,7 +244,7 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
   const Schema& schema = meta->schema();
 
   std::cout << Indent(indent) << "Partition: "
-            << meta->partition_schema().PartitionDebugString(meta->partition(), meta->schema())
+            << meta->partition_schema().PartitionDebugString(*meta->partition(), meta->schema())
             << std::endl;
   std::cout << Indent(indent) << "Table name: " << meta->table_name()
             << " Table id: " << meta->table_id() << std::endl;

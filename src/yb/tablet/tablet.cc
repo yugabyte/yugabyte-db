@@ -395,7 +395,7 @@ Tablet::Tablet(const TabletInitData& data)
     // TODO(KUDU-745): table_id is apparently not set in the metadata.
     attrs["table_id"] = metadata_->table_id();
     attrs["table_name"] = metadata_->table_name();
-    attrs["partition"] = metadata_->partition_schema().PartitionDebugString(metadata_->partition(),
+    attrs["partition"] = metadata_->partition_schema().PartitionDebugString(*metadata_->partition(),
                                                                             *schema());
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
@@ -1226,7 +1226,7 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
         ql_read_request.return_paging_state()) {
 
       // Check we did not reach the last tablet.
-      const string& next_partition_key = metadata_->partition().partition_key_end();
+      const string& next_partition_key = metadata_->partition()->partition_key_end();
       if (!next_partition_key.empty()) {
         uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(next_partition_key);
 
@@ -1576,7 +1576,7 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
        pgsql_read_request.return_paging_state())) {
 
     // Check we did not reach the last tablet.
-    const string& next_partition_key = metadata_->partition().partition_key_end();
+    const string& next_partition_key = metadata_->partition()->partition_key_end();
     const bool end_scan = next_partition_key.empty() ||
         VERIFY_RESULT(HasScanReachedMaxPartitionKey(pgsql_read_request, next_partition_key));
     if (!end_scan) {

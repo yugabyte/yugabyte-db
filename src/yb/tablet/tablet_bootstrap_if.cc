@@ -60,7 +60,7 @@ const string TabletStatusListener::table_id() const {
   return meta_->table_id();
 }
 
-const Partition& TabletStatusListener::partition() const {
+std::shared_ptr<Partition> TabletStatusListener::partition() const {
   return meta_->partition();
 }
 

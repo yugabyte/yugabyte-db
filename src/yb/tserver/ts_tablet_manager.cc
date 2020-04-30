@@ -753,13 +753,13 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
   const auto& split_partition_key = request.split_partition_key();
   const auto& split_encoded_key = request.split_encoded_key();
 
-  const auto source_partition = tablet.metadata()->partition();
+  std::shared_ptr<Partition> source_partition = tablet.metadata()->partition();
   const auto source_key_bounds = *tablet.doc_db().key_bounds;
 
   {
     TabletCreationMetaData meta;
     meta.tablet_id = request.new_tablet1_id();
-    meta.partition = source_partition;
+    meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
     meta.partition.set_partition_key_end(split_partition_key);
     meta.key_bounds.upper.Reset(split_encoded_key);
@@ -769,7 +769,7 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
   {
     TabletCreationMetaData meta;
     meta.tablet_id = request.new_tablet2_id();
-    meta.partition = source_partition;
+    meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
     meta.partition.set_partition_key_start(split_partition_key);
     meta.key_bounds.lower.Reset(split_encoded_key);

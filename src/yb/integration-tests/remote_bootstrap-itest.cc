@@ -1215,7 +1215,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
       "--follower_unavailable_considered_failed_sec=30",
       "--raft_heartbeat_interval_ms=50",
       "--consensus_rpc_timeout_ms=300",
-      "--TEST_delay_removing_peer_with_failed_tablet_secs=5",
+      "--TEST_delay_removing_peer_with_failed_tablet_secs=10",
       "--memstore_size_mb=1",
       // Increase the number of missed heartbeats used to detect leader failure since in slow
       // testing instances it is very easy to miss the default (6) heartbeats since they are being
@@ -1234,8 +1234,9 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
   LOG(INFO) << "Starting workload";
   TestWorkload workload(cluster_.get());
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.set_payload_bytes(1024);
   workload.Start();
-  workload.WaitInserted(10000);
+  workload.WaitInserted(5000);
   LOG(INFO) << "Stopping workload";
   workload.StopAndJoin();
 
@@ -1287,7 +1288,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
   cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->Shutdown();
   ASSERT_OK(cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->Restart());
 
-  ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::FAILED, kTimeout));
+  ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::FAILED, kTimeout, 500ms));
   LOG(INFO) << "Tablet " << tablet_id << " in state FAILED in tablet server "
             << non_leader_ts->uuid();
 
