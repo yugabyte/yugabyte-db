@@ -489,8 +489,10 @@ class YBBackup:
                    "For GCS:\n"
                    "    export GCS_CREDENTIALS_JSON=<contents_of_gcp_credentials>\n"
                    "Keys --keyspace, --table and --table_uuid can be repeated several times,\n"
-                   "recommended order: --keyspace ks1 --table tbl1 --table_uuid uuid1 "
-                   "--keyspace ks2 --table tbl2 --table_uuid uuid2 ...",
+                   "recommended order for backup creating: --keyspace ks1 --table tbl1 "
+                   "--table_uuid uuid1 --keyspace ks2 --table tbl2 --table_uuid uuid2 ...\n"
+                   "recommended order for backup restoring: --keyspace target_ks --table tbl1 "
+                   "--table tbl2 ...\n",
             formatter_class=RawDescriptionHelpFormatter)
 
         parser.add_argument(
@@ -500,8 +502,8 @@ class YBBackup:
             '--k8s_config', required=False,
             help="Namespace to use for kubectl in case of kubernetes deployment")
         parser.add_argument(
-            '--keyspace', action='append',
-            help="Repeatable keyspace of the tables to backup or restore")
+            '--keyspace', action='append', help="Repeatable keyspace of the tables to backup, "
+                                                "or a target keyspace for the backup restoring")
         parser.add_argument(
             '--table', action='append',
             help="Repeatable name of the tables to backup or restore")
@@ -1443,13 +1445,12 @@ class YBBackup:
         table, keyspace, tablets and snapshot.
         """
         yb_admin_args = ['import_snapshot', metadata_file_path]
-        if self.args.table or self.args.keyspace:
-            if not self.args.table:
-                raise BackupException('Need to specify --table')
-            if not self.args.keyspace:
-                raise BackupException('Need to specify --keyspace')
 
-            yb_admin_args += self.table_names_str(' ').split(' ')
+        if self.args.keyspace:
+            yb_admin_args += [self.args.keyspace[0]]
+
+        if self.args.table:
+            yb_admin_args += [' '.join(self.args.table)]
 
         output = self.run_yb_admin(yb_admin_args)
 
@@ -1557,6 +1558,9 @@ class YBBackup:
         """
         Restore a table from the backup stored in the given backup path.
         """
+        if self.args.keyspace:
+            if len(self.args.keyspace) > 1:
+                raise BackupException('Only one --keyspace expected for the restore mode.')
 
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
 
