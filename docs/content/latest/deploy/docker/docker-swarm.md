@@ -1,8 +1,8 @@
 ---
-title: Deploy a local cluster to Docker Swarm
+title: Deploy a YugabyteDB cluster on Docker Swarm
 headerTitle: Docker
 linkTitle: Docker
-description: Deploy a local YugabyteDB cluster to Docker Swarm.
+description: Deploy a YugabyteDB cluster on Docker Swarm.
 aliases:
  - /deploy/docker-swarm/
  - /latest/deploy/docker-swarm/

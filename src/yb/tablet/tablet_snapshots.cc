@@ -209,8 +209,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   // TODO: snapshot current DB and try to restore it in case of failure.
   RETURN_NOT_OK(ResetRocksDBs(/* destroy= */ true));
 
-  auto s = rocksdb::CopyDirectory(
-      &rocksdb_env(), dir, db_dir, rocksdb::CreateIfMissing::kTrue);
+  auto s = CopyDirectory(&rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
     return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
@@ -258,8 +257,10 @@ Status TabletSnapshots::RestoreCheckpoint(
 
 Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
   const std::string top_snapshots_dir = SnapshotsDirName(metadata().rocksdb_dir());
-  const std::string snapshot_dir =
-      JoinPathSegments(top_snapshots_dir, tx_state->request()->snapshot_id());
+  const auto& snapshot_id = tx_state->request()->snapshot_id();
+  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  const std::string snapshot_dir = JoinPathSegments(
+      top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();
@@ -292,7 +293,8 @@ Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
   return Status::OK();
 }
 
-Status TabletSnapshots::CreateCheckpoint(const std::string& dir) {
+Status TabletSnapshots::CreateCheckpoint(
+    const std::string& dir, const CreateIntentsCheckpointIn create_intents_checkpoint_in) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter());
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -319,7 +321,8 @@ Status TabletSnapshots::CreateCheckpoint(const std::string& dir) {
   if (status.ok()) {
     status = rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir);
   }
-  if (status.ok() && has_intents_db()) {
+  if (status.ok() && has_intents_db() &&
+      create_intents_checkpoint_in == CreateIntentsCheckpointIn::kUseIntentsDbSuffix) {
     status = Env::Default()->RenameFile(temp_intents_dir, final_intents_dir);
   }
 

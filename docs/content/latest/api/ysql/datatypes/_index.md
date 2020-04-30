@@ -1,5 +1,7 @@
 ---
-title: Data types
+title: Data types [YSQL]
+headerTitle: Data types
+linkTitle: Data types
 description: Data types
 summary: YSQL data type overview and specification.
 image: /images/section_icons/api/ysql.png

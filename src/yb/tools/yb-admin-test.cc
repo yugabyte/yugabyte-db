@@ -261,8 +261,7 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   ASSERT_OK(Subprocess::Call(ToStringVector(
       exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
 
-  vector<YBTableName> tables;
-  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
+  const auto tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
 }
 
@@ -284,10 +283,9 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
   string keyspace = kTableName.namespace_name();
   string index_name = table_name + "-index";
 
-  vector<pair<string, YBTableName>> table_details;
-  ASSERT_OK(client->ListTablesWithIds(&table_details, /* filter */ table_name));
-  ASSERT_EQ(1, table_details.size());
-  string table_id = table_details[0].first;
+  auto tables = ASSERT_RESULT(client->ListTables(/* filter */ table_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
 
   YBSchema index_schema;
   YBSchemaBuilder b;
@@ -320,8 +318,7 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
       .Create();
   ASSERT_OK(s);
 
-  vector<YBTableName> tables;
-  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
+  tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(2 + master::kNumSystemTables, tables.size());
 
   // Delete index.
@@ -330,7 +327,7 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
   ASSERT_OK(Subprocess::Call(ToStringVector(
       exe_path, "-master_addresses", master_address, "delete_index", keyspace, index_name)));
 
-  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
+  tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(1 + master::kNumSystemTables, tables.size());
 
   // Delete table.
@@ -338,7 +335,7 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
   ASSERT_OK(Subprocess::Call(ToStringVector(
       exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
 
-  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
+  tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
 }
 
@@ -367,5 +364,78 @@ TEST_F(AdminCliTest, InvalidMasterAddresses) {
       "-timeout_ms", "1000", "list_tables"), &error_string, true /*read_stderr*/));
   ASSERT_STR_CONTAINS(error_string, "verify the addresses");
 }
+
+TEST_F(AdminCliTest, CheckTableIdUsage) {
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  const auto tables = ASSERT_RESULT(client->ListTables(kTableName.table_name(),
+                                                       /* exclude_ysql */ true));
+  ASSERT_EQ(1, tables.size());
+  const auto exe_path = GetAdminToolPath();
+  const auto table_id = tables.front().table_id();
+  const auto table_id_arg = Format("tableid.$0", table_id);
+  auto args = ToStringVector(
+      exe_path, "-master_addresses", master_address, "list_tablets", table_id_arg);
+  const auto args_size = args.size();
+  ASSERT_OK(Subprocess::Call(args));
+  // Check good optional integer argument.
+  args.push_back("1");
+  ASSERT_OK(Subprocess::Call(args));
+  // Check bad optional integer argument.
+  args.resize(args_size);
+  args.push_back("bad");
+  std::string output;
+  ASSERT_NOK(Subprocess::Call(args, &output, /* read_stderr */ true));
+  // Due to greedy algorithm all bad arguments are treated as table identifier.
+  ASSERT_NE(output.find("Namespace 'bad' of type 'ycql' not found"), std::string::npos);
+  // Check multiple tables when single one is expected.
+  args.resize(args_size);
+  args.push_back(table_id_arg);
+  ASSERT_NOK(Subprocess::Call(args, &output, /* read_stderr */ true));
+  ASSERT_NE(output.find("Single table expected, 2 found"), std::string::npos);
+  // Check wrong table id.
+  args.resize(args_size - 1);
+  const auto bad_table_id = table_id + "_bad";
+  args.push_back(Format("tableid.$0", bad_table_id));
+  ASSERT_NOK(Subprocess::Call(args, &output, /* read_stderr */ true));
+  ASSERT_NE(
+      output.find(Format("Table with id '$0' not found", bad_table_id)), std::string::npos);
+}
+
+TEST_F(AdminCliTest, TestSnapshotCreation) {
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  const auto extra_table = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
+                                       kTableName.namespace_name(),
+                                       "extra-table");
+  YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn("k")->HashPrimaryKey()->Type(yb::BINARY)->NotNull();
+  schemaBuilder.AddColumn("v")->Type(yb::BINARY)->NotNull();
+  YBSchema schema;
+  ASSERT_OK(schemaBuilder.Build(&schema));
+  ASSERT_OK(client->NewTableCreator()->table_name(extra_table)
+      .schema(&schema).table_type(yb::client::YBTableType::YQL_TABLE_TYPE).Create());
+  const auto tables = ASSERT_RESULT(client->ListTables(kTableName.table_name(),
+      /* exclude_ysql */ true));
+  ASSERT_EQ(1, tables.size());
+  std::string output;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      GetAdminToolPath(), "-master_addresses", master_address, "create_snapshot",
+      Format("tableid.$0", tables.front().table_id()),
+      extra_table.namespace_name(), extra_table.table_name()),
+                            &output));
+  ASSERT_NE(output.find("Started snapshot creation"), string::npos);
+
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(
+          GetAdminToolPath(), "-master_addresses", master_address,
+          "list_snapshots", "SHOW_DETAILS"),
+      &output));
+  ASSERT_NE(output.find(extra_table.table_name()), string::npos);
+  ASSERT_NE(output.find(kTableName.table_name()), string::npos);
+}
+
 }  // namespace tools
 }  // namespace yb

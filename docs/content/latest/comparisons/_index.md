@@ -1,10 +1,10 @@
 ---
-title: Compare YugabyteDB to other distributed SQL and NoSQL databases
+title: Compare YugabyteDB with other distributed SQL and NoSQL databases
 linkTitle: Comparisons
 headerTitle: Compare YugabyteDB to other databases
-description: Learn how YugabyteDB compares to other operational SQL and NoSQL databases.
+description: Learn how YugabyteDB compares with other operational SQL and NoSQL databases.
 image: /images/section_icons/index/comparisons.png
-headcontent: See how YugabyteDB compares to other operational databases in the distributed SQL and NoSQL categories. For a detailed comparison, click the database name.
+headcontent: See how YugabyteDB compares with other operational databases in the distributed SQL and NoSQL categories. For a detailed comparison, click the database name.
 aliases:
   - /comparisons/
 section: FAQ
@@ -21,7 +21,7 @@ Feature | [CockroachDB](cockroachdb/) | [TiDB](tidb/) | [Vitess](vitess/) | [Ama
 Horizontal write scalability (with auto-sharding and rebalancing) | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-times">| <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Automated failover &amp; repair  | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check"> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Distributed ACID transactions  | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
-SQL Foreign Keys | <i class="fas fa-check"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check"></i> |<i class="fas fa-check"></i>| <i class="fas fa-times"></i> | <i class="fas fa-check"></i>
+SQL Foreign Keys | <i class="fas fa-check"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check"></i> |<i class="fas fa-check"></i>| <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 SQL Joins | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> |<i class="fas fa-check"></i>| <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Serializable isolation level | <i class="fas fa-check"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Global consistency across multi-DC/regions | <i class="fas fa-check"></i> | <i class="fas fa-exclamation"></i>  | <i class="fas fa-times"></i> | <i class="fas fa-times"> | <i class="fas fa-check"></i> |<i class="fas fa-check"></i>

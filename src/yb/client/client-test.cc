@@ -474,8 +474,7 @@ void CheckRowCount(const TableHandle& table) {
 } // namespace
 
 TEST_F(ClientTest, TestListTables) {
-  vector<YBTableName> tables;
-  ASSERT_OK(client_->ListTables(&tables));
+  auto tables = ASSERT_RESULT(client_->ListTables());
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
     return n1.ToString() < n2.ToString();
   });
@@ -483,7 +482,7 @@ TEST_F(ClientTest, TestListTables) {
   ASSERT_EQ(kTableName, tables[0]) << "Tables:" << AsString(tables);
   ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << AsString(tables);
   tables.clear();
-  ASSERT_OK(client_->ListTables(&tables, "testtb2"));
+  tables = ASSERT_RESULT(client_->ListTables("testtb2"));
   ASSERT_EQ(1, tables.size());
   ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << AsString(tables);
 }
@@ -1260,6 +1259,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     table_alterer->DropColumn("int_val")
       ->AddColumn("new_col")->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
+    // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
   }
 
@@ -1269,11 +1269,11 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
               ->Alter());
+    // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
     ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
 
-    vector<YBTableName> tables;
-    ASSERT_OK(client_->ListTables(&tables));
+    const auto tables = ASSERT_RESULT(client_->ListTables());
     ASSERT_TRUE(::util::gtl::contains(tables.begin(), tables.end(), kRenamedTableName));
     ASSERT_FALSE(::util::gtl::contains(tables.begin(), tables.end(), kTableName));
   }
@@ -1292,8 +1292,7 @@ TEST_F(ClientTest, TestDeleteTable) {
   // NOTE that it returns when the operation is completed on the master side
   string tablet_id = GetFirstTabletId(client_table_.get());
   ASSERT_OK(client_->DeleteTable(kTableName));
-  vector<YBTableName> tables;
-  ASSERT_OK(client_->ListTables(&tables));
+  const auto tables = ASSERT_RESULT(client_->ListTables());
   ASSERT_FALSE(::util::gtl::contains(tables.begin(), tables.end(), kTableName));
 
   // Wait until the table is removed from the TS
@@ -2108,7 +2107,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   EXPECT_OK(schemaBuilder.Build(&schema));
   Status s = table_creator->table_name(pgsql_table_name)
       .table_id(kPgsqlTableId)
-      .schema(&schema_)
+      .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(PGSQL_TABLE_TYPE)
       .num_tablets(1)
@@ -2132,7 +2131,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   // Create a YQL table using range partition.
   s = table_creator->table_name(yql_table_name)
-      .schema(&schema_)
+      .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(YQL_TABLE_TYPE)
       .num_tablets(1)

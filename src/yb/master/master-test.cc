@@ -62,6 +62,7 @@ DECLARE_string(callhome_url);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(simulate_slow_table_create_secs);
 DECLARE_bool(return_error_if_namespace_not_found);
+DECLARE_bool(hang_on_namespace_creation);
 DECLARE_bool(simulate_crash_after_table_marked_deleting);
 
 namespace yb {
@@ -1161,6 +1162,109 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
         }, namespaces);
   }
 }
+
+TEST_F(MasterTest, TestNamespaceCreateStates) {
+  NamespaceName test_name = "test_pgsql";
+
+  // Don't allow the BG thread to process namespaces.
+  SetAtomicFlag(true, &FLAGS_hang_on_namespace_creation);
+
+  // Create a new PGSQL namespace.
+  CreateNamespaceResponsePB resp;
+  NamespaceId nsid;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  nsid = resp.id();
+
+  // ListNamespaces should show the Namespace, because it's in the PREPARING state.
+  ListNamespacesResponsePB namespaces;
+  ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+  ASSERT_TRUE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
+
+  // Test that Basic Access is not allowed to a Namespace while INITIALIZING.
+  // 1. Create a Table on the namespace.
+  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+  ASSERT_NOK(CreatePgsqlTable(nsid, "test_table", kTableSchema));
+  // 2. Alter the namespace.
+  {
+    AlterNamespaceResponsePB alter_resp;
+    ASSERT_NOK(AlterNamespace(test_name, nsid, YQLDatabase::YQL_DATABASE_PGSQL,
+                              "new_" + test_name, &alter_resp));
+  }
+  // 3. Delete the namespace.
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.mutable_namespace_()->set_name(test_name);
+    req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_TRUE(resp.has_error());
+  }
+
+  // Finish Namespace create.
+  SetAtomicFlag(false, &FLAGS_hang_on_namespace_creation);
+  CreateNamespaceWait(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
+
+  // Verify that Basic Access to a Namespace is now available.
+  // 1. Create a Table within the Schema.
+  ASSERT_OK(CreatePgsqlTable(nsid, "test_table", kTableSchema));
+  // 2. Alter the namespace.
+  {
+    AlterNamespaceResponsePB alter_resp;
+    ASSERT_OK(AlterNamespace(test_name, nsid, YQLDatabase::YQL_DATABASE_PGSQL,
+                             "new_" + test_name, &alter_resp) );
+    ASSERT_FALSE(alter_resp.has_error());
+  }
+  // 3. Delete the namespace.
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.mutable_namespace_()->set_name("new_" + test_name);
+    req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_FALSE(resp.has_error());
+  }
+}
+
+
+TEST_F(MasterTest, TestNamespaceCreateFailure) {
+  NamespaceName test_name = "test_pgsql";
+
+  // Don't allow the BG thread to process namespaces.
+  SetAtomicFlag(true, &FLAGS_hang_on_namespace_creation);
+
+  // Create a new PGSQL namespace.
+  CreateNamespaceResponsePB resp;
+  NamespaceId nsid;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  nsid = resp.id();
+
+  // ListNamespaces should show the Namespace, because it's in the INITIALIZING state.
+  {
+    ListNamespacesResponsePB namespaces;
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    ASSERT_TRUE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
+  }
+
+  // Restart the master, which handles namespace changes.
+  ASSERT_OK(mini_master_->Restart());
+
+  // Allow normal namespace processing.
+  SetAtomicFlag(false, &FLAGS_hang_on_namespace_creation);
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  // ListNamespaces should not show the Namespace on restart because it didn't finish.
+  {
+    ListNamespacesResponsePB namespaces;
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    ASSERT_FALSE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
+  }
+}
+
+// TODO: TEST_F(MasterTest, TestNamespaceCreateSysCatalogFailure)
+// A. CreateNamespace
+// B. Inject Failure into sys catalog commit
+// 1. Ensure that Namespace is in ListNamespaces with a failure status.
+
 
 TEST_F(MasterTest, TestFullTableName) {
   const TableName kTableName = "testtb";

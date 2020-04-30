@@ -9,12 +9,15 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import json
+import logging
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.gcp.command import GcpInstanceCommand, GcpQueryCommand, GcpAccessCommand, \
     GcpNetworkCommand
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
+
+from ybops.utils.remote_shell import RemoteShell
 
 from utils import GoogleCloudAdmin, GcpMetadata
 
@@ -243,3 +246,7 @@ class GcpCloud(AbstractCloud):
             first_disk = 1
         return ["disk/by-id/google-{}-{}".format(
             disk_name, first_disk + i) for i in xrange(args.num_volumes)]
+
+    def update_disk(self, args):
+        instance = self.get_host_info(args)
+        self.get_admin().update_disk(args, instance['id'])

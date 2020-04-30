@@ -304,6 +304,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsLoadBalanced);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateNamespaceDone);
+// TODO(NIC): IsDeleteNamespaceDone
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -748,6 +750,54 @@ Status YBClient::Data::AlterNamespace(YBClient* client,
   return Status::OK();
 }
 
+Status YBClient::Data::IsCreateNamespaceInProgress(
+    YBClient* client,
+    const std::string& namespace_name,
+    const boost::optional<YQLDatabase>& database_type,
+    CoarseTimePoint deadline,
+    bool *create_in_progress) {
+  DCHECK_ONLY_NOTNULL(create_in_progress);
+  IsCreateNamespaceDoneRequestPB req;
+  IsCreateNamespaceDoneResponsePB resp;
+
+  req.mutable_namespace_()->set_name(namespace_name);
+  if (database_type) {
+    req.mutable_namespace_()->set_database_type(*database_type);
+  }
+
+  const Status s =
+      SyncLeaderMasterRpc<IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB>(
+          deadline,
+          req,
+          &resp,
+          nullptr /* num_attempts */,
+          "IsCreateNamespaceDone",
+          &MasterServiceProxy::IsCreateNamespaceDone);
+  // RETURN_NOT_OK macro can't take templated function call as param,
+  // and SyncLeaderMasterRpc must be explicitly instantiated, else the
+  // compiler complains.
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *create_in_progress = !resp.done();
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForCreateNamespaceToFinish(
+    YBClient* client,
+    const std::string& namespace_name,
+    const boost::optional<YQLDatabase>& database_type,
+    CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline,
+      "Waiting on Create Namespace to be completed",
+      "Timed out waiting for Namespace Creation",
+      std::bind(&YBClient::Data::IsCreateNamespaceInProgress, this, client,
+          namespace_name, database_type, _1, _2));
+}
+
 Status YBClient::Data::AlterTable(YBClient* client,
                                   const AlterTableRequestPB& req,
                                   CoarseTimePoint deadline) {
@@ -830,6 +880,9 @@ Status YBClient::Data::FlushTable(YBClient* client,
   if (!table_id.empty()) {
     req.add_tables()->set_table_id(table_id);
   }
+
+  // TODO: flush related indexes
+
   req.set_is_compaction(is_compaction);
   RETURN_NOT_OK((SyncLeaderMasterRpc<FlushTablesRequestPB, FlushTablesResponsePB>(
       deadline, req, &resp, &attempts, "FlushTables", &MasterServiceProxy::FlushTables)));
@@ -1197,6 +1250,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
         info_->index_info.emplace(resp_.index_info());
       }
       CHECK_GT(info_->table_id.size(), 0) << "Running against a too-old master";
+      info_->colocated = resp_.colocated();
     }
   }
   if (!new_status.ok()) {
@@ -1620,11 +1674,11 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
   Status s = ReinitializeMasterAddresses();
   {
     std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
-    if (!s.ok() && master_server_addrs_.empty()) {
+    if (!s.ok() && full_master_server_addrs_.empty()) {
       cb.Run(s);
       return;
     }
-    for (const string &master_server_addr : master_server_addrs_) {
+    for (const string &master_server_addr : full_master_server_addrs_) {
       std::vector<HostPort> addrs;
       // TODO: Do address resolution asynchronously as well.
       s = HostPort::ParseStrings(master_server_addr, master::kMasterDefaultPort, &addrs);
@@ -1636,7 +1690,7 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
         cb.Run(STATUS_FORMAT(
             InvalidArgument,
             "No master address specified by '$0' (all master server addresses: $1)",
-            master_server_addr, master_server_addrs_));
+            master_server_addr, full_master_server_addrs_));
         return;
       }
 
@@ -1709,7 +1763,8 @@ Status YBClient::Data::AddMasterAddress(const HostPort& addr) {
 
 namespace {
 
-Result<std::string> ReadMasterAddressesFromFlagFile(const std::string& flag_file_path) {
+Result<std::string> ReadMasterAddressesFromFlagFile(
+    const std::string& flag_file_path, const std::string& flag_name) {
   std::ifstream input_file(flag_file_path);
   if (!input_file) {
     return STATUS_FORMAT(IOError, "Unable to open flag file '$0': $1",
@@ -1719,9 +1774,9 @@ Result<std::string> ReadMasterAddressesFromFlagFile(const std::string& flag_file
 
   std::string master_addrs;
   while (input_file.good() && std::getline(input_file, line)) {
-    static const std::string kTServerMasterAddrsFlagPrefix = "--tserver_master_addrs=";
-    if (boost::starts_with(line, kTServerMasterAddrsFlagPrefix)) {
-      master_addrs = line.c_str() + kTServerMasterAddrsFlagPrefix.size();
+    const std::string flag_prefix = "--" + flag_name + "=";
+    if (boost::starts_with(line, flag_prefix)) {
+      master_addrs = line.c_str() + flag_prefix.size();
     }
   }
 
@@ -1738,36 +1793,60 @@ Result<std::string> ReadMasterAddressesFromFlagFile(const std::string& flag_file
 // Read the master addresses (from a remote endpoint or a file depending on which is specified), and
 // re-initialize the 'master_server_addrs_' variable.
 Status YBClient::Data::ReinitializeMasterAddresses() {
+  Status result;
   std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
   if (!master_server_endpoint_.empty()) {
     faststring buf;
-    RETURN_NOT_OK(EasyCurl().FetchURL(master_server_endpoint_, &buf));
-    // The JSON serialization adds a " character to the beginning and end of the response, remove
-    // those if they are present.
-    std::string master_addrs = buf.ToString();
-    if (master_addrs.at(0) == '"') {
-      master_addrs = master_addrs.erase(0, 1);
+    result = EasyCurl().FetchURL(master_server_endpoint_, &buf);
+    if (result.ok()) {
+      // The JSON serialization adds a " character to the beginning and end of the response, remove
+      // those if they are present.
+      std::string master_addrs = buf.ToString();
+      if (master_addrs.at(0) == '"') {
+        master_addrs = master_addrs.erase(0, 1);
+      }
+      if (master_addrs.at(master_addrs.size() - 1) == '"') {
+        master_addrs = master_addrs.erase(master_addrs.size() - 1, 1);
+      }
+      master_server_addrs_.clear();
+      master_server_addrs_.push_back(master_addrs);
+      LOG(INFO) << "Got master addresses = " << master_addrs
+                << " from REST endpoint: " << master_server_endpoint_;
     }
-    if (master_addrs.at(master_addrs.size() - 1) == '"') {
-      master_addrs = master_addrs.erase(master_addrs.size() - 1, 1);
-    }
-    master_server_addrs_.clear();
-    master_server_addrs_.push_back(master_addrs);
-    LOG(INFO) << "Got master addresses = " << master_addrs
-              << " from REST endpoint: " << master_server_endpoint_;
   } else if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
-    string master_addrs = VERIFY_RESULT(ReadMasterAddressesFromFlagFile(FLAGS_flagfile));
+    auto master_addrs = ReadMasterAddressesFromFlagFile(
+        FLAGS_flagfile, master_address_flag_name_);
 
-    if (master_addrs.empty()) {
-      return STATUS_SUBSTITUTE(IllegalState, "Couldn't find flag $0 in flagfile $1",
-                               FLAGS_tserver_master_addrs, FLAGS_flagfile);
+    if (!master_addrs.ok()) {
+      LOG(WARNING) << "Failure reading flagfile " << FLAGS_flagfile << ": "
+                   << master_addrs.status();
+      result = master_addrs.status();
+    } else if (master_addrs->empty()) {
+      LOG(WARNING) << "Couldn't find flag " << master_address_flag_name_ << " in flagfile "
+                   << FLAGS_flagfile;
+    } else {
+      master_server_addrs_.clear();
+      master_server_addrs_.push_back(*master_addrs);
     }
-    master_server_addrs_.clear();
-    master_server_addrs_.push_back(master_addrs);
-    LOG(INFO) << "New master addresses: " << master_addrs;
   } else {
     VLOG(1) << "Skipping reinitialize of master addresses, no REST endpoint or file specified";
+  }
+  full_master_server_addrs_.clear();
+  for (const auto& address : master_server_addrs_) {
+    if (!address.empty()) {
+      full_master_server_addrs_.push_back(address);
+    }
+  }
+  for (const auto& source : master_address_sources_) {
+    auto current = source();
+    full_master_server_addrs_.insert(
+        full_master_server_addrs_.end(), current.begin(), current.end());
+  }
+  LOG(INFO) << "New master addresses: " << AsString(full_master_server_addrs_);
+
+  if (full_master_server_addrs_.empty()) {
+    return result.ok() ? STATUS(IllegalState, "Unable to determine master addresses") : result;
   }
   return Status::OK();
 }
@@ -1855,12 +1934,12 @@ void YBClient::Data::StartShutdown() {
 
 bool YBClient::Data::IsMultiMaster() {
   std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
-  if (master_server_addrs_.size() > 1) {
+  if (full_master_server_addrs_.size() > 1) {
     return true;
   }
   // For single entry case, check if it is a list of host/ports.
   std::vector<Endpoint> addrs;
-  const auto status = ParseAddressList(master_server_addrs_[0],
+  const auto status = ParseAddressList(full_master_server_addrs_[0],
                                        yb::master::kMasterDefaultPort,
                                        &addrs);
   return status.ok() && (addrs.size() > 1);

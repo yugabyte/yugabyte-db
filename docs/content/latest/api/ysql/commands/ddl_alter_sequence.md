@@ -2,7 +2,6 @@
 title: ALTER SEQUENCE statement [YSQL]
 headerTitle: ALTER SEQUENCE
 linkTitle: ALTER SEQUENCE
-summary: Alter a sequence in a schema
 description: Use the ALTER SEQUENCE statement to change the definition of an existing sequence in the current schema.
 menu:
   latest:

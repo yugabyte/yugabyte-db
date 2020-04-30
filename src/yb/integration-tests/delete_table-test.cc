@@ -315,9 +315,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   // Check that the master no longer exposes the table in any way:
 
   // 1) Should not list it in ListTables.
-  vector<YBTableName> table_names;
-  ASSERT_OK(client_->ListTables(&table_names, /* filter */ "", /* exclude_ysql */ true));
-  ASSERT_EQ(master::kNumSystemTables, table_names.size());
+  const auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ "", /* exclude_ysql */ true));
+  ASSERT_EQ(master::kNumSystemTables, tables.size());
 
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;
@@ -1217,6 +1216,16 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
     ASSERT_EQ(TABLET_DATA_TOMBSTONED, t.tablet_status().tablet_data_state())
         << t.tablet_status().tablet_id() << " not tombstoned";
   }
+
+  // Check that, upon restart of the tablet server with a tombstoned tablet,
+  // we don't unnecessary "roll forward" and rewrite the tablet metadata file
+  // when it is already fully deleted.
+  int64_t orig_mtime = inspect_->GetTabletSuperBlockMTimeOrDie(kTsIndex, tablet_id);
+  cluster_->tablet_server(kTsIndex)->Shutdown();
+  ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
+  int64_t new_mtime = inspect_->GetTabletSuperBlockMTimeOrDie(kTsIndex, tablet_id);
+  ASSERT_EQ(orig_mtime, new_mtime)
+                << "Tablet superblock should not have been re-flushed unnecessarily";
 
   // Finally, delete all tablets on the TS, and wait for all data to be gone.
   LOG(INFO) << "Deleting all tablets...";

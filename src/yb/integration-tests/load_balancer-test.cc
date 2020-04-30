@@ -40,7 +40,7 @@ class LoadBalancerTest : public YBTableTestBase {
     YBTableTestBase::SetUp();
 
     yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
-        external_mini_cluster()->GetMasterAddresses(), kDefaultTimeoutMillis, "");
+        external_mini_cluster()->GetMasterAddresses(), kDefaultTimeoutMillis);
 
     ASSERT_OK(yb_admin_client_->Init());
   }
@@ -126,9 +126,10 @@ TEST_F(LoadBalancerTest, PreferredZoneAddNode) {
     return client_->IsLoadBalanced(num_tablet_servers() + 1);
   },  MonoDelta::FromMilliseconds(kDefaultTimeoutMillis * 2), "IsLoadBalanced"));
 
+  auto firstLoad = ASSERT_RESULT(GetLoadOnTserver(external_mini_cluster()->tablet_server(1)));
+  auto secondLoad = ASSERT_RESULT(GetLoadOnTserver(external_mini_cluster()->tablet_server(3)));
   // Now assert that both tablet servers in zone z1 have the same count.
-  ASSERT_EQ(ASSERT_RESULT(GetLoadOnTserver(external_mini_cluster()->tablet_server(1))),
-            ASSERT_RESULT(GetLoadOnTserver(external_mini_cluster()->tablet_server(3))));
+  ASSERT_EQ(firstLoad, secondLoad);
 }
 
 } // namespace integration_tests

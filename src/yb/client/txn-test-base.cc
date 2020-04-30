@@ -105,7 +105,7 @@ void TransactionTestBase::SetUp() {
   ASSERT_NO_FATALS(KeyValueTableTest::SetUp());
 
   if (create_table_) {
-    CreateTable(Transactional::kTrue);
+    CreateTable();
   }
 
   HybridTime::TEST_SetPrettyToString(true);
@@ -116,6 +116,11 @@ void TransactionTestBase::SetUp() {
   server::ClockPtr clock2(new server::HybridClock(skewed_clock_));
   ASSERT_OK(clock2->Init());
   transaction_manager2_.emplace(client_.get(), clock2, client::LocalTabletFilter());
+}
+
+void TransactionTestBase::CreateTable() {
+  KeyValueTableTest::CreateTable(
+      Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL));
 }
 
 uint64_t TransactionTestBase::log_segment_size_bytes() const {
@@ -172,6 +177,9 @@ YBTransactionPtr CreateTransactionHelper(
     TransactionManager* transaction_manager,
     SetReadTime set_read_time,
     IsolationLevel isolation_level) {
+  if (isolation_level == IsolationLevel::NON_TRANSACTIONAL) {
+    return nullptr;
+  }
   auto result = std::make_shared<YBTransaction>(transaction_manager);
   ReadHybridTime read_time;
   if (set_read_time) {

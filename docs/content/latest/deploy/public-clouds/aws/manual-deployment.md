@@ -45,17 +45,17 @@ Create AWS EC2 instances with the following characteristics.
 
 - Operating System: CentOS 7 VMs of above type. You can use Ubuntu as well, but then some of the specific steps in terms of setting up ulimits etc. could be slightly different.
 
-- Ports: Make sure to bring these VMs up in a Security Group where communication between instances is enabled on these ports (and not locked down by security settings). Our checklist has a [reference port list](../../checklist/#default-ports-reference).
+- Ports: Make sure to bring these VMs up in a Security Group where communication between instances is enabled on these ports (and not locked down by security settings). For a listing of these ports, see [Default ports reference](../../../../reference/configuration/default-ports).
 
 We now have 2 VMs each in Availability Zones `us-west-2a`, `us-west-2b`, `us-west-2c` respectively.
 
 ### Set environment variables
 
-Now that the six nodes have been prepared, the yb-master process will be run on three of these nodes (because RF=3) and yb-tserver will be run on all six nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../architecture/concepts/universe/).
+Now that the six nodes have been prepared, the yb-master process will be run on three of these nodes (because RF=3) and yb-tserver will be run on all six nodes. To learn more about YugabyteDB’s process architecture, see [here](../../../../architecture/concepts/universe/).
 
-These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above 6 VMs over “ssh”.
+These install steps are written in a way that we assume that you will run the install steps from another node from which you can access the above six VMs over `ssh`.
 
-These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the 6 YB nodes.
+These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the six nodes.
 
 ```sh
 # Suppose these are the IP addresses of your 6 machines
@@ -65,7 +65,7 @@ export AZ2_NODES="<ip2> <ip2> ..."
 export AZ3_NODES="<ip1> <ip2> ..."
 
 # Version of YugabyteDB you plan to install.
-export YB_VERSION=2.1.2.0
+export YB_VERSION=2.1.5.0
 
 # Comma separated list of directories available for YB on each node
 # In this example, it is just 1. But if you have two then the RHS
@@ -117,7 +117,7 @@ If your AMI already has the needed hooks for mounting the devices as directories
 
 #### Locate drives
 
-On each of those nodes, first locate the SSD device(s) that’ll be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.)
+On each of those nodes, first locate the SSD devices to be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.).
 
 ```sh
 $ lsblk
@@ -169,11 +169,11 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-The above should print “xfs” for each of the nodes/drives.
+The above should print “xfs” for each of the nodes or drives.
 
 #### Configure Drives
 
-Add `/etc/fstab` entry to mount the drive(s) on each of the nodes. This example assumes there’s one drive that we will mount at the `/mnt/d0` location.
+Add `/etc/fstab` entry to mount the drives on each of the nodes. This example assumes there’s one drive that we will mount at the `/mnt/d0` location.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -216,7 +216,7 @@ done
 
 ### Verify system configuration
 
-Below is an example of setting up these prerequisites in CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. For details, see [System configuration](../../manual-deployment/system-config/).
+Below is an example of setting up these prerequisites in CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. For details, see [System configuration](../../../manual-deployment/system-config/).
 
 #### Install ntp and other optional packages
 
@@ -257,7 +257,7 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-Make sure the above is not overriden by files in `limits.d` directory. For example, if `20-nproc.conf` file on the nodes has a different value, then update the file as below.
+Make sure the above is not overridden by files in `limits.d` directory. For example, if `20-nproc.conf` file on the nodes has a different value, then update the file as below.
 
 ```sh
 $ cat /etc/security/limits.d/20-nproc.conf
@@ -296,9 +296,9 @@ core file size          (blocks, -c) unlimited
 
 ## 2. Install YugabyteDB
 
-Note: The installation need NOT be undertaken by the root or the ADMIN_USER (centos). In the examples below, however, these commands are run as the ADMIN_USER.
+Note: The installation need NOT be undertaken by the root or the `ADMIN_USER` (`centos`). In the examples below, however, these commands are run as the `ADMIN_USER`.
 
-Create `yb-software` & `yb-conf` directory in a directory of your choice. In this example, we use ADMIN_USER’s home directory.
+Create `yb-software` & `yb-conf` directory in a directory of your choice. In this example, we use the `ADMIN_USER` home directory.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -352,7 +352,7 @@ The advantage of using symbolic links (symlinks) is that, when you later need to
 
 ## 3. Prepare YB-Master configuration files
 
-This step prepares the config files for the 3 masters. The config files need to, among other things, have the right information to indicate which Cloud/Region/AZ each master is in.
+This step prepares the configuration files for the three masters. The configuration files need to, among other things, have the right information to indicate which cloud, region, or availability zone each master is in.
 
 ### Create YB-Master1 configuration file
 
@@ -404,7 +404,7 @@ This step prepares the config files for the 3 masters. The config files need to,
 
 ### Verify
 
-Verify that all the configuration vars look right and environment vars were substituted correctly.
+Verify that all the configuration variables look right and environment variables were substituted correctly.
 
 ```sh
 for ip in $MASTER_NODES; do \
@@ -483,7 +483,7 @@ done
 
 ### Verify
 
-Verify that all the configuration options look correct and environment variables were substituted correctly.
+Verify that all the configuration flags look correct and environment variables were substituted correctly.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -494,7 +494,7 @@ done
 
 ## 5. Start YB-Master servers
 
-Note: On the first time when all three YB-Master servers are started, it creates the cluster. If a YB-Master server is restarted (after cluster has been created) such as during a rolling upgrade of software it simply rejoins the cluster.
+Note: On the first time that all three YB-Master servers are started, it creates the cluster. If a YB-Master server is restarted (after cluster has been created), such as during a rolling upgrade of software, it simply rejoins the cluster.
 
 ```sh
 for ip in $MASTER_NODES; do \
@@ -607,7 +607,7 @@ replication_info {
 }
 ```
 
-Suppose your deployment is multi-region rather than multi-zone, one additional  option to consider is to set a preferred location for all the tablet leaders using the [set_preferred_zones yb-admin command](../../../admin/yb-admin). For multi-row/multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
+Suppose your deployment is multi-region rather than multi-zone, one additional option to consider is to set a preferred location for all the tablet leaders using the [yb-admin set_preferred_zones](../../../../admin/yb-admin/#set-preferred-zones) command. For multi-row or multi-table transactional operations, colocating the leaders to be in a single zone/region can help reduce the number of cross-region network hops involved in executing the transaction and as a result improve performance.
 
 The following command sets the preferred zone to `aws.us-west.us-west-2c`:
 
@@ -659,8 +659,8 @@ replication_info {
 
 ## 8. Test PostgreSQL-compatible YSQL API
 
-Connect to the cluster using the `ysqlsh` utility that comes pre-bundled in the `bin` directory. 
-If you need to try `ysqlsh` from a different node, you can download `ysqlsh` using instructions documented [here](../../../admin/ysqlsh/).
+Connect to the cluster using the YSQL shell (`ysqlsh`) that is installed in the `bin` directory.
+If you want to use `ysqlsh` from a different node, follow the steps on the [ysqlsh](../../../../admin/ysqlsh/) page.
 
 From any node, execute the following command.
 
@@ -698,7 +698,7 @@ Output should be the following:
 
 ### Using cqlsh
 
-Connect to the cluster using the `cqlsh` utility that comes pre-bundled in the `bin` directory. If you need to try cqlsh from a different node, you can download cqlsh using instructions documented [here](../../../admin/cqlsh/).
+Connect to the cluster using the YCQL shell (`cqlsh`) that comes installed in the `bin` directory. If you want to use `cqlsh` from a different node, follow the steps found on the [cqlsh](../../../../admin/cqlsh/) page.
 
 From any node, execute the following command.
 
@@ -776,7 +776,7 @@ When workload is running, verify activity across various tablet-servers in the M
 http://<master-ip>:7000/tablet-servers
 ```
 
-When workload is running, verify active YCQL or YEDIS RPCs from this links on the “utilz” page.
+When workload is running, verify active YCQL or YEDIS RPC calls from this links on the “utilz” page.
 
 ```
 http://<any-tserver-ip>:9000/utilz
@@ -786,7 +786,7 @@ http://<any-tserver-ip>:9000/utilz
 
 ### Prerequisite
 
-Create the YugabyteDB `system_redis.redis` (which is the default Redis database 0) table using `yb-admin` or using `redis-cli`.
+Create the YugabyteDB `system_redis.redis` (which is the default Redis database `0`) table using `yb-admin` or using `redis-cli`.
 
 - Using `yb-admin`
 

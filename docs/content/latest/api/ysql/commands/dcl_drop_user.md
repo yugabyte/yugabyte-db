@@ -3,7 +3,6 @@ title: DROP USER statement [YSQL]
 headerTitle: DROP USER
 linkTitle: DROP USER
 description: Use the DROP USER statement to drop a user or role. DROP USER is an alias for DROP ROLE.
-summary: DROP USER
 menu:
   latest:
     identifier: api-ysql-commands-drop-user

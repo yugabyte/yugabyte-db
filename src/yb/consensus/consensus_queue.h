@@ -142,6 +142,9 @@ class PeerMessageQueue {
     // Next index to send to the peer.  This corresponds to "nextIndex" as specified in Raft.
     int64_t next_index = kInvalidOpIdIndex;
 
+    // Number of ops starting from next_index_ to retransmit.
+    int64_t last_num_messages_sent = -1;
+
     // The last operation that we've sent to this peer and that it acked. Used for watermark
     // movement.
     OpId last_received;
@@ -349,6 +352,10 @@ class PeerMessageQueue {
 
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
+
+  CHECKED_STATUS FlushLogIndex();
+
+  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
 
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);

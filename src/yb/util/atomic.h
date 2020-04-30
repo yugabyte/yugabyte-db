@@ -35,6 +35,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <thread>
+
 #include <boost/type_traits/make_signed.hpp>
 
 #include "yb/gutil/atomicops.h"
@@ -383,6 +385,14 @@ template <class U, class T>
 void SetAtomicFlag(U value, T* flag) {
   std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
   atomic_flag.store(value);
+}
+
+template <class T>
+void AtomicFlagSleepMs(T* flag) {
+  auto value = GetAtomicFlag(flag);
+  if (value != 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(value));
+  }
 }
 
 template <class U, class T>

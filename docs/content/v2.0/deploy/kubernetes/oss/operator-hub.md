@@ -99,7 +99,7 @@ Refer [Yugabyte Operator](../yugabyte-operator/#configuration-options) for confi
 When all of the pods in YugabyteDB cluster are running, you can use the YSQL shell to access the YSQL API, which is PostgreSQL-compliant.
 
 ```console
-kubectl exec -it -n yb-operator yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0  --echo-queries
+kubectl exec -it -n yb-operator yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0  --echo-queries
 ```
 
 For details on the YSQL API, see:

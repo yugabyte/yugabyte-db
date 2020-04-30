@@ -154,7 +154,8 @@ class RaftConsensusSpy : public RaftConsensus {
                     parent_mem_tracker,
                     mark_dirty_clbk,
                     YQL_TABLE_TYPE,
-                    nullptr /* retryable_requests */) {
+                    nullptr /* retryable_requests */,
+                    yb::OpId() /* split_op_id */) {
     // These "aliases" allow us to count invocations and assert on them.
     ON_CALL(*this, StartConsensusOnlyRoundUnlocked(_))
         .WillByDefault(Invoke(this,

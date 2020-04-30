@@ -1,8 +1,8 @@
 ---
 title: Build a Python application that uses YCQL
 headerTitle: Build a Python application
-linkTitle: Build a Python app
-description: Use Python and YCQL to build a YugabyteDB application.
+linkTitle: Python
+description: Build a Python application that uses YCQL.
 menu:
   latest:
     parent: build-apps
@@ -18,7 +18,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
+      YSQL - Psycopg2
     </a>
   </li>
   <li >

@@ -975,5 +975,19 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert), PgMiniSingleTServ
   LOG(INFO) << "Time: " << finish - start;
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
+  ShutdownAllMasters(cluster_.get());
+  cluster_->mini_master(0)->set_pass_master_addresses(false);
+  ASSERT_OK(StartAllMasters(cluster_.get()));
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(WaitFor([&conn] {
+    auto status = conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)");
+    WARN_NOT_OK(status, "Failed to create table");
+    return status.ok();
+  }, 15s, "Create table"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

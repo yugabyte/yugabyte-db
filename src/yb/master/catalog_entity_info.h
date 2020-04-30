@@ -335,6 +335,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
   const std::string indexed_table_id() const;
 
+  bool is_index() const {
+    return !indexed_table_id().empty();
+  }
+
   // For index table
   bool is_local_index() const;
   bool is_unique_index() const;
@@ -349,6 +353,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
+
   // Add multiple tablets to this table.
   void AddTablets(const std::vector<TabletInfo*>& tablets);
 
@@ -503,6 +508,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   YQLDatabase database_type() const;
 
   bool colocated() const;
+
+  ::yb::master::SysNamespaceEntryPB_State state() const;
 
   std::string ToString() const override;
 
@@ -659,8 +666,9 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
 };
 
 // Convenience typedefs.
-typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
-typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
+// Table(t)InfoMap ordered for deterministic locking.
+typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
+typedef std::map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;

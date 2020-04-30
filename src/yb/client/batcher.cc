@@ -282,6 +282,10 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   auto in_flight_op = std::make_shared<InFlightOp>(yb_op);
   RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
 
+  if (VERIFY_RESULT(yb_op->MaybeRefreshTablePartitions())) {
+    client_->data_->meta_cache_->InvalidateTableCache(yb_op->table()->id());
+  }
+
   if (yb_op->table()->partition_schema().IsHashPartitioning()) {
     switch (yb_op->type()) {
       case YBOperation::Type::QL_READ:
@@ -621,7 +625,7 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   InFlightOps ops(begin, end);
   auto op_group = (**begin).yb_op->group();
   AsyncRpcData data{this, tablet, allow_local_calls_in_curr_thread, need_consistent_read,
-                    write_with_hybrid_time_, std::move(ops)};
+                    hybrid_time_for_write_, std::move(ops)};
   switch (op_group) {
     case OpGroup::kWrite:
       return std::make_shared<WriteRpc>(&data);

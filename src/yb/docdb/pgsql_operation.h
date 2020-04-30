@@ -151,7 +151,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
                                            size_t fetched_rows,
                                            const size_t row_count_limit,
-                                           const bool scan_time_exceeded);
+                                           const bool scan_time_exceeded,
+                                           const Schema* schema);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;

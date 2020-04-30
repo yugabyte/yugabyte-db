@@ -1,7 +1,8 @@
 ---
-title: 1. Install YugabyteDB
+title: Install YugabyteDB on Linux
+headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
-description: Install YugabyteDB
+description: Download and install YugabyteDB on Linux (CentOS or Ubuntu) in less than five minutes.
 aliases:
   - /quick-start/install/
 menu:
@@ -51,9 +52,9 @@ showAsideToc: true
 
 1. One of the following operating systems
 
-  - <i class="icon-centos"></i> CentOS 7
+    - <i class="icon-centos"></i> CentOS 7
 
-  - <i class="icon-ubuntu"></i> Ubuntu 16.04+
+    - <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
 
 2. Verify that you have Python 2 or 3 installed.
 
@@ -79,18 +80,22 @@ showAsideToc: true
     - CentOS: `yum install curl`
     - Ubuntu: `apt install curl`
 
+4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, 
+you can soon end up creating a large number of files in the current shell. 
+Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
+
 ## Download YugabyteDB
 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.1.2.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.1.5.0-linux.tar.gz
     ```
 
 2. Extract the YugabyteDB package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.1.2.0-linux.tar.gz && cd yugabyte-2.1.2.0/
+    $ tar xvfz yugabyte-2.1.5.0-linux.tar.gz && cd yugabyte-2.1.5.0/
     ```
 
 ## Configure YugabyteDB

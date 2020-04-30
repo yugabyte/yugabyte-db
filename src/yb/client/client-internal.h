@@ -89,6 +89,17 @@ class YBClient::Data {
                                 const master::AlterNamespaceRequestPB& req,
                                 CoarseTimePoint deadline);
 
+  CHECKED_STATUS IsCreateNamespaceInProgress(YBClient* client,
+                                const std::string& namespace_name,
+                                const boost::optional<YQLDatabase>& database_type,
+                                CoarseTimePoint deadline,
+                                bool *create_in_progress);
+
+  CHECKED_STATUS WaitForCreateNamespaceToFinish(YBClient* client,
+                                const std::string& namespace_name,
+                                const boost::optional<YQLDatabase>& database_type,
+                                CoarseTimePoint deadline);
+
   CHECKED_STATUS CreateTable(YBClient* client,
                              const master::CreateTableRequestPB& req,
                              const YBSchema& schema,
@@ -322,9 +333,15 @@ class YBClient::Data {
   // takes precedence over both 'master_server_addrs_file_' and 'master_server_addrs_'.
   std::string master_server_endpoint_;
 
+  // Flag name to fetch master addresses from flagfile.
+  std::string master_address_flag_name_;
   // This vector holds the list of master server addresses. Note that each entry in this vector
   // can either be a single 'host:port' or a comma separated list of 'host1:port1,host2:port2,...'.
+  std::vector<MasterAddressSource> master_address_sources_;
+  // User specified master server addresses.
   std::vector<std::string> master_server_addrs_;
+  // master_server_addrs_ + addresses from master_address_sources_.
+  std::vector<std::string> full_master_server_addrs_;
   mutable simple_spinlock master_server_addrs_lock_;
 
   bool skip_master_flagfile_ = false;

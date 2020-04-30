@@ -70,6 +70,7 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "optimizer/ybcplan.h"
 
 
 /*
@@ -1046,6 +1047,20 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	/* Generate custom plans until we have done at least 5 (arbitrary) */
 	if (plansource->num_custom_plans < 5)
 		return true;
+
+	/* For single row modify operations, use a custom plan so as to push down
+	 * the update to the DocDB without performing the read. This involves
+	 * faking the read results in postgres. However the boundParams needs to be
+	 * passed for the creation of the plan and hence we would need to enforce a
+	 * custom plan.
+	 */
+	if (plansource->gplan && list_length(plansource->gplan->stmt_list)) {
+		PlannedStmt *pstmt =
+			linitial_node(PlannedStmt, plansource->gplan->stmt_list);
+		if (YBCIsSingleRowModify(pstmt)) {
+			return true;
+		}
+	}
 
 	avg_custom_cost = plansource->total_custom_cost / plansource->num_custom_plans;
 

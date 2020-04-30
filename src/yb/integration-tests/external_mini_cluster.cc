@@ -156,7 +156,7 @@ namespace yb {
 static const char* const kMasterBinaryName = "yb-master";
 static const char* const kTabletServerBinaryName = "yb-tserver";
 static double kProcessStartTimeoutSeconds = 60.0;
-static MonoDelta kTabletServerRegistrationTimeout = 10s;
+static MonoDelta kTabletServerRegistrationTimeout = 60s;
 
 static const int kHeapProfileSignal = SIGUSR1;
 
@@ -846,7 +846,7 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
 Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
   auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
 
-  for (int i = 1; CoarseMonoClock::Now() < deadline; i++) {
+  for (int i = 1;; i++) {
     vector<consensus::OpId> ids;
     Status s = GetLastOpIdForEachMasterPeer(opts_.timeout, consensus::COMMITTED_OPID, &ids);
 
@@ -866,13 +866,19 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
       LOG(WARNING) << "Got error getting last opid for each replica: " << s.ToString();
     }
 
+    if (CoarseMonoClock::Now() >= deadline) {
+      if (!s.ok()) {
+        return s;
+      }
+
+      return STATUS_FORMAT(TimedOut,
+                           "Index $0 not available on all replicas after $1. ",
+                           target_index,
+                           opts_.timeout);
+    }
+
     SleepFor(MonoDelta::FromMilliseconds(min(i * 100, 1000)));
   }
-
-  return STATUS_FORMAT(TimedOut,
-                       "Index $0 not available on all replicas after $1. ",
-                       target_index,
-                       opts_.timeout);
 }
 
 Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master) {
@@ -1099,12 +1105,10 @@ Status ExternalMiniCluster::AddTabletServer(
   flags.insert(flags.end(), extra_flags.begin(), extra_flags.end());
 
   scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
-      idx, messenger_, proxy_cache_.get(),
-      exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
-      ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port,
-      cql_rpc_port, cql_http_port,
-      pgsql_rpc_port, pgsql_http_port,
-      master_hostports, SubstituteInFlags(flags, idx));
+      idx, messenger_, proxy_cache_.get(), exe, GetDataPath(Substitute("ts-$0", idx + 1)),
+      GetBindIpForTabletServer(idx), ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port,
+      cql_rpc_port, cql_http_port, pgsql_rpc_port, pgsql_http_port, master_hostports,
+      SubstituteInFlags(flags, idx));
   RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();

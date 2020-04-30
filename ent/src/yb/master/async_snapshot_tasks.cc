@@ -12,6 +12,7 @@
 
 #include "yb/master/async_snapshot_tasks.h"
 
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master.h"
@@ -72,30 +73,25 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
     switch (resp_.error().code()) {
       case TabletServerErrorPB::TABLET_NOT_FOUND:
         LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
-                     << tablet_->ToString() << " no further retry: " << status.ToString();
-        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+                     << tablet_->ToString() << " no further retry: " << status;
+        TransitionToCompleteState();
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
-                     << tablet_->ToString() << ": " << status.ToString();
+                     << tablet_->ToString() << ": " << status;
+        if (TransactionError(status) == TransactionErrorCode::kSnapshotTooOld) {
+          TransitionToCompleteState();
+        }
+        break;
     }
   } else {
-    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+    TransitionToCompleteState();
     VLOG(1) << "TS " << permanent_uuid() << ": snapshot complete on tablet "
             << tablet_->ToString();
   }
 
   if (state() != MonitoredTaskState::kComplete) {
     VLOG(1) << "TabletSnapshotOp task is not completed";
-    return;
-  }
-
-  if (callback_) {
-    if (resp_.has_error()) {
-      callback_(StatusFromPB(resp_.error().status()));
-    } else {
-      callback_(const_cast<const tserver::TabletSnapshotOpResponsePB&>(resp_));
-    }
     return;
   }
 
@@ -114,7 +110,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
           tablet_.get(), resp_.has_error());
       return;
     }
-    case tserver::TabletSnapshotOpRequestPB::DELETE: {
+    case tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET: {
       // TODO: this class should not know CatalogManager API,
       //       remove circular dependency between classes.
       master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
@@ -122,6 +118,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
       return;
     }
     case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
+    case tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
@@ -146,6 +143,21 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
           << " (attempt " << attempt << "):\n"
           << req.DebugString();
   return true;
+}
+
+void AsyncTabletSnapshotOp::Finished(const Status& status) {
+  if (!callback_) {
+    return;
+  }
+  if (!status.ok()) {
+    callback_(status);
+    return;
+  }
+  if (resp_.has_error()) {
+    callback_(StatusFromPB(resp_.error().status()));
+  } else {
+    callback_(&resp_);
+  }
 }
 
 } // namespace master

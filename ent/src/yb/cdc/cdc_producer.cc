@@ -122,6 +122,8 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::SNAPSHOT_OP:
       FALLTHROUGH_INTENDED;
+    case consensus::OperationType::SPLIT_OP:
+      FALLTHROUGH_INTENDED;
     case consensus::OperationType::TRUNCATE_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::UNKNOWN_OP:

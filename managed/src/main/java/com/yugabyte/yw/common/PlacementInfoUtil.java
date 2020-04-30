@@ -1018,14 +1018,16 @@ public class PlacementInfoUtil {
   }
 
   // Find a node running tserver only in the given AZ.
-  private static NodeDetails findActiveTServerOnlyInAz(Collection<NodeDetails> nodeDetailsSet,
+  public static NodeDetails findActiveTServerOnlyInAz(Collection<NodeDetails> nodes,
                                                        UUID targetAZUuid) {
-    for (NodeDetails node : nodeDetailsSet) {
-      if (node.isActive() && !node.isMaster && node.isTserver && node.azUuid.equals(targetAZUuid)) {
-        return node;
-      }
-    }
-    return null;
+    NodeDetails activeNode = nodes.stream()
+                                  .filter(node -> node.isActive() && !node.isMaster &&
+                                                  node.isTserver &&
+                                                  node.azUuid.equals(targetAZUuid))
+                                  .max(Comparator.comparingInt(NodeDetails::getNodeIdx))
+                                  .orElse(null);
+    return activeNode;
+
   }
 
   /**

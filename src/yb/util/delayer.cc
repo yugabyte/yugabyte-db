@@ -15,6 +15,8 @@
 
 #include <vector>
 
+#include <cds/init.h>
+
 #include "yb/util/scope_exit.h"
 
 namespace yb {
@@ -43,6 +45,8 @@ Delayer::~Delayer() {
 }
 
 void Delayer::Execute() {
+  cds::threading::Manager::attachThread();
+
   std::vector<std::function<void()>> actions;
   std::unique_lock<std::mutex> lock(mutex_);
   while (!stop_) {

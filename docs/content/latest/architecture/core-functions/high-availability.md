@@ -2,7 +2,7 @@
 title: High availability
 headerTitle: High availability
 linkTitle: High availability
-description: Learn about how YugabyteDB maintains high availability using active replicas.
+description: Learn how YugabyteDB maintains high availability using active replicas.
 aliases:
   - /architecture/core-functions/high-availability/
 menu:

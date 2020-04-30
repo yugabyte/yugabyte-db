@@ -219,6 +219,13 @@ Status MasterTestBase::CreateNamespace(const NamespaceName& ns_name,
 Status MasterTestBase::CreateNamespace(const NamespaceName& ns_name,
                                        const boost::optional<YQLDatabase>& database_type,
                                        CreateNamespaceResponsePB* resp) {
+  RETURN_NOT_OK(CreateNamespaceAsync(ns_name, database_type, resp));
+  return CreateNamespaceWait(ns_name, database_type);
+}
+
+Status MasterTestBase::CreateNamespaceAsync(const NamespaceName& ns_name,
+                                            const boost::optional<YQLDatabase>& database_type,
+                                            CreateNamespaceResponsePB* resp) {
   CreateNamespaceRequestPB req;
   req.set_name(ns_name);
   if (database_type) {
@@ -230,6 +237,34 @@ Status MasterTestBase::CreateNamespace(const NamespaceName& ns_name,
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
   return Status::OK();
+}
+
+Status MasterTestBase::CreateNamespaceWait(const NamespaceName& ns_name,
+                                           const boost::optional<YQLDatabase>& database_type) {
+  Status status = Status::OK();
+
+  IsCreateNamespaceDoneRequestPB is_req;
+  is_req.mutable_namespace_()->set_name(ns_name);
+  if (database_type) {
+    is_req.mutable_namespace_()->set_database_type(*database_type);
+  }
+
+  AssertLoggedWaitFor([&]() -> Result<bool> {
+    IsCreateNamespaceDoneResponsePB is_resp;
+    status = proxy_->IsCreateNamespaceDone(is_req, &is_resp, ResetAndGetController());
+    WARN_NOT_OK(status, "IsCreateNamespaceDone returned unexpected error");
+    if (status.ok()) {
+      if (is_resp.has_done() && is_resp.done()) {
+        if (is_resp.has_error()) {
+          status = StatusFromPB(is_resp.error().status());
+        }
+        return true;
+      }
+    }
+    return false;
+  }, MonoDelta::FromSeconds(60), "Wait for create namespace to finish async setup tasks.");
+
+  return status;
 }
 
 Status MasterTestBase::AlterNamespace(const NamespaceName& ns_name,

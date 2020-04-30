@@ -1,8 +1,8 @@
 ---
-title: Explore two data center (2DC) deployment in YugabyteDB using macOS
-linkTitle: Two data center (2DC)
+title: Explore two data center (2DC) deployment on macOS
 headerTitle: Two data center (2DC) deployment
-description: Simulate a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters in macOS.
+linkTitle: Two data center (2DC)
+description: Simulate a geo-distributed two data center (2DC) deployment with two local YugabyteDB clusters on macOS.
 aliases:
   - /latest/explore/two-data-centers/
   - /latest/explore/two-data-centers-macos/

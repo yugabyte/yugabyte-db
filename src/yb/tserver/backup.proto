@@ -29,8 +29,9 @@ message TabletSnapshotOpRequestPB {
     UNKNOWN = 0;
     CREATE_ON_TABLET = 1; // Replicated at tserver, to create snapshot for a particular tablet.
     RESTORE = 2;
-    DELETE = 3;
+    DELETE_ON_TABLET = 3;
     CREATE_ON_MASTER = 4; // Replicated at master, while creating snapshot for multiple tablets.
+    DELETE_ON_MASTER = 5;
   }
 
   // UUID of server this request is addressed to.
@@ -55,6 +56,8 @@ message TabletSnapshotOpRequestPB {
 
   // Extra data assigned for this snapshot request, so instance it could contain SysRowEntries.
   google.protobuf.Any extra_data = 8;
+
+  bool imported = 9;
 }
 
 message TabletSnapshotOpResponsePB {

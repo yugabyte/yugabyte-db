@@ -264,6 +264,8 @@ class CoarseMonoClock {
   typedef std::chrono::time_point<CoarseMonoClock> time_point;
   typedef time_point TimePoint;
 
+  static constexpr bool is_steady = true;
+
   static time_point now();
   static TimePoint Now() { return now(); }
 };

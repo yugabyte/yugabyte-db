@@ -28,7 +28,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLKeyspacesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   auto vtable = std::make_shared<QLRowBlock>(schema_);
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
-  master_->catalog_manager()->GetAllNamespaces(&namespaces);
+  master_->catalog_manager()->GetAllNamespaces(&namespaces, true);
   for (scoped_refptr<NamespaceInfo> ns : namespaces) {
     // Skip non-YQL namespace.
     if (!CatalogManager::IsYcqlNamespace(*ns)) {

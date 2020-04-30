@@ -32,6 +32,7 @@
 #include <string>
 
 #include <boost/intrusive_ptr.hpp>
+#include <boost/optional.hpp>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -221,6 +222,8 @@ class StatusErrorCodeImpl : public StatusErrorCode {
   explicit StatusErrorCodeImpl(Value&& value) : value_(std::move(value)) {}
 
   explicit StatusErrorCodeImpl(const Status& status);
+
+  static boost::optional<StatusErrorCodeImpl> FromStatus(const Status& status);
 
   uint8_t Category() const override {
     return kCategory;
@@ -533,6 +536,16 @@ class StatusCategoryRegisterer {
 template <class Tag>
 StatusErrorCodeImpl<Tag>::StatusErrorCodeImpl(const Status& status)
     : value_(Tag::Decode(status.ErrorData(Tag::kCategory))) {}
+
+template <class Tag>
+boost::optional<StatusErrorCodeImpl<Tag>> StatusErrorCodeImpl<Tag>::FromStatus(
+    const Status& status) {
+  const auto* error_data = status.ErrorData(Tag::kCategory);
+  if (!error_data) {
+    return boost::none;
+  }
+  return StatusErrorCodeImpl<Tag>(Tag::Decode(error_data));
+}
 
 inline Status&& MoveStatus(Status&& status) {
   return std::move(status);

@@ -104,6 +104,12 @@ DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
 
+DEFINE_bool(enable_consensus_exponential_backoff, false,
+            "Whether exponential backoff based on number of retransmissions at tablet leader "
+            "for number of entries to replicate to lagging follower is enabled.");
+TAG_FLAG(enable_consensus_exponential_backoff, advanced);
+TAG_FLAG(enable_consensus_exponential_backoff, runtime);
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
@@ -415,6 +421,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   bool is_voter = false;
   bool is_new;
   int64_t next_index;
+  int64_t to_index;
   HybridTime propagated_safe_time;
 
   // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
@@ -478,7 +485,18 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     if (member_type) *member_type = peer->member_type;
     if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
     *needs_remote_bootstrap = peer->needs_remote_bootstrap;
+
     next_index = peer->next_index;
+    if (FLAGS_enable_consensus_exponential_backoff && peer->last_num_messages_sent >= 0) {
+      // Previous request to peer has not been acked. Reduce number of entries to be sent
+      // in this attempt using exponential backoff. Note that to_index is inclusive.
+      to_index = next_index + std::max<int64_t>((peer->last_num_messages_sent >> 1) - 1, 0);
+    } else {
+      // Previous request to peer has been acked or a heartbeat response has been received.
+      // Transmit as many entries as allowed.
+      to_index = 0;
+    }
+
     if (peer->member_type == RaftPeerPB::VOTER) {
       is_voter = true;
     }
@@ -511,8 +529,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   if (!is_new) {
     // The batch of messages to send to the peer.
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
-
-    auto result = ReadFromLogCache(next_index - 1, 0 /* to_index */, max_batch_size, uuid);
+    auto result = ReadFromLogCache(next_index - 1, to_index, max_batch_size, uuid);
     if (PREDICT_FALSE(!result.ok())) {
       if (PREDICT_TRUE(result.status().IsNotFound())) {
         std::string msg = Format("The logs necessary to catch up peer $0 have been "
@@ -531,6 +548,16 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       request->mutable_ops()->AddAllocated(msg.get());
     }
 
+    {
+      LockGuard lock(queue_lock_);
+      auto peer = FindPtrOrNull(peers_map_, uuid);
+      if (PREDICT_FALSE(peer == nullptr)) {
+        return STATUS(NotFound, "Peer not tracked.");
+      }
+
+      peer->last_num_messages_sent = result->messages.size();
+    }
+
     ScopedTrackedConsumption consumption;
     if (result->read_from_disk_size) {
       consumption = ScopedTrackedConsumption(operations_mem_tracker_, result->read_from_disk_size);
@@ -538,7 +565,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     *msgs_holder = ReplicateMsgsHolder(
         request->mutable_ops(), std::move(result->messages), std::move(consumption));
 
-    if (propagated_safe_time && !result->have_more_messages) {
+    if (propagated_safe_time && !result->have_more_messages && to_index == 0) {
       // Get the current local safe time on the leader and propagate it to the follower.
       request->set_propagated_safe_time(propagated_safe_time.ToUint64());
     } else {
@@ -976,6 +1003,9 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     peer->is_new = false;
     peer->last_successful_communication_time = MonoTime::Now();
 
+    // Reset so that next transmission is not considered a re-transmission.
+    peer->last_num_messages_sent = -1;
+
     if (response.has_status()) {
       const auto& status = response.status();
       // Sanity checks.  Some of these can be eventually removed, but they are handy for now.
@@ -1383,6 +1413,14 @@ size_t PeerMessageQueue::LogCacheSize() {
 
 size_t PeerMessageQueue::EvictLogCache(size_t bytes_to_evict) {
   return log_cache_.EvictThroughOp(std::numeric_limits<int64_t>::max(), bytes_to_evict);
+}
+
+Status PeerMessageQueue::FlushLogIndex() {
+  return log_cache_.FlushIndex();
+}
+
+Status PeerMessageQueue::CopyLogTo(const std::string& dest_dir) {
+  return log_cache_.CopyLogTo(dest_dir);
 }
 
 void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {

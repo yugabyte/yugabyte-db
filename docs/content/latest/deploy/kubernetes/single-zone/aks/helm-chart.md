@@ -1,7 +1,8 @@
 ---
-title: Azure Kubernetes Service (AKS)
+title: Deploy on Azure Kubernetes Service (AKS) using Helm Chart
+headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
-description: Azure Kubernetes Service (AKS)
+description: Use Helm Chart to deploy a single-zone Kubernetes cluster on Azure Kubernetes Service (AKS).
 menu:
   latest:
     parent: deploy-kubernetes-sz

@@ -33,6 +33,7 @@ import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.master.Master.RelationType;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,7 +113,9 @@ public class MultiTableBackup extends UniverseTaskBase {
             UUID tableUUID = getUUIDRepresentation(tableUUIDString);
             // If table is not REDIS or YCQL, ignore.
             if (tableType == TableType.PGSQL_TABLE_TYPE ||
-                tableType == TableType.TRANSACTION_STATUS_TABLE_TYPE) {
+                tableType == TableType.TRANSACTION_STATUS_TABLE_TYPE ||
+                table.getRelationType() == RelationType.INDEX_TABLE_RELATION) {
+              LOG.info("Skipping backup of table with UUID: " + tableUUID);
               continue;
             }
             String tableKeySpace = table.getNamespace().getName().toString();

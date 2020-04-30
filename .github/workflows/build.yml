@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Run tests
+      - name: Build code without tests
         run: |
           echo "OSTYPE (outside Docker): $OSTYPE"
           echo "Build name: ${{ matrix.name }}"
@@ -67,12 +67,8 @@ jobs:
                   set -euo pipefail
                   export PATH=/usr/local/bin:\$PATH
                   df -H /
-                  echo ::group::Building the code
+                  echo ::group::Building the code without tests
                   ./yb_build.sh release packaged --download-thirdparty --ninja
-                  echo ::endgroup::
-                  df -H /
-                  echo ::group::Releasing
-                  ./yb_release --force --build_args=--ninja
                   echo ::endgroup::
                   df -H /
                 "

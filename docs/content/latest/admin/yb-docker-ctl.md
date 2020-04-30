@@ -79,7 +79,7 @@ Starts the local YugabyteDB cluster, if it already exists.
 
 Stops the specified local YugabyteDB cluster node.
 
-## Optional arguments
+## Flags
 
 ### --help, -h
 
@@ -99,7 +99,7 @@ The number of nodes created when you use the `yb-docker-ctl create` command is a
 
 By default, the `create` and `add_node` commands pull the latest Docker Hub `yugabytedb/yugabyte` image to create clusters or add nodes.
 
-To pull an earlier Docker image tag (version), add the optional `--tag <tag-id>` parameter to use an earlier release.
+To pull an earlier Docker image tag (version), add the `--tag <tag-id>` flag to use an earlier release.
 
 In the following example, a 1-node YugabyteDB cluster is created using the earlier v1.3.2.1 release that has a tag of `1.3.2.1-b2`.
 

@@ -16,3 +16,4 @@ test: yb_create_index
 test: yb_index_scan
 test: yb_schema
 test: yb_select
+test: yb_guc

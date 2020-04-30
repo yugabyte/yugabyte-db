@@ -40,7 +40,7 @@ Follow the [installation instructions](../../../deploy/manual-deployment/install
 
 ## 2. Start YB-Masters
 
-Run the `yb-master` server on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` option. Replace the [`--rpc_bind_addresses`]((../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `--placement_cloud`,`--placement_region` and `--placement_zone` values appropriately.
+Run the `yb-master` server on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `--placement_cloud`,`--placement_region` and `--placement_zone` values appropriately.
 
 ```sh
 $ ./bin/yb-master \
@@ -54,13 +54,13 @@ $ ./bin/yb-master \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-Note that we also set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-master/#leader-failure-max-missed-heartbeat-periods) option to `10`. This option specifies the maximum heartbeat periods that the leader can fail to heartbeat before the leader is considered to be failed. Since the data is geo-replicated across data centers, RPC latencies are expected to be higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. Note that the total failure timeout is now 5 seconds since it is computed by multiplying [`--raft_heartbeat_interval_ms`](../../../reference/configuration/yb-master/#raft-heartbeat-interval-ms) (default of 500ms) with [`--leader_failure_max_missed_heartbeat_periods`]((../../../reference/configuration/yb-master/#leader-failure-max-missed-heartbeat-periods) (current value of `10`).
+Note that we also set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-master/#leader-failure-max-missed-heartbeat-periods) flag to `10`. This flag specifies the maximum heartbeat periods that the leader can fail to heartbeat before the leader is considered to be failed. Since the data is geo-replicated across data centers, RPC latencies are expected to be higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. Note that the total failure timeout is now 5 seconds since it is computed by multiplying [`--raft_heartbeat_interval_ms`](../../../reference/configuration/yb-master/#raft-heartbeat-interval-ms) (default of 500ms) with [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-master/#leader-failure-max-missed-heartbeat-periods)(current value of `10`).
 
-For the full list of configuration options, see the [YB-Master reference](../../../reference/configuration/yb-master/).
+For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
 ## 3. Start YB-TServers
 
-Run the `yb-tserver` server on each node as shown below . Note that all of the master addresses have to be provided using the [`--tserver_master_addrs`](../../../reference/configuration/yb-master/#tserver-master-addrs) option. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately.
+Run the `yb-tserver` server on each node as shown below . Note that all of the master addresses have to be provided using the [`--tserver_master_addrs`](../../../reference/configuration/yb-master/#tserver-master-addrs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately.
 
 ```sh
 $ ./bin/yb-tserver \
@@ -77,13 +77,13 @@ $ ./bin/yb-tserver \
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-Note that we also set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-tserver/#leader-failure-max-missed-heartbeat-periods) option to `10`. This option specifies the maximum heartbeat periods that the leader can fail to heartbeat before the leader is considered to be failed. Since the data is geo-replicated across data centers, RPC latencies are expected to be higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. Note that the total failure timeout is now 5 seconds since it is computed by multiplying [--raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (default of 500ms) with leader_failure_max_missed_heartbeat_periods (current value of `10`).
+Note that we also set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-tserver/#leader-failure-max-missed-heartbeat-periods) flag to `10`. This flag specifies the maximum heartbeat periods that the leader can fail to heartbeat before the leader is considered to be failed. Since the data is geo-replicated across data centers, RPC latencies are expected to be higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. Note that the total failure timeout is now 5 seconds since it is computed by multiplying [--raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (default of 500ms) with leader_failure_max_missed_heartbeat_periods (current value of `10`).
 
 For the full list of configuration flags, see the [YB-TServer reference](../../../reference/configuration/yb-tserver/).
 
 ## 4. Set replica placement policy
 
-The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the `--placement_*` configuration options.  However, for the current deployment, we want to explicitly place one replica of each tablet in each region/AZ. The following command sets replication factor of `3` across `us-west-2`/`us-west-2a`, `us-east-1`/`us-east-1a`, `ap-northeast-1`/`ap-northeast-1a` leading to such a placement.
+The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the `--placement_*` configuration flags.  However, for the current deployment, we want to explicitly place one replica of each tablet in each region/AZ. The following command sets replication factor of `3` across `us-west-2`/`us-west-2a`, `us-east-1`/`us-east-1a`, `ap-northeast-1`/`ap-northeast-1a` leading to such a placement.
 
 On any host running the yb-master, run the following command.
 

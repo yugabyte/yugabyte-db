@@ -18,18 +18,46 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tablet/tablet_snapshots.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+
 using namespace std::literals;
+using yb::master::SysSnapshotEntryPB;
 
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_bool(enable_history_cutoff_propagation);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 
 namespace yb {
 namespace client {
 
+using Snapshots = google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>;
+using ImportedSnapshotData = google::protobuf::RepeatedPtrField<
+    master::ImportSnapshotMetaResponsePB::TableMetaPB>;
+
+constexpr auto kWaitTimeout = 15s;
+
 class BackupTxnTest : public TransactionTestBase {
  protected:
   void SetUp() override {
+    FLAGS_enable_history_cutoff_propagation = true;
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
     TransactionTestBase::SetUp();
+  }
+
+  void DoBeforeTearDown() override {
+    if (!testing::Test::HasFailure()) {
+      FLAGS_flush_rocksdb_on_shutdown = false;
+      ASSERT_OK(cluster_->RestartSync());
+    }
+
+    TransactionTestBase::DoBeforeTearDown();
   }
 
   master::MasterBackupServiceProxy MakeBackupServiceProxy() {
@@ -49,23 +77,18 @@ class BackupTxnTest : public TransactionTestBase {
     return FullyDecodeTxnSnapshotId(resp.snapshot_id());
   }
 
-  Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id) {
-    master::ListSnapshotsRequestPB req;
-    master::ListSnapshotsResponsePB resp;
-
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-    RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshots(req, &resp, &controller));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-    LOG(INFO) << "Snapshot state: " << resp.snapshots(0).ShortDebugString();
-    if (resp.snapshots().size() != 1) {
+  Result<SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id) {
+    auto snapshots = VERIFY_RESULT(ListSnapshots(snapshot_id));
+    if (snapshots.size() != 1) {
       return STATUS_FORMAT(RuntimeError, "Wrong number of snapshots, one expected but $0 found",
-                           resp.snapshots().size());
+                           snapshots.size());
     }
-    return resp.snapshots(0).entry().state() == master::SysSnapshotEntryPB::COMPLETE;
+    LOG(INFO) << "Snapshot state: " << snapshots[0].ShortDebugString();
+    return snapshots[0].entry().state();
+  }
+
+  Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id) {
+    return VERIFY_RESULT(SnapshotState(snapshot_id)) == SysSnapshotEntryPB::COMPLETE;
   }
 
   Result<TxnSnapshotRestorationId> StartRestoration(const TxnSnapshotId& snapshot_id) {
@@ -94,27 +117,53 @@ class BackupTxnTest : public TransactionTestBase {
       return STATUS_FORMAT(RuntimeError, "Wrong number of restorations, one expected but $0 found",
                            resp.restorations().size());
     }
-    return resp.restorations(0).entry().state() == master::SysSnapshotEntryPB::COMPLETE;
+    return resp.restorations(0).entry().state() == SysSnapshotEntryPB::RESTORED;
   }
 
-  CHECKED_STATUS VerifySnapshot(
-      const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state) {
+  CHECKED_STATUS RestoreSnapshot(const TxnSnapshotId& snapshot_id) {
+    auto restoration_id = VERIFY_RESULT(StartRestoration(snapshot_id));
+
+    return WaitFor([this, &restoration_id] {
+      return IsRestorationDone(restoration_id);
+    }, kWaitTimeout * kTimeMultiplier, "Restoration done");
+  }
+
+  Result<Snapshots> ListSnapshots(
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil()) {
     master::ListSnapshotsRequestPB req;
     master::ListSnapshotsResponsePB resp;
+
+    if (!snapshot_id.IsNil()) {
+      req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    }
 
     rpc::RpcController controller;
     controller.set_timeout(60s);
     RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshots(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
     LOG(INFO) << "Snapshots: " << resp.ShortDebugString();
-    SCHECK_EQ(resp.snapshots().size(), 1, IllegalState, "Wrong number of snapshots");
-    const auto& snapshot = resp.snapshots(0);
+    return std::move(resp.snapshots());
+  }
+
+  CHECKED_STATUS VerifySnapshot(
+      const TxnSnapshotId& snapshot_id, SysSnapshotEntryPB::State state) {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
+    const auto& snapshot = snapshots[0];
     auto listed_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
     if (listed_snapshot_id != snapshot_id) {
       return STATUS_FORMAT(
           IllegalState, "Wrong snapshot id returned $0, expected $1", listed_snapshot_id,
           snapshot_id);
     }
-    SCHECK_EQ(snapshot.entry().state(), state, IllegalState, "Wrong snapshot state");
+    if (snapshot.entry().state() != state) {
+      return STATUS_FORMAT(
+          IllegalState, "Wrong snapshot state: $0 vs $1",
+          SysSnapshotEntryPB::State_Name(snapshot.entry().state()),
+          SysSnapshotEntryPB::State_Name(state));
+    }
     size_t num_namespaces = 0, num_tables = 0, num_tablets = 0;
     for (const auto& entry : snapshot.entry().entries()) {
       switch (entry.type()) {
@@ -143,12 +192,71 @@ class BackupTxnTest : public TransactionTestBase {
 
   Result<TxnSnapshotId> CreateSnapshot() {
     TxnSnapshotId snapshot_id = VERIFY_RESULT(StartSnapshot());
-
-    RETURN_NOT_OK(WaitFor([this, &snapshot_id]() {
-      return IsSnapshotDone(snapshot_id);
-    }, 5s * kTimeMultiplier, "Snapshot done"));
-
+    RETURN_NOT_OK(WaitSnapshotDone(snapshot_id));
     return snapshot_id;
+  }
+
+  CHECKED_STATUS WaitSnapshotInState(
+      const TxnSnapshotId& snapshot_id, SysSnapshotEntryPB::State state,
+      MonoDelta duration = kWaitTimeout) {
+    auto state_name = SysSnapshotEntryPB::State_Name(state);
+    SysSnapshotEntryPB::State last_state = SysSnapshotEntryPB::UNKNOWN;
+    auto status = WaitFor([this, &snapshot_id, state, &last_state]() -> Result<bool> {
+      last_state = VERIFY_RESULT(SnapshotState(snapshot_id));
+      return last_state == state;
+    }, duration * kTimeMultiplier, "Snapshot in state " + state_name);
+
+    if (!status.ok() && status.IsTimedOut()) {
+      return STATUS_FORMAT(
+        IllegalState, "Wrong snapshot state: $0, while $1 expected",
+        SysSnapshotEntryPB::State_Name(last_state), state_name);
+    }
+    return status;
+  }
+
+  CHECKED_STATUS WaitSnapshotDone(
+      const TxnSnapshotId& snapshot_id, MonoDelta duration = kWaitTimeout) {
+    return WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, duration);
+  }
+
+  CHECKED_STATUS DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
+    master::DeleteSnapshotRequestPB req;
+    master::DeleteSnapshotResponsePB resp;
+
+    rpc::RpcController controller;
+    controller.set_timeout(60s);
+    req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    RETURN_NOT_OK(MakeBackupServiceProxy().DeleteSnapshot(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
+  Result<ImportedSnapshotData> StartImportSnapshot(const master::SnapshotInfoPB& snapshot) {
+    master::ImportSnapshotMetaRequestPB req;
+    master::ImportSnapshotMetaResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(60s);
+
+    *req.mutable_snapshot() = snapshot;
+
+    RETURN_NOT_OK(MakeBackupServiceProxy().ImportSnapshotMeta(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    LOG(INFO) << "Imported snapshot metadata: " << resp.DebugString();
+
+    return resp.tables_meta();
+  }
+
+  Result<bool> IsSnapshotImportDone(const ImportedSnapshotData& data) {
+    for (const auto& table : data) {
+      RETURN_NOT_OK(client_->OpenTable(table.table_ids().new_id()));
+    }
+
+    return true;
   }
 };
 
@@ -171,16 +279,12 @@ TEST_F(BackupTxnTest, Simple) {
 
   ASSERT_TRUE(has_pending);
 
-  ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
 
   ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
   ASSERT_NO_FATALS(VerifyData(1, WriteOpType::UPDATE));
 
-  auto restoration_id = ASSERT_RESULT(StartRestoration(snapshot_id));
-
-  ASSERT_OK(WaitFor([this, &restoration_id] {
-    return IsRestorationDone(restoration_id);
-  }, 10s, "Restoration done"));
+  ASSERT_OK(RestoreSnapshot(snapshot_id));
 
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }
@@ -197,7 +301,7 @@ TEST_F(BackupTxnTest, Persistence) {
   LOG(INFO) << "First restart";
 
   ASSERT_OK(cluster_->leader_mini_master()->Restart());
-  ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
 
   LOG(INFO) << "Create namespace";
 
@@ -219,7 +323,136 @@ TEST_F(BackupTxnTest, Persistence) {
 
   LOG(INFO) << "Verify";
 
-  ASSERT_OK(VerifySnapshot(snapshot_id, master::SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+}
+
+TEST_F(BackupTxnTest, Delete) {
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(DeleteSnapshot(snapshot_id));
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    if (snapshots.empty()) {
+      return true;
+    }
+    SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
+    SCHECK_EQ(snapshots[0].entry().state(), SysSnapshotEntryPB::DELETING, IllegalState,
+              "Wrong snapshot state");
+    return false;
+  }, kWaitTimeout * kTimeMultiplier, "Complete delete snapshot"));
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      auto db = peer->tablet()->doc_db().regular;
+      if (!db) {
+        continue;
+      }
+      auto dir = tablet::TabletSnapshots::SnapshotsDirName(db->GetName());
+      auto children = VERIFY_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
+      if (!children.empty()) {
+        LOG(INFO) << peer->LogPrefix() << "Children: " << AsString(children);
+        return false;
+      }
+    }
+    return true;
+  }, kWaitTimeout * kTimeMultiplier, "Delete on tablets"));
+}
+
+TEST_F(BackupTxnTest, ImportMeta) {
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+
+  ASSERT_OK(client_->DeleteTable(kTableName));
+  ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
+
+  auto snapshots = ASSERT_RESULT(ListSnapshots());
+  ASSERT_EQ(snapshots.size(), 1);
+
+  auto import_data = ASSERT_RESULT(StartImportSnapshot(snapshots[0]));
+
+  ASSERT_OK(WaitFor([this, import_data] {
+    return IsSnapshotImportDone(import_data);
+  }, kWaitTimeout * kTimeMultiplier, "Complete import snapshot"));
+
+  ASSERT_OK(table_.Open(kTableName, client_.get()));
+
+  ASSERT_NO_FATALS(WriteData());
+}
+
+TEST_F(BackupTxnTest, Retry) {
+  FLAGS_unresponsive_ts_rpc_timeout_ms = 1000;
+  FLAGS_snapshot_coordinator_poll_interval_ms = 1000;
+
+  ASSERT_NO_FATALS(WriteData());
+
+  ShutdownAllTServers(cluster_.get());
+
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(StartSnapshot());
+
+  std::this_thread::sleep_for(FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms + 1s);
+
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING));
+
+  ASSERT_OK(StartAllTServers(cluster_.get()));
+
+  ASSERT_OK(WaitSnapshotDone(snapshot_id, 15s));
+
+  ASSERT_NO_FATALS(VerifyData());
+
+  ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
+  ASSERT_NO_FATALS(VerifyData(WriteOpType::UPDATE));
+
+  ASSERT_OK(RestoreSnapshot(snapshot_id));
+
+  ASSERT_NO_FATALS(VerifyData());
+}
+
+TEST_F(BackupTxnTest, Failure) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  ASSERT_NO_FATALS(WriteData());
+
+  ShutdownAllTServers(cluster_.get());
+
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(StartSnapshot());
+
+  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING));
+
+  ShutdownAllMasters(cluster_.get());
+
+  ASSERT_OK(StartAllTServers(cluster_.get()));
+
+  // Wait 2 rounds to be sure that very recent history cutoff committed.
+  std::this_thread::sleep_for(FLAGS_raft_heartbeat_interval_ms * 2ms * kTimeMultiplier);
+
+  ASSERT_OK(StartAllMasters(cluster_.get()));
+
+  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED, 30s));
+}
+
+TEST_F(BackupTxnTest, Restart) {
+  FLAGS_timestamp_history_retention_interval_sec =
+      std::chrono::duration_cast<std::chrono::seconds>(kWaitTimeout).count() *
+      kTimeMultiplier;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  FLAGS_flush_rocksdb_on_shutdown = false;
+
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+
+  ShutdownAllMasters(cluster_.get());
+
+  // Wait 2 rounds to be sure that very recent history cutoff committed.
+  std::this_thread::sleep_for((FLAGS_timestamp_history_retention_interval_sec + 1) * 1s);
+
+  ASSERT_OK(StartAllMasters(cluster_.get()));
+
+  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
 }
 
 } // namespace client

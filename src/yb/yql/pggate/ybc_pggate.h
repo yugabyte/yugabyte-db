@@ -148,6 +148,9 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
 
+YBCStatus YBCPgCreateTableAddSplitRow(YBCPgStatement handle, int num_cols,
+                                        YBCPgTypeEntity **types, uint64_t *data);
+
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
@@ -196,6 +199,10 @@ YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
 
 YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
+
+YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
+                                const YBCPgOid table_oid,
+                                bool *colocated);
 
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".

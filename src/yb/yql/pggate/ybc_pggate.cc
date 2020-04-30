@@ -269,6 +269,11 @@ YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_table
   return ToYBCStatus(pgapi->CreateTableSetNumTablets(handle, num_tablets));
 }
 
+YBCStatus YBCPgCreateTableAddSplitRow(YBCPgStatement handle, int num_cols,
+    YBCPgTypeEntity **types, uint64_t *data) {
+  return ToYBCStatus(pgapi->CreateTableAddSplitRow(handle, num_cols, types, data));
+}
+
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateTable(handle));
 }
@@ -355,6 +360,20 @@ YBCStatus YBCPgNewTruncateTable(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
+}
+
+YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
+                                const YBCPgOid table_oid,
+                                bool *colocated) {
+  const PgObjectId table_id(database_oid, table_oid);
+  PgTableDesc::ScopedRefPtr table_desc;
+  YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
+  if (status) {
+    return status;
+  } else {
+    *colocated = table_desc->IsColocated();
+    return YBCStatusOK();
+  }
 }
 
 // Index Operations -------------------------------------------------------------------------------

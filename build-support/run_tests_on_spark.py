@@ -62,7 +62,7 @@ TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
 # created by the about_to_start_running_test in common-test-env.sh. If this does not happen within
 # this amount of time, we terminate the run-test.sh script. This should prevent tests getting stuck
 # for a long time in macOS builds.
-TIME_SEC_TO_START_RUNNING_TEST = 30
+TIME_SEC_TO_START_RUNNING_TEST = 5 * 60
 
 
 def wait_for_path_to_exist(target_path):
@@ -526,6 +526,7 @@ set -euo pipefail
     finally:
         if os.path.exists(untar_script_path):
             os.remove(untar_script_path)
+
     return global_conf
 
 
@@ -538,6 +539,10 @@ def parallel_list_test_descriptors(rel_test_path):
 
     from yb import yb_dist_tests, command_util
     global_conf = initialize_remote_task()
+
+    find_or_download_thirdparty_script_path = os.path.join(
+        global_conf.yb_src_root, 'build-support', 'find_or_download_thirdparty.sh')
+    subprocess.check_call(find_or_download_thirdparty_script_path)
 
     wait_for_path_to_exist(global_conf.build_root)
     list_tests_cmd_line = [

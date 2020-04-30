@@ -1,7 +1,8 @@
 ---
-title: Auto sharding
+title: Explore auto sharding on Kubernetes
+headerTitle: Auto sharding
 linkTitle: Auto sharding
-description: Auto sharding
+description: Follow this tutorial (on Kubernetes) to learn how YugabyteDB automatically splits tables into shards (tablets).
 aliases:
   - /latest/explore/auto-sharding-kubernetes/
 menu:
@@ -46,7 +47,6 @@ showAsideToc: true
 -->
 </ul>
 
-
 YugabyteDB automatically splits user tables into multiple shards, called *tablets*. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../../architecture/docdb/sharding/) in YugabyteDB.
 
 By default, YugabyteDB creates eight tablets per node in the cluster for each table and automatically distributes the data across the various tablets, which in turn are distributed evenly across the nodes. In this tutorial, we will explore how automatic sharding is done internally for tables. The system Redis table works in an identical manner.
@@ -79,7 +79,6 @@ $ ./yb-docker-ctl add_node
 $ ./yb-docker-ctl add_node
 ```
 
-
 Create a CQL table. The keyspace and table name below must be named as shown below, since the sample application writes data to this table. We will use the sample application to write data to this table to understand sharding in a subsequent step.
 
 ```sh
@@ -94,7 +93,6 @@ cqlsh> CREATE KEYSPACE ybdemo_keyspace;
 cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
-
 ## 2. Examine tablets
 
 For each table, YugabyteDB creates 8 shards per node in the universe by default. In our example, since we have 3 nodes, we expect 24 tablets for each of the tables we created (the Redis and CQL tables), or 48 tablets total.
@@ -102,7 +100,6 @@ For each table, YugabyteDB creates 8 shards per node in the universe by default.
 You can see the number of tablets per node in the Tablet Servers page of the master Admin UI, by going to http://127.0.0.1:7000/tablet-servers. The page should look something like the image below:
 
 You can also navigate to the table details for these two tables by going to <URL>. This page should look as follows.
-
 
 Note here that the tablets balancing across nodes happens on a per-table basis, so that each table is scaled out to an appropriate number of nodes.
 

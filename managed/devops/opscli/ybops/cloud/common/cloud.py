@@ -300,3 +300,10 @@ class AbstractCloud(AbstractCommandParser):
             return args.mount_points
         else:
             return ",".join(["/mnt/d{}".format(i) for i in xrange(args.num_volumes)])
+
+    def expand_file_system(self, args, ssh_options):
+        remote_shell = RemoteShell(ssh_options)
+        mount_points = self.get_mount_points_csv(args).split(',')
+        for mount_point in mount_points:
+            logging.info("Expanding file system with mount point: {}".format(mount_point))
+            remote_shell.run_command('sudo xfs_growfs {}'.format(mount_point))

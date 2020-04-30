@@ -1,8 +1,8 @@
 ---
-title: Compare Amazon DynamoDB to YugabyteDB
+title: Compare Amazon DynamoDB with YugabyteDB
 headerTitle: Amazon DynamoDB
 linkTitle: Amazon DynamoDB
-description: Amazon DynamoDB
+description: Compare Amazon DynamoDB with YugabyteDB.
 aliases:
   - /comparisons/amazon-dynamodb/
 menu:

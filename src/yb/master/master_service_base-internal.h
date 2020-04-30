@@ -19,6 +19,7 @@
 #include "yb/master/master_service_base.h"
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -33,7 +34,13 @@ template<class RespClass>
 typename std::enable_if<HasMemberFunction_mutable_error<RespClass>::value, void>::type
 CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {
   if (PREDICT_FALSE(!s.ok() && !resp->has_error())) {
-    FillStatus(s, MasterErrorPB::UNKNOWN_ERROR, resp);
+    const MasterError master_error(s);
+    if (master_error.value() == MasterErrorPB::Code()) {
+      LOG(WARNING) << "Unknown master error in status: " << s;
+      FillStatus(s, MasterErrorPB::UNKNOWN_ERROR, resp);
+    } else {
+      FillStatus(s, master_error.value(), resp);
+    }
   }
 }
 
@@ -91,6 +98,8 @@ void MasterServiceBase::HandleIn(const ReqType* req,
                                  rpc::RpcContext* rpc,
                                  Status (HandlerType::*f)(const ReqType*, RespType*),
                                  HoldCatalogLock hold_catalog_lock) {
+  LongOperationTracker long_operation_tracker("HandleIn", std::chrono::seconds(10));
+
   HandleOnLeader(req, resp, rpc, [=]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp); },
       hold_catalog_lock);

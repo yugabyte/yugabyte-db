@@ -100,6 +100,10 @@ struct ConsensusBootstrapInfo {
   // The id of the last committed operation in the log.
   OpId last_committed_id;
 
+  // The id of the split operation designated for this tablet added to Raft log.
+  // See comments for ReplicateState::split_op_id_.
+  OpId split_op_id;
+
   // REPLICATE messages which were in the log with no accompanying
   // COMMIT. These need to be passed along to consensus init in order
   // to potentially commit them.
@@ -322,6 +326,10 @@ class Consensus {
   virtual yb::OpId GetLastReceivedOpId() = 0;
 
   virtual yb::OpId GetLastCommittedOpId() = 0;
+
+  // Return the ID of the split operation requesting to split this Raft group if it has been added
+  // to Raft log and uninitialized OpId otherwise.
+  virtual yb::OpId GetSplitOpId() = 0;
 
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).

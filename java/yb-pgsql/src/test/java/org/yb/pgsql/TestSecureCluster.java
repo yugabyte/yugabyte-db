@@ -22,6 +22,8 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.util.Map;
 
+import static org.yb.AssertionWrappers.assertEquals;
+
 // This test tests node to node encryption only.
 // Postgres connections to t-server and master are encrypted as well.
 // But postgres client connections are not encrypted.
@@ -43,6 +45,30 @@ public class TestSecureCluster extends BasePgSQLTest {
   @Test
   public void testConnection() throws Exception {
     createSimpleTable("test", "v");
+  }
+
+  @Test
+  public void testYbAdmin() throws Exception {
+    runProcess(TestUtils.findBinary("yb-admin"),
+               "--master_addresses",
+               masterAddresses,
+               "--certs_dir_name",
+               certsDir,
+               "list_tables");
+  }
+
+  @Test
+  public void testYbTsCli() throws Exception {
+    runProcess(TestUtils.findBinary("yb-ts-cli"),
+               "--server_address",
+               miniCluster.getTabletServers().keySet().iterator().next().toString(),
+               "--certs_dir_name",
+               certsDir,
+               "list_tablets");
+  }
+
+  private void runProcess(String... args) throws Exception {
+    assertEquals(0, new ProcessBuilder(args).start().waitFor());
   }
 
   @Override

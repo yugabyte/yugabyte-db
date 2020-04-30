@@ -47,7 +47,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 
-DEFINE_test_flag(int64, mvcc_op_trace_num_items, 0,
+DEFINE_test_flag(int64, mvcc_op_trace_num_items, 32,
                  "Number of items to keep in an MvccManager operation trace. Set to 0 to disable "
                  "MVCC operation tracing.");
 
@@ -175,13 +175,17 @@ typedef boost::variant<
 
 class ItemPrintingVisitor : public boost::static_visitor<>{
  public:
-  explicit ItemPrintingVisitor(size_t index) : index_(index) {}
+  explicit ItemPrintingVisitor(std::ostream* out, size_t index)
+      : out_(*out),
+        index_(index) {
+  }
 
   template<typename T> void operator()(const T& t) const {
-    LOG(WARNING) << index_ << ". " << t.ToString();
+    out_ << index_ << ". " << t.ToString() << std::endl;
   }
 
  private:
+  std::ostream& out_;
   size_t index_;
 };
 
@@ -196,11 +200,15 @@ class MvccManager::MvccOpTrace {
     items_.push_back(std::move(v));
   }
 
-  void DebugDumpToLog() {
-    LOG(WARNING) << "Recent " << items_.size() << " MVCC operations:";
+  void DumpTrace(ostream* out) const {
+    if (items_.empty()) {
+      *out << "No MVCC operations" << std::endl;
+      return;
+    }
+    *out << "Recent " << items_.size() << " MVCC operations:" << std::endl;
     size_t i = 1;
     for (const auto& item : items_) {
-      boost::apply_visitor(ItemPrintingVisitor(i), item);
+      boost::apply_visitor(ItemPrintingVisitor(out, i), item);
       ++i;
     }
   }
@@ -208,6 +216,19 @@ class MvccManager::MvccOpTrace {
  private:
   boost::circular_buffer_space_optimized<TraceItemVariant, std::allocator<TraceItemVariant>> items_;
 };
+
+struct MvccManager::InvariantViolationLoggingHelper {
+  const std::string& log_prefix;
+  MvccOpTrace* mvcc_op_trace;
+};
+
+std::ostream& operator<< (
+    std::ostream& out,
+    const MvccManager::InvariantViolationLoggingHelper& log_helper) {
+  out << log_helper.log_prefix;
+  log_helper.mvcc_op_trace->DumpTrace(&out);
+  return out;
+}
 
 // ------------------------------------------------------------------------------------------------
 // SafeTimeWithSource
@@ -241,8 +262,8 @@ void MvccManager::Replicated(HybridTime ht) {
     if (op_trace_) {
       op_trace_->Add(ReplicatedTraceItem { .ht = ht });
     }
-    CHECK(!queue_.empty()) << LogPrefix();
-    CHECK_EQ(queue_.front(), ht) << LogPrefix();
+    CHECK(!queue_.empty()) << InvariantViolationLogPrefix();
+    CHECK_EQ(queue_.front(), ht) << InvariantViolationLogPrefix();
     PopFront(&lock);
     last_replicated_ = ht;
   }
@@ -257,7 +278,7 @@ void MvccManager::Aborted(HybridTime ht) {
     if (op_trace_) {
       op_trace_->Add(AbortedTraceItem { .ht = ht });
     }
-    CHECK(!queue_.empty()) << LogPrefix();
+    CHECK(!queue_.empty()) << InvariantViolationLogPrefix();
     if (queue_.front() == ht) {
       PopFront(&lock);
     } else {
@@ -270,10 +291,10 @@ void MvccManager::Aborted(HybridTime ht) {
 
 void MvccManager::PopFront(std::lock_guard<std::mutex>* lock) {
   queue_.pop_front();
-  CHECK_GE(queue_.size(), aborted_.size()) << LogPrefix();
+  CHECK_GE(queue_.size(), aborted_.size()) << InvariantViolationLogPrefix();
   while (!aborted_.empty()) {
     if (queue_.front() != aborted_.top()) {
-      CHECK_LT(queue_.front(), aborted_.top()) << LogPrefix();
+      CHECK_LT(queue_.front(), aborted_.top()) << InvariantViolationLogPrefix();
       break;
     }
     queue_.pop_front();
@@ -306,7 +327,7 @@ void MvccManager::AddPending(HybridTime* ht) {
     auto iter = std::lower_bound(queue_.begin(), queue_.end(), aborted_.top());
 
     // Every hybrid time in aborted_ must also exist in queue_.
-    CHECK(iter != queue_.end()) << LogPrefix();
+    CHECK(iter != queue_.end()) << InvariantViolationLogPrefix();
 
     auto start_iter = iter;
     while (iter != queue_.end() && *iter == aborted_.top()) {
@@ -374,10 +395,8 @@ void MvccManager::AddPending(HybridTime* ht) {
 #endif
 
     if (*ht <= sanity_check_lower_bound) {
-      if (op_trace_) {
-        op_trace_->DebugDumpToLog();
-      }
-      LOG_WITH_PREFIX(FATAL) << get_details_msg(/* drain_aborted */ true);
+      LOG_WITH_PREFIX(FATAL) << InvariantViolationLogPrefix()
+                             << get_details_msg(/* drain_aborted */ true);
     }
   }
   if (op_trace_) {
@@ -436,7 +455,9 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
 #ifndef NDEBUG
     // This should only be called from RaftConsensus::UpdateMajorityReplicated, and ht_lease passed
     // in here should keep increasing, so we should not see propagated_safe_time_ going backwards.
-    CHECK_GE(safe_time, propagated_safe_time_) << LogPrefix() << "ht_lease: " << ht_lease;
+    CHECK_GE(safe_time, propagated_safe_time_)
+        << InvariantViolationLogPrefix()
+        << "ht_lease: " << ht_lease;
     propagated_safe_time_ = safe_time;
 #else
     // Do not crash in production.
@@ -506,7 +527,8 @@ HybridTime MvccManager::SafeTimeForFollower(
   VLOG_WITH_PREFIX(1) << "SafeTimeForFollower(" << min_allowed
                       << "), result = " << result.ToString();
   CHECK_GE(result.safe_time, max_safe_time_returned_for_follower_.safe_time)
-      << LogPrefix() << "result: " << result.ToString()
+      << InvariantViolationLogPrefix()
+      << "result: " << result.ToString()
       << ", max_safe_time_returned_for_follower_: "
       << max_safe_time_returned_for_follower_.ToString();
   max_safe_time_returned_for_follower_ = result;
@@ -543,8 +565,8 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
                                       const FixedHybridTimeLease& ht_lease,
                                       std::unique_lock<std::mutex>* lock) const {
   DCHECK_ONLY_NOTNULL(lock);
-  CHECK(ht_lease.lease.is_valid()) << LogPrefix();
-  CHECK_LE(min_allowed, ht_lease.lease) << LogPrefix();
+  CHECK(ht_lease.lease.is_valid()) << InvariantViolationLogPrefix();
+  CHECK_LE(min_allowed, ht_lease.lease) << InvariantViolationLogPrefix();
 
   const bool has_lease = !ht_lease.empty();
   if (has_lease) {
@@ -590,7 +612,8 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
 
   auto enforced_min_time = has_lease ? max_safe_time_returned_with_lease_.safe_time
                                      : max_safe_time_returned_without_lease_.safe_time;
-  CHECK_GE(result, enforced_min_time) << LogPrefix()
+  CHECK_GE(result, enforced_min_time)
+      << InvariantViolationLogPrefix()
       << ": " << EXPR_VALUE_FOR_LOG(has_lease)
       << ", " << EXPR_VALUE_FOR_LOG(enforced_min_time.ToUint64() - result.ToUint64())
       << ", " << EXPR_VALUE_FOR_LOG(ht_lease)
@@ -618,6 +641,19 @@ HybridTime MvccManager::LastReplicatedHybridTime() const {
     });
   }
   return last_replicated_;
+}
+
+// Using NO_THREAD_SAFETY_ANALYSIS here because we're only reading op_trace_ here and it is set
+// in the constructor.
+MvccManager::InvariantViolationLoggingHelper MvccManager::InvariantViolationLogPrefix() const
+    NO_THREAD_SAFETY_ANALYSIS {
+  return { prefix_, op_trace_.get() };
+}
+
+// Ditto regarding NO_THREAD_SAFETY_ANALYSIS.
+void MvccManager::TEST_DumpTrace(std::ostream* out) NO_THREAD_SAFETY_ANALYSIS {
+  if (op_trace_)
+    op_trace_->DumpTrace(out);
 }
 
 }  // namespace tablet

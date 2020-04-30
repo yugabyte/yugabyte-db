@@ -9,6 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import json
+import logging
 import os
 import socket
 import urllib2
@@ -21,11 +22,14 @@ from ybops.cloud.aws.command import AwsInstanceCommand, AwsNetworkCommand, \
     AwsAccessCommand, AwsQueryCommand, AwsDnsCommand
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.utils import is_valid_ip_address, validated_key_file, format_rsa_key, wait_for_ssh
+
+from ybops.utils.remote_shell import RemoteShell
+
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.aws.utils import set_yb_sg_and_fetch_vpc, query_vpc, get_zones, \
     delete_vpc, get_client, get_clients, AwsBootstrapClient, get_available_regions, \
     get_spot_pricing, YbVpcComponents, create_instance, has_ephemerals, get_device_names, \
-    modify_tags
+    modify_tags, update_disk
 
 
 class AwsCloud(AbstractCloud):
@@ -351,3 +355,9 @@ class AwsCloud(AbstractCloud):
         if not instance:
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)
+
+    def update_disk(self, args):
+        instance = self.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+        update_disk(args, instance["id"])

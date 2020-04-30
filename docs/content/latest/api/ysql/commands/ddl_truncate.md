@@ -2,7 +2,6 @@
 title: TRUNCATE
 headerTitle: TRUNCATE
 linkTitle: TRUNCATE
-summary: Clear all rows in a table
 description:  Use the TRUNCATE statement to clear all rows in a table.
 menu:
   latest:

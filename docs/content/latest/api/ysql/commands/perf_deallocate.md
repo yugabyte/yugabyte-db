@@ -2,7 +2,6 @@
 title: DEALLOCATE statement [YSQL]
 headerTitle: DEALLOCATE
 linkTitle: DEALLOCATE
-summary: Deallocate a prepared statement
 description: Use the `DEALLOCATE` statement to deallocate a previously prepared SQL statement.
 menu:
   latest:

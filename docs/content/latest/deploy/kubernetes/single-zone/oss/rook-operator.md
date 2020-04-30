@@ -1,7 +1,8 @@
 ---
-title: Open Source Kubernetes 
-linkTitle: Open Source Kubernetes
-description: Open Source Kubernetes 
+title: Deploy on Kubernetes clusters using Rook operator
+headerTitle: Open source Kubernetes
+linkTitle: Open source Kubernetes
+description: Deploy YugabyteDB on OSS Kubernetes clusters using the Rook YugabyteDB operator.
 menu:
   latest:
     parent: deploy-kubernetes-sz
@@ -119,7 +120,7 @@ Make a copy of the sample CRD file (`cluster.yaml`)  and modify it as needed. Fo
 When all of the pods in YugabyteDB cluster are running, you can use the YSQL shell to access the YSQL API, which is PostgreSQL-compliant.
 
 ```console
-kubectl exec -it yb-tserver-rook-yugabytedb-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-rook-yugabytedb-0  --echo-queries
+kubectl exec -it yb-tserver-rook-yugabytedb-0 -- /home/yugabyte/bin/ysqlsh  -h yb-tserver-rook-yugabytedb-0  --echo-queries
 ```
 
 For details on the YSQL API, see:
@@ -144,7 +145,7 @@ Manually delete any Persistent Volumes that were created for this YugabyteDB clu
 
 ### Review the operator logs
 
-If the cluster does not start,  run following command to take a look at operator logs.
+If the cluster does not start, run following command to take a look at operator logs.
 
 ```sh
 kubectl -n rook-yugabytedb-system logs -l app=rook-yugabytedb-operator

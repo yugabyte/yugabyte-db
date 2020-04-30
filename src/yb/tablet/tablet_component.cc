@@ -16,7 +16,7 @@
 namespace yb {
 namespace tablet {
 
-ScopedPendingOperationPause TabletComponent::PauseReadWriteOperations() {
+ScopedRWOperationPause TabletComponent::PauseReadWriteOperations() {
   return tablet_.PauseReadWriteOperations();
 }
 

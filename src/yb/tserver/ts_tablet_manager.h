@@ -38,6 +38,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include <boost/container/static_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <gtest/gtest_prod.h>
@@ -53,16 +54,17 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_splitter.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
-#include "yb/tablet/tablet_options.h"
-#include "yb/util/shared_lock.h"
 
 namespace yb {
 
@@ -97,6 +99,8 @@ using rocksdb::MemoryMonitor;
 typedef std::unordered_map<std::string, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
+struct TabletCreationMetaData;
+typedef boost::container::static_vector<TabletCreationMetaData, 2> SplitTabletsCreationMetaData;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.
@@ -109,12 +113,15 @@ class TransitionInProgressDeleter;
     } \
   } while (0)
 
+// Type of tablet directory.
+YB_DEFINE_ENUM(TabletDirType, (kData)(kWal));
+
 // Keeps track of the tablets hosted on the tablet server side.
 //
 // TODO: will also be responsible for keeping the local metadata about
 // which tablets are hosted on this server persistent on disk, as well
 // as re-opening all the tablets at startup, etc.
-class TSTabletManager : public tserver::TabletPeerLookupIf {
+class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::TabletSplitter {
  public:
   typedef std::vector<std::shared_ptr<tablet::TabletPeer>> TabletPeers;
 
@@ -168,6 +175,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
     std::shared_ptr<tablet::TabletPeer> *tablet_peer,
     const bool colocated = false);
 
+  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperationState* state) override;
+
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
   // or else returns Status::IllegalArgument.
@@ -185,6 +194,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Returns true if the tablet is found successfully.
   bool LookupTablet(const std::string& tablet_id,
                     std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;
+
+  // Lookup the given tablet peer by its ID.
+  // Returns NotFound error if the tablet is not found.
+  Result<std::shared_ptr<tablet::TabletPeer>> LookupTablet(const std::string& tablet_id) const;
 
   // Same as LookupTablet but doesn't acquired the shared lock.
   bool LookupTabletUnlocked(const std::string& tablet_id,
@@ -267,7 +280,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
                                    const std::string& tablet_id,
-                                   const TableType table_type,
                                    std::string* data_root_dir,
                                    std::string* wal_root_dir);
   // Updates the map of table to the set of tablets assigned per table per disk
@@ -275,14 +287,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void RegisterDataAndWalDir(FsManager* fs_manager,
                             const std::string& table_id,
                             const std::string& tablet_id,
-                            const TableType table_type,
                             const std::string& data_root_dir,
                             const std::string& wal_root_dir);
   // Removes the tablet id assigned to the table and disk pair for both the data and WAL directory
   // as pointed by the data and wal directory map.
   void UnregisterDataWalDir(const std::string& table_id,
                             const std::string& tablet_id,
-                            const TableType table_type,
                             const std::string& data_root_dir,
                             const std::string& wal_root_dir);
 
@@ -311,6 +321,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
     REPLACEMENT_PEER
   };
 
+  typedef std::unordered_set<TabletId> TabletIdSet;
+
+  // Maps directory to set of tablets (IDs) using that directory.
+  typedef std::unordered_map<std::string, TabletIdSet> TabletIdSetByDirectoryMap;
+
+  // This is a map that takes a table id and maps it to a map of directory and
+  // set of tablets using that directory.
+  typedef std::unordered_map<TableId, TabletIdSetByDirectoryMap> TableDiskAssignmentMap;
+
   // Each tablet report is assigned a sequence number, so that subsequent
   // tablet reports only need to re-report those tablets which have
   // changed since the last report. Each tablet tracks the sequence
@@ -334,6 +353,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS StartTabletStateTransitionUnlocked(const std::string& tablet_id,
                                             const std::string& reason,
                                             scoped_refptr<TransitionInProgressDeleter>* deleter);
+
+  // Registers the start of a table state transition with "creating tablet" reason.
+  // See StartTabletStateTransitionUnlocked.
+  Result<scoped_refptr<TransitionInProgressDeleter>> StartTabletStateTransitionForCreation(
+      const TabletId& tablet_id);
 
   // Open a tablet meta from the local file system by loading its superblock.
   CHECKED_STATUS OpenTabletMeta(const std::string& tablet_id,
@@ -376,6 +400,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<tablet::RaftGroupMetadata>& meta,
       RegisterTabletPeerMode mode);
 
+  // Returns either table_data_assignment_map_ or table_wal_assignment_map_ depending on dir_type.
+  TableDiskAssignmentMap* GetTableDiskAssignmentMap(TabletDirType dir_type);
+
+  // Returns assigned root dir of specified type for specified table and tablet.
+  // If root dir is not registered for the specified table_id and tablet_id combination - returns
+  // error.
+  Result<const std::string&> GetAssignedRootDirForTablet(
+      TabletDirType dir_type, const TableId& table_id, const TabletId& tablet_id);
+
   // Helper to generate the report for a single tablet.
   void CreateReportedTabletPB(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                               master::ReportedTabletPB* reported_tablet);
@@ -387,10 +420,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void MarkDirtyUnlocked(const std::string& tablet_id,
                          std::shared_ptr<consensus::StateChangeContext> context);
 
-  // Handle the case on startup where we find a tablet that is not in
-  // TABLET_DATA_READY state. Generally, we tombstone the replica.
+  // Handle the case on startup where we find a tablet that is not in ready state. Generally, we
+  // tombstone the replica.
   CHECKED_STATUS HandleNonReadyTabletOnStartup(
       const scoped_refptr<tablet::RaftGroupMetadata>& meta);
+
+  CHECKED_STATUS StartSubtabletsSplit(
+      const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
 
   // Return the tablet with oldest write still in its memstore
   std::shared_ptr<tablet::TabletPeer> TabletToFlush();
@@ -425,11 +461,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   consensus::RaftPeerPB local_peer_pb_;
 
   typedef std::unordered_map<std::string, std::shared_ptr<tablet::TabletPeer>> TabletMap;
-  // This is a map that takes a table id and maps it to a map of directory and
-  // set of tablets using that directory.
-  typedef std::unordered_map<std::string,
-                             std::unordered_map<std::string, std::unordered_set<std::string>>>
-    TableDiskAssignmentMap;
 
   // Lock protecting tablet_map_, dirty_tablets_, state_, transition_in_progress_, and
   // tablets_being_remote_bootstrapped_.

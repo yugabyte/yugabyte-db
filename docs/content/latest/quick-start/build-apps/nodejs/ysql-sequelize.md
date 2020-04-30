@@ -1,8 +1,8 @@
 ---
-title: Build a NodeJS application that uses YSQL and Sequelize ORM
+title: Build a NodeJS application that uses Sequelize ORM and YSQL
 headerTitle: Build a NodeJS application
-linkTitle: Build a NodeJS application
-description: Build a simple YugabyteDB e-commerce application using NodeJS, Sequelize ORM, and YSQL
+linkTitle: NodeJS
+description: Build a NodeJS application that uses Sequelize ORM and YSQL.
 menu:
   latest:
     parent: build-apps

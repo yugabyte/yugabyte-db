@@ -2,7 +2,6 @@
 title: ALTER DOMAIN statement [YSQL]
 headerTitle: ALTER DOMAIN
 linkTitle: ALTER DOMAIN
-summary: Alter a domain in a database
 description: Use the ALTER DOMAIN statement to change the definition of an existing domain.
 menu:
   latest:

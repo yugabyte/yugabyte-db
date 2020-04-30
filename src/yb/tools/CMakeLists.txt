@@ -56,14 +56,16 @@ target_link_libraries(insert-generated-rows
   ${LINK_LIBS})
 
 add_executable(yb-admin
-  yb-admin_client.cc
   yb-admin_cli.cc
   ${YB_ADMIN_SRCS_EXTENSIONS})
 target_link_libraries(yb-admin
+  yb-admin_lib
+  master_error
   ${LINK_LIBS})
 
-add_library(yb-admin_lib 
+add_library(yb-admin_lib
   yb-admin_client.cc
+  yb-admin_util.cc
   ${YB_ADMIN_LIB_SRCS_EXTENSIONS})
 target_link_libraries(yb-admin_lib ${LINK_LIBS})
 
@@ -144,12 +146,14 @@ target_link_libraries(yb-pbc-dump
 
 set(YB_TEST_LINK_LIBS
   ysck
+  yb-admin_lib
   yb_client
   yb_tools_util
   yb-generate_partitions
   integration-tests
   yb_docdb_test_common
   ql_util
+  ql-dml-test-base
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
 ADD_YB_TEST(yb-bulk_load-test)

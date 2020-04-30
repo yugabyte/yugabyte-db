@@ -395,6 +395,30 @@ class ListInstancesMethod(AbstractInstancesMethod):
             print '\n'.join(["{}={}".format(k, v) for k, v in host_info.iteritems()])
 
 
+class UpdateDiskMethod(AbstractInstancesMethod):
+    """Superclass for updating the size of the disks associated with instances in
+    the given pattern.
+
+    """
+
+    def __init__(self, base_command):
+        super(UpdateDiskMethod, self).__init__(base_command, "disk_update")
+
+    def prepare(self):
+        super(UpdateDiskMethod, self).prepare()
+
+    def callback(self, args):
+        self.cloud.update_disk(args)
+        host_info = self.cloud.get_host_info(args)
+        ssh_options = {
+            # TODO: replace with args.ssh_user when it's setup in the flow
+            "ssh_user": self.SSH_USER,
+            "private_key_file": args.private_key_file
+        }
+        ssh_options.update(get_ssh_host_port(host_info))
+        self.cloud.expand_file_system(args, ssh_options)
+
+
 class ConfigureInstancesMethod(AbstractInstancesMethod):
     VALID_PROCESS_TYPES = ['master', 'tserver']
 

@@ -200,4 +200,8 @@ public class NodeDetails {
   public String getZone() {
     return this.cloudInfo.az;
   }
+
+  public int getNodeIdx() {
+    return this.nodeIdx;
+  }
 }

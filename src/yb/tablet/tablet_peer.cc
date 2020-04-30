@@ -74,6 +74,7 @@
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/operation_driver.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
@@ -149,22 +150,24 @@ using tserver::TabletServerErrorPB;
 TabletPeer::TabletPeer(
     const RaftGroupMetadataPtr& meta,
     const consensus::RaftPeerPB& local_peer_pb,
-    const scoped_refptr<server::Clock> &clock,
+    const scoped_refptr<server::Clock>& clock,
     const std::string& permanent_uuid,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    MetricRegistry* metric_registry)
-  : meta_(meta),
-    tablet_id_(meta->raft_group_id()),
-    local_peer_pb_(local_peer_pb),
-    state_(RaftGroupStatePB::NOT_STARTED),
-    operation_tracker_(consensus::MakeTabletLogPrefix(tablet_id_, permanent_uuid)),
-    status_listener_(new TabletStatusListener(meta)),
-    clock_(clock),
-    log_anchor_registry_(new LogAnchorRegistry()),
-    mark_dirty_clbk_(std::move(mark_dirty_clbk)),
-    permanent_uuid_(permanent_uuid),
-    preparing_operations_counter_(operation_tracker_.LogPrefix()),
-    metric_registry_(metric_registry) {}
+    MetricRegistry* metric_registry,
+    TabletSplitter* tablet_splitter)
+    : meta_(meta),
+      tablet_id_(meta->raft_group_id()),
+      local_peer_pb_(local_peer_pb),
+      state_(RaftGroupStatePB::NOT_STARTED),
+      operation_tracker_(consensus::MakeTabletLogPrefix(tablet_id_, permanent_uuid)),
+      status_listener_(new TabletStatusListener(meta)),
+      clock_(clock),
+      log_anchor_registry_(new LogAnchorRegistry()),
+      mark_dirty_clbk_(std::move(mark_dirty_clbk)),
+      permanent_uuid_(permanent_uuid),
+      preparing_operations_counter_(operation_tracker_.LogPrefix()),
+      metric_registry_(metric_registry),
+      tablet_splitter_(tablet_splitter) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
@@ -173,17 +176,18 @@ TabletPeer::~TabletPeer() {
   LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
 }
 
-Status TabletPeer::InitTabletPeer(const TabletPtr &tablet,
-                                  const std::shared_future<client::YBClient*> &client_future,
-                                  const std::shared_ptr<MemTracker>& server_mem_tracker,
-                                  Messenger* messenger,
-                                  rpc::ProxyCache* proxy_cache,
-                                  const scoped_refptr<Log> &log,
-                                  const scoped_refptr<MetricEntity> &metric_entity,
-                                  ThreadPool* raft_pool,
-                                  ThreadPool* tablet_prepare_pool,
-                                  consensus::RetryableRequests* retryable_requests) {
-
+Status TabletPeer::InitTabletPeer(
+    const TabletPtr& tablet,
+    const std::shared_future<client::YBClient*>& client_future,
+    const std::shared_ptr<MemTracker>& server_mem_tracker,
+    Messenger* messenger,
+    rpc::ProxyCache* proxy_cache,
+    const scoped_refptr<Log>& log,
+    const scoped_refptr<MetricEntity>& metric_entity,
+    ThreadPool* raft_pool,
+    ThreadPool* tablet_prepare_pool,
+    consensus::RetryableRequests* retryable_requests,
+    const yb::OpId& split_op_id) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -262,7 +266,8 @@ Status TabletPeer::InitTabletPeer(const TabletPtr &tablet,
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
-        retryable_requests);
+        retryable_requests,
+        split_op_id);
     has_consensus_.store(true, std::memory_order_release);
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
@@ -319,7 +324,7 @@ FixedHybridTimeLease TabletPeer::HybridTimeLease(MicrosTime min_allowed, CoarseT
 }
 
 HybridTime TabletPeer::PreparePeerRequest() {
-  auto leader_term = consensus_->LeaderTerm();
+  auto leader_term = consensus_->GetLeaderState(/* allow_stale= */ true).term;
   if (leader_term >= 0) {
     auto last_write_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
     auto propagated_history_cutoff =
@@ -688,8 +693,10 @@ string TabletPeer::HumanReadableState() const {
                       error_.get()->ToString());
   // If it's remotely bootstrapping, or tombstoned, that is the important thing
   // to show.
-  } else if (data_state != TABLET_DATA_READY) {
+  } else if (!CanServeTabletData(data_state)) {
     return TabletDataState_Name(data_state);
+  } else if (data_state == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    return RaftGroupStatePB_Name(state) + " (split)";
   }
   // Otherwise, the tablet's data is in a "normal" state, so we just display
   // the runtime state (BOOTSTRAPPING, RUNNING, etc).
@@ -717,6 +724,9 @@ consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
 
     case OperationType::kHistoryCutoff:
       return consensus::HISTORY_CUTOFF_OP;
+
+    case OperationType::kSplit:
+      return consensus::SPLIT_OP;
 
     case OperationType::kEmpty:
       LOG(FATAL) << "OperationType::kEmpty cannot be converted to consensus::OperationType";
@@ -854,6 +864,16 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     }
   }
 
+  {
+    // We should prevent Raft log GC from deleting SPLIT_OP designated for this tablet, because
+    // it is used during bootstrap to initialize ReplicaState::split_op_id_ which in its turn
+    // is used to prevent already split tablet from serving new ops.
+    auto split_op_id = consensus()->GetSplitOpId();
+    if (split_op_id) {
+      min_index = std::min(min_index, split_op_id.index);
+    }
+  }
+
   if (details) {
     *details += Format("Earliest needed log index: $0\n", min_index);
   }
@@ -947,7 +967,7 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
 
     case consensus::SNAPSHOT_OP:
        DCHECK(replicate_msg->has_snapshot_request()) << "SNAPSHOT_OP replica"
-          " transaction must receive an TabletSnapshotOpRequestPB";
+          " operation must receive an TabletSnapshotOpRequestPB";
       return std::make_unique<SnapshotOperation>(
           std::make_unique<SnapshotOperationState>(tablet()));
 
@@ -956,6 +976,12 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
           " transaction must receive an HistoryCutoffPB";
       return std::make_unique<HistoryCutoffOperation>(
           std::make_unique<HistoryCutoffOperationState>(tablet()));
+
+    case consensus::SPLIT_OP:
+       DCHECK(replicate_msg->has_split_request()) << "SPLIT_OP replica"
+          " operation must receive an SplitOpRequestPB";
+      return std::make_unique<SplitOperation>(
+          std::make_unique<SplitOperationState>(tablet(), raft_consensus(), tablet_splitter_));
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;

@@ -75,6 +75,14 @@ class StronglyTypedUuid {
     return uuid_.is_nil();
   }
 
+  explicit operator bool() const {
+    return !IsNil();
+  }
+
+  bool operator!() const {
+    return IsNil();
+  }
+
   // Represent UUID as pair of uint64 for protobuf serialization.
   // This serialization is independent of the byte order on the machine.
   // For instance we could convert UUID to pair of uint64 on little endian machine, transfer them
@@ -129,6 +137,10 @@ class StronglyTypedUuid {
 
   static size_t StaticSize() {
     return boost::uuids::uuid::static_size();
+  }
+
+  static size_t StaticStringSize() {
+    return 36;
   }
 
  private:

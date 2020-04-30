@@ -1,7 +1,8 @@
 ---
-title: Open Source Kubernetes
-linkTitle: Open Source Kubernetes
-description: Open Source Kubernetes
+title: Deploy on Kubernetes clusters using Operator Hub and OLM
+headerTitle: Open source Kubernetes
+linkTitle: Open source Kubernetes
+description: Deploy YugabyteDB on Kubernetes clusters using Operator Hub and Operator Lifecycle Manager (OLM).
 menu:
   latest:
     parent: deploy-kubernetes-sz
@@ -54,7 +55,7 @@ A Kubernetes cluster and `kubectl` configured to talk to the cluster.
 
 ## Deploy YugabyteDB using Operator Lifecycle Manager
 
-YugabyteDB can be deployed to any Kubernetes cluster using OLM in three easy steps.
+YugabyteDB can be deployed on any Kubernetes cluster using OLM in three easy steps.
 
 1. Deploy Operator Lifecycle Manager, so that it can manage Operator deployments for you.
 
@@ -97,16 +98,16 @@ yb-tserver-1   1/1     Running   0          3m31s
 yb-tserver-2   1/1     Running   0          3m31s
 ```
 
-## Configuration options
+## Configuration flags
 
-For configuration options, see [Configuration options](../yugabyte-operator/#configuration-options).
+For configuration flags, see [Configuration flags](../yugabyte-operator/#configuration-flags).
 
 ## Use YugabyteDB
 
-When all of the pods in YugabyteDB cluster are running, you can use the YSQL shell to access the YSQL API, which is PostgreSQL-compliant.
+When all of the pods in YugabyteDB cluster are running, you can use the YSQL shell (`ysqlsh`) to access the YSQL API, which is PostgreSQL-compliant.
 
 ```sh
-$ kubectl exec -it -n yb-operator yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0  --echo-queries
+$ kubectl exec -it -n yb-operator yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0  --echo-queries
 ```
 
 For details on the YSQL API, see:

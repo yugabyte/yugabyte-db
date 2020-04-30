@@ -810,15 +810,14 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
   }
 
   Expiration exp;
-  auto value = GetValue(data, kNilSubkeyIndex, &exp);
-  RETURN_NOT_OK(value);
+  auto value = VERIFY_RESULT(GetValue(data, kNilSubkeyIndex, &exp));
 
-  if (value->type == REDIS_TYPE_TIMESERIES) { // This command is not supported.
+  if (value.type == REDIS_TYPE_TIMESERIES) { // This command is not supported.
     return STATUS_SUBSTITUTE(InvalidCommand,
-        "Redis data type $0 not supported in EXPIRE and PERSIST commands", value->type);
+        "Redis data type $0 not supported in EXPIRE and PERSIST commands", value.type);
   }
 
-  if (value->type == REDIS_TYPE_NONE) { // Key does not exist.
+  if (value.type == REDIS_TYPE_NONE) { // Key does not exist.
     VLOG(1) << "TTL cannot be set because the key does not exist";
     response_.set_int_response(0);
     return Status::OK();
@@ -838,7 +837,7 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
       MonoDelta::FromMilliseconds(request_.set_ttl_request().ttl());
   }
 
-  ValueType v_type = ValueTypeFromRedisType(value->type);
+  ValueType v_type = ValueTypeFromRedisType(value.type);
   if (v_type == ValueType::kInvalid)
     return STATUS(Corruption, "Invalid value type.");
 

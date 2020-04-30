@@ -59,6 +59,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master-test-util.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -67,7 +68,9 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/atomic.h"
 #include "yb/util/faststring.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random.h"
+#include "yb/util/random_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
@@ -81,6 +84,9 @@ DECLARE_bool(use_hybrid_clock);
 DECLARE_int32(ht_lease_duration_ms);
 DECLARE_int32(replication_factor);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(catalog_manager_report_batch_size);
+
+METRIC_DECLARE_counter(sys_catalog_peer_write_count);
 
 namespace yb {
 
@@ -130,6 +136,8 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
   void SetUp() override {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
+
+    FLAGS_catalog_manager_report_batch_size = GetParam();
 
     YBMiniClusterTestBase::SetUp();
 
@@ -257,6 +265,15 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
         .Create();
   }
 
+  int GetSysCatalogWrites() {
+    auto GetSysCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
+      auto metrics = cluster_->mini_master()->master()->catalog_manager()->sys_catalog()
+          ->GetMetricEntity();
+      return prototype.Instantiate(metrics)->value();
+    };
+    return GetSysCatalogMetric(METRIC_sys_catalog_peer_write_count);
+  }
+
  protected:
   virtual int num_replicas() const { return 1; }
 
@@ -284,17 +301,19 @@ class ReplicatedAlterTableTest : public AlterTableTest {
 
 const YBTableName AlterTableTest::kTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table");
 
+INSTANTIATE_TEST_CASE_P(BatchSize, AlterTableTest, ::testing::Values(1, 10));
+
 // Simple test to verify that the "alter table" command sent and executed
 // on the TS handling the tablet of the altered table.
 // TODO: create and verify multiple tablets when the client will support that.
-TEST_F(AlterTableTest, TestTabletReports) {
+TEST_P(AlterTableTest, TestTabletReports) {
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
   ASSERT_OK(AddNewI32Column(kTableName, "new-i32"));
   ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->schema_version());
 }
 
 // Verify that adding an existing column will return an "already present" error
-TEST_F(AlterTableTest, TestAddExistingColumn) {
+TEST_P(AlterTableTest, TestAddExistingColumn) {
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
 
   {
@@ -308,7 +327,7 @@ TEST_F(AlterTableTest, TestAddExistingColumn) {
 
 // Adding a nullable column with no default value should be equivalent
 // to a NULL default.
-TEST_F(AlterTableTest, TestAddNullableColumnWithoutDefault) {
+TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
   InsertRows(0, 1);
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
@@ -328,7 +347,7 @@ TEST_F(AlterTableTest, TestAddNullableColumnWithoutDefault) {
 
 // Verify that, if a tablet server is down when an alter command is issued,
 // it will eventually receive the command when it restarts.
-TEST_F(AlterTableTest, TestAlterOnTSRestart) {
+TEST_P(AlterTableTest, TestAlterOnTSRestart) {
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
 
   ShutdownTS();
@@ -356,7 +375,7 @@ TEST_F(AlterTableTest, TestAlterOnTSRestart) {
 }
 
 // Verify that nothing is left behind on cluster shutdown with pending async tasks
-TEST_F(AlterTableTest, TestShutdownWithPendingTasks) {
+TEST_P(AlterTableTest, TestShutdownWithPendingTasks) {
   DontVerifyClusterBeforeNextTearDown();
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
 
@@ -374,7 +393,7 @@ TEST_F(AlterTableTest, TestShutdownWithPendingTasks) {
 // On TS restart the master should:
 //  - get the new schema state, and mark the alter as complete
 //  - get the old schema state, and ask the TS again to perform the alter.
-TEST_F(AlterTableTest, TestRestartTSDuringAlter) {
+TEST_P(AlterTableTest, TestRestartTSDuringAlter) {
   if (!AllowSlowTests()) {
     LOG(INFO) << "Skipping slow test";
     return;
@@ -396,7 +415,7 @@ TEST_F(AlterTableTest, TestRestartTSDuringAlter) {
   ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->schema_version());
 }
 
-TEST_F(AlterTableTest, TestGetSchemaAfterAlterTable) {
+TEST_P(AlterTableTest, TestGetSchemaAfterAlterTable) {
   ASSERT_OK(AddNewI32Column(kTableName, "new-i32"));
 
   YBSchema s;
@@ -501,7 +520,7 @@ void AlterTableTest::VerifyRows(int start_row, int num_rows, VerifyPattern patte
 // with the same name. Data should not "reappear" from the old column.
 //
 // This is a regression test for KUDU-461.
-TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
+TEST_P(AlterTableTest, TestDropAndAddNewColumn) {
   // Reduce flush threshold so that we get both on-disk data
   // for the alter as well as in-MRS data.
   // This also increases chances of a race.
@@ -521,7 +540,7 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
 }
 
-TEST_F(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
+TEST_P(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   LOG(INFO) << "Inserting rows";
   InsertRows(0, 3);
 
@@ -547,7 +566,7 @@ TEST_F(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
 
 // This tests the scenario where the log entries immediately after last RocksDB flush are for a
 // different schema than the one that was last flushed to the superblock.
-TEST_F(AlterTableTest, TestLogSchemaReplay) {
+TEST_P(AlterTableTest, TestLogSchemaReplay) {
   ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 2);
   UpdateRow(1, { {"c1", 0} });
@@ -582,7 +601,7 @@ TEST_F(AlterTableTest, TestLogSchemaReplay) {
 
 // Tests that a renamed table can still be altered. This is a regression test, we used to not carry
 // over column ids after a table rename.
-TEST_F(AlterTableTest, TestRenameTableAndAdd) {
+TEST_P(AlterTableTest, TestRenameTableAndAdd) {
   std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   YBTableName new_name(kTableName.namespace_type(), kTableName.namespace_name(), "someothername");
   ASSERT_OK(table_alterer->RenameTo(new_name)
@@ -594,7 +613,7 @@ TEST_F(AlterTableTest, TestRenameTableAndAdd) {
 // Test restarting a tablet server several times after various
 // schema changes.
 // This is a regression test for KUDU-462.
-TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
+TEST_P(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 1);
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
@@ -640,16 +659,13 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ("{ int32:16777216, null, null }", rows[1]);
 }
 
-INSTANTIATE_TEST_CASE_P(TestAlterWalRetentionSecs,
-                        AlterTableTest,
-                        ::testing::Values(FLAGS_log_min_seconds_to_retain / 2,
-                                          FLAGS_log_min_seconds_to_retain * 2));
-
 TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
   InsertRows(1, 1000);
-  int kWalRetentionSecs = GetParam();
+  int kWalRetentionSecs = RandomUniformBool()
+      ? FLAGS_log_min_seconds_to_retain / 2
+      : FLAGS_log_min_seconds_to_retain * 2;
 
-  LOG(INFO) << "Modifying wal retention time";
+  LOG(INFO) << "Modifying wal retention time to " << kWalRetentionSecs;
   std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
   ASSERT_OK(table_alterer->SetWalRetentionSecs(kWalRetentionSecs)->Alter());
@@ -666,7 +682,7 @@ TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
   ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
 }
 
-TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
+TEST_P(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   // Disable maintenance manager, since we manually flush/compact
   // in this test.
   FLAGS_enable_maintenance_manager = false;
@@ -706,8 +722,9 @@ std::pair<bool, int> AnalyzeResponse(const Ops& ops) {
     if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {
       ++result.second;
     } else {
-      EXPECT_EQ(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH, op->response().status());
-      result.first = true;
+      if (QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH == op->response().status()) {
+        result.first = true;
+      }
     }
   }
   return result;
@@ -748,7 +765,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
           continue;
         }
         // Endian-swap the key to match the way the insert generates keys.
-        int32_t key = bswap_32(rng.Uniform(max));
+        int32_t key = bswap_32(rng.Uniform(max-1));
         QLAddInt32HashValue(req, key);
         table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), i);
       }
@@ -757,8 +774,9 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
       ASSERT_OK(session->Apply(op));
     }
 
-    if (should_stop || ops.size() >= 50) {
-      FlushSessionOrDie(session);
+    if (should_stop || ops.size() >= 10) {
+      Status s = session->Flush();
+      ASSERT_TRUE(s.ok() || s.IsBusy() || s.IsIOError());
       auto result = AnalyzeResponse(ops);
       ops.clear();
       processed += result.second;
@@ -776,8 +794,8 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
     }
   }
 
-  ASSERT_GT(processed, 0);
   LOG(INFO) << "Processed: " << processed << " of type " << QLWriteRequestPB::QLStmtType_Name(type);
+  ASSERT_GT(processed, 0);
 }
 
 // Thread which loops reading data from the table.
@@ -809,7 +827,7 @@ void AlterTableTest::ScannerThread() {
 
 // Test altering a table while also sending a lot of writes,
 // checking for races between the two.
-TEST_F(AlterTableTest, TestAlterUnderWriteLoad) {
+TEST_P(AlterTableTest, TestAlterUnderWriteLoad) {
   scoped_refptr<Thread> writer;
   CHECK_OK(Thread::Create(
       "test", "inserter",
@@ -826,12 +844,16 @@ TEST_F(AlterTableTest, TestAlterUnderWriteLoad) {
 
   // Add columns until we reach 10.
   for (int i = 2; i < 10; i++) {
+    MonoDelta delay;
     if (AllowSlowTests()) {
       // In slow test mode, let more writes accumulate in between
       // alters, so that we get enough writes to cause flushes,
       // compactions, etc.
-      SleepFor(MonoDelta::FromSeconds(3));
+      delay = MonoDelta::FromSeconds(3);
+    } else {
+      delay = MonoDelta::FromMilliseconds(100);
     }
+    SleepFor(delay);
 
     ASSERT_OK(AddNewI32Column(kTableName, strings::Substitute("c$0", i)));
   }
@@ -842,7 +864,7 @@ TEST_F(AlterTableTest, TestAlterUnderWriteLoad) {
   scanner->Join();
 }
 
-TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
+TEST_P(AlterTableTest, TestInsertAfterAlterTable) {
   YBTableName kSplitTableName(YQL_DATABASE_CQL, "my_keyspace", "split-table");
 
   // Create a new table with 10 tablets.
@@ -876,12 +898,10 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
 // Issue a bunch of alter tables in quick succession. Regression for a bug
 // seen in an earlier implementation of "alter table" where these could
 // conflict with each other.
-TEST_F(AlterTableTest, TestMultipleAlters) {
+TEST_P(AlterTableTest, TestMultipleAlters) {
   YBTableName kSplitTableName(YQL_DATABASE_CQL, "my_keyspace", "split-table");
   const size_t kNumNewCols = 10;
 
-  // Create a new table with 10 tablets.
-  //
   // With more tablets, there's a greater chance that the TS will heartbeat
   // after some but not all tablets have finished altering.
   ASSERT_OK(CreateTable(kSplitTableName));
@@ -904,7 +924,7 @@ TEST_F(AlterTableTest, TestMultipleAlters) {
   ASSERT_EQ(kNumNewCols + schema_.num_columns(), new_schema.num_columns());
 }
 
-TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
+TEST_P(ReplicatedAlterTableTest, TestReplicatedAlter) {
   const int kNumRows = 100;
   InsertRows(0, kNumRows);
 
@@ -926,7 +946,7 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
 }
 
-TEST_F(ReplicatedAlterTableTest, TestAlterOneTSDown) {
+TEST_P(ReplicatedAlterTableTest, TestAlterOneTSDown) {
   const int kNumRows = 100;
   InsertRows(0, kNumRows);
 

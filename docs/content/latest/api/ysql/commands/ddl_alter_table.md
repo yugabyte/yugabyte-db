@@ -2,7 +2,6 @@
 title: ALTER TABLE statement [YSQL]
 headerTitle: ALTER TABLE
 linkTitle: ALTER TABLE
-summary: Alter a table in a database
 description: Use the `ALTER TABLE` statement to change the definition of an existing table.
 menu:
   latest:

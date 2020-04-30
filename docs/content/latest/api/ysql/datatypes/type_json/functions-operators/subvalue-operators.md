@@ -1,9 +1,8 @@
 ---
-title: "->, ->>, #>, and #>> (JSON subvalue operators) [JSON]"
+title: "->, ->>, #>, and #>> (JSON subvalue operators)"
 headerTitle: "->, ->>, #>, and #>> (JSON subvalues)"
 linkTitle: "->, ->>, #>, and #>> (JSON subvalues)"
-description: Use these JSON subvalue operators to read a JSON value at a specified path.
-summary: JSON subvalue operators
+description: Read a JSON value at a specified path.
 menu:
   latest:
     identifier: subvalue-operators

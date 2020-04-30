@@ -224,7 +224,7 @@ export default class AZSelectorTable extends Component {
         cluster = getReadOnlyCluster(universeConfigTemplate.clusters);
       }
 
-      if (isNonEmptyObject(universeConfigTemplate.nodeDetailsSet)) {
+      if (isNonEmptyObject(universeConfigTemplate.nodeDetailsSet) && isNonEmptyObject(cluster)) {
         universeConfigTemplate.nodeDetailsSet.filter((nodeItem) => (
           nodeItem.placementUuid === cluster.uuid &&
           (nodeItem.state === "ToBeAdded" || nodeItem.state === "Live") &&

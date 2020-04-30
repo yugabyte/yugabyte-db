@@ -377,10 +377,15 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     Map<String, String> newConfig = new HashMap<String, String>();
-    newConfig.put("GCE_EMAIL", config.get("client_email"));
-    newConfig.put("GCE_PROJECT", config.get("project_id"));
-    newConfig.put("GOOGLE_APPLICATION_CREDENTIALS", gcpCredentialsFile);
-
+    if (config.get("project_id") != null) {
+      newConfig.put("GCE_PROJECT", config.get("project_id"));
+    }
+    if (config.get("client_email") != null) {
+      newConfig.put("GCE_EMAIL", config.get("client_email"));
+    }
+    if (gcpCredentialsFile != null) {
+      newConfig.put("GOOGLE_APPLICATION_CREDENTIALS", gcpCredentialsFile);
+    }
     provider.setConfig(newConfig);
     provider.save();
   }
@@ -632,13 +637,26 @@ public class CloudProviderController extends AuthenticatedController {
     if (configNode != null && !configNode.isNull()) {
       if (providerCode.equals(Common.CloudType.gcp)) {
         // We may receive a config file, or we may be asked to use the local service account.
+        // Default to using config file.
+        boolean shouldUseHostCredentials = configNode.has("use_host_credentials")
+                                             && configNode.get("use_host_credentials").asBoolean();
         JsonNode contents = configNode.get("config_file_contents");
-        if (contents != null) {
+        if (!shouldUseHostCredentials && contents != null) {
           config = Json.fromJson(contents, Map.class);
         }
+
+        // Default to not using host VPC.
+        boolean shouldUseHostVpc = configNode.has("use_host_vpc")
+                                     && configNode.get("use_host_vpc").asBoolean();
         contents = configNode.get("project_id");
-        if (contents != null && !contents.textValue().isEmpty()) {
+        if (!config.isEmpty() && !shouldUseHostVpc && contents != null
+            && !contents.textValue().isEmpty()) {
           config.put("project_id", contents.textValue());
+        }
+
+        contents = configNode.get("YB_FIREWALL_TAGS");
+        if (contents != null && !contents.textValue().isEmpty()) {
+          config.put("YB_FIREWALL_TAGS", contents.textValue());
         }
       } else {
         config = Json.fromJson(configNode, Map.class);

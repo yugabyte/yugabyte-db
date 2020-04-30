@@ -1,16 +1,15 @@
 ---
-title: Bulk import
+title: Bulk import for YCQL
+headerTitle: Bulk import
 linkTitle: Bulk import
-description: Bulk import
-image: /images/section_icons/manage/enterprise.png
-headcontent: Bulk import data into YugabyteDB.
+description: Export data from Apache Cassandra and MySQL and bulk import data into YugabyteDB for YCQL.
+aliases:
+  - /latest/manage/data-migration/bulk-import/
 menu:
   latest:
     identifier: manage-bulk-import
     parent: manage-bulk-import-export
     weight: 704
-aliases:
-  - /latest/manage/data-migration/bulk-import/
 isTocNested: true
 showAsideToc: true
 ---

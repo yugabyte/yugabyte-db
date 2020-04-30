@@ -66,6 +66,7 @@
 #include "yb/tablet/tablet_metrics.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -170,7 +171,7 @@ DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
 
-DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 2 * 500,
+DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 5000,
              "Operations that are received by the tserver, and have decided how "
              "the indexes need to be updated (based on the IndexPermission), will "
              "not be added to the list of current transactions until they are "
@@ -204,6 +205,9 @@ DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC 
 
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_min_running_check_interval_ms);
+
+DEFINE_test_flag(int32, TEST_txn_status_table_tablet_creation_delay_ms, 0,
+                 "Extra delay to slowdown creation of transaction status table tablet.");
 
 namespace yb {
 namespace tserver {
@@ -553,8 +557,9 @@ void TabletServiceAdminImpl::GetSafeTime(
     } else {
       // Add some extra delay to wait for operations being replicated to be
       // applied.
-      min_hybrid_time = min_hybrid_time.AddMilliseconds(
-          FLAGS_index_backfill_additional_delay_before_backfilling_ms);
+      SleepFor(MonoDelta::FromMilliseconds(
+          FLAGS_index_backfill_additional_delay_before_backfilling_ms));
+
       auto txn_particpant = tablet.peer->tablet()->transaction_participant();
       HybridTime min_running_ht;
       while ((min_running_ht = txn_particpant->MinRunningHybridTime()) <
@@ -585,6 +590,8 @@ void TabletServiceAdminImpl::GetSafeTime(
         SleepFor(MonoDelta::FromMilliseconds(
             FLAGS_transaction_min_running_check_interval_ms));
       }
+      VLOG(2) << "Finally MinRunningHybridTime is " << min_running_ht
+              << " waited for " << min_hybrid_time;
     }
   }
 
@@ -962,6 +969,11 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
                                           CreateTabletResponsePB* resp,
                                           rpc::RpcContext context) {
+  if (PREDICT_FALSE(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms > 0 &&
+                    req->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE)) {
+    std::this_thread::sleep_for(FLAGS_TEST_txn_status_table_tablet_creation_delay_ms * 1ms);
+  }
+
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CreateTablet", req, resp, &context)) {
     return;
   }
@@ -1181,6 +1193,32 @@ void TabletServiceAdminImpl::RemoveTableFromTablet(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::SplitTablet(
+    const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
+    return;
+  }
+  TRACE_EVENT1("tserver", "SplitTablet", "tablet_id", req->tablet_id());
+
+  server::UpdateClock(*req, server_->Clock());
+
+  auto leader_tablet_peer =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!leader_tablet_peer) {
+    return;
+  }
+
+  auto state = std::make_unique<tablet::SplitOperationState>(
+      leader_tablet_peer.peer->tablet(), leader_tablet_peer.peer->raft_consensus(),
+      server_->tablet_manager(), req);
+
+  state->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+
+  leader_tablet_peer.peer->Submit(
+      std::make_unique<tablet::SplitOperation>(std::move(state)), leader_tablet_peer.leader_term);
+}
+
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
@@ -1194,7 +1232,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   TRACE("Start Write");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
-  DVLOG(3) << "Received Write RPC: " << req->DebugString();
+  VLOG(2) << "Received Write RPC: " << req->DebugString();
   UpdateClock(*req, server_->Clock());
 
   auto tablet = LookupLeaderTabletOrRespond(
@@ -1291,7 +1329,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       std::move(operation_state), tablet.leader_term, context_ptr->GetClientDeadline());
 }
 
-Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
+Status TabletServiceImpl::CheckPeerIsReady(
+    const TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet) {
   shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   if (!consensus) {
     return STATUS(
@@ -1303,18 +1342,27 @@ Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
   if (!s.ok()) {
     return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
+
+  auto* tablet = tablet_peer.tablet();
+  SCHECK(tablet != nullptr, IllegalState, "Expected tablet peer to have a tablet");
+  const auto tablet_data_state = tablet->metadata()->tablet_data_state();
+  if (!allow_split_tablet &&
+      tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    return STATUS(
+        IllegalState,
+        Format(
+            "The tablet $0 is in $1 state.", tablet->tablet_id(), tablet_data_state),
+        TabletServerError(TabletServerErrorPB::TABLET_SPLIT));
+    // TODO(tsplit): If we get FS corruption on 1 node, we can just delete that tablet copy and
+    // bootstrap from a good leader. If there's a way that all peers replicated the SPLIT and
+    // modified their data state, but all had some failures (code bug?).
+    // Perhaps we should consider a tool for editing the data state?
+  }
   return Status::OK();
 }
 
 Status TabletServiceImpl::CheckPeerIsLeader(const TabletPeer& tablet_peer) {
-  RETURN_NOT_OK(LeaderTerm(tablet_peer));
-  return Status::OK();
-}
-
-Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer) {
-  RETURN_NOT_OK(CheckPeerIsReady(tablet_peer));
-
-  return CheckPeerIsLeader(tablet_peer);
+  return ResultToStatus(LeaderTerm(tablet_peer));
 }
 
 bool TabletServiceImpl::GetTabletOrRespond(
@@ -1326,7 +1374,8 @@ bool TabletServiceImpl::GetTabletOrRespond(
 template <class Req, class Resp>
 bool TabletServiceImpl::DoGetTabletOrRespond(
     const Req* req, Resp* resp, rpc::RpcContext* context,
-    std::shared_ptr<tablet::AbstractTablet>* tablet, TabletPeerPtr tablet_peer) {
+    std::shared_ptr<tablet::AbstractTablet>* tablet, TabletPeerPtr tablet_peer,
+    AllowSplitTablet allow_split_tablet) {
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), req->tablet_id());
   } else {
@@ -1340,7 +1389,7 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
     tablet_peer = std::move(*tablet_peer_result);
   }
 
-  Status s = CheckPeerIsReady(*tablet_peer);
+  Status s = CheckPeerIsReady(*tablet_peer, allow_split_tablet);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, context);
     return false;
@@ -1548,7 +1597,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
       "tablet_id", req->tablet_id());
-  DVLOG(3) << "Received Read RPC: " << req->DebugString();
+  VLOG(2) << "Received Read RPC: " << req->DebugString();
 
   // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
   // the first request to a given tablet by a particular transaction assume that the tablet already
@@ -2284,13 +2333,13 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
     data_entry->set_state(status.state());
 
     auto tablet = peer->shared_tablet();
-    uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
+    uint64_t num_sst_files = tablet ? tablet->GetCurrentVersionNumSSTFiles() : 0;
     data_entry->set_num_sst_files(num_sst_files);
 
     uint64_t num_log_segments = peer->GetNumLogSegments();
     data_entry->set_num_log_segments(num_log_segments);
 
-    auto num_memtables = tablet->GetNumMemtables();
+    auto num_memtables = tablet ? tablet->GetNumMemtables() : std::make_pair(0, 0);
     data_entry->set_num_memtables_intents(num_memtables.first);
     data_entry->set_num_memtables_regular(num_memtables.second);
   }
@@ -2300,10 +2349,10 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 
 namespace {
 
-Result<uint64_t> CalcChecksum(tablet::Tablet* tablet) {
+Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
   const Schema& schema = tablet->metadata()->schema();
   auto client_schema = schema.CopyWithoutColumnIds();
-  auto iter = tablet->NewRowIterator(client_schema, boost::none);
+  auto iter = tablet->NewRowIterator(client_schema, boost::none, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
   QLTableRow value_map;
@@ -2325,10 +2374,13 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
   VLOG(1) << "Full request: " << req->DebugString();
 
   std::shared_ptr<tablet::AbstractTablet> abstract_tablet;
-  if (!DoGetTabletOrRespond(req, resp, &context, &abstract_tablet)) {
+  if (!DoGetTabletOrRespond(
+          req, resp, &context, &abstract_tablet, /* tablet_peer = */ nullptr,
+          AllowSplitTablet::kTrue)) {
     return;
   }
-  auto checksum = CalcChecksum(down_cast<tablet::Tablet*>(abstract_tablet.get()));
+  auto checksum = CalcChecksum(
+      down_cast<tablet::Tablet*>(abstract_tablet.get()), context.GetClientDeadline());
   if (!checksum.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), checksum.status(),
                          TabletServerErrorPB::UNKNOWN_ERROR, &context);

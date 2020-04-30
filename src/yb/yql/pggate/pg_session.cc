@@ -286,13 +286,18 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
   if (!buffered_keys.empty()) {
     RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl());
   }
+  bool needs_pessimistic_locking = false;
   bool read_only = op->read_only();
   if (op->type() == YBOperation::Type::PGSQL_READ) {
     const PgsqlReadRequestPB &read_req = down_cast<client::YBPgsqlReadOp *>(op.get())->request();
-    read_only = read_only && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_req));
+    auto row_mark_type = GetRowMarkTypeFromPB(read_req);
+    read_only = read_only && !IsValidRowMarkType(row_mark_type);
+    needs_pessimistic_locking = RowMarkNeedsPessimisticLock(row_mark_type);
   }
 
-  auto session = VERIFY_RESULT(pg_session_.GetSession(transactional_, read_only));
+  auto session = VERIFY_RESULT(pg_session_.GetSession(transactional_,
+                                                      read_only,
+                                                      needs_pessimistic_locking));
   if (!yb_session_) {
     yb_session_ = session->shared_from_this();
     if (transactional_ && read_time) {
@@ -720,6 +725,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
 
   auto cached_yb_table = table_cache_.find(yb_table_id);
   if (cached_yb_table == table_cache_.end()) {
+    VLOG(4) << "Table cache MISS: " << table_id;
     Status s = client_->OpenTable(yb_table_id, &table);
     if (!s.ok()) {
       VLOG(3) << "LoadTable: Server returns an error: " << s;
@@ -729,6 +735,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
     }
     table_cache_[yb_table_id] = table;
   } else {
+    VLOG(4) << "Table cache HIT: " << table_id;
     table = cached_yb_table->second;
   }
 
@@ -788,10 +795,13 @@ bool PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op) {
              FLAGS_ysql_enable_manual_sys_table_txn_ctl);
 }
 
-Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
+Result<YBSession*> PgSession::GetSession(bool transactional,
+                                         bool read_only_op,
+                                         bool needs_pessimistic_locking) {
   if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
-    RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op));
+    RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op,
+                                                                    needs_pessimistic_locking));
     VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session: "
             << txn_session;

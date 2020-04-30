@@ -25,6 +25,7 @@ class ConsensusContext;
 class PeerProxyFactory;
 class PeerMessageQueue;
 class RaftConfigPB;
+class RaftConsensus;
 class ReplicateMsg;
 class ReplicateMsgsHolder;
 class RetryableRequests;

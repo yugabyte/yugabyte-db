@@ -32,6 +32,7 @@ export default class RegionMap extends Component {
     this.state = {loadMarkers: false};
   }
 
+  // Reuse this for viewport change and animation end
   onMapZoomEnd = () => {
     this.setState({loadMarkers: true});
   };
@@ -90,7 +91,7 @@ export default class RegionMap extends Component {
            center={[-1, 0]} zoom={2}
            zoomControl={false} className="yb-region-map" minZoom={1} maxZoom={5}
            touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false}
-           draggable={false} onzoomend={this.onMapZoomEnd}>
+           draggable={false} onzoomend={this.onMapZoomEnd} onViewportChange={this.onMapZoomEnd}>
         <TileLayer
             attribution={attribution}
             url={`${MAP_SERVER_URL}/{z}/{x}/{y}.png`}/>

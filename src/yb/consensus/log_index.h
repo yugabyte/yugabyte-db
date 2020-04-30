@@ -90,6 +90,9 @@ class LogIndex : public RefCountedThreadSafe<LogIndex> {
   // earlier entries.
   void GC(int64_t min_index_to_retain);
 
+  // Flushes log index to disk.
+  CHECKED_STATUS Flush();
+
  private:
   friend class RefCountedThreadSafe<LogIndex>;
   ~LogIndex();

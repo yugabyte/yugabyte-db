@@ -71,17 +71,17 @@ using strings::SubstituteAndAppend;
 // ReplicaState
 //////////////////////////////////////////////////
 
-ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
-                           std::unique_ptr<ConsensusMetadata> cmeta,
-                           ConsensusContext* consensus_context,
-                           SafeOpIdWaiter* safe_op_id_waiter,
-                           RetryableRequests* retryable_requests,
-                           std::function<void(const OpIds&)> applied_ops_tracker)
+ReplicaState::ReplicaState(
+    ConsensusOptions options, string peer_uuid, std::unique_ptr<ConsensusMetadata> cmeta,
+    ConsensusContext* consensus_context, SafeOpIdWaiter* safe_op_id_waiter,
+    RetryableRequests* retryable_requests, const yb::OpId& split_op_id,
+    std::function<void(const OpIds&)> applied_ops_tracker)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(std::move(cmeta)),
       context_(consensus_context),
       safe_op_id_waiter_(safe_op_id_waiter),
+      split_op_id_(split_op_id),
       applied_ops_tracker_(std::move(applied_ops_tracker)) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
   if (retryable_requests) {
@@ -442,7 +442,7 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
   cmeta_->clear_voted_for();
   // OK to flush before clearing the leader, because the leader UUID is not part of
   // ConsensusMetadataPB.
-  CHECK_OK(cmeta_->Flush());
+  RETURN_NOT_OK(cmeta_->Flush());
   ClearLeaderUnlocked();
   last_received_op_id_current_leader_ = yb::OpId();
   return Status::OK();
@@ -605,8 +605,42 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   return Status::OK();
 }
 
+namespace {
+
+// Returns whether Raft operation of op_type is allowed to be added to Raft log of the tablet
+// for which split tablet Raft operation has been already added to Raft log.
+bool ShouldAllowOpAfterSplitTablet(const OperationType& op_type) {
+  // Old tablet remains running for remote bootstrap purposes for some time and could receive
+  // Raft operations.
+
+  // If new OperationType is added, make an explicit deliberate decision whether new op type
+  // should be allowed to be added into Raft log for old (pre-split) tablet.
+  switch (op_type) {
+    case NO_OP:
+      // We allow NO_OP, so old tablet can have leader changes in case of re-elections.
+      return true;
+    case UNKNOWN_OP: FALLTHROUGH_INTENDED;
+    case WRITE_OP: FALLTHROUGH_INTENDED;
+    case CHANGE_METADATA_OP: FALLTHROUGH_INTENDED;
+    case CHANGE_CONFIG_OP: FALLTHROUGH_INTENDED;
+    case HISTORY_CUTOFF_OP: FALLTHROUGH_INTENDED;
+    case UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
+    case SNAPSHOT_OP: FALLTHROUGH_INTENDED;
+    case TRUNCATE_OP: FALLTHROUGH_INTENDED;
+    case SPLIT_OP:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(OperationType, op_type);
+}
+
+}  // namespace
+
 Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& round) {
   DCHECK(IsLocked());
+
+  SCHECK_GT(
+      yb::OpId::FromPB(round->replicate_msg()->id()), split_op_id_, InvalidArgument,
+      "Received op id should be grater than split_op_id.");
 
   auto op_type = round->replicate_msg()->op_type();
   if (PREDICT_FALSE(state_ != kRunning)) {
@@ -616,6 +650,16 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     if (op_type != NO_OP) {
       return STATUS(IllegalState, "Cannot trigger prepare. Replica is not in kRunning state.");
     }
+  }
+
+  if (PREDICT_FALSE(!split_op_id_.empty() && !ShouldAllowOpAfterSplitTablet(op_type))) {
+    // TODO(tsplit): for optimization - include new tablet IDs into response, so client knows
+    // earlier where to retry.
+    // TODO(tsplit): test - check that split_op_id_ is correctly aborted.
+    // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
+    return STATUS(
+        TryAgain,
+        "Tablet split has been added to Raft log, operation should be retried to new tablets.");
   }
 
   // When we do not have a hybrid time leader lease we allow 2 operation types to be added to RAFT.
@@ -678,6 +722,13 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     if (!retryable_requests_.Register(round)) {
       return STATUS(AlreadyPresent, "Duplicate request");
     }
+  } else if (op_type == SPLIT_OP) {
+    SCHECK_EQ(
+        round->replicate_msg()->split_request().tablet_id(), cmeta_->tablet_id(), InvalidArgument,
+        "Received split op for a different tablet.");
+    split_op_id_ = yb::OpId::FromPB(round->replicate_msg()->id());
+    // TODO(tsplit): if we get failures past this point we can't undo the tablet state.
+    // Might be need some tool to be able to remove SPLIT_OP from Raft log.
   }
 
   pending_operations_.push_back(round);
@@ -913,6 +964,16 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
 const yb::OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
   DCHECK(IsLocked());
   return last_committed_op_id_;
+}
+
+const yb::OpId& ReplicaState::GetSplitOpIdUnlocked() const {
+  DCHECK(IsLocked());
+  return split_op_id_;
+}
+
+void ReplicaState::ResetSplitOpIdUnlocked() {
+  DCHECK(IsLocked());
+  split_op_id_ = yb::OpId();
 }
 
 RestartSafeCoarseMonoClock& ReplicaState::Clock() {

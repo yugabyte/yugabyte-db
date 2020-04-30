@@ -16,6 +16,7 @@ import time
 
 
 from googleapiclient import discovery
+from googleapiclient.errors import HttpError
 import oauth2client
 from six.moves import http_client
 
@@ -92,6 +93,10 @@ def gcp_request_limit_retry(fn):
     return request_retry_decorator(fn, gcp_exception_handler)
 
 
+def get_firewall_tags():
+    return os.environ.get('YB_FIREWALL_TAGS', '').split(',') or YB_FIREWALL_TARGET_TAGS
+
+
 class GcpMetadata():
     METADATA_URL_BASE = "http://metadata.google.internal/computeMetadata/v1"
     CUSTOM_HEADERS = {
@@ -109,7 +114,18 @@ class GcpMetadata():
 
     @staticmethod
     def project():
-        return GcpMetadata._query_endpoint("/project/project-id")
+        network_data = GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
+        try:
+            # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
+            project = network_data.split('/')[1]
+        except IndexError:
+            return None
+
+        compute = discovery.build('compute', 'beta')
+        try:
+            return compute.projects().get(project=project).execute().get('name')
+        except HttpError:
+            return None
 
     @staticmethod
     def network():
@@ -382,19 +398,18 @@ class NetworkManager():
             "name": firewall_name,
             "network": network_url,
             "description": "Open up all ports for internal IPs",
-            "targetTags": YB_FIREWALL_TARGET_TAGS,
+            "targetTags": get_firewall_tags(),
             "sourceRanges": ip_cidr_list,
             "allowed": [{"IPProtocol": p} for p in ["tcp", "udp", "icmp"]]
             }
         fw_object = self.compute.firewalls()
         if firewall_exists:
-            # Only update if any of these CIDRs are not already there.
+            # Only update if any of these CIDRs are not already there or if targetFlags should
+            # be updated.
             firewall = firewalls[0]
-            source_cidrs = set(firewall.get("sourceRanges"))
-            new_cidrs = set(ip_cidr_list)
-            union_cidrs = source_cidrs | new_cidrs
-            if source_cidrs != union_cidrs:
-                return fw_object.update(
+            if set(firewall.get("sourceRanges")) != set(ip_cidr_list) or \
+                    set(firewall.get("targetTags")) != set(get_firewall_tags()):
+                return fw_object.patch(
                     project=self.project,
                     firewall=firewall_name,
                     body=body).execute()
@@ -529,6 +544,27 @@ class GoogleCloudAdmin():
                                                         instance=instance,
                                                         body=body).execute()
         self.waiter.wait(operation, zone)
+
+    def update_disk(self, args, instance):
+        zone = args.zone
+        instance_info = self.compute.instances().get(project=self.project, zone=zone,
+                                                     instance=instance).execute()
+        body = {
+            "sizeGb": args.volume_size
+        }
+        print ("Got instance info: " + str(instance_info))
+        for disk in instance_info['disks']:
+            # Bootdisk should be ignored.
+            if disk['index'] != 0:
+                # The source is the complete URL of the disk, with the last
+                # component being the name.
+                disk_name = disk['source'].split('/')[-1]
+                print("Updating disk " + disk_name)
+                operation = self.compute.disks().resize(project=self.project,
+                                                        zone=zone,
+                                                        disk=disk_name,
+                                                        body=body).execute()
+                self.waiter.wait(operation, zone=zone)
 
     def delete_instance(self, zone, instance_name):
         operation = self.compute.instances().delete(project=self.project,
@@ -677,7 +713,7 @@ class GoogleCloudAdmin():
                     region, cloud_subnet)
             }],
             "tags": {
-                "items": YB_FIREWALL_TARGET_TAGS
+                "items": get_firewall_tags()
             },
             "scheduling": {
               "preemptible": use_preemptible

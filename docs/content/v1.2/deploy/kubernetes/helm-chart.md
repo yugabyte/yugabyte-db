@@ -113,7 +113,7 @@ $ kubectl exec -it -n yb-demo yb-tserver-0 bash -- -c "YB_ENABLED_IN_POSTGRES=1 
 Connect using ysqlsh client as shown below.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo 
+$ kubectl exec -n yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo 
 ```
 
 ## Check Cluster Status

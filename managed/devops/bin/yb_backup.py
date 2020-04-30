@@ -26,13 +26,18 @@ import os
 import re
 from six import iteritems
 
-UUID_LEN = 32
-UUID_RE_STR = '[0-9a-f]{32}'
+TABLET_UUID_LEN = 32
+UUID_RE_STR = '[0-9a-f-]{32,36}'
 UUID_ONLY_RE = re.compile('^' + UUID_RE_STR + '$')
 NEW_OLD_UUID_RE = re.compile(UUID_RE_STR + '[ ]*\t' + UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 FS_DATA_DIRS_ARG_PREFIX = '--fs_data_dirs='
 IMPORTED_TABLE_RE = re.compile('Table being imported: ([^\.]*)\.(.*)')
+RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
+
+SNAPSHOT_KEYSPACE_RE = re.compile("^[ \t]*Keyspace:.* name='(.*)' type")
+SNAPSHOT_TABLE_RE = re.compile("^[ \t]*Table:.* name='(.*)' type")
+SNAPSHOT_INDEX_RE = re.compile("^[ \t]*Index:.* name='(.*)' type")
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
@@ -48,7 +53,8 @@ TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
 TABLET_DIR_DEPTH = 6
 
 METADATA_FILE_NAME = 'SnapshotInfoPB'
-S3_CFG_FILE_NAME = 's3cfg'
+CLOUD_CFG_FILE_NAME = 'cloud_cfg'
+CLOUD_CMD_MAX_RETRIES = 10
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
@@ -293,6 +299,65 @@ class AbstractBackupStorage(object):
         return []
 
 
+class AzBackupStorage(AbstractBackupStorage):
+    def __init__(self, options):
+        super(AzBackupStorage, self).__init__(options)
+
+    @staticmethod
+    def storage_type():
+        return 'az'
+
+    def _command_list_prefix(self):
+        return "azcopy cp"
+
+    def upload_file_cmd(self, src, dest):
+        # azcopy requires quotes around the src and dest. This format is necessary to do so.
+        src = "'{}'".format(src)
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
+
+    def download_file_cmd(self, src, dest):
+        src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        dest = "'{}'".format(dest)
+        return ["{} {} {}".format(self._command_list_prefix(), src, dest)]
+
+    def upload_dir_cmd(self, src, dest):
+        # azcopy will download the top-level directory as well as the contents without "/*".
+        src = "'{}'".format(os.path.join(src, '*'))
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
+
+    def download_dir_cmd(self, src, dest):
+        src = "'{}'".format(os.path.join(src, '*') + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        dest = "'{}'".format(dest)
+        return ["{} {} {} {}".format(self._command_list_prefix(), src, dest, "--recursive")]
+
+
+class GcsBackupStorage(AbstractBackupStorage):
+    def __init__(self, options):
+        super(GcsBackupStorage, self).__init__(options)
+
+    @staticmethod
+    def storage_type():
+        return 'gcs'
+
+    def _command_list_prefix(self):
+        return ['gsutil', '-o',
+                'Credentials:gs_service_key_file=%s' % self.options.cloud_cfg_file_path]
+
+    def upload_file_cmd(self, src, dest):
+        return self._command_list_prefix() + ["cp", src, dest]
+
+    def download_file_cmd(self, src, dest):
+        return self._command_list_prefix() + ["cp", src, dest]
+
+    def upload_dir_cmd(self, src, dest):
+        return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
+
+    def download_dir_cmd(self, src, dest):
+        return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
+
+
 class S3BackupStorage(AbstractBackupStorage):
     def __init__(self, options):
         super(S3BackupStorage, self).__init__(options)
@@ -304,7 +369,7 @@ class S3BackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         # If 's3cmd get' fails it creates zero-length file, '--force' is needed to
         # override this empty file on the next retry-step.
-        return ['s3cmd', '--force', '--config=%s' % self.options.s3_cfg_file_path]
+        return ['s3cmd', '--force', '--config=%s' % self.options.cloud_cfg_file_path]
 
     def upload_file_cmd(self, src, dest):
         cmd_list = ["put", src, dest]
@@ -358,7 +423,9 @@ class NfsBackupStorage(AbstractBackupStorage):
 
 BACKUP_STORAGE_ABSTRACTIONS = {
     S3BackupStorage.storage_type(): S3BackupStorage,
-    NfsBackupStorage.storage_type(): NfsBackupStorage
+    NfsBackupStorage.storage_type(): NfsBackupStorage,
+    GcsBackupStorage.storage_type(): GcsBackupStorage,
+    AzBackupStorage.storage_type(): AzBackupStorage
 }
 
 
@@ -377,7 +444,7 @@ class YBBackup:
     def __init__(self):
         self.leader_master_ip = ''
         self.tmp_dir_name = ''
-        self.server_ips_with_uploaded_s3_cfg = {}
+        self.server_ips_with_uploaded_cloud_cfg = {}
         self.k8s_namespace_to_cfg = {}
         self.parse_arguments()
 
@@ -428,6 +495,8 @@ class YBBackup:
                    "keys for S3:\n"
                    "    export AWS_ACCESS_KEY_ID=<your_aws_access_key>\n"
                    "    export AWS_SECRET_ACCESS_KEY=<your_aws_secret_key>\n"
+                   "For GCS:\n"
+                   "    export GCS_CREDENTIALS_JSON=<contents_of_gcp_credentials>\n"
                    "Keys --keyspace, --table and --table_uuid can be repeated several times,\n"
                    "recommended order: --keyspace ks1 --table tbl1 --table_uuid uuid1 "
                    "--keyspace ks2 --table tbl2 --table_uuid uuid2 ...",
@@ -460,16 +529,20 @@ class YBBackup:
             '--ssh_user', default='centos', help="Username to use for the ssh connection.")
         parser.add_argument(
             '--ssh_port', default='54422', help="Port to use for the ssh connection.")
-        parser.add_argument(
-            '--s3bucket', required=True,
-            help="S3 url for the directory under which the snapshots should be created or "
+
+        backup_location_group = parser.add_mutually_exclusive_group(required=True)
+        backup_location_group.add_argument(
+            '--backup_location',
+            help="Directory/bucket under which the snapshots should be created or "
                  "an exact snapshot directory in case of snapshot restoring.")
+        # Deprecated flag for backwards compatibility.
+        backup_location_group.add_argument('--s3bucket', required=False, help=argparse.SUPPRESS)
         parser.add_argument(
             '--no_auto_name',
             action='store_true',
-            help="Disable automatic generation of a name under the given S3 URL. If this is "
-                 "specified, the S3 URL will be the exact URL of the S3 directory storing the "
-                 "snapshot.")
+            help="Disable automatic generation of a name under the given backup location. If this "
+                 "is specified, the backup location will be the exact path of the directory "
+                 "storing the snapshot.")
         parser.add_argument(
             '--no_snapshot_deleting',
             action='store_true',
@@ -481,16 +554,16 @@ class YBBackup:
             '--verbose', required=False, action='store_true', help='Verbose mode')
         parser.add_argument(
             '-j', '--parallelism', type=check_arg_range(1, 100), default=8,
-            help='Maximum number of parallel ssh / s3cmd commands to launch. '
+            help='Maximum number of parallel commands to launch. '
                  'This also affects the amount of outgoing s3cmd sync traffic when copying a '
                  'backup to S3.')
         parser.add_argument(
             '--storage_type', choices=BACKUP_STORAGE_ABSTRACTIONS.keys(),
             default=S3BackupStorage.storage_type(),
-            help="Storage backing for backups, eg: s3, nfs, ..")
+            help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
             'command', choices=['create', 'restore'],
-            help='Create or restore the backup from the provided s3 url')
+            help='Create or restore the backup from the provided backup location.')
         parser.add_argument(
             '--certs_dir', required=False,
             help="The directory containing the certs for secure connections.")
@@ -504,23 +577,45 @@ class YBBackup:
         if self.args.verbose:
             logging.info("Parsed arguments: {}".format(vars(self.args)))
 
+        self.args.backup_location = self.args.backup_location or self.args.s3bucket
         options = BackupOptions(self.args)
+        self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
-            if not os.getenv('AWS_ACCESS_KEY_ID'):
+            if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
+                with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
+                    s3_cfg.write('[default]\n' +
+                                 'access_key = ' + '\n' +
+                                 'secret_key = ' + '\n' +
+                                 'security_token = ' + '\n')
+            elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
+                with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
+                    s3_cfg.write('[default]\n' +
+                                 'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
+                                 'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n')
+            else:
                 raise BackupException(
-                    "Set AWS access key for S3 in AWS_ACCESS_KEY_ID environment variable.")
+                    "Missing either AWS access key or secret key for S3 "
+                    "in AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY environment variables.")
 
-            if not os.getenv('AWS_SECRET_ACCESS_KEY'):
+            os.chmod(self.cloud_cfg_file_path, 0o400)
+            options.cloud_cfg_file_path = self.cloud_cfg_file_path
+        elif self.is_gcs():
+            credentials = os.getenv('GCS_CREDENTIALS_JSON')
+            if not credentials:
                 raise BackupException(
-                    "Set AWS secret key for S3 in AWS_SECRET_ACCESS_KEY environment variable.")
-
-            self.s3_cfg_file_path = os.path.join(self.get_tmp_dir(), S3_CFG_FILE_NAME)
-            with open(self.s3_cfg_file_path, 'w') as s3_cfg:
-                s3_cfg.write('[default]\n' +
-                             'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
-                             'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n')
-            os.chmod(self.s3_cfg_file_path, 0o400)
-            options.s3_cfg_file_path = self.s3_cfg_file_path
+                    "Set GCP credential file for GCS in GCS_CREDENTIALS_JSON "
+                    "environment variable.")
+            with open(self.cloud_cfg_file_path, 'w') as cloud_cfg:
+                cloud_cfg.write(credentials)
+            options.cloud_cfg_file_path = self.cloud_cfg_file_path
+        elif self.is_az():
+            sas_token = os.getenv('AZURE_STORAGE_SAS_TOKEN')
+            if not sas_token:
+                raise BackupException(
+                    "Set SAS for Azure Storage in AZURE_STORAGE_SAS_TOKEN environment variable.")
+            if '?sv' not in sas_token:
+                raise BackupException(
+                    "SAS tokens must begin with '?sv'.")
 
         self.storage = BACKUP_STORAGE_ABSTRACTIONS[self.args.storage_type](options)
 
@@ -535,8 +630,21 @@ class YBBackup:
     def is_s3(self):
         return self.args.storage_type == S3BackupStorage.storage_type()
 
+    def is_gcs(self):
+        return self.args.storage_type == GcsBackupStorage.storage_type()
+
+    def is_az(self):
+        return self.args.storage_type == AzBackupStorage.storage_type()
+
     def is_k8s(self):
         return self.args.k8s_config is not None
+
+    def is_cloud(self):
+        return self.args.storage_type != NfsBackupStorage.storage_type()
+
+    def has_cfg_file(self):
+        return self.args.storage_type in [
+            GcsBackupStorage.storage_type(), S3BackupStorage.storage_type()]
 
     def get_leader_master_ip(self):
         if not self.leader_master_ip:
@@ -609,25 +717,67 @@ class YBBackup:
                                   output)
         return snapshot_id
 
-    def wait_for_snapshot(self, snapshot_id, op, timeout_sec):
+    def wait_for_snapshot(self, snapshot_id, op, timeout_sec, update_table_list,
+                          complete_state='COMPLETE'):
         """
-        Waits for the given snapshot to finish being created.
+        Waits for the given snapshot to finish being created or restored.
         """
         start_time = time.time()
         snapshot_done = False
+        snapshot_tables = []
+        snapshot_keyspaces = []
+
+        yb_admin_args = ['list_snapshots']
+        if update_table_list:
+            yb_admin_args += ['SHOW_DETAILS']
+
         while time.time() - start_time < timeout_sec and not snapshot_done:
-            output = self.run_yb_admin(['list_snapshots'])
+            output = self.run_yb_admin(yb_admin_args)
+            # Expected format:
+            # Snapshot UUID                         State
+            # 0436035d-c4c5-40c6-b45b-19538849b0d9  COMPLETE
+            #   {"type":"NAMESPACE","id":"e4c5591446db417f83a52c679de03118","data":{"name":"a",...}}
+            #   {"type":"TABLE","id":"d9603c2cab0b48ec807936496ac0e70e","data":{"name":"t2",...}}
+            #   {"type":"NAMESPACE","id":"e4c5591446db417f83a52c679de03118","data":{"name":"a",...}}
+            #   {"type":"TABLE","id":"28b5cebe9b0c4cdaa70ce9ceab31b1e5","data":{\
+            #       "name":"t2idx","indexed_table_id":"d9603c2cab0b48ec807936496ac0e70e",...}}
+            # c1ad61bf-a42b-4bbb-94f9-28516985c2c5  COMPLETE
+            #   ...
             for line in output.splitlines():
-                if line.find(snapshot_id) == 0:
-                    (snapshot_id, state) = line.split()
-                    if snapshot_id == snapshot_id and state == 'COMPLETE':
-                        snapshot_done = True
-                        break
-            logging.info('Waiting for snapshot %s to complete...' % (op))
-            time.sleep(5)
+                if not snapshot_done:
+                    if line.find(snapshot_id) == 0:
+                        (found_snapshot_id, state) = line.split()
+                        if found_snapshot_id == snapshot_id and state == complete_state:
+                            snapshot_done = True
+                            if not update_table_list:
+                                break
+                elif update_table_list:
+                    if line[0] == ' ':
+                        loaded_json = json.loads(line)
+                        object_type = loaded_json['type']
+                        if object_type == 'NAMESPACE':
+                            snapshot_keyspaces.append(loaded_json['data']['name'])
+                        elif object_type == 'TABLE':
+                            snapshot_tables.append(loaded_json['data']['name'])
+                    else:
+                        break  # Break search on the next snapshot id/state line.
+
+            if not snapshot_done:
+                logging.info('Waiting for snapshot %s to complete...' % (op))
+                time.sleep(5)
 
         if not snapshot_done:
             raise BackupException('Timed out waiting for snapshot!')
+
+        if update_table_list:
+            if len(snapshot_keyspaces) != len(snapshot_tables) or len(snapshot_tables) == 0:
+                raise BackupException(
+                    "In the snapshot found {} keyspaces and {} tables. The numbers must be equal "
+                    "and more than zero.".format(len(snapshot_keyspaces), len(snapshot_tables)))
+
+            self.args.keyspace = snapshot_keyspaces
+            self.args.table = snapshot_tables
+            logging.info('Updated list of processing tables: ' + self.table_names_str())
 
         logging.info('Snapshot id %s %s completed successfully' % (snapshot_id, op))
 
@@ -656,12 +806,13 @@ class YBBackup:
         atexit.register(self.cleanup_remote_temporary_directory, server_ip, self.get_tmp_dir())
 
         return self.run_ssh_cmd(['mkdir', '-p', self.get_tmp_dir()],
-                                server_ip, upload_s3_cfg=False)
+                                server_ip, upload_cloud_cfg=False)
 
-    def upload_s3_config(self, server_ip):
-        if server_ip not in self.server_ips_with_uploaded_s3_cfg:
+    def upload_cloud_config(self, server_ip):
+        if server_ip not in self.server_ips_with_uploaded_cloud_cfg:
             if self.args.verbose:
-                logging.info("Uploading {} to server {}".format(self.s3_cfg_file_path, server_ip))
+                logging.info(
+                    "Uploading {} to server {}".format(self.cloud_cfg_file_path, server_ip))
 
             this_script_dir = os.path.dirname(os.path.realpath(__file__))
             ssh_wrapper_path = os.path.join(this_script_dir, 'ssh_wrapper_with_sudo.sh')
@@ -672,7 +823,7 @@ class YBBackup:
                 output += self.run_program([
                     'kubectl',
                     'cp',
-                    self.s3_cfg_file_path,
+                    self.cloud_cfg_file_path,
                     '{}/{}:{}'.format(
                         k8s_details.namespace, k8s_details.pod_name, self.get_tmp_dir()),
                     '-c',
@@ -687,16 +838,16 @@ class YBBackup:
                      '-i', self.args.ssh_key_path,
                      '-P', self.args.ssh_port,
                      '-q',
-                     self.s3_cfg_file_path,
+                     self.cloud_cfg_file_path,
                      '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
 
-            self.server_ips_with_uploaded_s3_cfg[server_ip] = output
+            self.server_ips_with_uploaded_cloud_cfg[server_ip] = output
 
             if self.args.verbose:
                 logging.info("Uploading {} to server {} done: {}".format(
-                    self.s3_cfg_file_path, server_ip, output))
+                    self.cloud_cfg_file_path, server_ip, output))
 
-    def run_ssh_cmd(self, cmd, server_ip, upload_s3_cfg=True, num_ssh_retry=3):
+    def run_ssh_cmd(self, cmd, server_ip, upload_cloud_cfg=True, num_ssh_retry=3):
         """
         Runs the given command on the given remote server over SSH.
         :param cmd: either a string, or a list of arguments. In the latter case, each argument
@@ -704,8 +855,8 @@ class YBBackup:
         :param server_ip: IP address or host name of the server to SSH into.
         :return: the standard output of the SSH command
         """
-        if upload_s3_cfg and self.is_s3():
-            self.upload_s3_config(server_ip)
+        if upload_cloud_cfg and self.has_cfg_file():
+            self.upload_cloud_config(server_ip)
 
         if self.args.verbose:
             logging.info("Running command {} on server {}".format(cmd, server_ip))
@@ -715,6 +866,8 @@ class YBBackup:
                 cmd = cmd[0]
             else:
                 cmd = quote_cmd_line_for_bash(cmd)
+
+        num_retries = CLOUD_CMD_MAX_RETRIES if self.is_cloud() else num_ssh_retry
 
         if self.is_k8s():
             k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
@@ -731,7 +884,7 @@ class YBBackup:
                 'bash',
                 '-c',
                 cmd],
-                num_retry=(10 if cmd[:5] == 's3cmd' else num_ssh_retry),
+                num_retry=num_retries,
                 env=k8s_details.env_config)
         else:
             return self.run_program([
@@ -743,7 +896,7 @@ class YBBackup:
                 '-q',
                 '%s@%s' % (self.args.ssh_user, server_ip),
                 'cd / && sudo -u yugabyte bash -c ' + pipes.quote(cmd)],
-                num_retry=(10 if cmd[:5] == 's3cmd' else num_ssh_retry))
+                num_retry=num_retries)
 
     def find_data_dirs(self, tserver_ip):
         """
@@ -774,7 +927,7 @@ class YBBackup:
         return data_dirs
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
-                               tablets_by_tserver_ip, table_id):
+                               tablets_by_tserver_ip, table_ids):
         """
         Generate snapshot directories under the given data directory for the given snapshot id
         on the given tservers.
@@ -782,7 +935,7 @@ class YBBackup:
         :param snapshot_id: snapshot UUID
         :param tablets_by_tserver_ip: a map from tserver ip address to all tablets of our table
             that it is responsible for.
-        :param table_id: new table UUID
+        :param table_ids: new table UUIDs for all tables
         :return: a three-level map: tablet server ip address to a tablet id to all snapshot
             directories for that tablet id that we found.
         """
@@ -794,17 +947,18 @@ class YBBackup:
             data_dirs = data_dir_by_tserver[tserver_ip]
             deleted_tablets = deleted_tablets_by_tserver_ip.setdefault(tserver_ip, set())
 
-            for data_dir in data_dirs:
-                # Find all tablets for this table on this TS in this data_dir:
-                output = self.run_ssh_cmd(
-                    ['find', data_dir,
-                     '-mindepth', TABLET_DIR_DEPTH,
-                     '-maxdepth', TABLET_DIR_DEPTH,
-                     '-name', TABLET_MASK,
-                     '-and',
-                     '-wholename', TABLET_DIR_GLOB.format(table_id)],
-                    tserver_ip)
-                tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
+            for table_id in table_ids:
+                for data_dir in data_dirs:
+                    # Find all tablets for this table on this TS in this data_dir:
+                    output = self.run_ssh_cmd(
+                        ['find', data_dir,
+                         '-mindepth', TABLET_DIR_DEPTH,
+                         '-maxdepth', TABLET_DIR_DEPTH,
+                         '-name', TABLET_MASK,
+                         '-and',
+                         '-wholename', TABLET_DIR_GLOB.format(table_id)],
+                        tserver_ip)
+                    tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
 
             if self.args.verbose:
                 logging.info("Found tablet directories for table '{}' on  tablet server '{}': {}"
@@ -821,7 +975,7 @@ class YBBackup:
 
             tablet_dir_by_id = {}
             for tablet_dir in tablet_dirs:
-                tablet_dir_by_id[tablet_dir[-UUID_LEN:]] = tablet_dir
+                tablet_dir_by_id[tablet_dir[-TABLET_UUID_LEN:]] = tablet_dir
 
             for tablet_id in tablets:
                 if tablet_id in tablet_dir_by_id:
@@ -865,13 +1019,13 @@ class YBBackup:
             tserver_ip)
         return [line.strip() for line in output.split("\n") if line.strip()]
 
-    def upload_snapshot_directories(self, tablet_leaders, snapshot_id, s3_snapshot_url):
+    def upload_snapshot_directories(self, tablet_leaders, snapshot_id, snapshot_filepath):
         """
         Uploads snapshot directories from all tablet servers hosting our table to subdirectories
-        of the given target S3 directory.
+        of the given target backup directory.
         :param tablet_leaders: a list of (tablet_id, tserver_ip) pairs
         :param snapshot_id: self-explanatory
-        :param s3_snapshot_url: the top-level directory under which to upload the data directories
+        :param snapshot_filepath: the top-level directory under which to upload the data directories
         """
         pool = ThreadPool(self.args.parallelism)
 
@@ -894,8 +1048,8 @@ class YBBackup:
             find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
 
         parallel_uploads = SequencedParallelCmd(self.run_ssh_cmd)
-        self.prepare_s3cmd_ssh_cmds(
-             parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, s3_snapshot_url,
+        self.prepare_cloud_ssh_cmds(
+             parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
              snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
@@ -949,13 +1103,13 @@ class YBBackup:
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
-    def prepare_upload_command(self, parallel_commands, s3_snapshot_url, tablet_id,
+    def prepare_upload_command(self, parallel_commands, snapshot_filepath, tablet_id,
                                tserver_ip, snapshot_dir):
         """
-        Prepares the s3cmd to upload the backup files to S3 from the tservers.
+        Prepares the command to upload the backup files to backup location from the tservers.
 
         :param parallel_commands: result parallel commands to run.
-        :param s3_snapshot_url: S3 url where the backup must be stored.
+        :param snapshot_filepath: Filepath/cloud url where the backup must be stored.
         :param tablet_id: tablet_id for the tablet whose data we would like to upload.
         :param tserver_ip: tserver ip from which the data needs to be uploaded.
         :param snapshot_dir: The snapshot directory on the tserver from which we need to upload.
@@ -964,21 +1118,21 @@ class YBBackup:
                      snapshot_dir, tserver_ip))
         create_checksum_cmd = create_checksum_cmd_for_dir(snapshot_dir)
 
-        s3_target_tablet_url = os.path.join(s3_snapshot_url, 'tablet-%s' % (tablet_id))
-        s3_target_checksum_url = checksum_path(s3_target_tablet_url)
+        target_tablet_filepath = os.path.join(snapshot_filepath, 'tablet-%s' % (tablet_id))
+        target_checksum_filepath = checksum_path(target_tablet_filepath)
         snapshot_dir_checksum = checksum_path(strip_dir(snapshot_dir))
         logging.info('Uploading %s from tablet server %s to %s' % (
-                     snapshot_dir_checksum, tserver_ip, s3_target_checksum_url))
+                     snapshot_dir_checksum, tserver_ip, target_checksum_filepath))
         upload_checksum_cmd = self.storage.upload_file_cmd(
-            snapshot_dir_checksum, s3_target_checksum_url)
+            snapshot_dir_checksum, target_checksum_filepath)
 
-        s3_target_url = s3_target_tablet_url + '/'
+        target_filepath = target_tablet_filepath + '/'
         logging.info('Uploading %s from tablet server %s to %s' % (
-                     snapshot_dir, tserver_ip, s3_target_url))
-        upload_tablet_cmd = self.storage.upload_dir_cmd(snapshot_dir, s3_target_url)
+                     snapshot_dir, tserver_ip, target_filepath))
+        upload_tablet_cmd = self.storage.upload_dir_cmd(snapshot_dir, target_filepath)
 
-        logging.info('Uploading from %s to S3 URL %s on tablet server %s' % (snapshot_dir,
-                     s3_snapshot_url, tserver_ip))
+        logging.info('Uploading from %s to %s URL %s on tablet server %s' % (snapshot_dir,
+                     self.args.storage_type, snapshot_filepath, tserver_ip))
         # Commands to be run on TSes over ssh for uploading the tablet backup.
         # 1. Create check-sum file (via sha256sum tool).
         parallel_commands.add_args(create_checksum_cmd, tserver_ip)
@@ -987,13 +1141,13 @@ class YBBackup:
         # 3. Upload tablet folder.
         parallel_commands.add_args(tuple(upload_tablet_cmd), tserver_ip)
 
-    def prepare_download_command(self, parallel_commands, s3_snapshot_url, tablet_id,
+    def prepare_download_command(self, parallel_commands, snapshot_filepath, tablet_id,
                                  tserver_ip, snapshot_dir, snapshot_metadata):
         """
-        Prepares the s3cmd to download the backup files from S3 to the tservers.
+        Prepares the command to download the backup files to the tservers.
 
         :param parallel_commands: result parallel commands to run.
-        :param s3_snapshot_url: S3 url where the backup is stored.
+        :param snapshot_filepath: Filepath/cloud url where the backup is stored.
         :param tablet_id: tablet_id for the tablet whose data we would like to download.
         :param tserver_ip: tserver ip from which the data needs to be downloaded.
         :param snapshot_dir: The snapshot directory on the tserver to which we need to download.
@@ -1002,60 +1156,62 @@ class YBBackup:
             raise BackupException('Could not find metadata for tablet id {}'.format(tablet_id))
 
         old_tablet_id = snapshot_metadata['tablet'][tablet_id]
-        s3_source_url = os.path.join(s3_snapshot_url, 'tablet-%s/' % (old_tablet_id))
+        source_filepath = os.path.join(snapshot_filepath, 'tablet-%s/' % (old_tablet_id))
         snapshot_dir_tmp = strip_dir(snapshot_dir) + '.tmp/'
-        logging.info('Downloading %s from S3 to %s on tablet server %s' % (s3_source_url,
-                     snapshot_dir_tmp, tserver_ip))
+        logging.info('Downloading %s from %s to %s on tablet server %s' % (source_filepath,
+                     self.args.storage_type, snapshot_dir_tmp, tserver_ip))
 
         # Download the data to a tmp directory and then move it in place.
-        s3cmd = self.storage.download_dir_cmd(s3_source_url, snapshot_dir_tmp)
+        cmd = self.storage.download_dir_cmd(source_filepath, snapshot_dir_tmp)
 
-        s3_source_checksum_url = checksum_path(
-            os.path.join(s3_snapshot_url, 'tablet-%s' % (old_tablet_id)))
+        source_checksum_filepath = checksum_path(
+            os.path.join(snapshot_filepath, 'tablet-%s' % (old_tablet_id)))
         snapshot_dir_checksum = checksum_path_downloaded(strip_dir(snapshot_dir))
-        s3cmd_checksum = self.storage.download_file_cmd(
-            s3_source_checksum_url, snapshot_dir_checksum)
-
-        rmcmd = ['rm', '-rf', snapshot_dir]
+        cmd_checksum = self.storage.download_file_cmd(
+            source_checksum_filepath, snapshot_dir_checksum)
 
         create_checksum_cmd = create_checksum_cmd_for_dir(snapshot_dir_tmp)
         check_checksum_cmd = compare_checksums_cmd(
             snapshot_dir_checksum, checksum_path(strip_dir(snapshot_dir_tmp)))
 
+        rmcmd = ['rm', '-rf', snapshot_dir]
+        mkdircmd = ['mkdir', '-p', snapshot_dir_tmp]
         mvcmd = ['mv', snapshot_dir_tmp, snapshot_dir]
 
         # Commands to be run over ssh for downloading the tablet backup.
         # 1. Clean-up: delete target tablet folder.
         parallel_commands.add_args(tuple(rmcmd), tserver_ip)
-        # 2. Download tablet folder.
-        parallel_commands.add_args(tuple(s3cmd), tserver_ip)
-        # 3. Download check-sum file.
-        parallel_commands.add_args(tuple(s3cmd_checksum), tserver_ip)
-        # 4. Create new check-sum file.
+        # 2. Create temporary snapshot dir.
+        parallel_commands.add_args(tuple(mkdircmd), tserver_ip)
+        # 3. Download tablet folder.
+        parallel_commands.add_args(tuple(cmd), tserver_ip)
+        # 4. Download check-sum file.
+        parallel_commands.add_args(tuple(cmd_checksum), tserver_ip)
+        # 5. Create new check-sum file.
         parallel_commands.add_args(create_checksum_cmd, tserver_ip)
-        # 5. Compare check-sum files.
+        # 6. Compare check-sum files.
         parallel_commands.add_args(check_checksum_cmd, tserver_ip)
         parallel_commands.use_last_fn_result_as_command_result()
-        # 6. Move the backup in place.
+        # 7. Move the backup in place.
         parallel_commands.add_args(tuple(mvcmd), tserver_ip)
 
-    def prepare_s3cmd_ssh_cmds(
-            self, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, s3_snapshot_url,
+    def prepare_cloud_ssh_cmds(
+            self, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
             snapshot_id, tablets_by_tserver_ip, upload, snapshot_metadata):
         """
-        Prepares s3cmd-over-ssh command lines for uploading the snapshot.
+        Prepares cloud_command-over-ssh command lines for uploading the snapshot.
 
         :param parallel_commands: result parallel commands to run.
         :param tserver_ip_to_tablet_id_to_snapshot_dirs: the three-level map as returned by
             rearrange_snapshot_dirs.
-        :param s3_snapshot_url: the top-level S3 URL to create snapshot directories under
+        :param snapshot_filepath: the top-level cloud URL to create snapshot directories under
         :param snapshot_id: the snapshot id we're dealing with
         :param tablets_by_tserver_ip: a map from tserver ip to all tablet ids that tserver is the
             responsible for.
-        :param upload: True if we are uploading files to S3, false if we are downloading files from
-            S3.
-        :param snapshot_metadata: In case of downloading files from S3 to restore a backup, this is
-            the snapshot metadata stored in S3 for the backup.
+        :param upload: True if we are uploading files to cloud, false if we are downloading files
+            from cloud.
+        :param snapshot_metadata: In case of downloading files from cloud to restore a backup,
+            this is the snapshot metadata stored in cloud for the backup.
         """
         for tserver_ip, tablet_id_to_snapshot_dirs in \
                 iteritems(tserver_ip_to_tablet_id_to_snapshot_dirs):
@@ -1071,10 +1227,10 @@ class YBBackup:
 
                 if upload:
                     self.prepare_upload_command(
-                        parallel_commands, s3_snapshot_url, tablet_id, tserver_ip, snapshot_dir)
+                        parallel_commands, snapshot_filepath, tablet_id, tserver_ip, snapshot_dir)
                 else:
                     self.prepare_download_command(
-                        parallel_commands, s3_snapshot_url, tablet_id, tserver_ip, snapshot_dir,
+                        parallel_commands, snapshot_filepath, tablet_id, tserver_ip, snapshot_dir,
                         snapshot_metadata)
 
                 tablet_ids_with_data_dirs.add(tablet_id)
@@ -1098,16 +1254,16 @@ class YBBackup:
 
         return self.tmp_dir_name
 
-    def upload_metadata_file(self, snapshot_id, s3_snapshot_url):
+    def upload_metadata_file(self, snapshot_id, snapshot_filepath):
         """
-        Generates and uploads a metadata file describing the given snapshot to a file under the
-        given S3 directory.
+        Generates and uploads a metadata file describing the given snapshot to a file in target
+        backup location.
         :param snapshot_id: snapshot id
-        :param s3_snapshot_url: S3 directory under which to create a path
+        :param snapshot_filepath: Backup directory under which to create a path
         """
         metadata_file_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
 
-        dest_path = os.path.join(s3_snapshot_url, METADATA_FILE_NAME)
+        dest_path = os.path.join(snapshot_filepath, METADATA_FILE_NAME)
         if self.args.local_yb_admin_binary:
             self.run_yb_admin(['export_snapshot', snapshot_id, metadata_file_path])
 
@@ -1142,12 +1298,12 @@ class YBBackup:
                 server_ip)
 
         logging.info(
-            'Uploaded metadata file %s to %s' % (metadata_file_path, s3_snapshot_url))
+            'Uploaded metadata file %s to %s' % (metadata_file_path, snapshot_filepath))
 
     def backup_table(self):
         """
         Creates a backup of the given table by creating a snapshot and uploading it to the provided
-        s3 url.
+        backup location.
         """
 
         if not self.args.table:
@@ -1156,7 +1312,7 @@ class YBBackup:
             raise BackupException('Need to specify --keyspace')
 
         logging.info('Backing up tables: {} to {}'.format(self.table_names_str(),
-                                                          self.args.s3bucket))
+                                                          self.args.backup_location))
 
         if self.args.snapshot_id:
             logging.info("Using existing snapshot ID: '{}'".format(self.args.snapshot_id))
@@ -1164,7 +1320,13 @@ class YBBackup:
         else:
             snapshot_id = self.create_snapshot()
             logging.info("Snapshot started with id: %s" % snapshot_id)
-            self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC)
+            try:
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, True)
+            except Exception as ex:
+                logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
+                # In the compatibility mode repeat the command in old style
+                # (without new command line arguments).
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC, False)
 
         if not self.args.no_snapshot_deleting:
             logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
@@ -1173,7 +1335,7 @@ class YBBackup:
         tablet_leaders = self.find_tablet_leaders()
 
         if self.args.no_auto_name:
-            s3_snapshot_url = self.args.s3bucket
+            snapshot_filepath = self.args.backup_location
         else:
             snapshot_bucket = 'table-{}'.format(self.table_names_str('.', '-'))
             if self.args.table_uuid:
@@ -1184,22 +1346,22 @@ class YBBackup:
 
                 snapshot_bucket = '{}-{}'.format(snapshot_bucket, '-'.join(self.args.table_uuid))
 
-            s3_snapshot_url = os.path.join(self.args.s3bucket, snapshot_bucket)
+            snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
 
-        self.upload_metadata_file(snapshot_id, s3_snapshot_url)
+        self.upload_metadata_file(snapshot_id, snapshot_filepath)
 
-        self.upload_snapshot_directories(tablet_leaders, snapshot_id, s3_snapshot_url)
+        self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
             'Backed up tables %s to %s successfully!' %
-            (self.table_names_str(), s3_snapshot_url))
-        print json.dumps({"snapshot_url": s3_snapshot_url})
+            (self.table_names_str(), snapshot_filepath))
+        print json.dumps({"snapshot_url": snapshot_filepath})
 
     def download_metadata_file(self):
         """
         Download the metadata file for a backup so as to perform a restore based on it.
         """
         metadata_file_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
-        src_path = os.path.join(self.args.s3bucket, METADATA_FILE_NAME)
+        src_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
 
         if self.args.local_yb_admin_binary:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
@@ -1241,7 +1403,7 @@ class YBBackup:
                 metadata_file_path, check_checksum_res))
 
         logging.info(
-            'Downloaded metadata file %s from %s' % (metadata_file_path, self.args.s3bucket))
+            'Downloaded metadata file %s from %s' % (metadata_file_path, self.args.backup_location))
         return metadata_file_path
 
     def import_snapshot(self, metadata_file_path):
@@ -1251,16 +1413,16 @@ class YBBackup:
         map containing all the metadata for the snapshot and mappings from old ids to new ids for
         table, keyspace, tablets and snapshot.
         """
+        yb_admin_args = ['import_snapshot', metadata_file_path]
         if self.args.table or self.args.keyspace:
             if not self.args.table:
                 raise BackupException('Need to specify --table')
             if not self.args.keyspace:
                 raise BackupException('Need to specify --keyspace')
 
-            output = self.run_yb_admin(
-                ['import_snapshot', metadata_file_path] + self.table_names_str(' ').split(' '))
-        else:
-            output = self.run_yb_admin(['import_snapshot', metadata_file_path])
+            yb_admin_args += self.table_names_str(' ').split(' ')
+
+        output = self.run_yb_admin(yb_admin_args)
 
         if self.args.verbose:
             logging.info('yb-admin tool output: {}'.format(output))
@@ -1276,10 +1438,14 @@ class YBBackup:
             if table_match:
                 snapshot_metadata['keyspace_name'].append(table_match.group(1))
                 snapshot_metadata['table_name'].append(table_match.group(2))
+                logging.info('Imported table: {}.{}'.format(table_match.group(1),
+                                                            table_match.group(2)))
             if NEW_OLD_UUID_RE.search(line):
                 (entity, old_id, new_id) = split_by_tab(line)
                 if entity == 'Table':
                     snapshot_metadata['table'][new_id] = old_id
+                    logging.info('Imported table id was changed from {} to {}'.format(old_id,
+                                                                                      new_id))
                 elif entity.startswith('Tablet'):
                     snapshot_metadata['tablet'][new_id] = old_id
                 elif entity == 'Snapshot':
@@ -1326,7 +1492,7 @@ class YBBackup:
         return (tablets_by_tserver_union, tablets_by_tserver_delta)
 
     def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_to_download,
-                                      snapshot_id, table_id):
+                                      snapshot_id, table_ids):
         pool = ThreadPool(self.args.parallelism)
 
         tserver_ips = tablets_by_tserver_to_download.keys()
@@ -1337,15 +1503,15 @@ class YBBackup:
 
         (tserver_to_tablet_to_snapshot_dirs, tserver_to_deleted_tablets) =\
             self.generate_snapshot_dirs(
-                data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_id)
+                data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_ids)
 
         # Remove deleted tablets from the list of planned to be downloaded tablets.
         for tserver_ip, deleted_tablets in tserver_to_deleted_tablets.iteritems():
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
         parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
-        self.prepare_s3cmd_ssh_cmds(
-            parallel_downloads, tserver_to_tablet_to_snapshot_dirs, self.args.s3bucket,
+        self.prepare_cloud_ssh_cmds(
+            parallel_downloads, tserver_to_tablet_to_snapshot_dirs, self.args.backup_location,
             snapshot_id, tablets_by_tserver_to_download, upload=False,
             snapshot_metadata=snapshot_meta)
 
@@ -1360,15 +1526,17 @@ class YBBackup:
 
     def restore_table(self):
         """
-        Restore a table from the backup stored in s3.
+        Restore a table from the backup stored in the given backup path.
         """
 
-        logging.info('Restoring backup from {}'.format(self.args.s3bucket))
+        logging.info('Restoring backup from {}'.format(self.args.backup_location))
 
         metadata_file_path = self.download_metadata_file()
         snapshot_metadata = self.import_snapshot(metadata_file_path)
         snapshot_id = snapshot_metadata['snapshot_id']['new']
-        table_id = snapshot_metadata['table'].keys()[0]
+        table_ids = snapshot_metadata['table'].keys()
+
+        self.wait_for_snapshot(snapshot_id, 'importing', CREATE_SNAPSHOT_TIMEOUT_SEC, False)
 
         if not self.args.no_snapshot_deleting:
             logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
@@ -1389,7 +1557,7 @@ class YBBackup:
 
             # Download tablets and get list of deleted tablets.
             tserver_to_deleted_tablets = self.download_snapshot_directories(
-                snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_id)
+                snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_ids)
 
             # Remove deleted tablets from the list of all tablets.
             for tserver_ip, deleted_tablets in tserver_to_deleted_tablets.iteritems():
@@ -1407,8 +1575,21 @@ class YBBackup:
 
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
-        self.run_yb_admin(['restore_snapshot', snapshot_id])
-        self.wait_for_snapshot(snapshot_id, 'restoring', RESTORE_SNAPSHOT_TIMEOUT_SEC)
+
+        output = self.run_yb_admin(['restore_snapshot', snapshot_id])
+        # Transaction-aware snapshots use special restaration id with final state RESTORED,
+        # while previous implementation uses snapshot id and it's state COMPLETE.
+        restoration_id = snapshot_id
+        complete_restoration_state = 'COMPLETE'
+        for line in output.splitlines():
+            restoration_match = RESTORATION_RE.match(line)
+            if restoration_match:
+                restoration_id = restoration_match.group(1)
+                complete_restoration_state = 'RESTORED'
+                logging.info('Found restoration id: ' + restoration_id)
+
+        self.wait_for_snapshot(restoration_id, 'restoring', RESTORE_SNAPSHOT_TIMEOUT_SEC, False,
+                               complete_restoration_state)
 
         logging.info('Restored backup successfully!')
         print json.dumps({"success": True})

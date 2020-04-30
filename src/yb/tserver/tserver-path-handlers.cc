@@ -446,8 +446,10 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
 
-    if (status.tablet_data_state() != TabletDataState::TABLET_DATA_COPYING &&
-        status.tablet_data_state() != TabletDataState::TABLET_DATA_READY) {
+    const auto tablet_data_state = status.tablet_data_state();
+    if (tablet_data_state != TabletDataState::TABLET_DATA_COPYING &&
+        tablet_data_state != TabletDataState::TABLET_DATA_READY &&
+        tablet_data_state != TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       continue;
     }
 

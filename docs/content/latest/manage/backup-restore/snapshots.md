@@ -1,7 +1,8 @@
 ---
-title: Snapshot and restore data
+title: Snapshot and restore data for YCQL
+headerTitle: Snapshot and restore data
 linkTitle: Snapshot and restore data
-description: Snapshot and restore data
+description: Snapshot and restore data in YugabyteDB for YCQL.
 image: /images/section_icons/manage/enterprise.png
 aliases:
   - manage/backup-restore/manage-snapshots
@@ -66,7 +67,7 @@ Waiting for cluster to be ready.
 For more info, please use: yb-ctl status
 ```
 
-For details on options, see [yb-ctl reference](../../../admin/yb-ctl).
+For details on flags, see [yb-ctl reference](../../../admin/yb-ctl).
 
 ## Step 2: Create a table with data
 
@@ -142,13 +143,13 @@ have to use a script that copies all data. The file path structure is:
 
 - `<yb_data_dir>` is the directory where YugabyteDB data is stored. (default=`~/yugabyte-data`)
 - `<node_number>` is used when multiple nodes are running on the same server (for testing, QA, and development). The default value is `1`.
-- `<disk_number>` when running yugabyte on multiple disks with the `--fs_data_dirs` option. The default value is `1`.
+- `<disk_number>` when running yugabyte on multiple disks with the `--fs_data_dirs` flag. The default value is `1`.
 - `<table_id>` is the UUID of the table. You can get it from the Admin UI.
 - `<tablet_id>` in each table there is a list of tablets. Each tablet has a `<tablet_id>.snapshots` directory that you need to copy.
 - `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server.
 
 This directory structure is specific to `yb-ctl`, which is a local testing tool.
-In practice, for each server, you will use the `--fs_data_dirs` configuration option, which is a comma-separated list of paths where to put the data (normally different paths should be on different disks).
+In practice, for each server, you will use the `--fs_data_dirs` flag, which is a comma-separated list of paths where to put the data (normally different paths should be on different disks).
 In this `yb-ctl` example, these are the full paths up to the `disk-x`.
 
 ### Step 3.2: Copy snapshot data to another directory

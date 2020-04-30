@@ -1,8 +1,8 @@
 ---
-title: Edit configuration options using YugaWare
-headerTitle: Edit configuration options
-linkTitle: Edit configuration options
-description: Edit configuration options using YugaWare
+title: Edit configuration flags using YugaWare
+headerTitle: Edit configuration flags
+linkTitle: Edit configuration flags
+description: Edit configuration flags using YugaWare
 aliases:
   - /manage/enterprise-edition/edit-flags/
 menu:
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The config options, or flags, for the [YB-Master](../../../reference/configuration/yb-master/) and [YB-TServer](../../../reference/configuration/yb-tserver/) nodes in a YugabyteDB universe can be upgraded by clicking **Edit GFlags** from the **More** drop-down list on the **Universe Detail** page.
+The configuration flags for the [YB-Master](../../../reference/configuration/yb-master/) and [YB-TServer](../../../reference/configuration/yb-tserver/) nodes in a YugabyteDB universe can be upgraded by clicking **Edit GFlags** from the **More** drop-down list on the **Universe Detail** page.
 
 ![Edit Config Dropdown](/images/ee/edit-config-1.png)
 
