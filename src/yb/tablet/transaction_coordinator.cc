@@ -1101,9 +1101,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
               << LogPrefix() << "Request to unknown transaction " << id << ": "
               << state.ShortDebugString();
-          request->CompleteWithStatus(
-              STATUS(Expired, "Transaction expired or aborted by a conflict",
-                     PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)));
+          auto status = STATUS(Expired, "Transaction expired or aborted by a conflict",
+                               PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+          status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+          request->CompleteWithStatus(status);
           return;
         }
       }
