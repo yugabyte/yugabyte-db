@@ -1,4 +1,4 @@
-https://travis-ci.com/orafce/orafce.svg?branch=master
+image::https://travis-ci.com/orafce/orafce.svg?branch=master
 
 = Orafce - Oracle's compatibility functions and packages
 
