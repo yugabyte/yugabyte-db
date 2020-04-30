@@ -1,8 +1,8 @@
 ---
-title: Benchmark YSQL performance using YCSB
+title: Benchmark YSQL performance with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance using YCSB.
+description: Benchmark YSQL performance with YCSB using various workloads.
 headcontent: Benchmark YSQL performance using YCSB.
 menu:
   latest:
@@ -42,7 +42,7 @@ isTocNested: true
 
 {{< note title="Note" >}}
 
-For more information about YCSB, see: 
+For more information about YCSB, see:
 
 * YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
 * Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
@@ -61,12 +61,14 @@ $ cd YCSB
 ```
 
 {{< note title="Note" >}}
+
 The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
+
 {{< /note >}}
 
 ## 2. Start YugabyteDB
 
-Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
+Start your YugabyteDB cluster by following the steps in [Quick start](../../../quick-start/).
 
 ## 3. Configure YCSB connection properties
 
@@ -79,25 +81,30 @@ db.user=yugabyte
 db.passwd=
 ```
 
-The other configuration parameters, are described in detail at [this page](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties)
+Details about other configuration parameters are described in [Core Properties](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties) on the [YCSB](https://github.com/brianfrankcooper/YCSB/) repository.
 
 {{< note title="Note" >}}
-The db.url field should be populated with the IPs of all the tserver nodes that are part of the cluster.
+
+The `db.url` field should be populated with the IP addresses of all the YB-TServer nodes that are part of the cluster.
+
 {{< /note >}}
 
 ## 4. Run all the workloads
-There is a handy script(run_sql.sh) that loads and runs all the workloads.
-First we need to supply the paths to the ycsb binary and the ysqlsh binary(which is distributed as part of the database package) along with the IP of the tserver node.
+
+There is a handy script (`run_sql.sh`) that loads and runs all the workloads.
+First, you need to supply the paths to the `ycsb` binary and the `ysqlsh` binary (which is distributed as part of the database package) along with the IP address of the tserver node.
 Then you simply run the workloads as:
 
 ```sh
 $ ./run_sql.sh
 ```
 
-The script creates 2 result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
+The script creates two result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
 
 {{< note title="Note" >}}
+
 To get the maximum performance out of the system, you would have to tune the threadcount parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, we used a threadcount of 32 for the loading phase and 256 for the execution phase.
+
 {{< /note >}}
 
 ## 4. Run individual workloads (optional)
@@ -129,7 +136,8 @@ $ ./bin/ycsb run yugabyteSQL -P yugabyteSQL/db.properties -P workloads/workloadb
 ```
 
 ## 5. Expected results
-When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+
+When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same AZ with the client VM running in the same AZ, we get the following results:
 
 | Workload           | Throughput (ops/sec) | Latency (ms)
 -------------|-----------|----------|

@@ -2,11 +2,11 @@
 title: DocDB sharding layer
 headerTitle: DocDB sharding layer
 linkTitle: DocDB sharding layer
-description: Learn about the YugabyteDB distributed document store that is responsible for sharding, replication, transactions, and persistence.
+description: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 image: /images/section_icons/architecture/concepts.png
 aliases:
   - /latest/architecture/docdb/sharding
-headcontent: DocDB is YugabyteDB's distributed document store responsible for transactions, sharding, replication, and persistence.
+headcontent: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 menu:
   latest:
     identifier: architecture-docdb-sharding

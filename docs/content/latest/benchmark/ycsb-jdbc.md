@@ -1,9 +1,8 @@
 ---
-title: Benchmark YSQL performance using YCSB
+title: Benchmark YSQL performance with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance using YCSB.
-headcontent: Benchmark YSQL performance using YCSB.
+description: Benchmark YSQL performance with YCSB using the PostgreSQL JDBC driver.
 menu:
   latest:
     identifier: ycsb-2-ysql
@@ -85,7 +84,7 @@ The other configuration parameters, are described in detail at [this page](https
 The db.url field should be populated with the IPs of all the tserver nodes that are part of the cluster.
 {{< /note >}}
 
-## 4. Run individual workloads 
+## 4. Run individual workloads
 
 Create the database and table using the `ysqlsh` tool.
 The `ysqlsh` tool is distributed as part of the database package.
@@ -114,6 +113,7 @@ $ ./bin/ycsb run jdbc -P yugabyteSQL/db.properties -P workloads/workloadb
 ```
 
 ## 5. Expected results
+
 When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
 
 | Workload           | Throughput (ops/sec) | Latency (ms)
