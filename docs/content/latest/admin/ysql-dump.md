@@ -9,7 +9,7 @@ menu:
     identifier: ysql-dump
     parent: admin
     weight: 2467
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 

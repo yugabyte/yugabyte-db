@@ -12,7 +12,7 @@ menu:
     weight: 2920
 aliases:
   - /latest/reference/connectors/yugabytedb-jdbc-driver
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 
