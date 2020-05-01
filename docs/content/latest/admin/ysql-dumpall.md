@@ -9,7 +9,7 @@ menu:
     identifier: ysql-dumpall
     parent: admin
     weight: 2468
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 

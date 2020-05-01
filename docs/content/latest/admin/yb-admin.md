@@ -8,7 +8,7 @@ menu:
     identifier: yb-admin
     parent: admin
     weight: 2465
-isTocNested: 4
+isTocNested: true
 showAsideToc: true
 ---
 
