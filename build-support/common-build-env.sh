@@ -186,6 +186,7 @@ readonly -a MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
   dependency:go-offline
   dependency:resolve
   dependency:resolve-plugins
+  -DoutputFile=/dev/null
 )
 
 # -------------------------------------------------------------------------------------------------
