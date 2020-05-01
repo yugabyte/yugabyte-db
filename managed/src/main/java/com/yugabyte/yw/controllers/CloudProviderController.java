@@ -186,7 +186,6 @@ public class CloudProviderController extends AuthenticatedController {
             } catch (javax.persistence.PersistenceException ex) {
               // TODO: make instance types more multi-tenant friendly...
             }
-            kubernetesProvision(provider, provider.getConfig(), customerUUID);
             break;
         }
       }
@@ -252,7 +251,6 @@ public class CloudProviderController extends AuthenticatedController {
       provider = Provider.create(customerUUID, providerCode, formData.name);
       boolean isConfigInProvider = updateKubeConfig(provider, config, false);
       if (isConfigInProvider) {
-        kubernetesProvision(provider, config, customerUUID);
       }
       List<RegionData> regionList = formData.regionList;
       for (RegionData rd : regionList) {
@@ -260,14 +258,12 @@ public class CloudProviderController extends AuthenticatedController {
         Region region = Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude);
         boolean isConfigInRegion = updateKubeConfig(provider, region, regionConfig, false);
         if (isConfigInRegion) {
-          kubernetesProvision(provider, regionConfig, customerUUID);
         }
         for (ZoneData zd : rd.zoneList) {
           Map<String, String> zoneConfig = zd.config;
           AvailabilityZone az = AvailabilityZone.create(region, zd.code, zd.name, null);
           boolean isConfigInZone = updateKubeConfig(provider, region, az, zoneConfig, false);
           if (isConfigInZone) {
-            kubernetesProvision(provider, zoneConfig, customerUUID);
           }
         }
       }
@@ -425,24 +421,6 @@ public class CloudProviderController extends AuthenticatedController {
           idt
       );
     }
-  }
-
-  /* Function to create Commissioner task for provisioning K8s providers
-  // Will also be helpful to provision regions/AZs in the future
-  */
-  private void kubernetesProvision(Provider provider, Map<String, String> config, UUID customerUUID) {
-    KubernetesClusterInitParams taskParams = new KubernetesClusterInitParams();
-    taskParams.config = config;
-    taskParams.providerUUID = provider.uuid;
-    Customer customer = Customer.get(customerUUID);
-    UUID taskUUID = commissioner.submit(TaskType.KubernetesProvision, taskParams);
-    CustomerTask.create(customer,
-      provider.uuid,
-      taskUUID,
-      CustomerTask.TargetType.Provider,
-      CustomerTask.TaskType.Create,
-      provider.name);
-
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this

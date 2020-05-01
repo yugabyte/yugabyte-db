@@ -313,9 +313,7 @@ public class UniverseControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     String url = "/api/customers/" + customer.uuid + "/universes/" + invalidUUID;
     Result result = doRequestWithAuthToken("GET", url, authToken);
-    String expectedResult = String.format("Universe UUID: %s doesn't belong " +
-                                          "to Customer UUID: %s", invalidUUID,
-                                          customer.uuid);
+    String expectedResult = String.format("No universe found with UUID: %s", invalidUUID);
     assertBadRequest(result, expectedResult);
     assertAuditEntry(0, customer.uuid);
   }
@@ -373,7 +371,7 @@ public class UniverseControllerTest extends WithApplication {
     UniverseController universeController = new UniverseController(mockService);
     UUID invalidUUID = UUID.randomUUID();
     Result result = universeController.getMasterLeaderIP(invalidUUID, UUID.randomUUID());
-    assertBadRequest(result, "Invalid Customer UUID: " + invalidUUID);
+    assertBadRequest(result, "No customer found with UUID: " + invalidUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
