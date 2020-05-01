@@ -5,6 +5,7 @@ description: Yugabyte Structured Query Language (YSQL) [Beta]
 summary: Reference for PostgreSQL-compatible YSQL API
 image: /images/section_icons/api/ysql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v1.1:
     identifier: api-postgresql

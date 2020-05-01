@@ -271,11 +271,11 @@ Status VerifyResultMacroMoveCountHelper() {
 }
 
 TEST_F(ResultTest, VerifyResultMacroReferenceNoCopy) {
-  VerifyResultMacroReferenceNoCopyHelper();
+  ASSERT_OK(VerifyResultMacroReferenceNoCopyHelper());
 }
 
 TEST_F(ResultTest, VerifyResultMacroMoveCount) {
-  VerifyResultMacroMoveCountHelper();
+  ASSERT_OK(VerifyResultMacroMoveCountHelper());
   ASSERT_EQ(2, MoveCounter::counter());
 }
 

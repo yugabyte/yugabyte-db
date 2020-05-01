@@ -1,7 +1,8 @@
 ---
-title: 3. Data types
+title: Data types in YSQL
+headerTitle: Data types
 linkTitle: 3. Data types
-description: Data types
+description: Learn about the data types in YSQL.
 aliases:
   - /latest/explore/transactional/json-documents/
   - /latest/develop/learn/data-types/

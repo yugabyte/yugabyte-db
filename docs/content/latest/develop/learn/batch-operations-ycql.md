@@ -1,7 +1,8 @@
 ---
-title: 6. Batch operations
+title: Batch operations in YCQL
+headerTitle: Batch operations
 linkTitle: 6. Batch operations
-description: Batch operations
+description: Learn how batch operations in YCQL send a set of operations as a single RPC call rather than one by one as individual RPC calls.
 menu:
   latest:
     identifier: batch-operations-1-ycql
@@ -12,7 +13,6 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="/latest/develop/learn/batch-operations-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
@@ -26,8 +26,8 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-
-Batch operations is the ability to send a set of operations as one operation (RPC call) to the database instead of sending the operations one by one as individual RPC calls. For use cases requiring high throughput, batch operations can be very efficient since it is possible to reduce the overhead of multiple RPC calls. The larger the batch size, the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation, the throughput of the batch of operations is much higher.
+</ul>
+Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size, the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation, the throughput of the batch of operations is much higher.
 
 ## Inserting data
 
@@ -51,6 +51,7 @@ for (...) {
 
 // Execute the batch operation.
 ResultSet resultSet = client.execute(batch);
+
 ```
 
 ## Querying data
@@ -59,7 +60,7 @@ Reading more than one row can be achieved in a few different ways. Below is an o
 
 ### Range queries
 
-Range queries are very efficient as the database keeps the data together on disk. Range queries can only be performed on clustering columns of the primary key. In order to perform range queries, the table should have been created with clustering columns. These use-cases generally need have a sort order for some of the primary key columns.
+Range queries are very efficient as the database keeps the data together on disk. Range queries can only be performed on clustering columns of the primary key. In order to perform range queries, the table should have been created with clustering columns. These use cases generally need have a sort order for some of the primary key columns.
 
 Consider a table which has a hash column `h` and two clustering columns `r1` and `r2`. The following range queries are efficient.
 
@@ -107,7 +108,7 @@ Consider a table which has a hash column `h` and a clustering column `r`.
 > SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
 ```
 
-- Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have upto 6 rows. 
+- Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have up to 6 rows. 
 
 ```sql
 > SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);
@@ -126,7 +127,7 @@ Usage:
     --workload CassandraBatchKeyValue \
     --nodes 127.0.0.1:9042
 
-  Other options (with default values):
+  Other flags (with default values):
     [ --num_unique_keys 1000000 ]
     [ --num_reads -1 ]
     [ --num_writes -1 ]
@@ -136,6 +137,5 @@ Usage:
     [ --batch_size 10 ]
     [ --table_ttl_seconds -1 ]
 ```
-
 
 Browse the [Java source code for the batch application](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraBatchKeyValue.java) to see how everything fits together.

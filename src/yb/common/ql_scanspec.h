@@ -21,7 +21,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_expr.h"
 
 namespace yb {
 namespace common {
@@ -100,13 +99,13 @@ class QLScanRange {
 // or a hash key + optional WHERE condition clause.
 class QLScanSpec : public YQLScanSpec {
  public:
-  explicit QLScanSpec(QLExprExecutor::SharedPtr executor = nullptr);
+  explicit QLScanSpec(QLExprExecutorPtr executor = nullptr);
 
   // Scan for the given hash key and a condition.
   QLScanSpec(const QLConditionPB* condition,
              const QLConditionPB* if_condition,
              const bool is_forward_scan,
-             QLExprExecutor::SharedPtr executor = nullptr);
+             QLExprExecutorPtr executor = nullptr);
 
   virtual ~QLScanSpec() {}
 
@@ -125,7 +124,7 @@ class QLScanSpec : public YQLScanSpec {
   const QLConditionPB* condition_;
   const QLConditionPB* if_condition_;
   const bool is_forward_scan_;
-  QLExprExecutor::SharedPtr executor_;
+  QLExprExecutorPtr executor_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -137,7 +136,7 @@ class PgsqlScanSpec : public YQLScanSpec {
 
   explicit PgsqlScanSpec(QLClient client_type,
                          const PgsqlExpressionPB *where_expr,
-                         QLExprExecutor::SharedPtr executor = nullptr);
+                         QLExprExecutorPtr executor = nullptr);
 
   virtual ~PgsqlScanSpec();
 
@@ -147,7 +146,7 @@ class PgsqlScanSpec : public YQLScanSpec {
 
  protected:
   const PgsqlExpressionPB *where_expr_;
-  QLExprExecutor::SharedPtr executor_;
+  QLExprExecutorPtr executor_;
 };
 
 } // namespace common

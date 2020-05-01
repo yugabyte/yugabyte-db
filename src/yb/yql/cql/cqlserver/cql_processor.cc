@@ -148,6 +148,14 @@ CQLProcessor::~CQLProcessor() {
   DecrementGauge(cql_metrics_->cql_processors_alive_);
 }
 
+void CQLProcessor::Shutdown() {
+  auto call = std::move(call_);
+  if (call) {
+    call->RespondFailure(
+        rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, STATUS(Aborted, "Aborted"));
+  }
+}
+
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   call_ = std::dynamic_pointer_cast<CQLInboundCall>(std::move(call));
   unique_ptr<CQLRequest> request;

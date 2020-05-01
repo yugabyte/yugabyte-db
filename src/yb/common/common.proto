@@ -147,12 +147,27 @@ enum PermissionType {
   ALL_PERMISSION = 999999999;
 }
 
+// Indexes when created or deleted go through a series of steps to add
+// a) delete, b) write and c) read permissions one by one. Backfill is done
+// before the READ_WRITE_AND_DELETE state. If the backfill succeeds, the read
+// permission is granted. If not, the given permissions are removed one by one,
+// and the index will be deleted when it is unused.
+// If the backfill is successfully complete, the index will be in
+// READ_WRITE_AND_DELETE state, and remain so until the user deletes it. If an
+// Index is dropped, it will move from READ_WRITE_AND_DELETE state throu the
+// WRITE_AND_DELETE_WHILE_REMOVING and DELETE_ONLY_WHILE_REMOVING states to
+// INDEX_UNUSED.
 enum IndexPermissions {
   INDEX_PERM_DELETE_ONLY = 0;
   INDEX_PERM_WRITE_AND_DELETE = 2;
   INDEX_PERM_DO_BACKFILL = 4;
+  // This is the "success" state, where the index is completely usable.
   INDEX_PERM_READ_WRITE_AND_DELETE = 6;
-  INDEX_PERM_BACKFILL_FAILED = 8;
+  // Used while removing an index -- either due to backfill failure, or
+  // due to a client requested "drop index".
+  INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING = 8;
+  INDEX_PERM_DELETE_ONLY_WHILE_REMOVING = 10;
+  INDEX_PERM_INDEX_UNUSED = 12;
 }
 
 // The type used in column schemas, which may have type parameters (i.e. for collections)
@@ -234,6 +249,7 @@ message TablePropertiesPB {
   optional int32 num_tablets = 7 [ default = 0 ];
   optional bool is_ysql_catalog_table = 8 [ default = false ];
   optional bool is_backfilling = 9 [ default = false ];
+  optional uint64 backfilling_timestamp = 10;
 }
 
 message SchemaPB {
@@ -329,6 +345,8 @@ message PartitionSchemaPB {
     // Column identifiers of columns included in the range. All columns must be
     // a component of the primary key.
     repeated ColumnIdentifierPB columns = 1;
+    // Split points for range tables.
+    repeated string split_rows = 2;
   }
 
   message HashBucketSchemaPB {

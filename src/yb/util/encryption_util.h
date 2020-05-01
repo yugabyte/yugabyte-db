@@ -50,6 +50,10 @@ struct EncryptionParams {
   uint32_t counter;
   uint32_t key_size;
 
+  // When computing counter increment, do we want to overflow the counter into the rest of the
+  // initialization vector as part of the new format.
+  bool openssl_compatible_counter_overflow;
+
   void ToEncryptionParamsPB(EncryptionParamsPB* encryption_header) const;
 
   static Result<std::unique_ptr<EncryptionParams>> FromEncryptionParamsPB(

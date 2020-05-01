@@ -1,8 +1,9 @@
 ---
 title: Enable server-to-server encryption
+headerTitle: Enable server-to-server encryption
 linkTitle: Enable server-to-server encryption
-description: Enable server-to-server encryption
-headcontent: Enable server-to-server encryption (using TLS) for intra-node communication.
+description: Enable server-to-server encryption (using TLS) for intranode communication.
+headcontent: Enable server-to-server encryption (using TLS) for intranode communication.
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
 aliases:
   - /secure/tls-encryption/server-to-server
@@ -22,17 +23,17 @@ Before you can enable and use server-to-server encryption, you need to create an
 
 ## Configure YB-Master and YB-TServer nodes
 
-To enable server-to-server encryption using TLS, start your YB-Master and YB-TServer nodes using the following configuration options.
+To enable server-to-server encryption using TLS, start your YB-Master and YB-TServer nodes using the following flags.
 
-Configuration option (flag)    | Node                  | Description                  |
+Flag                           | Node                  | Description                  |
 -------------------------------|--------------------------|------------------------------|
 `use_node_to_node_encryption`  | YB-Master, YB-TServer | Set to `true` to enable encryption between YugabyteDB nodes. Default value is `false`. |
-`allow_insecure_connections`   | YB-Master only           | Set to `false` to disallow any service with unencrypted communication from joining this cluster. Default value is `true`. Note that this option requires `--use_node_to_node_encryption` to be enabled. |
+`allow_insecure_connections`   | YB-Master only           | Set to `false` to disallow any service with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires `--use_node_to_node_encryption` to be enabled. |
 `certs_dir`                    | YB-Master, YB-TServer | Optional. This directory should contain the configuration that was prepared in the a step for this node to perform encrypted communication with the other nodes. Default value for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServers this location is `<data drive>/yb-data/tserver/data/certs` |
 
 ## Start the YB-Masters
 
-You can enable access control by starting the `yb-master` services with the `--use_node_to_node_encryption=true` option as described above. Your command should look similar to this:
+You can enable access control by starting the `yb-master` services with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to this:
 
 ```
 bin/yb-master                               \
@@ -47,7 +48,7 @@ For information on starting YB-Master nodes for a deployment, see [Start YB-Mast
 
 ## Start the YB-TServers
 
-You can enable access control by starting the `yb-tserver` services using the `--use_node_to_node_encryption=true` option described above. Your command should look similar to this:
+You can enable access control by starting the `yb-tserver` services using the `--use_node_to_node_encryption=true` flag described above. Your command should look similar to this:
 
 ```
 bin/yb-tserver                                  \

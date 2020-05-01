@@ -74,11 +74,13 @@ void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, PgCallbac
 
 void YBCDestroyPgGate() {
   if (pgapi_shutdown_done.exchange(true)) {
-    LOG(FATAL) << __PRETTY_FUNCTION__ << " can only be called once";
+    LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
+  } else {
+    pggate::PgApiImpl* local_pgapi = pgapi;
+    pgapi = nullptr; // YBCPgIsYugaByteEnabled() must return false from now on.
+    delete local_pgapi;
+    VLOG(1) << __PRETTY_FUNCTION__ << " finished";
   }
-  delete pgapi;
-  pgapi = nullptr;
-  VLOG(1) << __PRETTY_FUNCTION__ << " finished";
 }
 
 YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {
@@ -124,6 +126,10 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 
 YBCStatus YBCPgConnectDatabase(const char *database_name) {
   return ToYBCStatus(pgapi->ConnectDatabase(database_name));
+}
+
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated) {
+  return ToYBCStatus(pgapi->IsDatabaseColocated(database_oid, colocated));
 }
 
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
@@ -263,6 +269,11 @@ YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_table
   return ToYBCStatus(pgapi->CreateTableSetNumTablets(handle, num_tablets));
 }
 
+YBCStatus YBCPgCreateTableAddSplitRow(YBCPgStatement handle, int num_cols,
+    YBCPgTypeEntity **types, uint64_t *data) {
+  return ToYBCStatus(pgapi->CreateTableAddSplitRow(handle, num_cols, types, data));
+}
+
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateTable(handle));
 }
@@ -351,6 +362,20 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
+YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
+                                const YBCPgOid table_oid,
+                                bool *colocated) {
+  const PgObjectId table_id(database_oid, table_oid);
+  PgTableDesc::ScopedRefPtr table_desc;
+  YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
+  if (status) {
+    return status;
+  } else {
+    *colocated = table_desc->IsColocated();
+    return YBCStatusOK();
+  }
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateIndex(const char *database_name,
@@ -434,8 +459,12 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
-YBCStatus YBCPgStartOperationsBuffering() {
-  return ToYBCStatus(pgapi->StartOperationsBuffering());
+void YBCPgStartOperationsBuffering() {
+  return pgapi->StartOperationsBuffering();
+}
+
+void YBCPgResetOperationsBuffering() {
+  return pgapi->ResetOperationsBuffering();
 }
 
 YBCStatus YBCPgFlushBufferedOperations() {

@@ -333,6 +333,12 @@ void MasterServiceImpl::CreateNamespace(const CreateNamespaceRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::CreateNamespace);
 }
 
+void MasterServiceImpl::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
+                                              IsCreateNamespaceDoneResponsePB* resp,
+                                              rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::IsCreateNamespaceDone);
+}
+
 void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                         DeleteNamespaceResponsePB* resp,
                                         RpcContext rpc) {
@@ -349,6 +355,12 @@ void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
                                        ListNamespacesResponsePB* resp,
                                        RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::ListNamespaces);
+}
+
+void MasterServiceImpl::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
+                                         GetNamespaceInfoResponsePB* resp,
+                                         RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GetNamespaceInfo);
 }
 
 void MasterServiceImpl::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
@@ -500,6 +512,8 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
     *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
     *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
+    entry->set_alive(TSManager::IsTSLive(desc));
+    desc->GetMetrics(entry->mutable_metrics());
   }
   rpc.RespondSuccess();
 }
@@ -771,6 +785,11 @@ void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationReque
                                                GetUniverseReplicationResponsePB* resp,
                                                rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetUniverseReplication);
+}
+
+void MasterServiceImpl::SplitTablet(
+    const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::SplitTablet);
 }
 
 } // namespace master

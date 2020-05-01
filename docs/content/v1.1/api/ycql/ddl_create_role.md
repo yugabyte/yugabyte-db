@@ -2,6 +2,7 @@
 title: CREATE ROLE
 summary: Create a new role
 description: CREATE ROLE
+block_indexing: true
 menu:
   v1.1:
     parent: api-cassandra

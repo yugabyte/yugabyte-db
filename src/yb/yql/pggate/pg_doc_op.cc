@@ -117,7 +117,6 @@ PgDocOp::~PgDocOp() {
 }
 
 void PgDocOp::Initialize(const PgExecParameters *exec_params) {
-  result_cache_.clear();
   end_of_data_ = false;
   if (exec_params) {
     exec_params_ = *exec_params;
@@ -136,21 +135,24 @@ Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
   return RequestSent(response_.InProgress());
 }
 
-Status PgDocOp::GetResult(list<PgDocResult::SharedPtr> *rowsets) {
+Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
   // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
 
-  if (result_cache_.empty() && !end_of_data_) {
-    DCHECK(response_.InProgress());
-    RETURN_NOT_OK(ProcessResponse(response_.GetStatus()));
-    // In case ProcessResponse doesn't fail with an error
-    // it should fill result_cache_ and/or set end_of_data_.
-    DCHECK(!result_cache_.empty() || end_of_data_);
-  }
+  if (!end_of_data_) {
+    // Send request now in case prefetching was suppressed.
+    if (suppress_next_result_prefetching_ && !response_.InProgress()) {
+      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
+    }
 
-  if (!result_cache_.empty()) {
-    rowsets->splice(rowsets->end(), result_cache_);
-    if (result_cache_.empty() && !end_of_data_) {
+    DCHECK(response_.InProgress());
+    auto rows = VERIFY_RESULT(ProcessResponse(response_.GetStatus()));
+    // In case ProcessResponse doesn't fail with an error
+    // it should return non empty rows and/or set end_of_data_.
+    DCHECK(!rows.empty() || end_of_data_);
+    rowsets->splice(rowsets->end(), rows);
+    // Prefetch next portion of data if needed.
+    if (!(end_of_data_ || suppress_next_result_prefetching_)) {
       RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
     }
   }
@@ -171,11 +173,15 @@ Status PgDocOp::SendRequest(bool force_non_bufferable) {
   return exec_status_;
 }
 
-Status PgDocOp::ProcessResponse(const Status& status) {
+Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(const Status& status) {
   DCHECK(exec_status_.ok());
-  exec_status_ = status.ok() ? ProcessResponseImpl(status) : status;
-  if (!exec_status_.ok()) {
-    end_of_data_ = true;
+  exec_status_ = status;
+  if (exec_status_.ok()) {
+    auto result = ProcessResponseImpl();
+    if (result.ok()) {
+      return result;
+    }
+    exec_status_ = result.status();
   }
   return exec_status_;
 }
@@ -183,11 +189,13 @@ Status PgDocOp::ProcessResponse(const Status& status) {
 //-------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+                         const PgTableDesc::ScopedRefPtr& table_desc,
                          size_t num_hash_key_columns,
                          std::unique_ptr<client::YBPgsqlReadOp> read_op)
     : PgDocOp(pg_session),
       num_hash_key_columns_(num_hash_key_columns),
-      template_op_(std::move(read_op)) {
+      template_op_(std::move(read_op)),
+      table_desc_(table_desc) {
 }
 
 void PgDocReadOp::Initialize(const PgExecParameters *exec_params) {
@@ -298,8 +306,10 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
 
   // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
   int64_t limit_count = exec_params_.limit_count + exec_params_.limit_offset;
+  suppress_next_result_prefetching_ = true;
   if (exec_params_.limit_use_default || limit_count > predicted_limit) {
     limit_count = predicted_limit;
+    suppress_next_result_prefetching_ = false;
   }
   req->set_limit(limit_count);
 }
@@ -373,9 +383,59 @@ void PgDocReadOp::InitializeNextOps(int num_ops) {
   DCHECK(!read_ops_.empty()) << "read_ops_ should not be empty after setting!";
 }
 
+void PgDocReadOp::InitializeParallelSelectCountOps(int select_parallelism) {
+  const auto& partition_keys = table_desc_->table()->GetPartitions();
+  for (auto it = partition_keys.cbegin(); it != partition_keys.cend(); ++it) {
+    // Construct a new YBPgsqlReadOp.
+    auto read_op(template_op_->DeepCopy());
+
+    auto req = read_op->mutable_request();
+    req->clear_partition_column_values();
+
+    PgsqlPagingStatePB* paging_state = req->mutable_paging_state();
+    paging_state->set_next_partition_key(*it);
+
+    // Set max_hash_code to end of tablet.
+    auto nx = std::next(it);
+    if (nx != partition_keys.cend()) {
+      req->set_max_hash_code(PartitionSchema::DecodeMultiColumnHashValue(*nx) - 1);
+    } else {
+      req->clear_max_hash_code();
+    }
+    partition_keys_next_to_use_++;
+
+    read_ops_.push_back(std::move(read_op));
+
+    if (read_ops_.size() == select_parallelism) {
+      break;
+    }
+  }
+
+  can_produce_more_ops_ = false;
+}
+
 Status PgDocReadOp::SendRequestImpl(bool force_non_bufferable) {
   DCHECK(!read_ops_.empty() || can_produce_more_ops_);
-  if (can_produce_more_ops_) {
+
+  if (template_op_->request().is_aggregate() && read_ops_.size() == 0) {
+    // Snapshot of flag to avoid handling change of flag value in long running reads.
+    int select_parallelism = FLAGS_ysql_select_parallelism;
+    if (select_parallelism < 0) {
+      // Auto.
+
+      int tserver_count = 0;
+      RETURN_NOT_OK(pg_session_->TabletServerCount(&tserver_count, true /* primary_only */,
+            true /* use_cache */));
+
+      // Establish lower and upper bounds on parallelism.
+      int kMinParSelCountParallelism = 1;
+      int kMaxParSelCountParallelism = 16;
+      select_parallelism = std::min(std::max(tserver_count * 2,
+            kMinParSelCountParallelism), kMaxParSelCountParallelism);
+    }
+
+    InitializeParallelSelectCountOps(select_parallelism);
+  } else if (can_produce_more_ops_) {
     InitializeNextOps(FLAGS_ysql_request_limit - read_ops_.size());
   }
 
@@ -386,7 +446,8 @@ Status PgDocReadOp::SendRequestImpl(bool force_non_bufferable) {
   return Status::OK();
 }
 
-Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
+Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
+  std::list<PgDocResult> result;
   for (const auto& read_op : read_ops_) {
     RETURN_NOT_OK(pg_session_->HandleResponse(*read_op, PgObjectId()));
   }
@@ -394,24 +455,25 @@ Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
   if (batch_row_orders_.size() == 0) {
     for (auto& read_op : read_ops_) {
       DCHECK(!read_op->rows_data().empty()) << "Read operation should not return empty data";
-      result_cache_.push_back(make_shared<PgDocResult>(read_op->rows_data()));
+      result.emplace_back(read_op->rows_data());
     }
   } else {
     for (int partition = 0; partition < batch_ops_.size(); partition++) {
       if (batch_ops_[partition]->mutable_request()->has_ybctid_column_value()) {
         // Read the response as this request has been initialized and send to tablet server.
-        result_cache_.push_back(make_shared<PgDocResult>(batch_ops_[partition]->rows_data(),
-                                                         std::move(batch_row_orders_[partition])));
+        result.emplace_back(batch_ops_[partition]->rows_data(),
+                            std::move(batch_row_orders_[partition]));
       }
     }
   }
 
   // For each read_op, set up its request for the next batch of data, or remove it from the list
   // if no data is left.
-  read_ops_.erase(std::remove_if(read_ops_.begin(), read_ops_.end(), [](auto& read_op) {
+  read_ops_.erase(std::remove_if(read_ops_.begin(), read_ops_.end(), [this](auto& read_op) {
     auto& res = *read_op->mutable_response();
     if (res.has_paging_state()) {
       PgsqlReadRequestPB *req = read_op->mutable_request();
+
       // Set up paging state for next request.
       // A query request can be nested, and paging state belong to the innermost query which is
       // the read operator that is operated first and feeds data to other queries.
@@ -430,7 +492,34 @@ Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
 
       // Keep this read-op and resend for the next paging state.
       return false;
+    } else if (template_op_->request().is_aggregate()) {
+      // Mutate into new query for next unqueried tablet.
 
+      const auto& partition_keys = table_desc_->table()->GetPartitions();
+      auto it = std::next(partition_keys.begin(), partition_keys_next_to_use_);
+      if (it == partition_keys.end()) {
+        // No work left.
+        return true;
+      } else {
+        PgsqlReadRequestPB *req = read_op->mutable_request();
+        req->clear_partition_column_values();
+
+        PgsqlPagingStatePB* paging_state = req->mutable_paging_state();
+        paging_state->set_next_partition_key(*it);
+        paging_state->clear_next_row_key();
+
+        // Set max_hash_code to end of tablet.
+        auto nx = std::next(it);
+        if (nx != partition_keys.cend()) {
+          req->set_max_hash_code(PartitionSchema::DecodeMultiColumnHashValue(*nx) - 1);
+        } else {
+          req->clear_max_hash_code();
+        }
+        partition_keys_next_to_use_++;
+
+        req->clear_ysql_catalog_version();
+        return false;
+      }
     } else if (read_op->request().batch_arguments_size() > 0 &&
                res.batch_arg_count() < read_op->request().batch_arguments_size()) {
       // === THIS CODE IS FOR ROLLING UPGRADE ONLY ===
@@ -458,7 +547,7 @@ Status PgDocReadOp::ProcessResponseImpl(const Status& exec_status) {
   }), read_ops_.end());
 
   end_of_data_ = read_ops_.empty() && !can_produce_more_ops_;
-  return Status::OK();
+  return result;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -477,15 +566,16 @@ Status PgDocWriteOp::SendRequestImpl(bool force_non_bufferable) {
   return Status::OK();
 }
 
-Status PgDocWriteOp::ProcessResponseImpl(const Status& exec_status) {
+Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl() {
   RETURN_NOT_OK(pg_session_->HandleResponse(*write_op_, relation_id_));
+  std::list<PgDocResult> result;
   if (PREDICT_FALSE(!write_op_->rows_data().empty())) {
-    result_cache_.push_back(make_shared<PgDocResult>(write_op_->rows_data()));
+    result.emplace_back(write_op_->rows_data());
   }
   rows_affected_count_ = write_op_.get()->response().rows_affected_count();
   end_of_data_ = true;
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
-  return Status::OK();
+  return result;
 }
 
 }  // namespace pggate

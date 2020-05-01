@@ -1,8 +1,9 @@
 ---
-title: YugabyteDB JDBC Driver
+title: YugabyteDB JDBC Driver (with cluster awareness and load balancing)
+headerTitle: YugabyteDB JDBC Driver
 linkTitle: YugabyteDB JDBC Driver
-description: YugabyteDB JDBC Driver
-beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
+description: Add cluster awareness and load balancing to YugabyteDB distributed SQL databases 
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: REFERENCE
 menu:
   latest:

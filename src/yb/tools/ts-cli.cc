@@ -33,7 +33,6 @@
 
 #include <iostream>
 #include <memory>
-#include <strstream>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -43,8 +42,8 @@
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/server/server_base.proxy.h"
+#include "yb/server/secure.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -54,9 +53,9 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/secure_stream.h"
 
 using yb::HostPort;
 using yb::rpc::Messenger;
@@ -93,6 +92,9 @@ DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 DEFINE_bool(force, false, "If true, allows the set_flag command to set a flag "
             "which is not explicitly marked as runtime-settable. Such flag changes may be "
             "simply ignored on the server, or may cause the server to crash.");
+
+DEFINE_string(certs_dir_name, "",
+              "Directory with certificates to use for secure server connection.");
 
 // Check that the value of argc matches what's expected, otherwise return a
 // non-zero exit code. Should be used in main().
@@ -172,6 +174,7 @@ class TsAdminClient {
   std::string addr_;
   MonoDelta timeout_;
   bool initted_;
+  std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
   shared_ptr<server::GenericServiceProxy> generic_proxy_;
   gscoped_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
@@ -196,7 +199,12 @@ Status TsAdminClient::Init() {
 
   HostPort host_port;
   RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
-  messenger_ = VERIFY_RESULT(MessengerBuilder("ts-cli").Build());
+  auto messenger_builder = MessengerBuilder("ts-cli");
+  if (!FLAGS_certs_dir_name.empty()) {
+    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir_name));
+    server::ApplySecureContext(secure_context_.get(), &messenger_builder);
+  }
+  messenger_ = VERIFY_RESULT(messenger_builder.Build());
 
   rpc::ProxyCache proxy_cache(messenger_.get());
 

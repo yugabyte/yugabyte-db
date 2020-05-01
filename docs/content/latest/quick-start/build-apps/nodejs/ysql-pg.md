@@ -1,7 +1,8 @@
 ---
-title: Build a NodeJS App
-linkTitle: Build a NodeJS App
-description: Build a NodeJS App
+title: Build a NodeJS application that uses YSQL
+headerTitle: Build a NodeJS application
+linkTitle: NodeJS
+description: Build a NodeJS application that uses the pg driver and YSQL.
 aliases:
   - /develop/client-drivers/nodejs/
   - /latest/develop/client-drivers/nodejs/

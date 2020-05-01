@@ -2,6 +2,7 @@
 title: ALTER KEYSPACE
 summary: Alter a keyspace
 description: ALTER KEYSPACE
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

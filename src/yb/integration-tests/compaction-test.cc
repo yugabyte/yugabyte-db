@@ -30,6 +30,7 @@ using namespace std::literals; // NOLINT
 
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
 namespace yb {
 
@@ -146,10 +147,16 @@ class CompactionTest : public YBTest {
     workload_->set_num_write_threads(4);
     workload_->set_num_tablets(kNumTablets);
     workload_->set_transactional(isolation_level, transaction_pool_.get());
+    workload_->set_ttl(ttl_to_use());
     workload_->Setup();
   }
 
  protected:
+
+  // -1 implies no ttl.
+  virtual int ttl_to_use() {
+    return -1;
+  }
 
   size_t BytesWritten() {
     return workload_->rows_inserted() * kPayloadBytes;
@@ -227,6 +234,71 @@ TEST_F(CompactionTest, CompactionAfterTruncate) {
 TEST_F(CompactionTest, CompactionAfterTruncateTransactional) {
   SetupWorkload(IsolationLevel::SNAPSHOT_ISOLATION);
   TestCompactionAfterTruncate();
+}
+
+class CompactionTestWithTTL : public CompactionTest {
+ protected:
+  int ttl_to_use() override {
+    return kTTLSec;
+  }
+  const int kTTLSec = 1;
+};
+
+TEST_F(CompactionTestWithTTL, CompactionAfterExpiry) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_rocksdb_level0_file_num_compaction_trigger = 10;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+
+  rocksdb_listener_->Reset();
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+
+  // Write enough to be short of triggering compactions.
+  WriteAtLeastFilesPerDb(0.8 * FLAGS_rocksdb_level0_file_num_compaction_trigger);
+  size_t size_before_compaction = 0;
+  for (auto* db : dbs) {
+    size_before_compaction += db->GetCurrentVersionSstFilesUncompressedSize();
+  }
+  LOG(INFO) << "size_before_compaction is " << size_before_compaction;
+
+  LOG(INFO) << "Sleeping";
+  SleepFor(MonoDelta::FromSeconds(2 * kTTLSec));
+
+  // Write enough to trigger compactions.
+  WriteAtLeastFilesPerDb(FLAGS_rocksdb_level0_file_num_compaction_trigger);
+
+  AssertLoggedWaitFor(
+      [&dbs] {
+        for (auto* db : dbs) {
+          if (db->GetLiveFilesMetaData().size() >
+              FLAGS_rocksdb_level0_file_num_compaction_trigger) {
+            return false;
+          }
+        }
+        return true;
+      },
+      60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay);
+
+  // Assert that the data size is smaller now.
+  size_t size_after_compaction = 0;
+  for (auto* db : dbs) {
+    size_after_compaction += db->GetCurrentVersionSstFilesUncompressedSize();
+  }
+  LOG(INFO) << "size_after_compaction is " << size_after_compaction;
+  EXPECT_LT(size_after_compaction, size_before_compaction);
+
+  SleepFor(MonoDelta::FromSeconds(2 * kTTLSec));
+
+  constexpr int kCompactionTimeoutSec = 60;
+  const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+  ASSERT_OK(workload_->client().FlushTable(
+    table_info->id(), kCompactionTimeoutSec, /* compaction */ true));
+  // Assert that the data size is all wiped up now.
+  size_t size_after_manual_compaction = 0;
+  for (auto* db : dbs) {
+    size_after_manual_compaction += db->GetCurrentVersionSstFilesUncompressedSize();
+  }
+  LOG(INFO) << "size_after_manual_compaction is " << size_after_manual_compaction;
+  EXPECT_EQ(size_after_manual_compaction, 0);
 }
 
 } // namespace tserver

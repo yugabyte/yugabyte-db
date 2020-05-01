@@ -225,7 +225,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests) {
+    RetryableRequests* retryable_requests,
+    const yb::OpId& split_op_id) {
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
       messenger, proxy_cache, local_peer_pb.cloud_info());
 
@@ -277,7 +278,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       parent_mem_tracker,
       mark_dirty_clbk,
       table_type,
-      retryable_requests);
+      retryable_requests,
+      split_op_id);
 }
 
 RaftConsensus::RaftConsensus(
@@ -292,7 +294,8 @@ RaftConsensus::RaftConsensus(
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests)
+    RetryableRequests* retryable_requests,
+    const yb::OpId& split_op_id)
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
@@ -325,6 +328,7 @@ RaftConsensus::RaftConsensus(
       DCHECK_NOTNULL(consensus_context),
       this,
       retryable_requests,
+      split_op_id,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
@@ -1220,7 +1224,7 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   }
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
-    VLOG_WITH_PREFIX(2) << "Replica updated."
+    VLOG_WITH_PREFIX(2) << "Replica updated. "
         << state_->ToString() << " Request: " << request->ShortDebugString();
   }
 
@@ -1642,7 +1646,7 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   }
 
   // 3 - Enqueue the writes.
-  auto new_committed_op_id = yb::OpId::FromPB(request->committed_index());
+  auto new_committed_op_id = yb::OpId::FromPB(request->committed_op_id());
   auto last_from_leader = EnqueueWritesUnlocked(
       deduped_req, new_committed_op_id, WriteEmpty(prev_committed_op_id != new_committed_op_id));
 
@@ -1680,8 +1684,8 @@ Status RaftConsensus::EarlyCommitUnlocked(const ConsensusRequestPB& request,
   if (deduped_req.preceding_opid.index < early_apply_up_to.index) {
     early_apply_up_to = deduped_req.preceding_opid;
   }
-  if (request.committed_index().index() < early_apply_up_to.index) {
-    early_apply_up_to = yb::OpId::FromPB(request.committed_index());
+  if (request.committed_op_id().index() < early_apply_up_to.index) {
+    early_apply_up_to = yb::OpId::FromPB(request.committed_op_id());
   }
 
   VLOG_WITH_PREFIX(1) << "Early marking committed up to " << early_apply_up_to;
@@ -1811,15 +1815,15 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB
   // no prepare enqueuing failed, or the minimum between 'committed_index' and the id of
   // the last successfully enqueued prepare, if some prepare failed to enqueue.
   yb::OpId apply_up_to;
-  if (last_from_leader.index < request.committed_index().index()) {
+  if (last_from_leader.index < request.committed_op_id().index()) {
     // we should never apply anything later than what we received in this request
     apply_up_to = last_from_leader;
 
     VLOG_WITH_PREFIX(2)
-        << "Received commit index " << request.committed_index()
+        << "Received commit index " << request.committed_op_id()
         << " from the leader but only marked up to " << apply_up_to << " as committed.";
   } else {
-    apply_up_to = yb::OpId::FromPB(request.committed_index());
+    apply_up_to = yb::OpId::FromPB(request.committed_op_id());
   }
 
   // We can now update the last received watermark.
@@ -2267,7 +2271,10 @@ void RaftConsensus::Shutdown() {
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_token_->Shutdown();
-  DisableFailureDetector();
+  // We might not have run Start yet, so make sure we have a FD.
+  if (failure_detector_) {
+    DisableFailureDetector();
+  }
 
   CHECK_OK(ExecuteHook(POST_SHUTDOWN));
 
@@ -2391,17 +2398,23 @@ void RaftConsensus::FillVoteResponseVoteDenied(ConsensusErrorPB::Code error_code
   response->mutable_consensus_error()->set_code(error_code);
 }
 
+void RaftConsensus::RequestVoteRespondVoteDenied(
+    ConsensusErrorPB::Code error_code, const std::string& message_suffix,
+    const VoteRequestPB& request, VoteResponsePB* response) {
+  auto status = STATUS_FORMAT(
+      InvalidArgument, "$0: Denying vote to candidate $1 $2",
+      GetRequestVoteLogPrefix(request), request.candidate_uuid(), message_suffix);
+  FillVoteResponseVoteDenied(error_code, response);
+  LOG(INFO) << status.message().ToBuffer();
+  StatusToPB(status, response->mutable_consensus_error()->mutable_status());
+}
+
 Status RaftConsensus::RequestVoteRespondInvalidTerm(const VoteRequestPB* request,
                                                     VoteResponsePB* response) {
-  FillVoteResponseVoteDenied(ConsensusErrorPB::INVALID_TERM, response);
-  string msg = Substitute("$0: Denying vote to candidate $1 for earlier term $2. "
-                          "Current term is $3.",
-                          GetRequestVoteLogPrefix(*request),
-                          request->candidate_uuid(),
-                          request->candidate_term(),
-                          state_->GetCurrentTermUnlocked());
-  LOG(INFO) << msg;
-  StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
+  auto message_suffix = Format(
+      "for earlier term $0. Current term is $1.",
+      request->candidate_term(), state_->GetCurrentTermUnlocked());
+  RequestVoteRespondVoteDenied(ConsensusErrorPB::INVALID_TERM, message_suffix, *request, response);
   return Status::OK();
 }
 
@@ -2418,32 +2431,23 @@ Status RaftConsensus::RequestVoteRespondVoteAlreadyGranted(const VoteRequestPB* 
 
 Status RaftConsensus::RequestVoteRespondAlreadyVotedForOther(const VoteRequestPB* request,
                                                              VoteResponsePB* response) {
-  FillVoteResponseVoteDenied(ConsensusErrorPB::ALREADY_VOTED, response);
-  string msg = Substitute("$0: Denying vote to candidate $1 in current term $2: "
-                          "Already voted for candidate $3 in this term.",
-                          GetRequestVoteLogPrefix(*request),
-                          request->candidate_uuid(),
-                          state_->GetCurrentTermUnlocked(),
-                          state_->GetVotedForCurrentTermUnlocked());
-  LOG(INFO) << msg;
-  StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
+  auto message_suffix = Format(
+      "in current term $0: Already voted for candidate $1 in this term.",
+      state_->GetCurrentTermUnlocked(), state_->GetVotedForCurrentTermUnlocked());
+  RequestVoteRespondVoteDenied(ConsensusErrorPB::ALREADY_VOTED, message_suffix, *request, response);
   return Status::OK();
 }
 
 Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpId& local_last_logged_opid,
                                                        const VoteRequestPB* request,
                                                        VoteResponsePB* response) {
-  FillVoteResponseVoteDenied(ConsensusErrorPB::LAST_OPID_TOO_OLD, response);
-  string msg = Substitute("$0: Denying vote to candidate $1 for term $2 because "
-                          "replica has last-logged OpId of $3, which is greater than that of the "
-                          "candidate, which has last-logged OpId of $4.",
-                          GetRequestVoteLogPrefix(*request),
-                          request->candidate_uuid(),
-                          request->candidate_term(),
-                          local_last_logged_opid.ShortDebugString(),
-                          request->candidate_status().last_received().ShortDebugString());
-  LOG(INFO) << msg;
-  StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
+  auto message_suffix = Format(
+      "for term $0 because replica has last-logged OpId of $1, which is greater than that of the "
+          "candidate, which has last-logged OpId of $2.",
+      request->candidate_term(), local_last_logged_opid,
+      request->candidate_status().last_received());
+  RequestVoteRespondVoteDenied(
+      ConsensusErrorPB::LAST_OPID_TOO_OLD, message_suffix, *request, response);
   return Status::OK();
 }
 
@@ -2804,6 +2808,18 @@ yb::OpId RaftConsensus::GetLastCommittedOpId() {
   return state_->GetCommittedOpIdUnlocked();
 }
 
+yb::OpId RaftConsensus::GetSplitOpId() {
+  auto lock = state_->LockForRead();
+  return state_->GetSplitOpIdUnlocked();
+}
+
+Status RaftConsensus::ResetSplitOpId() {
+  ReplicaState::UniqueLock lock;
+  RETURN_NOT_OK(state_->LockForUpdate(&lock));
+  state_->ResetSplitOpIdUnlocked();
+  return Status::OK();
+}
+
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
   LOG_WITH_PREFIX(INFO) << "Calling mark dirty synchronously for reason code " << context->reason;
   mark_dirty_clbk_.Run(context);
@@ -2969,6 +2985,14 @@ size_t RaftConsensus::LogCacheSize() {
 
 size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
   return queue_->EvictLogCache(bytes_to_evict);
+}
+
+Status RaftConsensus::CopyLogTo(const std::string& dest_dir) {
+  return queue_->CopyLogTo(dest_dir);
+}
+
+Status RaftConsensus::FlushLogIndex() {
+  return queue_->FlushLogIndex();
 }
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {

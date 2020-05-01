@@ -1,8 +1,8 @@
 ---
-title: TEXT
-linktitle: Character
-description: Character Types
-summary: String of Unicode characters
+title: Character data types [YSQL]
+headerTitle: Character data types
+linkTitle: Character
+description: Use character-based data types to specify data of a string of Unicode characters.
 menu:
   latest:
     identifier: api-ysql-datatypes-character

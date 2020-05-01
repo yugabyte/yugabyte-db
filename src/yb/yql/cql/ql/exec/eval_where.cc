@@ -75,15 +75,16 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
   for (const auto& op : partition_key_ops) {
     QLExpressionPB expr_pb;
     RETURN_NOT_OK(PTExprToPB(op.expr(), &expr_pb));
-    QLValue result;
-    RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row(), &result));
-    DCHECK(result.value().has_int64_value() || result.value().has_int32_value())
+    QLExprResult result;
+    RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row(), result.Writer()));
+    const auto& value = result.Value();
+    DCHECK(value.has_int64_value() || value.has_int32_value())
         << "Partition key operations are expected to return 64/16 bit integer";
     uint16_t hash_code;
     // 64 bits for token and 32 bits for partition_hash.
-    if (result.value().has_int32_value()) {
+    if (value.has_int32_value()) {
       // Validate bounds for uint16_t.
-      int32_t val = result.int32_value();
+      int32_t val = value.int32_value();
       if (val < std::numeric_limits<uint16_t>::min() ||
           val > std::numeric_limits<uint16_t>::max()) {
         return STATUS_SUBSTITUTE(InvalidArgument, "$0 out of bounds for unsigned 16 bit integer",
@@ -91,7 +92,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
       }
       hash_code = val;
     } else {
-      hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
+      hash_code = YBPartition::CqlToYBHashCode(value.int64_value());
     }
 
     // We always use inclusive intervals [start, end] for hash_code
@@ -110,7 +111,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
       case QL_OP_LESS_THAN:
         // Cassandra treats INT64_MIN upper bound as special case that includes everything (i.e. it
         // adds no real restriction). So we skip (do nothing) in that case.
-        if (!result.value().has_int64_value() || result.int64_value() != INT64_MIN) {
+        if (!value.has_int64_value() || value.int64_value() != INT64_MIN) {
           if (hash_code > YBPartition::kMinHashCode) {
             req->set_max_hash_code(hash_code - 1);
           } else {
@@ -122,7 +123,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
       case QL_OP_LESS_THAN_EQUAL:
         // Cassandra treats INT64_MIN upper bound as special case that includes everything (i.e. it
         // adds no real restriction). So we skip (do nothing) in that case.
-        if (!result.value().has_int64_value() || result.int64_value() != INT64_MIN) {
+        if (!value.has_int64_value() || value.int64_value() != INT64_MIN) {
           req->set_max_hash_code(hash_code);
         }
         break;

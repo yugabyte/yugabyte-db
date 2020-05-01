@@ -1,8 +1,8 @@
 ---
-title: COMMIT
+title: COMMIT statement [YSQL]
+headerTitle: COMMIT
 linkTitle: COMMIT
-description: COMMIT
-summary: COMMIT
+description: Use the COMMIT statement to commit the current transaction.
 menu:
   latest:
     identifier: api-ysql-commands-txn-commit

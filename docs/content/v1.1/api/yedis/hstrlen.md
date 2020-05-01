@@ -2,6 +2,7 @@
 title: HSTRLEN
 linkTitle: HSTRLEN
 description: HSTRLEN
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

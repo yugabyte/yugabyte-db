@@ -73,7 +73,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
-#include "yb/util/pending_op_counter.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -115,13 +115,15 @@ namespace tablet {
 
 class ChangeMetadataOperationState;
 class ScopedReadOperation;
-struct TabletMetrics;
-struct TransactionApplyData;
+class TabletRetentionPolicy;
 class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
 class TruncateOperationState;
 class WriteOperationState;
+
+struct TabletMetrics;
+struct TransactionApplyData;
 
 using docdb::LockBatch;
 
@@ -159,7 +161,9 @@ struct DocDbOpIds {
   std::string ToString() const;
 };
 
-typedef std::function<Status(const TableInfo&)> AddTableListener;
+using AddTableListener = std::function<Status(const TableInfo&)>;
+using DocWriteOperationCallback =
+    boost::function<void(std::unique_ptr<WriteOperation>, const Status&)>;
 
 class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
  public:
@@ -186,21 +190,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //
   // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
   // within the provided registry. Otherwise, no metrics are collected.
-  Tablet(
-      const RaftGroupMetadataPtr& metadata,
-      const std::shared_future<client::YBClient*> &client_future,
-      const scoped_refptr<server::Clock>& clock,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      std::shared_ptr<MemTracker> block_based_table_mem_tracker,
-      MetricRegistry* metric_registry,
-      const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
-      const TabletOptions& tablet_options,
-      std::string log_prefix_suffix,
-      TransactionParticipantContext* transaction_participant_context,
-      client::LocalTabletFilter local_tablet_filter,
-      TransactionCoordinatorContext* transaction_coordinator_context,
-      IsSysCatalogTablet is_sys_catalog,
-      TransactionsEnabled txns_enabled = TransactionsEnabled::kTrue);
+  explicit Tablet(const TabletInitData& data);
 
   ~Tablet();
 
@@ -208,12 +198,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Upon completion, the tablet enters the kBootstrapping state.
   CHECKED_STATUS Open();
 
-  CHECKED_STATUS EnableCompactions(ScopedPendingOperationPause* operation_pause);
+  CHECKED_STATUS EnableCompactions(ScopedRWOperationPause* operation_pause);
 
-  CHECKED_STATUS BackfillIndexes(const std::vector<IndexInfo> &indexes,
-                                 HybridTime read_time);
-
-  bool ShouldRetainDeleteMarkersInMajorCompaction() const;
+  Result<std::string> BackfillIndexes(const std::vector<IndexInfo>& indexes,
+                                      const std::string& backfill_from,
+                                      const CoarseTimePoint deadline,
+                                      const HybridTime read_time);
 
   CHECKED_STATUS UpdateIndexInBatches(
       const QLTableRow& row, const std::vector<IndexInfo>& indexes,
@@ -222,6 +212,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS FlushIndexBatchIfRequired(
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       bool force_flush = false);
+
+  CHECKED_STATUS
+  FlushWithRetries(
+      std::shared_ptr<client::YBSession> session,
+      const std::vector<std::shared_ptr<client::YBqlWriteOp>>& write_ops,
+      int num_retries);
 
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
@@ -277,6 +273,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply all of the row operations associated with this transaction.
   CHECKED_STATUS ApplyRowOperations(WriteOperationState* operation_state);
 
+  CHECKED_STATUS ApplyOperationState(
+      const OperationState& operation_state, int64_t batch_idx,
+      const docdb::KeyValueWriteBatchPB& write_batch);
+
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   CHECKED_STATUS ApplyKeyValueRowOperations(
@@ -300,7 +300,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
-  CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(WriteOperation* operation);
+  void KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteOperation> operation);
 
   CHECKED_STATUS HandleRedisReadRequest(
       CoarseTimePoint deadline,
@@ -337,16 +337,18 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
       PgsqlResponsePB* response) const override;
 
-  CHECKED_STATUS KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation);
+  CHECKED_STATUS PreparePgsqlWriteOperations(WriteOperation* operation);
+  void KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteOperation> operation);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
-      const Schema &projection,
+      const Schema& projection,
       const boost::optional<TransactionId>& transaction_id,
       const ReadHybridTime read_hybrid_time = {},
-      const TableId& table_id = "") const;
+      const TableId& table_id = "",
+      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
 
@@ -370,7 +372,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that major compactions can now garbage collect delete markers.
-  CHECKED_STATUS MarkBackfillDone(bool done);
+  CHECKED_STATUS MarkBackfillDone();
 
   // Change wal_retention_secs in the metadata.
   CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state);
@@ -541,10 +543,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // records RocksDB.
   Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override;
 
-  // Create an on-disk sub tablet of this tablet with specified ID, partition and key bounds.
-  CHECKED_STATUS CreateSubtablet(
-      const TabletId& tablet_id, const Partition& partition,
-      const docdb::KeyBounds& key_bounds);
+  // Creates an on-disk sub tablet of this tablet with specified ID, partition and key bounds.
+  // Flushes this tablet data onto disk before creating sub tablet.
+  // Also updates flushed frontier for regular and intents DBs to match split_op_id and
+  // split_op_hybrid_time.
+  // In case of error sub-tablet could be partially persisted on disk.
+  Result<RaftGroupMetadataPtr> CreateSubtablet(
+      const TabletId& tablet_id, const Partition& partition, const docdb::KeyBounds& key_bounds,
+      const yb::OpId& split_op_id, const HybridTime& split_op_hybrid_time);
 
   // Scans the intent db. Potentially takes a long time. Used for testing/debugging.
   Result<int64_t> CountIntents();
@@ -561,6 +567,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return *snapshots_;
   }
 
+  SnapshotCoordinator* snapshot_coordinator() {
+    return snapshot_coordinator_;
+  }
+
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
   void AddAdditionalMetadata(const std::string& key, std::shared_ptr<void> additional_metadata) {
     std::lock_guard<std::mutex> lock(control_path_mutex_);
@@ -573,6 +583,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return (val != additional_metadata_.end()) ? val->second : nullptr;
   }
 
+  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
+
+  TabletRetentionPolicy* RetentionPolicy() override {
+    return retention_policy_.get();
+  }
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -581,17 +597,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
-  CHECKED_STATUS StartDocWriteOperation(WriteOperation* operation);
+  void StartDocWriteOperation(
+      std::unique_ptr<WriteOperation> operation,
+      ScopedRWOperation scoped_read_operation,
+      DocWriteOperationCallback callback);
 
   CHECKED_STATUS OpenKeyValueTablet();
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
 
   void DocDBDebugDump(std::vector<std::string> *lines);
-
-  // Register/Unregister a read operation, with an associated timestamp, for the purpose of
-  // tracking the oldest read point.
-  CHECKED_STATUS RegisterReaderTimestamp(HybridTime read_point) override;
-  void UnregisterReader(HybridTime read_point) override;
 
   CHECKED_STATUS PrepareTransactionWriteBatch(
       int64_t batch_idx, // index of this batch in its transaction
@@ -608,7 +622,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       bool is_ysql_catalog_table) const;
 
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
-  ScopedPendingOperationPause PauseReadWriteOperations();
+  ScopedRWOperationPause PauseReadWriteOperations(Stop stop = Stop::kFalse);
 
   CHECKED_STATUS ResetRocksDBs(bool destroy = false);
 
@@ -619,6 +633,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::string LogPrefix() const;
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
+
+  Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request) const;
+
+  Result<bool> HasScanReachedMaxPartitionKey(
+      const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const;
 
   // Lock protecting schema_ and key_schema_.
   //
@@ -668,12 +687,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   scoped_refptr<server::Clock> clock_;
 
   MvccManager mvcc_;
-
-  // Maps a timestamp to the number active readers with that timestamp.
-  // TODO(ENG-961): Check if this is a point of contention. If so, shard it as suggested in D1219.
-  std::map<HybridTime, int64_t> active_readers_cnt_ GUARDED_BY(active_readers_mutex_);
-  HybridTime earliest_read_time_allowed_ GUARDED_BY(active_readers_mutex_) {HybridTime::kMin};
-  mutable std::mutex active_readers_mutex_;
 
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
@@ -727,9 +740,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // RocksDB.
   //
   // This is marked mutable because read path member functions (which are const) are using this.
-  mutable PendingOperationCounter pending_op_counter_;
-
-  std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
+  mutable RWOperationCounter pending_op_counter_;
 
   std::unique_ptr<TransactionCoordinator> transaction_coordinator_;
 
@@ -751,7 +762,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
+  using IndexOps = std::vector<std::pair<
+      std::shared_ptr<client::YBqlWriteOp>, docdb::QLWriteOperation*>>;
   void UpdateQLIndexes(std::unique_ptr<WriteOperation> operation);
+  void UpdateQLIndexesFlushed(
+      WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
+      const IndexOps& index_ops, const Status& status);
+
   void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);
 
   Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
@@ -771,6 +788,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     CleanupIntentFiles();
   }
 
+  template <class Functor>
+  uint64_t GetRegularDbStat(const Functor& functor) const;
+
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
   client::LocalTabletFilter local_tablet_filter_;
@@ -785,6 +805,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<TabletSnapshots> snapshots_;
 
+  SnapshotCoordinator* snapshot_coordinator_ = nullptr;
+
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_
     GUARDED_BY(control_path_mutex_);
@@ -792,6 +814,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::mutex num_sst_files_changed_listener_mutex_;
   std::function<void()> num_sst_files_changed_listener_
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
+
+  std::shared_ptr<TabletRetentionPolicy> retention_policy_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
@@ -805,6 +829,8 @@ class ScopedReadOperation {
       : tablet_(rhs.tablet_), read_time_(rhs.read_time_) {
     rhs.tablet_ = nullptr;
   }
+
+  void operator=(ScopedReadOperation&& rhs);
 
   static Result<ScopedReadOperation> Create(
       AbstractTablet* tablet,
@@ -820,9 +846,11 @@ class ScopedReadOperation {
 
   Status status() const { return status_; }
 
+  void Reset();
+
  private:
   explicit ScopedReadOperation(
-      AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time);
+      AbstractTablet* tablet, const ReadHybridTime& read_time);
 
   AbstractTablet* tablet_;
   ReadHybridTime read_time_;

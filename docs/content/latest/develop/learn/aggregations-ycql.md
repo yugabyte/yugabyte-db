@@ -1,7 +1,8 @@
 ---
-title: 5. Aggregations
+title: Aggregations in YCQL
+headerTitle: Aggregations
 linkTitle: 5. Aggregations
-description: Aggregations
+description: Learn how YugabyteDB YCQL supports standard aggregation functions.
 menu:
   latest:
     identifier: aggregations-1-ycql

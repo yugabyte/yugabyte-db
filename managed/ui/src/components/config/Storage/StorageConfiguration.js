@@ -10,47 +10,61 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { isDefinedNotNull } from "utils/ObjectUtils";
+import AwsStorageConfiguration from './AwsStorageConfiguration';
 
 import awss3Logo from './images/aws-s3.png';
+import azureLogo from './images/azure_logo.svg';
 import { isNonEmptyObject, isEmptyObject } from '../../../utils/ObjectUtils';
 
 const storageConfigTypes = {
-  S3: {
-    title: "S3 Storage",
-    fields: [{
-      id: "AWS_ACCESS_KEY_ID",
-      label: "Access Key",
-      placeHolder: "AWS Access Key"
-    }, {
-      id: "AWS_SECRET_ACCESS_KEY",
-      label: "Access Secret",
-      placeHolder: "AWS Access Secret"
-    }, {
-      id: "S3_BUCKET",
-      label: "S3 Bucket",
-      placeHolder: "S3 Bucket"
-    }]
-  },
   NFS: {
     title: "NFS Storage",
     fields: [{
-      id: "NFS_PATH",
+      id: "BACKUP_LOCATION",
       label: "NFS Storage Path",
       placeHolder: "NFS Storage Path"
+    }]
+  },
+  GCS: {
+    title: "GCS Storage",
+    fields: [{
+      id: "BACKUP_LOCATION",
+      label: "GCS Bucket",
+      placeHolder: "GCS Bucket"
+    }, {
+      id: "GCS_CREDENTIALS_JSON",
+      label: "GCS Credentials",
+      placeHolder: "GCS Credentials JSON"
+    }]
+  },
+  AZ: {
+    title: "Azure Storage",
+    fields: [{
+      id: "BACKUP_LOCATION",
+      label: "Container URL",
+      placeHolder: "Container URL"
+    }, {
+      id: "AZURE_STORAGE_SAS_TOKEN",
+      label: "SAS Token",
+      placeholder: "SAS Token"
     }]
   }
 };
 
-class StorageConfiguration extends Component {
-
-  getTabTitle = (configName) => {
-    switch (configName) {
-      case "S3":
-        return <img src={awss3Logo} alt="AWS S3" className="aws-logo" />;
-      default:
-        return <h3><i className="fa fa-database"></i>NFS</h3>;
-    }
+const getTabTitle = (configName) => {
+  switch (configName) {
+    case "S3":
+      return <img src={awss3Logo} alt="AWS S3" className="aws-logo" />;
+    case "GCS":
+      return <h3><i className="fa fa-database"></i>GCS</h3>;
+    case "AZ":
+      return <img src={azureLogo} alt="Azure" className="azure-logo" />;
+    default:
+      return <h3><i className="fa fa-database"></i>NFS</h3>;
   }
+};
+
+class StorageConfiguration extends Component {
 
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs.data.find(config => config.name.toLowerCase() === name);
@@ -59,7 +73,11 @@ class StorageConfiguration extends Component {
   wrapFields = (configFields, configName, configControls) => {
     const configNameFormatted = configName.toLowerCase();
     return (
-      <Tab eventKey={configNameFormatted} title={ this.getTabTitle(configName) } key={configNameFormatted+"-tab"} unmountOnExit={true}>
+      <Tab eventKey={configNameFormatted}
+        title={ getTabTitle(configName) }
+        key={configNameFormatted+"-tab"}
+        unmountOnExit={true}
+      >
         <Row className="config-section-header" key={configNameFormatted}>
           <Col lg={8}>
             { configFields }
@@ -77,10 +95,20 @@ class StorageConfiguration extends Component {
   addStorageConfig = (values, action, props) => {
     const type = (props.activeTab && props.activeTab.toUpperCase()) || Object.keys(storageConfigTypes)[0];
     Object.keys(values).forEach((key) => { if (typeof values[key] === 'string' || values[key] instanceof String) values[key] = values[key].trim(); });
+    const dataPayload = { ...values };
+    if (props.activeTab === 's3') {
+      if (values["IAM_INSTANCE_PROFILE"]) {
+        delete dataPayload["AWS_ACCESS_KEY_ID"];
+        delete dataPayload["AWS_SECRET_ACCESS_KEY"];
+      }
+      if ("IAM_INSTANCE_PROFILE" in dataPayload) {
+        dataPayload["IAM_INSTANCE_PROFILE"] = dataPayload["IAM_INSTANCE_PROFILE"].toString();
+      }
+    }
     this.props.addCustomerConfig({
       "type": "STORAGE",
       "name": type,
-      "data": values
+      "data": dataPayload
     });
   }
 
@@ -112,7 +140,11 @@ class StorageConfiguration extends Component {
     }
 
     if (getPromiseState(customerConfigs).isSuccess() || getPromiseState(customerConfigs).isEmpty()) {
-      const configs = [];
+      const configs = [
+        <Tab eventKey={"s3"} title={getTabTitle("S3")} key={"s3-tab"} unmountOnExit={true}>
+          <AwsStorageConfiguration {...this.props} />
+        </Tab>
+      ];
       Object.keys(storageConfigTypes).forEach((configName) => {
         const config = customerConfigs.data.find(config => config.name === configName);
         if (isDefinedNotNull(config)) {
@@ -130,7 +162,7 @@ class StorageConfiguration extends Component {
               );
             }
           }
-          
+
           const configFields = [];
           const configTemplate = storageConfigTypes[configName];
           configTemplate.fields.forEach((field)=> {
@@ -141,8 +173,9 @@ class StorageConfiguration extends Component {
                   <div className="form-item-custom-label">{field.label}</div>
                 </Col>
                 <Col lg={10}>
-                  <Field name={field.id} placeHolder={field.placeHolder} input={{value: value, disabled: isDefinedNotNull(value)}} 
-                        component={YBTextInput} className={"data-cell-input"}/>
+                  <Field name={field.id} placeHolder={field.placeHolder}
+                         input={{value: value, disabled: isDefinedNotNull(value)}}
+                         component={YBTextInput} className={"data-cell-input"}/>
                 </Col>
               </Row>
             );
@@ -160,14 +193,14 @@ class StorageConfiguration extends Component {
               Are you sure you want to delete {config.name} Storage Configuration?
             </YBConfirmModal>}
           </div>);
-      
+
 
           configs.push(
             this.wrapFields(configFields, configName, configControls)
           );
 
         } else {
-          
+
           const configFields = [];
           const config = storageConfigTypes[configName];
           config.fields.forEach((field)=> {
@@ -197,10 +230,10 @@ class StorageConfiguration extends Component {
         <div className="provider-config-container">
           <form name="storageConfigForm" onSubmit={handleSubmit(this.addStorageConfig)}>
             { error && <Alert bsStyle="danger">{error}</Alert> }
-            <YBTabsPanel 
-                defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()} 
-                activeTab={activeTab} id="storage-config-tab-panel" 
-                className="config-tabs" routePrefix="/config/backup/"> 
+            <YBTabsPanel
+                defaultTab={Object.keys(storageConfigTypes)[0].toLowerCase()}
+                activeTab={activeTab} id="storage-config-tab-panel"
+                className="config-tabs" routePrefix="/config/backup/">
               { configs }
             </YBTabsPanel>
 

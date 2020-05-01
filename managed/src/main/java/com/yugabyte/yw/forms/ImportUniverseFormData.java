@@ -32,6 +32,10 @@ public class ImportUniverseFormData {
   // State of the import.
   public State currentState = State.BEGIN;
 
+  // Complete the import in a single step
+  // (implicitly sets currentState to State.BEGIN)
+  public boolean singleStep = false;
+
   // The UUID of the universe, if it is already created and uuid is known.
   public UUID universeUUID;
 

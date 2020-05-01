@@ -1,7 +1,8 @@
 ---
-title: Build a Java App
-linkTitle: Build a Java App
-description: Build a Java application
+title: Build a Java application that uses Spring Boot and YSQL
+headerTitle: Build a Java application
+linkTitle: Java
+description: Build a simple Java e-commerce application that uses Spring Boot and YSQL.
 menu:
   latest:
     parent: build-apps
@@ -12,7 +13,6 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >

@@ -2,6 +2,7 @@
 title: Create Universe - Multi-Region
 linkTitle: Create Universe  - Multi-Region
 description: Create Universe - Multi-Region
+block_indexing: true
 menu:
   v1.1:
     identifier: manage-create-universe-multi-region

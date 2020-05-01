@@ -1290,14 +1290,14 @@ class Stats {
 
   void PrintThreadStatus() {
     std::vector<ThreadStatus> thread_list;
-    FLAGS_env->GetThreadList(&thread_list);
+    CHECK_OK(FLAGS_env->GetThreadList(&thread_list));
 
     fprintf(stderr, "\n%18s %10s %12s %20s %13s %45s %12s %s\n",
         "ThreadID", "ThreadType", "cfName", "Operation",
         "ElapsedTime", "Stage", "State", "OperationProperties");
 
     int64_t current_time = 0;
-    Env::Default()->GetCurrentTime(&current_time);
+    CHECK_OK(Env::Default()->GetCurrentTime(&current_time));
     for (auto ts : thread_list) {
       fprintf(stderr, "%18" PRIu64 " %10s %12s %20s %13s %45s %12s",
           ts.thread_id,
@@ -1813,10 +1813,10 @@ class Benchmark {
     }
 
     std::vector<std::string> files;
-    FLAGS_env->GetChildren(FLAGS_db, &files);
+    FLAGS_env->GetChildrenWarnNotOk(FLAGS_db, &files);
     for (size_t i = 0; i < files.size(); i++) {
       if (Slice(files[i]).starts_with("heap-")) {
-        FLAGS_env->DeleteFile(FLAGS_db + "/" + files[i]);
+        CHECK_OK(FLAGS_env->DeleteFile(FLAGS_db + "/" + files[i]));
       }
     }
     if (!FLAGS_use_existing_db) {
@@ -1824,7 +1824,7 @@ class Benchmark {
       if (!FLAGS_wal_dir.empty()) {
         options.wal_dir = FLAGS_wal_dir;
       }
-      DestroyDB(FLAGS_db, options);
+      CHECK_OK(DestroyDB(FLAGS_db, options));
     }
   }
 
@@ -2068,11 +2068,11 @@ class Benchmark {
         } else {
           if (db_.db != nullptr) {
             db_.DeleteDBs();
-            DestroyDB(FLAGS_db, open_options_);
+            CHECK_OK(DestroyDB(FLAGS_db, open_options_));
           }
           for (size_t i = 0; i < multi_dbs_.size(); i++) {
             delete multi_dbs_[i].db;
-            DestroyDB(GetDbNameForMultiple(FLAGS_db, i), open_options_);
+            CHECK_OK(DestroyDB(GetDbNameForMultiple(FLAGS_db, i), open_options_));
           }
           multi_dbs_.clear();
         }
@@ -4055,7 +4055,7 @@ class Benchmark {
 
   void Compact(ThreadState* thread) {
     DB* db = SelectDB(thread);
-    db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+    CHECK_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
   }
 
   void PrintStats(const char* key) {
@@ -4133,7 +4133,7 @@ int db_bench_tool(int argc, char** argv) {
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db.empty()) {
     std::string default_db_path;
-    rocksdb::Env::Default()->GetTestDirectory(&default_db_path);
+    CHECK_OK(rocksdb::Env::Default()->GetTestDirectory(&default_db_path));
     default_db_path += "/dbbench";
     FLAGS_db = default_db_path;
   }

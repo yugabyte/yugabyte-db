@@ -1,7 +1,8 @@
 ---
-title: 1. Install YugabyteDB
+title: Install YugabyteDB on Kubernetes
+headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
-description: Install YugabyteDB
+description: Download and install YugabyteDB on Kubernetes in less than five minutes.
 aliases:
   - /quick-start/install/
 menu:
@@ -13,7 +14,6 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
-hidePagination: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -124,8 +124,8 @@ $ helm repo update
 $ helm search repo yugabytedb/yugabyte
 ```
 ```sh
-NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
-yugabytedb/yugabyte 2.0.12        2.0.12.0-b10  YugabyteDB is the high-performance distr...
+NAME                CHART VERSION APP VERSION DESCRIPTION                                       
+yugabytedb/yugabyte 2.1.0         2.1.0.0-b18 YugabyteDB is the high-performance distributed ...
 ```
 
 Now we are ready to create a local YugabyteDB cluster.

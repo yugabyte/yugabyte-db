@@ -1,7 +1,7 @@
 {{ $currentVersion := (.Scratch.Get "currentVersionTitle") }}
 {{ if not $currentVersion}}
   {{ $context := . }}
-  {{ $path := split .Dir "/" }}
+  {{ $path := split .File.Dir "/" }}
   {{ if eq (index $path 0) "versions" }}
     {{ $title := (index $path 1) }}
     {{ range $index,$value := .Site.Menus }}

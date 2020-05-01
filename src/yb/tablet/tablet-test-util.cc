@@ -15,6 +15,7 @@
 
 #include <gflags/gflags.h>
 
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"

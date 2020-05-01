@@ -1,8 +1,9 @@
 ---
 title: JSON Datatypes
-linktitle: Json
+linktitle: JSON
 summary: JSON Datatypes
 description: JSON Datatypes
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-datatypes-json

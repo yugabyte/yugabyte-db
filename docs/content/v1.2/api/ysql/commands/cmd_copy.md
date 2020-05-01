@@ -3,6 +3,7 @@ title: COPY
 linkTitle: COPY
 summary: COPY
 description: COPY
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-copy

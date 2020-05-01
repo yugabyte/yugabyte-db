@@ -2,6 +2,7 @@
 title: 1. ACID Transactions
 linkTitle: 1. ACID Transactions
 description: Distributed ACID Transactions
+block_indexing: true
 menu:
   v1.1:
     identifier: transactions

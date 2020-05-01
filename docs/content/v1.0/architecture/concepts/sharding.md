@@ -2,6 +2,7 @@
 title: Sharding
 linkTitle: Sharding
 description: Data Sharding into Tablets
+block_indexing: true
 menu:
   v1.0:
     identifier: architecture-sharding

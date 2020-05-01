@@ -294,6 +294,11 @@ static inline uint8_t Load8(const void* p) {
 YB_STRONGLY_TYPED_UUID(ClientId);
 typedef int64_t RetryableRequestId;
 
+template <class Resp>
+CHECKED_STATUS StatusFromResponse(const Resp& resp) {
+  return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
+}
+
 } // namespace yb
 
 #endif  // YB_COMMON_WIRE_PROTOCOL_H

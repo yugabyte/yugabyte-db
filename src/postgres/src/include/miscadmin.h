@@ -185,6 +185,8 @@ extern PGDLLIMPORT Oid MyDatabaseId;
 
 extern PGDLLIMPORT Oid MyDatabaseTableSpace;
 
+extern PGDLLIMPORT bool MyDatabaseColocated;
+
 /*
  * Date/Time Configuration
  *

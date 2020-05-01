@@ -69,8 +69,8 @@ Status Writer::AddRecord(const Slice& slice) {
         // Fill the trailer (literal below relies on kHeaderSize and
         // kRecyclableHeaderSize being <= 11)
         assert(header_size <= 11);
-        dest_->Append(
-            Slice("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", leftover));
+        RETURN_NOT_OK(dest_->Append(
+            Slice("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", leftover)));
       }
       block_offset_ = 0;
     }

@@ -45,6 +45,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
@@ -105,26 +106,7 @@ using namespace std::placeholders;
 
 namespace master {
 
-constexpr int64_t kBytesPerGB = 1000000000;
-constexpr int64_t kBytesPerMB = 1000000;
-constexpr int64_t kBytesPerKB = 1000;
-
 MasterPathHandlers::~MasterPathHandlers() {
-}
-
-string MasterPathHandlers::BytesToHumanReadable(uint64_t bytes) {
-  std::ostringstream op_stream;
-  op_stream <<std::setprecision(output_precision_);
-  if (bytes >= kBytesPerGB) {
-    op_stream << static_cast<double> (bytes)/kBytesPerGB << " GB";
-  } else if (bytes >= kBytesPerMB) {
-    op_stream << static_cast<double> (bytes)/kBytesPerMB << " MB";
-  } else if (bytes >= kBytesPerKB) {
-    op_stream << static_cast<double> (bytes)/kBytesPerKB << " KB";
-  } else {
-    op_stream << bytes << " B";
-  }
-  return op_stream.str();
 }
 
 void MasterPathHandlers::TabletCounts::operator+=(const TabletCounts& other) {
@@ -283,10 +265,10 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "    <td>" << (no_tablets ? 0
               : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers)
               << " / " << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
-      *output << "    <td>" << BytesToHumanReadable(desc->total_memory_usage()) << "</td>";
+      *output << "    <td>" << HumanizeBytes(desc->total_memory_usage()) << "</td>";
       *output << "    <td>" << desc->num_sst_files() << "</td>";
-      *output << "    <td>" << BytesToHumanReadable(desc->total_sst_file_size()) << "</td>";
-      *output << "    <td>" << BytesToHumanReadable(desc->uncompressed_sst_file_size()) << "</td>";
+      *output << "    <td>" << HumanizeBytes(desc->total_sst_file_size()) << "</td>";
+      *output << "    <td>" << HumanizeBytes(desc->uncompressed_sst_file_size()) << "</td>";
       *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
       *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";
@@ -534,7 +516,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         }
 
         jw.String("ram_used");
-        jw.String(BytesToHumanReadable(desc->total_memory_usage()));
+        jw.String(HumanizeBytes(desc->total_memory_usage()));
         jw.String("ram_used_bytes");
         jw.Uint64(desc->total_memory_usage());
 
@@ -542,12 +524,12 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.Uint64(desc->num_sst_files());
 
         jw.String("total_sst_file_size");
-        jw.String(BytesToHumanReadable(desc->total_sst_file_size()));
+        jw.String(HumanizeBytes(desc->total_sst_file_size()));
         jw.String("total_sst_file_size_bytes");
         jw.Uint64(desc->total_sst_file_size());
 
         jw.String("uncompressed_sst_file_size");
-        jw.String(BytesToHumanReadable(desc->uncompressed_sst_file_size()));
+        jw.String(HumanizeBytes(desc->uncompressed_sst_file_size()));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(desc->uncompressed_sst_file_size());
 
@@ -907,8 +889,10 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
             << "</td></tr>\n";
     *output << "</table>\n";
 
-    SchemaFromPB(l->data().pb.schema(), &schema);
-    Status s = PartitionSchema::FromPB(l->data().pb.partition_schema(), schema, &partition_schema);
+    Status s = SchemaFromPB(l->data().pb.schema(), &schema);
+    if (s.ok()) {
+      s = PartitionSchema::FromPB(l->data().pb.partition_schema(), schema, &partition_schema);
+    }
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
       return;

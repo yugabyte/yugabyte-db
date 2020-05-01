@@ -1,7 +1,8 @@
 ---
-title: 9. TTL for data expiration
+title: TTL for data expiration in YCQL
+headerTitle: TTL for data expiration
 linkTitle: 9. TTL for data expiration
-description: TTL for data expiration
+description: Learn how to use TTL for data expiration in YCQL.
 menu:
   latest:
     identifier: ttl-data-expiration-ycql
@@ -114,4 +115,4 @@ There are several ways to work with TTL:
 2. [Expiring rows with TTL](../../../api/ycql/dml_insert#insert-a-row-with-expiration-time-using-the-using-ttl-clause)
 3. [`TTL` function](../../../api/ycql/expr_fcall/#ttl-function) to return number of seconds until expiration
 4. [`WriteTime` function](../../../api/ycql/expr_fcall#writetime-function) returns timestamp when row/column was inserted
-5. [Update row/column TTL](./../../api/ycql/dml_update/#using-clause) to update the TTL of a row or column
+5. [Update row/column TTL](../../../api/ycql/dml_update/#using-clause) to update the TTL of a row or column

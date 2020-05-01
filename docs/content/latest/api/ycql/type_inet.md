@@ -1,7 +1,9 @@
 ---
-title: INET
+title: INET data type [YCQL]
+headerTitle: INET type
+linkTitle: INET
 summary: IP Address String
-description: INET type
+description: Use the INET data type to specify columns for data of IP addresses.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`INET` data type is used to specify columns for data of IP addresses.
+Use the `INET` data type to specify columns for data of IP addresses.
 
 ## Syntax
 

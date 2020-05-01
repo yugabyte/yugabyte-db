@@ -1,8 +1,8 @@
 ---
-title: PREPARE
+title: PREPARE statement [YSQL]
+headerTitle: PREPARE
 linkTitle: PREPARE
-description: PREPARE
-summary: PREPARE
+description: Use the PREPARE statement to create a handle to a prepared statement by parsing, analyzing, and rewriting (but not executing) the target statement.
 menu:
   latest:
     identifier: api-ysql-commands-prepare
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `PREPARE` statement to create a handle to a prepared statement by parsing, analyzing and rewriting (but not executing) the target statement.
+Use the `PREPARE` statement to create a handle to a prepared statement by parsing, analyzing, and rewriting (but not executing) the target statement.
 
 ## Syntax
 

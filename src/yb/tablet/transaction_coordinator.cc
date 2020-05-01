@@ -34,9 +34,11 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/pgsql_error.h"
 
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
 
 #include "yb/server/clock.h"
@@ -49,6 +51,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
@@ -71,6 +74,9 @@ DEFINE_uint64(transaction_resend_applying_interval_usec, 5000000,
 DEFINE_int64(avoid_abort_after_sealing_ms, 20,
              "If transaction was only sealed, we will try to abort it not earlier than this "
                  "period in milliseconds.");
+
+DEFINE_test_flag(uint64, TEST_inject_txn_get_status_delay_ms, 0,
+                 "Inject specified delay to transaction get status requests.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -135,7 +141,7 @@ class TransactionStateContext {
 };
 
 std::string BuildLogPrefix(const std::string& parent_log_prefix, const TransactionId& id) {
-  auto id_string = boost::uuids::to_string(id);
+  auto id_string = id.ToString();
   return parent_log_prefix.substr(0, parent_log_prefix.length() - 2) + " ID " + id_string + ": ";
 }
 
@@ -183,7 +189,7 @@ class TransactionState {
   std::string ToString() const {
     return Format("{ id: $0 last_touch: $1 status: $2 unnotified_tablets: $3 replicating: $4 "
                       " request_queue: $5 first_entry_raft_index: $6 }",
-                  to_string(id_), last_touch_, TransactionStatus_Name(status_),
+                  id_, last_touch_, TransactionStatus_Name(status_),
                   involved_tablets_, replicating_, request_queue_, first_entry_raft_index_);
   }
 
@@ -557,7 +563,7 @@ class TransactionState {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
 
     tserver::TransactionStatePB state;
-    state.set_transaction_id(id_.begin(), id_.size());
+    state.set_transaction_id(id_.data(), id_.size());
     state.set_status(status);
 
     auto request = context_.coordinator_context().CreateUpdateTransactionState(&state);
@@ -820,7 +826,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
        Counter* expired_metric)
       : context_(*context),
         expired_metric_(*expired_metric),
-        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), permanent_uuid)) {
+        log_prefix_(consensus::MakeTabletLogPrefix(context->tablet_id(), permanent_uuid)),
+        poller_(log_prefix_, std::bind(&Impl::Poll, this)) {
   }
 
   virtual ~Impl() {
@@ -828,27 +835,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void Shutdown() {
-    {
-      std::unique_lock<std::mutex> lock(managed_mutex_);
-      if (!closing_) {
-        closing_ = true;
-        if (poll_task_id_ != rpc::kUninitializedScheduledTaskId) {
-          context_.client_future().get()->messenger()->scheduler().Abort(poll_task_id_);
-        }
-      }
-      cond_.wait(lock, [this] { return poll_task_id_ == rpc::kUninitializedScheduledTaskId; });
-      // There could be rare case when poll left mutex and is executing postponed actions.
-      // So we should wait that it also completed.
-      while (running_polls_ != 0) {
-        std::this_thread::sleep_for(10ms);
-      }
-    }
+    poller_.Shutdown();
     rpcs_.Shutdown();
   }
 
   CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response) {
+    AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
     auto leader_term = context_.LeaderTerm();
     PostponedLeaderActions postponed_leader_actions;
     {
@@ -906,7 +900,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         tserver::GetTransactionStatusAtParticipantRequestPB req;
         req.set_tablet_id(p.tablet);
         req.set_transaction_id(
-            pointer_cast<const char*>(transaction_id.data), transaction_id.size());
+            pointer_cast<const char*>(transaction_id.data()), transaction_id.size());
         req.set_propagated_hybrid_time(now_ht.ToUint64());
         if (abort_if_not_replicated) {
           req.set_required_num_replicated_batches(p.batches);
@@ -983,6 +977,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback) {
+    AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
+
     auto id = FullyDecodeTransactionId(transaction_id);
     if (!id.ok()) {
       callback(id.status());
@@ -1077,10 +1073,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void Start() {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
-    if (!closing_) {
-      SchedulePoll();
-    }
+    poller_.Start(
+        &context_.client_future().get()->messenger()->scheduler(),
+        std::chrono::microseconds(kTimeMultiplier * FLAGS_transaction_check_interval_usec));
   }
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
@@ -1106,9 +1101,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
               << LogPrefix() << "Request to unknown transaction " << id << ": "
               << state.ShortDebugString();
-          request->CompleteWithStatus(
-              STATUS(Expired, "Transaction expired or aborted by a conflict",
-                     PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)));
+          auto status = STATUS(Expired, "Transaction expired or aborted by a conflict",
+                               PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+          status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+          request->CompleteWithStatus(status);
           return;
         }
       }
@@ -1192,7 +1188,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         tserver::UpdateTransactionRequestPB req;
         req.set_tablet_id(action.tablet);
         auto& state = *req.mutable_state();
-        state.set_transaction_id(action.transaction.begin(), action.transaction.size());
+        state.set_transaction_id(action.transaction.data(), action.transaction.size());
         state.set_status(TransactionStatus::APPLYING);
         state.add_tablets(context_.tablet_id());
         state.set_commit_hybrid_time(action.commit_time.ToUint64());
@@ -1292,29 +1288,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     return expired_metric_;
   }
 
-  void SchedulePoll() {
-    poll_task_id_ = context_.client_future().get()->messenger()->scheduler().Schedule(
-        std::bind(&Impl::Poll, this, _1),
-        std::chrono::microseconds(NonTsanVsTsan(1, 4) * FLAGS_transaction_check_interval_usec));
-  }
-
-  void Poll(const Status& status) {
-    ++running_polls_;
-    auto se = ScopeExit([this] {
-      --running_polls_;
-    });
+  void Poll() {
     auto now = context_.clock().Now();
 
     auto leader_term = context_.LeaderTerm();
     PostponedLeaderActions actions;
     {
       std::lock_guard<std::mutex> lock(managed_mutex_);
-      if (!status.ok() || closing_) {
-        LOG_WITH_PREFIX(INFO) << "Poll stopped: " << status;
-        poll_task_id_ = rpc::kUninitializedScheduledTaskId;
-        cond_.notify_one();
-        return;
-      }
       postponed_leader_actions_.leader_term = leader_term;
 
       auto& index = managed_transactions_.get<LastTouchTag>();
@@ -1337,8 +1317,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
             leader_term != OpId::kUnknownTerm, now_physical);
       }
       postponed_leader_actions_.Swap(&actions);
-
-      SchedulePoll();
     }
     ExecutePostponedLeaderActions(&actions);
   }
@@ -1364,11 +1342,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   // Actions that should be executed after mutex is unlocked.
   PostponedLeaderActions postponed_leader_actions_;
 
-  bool closing_ = false;
-  rpc::ScheduledTaskId poll_task_id_ = rpc::kUninitializedScheduledTaskId;
-  std::atomic<int64_t> running_polls_{0};
-  std::condition_variable cond_;
-
+  rpc::Poller poller_;
   rpc::Rpcs rpcs_;
 };
 

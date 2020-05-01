@@ -2,7 +2,8 @@
 title: CDC to Kafka
 linkTitle: CDC to Kafka
 description: Change data capture (CDC) to Kafka
-beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v2.0:
     parent: cdc

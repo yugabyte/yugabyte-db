@@ -61,6 +61,16 @@ bool IsValidRowMarkType(RowMarkType row_mark_type) {
   }
 }
 
+bool RowMarkNeedsPessimisticLock(RowMarkType row_mark_type) {
+  /*
+   * Currently, using pessimistic locking for all supported row marks except the key share lock.
+   * This is because key share locks are used for foreign keys and we don't want pessimistic
+   * locking there.
+   */
+  return IsValidRowMarkType(row_mark_type) &&
+      row_mark_type != RowMarkType::ROW_MARK_KEYSHARE;
+}
+
 std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
   switch (row_mark_type) {
     case RowMarkType::ROW_MARK_EXCLUSIVE:

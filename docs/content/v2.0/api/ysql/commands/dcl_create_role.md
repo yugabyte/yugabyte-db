@@ -3,6 +3,7 @@ title: CREATE ROLE
 linkTitle: CREATE ROLE
 description: CREATE ROLE
 summary: Roles (users and groups)
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-role

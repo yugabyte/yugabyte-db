@@ -19,23 +19,9 @@
 
 namespace yb {
 
-namespace master {
-class MasterBackupServiceProxy;
-}  // namespace master
-
 namespace rpc {
 class SecureContext;
 }
-
-// If the cluster is configured for a single non-distributed master, return a backup proxy
-// to that master. Requires that the single master is running.
-std::shared_ptr<master::MasterBackupServiceProxy> master_backup_proxy(
-    ExternalMiniCluster* cluster);
-
-// Returns an RPC backup proxy to the master at 'idx'.
-// Requires that the master at 'idx' is running.
-std::shared_ptr<master::MasterBackupServiceProxy> master_backup_proxy(
-    ExternalMiniCluster* cluster, int idx);
 
 void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,

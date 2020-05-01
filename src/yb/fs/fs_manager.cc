@@ -37,6 +37,8 @@
 #include <map>
 #include <unordered_set>
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
@@ -594,12 +596,18 @@ std::string FsManager::GetTabletWalRecoveryDir(const string& tablet_wal_path) {
   return tablet_wal_path + kWalsRecoveryDirSuffix;
 }
 
-std::string FsManager::GetWalSegmentFileName(const string& tablet_wal_path,
-                                             uint64_t sequence_number) {
-  return JoinPathSegments(tablet_wal_path,
-                          strings::Substitute("$0-$1",
-                                              kWalFileNamePrefix,
-                                              StringPrintf("%09" PRIu64, sequence_number)));
+namespace {
+
+const auto kWalFileNameFullPrefix = std::string(FsManager::kWalFileNamePrefix) + "-";
+
+} // namespace
+
+std::string FsManager::GetWalSegmentFileName(uint64_t sequence_number) {
+  return Format("$0$1", kWalFileNameFullPrefix, StringPrintf("%09" PRIu64, sequence_number));
+}
+
+bool FsManager::IsWalSegmentFileName(const std::string& file_name) {
+  return boost::starts_with(file_name, kWalFileNameFullPrefix);
 }
 
 // ==========================================================================

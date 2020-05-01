@@ -43,7 +43,7 @@ class TableTitle extends Component {
           <div className="backup-action-btn-group">
             <UniverseAction className="table-action" universe={currentUniverse}
               actionType="toggle-backup" btnClass={"btn-orange"}
-              disabled={isDisabled(currentCustomer.data.features, "universes.details.backups")}
+              disabled={isDisabled(currentCustomer.data.features, "universes.tableActions")}
             />
           </div>
         </div>
@@ -128,23 +128,27 @@ class ListTableGrid extends Component {
     };
     const actions_disabled = isDisabled(currentCustomer.data.features, "universes.tableActions");
     const formatActionButtons = function(item, row, disabled) {
-      const actions = [
-        <TableAction key={`${row.tableName}-backup-btn`} currentRow={row} actionType="create-backup"
-                    disabled={actions_disabled} btnClass={"btn-orange"}/>
-      ];
-      if (row.tableType !== "REDIS_TABLE_TYPE") {
-        actions.push([
-          <TableAction key={`${row.tableName}-import-btn`} currentRow={row} actionType="import"
-                      disabled={actions_disabled} />
-        ]);
+      if (!row.isIndexTable) {
+        const actions = [
+          <TableAction key={`${row.tableName}-backup-btn`} currentRow={row}
+                      actionType="create-backup"
+                      disabled={actions_disabled} btnClass={"btn-orange"}/>
+        ];
+        if (row.tableType !== "REDIS_TABLE_TYPE") {
+          actions.push([
+            <TableAction key={`${row.tableName}-import-btn`} currentRow={row} actionType="import"
+                        disabled={actions_disabled} />
+          ]);
+        }
+        return (
+          <ButtonGroup>
+            <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown"
+                        pullRight>
+              {actions}
+            </DropdownButton>
+          </ButtonGroup>
+        );
       }
-      return (
-        <ButtonGroup>
-          <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-            {actions}
-          </DropdownButton>
-        </ButtonGroup>
-      );
     };
 
     const tablePlacementDummyData = {"read": "-", "write": "-"};
@@ -175,7 +179,8 @@ class ListTableGrid extends Component {
           "tableName": item.tableName,
           "status": "success",
           "read": tablePlacementDummyData.read,
-          "write": tablePlacementDummyData.write
+          "write": tablePlacementDummyData.write,
+          "isIndexTable": item.isIndexTable
         };
       });
     }

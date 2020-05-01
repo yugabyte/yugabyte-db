@@ -165,7 +165,9 @@ class WritableFileWriter {
 
   WritableFileWriter& operator=(const WritableFileWriter&) = delete;
 
-  ~WritableFileWriter() { Close(); }
+  ~WritableFileWriter() {
+    WARN_NOT_OK(Close(), "Failed to close file");
+  }
 
   Status Append(const Slice& data);
 

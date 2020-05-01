@@ -88,11 +88,11 @@ class Partition {
     return partition_key_end_;
   }
 
-  void TEST_set_partition_key_start(const std::string& partition_key_start) {
+  void set_partition_key_start(const std::string& partition_key_start) {
     partition_key_start_ = partition_key_start;
   }
 
-  void TEST_set_partition_key_end(const std::string& partition_key_end) {
+  void set_partition_key_end(const std::string& partition_key_end) {
     partition_key_end_ = partition_key_end;
   }
 
@@ -224,6 +224,10 @@ class PartitionSchema {
                                   const Schema& schema,
                                   std::vector<Partition>* partitions) const WARN_UNUSED_RESULT;
 
+  CHECKED_STATUS CreatePartitions(const std::vector<std::string>& split_rows,
+                                  const Schema& schema,
+                                  std::vector<Partition>* partitions) const;
+
   // Tests if the partition contains the row.
   CHECKED_STATUS PartitionContainsRow(const Partition& partition,
                                       const YBPartialRow& row,
@@ -236,6 +240,9 @@ class PartitionSchema {
 
   // Returns a text description of the partition suitable for debug printing.
   std::string PartitionDebugString(const Partition& partition, const Schema& schema) const;
+
+  // Returns a text description of a range partition suitable for debug printing.
+  std::string RangePartitionDebugString(const Partition& partition, const Schema& schema) const;
 
   // Returns a text description of the partial row's partition key suitable for debug printing.
   std::string RowDebugString(const YBPartialRow& row) const;

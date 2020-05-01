@@ -60,7 +60,7 @@ TEST(TestCountDownLatch, TestLatch) {
   // Decrement the count by 1 in another thread, this should not fire the
   // latch.
   ASSERT_OK(pool->SubmitFunc(std::bind(DecrementLatch, &latch, 1)));
-  ASSERT_FALSE(latch.WaitFor(MonoDelta::FromMilliseconds(200)));
+  ASSERT_FALSE(latch.WaitFor(MonoDelta::FromMilliseconds(1000)));
   ASSERT_EQ(999, latch.count());
 
   // Now decrement by 1000 this should decrement to 0 and fire the latch

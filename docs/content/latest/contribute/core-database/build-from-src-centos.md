@@ -1,7 +1,8 @@
 ---
-title: Build the source code
+title: Build from source code on CentOS
+headerTitle: Build the source code
 linkTitle: Build the source
-description: Build the source code
+description: Build YugabyteDB from source code on CentOS.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 type: page
@@ -52,7 +53,7 @@ Update packages on your system, install development tools and additional package
 ```sh
 sudo yum update
 sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip
+sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-devel python3 python3-pip python3-devel
 sudo yum install -y cmake3 ctest3
 ```
 

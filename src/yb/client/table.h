@@ -21,6 +21,8 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 
+#include "yb/util/locks.h"
+
 DECLARE_int32(max_num_tablets_for_table);
 
 namespace yb {
@@ -44,6 +46,7 @@ struct YBTableInfo {
   IndexMap index_map;
   boost::optional<IndexInfo> index_info;
   YBTableType table_type;
+  bool colocated;
 };
 
 // A YBTable represents a table on a particular cluster. It holds the current
@@ -93,6 +96,9 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // For index table: information about this index.
   const IndexInfo& index_info() const;
 
+  // Is the table colocated?
+  const bool colocated() const;
+
   std::string ToString() const;
   //------------------------------------------------------------------------------------------------
   // CQL support
@@ -110,6 +116,13 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
   const std::string& FindPartitionStart(
       const std::string& partition_key, size_t group_by = 1) const;
+
+  void MarkPartitionsAsStale();
+  bool ArePartitionsStale() const;
+
+  // Refreshes table partitions if stale.
+  // Returns whether table partitions have been refreshed.
+  Result<bool> MaybeRefreshPartitions();
 
   //------------------------------------------------------------------------------------------------
   // Postgres support
@@ -131,10 +144,19 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   CHECKED_STATUS Open();
 
+  // Fetches tablet partitions from master using GetTableLocations RPC.
+  Result<std::vector<std::string>> FetchPartitions();
+
   client::YBClient* const client_;
   YBTableType table_type_;
   YBTableInfo info_;
+
+  // Mutex protecting partitions_.
+  mutable rw_spinlock mutex_;
   std::vector<std::string> partitions_;
+
+  std::atomic<bool> partitions_are_stale_{false};
+  std::mutex partitions_refresh_mutex_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTable);
 };

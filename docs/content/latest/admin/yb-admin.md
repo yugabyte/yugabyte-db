@@ -1,7 +1,8 @@
 ---
-title: yb-admin
+title: yb-admin - command line tool for advanced YugabyteDB administration
+headerTitle: yb-admin
 linkTitle: yb-admin
-description: yb-admin
+description: Use the yb-admin command line tool for advanced administration of YugabyteDB clusters.
 menu:
   latest:
     identifier: yb-admin
@@ -20,15 +21,15 @@ It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-
 To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
 
 ```sh
-yb-admin [ -master_addresses <master-addresses> ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ] <command> [ command_options ]
+yb-admin [ -master_addresses <master-addresses> ]  [ -timeout_ms <millisec> ] [ -certs_dir_name <dir_name> ] <command> [ command_flags ]
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - timeout_ms: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
 - certs_dir_name: The directory with certificates to use for secure server connections. Default value is `""`.
-  - To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` option with the directory location where the root certificate is located.
+  - To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` flag with the directory location where the root certificate is located.
 - *command*: The operation to be performed. See command for syntax details and examples.
-- *command_options*: Configuration options, or flags, that can be applied to the command.
+- *command_flags*: Configuration flags that can be applied to the command.
 
 ### Online help
 

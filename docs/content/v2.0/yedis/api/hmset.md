@@ -2,6 +2,7 @@
 title: HMSET
 linkTitle: HMSET
 description: HMSET
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

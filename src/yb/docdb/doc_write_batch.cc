@@ -500,7 +500,7 @@ Status DocWriteBatch::ReplaceInList(
   if (dir == Direction::kForward) {
     // Ensure we seek directly to indices and skip init marker if it exists.
     key_prefix_.AppendValueType(ValueType::kArrayIndex);
-    SeekToKeyPrefix(iter.get(), false);
+    RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), false));
   } else {
     // We would like to seek past the entire list and go backwards.
     key_prefix_.AppendValueType(ValueType::kMaxByte);

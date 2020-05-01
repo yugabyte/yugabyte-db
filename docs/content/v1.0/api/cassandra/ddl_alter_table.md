@@ -2,6 +2,7 @@
 title: ALTER TABLE
 summary: Change the schema of a table
 description: ALTER TABLE
+block_indexing: true
 menu:
   v1.0:
     parent: api-cassandra

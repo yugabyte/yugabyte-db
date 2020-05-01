@@ -1,7 +1,8 @@
 ---
-title: Docker
+title: Deploy local clusters using Docker Compose
+headerTitle: Docker
 linkTitle: Docker
-description: Docker
+description: Use Docker Compose to create and manage local YugabyteDB clusters.
 aliases:
  - /admin/docker-compose/
  - /latest/admin/docker-compose/
@@ -9,7 +10,7 @@ menu:
   latest:
     parent: deploy
     name: Docker
-    identifier: docker-2-compose
+    identifier: docker-1-compose
     weight: 625
 type: page
 isTocNested: false
@@ -17,16 +18,16 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/latest/deploy/docker/docker-swarm" class="nav-link">
-      <i class="fas fa-layer-group"></i>
-      Docker Swarm
-    </a>
-  </li>
   <li>
     <a href="/latest/deploy/docker/docker-compose" class="nav-link active">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker Compose
+    </a>
+  </li>
+  <li >
+    <a href="/latest/deploy/docker/docker-swarm" class="nav-link">
+      <i class="fas fa-layer-group"></i>
+      Docker Swarm
     </a>
   </li>
 </ul>
@@ -110,7 +111,6 @@ Optionally, you can enable YEDIS API by running the following command.
 $ docker exec -it yb-master-n1 /home/yugabyte/bin/yb-admin --master_addresses yb-master-n1:7100 setup_redis_table
 ```
 
-
 ## 3. Test the APIs
 
 Clients can now connect to the YSQL API at localhost:5433, YCQL API at localhost:9042 and YEDIS API at localhost:6379. The yb-master admin service is available at http://localhost:7000.
@@ -120,6 +120,7 @@ Clients can now connect to the YSQL API at localhost:5433, YCQL API at localhost
 ```sh
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ysqlsh -h yb-tserver-n1
 ```
+
 ```
 ysqlsh (11.2-YB-2.0.11.0-b0)
 Type "help" for help.
@@ -128,11 +129,13 @@ Type "help" for help.
 ```sh
 yugabyte=# CREATE TABLE foo(bar INT PRIMARY KEY);
 ```
+
 ### Connect to YCQL
 
 ```sh
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh yb-tserver-n1
 ```
+
 ```
 Connected to local cluster at yb-tserver-n1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
@@ -149,6 +152,7 @@ cqlsh> DESCRIBE mykeyspace.foo;
 ### Connect with an application client
 
 Here is an example of a client that is defined within the same Docker Compose file.
+
 ```sh
 version: '2'
 

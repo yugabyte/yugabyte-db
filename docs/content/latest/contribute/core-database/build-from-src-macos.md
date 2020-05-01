@@ -1,7 +1,8 @@
 ---
-title: Build the source code
+title: Build from source code on macOS
+headerTitle: Build the source code
 linkTitle: Build the source
-description: Build the source code
+description: Build YugabyteDB from source code on macOS.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code on macOS, CentOS, and Ubuntu.
 type: page
@@ -49,7 +50,7 @@ CentOS 7 is the recommended Linux distribution for development and production pl
 
 ## Install necessary packages
 
-First, install [Homebrew](https://brew.sh/), if you do not already have it. We will use this to install the other required packages.
+First, install [Homebrew](https://brew.sh/), if you do not already have it. Homebrew will be used to install the other required packages.
 
 ```sh
 /usr/bin/ruby -e "$(
@@ -59,28 +60,35 @@ First, install [Homebrew](https://brew.sh/), if you do not already have it. We w
 Install the following packages using Homebrew:
 
 ```sh
-brew install autoconf automake bash bison ccache cmake  \
-             coreutils flex gnu-tar icu4c libtool maven \
-             ninja pkg-config pstree wget zlib python@2
+brew install autoconf automake bash ccache cmake  \
+             coreutils flex gnu-tar icu4c libtool \
+             maven ninja pkg-config pstree wget \
+             zlib python@2
+```
+
+An older version of `bison` is required to correctly compile the code. The following command installs the required `3.4.1` version of bison.
+
+```sh
+brew install \
+https://raw.githubusercontent.com/Homebrew/homebrew-core/ee89a1d59df03f495a85c15e253b60299082ab9d/Formula/bison.rb
 ```
 
 {{< note title="Note" >}}
 
-YugabyteDB build scripts rely on Bash 4. Make sure that which bash outputs `/usr/local/bin/bash` before proceeding. You may need to put `/usr/local/bin` as the first directory on `PATH` in your `~/.bashrc` to achieve that.
+YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/usr/local/bin/bash` before proceeding. You may need to put `/usr/local/bin` as the first directory on `PATH` in your `~/.bashrc` to achieve that.
 
 {{< /note >}}
 
+## Build the code
 
-## Building the code
-
-Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
+Assuming this repository is checked out in `~/code/yugabyte-db`, run the following:
 
 ```sh
 cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
-The above command will build the release configuration, put the C++ binaries in `build/release-clang-dynamic-ninja`, and will also create the `build/latest` symlink to that directory.
+The command above builds the release configuration, puts the C++ binaries in `build/release-clang-dynamic-ninja`, and creates the `build/latest` symlink to that directory.
 
 {{< tip title="Tip" >}}
 
@@ -95,7 +103,7 @@ YugabyteDB core is written in C++, but the repository contains Java code needed 
 * JDK 8
 * [Apache Maven](https://maven.apache.org/).
 
-Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.5.0`)
+Also make sure Maven's `bin` directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.5.0`)
 
 ```sh
 export PATH=$HOME/tools/apache-maven-3.5.0/bin:$PATH

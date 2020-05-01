@@ -1,7 +1,8 @@
 ---
-title: 7. Date and time
+title: Date and time in YCQL
+headerTitle: Date and time
 linkTitle: 7. Date and time
-description: Date and time
+description: Learn how to work with date and time in YCQL.
 menu:
   latest:
     parent: learn

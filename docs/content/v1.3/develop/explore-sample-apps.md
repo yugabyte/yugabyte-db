@@ -4,6 +4,7 @@ linkTitle: Explore sample applications
 description: Explore sample applications built on top of YugabyteDB
 headcontent: 
 image: /images/section_icons/index/develop.png
+block_indexing: true
 menu:
   v1.3:
     identifier: explore-sample-apps

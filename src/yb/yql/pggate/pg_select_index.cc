@@ -57,9 +57,10 @@ Status PgSelectIndex::PrepareQuery(PgsqlReadRequestPB *read_req) {
 
   // Allocate READ requests to send to DocDB.
   if (read_req) {
-    // For system tables, SelectIndex is a part of Select and being sent together with the SELECT
-    // protobuf request. A read doc_op and request is not needed in this case.
-    DCHECK(prepare_params_.querying_systable) << "Read request invalid";
+    // For (system and user) colocated tables, SelectIndex is a part of Select and being sent
+    // together with the SELECT protobuf request. A read doc_op and request is not needed in this
+    // case.
+    DSCHECK(prepare_params_.querying_colocated_table, InvalidArgument, "Read request invalid");
     read_req_ = read_req;
     read_req_->set_table_id(index_id_.GetYBTableId());
     doc_op_ = nullptr;
@@ -67,8 +68,8 @@ Status PgSelectIndex::PrepareQuery(PgsqlReadRequestPB *read_req) {
   } else {
     auto read_op = target_desc_->NewPgsqlSelect();
     read_req_ = read_op->mutable_request();
-    doc_op_ = make_shared<PgDocReadOp>(pg_session_, target_desc_->num_hash_key_columns(),
-                                       std::move(read_op));
+    doc_op_ = make_shared<PgDocReadOp>(pg_session_, target_desc_,
+                                       target_desc_->num_hash_key_columns(), std::move(read_op));
   }
 
   // Prepare index key columns.
@@ -77,9 +78,6 @@ Status PgSelectIndex::PrepareQuery(PgsqlReadRequestPB *read_req) {
 }
 
 Result<bool> PgSelectIndex::FetchYbctidBatch(const vector<Slice> **ybctids) {
-  // Clear the current batch.
-  ybctid_batch_ = nullptr;
-
   // Keep reading until we get one batch of ybctids or EOF.
   while (!VERIFY_RESULT(GetNextYbctidBatch())) {
     if (!VERIFY_RESULT(FetchDataFromServer())) {
@@ -90,20 +88,18 @@ Result<bool> PgSelectIndex::FetchYbctidBatch(const vector<Slice> **ybctids) {
   }
 
   // Got the next batch of ybctids.
-  *ybctids = &ybctid_batch_->ybctids();
+  DCHECK(!rowsets_.empty());
+  *ybctids = &rowsets_.front().ybctids();
   return true;
 }
 
 Result<bool> PgSelectIndex::GetNextYbctidBatch() {
-  list<PgDocResult::SharedPtr>::iterator rowset_iter = rowsets_.begin();
-  while (rowset_iter != rowsets_.end()) {
-    // Check if the rowset has any data.
-    ybctid_batch_ = std::move(*rowset_iter);
-    rowsets_.erase(rowset_iter++);
-
-    if (!ybctid_batch_->is_eof()) {
+  for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
+    if (rowset_iter->is_eof()) {
+      rowset_iter = rowsets_.erase(rowset_iter);
+    } else {
       // Write all found rows to ybctid array.
-      RETURN_NOT_OK(ybctid_batch_->ProcessSystemColumns());
+      RETURN_NOT_OK(rowset_iter->ProcessSystemColumns());
       return true;
     }
   }

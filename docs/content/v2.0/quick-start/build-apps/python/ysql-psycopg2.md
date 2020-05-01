@@ -2,6 +2,7 @@
 title: Build a Python application
 linkTitle: Build a Python application
 description: Build a Python application
+block_indexing: true
 menu:
   v2.0:
     parent: build-apps

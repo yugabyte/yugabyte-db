@@ -1,7 +1,8 @@
 ---
-title: yb-master
+title: yb-master configuration reference
+headerTitle: yb-master
 linkTitle: yb-master
-description: yb-master
+description: YugabyteDB Master Server (yb-master) binary and configuration flags to manage cluster metadata and coordinate cluster-wide operations.
 menu:
   latest:
     identifier: yb-master
@@ -13,15 +14,15 @@ isTocNested: 3
 showAsideToc: true
 ---
 
-Use the `yb-master` binary and its options to configure the [YB-Master](../../../architecture/concepts/yb-master) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
+Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/concepts/yb-master) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
 
 ## Syntax
 
 ```sh
-yb-master [ option  ] | [ option ]
+yb-master [ flag  ] | [ flag ]
 ```
 
-**Example**
+### Example 
 
 ```sh
 $ ./bin/yb-master \
@@ -39,21 +40,21 @@ To display the online help, run `yb-master --help` from the YugabyteDB home dire
 $ ./bin/yb-master --help
 ```
 
-## Configuration options
+## Configuration flags
 
-- [General](#general-options)
-- [YSQL](#ysql-options)
-- [Logging](#logging-options)
-- [Raft](#raft-options)
-  - [Write ahead log (WAL)](#write-ahead-log-wal-options)
-- [Cluster](#cluster-options)
-- [Geo-distribution](#geo-distribution-options)
-- [Security](#security-options)
-- [Change data capture (CDC)](#change-data-capture-cdc-options)
+- [General](#general-flags)
+- [YSQL](#ysql-flags)
+- [Logging](#logging-flags)
+- [Raft](#raft-flags)
+  - [Write ahead log (WAL)](#write-ahead-log-wal-flags)
+- [Sharding](#sharding-flags)
+- [Geo-distribution](#geo-distribution-flags)
+- [Security](#security-flags)
+- [Change data capture (CDC)](#change-data-capture-cdc-flags)
 
 ---
 
-### General options
+### General flags
 
 ##### --version
 
@@ -61,7 +62,7 @@ Shows version and build information, then exits.
 
 ##### --flagfile
 
-Specifies the configuration file to load options (flags) from.
+Specifies the configuration file to load flags from.
 
 ##### --master_addresses
 
@@ -109,7 +110,7 @@ Default: `0.0.0.0:7100`
 
 ##### --use_private_ip
 
-Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration options](#placement-options).
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration flags](#placement-flags).
 
 Valid values for the policy are:
 
@@ -139,17 +140,17 @@ Default: The `www` directory in the YugabyteDB home directory.
 
 ---
 
-### YSQL options
+### YSQL flags
 
 ##### --enable_ysql
 
-Enables the YSQL API when value is `true`. Replaces the deprecated `--start_pgsql_proxy` option.
+Enables the YSQL API when value is `true`. Replaces the deprecated `--start_pgsql_proxy` flag.
 
 Default: `true`
 
 ---
 
-### Logging options
+### Logging flags
 
 ##### --alsologtoemail
 
@@ -235,7 +236,7 @@ Default: `2`
 
 ---
 
-### Raft options
+### Raft flags
 
 {{< note title="Note" >}}
 
@@ -259,7 +260,7 @@ The `--follower_unavailable_considered_failed_sec` value should match the value 
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds, is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this option to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -269,7 +270,7 @@ The heartbeat interval, in milliseconds, for Raft replication. The leader produc
 
 Default: `500`
 
-#### Write ahead log (WAL) options
+#### Write ahead log (WAL) flags
 
 {{< note title="Note" >}}
 
@@ -285,7 +286,7 @@ Default: Same as `--fs_data_dirs`
 
 ##### --durable_wal_write
 
-If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-mas) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this option should be set to `true`.
+If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-mas) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 Default: `false`
 
@@ -321,13 +322,7 @@ Default: `64`
 
 ---
 
-### Cluster options
-
-##### --yb_num_shards_per_tserver
-
-Specifies the number of shards per YB-TServer per table when a user table is created.
-
-Default: Server automatically picks a valid default internally, typically 8.
+### Sharding flags
 
 ##### --max_clock_skew_usec
 
@@ -341,9 +336,39 @@ The number of replicas, or copies of data, to store for each tablet in the unive
 
 Default: `3`
 
+##### --yb_num_shards_per_tserver
+
+The number of shards per YB-TServer for each YCQL table when a user table is created.
+
+Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations, created using `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag.
+
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+##### --ysql_num_shards_per_tserver
+
+The number of shards per YB-TServer for each YSQL table when a user table is created.
+
+Default: `8`
+
+{{< note title="Note" >}}
+
+On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/commands/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
+
+{{< /note >}}
+
 ---
 
-### Geo-distribution options
+### Geo-distribution flags
 
 Settings related to managing geo-distributed clusters.
 
@@ -373,13 +398,13 @@ Default: `""`
 
 ##### -- use_private_ip
 
-Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration options.
+Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration flags.
 
 Default: `never`
 
 ---
 
-### Security options
+### Security flags
 
 For details on enabling server-to-server encryption, see [Server-server encryption](../../../secure/tls-encryption/server-to-server).
 
@@ -391,7 +416,7 @@ Default: `""` (Uses `<data drive>/yb-data/master/data/certs`.)
 
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this option requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires the [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled.
 
 Default: `true`
 
@@ -403,17 +428,17 @@ Default: `false`
 
 ##### --use_node_to_node_encryption
 
-Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
+Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) flag enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) flag must be disabled.
 
 Default: `false`
 
 ---
 
-### Change data capture (CDC) options
+### Change data capture (CDC) flags
 
-To learn more about CDC, see [Change data capture (CDC)](../../architecture/#cdc-architecture).
+To learn more about CDC, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
 
-For other CDC configuration options, see [YB-TServer's CDC options](../yb-tserver/#change-data-capture-cdc-options).
+For other CDC configuration flags, see [YB-TServer's CDC flags](../yb-tserver/#change-data-capture-cdc-flags).
 
 ##### --cdc_state_table_num_tablets
 
@@ -423,7 +448,7 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 
 ##### --cdc_wal_retention_time_secs
 
-WAL retention time, in seconds, to be used for tables for which a CDC stream was created. If you change the value, make sure that [`yb-tserver --cdc_wal_retention_time_secs`](../yb-tserver/#cdc-wal-retention-time-secs) is also updated with the same value.
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. If you change the value, make sure that the [`yb-tserver --cdc_wal_retention_time_secs`](../yb-tserver/#cdc-wal-retention-time-secs) flag is also updated with the same value.
 
 Default: `14400` (4 hours)
 

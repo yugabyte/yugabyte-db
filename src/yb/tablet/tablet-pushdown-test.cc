@@ -36,6 +36,7 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 

@@ -42,6 +42,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -1213,5 +1214,78 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     AvailabilityZone az4 = AvailabilityZone.create(r4, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
     assertTrue(PlacementInfoUtil.isMultiAZ(k8sProvider));
     assertFalse(PlacementInfoUtil.isMultiAZ(k8sProviderNotMultiAZ));
+  }
+
+  private void testSelectMasters(int rf, int numNodes, int numRegions, int numZonesPerRegion) {
+    List<NodeDetails> nodes = new ArrayList<NodeDetails>();
+    for (int i = 0; i < numNodes; i++) {
+      String region = "region-" + (i % numRegions);
+      String zone = region + "-" + (i % (numRegions * numZonesPerRegion) / numRegions);
+      nodes.add(ApiUtils.getDummyNodeDetails(i, NodeDetails.NodeState.ToBeAdded,
+                                             false, true, "onprem",
+                                             region, zone, null));
+    }
+    PlacementInfoUtil.selectMasters(nodes, rf);
+    int numMasters = 0;
+    Set<String> regions = new HashSet<String>();
+    Set<String> zones = new HashSet<String>();
+    for (NodeDetails node : nodes) {
+      if (node.isMaster) {
+        numMasters++;
+        regions.add(node.cloudInfo.region);
+        zones.add(node.cloudInfo.az);
+      }
+    }
+    assertEquals(numMasters, rf);
+    if (rf > numRegions) {
+      assertEquals(regions.size(), numRegions);
+    } else {
+      assertEquals(regions.size(), rf);
+    }
+    int totalZones = numRegions * numZonesPerRegion;
+    if (totalZones > rf) {
+      assertEquals(zones.size(), rf);
+    } else {
+      assertEquals(zones.size(), totalZones);
+    }
+
+  }
+
+  @Test
+  public void testSelectMasters() {
+    testSelectMasters(1, 1, 1, 1);
+    testSelectMasters(1, 3, 2, 2);
+
+    testSelectMasters(3, 3, 2, 2);
+    testSelectMasters(3, 3, 3, 3);
+    testSelectMasters(3, 3, 1, 2);
+    testSelectMasters(3, 3, 1, 3);
+    testSelectMasters(3, 5, 2, 3);
+    testSelectMasters(3, 7, 3, 1);
+    testSelectMasters(3, 7, 3, 2);
+
+    testSelectMasters(5, 5, 3, 3);
+    testSelectMasters(5, 12, 3, 2);
+    testSelectMasters(5, 12, 3, 3);
+  }
+
+  @Test
+  public void testActiveTserverSelection() {
+    UUID azUUID = UUID.randomUUID();
+    List<NodeDetails> nodes = new ArrayList<NodeDetails>();
+    for (int i = 1; i <= 5; i++) {
+      nodes.add(ApiUtils.getDummyNodeDetails(i, NodeDetails.NodeState.Live,
+                                             false, true, "aws",
+                                             null, null, null, azUUID));
+    }
+    NodeDetails nodeReturned = PlacementInfoUtil.findActiveTServerOnlyInAz(nodes,
+                                                                           azUUID);
+    assertEquals(nodeReturned.nodeIdx, 5);
+    nodeReturned.state = NodeDetails.NodeState.ToBeRemoved;
+    nodeReturned = PlacementInfoUtil.findActiveTServerOnlyInAz(nodes, azUUID);
+    assertEquals(nodeReturned.nodeIdx, 4);
+    nodeReturned.state = NodeDetails.NodeState.ToBeRemoved;
+    nodeReturned = PlacementInfoUtil.findActiveTServerOnlyInAz(nodes, azUUID);
+    assertEquals(nodeReturned.nodeIdx, 3);
   }
 }

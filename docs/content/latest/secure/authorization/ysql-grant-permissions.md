@@ -1,7 +1,8 @@
 ---
-title: Grant privileges
+title: Grant YSQL privileges in YugabyteDB
+headerTitle: Grant privileges
 linkTitle: Grant privileges
-description: Grant privileges
+description: Grant YSQL privileges in YugabyteDB
 menu:
   latest:
     name: Grant privileges
@@ -225,7 +226,7 @@ We should see that owner has changed from `yugabyte` to `qa` and `qa` has all ac
 
 DB admins should be able to perform all operations on any database. There are two ways to achieve this:
 
-1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](../authentication/#YSQL). Note that doing this will give the DB admin all the privileges over all the roles as well.
+1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](../../authentication/ysql-authentication). Note that doing this will give the DB admin all the privileges over all the roles as well.
 
 2. Grant `ALL` privileges to the `db_admin` role. This can be achieved as follows.
 

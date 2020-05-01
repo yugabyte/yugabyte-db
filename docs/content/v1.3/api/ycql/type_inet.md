@@ -2,6 +2,7 @@
 title: INET
 summary: IP Address String
 description: INET type
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

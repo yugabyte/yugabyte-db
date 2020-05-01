@@ -2,6 +2,7 @@
 title: Yugabyte Platform
 linkTitle: Yugabyte Platform
 description: Yugabyte Platform
+block_indexing: true
 menu:
   v1.3:
     identifier: enterprise-edition

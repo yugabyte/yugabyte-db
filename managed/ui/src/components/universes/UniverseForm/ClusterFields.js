@@ -63,7 +63,8 @@ const initialState = {
   useTimeSync: false,
   enableYSQL: false,
   enableNodeToNodeEncrypt: false,
-  enableClientToNodeEncrypt: false
+  enableClientToNodeEncrypt: false,
+  enableEncryptionAtRest: false
 };
 
 export default class ClusterFields extends Component {
@@ -88,6 +89,7 @@ export default class ClusterFields extends Component {
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
+    this.handleAwsArnChange = this.handleAwsArnChange.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
@@ -140,7 +142,8 @@ export default class ClusterFields extends Component {
       const userIntent = clusterType === "async" ? readOnlyCluster && { ...readOnlyCluster.userIntent, universeName: primaryCluster.userIntent.universeName } : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       const encryptionAtRestEnabled = universeDetails.encryptionAtRestConfig &&
-          universeDetails.encryptionAtRestConfig.enableEncryptionAtRest;
+          universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
+
       if (userIntent && providerUUID) {
         const storageType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.storageType;
         this.setState({
@@ -569,6 +572,11 @@ export default class ClusterFields extends Component {
     }
   }
 
+  handleAwsArnChange(event) {
+    const { updateFormField } = this.props;
+    updateFormField('primary.awsArnString', event.target.value);
+  }
+
   handleSelectAuthConfig(value) {
     const { updateFormField, clusterType } = this.props;
     updateFormField(`${clusterType}.selectEncryptionAtRestConfig`, value);
@@ -952,15 +960,14 @@ export default class ClusterFields extends Component {
     let enableEncryptionAtRest = <span />;
     let selectEncryptionAtRestConfig = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
-
+    const disableToggleOnChange = clusterType !== "primary";
     if (isDefinedNotNull(currentProvider) &&
        (currentProvider.code === "aws" || currentProvider.code === "gcp" ||
         currentProvider.code === "onprem" || currentProvider.code === "kubernetes")){
-      const disableOnChange = clusterType !== "primary";
       enableYSQL = (
         <Field name={`${clusterType}.enableYSQL`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableYSQL}
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
@@ -969,7 +976,7 @@ export default class ClusterFields extends Component {
       enableNodeToNodeEncrypt = (
         <Field name={`${clusterType}.enableNodeToNodeEncrypt`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableNodeToNodeEncrypt}
           onToggle={this.toggleEnableNodeToNodeEncrypt}
           label="Enable Node-to-Node TLS"
@@ -978,7 +985,7 @@ export default class ClusterFields extends Component {
       enableClientToNodeEncrypt = (
         <Field name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}
           label="Enable Client-to-Node TLS"
@@ -987,7 +994,7 @@ export default class ClusterFields extends Component {
       enableEncryptionAtRest = (
         <Field name={`${clusterType}.enableEncryptionAtRest`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableEncryptionAtRest}
           onToggle={this.toggleEnableEncryptionAtRest}
           label="Enable Encryption at Rest"
@@ -1002,9 +1009,8 @@ export default class ClusterFields extends Component {
             component={YBSelectWithLabel}
             label="Key Management Service Config"
             options={kmsConfigList}
-            input={{
-              onChange: this.handleSelectAuthConfig
-            }}
+            onInputChanged={this.handleSelectAuthConfig}
+            readOnlySelect={isFieldReadOnly}
           />
         );
       }
@@ -1041,11 +1047,10 @@ export default class ClusterFields extends Component {
         (currentProvider.code === "aws" || currentProvider.code === "gcp")) {
       // Assign public ip would be only enabled for primary and that same
       // value will be used for async as well.
-      const disableOnChange = clusterType !== "primary";
       assignPublicIP = (
         <Field name={`${clusterType}.assignPublicIP`}
           component={YBToggle} isReadOnly={isFieldReadOnly}
-          disableOnChange={disableOnChange}
+          disableOnChange={disableToggleOnChange}
           checkedVal={this.state.assignPublicIP}
           onToggle={this.toggleAssignPublicIP}
           label="Assign Public IP"
@@ -1124,12 +1129,14 @@ export default class ClusterFields extends Component {
     if (self.props.universe.currentPlacementStatus) {
       placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>;
     }
+    const configTemplate = self.props.universe.universeConfigTemplate;
+    const showPlacementStatus = configTemplate && !!getPrimaryCluster(configTemplate);
     const azSelectorTable = (
       <div>
         <AZSelectorTable {...this.props} clusterType={clusterType}
           numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
           maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(currentProviderUUID)} isKubernetesUniverse={this.state.isKubernetesUniverse} />
-        {placementStatus}
+        {showPlacementStatus && placementStatus}
       </div>);
 
     if (clusterType === "primary") {
@@ -1301,6 +1308,17 @@ export default class ClusterFields extends Component {
             </Col>
             }
           </Row>
+          {isDefinedNotNull(currentProvider) && currentProvider.code === "aws" &&
+            <Row>
+              <Col sm={5} md={4}>
+                <div className="form-right-aligned-labels">
+                  <Field name={`${clusterType}.awsArnString`}
+                      type="text" component={YBTextInputWithLabel}
+                      label="Instance Profile ARN" isReadOnly={isFieldReadOnly} />
+                </div>
+              </Col>
+            </Row>
+          }
         </div>
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}

@@ -81,6 +81,12 @@ public class CustomerController extends AuthenticatedController {
     } else {
       responseJson.set("alertingData", null);
     }
+    CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
+    if (smtpConfig != null) {
+      responseJson.set("smtpData", smtpConfig.data);
+    } else {
+      responseJson.set("smtpData", null);
+    }
     responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
     Users user = (Users) ctx().args.get("user");
@@ -116,6 +122,14 @@ public class CustomerController extends AuthenticatedController {
     } else if (config != null && formData.get().alertingData != null) {
       config.data = Json.toJson(formData.get().alertingData);
       config.update();
+    }
+    CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
+    if (smtpConfig == null && formData.get().smtpData != null) {
+      smtpConfig = CustomerConfig.createSmtpConfig(
+          customerUUID, Json.toJson(formData.get().smtpData));
+    } else if (smtpConfig != null && formData.get().smtpData != null) {
+      smtpConfig.data = Json.toJson(formData.get().smtpData);
+      smtpConfig.update();
     }
 
     // Features would be a nested json, so we should fetch it differently.

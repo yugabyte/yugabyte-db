@@ -60,7 +60,7 @@ const string TabletStatusListener::table_id() const {
   return meta_->table_id();
 }
 
-const Partition& TabletStatusListener::partition() const {
+std::shared_ptr<Partition> TabletStatusListener::partition() const {
   return meta_->partition();
 }
 
@@ -83,13 +83,13 @@ Status BootstrapTablet(
     TabletPtr* rebuilt_tablet,
     scoped_refptr<log::Log>* rebuilt_log,
     ConsensusBootstrapInfo* consensus_info) {
-  TRACE_EVENT1("tablet", "BootstrapTablet",
-               "tablet_id", data.meta->raft_group_id());
+  const auto& meta = *data.tablet_init_data.metadata;
+  TRACE_EVENT1("tablet", "BootstrapTablet", "tablet_id", meta.raft_group_id());
   TabletBootstrap bootstrap(data);
   RETURN_NOT_OK(bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, consensus_info));
   // Set WAL retention time from the metadata.
-  (*rebuilt_log)->set_wal_retention_secs(data.meta->wal_retention_secs());
-  (*rebuilt_log)->set_cdc_min_replicated_index(data.meta->cdc_min_replicated_index());
+  (*rebuilt_log)->set_wal_retention_secs(meta.wal_retention_secs());
+  (*rebuilt_log)->set_cdc_min_replicated_index(meta.cdc_min_replicated_index());
   // This is necessary since OpenNewLog() initially disables sync.
   RETURN_NOT_OK((*rebuilt_log)->ReEnableSyncIfRequired());
   return Status::OK();

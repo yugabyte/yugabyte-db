@@ -1,8 +1,8 @@
 ---
-title: EXECUTE
+title: EXECUTE statement [YSQL]
+headerTitle: EXECUTE
 linkTitle: EXECUTE
-description: EXECUTE
-summary: EXECUTE
+description: Use the EXECUTE statement to execute a previously prepared statement. 
 menu:
   latest:
     identifier: api-ysql-commands-execute

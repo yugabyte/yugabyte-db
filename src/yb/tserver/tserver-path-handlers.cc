@@ -208,7 +208,8 @@ void HandleTabletPage(
   std::initializer_list<std::array<const char*, 2>> entries = {
       {"tablet-consensus-status", "Consensus Status"},
       {"log-anchors", "Tablet Log Anchors"},
-      {"transactions", "Transactions"} };
+      {"transactions", "Transactions"},
+      {"rocksdb", "RocksDB" }};
 
   auto encoded_tablet_id = UrlEncodeToString(tablet_id);
   for (const auto& entry : entries) {
@@ -253,17 +254,23 @@ void HandleConsensusStatusPage(
 void HandleTransactionsPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, std::stringstream* output) {
+  auto tablet = peer->shared_tablet();
+  if (!tablet) {
+    *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
+    return;
+  }
+
   *output << "<h1>Transactions for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>"
           << std::endl;
 
-  auto transaction_participant = peer->tablet()->transaction_participant();
+  auto transaction_participant = tablet->transaction_participant();
   if (transaction_participant) {
     *output << "<pre>" << EscapeForHtmlToString(transaction_participant->DumpTransactions())
             << "</pre>" << std::endl;
     return;
   }
 
-  auto transaction_coordinator = peer->tablet()->transaction_coordinator();
+  auto transaction_coordinator = tablet->transaction_coordinator();
   if (transaction_coordinator) {
     *output << "<pre>" << EscapeForHtmlToString(transaction_coordinator->DumpTransactions())
             << "</pre>" << std::endl;
@@ -271,6 +278,39 @@ void HandleTransactionsPage(
   }
 
   *output << "Tablet is non transactional";
+}
+
+void DumpRocksDB(const char* title, rocksdb::DB* db, std::ostream* out) {
+  if (db) {
+    *out << "<h2>" << title << "</h2>" << std::endl;
+    *out << "<h3>Files</h3>" << std::endl;
+    auto files = db->GetLiveFilesMetaData();
+    *out << "<pre>" << std::endl;
+    for (const auto& file : files) {
+      *out << file.ToString() << std::endl;
+    }
+    *out << "</pre>" << std::endl;
+    rocksdb::TablePropertiesCollection properties;
+    auto status = db->GetPropertiesOfAllTables(&properties);
+    if (status.ok()) {
+      for (const auto& p : properties) {
+        *out << "<h3>" << EscapeForHtmlToString(p.first) << " properties</h3>" << std::endl;
+        *out << "<pre>" << p.second->ToString("\n") << "</pre>" << std::endl;
+      }
+    } else {
+      *out << "Failed to get properties: " << status << std::endl;
+    }
+  }
+}
+
+void HandleRocksDBPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, std::stringstream* output) {
+  *output << "<h1>RocksDB for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
+
+  auto doc_db = peer->tablet()->doc_db();
+  DumpRocksDB("Regular", doc_db.regular, output);
+  DumpRocksDB("Intents", doc_db.intents, output);
 }
 
 template<class F>
@@ -307,6 +347,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       server, tserver_, "/tablet-consensus-status", &HandleConsensusStatusPage);
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
   RegisterTabletPathHandler(server, tserver_, "/transactions", &HandleTransactionsPage);
+  RegisterTabletPathHandler(server, tserver_, "/rocksdb", &HandleRocksDBPage);
   server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
@@ -315,6 +356,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       "/maintenance-manager", "",
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
       true /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/health-check", "TServer Health Check",
+      std::bind(&TabletServerPathHandlers::HandleHealthCheck, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
 
   return Status::OK();
 }
@@ -401,8 +446,10 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
 
-    if (status.tablet_data_state() != TabletDataState::TABLET_DATA_COPYING &&
-        status.tablet_data_state() != TabletDataState::TABLET_DATA_READY) {
+    const auto tablet_data_state = status.tablet_data_state();
+    if (tablet_data_state != TabletDataState::TABLET_DATA_COPYING &&
+        tablet_data_state != TabletDataState::TABLET_DATA_READY &&
+        tablet_data_state != TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       continue;
     }
 
@@ -522,7 +569,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
       n_bytes = HumanReadableNumBytes::ToString(status.estimated_on_disk_size());
     }
     string partition = peer->tablet_metadata()->partition_schema()
-                            .PartitionDebugString(peer->status_listener()->partition(),
+                            .PartitionDebugString(*peer->status_listener()->partition(),
                                                   peer->tablet_metadata()->schema());
 
     auto tablet = peer->shared_tablet();
@@ -585,12 +632,11 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
 
 void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest& req,
                                                     std::stringstream* output) {
-
   *output << "<h3>Dashboards</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Dashboard</th><th>Description</th></tr>\n";
-  *output << GetDashboardLine("transactions", "Transactions", "List of transactions that are "
-                                                              "currently running.");
+  *output << GetDashboardLine(
+      "operations", "Operations", "List of operations that are currently replicating.");
   *output << GetDashboardLine("maintenance-manager", "Maintenance Manager",
                               "List of operations that are currently running and those "
                               "that are registered.");
@@ -661,6 +707,24 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
     }
   }
   *output << "</table>\n";
+}
+
+void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& req,
+                                                 std::stringstream* output) {
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  vector<std::shared_ptr<TabletPeer> > tablet_peers;
+  tserver_->tablet_manager()->GetTabletPeers(&tablet_peers);
+
+  jw.StartObject();
+  jw.String("failed_tablets");
+  jw.StartArray();
+  for (const auto& peer : tablet_peers) {
+    if (peer->state() == tablet::FAILED) {
+      jw.String(peer->tablet_id());
+    }
+  }
+  jw.EndArray();
+  jw.EndObject();
 }
 
 }  // namespace tserver

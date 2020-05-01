@@ -3,6 +3,7 @@ title: SELECT
 linkTitle: SELECT
 summary: Retrieves rows from a table
 description: SELECT
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-select

@@ -36,8 +36,16 @@ RolePermissions::RolePermissions(const master::RolePermissionInfoPB& role_permis
   // For each resource, extract its permissions and store it in the role's permissions map.
   for (const auto &resource_permissions : role_permission_info_pb.resource_permissions()) {
     DCHECK(resource_permissions.has_permissions());
-    resource_permissions_[resource_permissions.canonical_resource()] =
-        resource_permissions.permissions();
+    VLOG(1) << "Processing permissions " << resource_permissions.ShortDebugString();
+
+    auto it = resource_permissions_.find(resource_permissions.canonical_resource());
+    if (it == resource_permissions_.end()) {
+      resource_permissions_[resource_permissions.canonical_resource()] =
+          resource_permissions.permissions();
+    } else {
+      // permissions is a bitmap representing the permissions.
+      it->second |= resource_permissions.permissions();
+    }
   }
 }
 

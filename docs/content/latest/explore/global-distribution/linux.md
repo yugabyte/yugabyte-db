@@ -1,7 +1,8 @@
 ---
-title: Global distribution
+title: Explore global distribution on Linux
+headerTitle: Global distribution
 linkTitle: Global distribution
-description: Global distribution
+description: Simulate globally distributed SQL across regions using a local YugabyteDB cluster on Linux.
 aliases:
   - /latest/explore/global-distribution-linux/
 menu:

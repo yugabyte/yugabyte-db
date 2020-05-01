@@ -3,6 +3,7 @@ title: DROP DATABASE
 linkTitle: DROP DATABASE
 summary: Remove a database
 description: DROP DATABASE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-drop-database

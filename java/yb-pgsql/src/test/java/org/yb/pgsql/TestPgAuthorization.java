@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.pgsql.cleaners.ClusterCleaner;
 import org.yb.pgsql.cleaners.DatabaseCleaner;
 import org.yb.pgsql.cleaners.RoleCleaner;
+import org.yb.util.MiscUtil.ThrowingRunnable;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
@@ -3179,10 +3180,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
         statement2.execute("DROP TABLE other_table");
       });
     }
-  }
-
-  interface ThrowingRunnable {
-    void run() throws Exception;
   }
 
   private static void withRoles(

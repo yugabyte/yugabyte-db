@@ -1,7 +1,8 @@
 ---
-title: IoT - Confluent Kafka, KSQL, Apache Spark 
-linkTitle: IoT Fleet Management
-description: IoT Fleet Management - Confluent Kafka, KSQL, Apache Spark
+title: IoT fleet management example application
+headerTitle: IoT fleet management
+linkTitle: IoT fleet management
+description: Run this fleet management application built with Kafka, KSQL, Apache Spark, and YugabyteDB.
 aliases:
   - /develop/realworld-apps/iot-spark-kafka/
   - /latest/develop/realworld-apps/iot-spark-kafka/

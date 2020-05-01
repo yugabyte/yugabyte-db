@@ -69,6 +69,8 @@ public enum TaskType {
 
   DeleteKMSConfig("DeleteKMSConfig"),
 
+  UpdateDiskSize("UpdateDiskSize"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
@@ -99,6 +101,8 @@ public enum TaskType {
   ManipulateDnsRecordTask("subtasks.ManipulateDnsRecordTask"),
 
   RemoveUniverseEntry("subtasks.RemoveUniverseEntry"),
+
+  SetFlagInMemory("subtasks.SetFlagInMemory"),
 
   SetNodeState("subtasks.SetNodeState"),
 

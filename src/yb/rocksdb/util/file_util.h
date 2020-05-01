@@ -17,6 +17,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#ifndef YB_ROCKSDB_UTIL_FILE_UTIL_H
+#define YB_ROCKSDB_UTIL_FILE_UTIL_H
+
 #pragma once
 #include <string>
 
@@ -24,22 +28,22 @@
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
+
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/file_util.h"
 
 namespace rocksdb {
 
-extern Status CopyFile(Env* env, const std::string& source,
-                       const std::string& destination, uint64_t size = 0);
+// Copy a file up to a specified size. If passed size is 0 - copy the whole file.
+// Will return "file too small" error status if `size` is larger than size of the source file.
+CHECKED_STATUS CopyFile(
+    Env* env, const std::string& source, const std::string& destination, uint64_t size = 0);
 
-extern Status DeleteSSTFile(const DBOptions* db_options,
-                            const std::string& fname, uint32_t path_id);
-
-YB_STRONGLY_TYPED_BOOL(CreateIfMissing);
-YB_STRONGLY_TYPED_BOOL(UseHardLinks);
-
-extern Status CopyDirectory(
-    Env* env, const std::string& src_dir, const std::string& dest_dir,
-    CreateIfMissing create_if_missing = CreateIfMissing::kTrue,
-    UseHardLinks use_hard_links = UseHardLinks::kTrue);
+// Deletes SST file by `fname`. If `db_options` has a file manager and `path_id` is 0 then
+// it schedules file deletion instead of deleting it immediately.
+CHECKED_STATUS DeleteSSTFile(
+    const DBOptions* db_options, const std::string& fname, uint32_t path_id);
 
 }  // namespace rocksdb
+
+#endif  // YB_ROCKSDB_UTIL_FILE_UTIL_H

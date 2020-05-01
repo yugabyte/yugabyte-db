@@ -2,6 +2,7 @@
 title: PUNSUBSCRIBE
 linkTitle: PUNSUBSCRIBE
 description: PUNSUBSCRIBE
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

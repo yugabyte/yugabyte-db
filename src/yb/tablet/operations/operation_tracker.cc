@@ -76,6 +76,10 @@ METRIC_DEFINE_gauge_uint64(tablet, snapshot_operations_inflight,
                            "Snapshot Operations In Flight",
                            yb::MetricUnit::kOperations,
                            "Number of snapshot operations currently in-flight");
+METRIC_DEFINE_gauge_uint64(tablet, split_operations_inflight,
+                           "Split Operations In Flight",
+                           yb::MetricUnit::kOperations,
+                           "Number of split operations currently in-flight");
 METRIC_DEFINE_gauge_uint64(tablet, truncate_operations_inflight,
                            "Truncate Operations In Flight",
                            yb::MetricUnit::kOperations,
@@ -84,6 +88,10 @@ METRIC_DEFINE_gauge_uint64(tablet, empty_operations_inflight,
                            "Empty Operations In Flight",
                            yb::MetricUnit::kOperations,
                            "Number of none operations currently in-flight");
+METRIC_DEFINE_gauge_uint64(tablet, history_cutoff_operations_inflight,
+                           "History Cutoff Operations In Flight",
+                           yb::MetricUnit::kOperations,
+                           "Number of history cutoff operations currently in-flight");
 
 METRIC_DEFINE_counter(tablet, operation_memory_pressure_rejections,
                       "Operation Memory Pressure Rejections",
@@ -111,9 +119,11 @@ OperationTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
   INSTANTIATE(ChangeMetadata, alter_schema);
   INSTANTIATE(UpdateTransaction, update_transaction);
   INSTANTIATE(Snapshot, snapshot);
+  INSTANTIATE(Split, split);
   INSTANTIATE(Truncate, truncate);
   INSTANTIATE(Empty, empty);
-  static_assert(6 == kElementsInOperationType, "Init metrics for all operation types");
+  INSTANTIATE(HistoryCutoff, history_cutoff);
+  static_assert(8 == kElementsInOperationType, "Init metrics for all operation types");
 }
 #undef INSTANTIATE
 #undef GINIT

@@ -240,7 +240,10 @@ class TSDescriptor {
 
   void UpdateMetrics(const TServerMetricsPB& metrics);
 
+  void GetMetrics(TServerMetricsPB* metrics);
+
   void ClearMetrics() {
+    std::lock_guard<decltype(lock_)> l(lock_);
     ts_metrics_.ClearMetrics();
   }
 

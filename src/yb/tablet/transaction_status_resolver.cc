@@ -23,6 +23,11 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/flag_tags.h"
+
+DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
+                 "Inject delay before launching transaction status resolver RPC.");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -39,7 +44,12 @@ class TransactionStatusResolver::Impl {
 
   void Shutdown() {
     closing_.store(true, std::memory_order_release);
-    run_latch_.Wait();
+    for (;;) {
+      if (run_latch_.WaitFor(10s)) {
+        break;
+      }
+      LOG(DFATAL) << "Long wait for transaction status resolver to shutdown";
+    }
   }
 
   void Start(CoarseTimePoint deadline) {
@@ -88,16 +98,24 @@ class TransactionStatusResolver::Impl {
     for (size_t i = 0; i != request_size; ++i) {
       const auto& txn_id = tablet_queue[i];
       VLOG_WITH_PREFIX(4) << "Checking txn status: " << txn_id;
-      req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.begin()), txn_id.size());
+      req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
     }
-    rpcs_.RegisterAndStart(
+
+    auto injected_delay = FLAGS_inject_status_resolver_delay_ms;
+    if (injected_delay > 0) {
+      std::this_thread::sleep_for(1ms * injected_delay);
+    }
+
+    if (!rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
             std::min(deadline_, TransactionRpcDeadline()),
             nullptr /* tablet */,
             participant_context_.client_future().get(),
             &req,
             std::bind(&Impl::StatusReceived, this, _1, _2, request_size)),
-        &handle_);
+        &handle_)) {
+      Complete(STATUS(Aborted, "Aborted because cannot start RPC"));
+    }
   }
 
   const std::string& LogPrefix() const {
@@ -143,10 +161,22 @@ class TransactionStatusResolver::Impl {
     auto it = queues_.begin();
     auto& queue = it->second;
     for (size_t i = 0; i != response.status().size(); ++i) {
-      VLOG_WITH_PREFIX(4) << "Status of " << queue.front() << ": "
-                          << TransactionStatus_Name(response.status(i));
-      status_infos_.push_back({
-          queue.front(), response.status(i), HybridTime(response.status_hybrid_time(i))});
+      auto txn_status = response.status(i);
+      VLOG_WITH_PREFIX(4)
+          << "Status of " << queue.front() << ": " << TransactionStatus_Name(txn_status);
+      HybridTime status_hybrid_time;
+      if (i < response.status_hybrid_time().size()) {
+        status_hybrid_time = HybridTime(response.status_hybrid_time(i));
+      // Could happend only when coordinator has an old version.
+      } else if (txn_status == TransactionStatus::ABORTED) {
+        status_hybrid_time = HybridTime::kMax;
+      } else {
+        Complete(STATUS_FORMAT(
+            IllegalState, "Missing status hybrid time for transaction status: $0",
+            TransactionStatus_Name(txn_status)));
+        return;
+      }
+      status_infos_.push_back({queue.front(), txn_status, status_hybrid_time});
       queue.pop_front();
     }
     if (queue.empty()) {

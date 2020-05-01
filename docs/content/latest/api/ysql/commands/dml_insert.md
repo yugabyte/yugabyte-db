@@ -1,8 +1,8 @@
 ---
-title: INSERT
+title: INSERT statement [YSQL]
+headerTitle: INSERT
 linkTitle: INSERT
-summary: Add new rows to a table
-description: INSERT
+description: Use the INSERT statement to add one or more rows to the specified table.
 menu:
   latest:
     identifier: api-ysql-commands-insert

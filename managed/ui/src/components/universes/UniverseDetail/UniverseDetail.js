@@ -309,7 +309,7 @@ class UniverseDetail extends Component {
             mountOnEnter={true}
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, "universes.details.heath")}>
-            <UniverseHealthCheckList universe={universe} />
+            <UniverseHealthCheckList universe={universe} currentCustomer={currentCustomer} />
           </Tab.Pane>
       ]
     ].filter(element => element);

@@ -2,6 +2,7 @@
 title: Single Node
 linkTitle: Single Node
 description: Single Node
+block_indexing: true
 menu:
   v1.0:
     identifier: architecture-single-node

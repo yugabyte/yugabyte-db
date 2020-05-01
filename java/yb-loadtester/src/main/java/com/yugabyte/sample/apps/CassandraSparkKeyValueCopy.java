@@ -19,14 +19,18 @@ import java.util.List;
 
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
+import com.datastax.spark.connector.japi.rdd.CassandraJavaRDD;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.commons.cli.CommandLine;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import scala.Tuple2;
 import com.datastax.spark.connector.cql.CassandraConnector;
+import scala.Tuple3;
+
 import static com.datastax.spark.connector.japi.CassandraJavaUtil.javaFunctions;
 import static com.datastax.spark.connector.japi.CassandraJavaUtil.mapTupleToRow;
 import static com.datastax.spark.connector.japi.CassandraJavaUtil.someColumns;
@@ -111,11 +115,12 @@ public class CassandraSparkKeyValueCopy extends AppBase {
     try (JavaSparkContext sc = new JavaSparkContext(conf);
          Session session = connector.openSession()) {
       //------------------------------------------- Input ------------------------------------------
-      JavaPairRDD<String, ByteBuffer> rows;
+      JavaRDD<Tuple3<String, ByteBuffer, String>> rows;
       // Read rows from table and convert them to an RDD.
-      rows = javaFunctions(sc).cassandraTable(getKeyspace(), inputTableName).select("k", "v")
-          .mapToPair(row -> new Tuple2<>(row.getString("k"),
-              row.getBytes("v")));
+      rows = javaFunctions(sc).cassandraTable(getKeyspace(), inputTableName).select("k", "v1", "v2")
+          .map(row -> new Tuple3<>(row.getString("k"),
+                                   row.getBytes("v1"),
+                                   row.getString("v2")));
 
       //------------------------------------------- Output -----------------------------------------
       String outTable = getKeyspace() + "." + outputTableName;
@@ -126,13 +131,13 @@ public class CassandraSparkKeyValueCopy extends AppBase {
 
       // Create the output table.
       session.execute("CREATE TABLE IF NOT EXISTS " + outTable +
-          " (k VARCHAR PRIMARY KEY, v BLOB);");
+          " (k VARCHAR PRIMARY KEY, v1 BLOB, v2 jsonb)");
 
       // Save the output to the CQL table.
       javaFunctions(rows).writerBuilder(getKeyspace(),
           outputTableName,
-          mapTupleToRow(String.class, ByteBuffer.class))
-          .withColumnSelector(someColumns("k", "v"))
+          mapTupleToRow(String.class, ByteBuffer.class, String.class))
+          .withColumnSelector(someColumns("k", "v1", "v2"))
           .saveToCassandra();
     }
   }

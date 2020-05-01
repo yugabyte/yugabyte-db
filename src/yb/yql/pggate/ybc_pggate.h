@@ -63,6 +63,9 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 // Connect database. Switch the connected database to the given "database_name".
 YBCStatus YBCPgConnectDatabase(const char *database_name);
 
+// Get whether the given database is colocated.
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated);
+
 YBCStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
@@ -145,6 +148,9 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_tablets);
 
+YBCStatus YBCPgCreateTableAddSplitRow(YBCPgStatement handle, int num_cols,
+                                        YBCPgTypeEntity **types, uint64_t *data);
+
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
@@ -193,6 +199,10 @@ YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
 
 YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
+
+YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
+                                const YBCPgOid table_oid,
+                                bool *colocated);
 
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".
@@ -294,7 +304,8 @@ YBCStatus YBCPgDmlBuildYBTupleId(YBCPgStatement handle, const YBCPgAttrValueDesc
 
 
 // Buffer write operations.
-YBCStatus YBCPgStartOperationsBuffering();
+void YBCPgStartOperationsBuffering();
+void YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 
 // INSERT ------------------------------------------------------------------------------------------

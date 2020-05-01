@@ -76,8 +76,14 @@ public class HealthManagerTest extends FakeDBApplication {
     HealthManager.ClusterInfo cluster = new HealthManager.ClusterInfo();
     cluster.sshPort = 22;
     cluster.identityFile = "key.pem";
-    cluster.masterNodes = ImmutableList.of("m1", "m2", "m3");
-    cluster.tserverNodes = ImmutableList.of("ts1", "ts2", "ts3");
+    cluster.masterNodes = new HashMap<>();
+    cluster.masterNodes.put("m1", "m1-name");
+    cluster.masterNodes.put("m2", "m2-name");
+    cluster.masterNodes.put("m3", "m3-name");
+    cluster.tserverNodes = new HashMap<>();
+    cluster.tserverNodes.put("ts1", "ts1-name");
+    cluster.tserverNodes.put("ts2", "ts2-name");
+    cluster.tserverNodes.put("ts3", "ts3-name");
     // Other args
     String universeName = "universe1";
     String customerTag = "customer.env";
@@ -107,7 +113,7 @@ public class HealthManagerTest extends FakeDBApplication {
             System.out.println("running, reportOnlyErrors = " + reportOnlyErrors.toString());
              healthManager.runCommand(
                   provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
-                  sendStatus, reportOnlyErrors);
+                  sendStatus, reportOnlyErrors, null);
               HashMap extraEnvVars = new HashMap<>(provider.getConfig());
               if (envVal != null) {
                 extraEnvVars.put("YB_ALERTS_USERNAME", envVal);

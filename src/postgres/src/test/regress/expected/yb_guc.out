@@ -1,0 +1,26 @@
+-- Check transaction priority bounds.
+set log_error_verbosity = default;
+-- Values should be in interval [0,1] (inclusive).
+-- Invalid values.
+set yb_transaction_priority_upper_bound = 2;
+ERROR:  2 is outside the valid range for parameter "yb_transaction_priority_upper_bound" (0 .. 1)
+set yb_transaction_priority_lower_bound = -1;
+ERROR:  -1 is outside the valid range for parameter "yb_transaction_priority_lower_bound" (0 .. 1)
+-- Valid values.
+set yb_transaction_priority_upper_bound = 1;
+set yb_transaction_priority_lower_bound = 0;
+set yb_transaction_priority_lower_bound = 0.3;
+set yb_transaction_priority_upper_bound = 0.7;
+-- Lower bound should be less or equal to upper bound.
+-- Invalid values.
+set yb_transaction_priority_upper_bound = 0.2;
+ERROR:  invalid value for parameter "yb_transaction_priority_upper_bound": 0.2
+DETAIL:  must be greater than or equal to yb_transaction_priority_lower_bound (0.300000)
+set yb_transaction_priority_lower_bound = 0.8;
+ERROR:  invalid value for parameter "yb_transaction_priority_lower_bound": 0.8
+DETAIL:  must be less than or equal to yb_transaction_priority_upper_bound (0.700000)
+-- Valid values.
+set yb_transaction_priority_upper_bound = 0.3;
+set yb_transaction_priority_upper_bound = 0.6;
+set yb_transaction_priority_lower_bound = 0.4;
+set yb_transaction_priority_lower_bound = 0.6;

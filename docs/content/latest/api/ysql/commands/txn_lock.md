@@ -1,8 +1,8 @@
 ---
-title: LOCK
+title: LOCK statement [YSQL]
+headerTitle: LOCK
 linkTitle: LOCK
-summary: Lock a table
-description: LOCK
+description: Use the LOCK statement to lock a table.
 menu:
   latest:
     identifier: api-ysql-commands-lock

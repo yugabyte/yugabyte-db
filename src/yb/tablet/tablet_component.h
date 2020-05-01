@@ -30,7 +30,7 @@ class TabletComponent {
   }
 
  protected:
-  ScopedPendingOperationPause PauseReadWriteOperations();
+  ScopedRWOperationPause PauseReadWriteOperations();
 
   CHECKED_STATUS ResetRocksDBs(bool destroy = false);
 
@@ -42,7 +42,7 @@ class TabletComponent {
 
   RaftGroupMetadata& metadata() const;
 
-  PendingOperationCounter& pending_op_counter() const;
+  RWOperationCounter& pending_op_counter() const;
 
   rocksdb::DB& regular_db() const;
 

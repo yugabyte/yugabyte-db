@@ -4,6 +4,7 @@ linkTitle: Node Level Issues
 description: Node Level Issues
 image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Diagnose and solve issues on an individual YugabyteDB node.
+block_indexing: true
 menu:
   v1.0:
     identifier: troubleshoot-nodes

@@ -139,9 +139,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
   if (!table_) {
     Status s = local_client_->client->OpenTable(consumer_tablet_info_.table_id, &table_);
     if (!s.ok()) {
-      cdc::OutputClientResponse response;
-      response.status = s;
-      apply_changes_clbk_(response);
+      HandleError(s, true);
       return s;
     }
   }
@@ -302,6 +300,7 @@ bool TwoDCOutputClient::IncProcessedRecordCount() {
   if (processed_record_count_ == record_count_) {
     done_processing_ = true;
   }
+  CHECK(processed_record_count_ <= record_count_);
   return done_processing_;
 }
 

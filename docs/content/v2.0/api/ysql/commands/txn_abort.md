@@ -3,6 +3,7 @@ title: ABORT
 linkTitle: ABORT
 description: ABORT
 summary: Overview of the ABORT statement
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-txn-abort

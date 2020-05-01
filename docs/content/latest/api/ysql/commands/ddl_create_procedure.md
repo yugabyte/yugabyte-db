@@ -1,8 +1,8 @@
 ---
-title: CREATE PROCEDURE
+title: CREATE PROCEDURE statement [YSQL]
+headerTitle: CREATE PROCEDURE
 linkTitle: CREATE PROCEDURE
-summary: Create a new procedure in a database
-description: CREATE PROCEDURE
+description: Use the CREATE PROCEDURE statement to define a new procedure in a database.
 menu:
   latest:
     identifier: api-ysql-commands-create-procedure

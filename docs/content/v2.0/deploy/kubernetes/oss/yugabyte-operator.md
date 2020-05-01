@@ -2,6 +2,7 @@
 title: Open Source Kubernetes 
 linkTitle: Open Source Kubernetes
 description: Open Source Kubernetes 
+block_indexing: true
 menu:
   v2.0:
     parent: deploy-kubernetes
@@ -83,7 +84,7 @@ kubectl get po,sts,svc
 Once the cluster is up and running, you may start the PostgreQL-compatible YSQL API and start executing relational queries.
 
 ```sh
-kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0 --echo-queries
+kubectl exec -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0 --echo-queries
 ```
 
 You may choose to start the Cassandra-compatible YCQL api and start storing data in NoSQL format.

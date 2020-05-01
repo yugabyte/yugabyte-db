@@ -2,6 +2,7 @@
 title: Helm Chart
 linkTitle: Helm Chart
 description: Helm Chart
+block_indexing: true
 menu:
   v1.3:
     identifier: helm-chart
@@ -122,7 +123,7 @@ $ helm install yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resour
 Connect using ysqlsh client as shown below.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
+$ kubectl exec -n yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
 ## Check the cluster status
@@ -207,7 +208,7 @@ REVISION  UPDATED                   STATUS    CHART           DESCRIPTION
 If you installed YugabyteDB with YSQL on, then connect using ysqlsh client as shown below.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
+$ kubectl exec -n yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
 Connect using cqlsh client as shown below.

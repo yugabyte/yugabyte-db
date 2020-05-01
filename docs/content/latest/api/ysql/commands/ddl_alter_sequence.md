@@ -1,8 +1,8 @@
 ---
-title: ALTER SEQUENCE
+title: ALTER SEQUENCE statement [YSQL]
+headerTitle: ALTER SEQUENCE
 linkTitle: ALTER SEQUENCE
-summary: Alter a sequence in a schema
-description: ALTER SEQUENCE
+description: Use the ALTER SEQUENCE statement to change the definition of an existing sequence in the current schema.
 menu:
   latest:
     identifier: api-ysql-commands-alter-sequence

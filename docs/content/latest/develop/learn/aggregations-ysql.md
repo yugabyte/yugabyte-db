@@ -1,7 +1,8 @@
 ---
-title: 5. Aggregations
+title: Aggregations in YugabyteDB YSQL
+headerTitle: Aggregations
 linkTitle: 5. Aggregations
-description: Aggregations
+description: Learn how YugabyteDB YSQL supports standard aggregation functions.
 aliases:
   - /develop/learn/aggregations/
   - /latest/develop/learn/aggregations/

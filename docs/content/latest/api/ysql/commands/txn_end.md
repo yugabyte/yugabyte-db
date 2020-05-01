@@ -1,8 +1,8 @@
 ---
-title: END
+title: END statement [YSQL]
+headerTitle: END
 linkTitle: END
-description: END
-summary: END
+description: Use the `END` statement to commit the current transaction.
 menu:
   latest:
     identifier: api-ysql-commands-txn-end

@@ -2,6 +2,7 @@
 title: Observability with Prometheus
 linkTitle: 3. Observability 
 description: Observability with Prometheus
+block_indexing: true
 menu:
   v1.1:
     identifier: observability
@@ -52,10 +53,6 @@ If you haven't installed YugabyteDB yet, do so first by following the [Quick Sta
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/observability.md" /%}}
   </div>
-    <!--
-  <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/observability.md" /%}}
-  </div>
--->
+
 </div>
 

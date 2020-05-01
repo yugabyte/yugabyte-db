@@ -2,6 +2,7 @@
 title: SREM
 linkTitle: SREM
 description: SREM
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

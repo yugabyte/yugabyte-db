@@ -1,7 +1,6 @@
 {
   "all": {
     "%symlinks%": {
-      "bin/psql": "../postgres/bin/ysqlsh",
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
     ".": ["$BUILD_ROOT/version_metadata.json"],
@@ -45,7 +44,6 @@
   },
   "cli": {
     "%symlinks%": {
-      "bin/psql": "../postgres/bin/ysqlsh",
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
     ".": ["$BUILD_ROOT/version_metadata.json"],
@@ -57,6 +55,9 @@
       "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
     ],
     "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
-    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"]
+    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
+    "share": [
+      "sample/*.sql"
+    ]
   }
 }

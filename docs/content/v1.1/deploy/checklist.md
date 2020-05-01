@@ -2,6 +2,7 @@
 title: Checklist
 linkTitle: Checklist
 description: Checklist
+block_indexing: true
 menu:
   v1.1:
     identifier: checklist

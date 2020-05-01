@@ -2,6 +2,7 @@
 title: CREATE KEYSPACE
 summary: Create a new database
 description: CREATE KEYSPACE
+block_indexing: true
 menu:
   v1.0:
     parent: api-cassandra

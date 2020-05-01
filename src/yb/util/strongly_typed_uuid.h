@@ -32,7 +32,16 @@
 #define YB_STRONGLY_TYPED_UUID(TypeName) \
   struct BOOST_PP_CAT(TypeName, _Tag); \
   typedef ::yb::StronglyTypedUuid<BOOST_PP_CAT(TypeName, _Tag)> TypeName; \
-  typedef boost::hash<TypeName> BOOST_PP_CAT(TypeName, Hash);
+  typedef boost::hash<TypeName> BOOST_PP_CAT(TypeName, Hash); \
+  inline Result<TypeName> BOOST_PP_CAT(FullyDecode, TypeName)(const Slice& slice) { \
+    return TypeName(VERIFY_RESULT(yb::FullyDecodeUuid(slice))); \
+  } \
+  inline TypeName BOOST_PP_CAT(TryFullyDecode, TypeName)(const Slice& slice) { \
+    return TypeName(yb::TryFullyDecodeUuid(slice)); \
+  } \
+  inline Result<TypeName> BOOST_PP_CAT(Decode, TypeName)(Slice* slice) { \
+    return TypeName(VERIFY_RESULT(yb::DecodeUuid(slice))); \
+  }
 
 namespace yb {
 
@@ -64,6 +73,14 @@ class StronglyTypedUuid {
   // Returns true iff the UUID is nil.
   bool IsNil() const {
     return uuid_.is_nil();
+  }
+
+  explicit operator bool() const {
+    return !IsNil();
+  }
+
+  bool operator!() const {
+    return IsNil();
   }
 
   // Represent UUID as pair of uint64 for protobuf serialization.
@@ -100,6 +117,30 @@ class StronglyTypedUuid {
   // Generate a random StronglyTypedUuid.
   static StronglyTypedUuid<Tag> GenerateRandom() {
     return StronglyTypedUuid(boost::uuids::random_generator()());
+  }
+
+  uint8_t* data() {
+    return uuid_.data;
+  }
+
+  const uint8_t* data() const {
+    return uuid_.data;
+  }
+
+  size_t size() const {
+    return uuid_.size();
+  }
+
+  Slice AsSlice() const {
+    return Slice(uuid_.data, uuid_.size());
+  }
+
+  static size_t StaticSize() {
+    return boost::uuids::uuid::static_size();
+  }
+
+  static size_t StaticStringSize() {
+    return 36;
   }
 
  private:
@@ -147,6 +188,10 @@ template <class Tag>
 std::size_t hash_value(const StronglyTypedUuid<Tag>& u) noexcept {
   return hash_value(*u);
 }
+
+Result<boost::uuids::uuid> FullyDecodeUuid(const Slice& slice);
+boost::uuids::uuid TryFullyDecodeUuid(const Slice& slice);
+Result<boost::uuids::uuid> DecodeUuid(Slice* slice);
 
 } // namespace yb
 

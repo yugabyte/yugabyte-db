@@ -1,7 +1,8 @@
 ---
-title: YCQL
+title: Yugabyte Cloud Query Language (YCQL)
+headerTitle: Yugabyte Cloud Query Language (YCQL)
 linkTitle: YCQL
-description: Yugabyte Cloud Query Language (YCQL)
+description: YCQL is a SQL-based, flexible-schema API that is best fit for internet-scale OLTP application needing a semi-relational API.
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent:
@@ -57,7 +58,7 @@ Statement | Description |
 
 Security statements are instructions for managing and restricting operations on the database objects.
 
-This feature is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
+This feature is enabled by setting the YB-TServer configuration flag [`--use_cassandra_authentication`](../../reference/configuration/yb-tserver/#use-cassandra-authentication) to `true`.
 
 - Create, grant, and revoke users and roles
 - Grant, and revoke permissions on database objects

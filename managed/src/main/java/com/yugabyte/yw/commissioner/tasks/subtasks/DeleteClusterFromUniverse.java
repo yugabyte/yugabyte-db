@@ -18,7 +18,6 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 
 import org.slf4j.Logger;

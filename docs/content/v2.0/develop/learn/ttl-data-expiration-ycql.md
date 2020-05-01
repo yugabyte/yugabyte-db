@@ -2,6 +2,7 @@
 title: 9. TTL for data expiration
 linkTitle: 9. TTL for data expiration
 description: TTL for data expiration
+block_indexing: true
 menu:
   v2.0:
     identifier: ttl-data-expiration-ycql

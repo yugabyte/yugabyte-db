@@ -14,7 +14,7 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
   configureUniverseResources, configureUniverseResourcesResponse,
   checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
   fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
-  fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica, 
+  fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica,
   addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, closeUniverseDialog } from '../../../actions/universe';
 
 import { openDialog, closeDialog } from '../../../actions/modal';
@@ -155,15 +155,17 @@ const formFieldNames =
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
     'primary.volumeSize', 'primary.storageType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
     'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest',
-    'primary.selectEncryptionAtRestConfig', 'primary.mountPoints', 'async.universeName',
-    'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes', 'async.instanceType',
+    'primary.selectEncryptionAtRestConfig', 'primary.mountPoints', 'primary.awsArnString',
+    'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes', 'async.instanceType',
     'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL',
     'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints', 'masterGFlags',
     'tserverGFlags', 'instanceTags', 'asyncClusters'];
 
 
 function getFormData(currentUniverse, formType, clusterType) {
-  const cluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
+
+  const { universeDetails : {clusters, encryptionAtRestConfig }} = currentUniverse.data;
+  const cluster = getClusterByType(clusters, clusterType);
   const data = {};
   if (isDefinedNotNull(cluster)) {
     const userIntent = cluster.userIntent;
@@ -175,7 +177,6 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].enableYSQL = userIntent.enableYSQL;
     data[clusterType].enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     data[clusterType].enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
-    data[clusterType].enableEncryptionAtRest = userIntent.enableEncryptionAtRest;
     data[clusterType].provider = userIntent.provider;
     data[clusterType].numNodes = userIntent.numNodes;
     data[clusterType].replicationFactor = userIntent.replicationFactor;
@@ -201,6 +202,12 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].instanceTags = Object.keys(userIntent.instanceTags).map((key) => {
       return {name: key, value: userIntent.instanceTags[key]};
     });
+
+    if (encryptionAtRestConfig) {
+      data[clusterType].enableEncryptionAtRest = encryptionAtRestConfig.encryptionAtRestEnabled;
+      data[clusterType].selectEncryptionAtRestConfig = encryptionAtRestConfig.kmsConfigUUID;
+    }
+
   }
   return data;
 }
@@ -222,6 +229,7 @@ function mapStateToProps(state, ownProps) {
       "enableNodeToNodeEncrypt": false,
       "enableClientToNodeEncrypt": false,
       "enableEncryptionAtRest": false,
+      "awsArnString": "",
       "selectEncryptionAtRestConfig": null
     },
     "async": {
@@ -259,12 +267,12 @@ function mapStateToProps(state, ownProps) {
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
       'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL',
-      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest', 'primary.selectEncryptionAtRestConfig',
-      'primary.tlsCertificateId', 'async.universeName', 'async.provider', 'async.providerType',
-      'async.regionList', 'async.replicationFactor', 'async.numNodes', 'async.instanceType',
-      'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.diskIops',
-      'async.numVolumes', 'async.volumeSize',  'async.storageType', 'async.assignPublicIP',
-      'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt',
+      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest',
+      'primary.selectEncryptionAtRestConfig', 'primary.tlsCertificateId', 'primary.awsArnString', 'async.universeName',
+      'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
+      'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion',
+      'async.accessKeyCode', 'async.diskIops', 'async.numVolumes', 'async.volumeSize',  'async.storageType',
+      'async.assignPublicIP', 'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt',
       'async.mountPoints', 'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags'
     )
   };

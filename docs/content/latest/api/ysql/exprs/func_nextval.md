@@ -1,7 +1,8 @@
 ---
-title: nextval()
-summary: Get the next value from the session's sequence cache
-description: nextval()
+title: nextval() function [YSQL]
+headerTitle: nextval()
+linkTitle: nextval()
+description: Returns the next value from the sequence cache for the current session. 
 menu:
   latest:
     identifier: api-ysql-exprs-nextval

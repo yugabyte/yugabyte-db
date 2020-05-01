@@ -2,6 +2,7 @@
 title: DBeaver
 linkTitle: DBeaver
 description: DBeaver
+block_indexing: true
 menu:
   v2.0:
     identifier: dbeaver

@@ -132,6 +132,14 @@ class YBOperation {
   // Whether this is an operation on one of the YSQL system catalog tables.
   bool IsYsqlCatalogOp() const;
 
+  // Mark table this op is designated for as having stale partitions.
+  void MarkTablePartitionsAsStale();
+
+  // Refreshes partitions of the table this op is designated of in case partitions have been marked
+  // as stale.
+  // Returns whether table partitions have been refreshed.
+  Result<bool> MaybeRefreshTablePartitions();
+
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 

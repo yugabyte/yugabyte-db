@@ -3,6 +3,7 @@ title: DROP GROUP
 linkTitle: DROP GROUP
 description: DROP GROUP
 summary: DROP GROUP
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-group

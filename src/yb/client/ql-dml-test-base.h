@@ -58,6 +58,9 @@ class KeyValueTableTest : public QLDmlTestBase {
   static void CreateTable(Transactional transactional, int num_tablets, YBClient* client,
                           TableHandle* table);
 
+  static void CreateIndex(Transactional transactional, int indexed_column_index,
+                          const TableHandle& table, YBClient* client, TableHandle* index);
+
   // Insert/update a full, single row, equivalent to the statement below. Return a YB write op that
   // has been applied.
   // op_type == WriteOpType::INSERT: insert into t values (key, value);
@@ -90,6 +93,8 @@ class KeyValueTableTest : public QLDmlTestBase {
 
  protected:
   void CreateTable(Transactional transactional);
+
+  void CreateIndex(Transactional transactional, int indexed_column_index = 1);
 
   Result<YBqlWriteOpPtr> WriteRow(
       const YBSessionPtr& session, int32_t key, int32_t value,
@@ -124,9 +129,16 @@ class KeyValueTableTest : public QLDmlTestBase {
 
   virtual int NumTablets();
 
+  // Sets number of tablets to use for test table creation.
+  void SetNumTablets(int num_tablets) {
+    num_tablets_ = num_tablets;
+  }
+
   static const std::string kKeyColumn;
   static const std::string kValueColumn;
   TableHandle table_;
+  TableHandle index_;
+  int num_tablets_ = CalcNumTablets(3);
 };
 
 CHECKED_STATUS CheckOp(YBqlOp* op);

@@ -1,7 +1,8 @@
 ---
 title: Create server certificates
+headerTitle: Create server certificates
 linkTitle: Create server certificates
-description: Create server certificates
+description: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption.
 headcontent: Generate server certificates and prepare YugabyteDB nodes for server-to-server encryption.
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:
@@ -211,7 +212,7 @@ Certificate:
          b4:9d:39:57:58:6c:b3:8e:25:e3:86:24:13:59:d6:a0:d2:f0:
          15:1e:8c:24:44:5b:3a:db:1c:ef:60:70:24:58:df:56:99:aa:
          22:78:12:d6
-         ```
+```
 
 ## Copy the root certificate to each node directory
 
@@ -259,7 +260,7 @@ distinguished_name = my_distinguished_name
 organizationName = Yugabyte
 # Required value for commonName, do not change.
 commonName = <node-ip-address>
-    ```
+```
 
 3. After pasting the content in step 2 and replacing `<node-ip-address>` with the node IP address, save and close the file by entering `Ctl+D`.
 

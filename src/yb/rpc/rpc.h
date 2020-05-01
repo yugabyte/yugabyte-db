@@ -234,7 +234,7 @@ class Rpcs {
   void Shutdown();
   Handle Register(RpcCommandPtr call);
   void Register(RpcCommandPtr call, Handle* handle);
-  void RegisterAndStart(RpcCommandPtr call, Handle* handle);
+  bool RegisterAndStart(RpcCommandPtr call, Handle* handle);
   RpcCommandPtr Unregister(Handle* handle);
   void Abort(std::initializer_list<Handle*> list);
   // Request all active calls to abort.

@@ -51,7 +51,7 @@ class WalManagerTest : public testing::Test {
         table_cache_(NewLRUCache(50000, 16)),
         write_buffer_(db_options_.db_write_buffer_size),
         current_log_number_(0) {
-    DestroyDB(dbname_, Options());
+    CHECK_OK(DestroyDB(dbname_, Options()));
   }
 
   void Init() {
@@ -80,7 +80,7 @@ class WalManagerTest : public testing::Test {
     WriteBatch batch;
     batch.Put(key, value);
     WriteBatchInternal::SetSequence(&batch, seq);
-    current_log_writer_->AddRecord(WriteBatchInternal::Contents(&batch));
+    ASSERT_OK(current_log_writer_->AddRecord(WriteBatchInternal::Contents(&batch)));
     versions_->SetLastSequence(seq);
   }
 
@@ -146,7 +146,7 @@ TEST_F(WalManagerTest, ReadFirstRecordCache) {
   WriteBatch batch;
   batch.Put("foo", "bar");
   WriteBatchInternal::SetSequence(&batch, 10);
-  writer.AddRecord(WriteBatchInternal::Contents(&batch));
+  ASSERT_OK(writer.AddRecord(WriteBatchInternal::Contents(&batch)));
 
   // TODO(icanadi) move SpecialEnv outside of db_test, so we can reuse it here.
   // Waiting for lei to finish with db_test
@@ -171,14 +171,14 @@ namespace {
 uint64_t GetLogDirSize(std::string dir_path, Env* env) {
   uint64_t dir_size = 0;
   std::vector<std::string> files;
-  env->GetChildren(dir_path, &files);
+  EXPECT_OK(env->GetChildren(dir_path, &files));
   for (auto& f : files) {
     uint64_t number;
     FileType type;
     if (ParseFileName(f, &number, &type) && type == kLogFile) {
       std::string const file_path = dir_path + "/" + f;
       uint64_t file_size;
-      env->GetFileSize(file_path, &file_size);
+      EXPECT_OK(env->GetFileSize(file_path, &file_size));
       dir_size += file_size;
     }
   }
@@ -188,7 +188,7 @@ std::vector<std::uint64_t> ListSpecificFiles(
     Env* env, const std::string& path, const FileType expected_file_type) {
   std::vector<std::string> files;
   std::vector<uint64_t> file_numbers;
-  env->GetChildren(path, &files);
+  EXPECT_OK(env->GetChildren(path, &files));
   uint64_t number;
   FileType type;
   for (size_t i = 0; i < files.size(); ++i) {

@@ -186,7 +186,6 @@ set(UTIL_SRCS
   kernel_stack_watchdog.cc
   locks.cc
   logging.cc
-  main_util.cc
   malloc.cc
   math_util.cc
   mem_tracker.cc
@@ -208,12 +207,12 @@ set(UTIL_SRCS
   ntp_clock.cc
   oid_generator.cc
   once.cc
+  operation_counter.cc
   opid.cc
   os-util.cc
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
-  pending_op_counter.cc
   physical_time.cc
   port_picker.cc
   priority_thread_pool.cc
@@ -237,6 +236,7 @@ set(UTIL_SRCS
   string_trim.cc
   string_util.cc
   striped64.cc
+  strongly_typed_uuid.cc
   subprocess.cc
   sync_point.cc
   test_graph.cc
@@ -247,6 +247,7 @@ set(UTIL_SRCS
   timestamp.cc
   trace.cc
   trilean.cc
+  ulimit_info.cc
   universe_key_manager.cc
   url-coding.cc
   user.cc

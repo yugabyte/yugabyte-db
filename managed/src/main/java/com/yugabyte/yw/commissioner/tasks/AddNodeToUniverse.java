@@ -17,10 +17,9 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -94,14 +93,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
 
+      // Re-install software.
+      // TODO: Remove the need for version for existing instance, NodeManger needs changes.
+      createConfigureServerTasks(node, true /* isShell */)
+          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
       // Bring up any masters, as needed.
       boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
-        // Configures the master to start in shell mode.
-        // TODO: Remove the need for version for existing instance, NodeManger needs changes.
-        createConfigureServerTasks(node, true /* isShell */)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-
+        // Set gflags for master.
         createGFlagsOverrideTasks(node, ServerType.MASTER);
 
         // Start a shell master process.
@@ -123,10 +123,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         masterAdded = true;
       }
 
-      // Configure so that this tserver picks all the master nodes.
-      createConfigureServerTasks(node, false /* isShell */)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-
+      // Set gflags for the tserver.
       createGFlagsOverrideTasks(node, ServerType.TSERVER);
 
       // Add the tserver process start task.
@@ -196,14 +193,25 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Finished {} task.", getName());
   }
 
-  // Setup a configure task to update the new master list in the conf files of all tservers.
+  // Setup a configure task to update the new master list in the conf files of all servers.
   // Skip the newly added node as it would have gotten the new master list after provisioing.
-  private void createMasterInfoUpdateTask(Universe universe, NodeDetails skipNode) {
-    List<NodeDetails> nodes = universe.getTServers();
-    nodes.removeIf((NodeDetails node) ->
-                    node.cloudInfo.private_ip.equals(skipNode.cloudInfo.private_ip));
+  private void createMasterInfoUpdateTask(Universe universe, NodeDetails addedNode) {
+    Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
+    Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
+    // We need to add the node explicitly since the node wasn't marked as a master or tserver
+    // before the task is completed.
+    tserverNodes.add(addedNode);
+    masterNodes.add(addedNode);
     // Configure all tservers to pick the new master node ip as well.
-    createConfigureServerTasks(nodes, false /* isShell */, true /* updateMasterAddr */)
+    createConfigureServerTasks(tserverNodes, false /* isShell */, true /* updateMasterAddr */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    // Update the master addresses in memory.
+    createSetFlagInMemoryTasks(tserverNodes, ServerType.TSERVER, true /* force flag update */,
+                               null /* no gflag to update */, true /* updateMasterAddr */);
+    // Change the master addresses in the conf file for the all masters to reflect the changes.
+    createConfigureServerTasks(masterNodes, false /* isShell */, true /* updateMasterAddrs */,
+        true /* isMaster */).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    createSetFlagInMemoryTasks(masterNodes, ServerType.MASTER, true /* force flag update */,
+                               null /* no gflag to update */, true /* updateMasterAddr */);
   }
 }

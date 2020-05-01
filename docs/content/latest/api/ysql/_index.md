@@ -1,7 +1,8 @@
 ---
-title: YSQL
+title: YSQL - Yugabyte SQL for distributed databases (PostgreSQL-compatible)
+headerTitle: Yugabyte Structured Query Language (YSQL)
 linkTitle: YSQL
-description: Yugabyte Structured Query Language (YSQL)
+description: Yugabyte Structured Query Language (YSQL) is the distributed SQL API for PostgreSQL-compatible YugabyteDB.
 summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 menu:
@@ -38,6 +39,7 @@ DDL statements define the structures in a database, change their definitions, as
 | [`CREATE AGGREGATE`](commands/ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE CAST`](commands/ddl_create_cast) | Create a new cast |
 | [`CREATE DATABASE`](commands/ddl_create_database) | Create a new database |
+| [`CREATE EXTENSION`](commands/ddl_create_extension) | Load an extension |
 | [`CREATE FUNCTION`](commands/ddl_create_function) | Create a new function |
 | [`CREATE INDEX`](commands/ddl_create_index) | Create a new index |
 | [`CREATE OPERATOR`](commands/ddl_create_operator) | Create a new operator |
@@ -54,6 +56,7 @@ DDL statements define the structures in a database, change their definitions, as
 | [`DROP AGGREGATE`](commands/ddl_drop_aggregate) | Delete an aggregate |
 | [`DROP CAST`](commands/ddl_drop_cast) | Delete a cast |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
+| [`DROP EXTENSION`](commands/ddl_drop_extension) | Delete an extension |
 | [`DROP FUNCTION`](commands/ddl_drop_function) | Delete a function |
 | [`DROP OPERATOR`](commands/ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](commands/ddl_drop_operator_class) | Delete an operator class |

@@ -35,6 +35,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/basictypes.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_error.h"
 #include "yb/rpc/rpc_context.h"
 
 namespace yb {
@@ -53,13 +54,35 @@ inline CHECKED_STATUS SetupError(MasterErrorPB* error,
   return s;
 }
 
+inline CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s) {
+  StatusToPB(s, error->mutable_status());
+  MasterError master_error(s);
+  if (master_error.value() != MasterErrorPB::Code()) {
+    error->set_code(master_error.value());
+  }
+  return s;
+}
+
+
+HAS_MEMBER_FUNCTION(mutable_error);
+HAS_MEMBER_FUNCTION(mutable_status);
+
+template <class T, class ErrorCode>
+typename std::enable_if<HasMemberFunction_mutable_error<T>::value, void>::type
+FillStatus(const Status& status, ErrorCode code, T* resp) {
+  StatusToPB(status, resp->mutable_error()->mutable_status());
+  resp->mutable_error()->set_code(code);
+}
+
+template <class T, class ErrorCode>
+typename std::enable_if<!HasMemberFunction_mutable_error<T>::value, void>::type
+FillStatus(const Status& status, ErrorCode code, T* resp) {
+  StatusToPB(status, resp->mutable_status());
+}
+
 // Template helpers.
 
-// If 's' indicates that the node is no longer the leader, setup
-// Service::UnavailableError as the error, set NOT_THE_LEADER as the
-// error code and return true.
-template<class RespClass>
-CHECKED_STATUS CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
+inline CHECKED_STATUS CheckIfNoLongerLeader(const Status& s) {
   // TODO (KUDU-591): This is a bit of a hack, as right now
   // there's no way to propagate why a write to a consensus configuration has
   // failed. However, since we use Status::IllegalState()/IsAborted() to
@@ -67,10 +90,23 @@ CHECKED_STATUS CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* re
   // that is no longer the leader, this suffices until we
   // distinguish this cause of write failure more explicitly.
   if (s.IsIllegalState() || s.IsAborted()) {
-    Status new_status = STATUS(ServiceUnavailable,
-        "operation requested can only be executed on a leader master, but this"
-        " master is no longer the leader", s.ToString());
-    ignore_result(SetupError(resp->mutable_error(), MasterErrorPB::NOT_THE_LEADER, new_status));
+    return STATUS(ServiceUnavailable,
+        "Operation requested can only be executed on a leader master, but this"
+        " master is no longer the leader", s.ToString(),
+        MasterError(MasterErrorPB::NOT_THE_LEADER));
+  }
+
+  return s;
+}
+
+// If 's' indicates that the node is no longer the leader, setup
+// Service::UnavailableError as the error, set NOT_THE_LEADER as the
+// error code and return true.
+template<class RespClass>
+CHECKED_STATUS CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
+  auto new_status = CheckIfNoLongerLeader(s);
+  if (MasterError(new_status) == MasterErrorPB::NOT_THE_LEADER) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::NOT_THE_LEADER, new_status);
   }
 
   return s;
@@ -104,8 +140,7 @@ bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrResp
     }
   }
 
-  StatusToPB(*status, resp->mutable_error()->mutable_status());
-  resp->mutable_error()->set_code(ErrorClass::NOT_THE_LEADER);
+  FillStatus(*status, ErrorClass::NOT_THE_LEADER, resp);
   rpc->RespondSuccess();
   return false;
 }
@@ -121,8 +156,7 @@ bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespondInternal
   }
 
   if (set_error) {
-    StatusToPB(*status, resp->mutable_error()->mutable_status());
-    resp->mutable_error()->set_code(ErrorClass::UNKNOWN_ERROR);
+    FillStatus(*status, ErrorClass::UNKNOWN_ERROR, resp);
   }
   rpc->RespondSuccess();
   return false;

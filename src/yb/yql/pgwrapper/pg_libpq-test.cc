@@ -325,53 +325,38 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertTruncateForeignKey))
   ASSERT_OK(conn.Execute(
         "CREATE TABLE t2 (k int primary key, t1_k int, FOREIGN KEY (t1_k) REFERENCES t1 (k))"));
 
-  std::atomic<bool> stop(false);
-
   const int kMaxKeys = 1 << 20;
 
   constexpr auto kWriteThreads = 4;
-  std::vector<std::thread> write_threads;
-  while (write_threads.size() != kWriteThreads) {
-    write_threads.emplace_back([this, &stop] {
+  constexpr auto kTruncateThreads = 2;
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kWriteThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
       auto write_conn = ASSERT_RESULT(Connect());
       while (!stop.load(std::memory_order_acquire)) {
         int t1_k = RandomUniformInt(0, kMaxKeys - 1);
         int t1_v = RandomUniformInt(0, kMaxKeys - 1);
-        WARN_NOT_OK(write_conn.ExecuteFormat(
-            "INSERT INTO t1 VALUES ($0, $1)", t1_k, t1_v), "Ignore");
+        auto status = write_conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, $1)", t1_k, t1_v);
         int t2_k = RandomUniformInt(0, kMaxKeys - 1);
-        WARN_NOT_OK(write_conn.ExecuteFormat(
-            "INSERT INTO t2 VALUES ($0, $1)", t2_k, t1_k), "Ignore");
+        status = write_conn.ExecuteFormat("INSERT INTO t2 VALUES ($0, $1)", t2_k, t1_k);
       }
     });
   }
 
-  constexpr auto kTruncateThreads = 2;
-  std::vector<std::thread> truncate_threads;
-  while (truncate_threads.size() != kTruncateThreads) {
-    truncate_threads.emplace_back([this, &stop] {
+  for (int i = 0; i != kTruncateThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
       auto truncate_conn = ASSERT_RESULT(Connect());
       int idx = 0;
       while (!stop.load(std::memory_order_acquire)) {
-        WARN_NOT_OK(truncate_conn.Execute(
-                "TRUNCATE TABLE t1, t2 CASCADE"), "Ignore");
+        auto status = truncate_conn.Execute("TRUNCATE TABLE t1, t2 CASCADE");
         ++idx;
         std::this_thread::sleep_for(100ms);
       }
     });
   }
 
-  auto se = ScopeExit([&stop, &write_threads, &truncate_threads] {
-    stop.store(true, std::memory_order_release);
-    for (auto& thread : write_threads) {
-      thread.join();
-    }
-    for (auto& thread : truncate_threads) {
-      thread.join();
-    }
-  });
-
-  std::this_thread::sleep_for(30s);
+  thread_holder.WaitAndStop(30s);
 }
 
 // Concurrently insert records to table with index.
@@ -425,11 +410,18 @@ Result<int64_t> ReadSumBalance(
     }
   });
 
-  int64_t sum = 0;
+  std::string query = "";
   for (int i = 1; i <= accounts; ++i) {
-    LOG(INFO) << "Reading: " << i;
-    sum += VERIFY_RESULT(conn->FetchValue<int64_t>(
-        Format("SELECT balance FROM account_$0 WHERE id = $0", i)));
+    if (!query.empty()) {
+      query += " UNION ";
+    }
+    query += Format("SELECT balance, id FROM account_$0 WHERE id = $0", i);
+  }
+
+  auto res = VERIFY_RESULT(conn->FetchMatrix(query, accounts, 2));
+  int64_t sum = 0;
+  for (int i = 0; i != accounts; ++i) {
+    sum += VERIFY_RESULT(GetValue<int64_t>(res.get(), i, 0));
   }
 
   failed = false;
@@ -567,7 +559,15 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   ASSERT_LE(total_not_found, 200);
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot)) {
+class PgLibPqSmallClockSkewTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Use small clock skew, to decrease number of read restarts.
+    options->extra_tserver_flags.push_back("--max_clock_skew_usec=5000");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot),
+          PgLibPqSmallClockSkewTest) {
   TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
@@ -754,8 +754,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
   bool table_found = false;
   // TODO(dmitry): Find table by name instead of checking all the tables when catalog_mangager
   // will be able to find YSQL tables
-  std::vector<yb::client::YBTableName> tables;
-  ASSERT_OK(client->ListTables(&tables));
+  const auto tables = ASSERT_RESULT(client->ListTables());
   for (const auto& t : tables) {
     if (t.namespace_name() == "postgres" && t.table_name() == table_name) {
       table_found = true;
@@ -875,8 +874,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
 namespace {
 Result<string> GetTableIdByTableName(
     client::YBClient* client, const string& namespace_name, const string& table_name) {
-  std::vector<yb::client::YBTableName> tables;
-  RETURN_NOT_OK(client->ListTables(&tables));
+  const auto tables = VERIFY_RESULT(client->ListTables());
   for (const auto& t : tables) {
     if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
       return t.table_id();
@@ -948,11 +946,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   }
   tablets_bar_index.Swap(&tablets);
 
-  // Fail when creating a hash partition table without opt-out.
-  const auto status = conn.Execute("CREATE TABLE baz (a INT)");
-  ASSERT_FALSE(status.ok());
-  ASSERT_STR_CONTAINS(
-      status.ToString(), "Cannot create hash partitioned table in colocated database");
+  // Create a range partition table without specifying primary key.
+  ASSERT_OK(conn.Execute("CREATE TABLE baz (a INT)"));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "baz"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
 
   // Create another table and index.
   ASSERT_OK(conn.Execute("CREATE TABLE qux (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true)"));
@@ -1094,6 +1093,32 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
   // Real-world numbers (debug build, local Mac): 328 RPCs before, 95 after the fix for #3049
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
   ASSERT_LT(rpcs_during, 150);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
+  const string kDatabaseName ="yugabyte";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  string ns_id;
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute("CREATE TABLE range(a int, PRIMARY KEY(a ASC)) " \
+      "SPLIT AT VALUES ((100), (1000))"));
+
+  // Get database and table IDs
+  for (const auto& ns : ASSERT_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
+    if (ns.name() == kDatabaseName) {
+      ns_id = ns.id();
+      break;
+    }
+  }
+  ASSERT_FALSE(ns_id.empty());
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "range"));
+
+  // Validate that number of tablets created is 3.
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
 }
 
 } // namespace pgwrapper

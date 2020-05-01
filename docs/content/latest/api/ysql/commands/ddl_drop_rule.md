@@ -1,8 +1,8 @@
 ---
-title: DROP RULE
+title: DROP RULE statement [YSQL]
+headerTitle: DROP RULE
 linkTitle: DROP RULE
-summary: Remove a rule
-description: DROP RULE
+description: Use the DROP RULE statement to remove a rule.
 menu:
   latest:
     identifier: api-ysql-commands-drop-rule

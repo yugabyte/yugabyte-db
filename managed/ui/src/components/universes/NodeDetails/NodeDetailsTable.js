@@ -6,7 +6,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { isNotHidden } from 'utils/LayoutUtils';
+import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import moment from 'moment';
@@ -58,21 +58,23 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeNameLink = (cell, row) => {
+      const ip = (
+        <div className={"text-lightgray"}>
+          {row['privateIP']}
+        </div>
+      );
+      let nodeName = cell;
       if (row.cloudInfo.cloud === "aws") {
         const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
-        return (<Fragment>
-          <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>
-          <div className={"text-lightgray"}>{row['privateIP']}</div>
-        </Fragment>);
+        nodeName = (<a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>);
       } else if (row.cloudInfo.cloud === "gcp") {
         const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
-        return (<Fragment>
-          <a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>
-          <div>{row['privateIP']}</div>
-        </Fragment>);
-      } else {
-        return cell;
+        nodeName = (<a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>);
       }
+      return (<Fragment>
+        {nodeName}
+        {ip}
+      </Fragment>);
     };
 
     const getStatusUptime = (cell, row) => {
@@ -107,14 +109,20 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getNodeAction = function(cell, row, type) {
-      const hideIP = !isNotHidden(customer.currentCustomer.data.features, "universes.proxyIp");
+      const hideIP = !isNotHidden(customer.currentCustomer.data.features,
+                                  "universes.proxyIp");
+      const actions_disabled = isDisabled(customer.currentCustomer.data.features,
+                                          "universes.actions");
+
       if (hideIP) {
         const index = row.allowedActions.indexOf('CONNECT');
         if (index > -1) {
           row.allowedActions.splice(index, 1);
         }
       }
-      return <NodeAction currentRow={row} providerUUID={providerUUID} disableConnect={hideIP}/>;
+      return (<NodeAction currentRow={row} providerUUID={providerUUID}
+                         disableConnect={hideIP}
+                         disabled={actions_disabled} />);
     };
 
     const formatFloatValue = function(cell, row) {

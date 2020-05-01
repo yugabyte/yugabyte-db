@@ -13,7 +13,7 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. 
+Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3.
 
 ```sh
 $ ./bin/yb-ctl create
@@ -31,7 +31,6 @@ $ java -jar java/yb-sample-apps.jar \
     --num_threads_write 1
 ```
 
-
 ## 3. Prepare Prometheus config file
 
 Copy the following into a file called `yugabytedb.yml`.
@@ -42,7 +41,7 @@ global:
   evaluation_interval: 5s # Evaluate rules every 5 seconds. The default is every 1 minute.
   # scrape_timeout is set to the global default (10s).
 
-# YugabyteDB configuration to scrape Prometheus time-series metrics 
+# YugabyteDB configuration to scrape Prometheus time-series metrics
 scrape_configs:
   - job_name: 'yugabytedb'
     metrics_path: /prometheus-metrics

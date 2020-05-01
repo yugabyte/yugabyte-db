@@ -2,6 +2,7 @@
 title: 4. ACID transactions
 linkTitle: 4. ACID transactions
 description: ACID transactions
+block_indexing: true
 menu:
   v2.0:
     identifier: acid-transactions-1-ycql

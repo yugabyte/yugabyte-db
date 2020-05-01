@@ -4,6 +4,7 @@ linkTitle: Bulk Export
 description: Bulk Export
 image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk export data from YugabyteDB.
+block_indexing: true
 menu:
   v1.2:
     identifier: manage-bulk-export

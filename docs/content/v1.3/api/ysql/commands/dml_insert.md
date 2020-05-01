@@ -3,6 +3,7 @@ title: INSERT
 linkTitle: INSERT
 summary: Add new rows to a table
 description: INSERT
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-insert

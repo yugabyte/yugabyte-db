@@ -1,7 +1,8 @@
 ---
-title: Keywords
+title: Keywords [YSQL]
+headerTitle: Keywords
 linkTitle: Keywords
-description: List of YSQL keywords
+description: YSQL API keywords.
 summary: Reference for YSQL API
 image: /images/section_icons/api/ysql.png
 menu:

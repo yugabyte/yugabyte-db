@@ -332,19 +332,39 @@ public class ApiUtils {
                                                  NodeDetails.NodeState state,
                                                  boolean isMaster,
                                                  boolean isYSQL) {
+    return getDummyNodeDetails(idx, state, isMaster, isYSQL,
+                               "aws", "test-region","az-" + idx,
+                               "subnet-" + idx);
+  }
+
+  public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state,
+                                                boolean isMaster, boolean isYSQL,
+                                                String cloud, String region, String zone,
+                                                String subnet) {
+    return getDummyNodeDetails(idx, state, isMaster, isYSQL, cloud, region,
+                               zone, subnet, null);
+  }
+
+  public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state,
+                                                boolean isMaster, boolean isYSQL,
+                                                String cloud, String region, String zone,
+                                                String subnet, UUID azUUID) {
     NodeDetails node = new NodeDetails();
     // TODO: Set nodeName to null for ToBeAdded state
     node.nodeName = "host-n" + idx;
     node.cloudInfo = new CloudSpecificInfo();
-    node.cloudInfo.cloud = "aws";
-    node.cloudInfo.az = "az-" + idx;
-    node.cloudInfo.region = "test-region";
-    node.cloudInfo.subnet_id = "subnet-" + idx;
+    node.cloudInfo.cloud = cloud;
+    node.cloudInfo.az = zone;
+    node.cloudInfo.region = region;
+    node.cloudInfo.subnet_id = subnet;
     node.cloudInfo.private_ip = "host-n" + idx;
     node.cloudInfo.instance_type = UTIL_INST_TYPE;
     node.isTserver = true;
     node.state = state;
     node.isMaster = isMaster;
+    if (azUUID != null) {
+      node.azUuid = azUUID;
+    }
     node.nodeIdx = idx;
     node.isYsqlServer = isYSQL;
     return node;

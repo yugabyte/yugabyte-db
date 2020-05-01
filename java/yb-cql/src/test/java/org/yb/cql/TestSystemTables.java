@@ -27,6 +27,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.datastax.driver.core.SimpleStatement;
+import com.datastax.driver.core.exceptions.ServerError;
 import com.google.common.net.HostAndPort;
 import org.junit.After;
 import org.junit.BeforeClass;
@@ -541,4 +542,16 @@ public class TestSystemTables extends BaseCQLTest {
     assertEquals(all_rows, getRowsAsStringList(rs));
   }
 
+  @Test
+  public void testCorrectErrorForSystemPeersV2() throws Exception {
+    try {
+      SimpleStatement select = new SimpleStatement("select * from system.peers_v2");
+      ResultSet rs = session.execute(select);
+    } catch (ServerError se) {
+      LOG.info("Sudo length of the string" + se.getCause().toString().length());
+      if (!se.getCause().toString().contains("Unknown keyspace/cf pair (system.peers_v2)")) {
+        throw se;
+      }
+    }
+  }
 }

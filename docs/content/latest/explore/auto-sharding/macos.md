@@ -1,7 +1,8 @@
 ---
-title: Auto sharding
+title: Explore auto sharding on macOS
+headerTitle: Auto sharding
 linkTitle: Auto sharding
-description: Auto sharding
+description: Follow this macOS-based tutorial to learn how YugabyteDB automatically splits tables into shards.
 aliases:
   - /explore/auto-sharding/
   - /latest/explore/auto-sharding/
@@ -52,7 +53,7 @@ showAsideToc: true
 -->
 </ul>
 
-YugabyteDB automatically splits user tables into multiple shards, called *tablets*. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../architecture/concepts/docdb/sharding/) in YugabyteDB.
+YugabyteDB automatically splits user tables into multiple shards, called *tablets*. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](../../../architecture/docdb/sharding/) in YugabyteDB.
 
 By default, YugabyteDB creates eight tablets per node in the cluster for each table and automatically distributes the data across the various tablets, which in turn are distributed evenly across the nodes. In this tutorial, we will explore how automatic sharding is done internally for tables. The system Redis table works in an identical manner.
 
@@ -61,7 +62,7 @@ We will explore automatic sharding inside YugabyteDB by creating these tables:
 - Use a replication factor (RF) of `1`. This will make it easier to understand how automatic sharding is achieved independent of data replication.
 - Insert entries one by one, and examine which how the data gets distributed across the various nodes.
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick start](../../../quick-start/install/) guide.
 
 ## 1. Create a universe
 
@@ -71,10 +72,10 @@ If you have a currently running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with a replication factor of 1 (rf=1). We are passing the following options:
+Start a new local universe with a replication factor of 1 (rf=1). We are passing the following flags:
 
 - `--rf 1` This creates a universe with a replication factor of 1.
-- `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
+- `--num_shards_per_tserver 4`  This flag controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
 - `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that we can observe which tablets the data is written to.
 
 You can do this as shown below.

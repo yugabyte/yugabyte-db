@@ -40,9 +40,9 @@ public class TestPgPushdown extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgPushdown.class);
 
   @Override
-  protected String pgRequestLimit() {
+  protected Integer getYsqlRequestLimit() {
     // This should be less than number of operations in some tests
-    return "7";
+    return 7;
   }
 
   @Test
@@ -386,6 +386,352 @@ public class TestPgPushdown extends BasePgSQLTest {
         "SELECT * FROM %s WHERE h = %d AND rs IN (%s) AND rs > '%s' AND rs < '%s'", tableName,
         h, CtoD, CTmp, DTmp);
     expectedRowCount = riMax * rsDelta;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+  }
+
+  @Test
+  public void inequality_twoRangeColumns() throws Exception {
+    String tableName = "inequality_predicate_pushdown";
+
+    // Schema:
+    //
+    // Table "public.inequality_predicate_pushdown"
+    //  Column |  Type   | Collation | Nullable | Default
+    //  -------+---------+-----------+----------+---------
+    //  r1     | integer |           | not null |
+    //  r2     | integer |           | not null |
+    //  vs     | text    |           |          |
+    //  Indexes:
+    //  "inequality_predicate_pushdown_pkey" PRIMARY KEY, lsm (r1, r2)
+
+    // Create table.
+    try (Statement statement = connection.createStatement()) {
+      String sql = String.format("CREATE TABLE %s(r1 int, r2 int, vs text, " +
+          "PRIMARY KEY (r1 ASC, r2 ASC))", tableName);
+      LOG.info("Execute: " + sql);
+      statement.execute(sql);
+      LOG.info("Created: " + tableName);
+    }
+
+    // Insert rows.
+    int r1Max = 2, r2Max = 5000;
+    try (Statement statement = connection.createStatement()) {
+      for (int r1 = 0; r1 < r1Max; r1++) {
+        for (int r2 = 0; r2 < r2Max; r2++) {
+          String vsTmp = String.format("value_%d_%d", r1, r2);
+
+          String stmt = String.format("INSERT INTO %s VALUES (%d, %d, '%s')",
+              tableName, r1, r2, vsTmp);
+          statement.execute(stmt);
+        }
+      }
+    }
+
+    // Choose the maximum runtimes of the SELECT statements.
+
+    int fullScanReleaseRuntime = 400;
+    int fullScanDebugRuntime = 500;
+    int fullScanDebugRuntimeWithMargin = 10 * fullScanDebugRuntime;
+    int fullScanMaxRuntimeMillis = getPerfMaxRuntime(fullScanReleaseRuntime,
+        fullScanDebugRuntime, fullScanDebugRuntimeWithMargin, fullScanDebugRuntimeWithMargin,
+        fullScanDebugRuntimeWithMargin);
+
+    int intervalScanReleaseRuntime = 200;
+    int intervalScanDebugRuntime = 250;
+    int intervalScanDebugRuntimeWithMargin = 10 * intervalScanDebugRuntime;
+    int intervalScanMaxRuntimeMillis = getPerfMaxRuntime(intervalScanReleaseRuntime,
+        intervalScanDebugRuntime, intervalScanDebugRuntimeWithMargin,
+        intervalScanDebugRuntimeWithMargin, intervalScanDebugRuntimeWithMargin);
+
+    // Scan range column.
+
+    final int queryRunCount = 5;
+    int r1 = r1Max / 2;
+    String query = String.format("SELECT * FROM %s WHERE r1 = %d", tableName, r1);
+    assertQueryRuntimeWithRowCount(query, r2Max /* expectedRowCount */, queryRunCount,
+        fullScanMaxRuntimeMillis * queryRunCount);
+
+    // Interval scans that should return 100 rows each.
+
+    int r2Delta = r2Max / 50;
+    assertEquals(r2Delta, 100);
+
+    int A, B;
+
+    // A < r2.
+    A = r2Max - r2Delta - 1;
+    query = String.format("SELECT * FROM %s WHERE r1 = %d AND r2 > %d", tableName, r1, A);
+    assertQueryRuntimeWithRowCount(query, r2Delta /* expectedRowCount */, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+
+    // r2 < B.
+    B = r2Delta;
+    query = String.format("SELECT * FROM %s WHERE r1 = %d AND r2 < %d", tableName, r1, B);
+    assertQueryRuntimeWithRowCount(query, r2Delta /* expectedRowCount */, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+
+    // A < r2 < B.
+    A = r2Max / 2;
+    B = A + r2Delta + 1;
+    query = String.format("SELECT * FROM %s WHERE r1 = %d AND r2 > %d AND r2 < %d", tableName, r1,
+        A, B);
+    assertQueryRuntimeWithRowCount(query, r2Delta /* expectedRowCount */, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+  }
+
+  @Test
+  public void inequalityAndIn_allRangeColumns() throws Exception {
+    String tableName = "inequality_predicate_pushdown";
+
+    // Schema:
+    //
+    // Table "public.inequality_predicate_pushdown"
+    //  Column |  Type   | Collation | Nullable | Default
+    //  -------+---------+-----------+----------+---------
+    //  r1     | integer |           | not null |
+    //  r2     | integer |           | not null |
+    //  rs     | text    |           | not null |
+    //  vs     | text    |           |          |
+    //  Indexes:
+    //  "inequality_predicate_pushdown_pkey" PRIMARY KEY, lsm (r1, r2, rs DESC)
+
+    // Create table.
+    try (Statement statement = connection.createStatement()) {
+      String sql = String.format("CREATE TABLE %s(r1 int, r2 int, rs text, vs text, " +
+          "PRIMARY KEY (r1, r2 ASC, rs DESC))", tableName);
+      LOG.info("Execute: " + sql);
+      statement.execute(sql);
+      LOG.info("Created: " + tableName);
+    }
+
+    // Numeric and lexicographic order of [rsBase, rsBase + rsMax) should be the same.
+    int rsBase = 100;
+
+    // Insert rows.
+    int r1Max = 2, r2Max = 50, rsMax = 100;
+    try (Statement statement = connection.createStatement()) {
+      for (int r1 = 0; r1 < r1Max; r1++) {
+        for (int r2 = 0; r2 < r2Max; r2++) {
+          for (int rs = 0; rs < rsMax; rs++) {
+            String rsTmp = String.format("range_%d", rsBase + rs);
+            String vsTmp = String.format("value_%d_%d_%s", r1, r2, rsTmp);
+
+            String stmt = String.format("INSERT INTO %s VALUES (%d, %d, '%s', '%s')",
+                tableName, r1, r2, rsTmp, vsTmp);
+            statement.execute(stmt);
+          }
+        }
+      }
+    }
+
+    // Choose the maximum runtimes of the SELECT statements.
+
+    int fullScanReleaseRuntime = 500;
+    int fullScanDebugRuntime = 600;
+    int fullScanDebugRuntimeWithMargin = 10 * fullScanDebugRuntime;
+    int fullScanMaxRuntimeMillis = getPerfMaxRuntime(fullScanReleaseRuntime,
+        fullScanDebugRuntime, fullScanDebugRuntimeWithMargin, fullScanDebugRuntimeWithMargin,
+        fullScanDebugRuntimeWithMargin);
+
+    int intervalScanReleaseRuntime = 350;
+    int intervalScanDebugRuntime = 400;
+    int intervalScanDebugRuntimeWithMargin = 10 * intervalScanDebugRuntime;
+    int intervalScanMaxRuntimeMillis = getPerfMaxRuntime(intervalScanReleaseRuntime,
+        intervalScanDebugRuntime, intervalScanDebugRuntimeWithMargin,
+        intervalScanDebugRuntimeWithMargin, intervalScanDebugRuntimeWithMargin);
+
+    // Scan range column.
+
+    final int queryRunCount = 5;
+    int r1 = r1Max / 2;
+
+    String query = String.format("SELECT * FROM %s WHERE r1 = %d", tableName, r1);
+    assertQueryRuntimeWithRowCount(query, r2Max * rsMax /* expectedRowCount */, queryRunCount,
+        fullScanMaxRuntimeMillis * queryRunCount);
+
+    // Interval scans that should return 100 rows each.
+
+    int r2Delta, rsDelta, A, B, C, D, expectedRowCount;
+    String CTmp, DTmp;
+
+    // Inequality only -----------------------------------------------------------------------------
+
+    // A < r2 < B.
+    r2Delta = 1;
+    A = r2Max / 2;
+    B = A + r2Delta + 1;
+    query = String.format("SELECT * FROM %s WHERE r1 = %d AND r2 > %d AND r2 < %d", tableName, r1,
+        A, B);
+    expectedRowCount = r2Delta * rsMax;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // C < rs < D.
+    rsDelta = 2;
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CTmp = String.format("range_%d", rsBase + C);
+    DTmp = String.format("range_%d", rsBase + D);
+    query = String.format("SELECT * FROM %s WHERE r1 = %d AND rs > '%s' AND rs < '%s'", tableName,
+        r1, CTmp, DTmp);
+    expectedRowCount = r2Max * rsDelta;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // A < ri < B    AND    C < rs < D.
+    r2Delta = 10;
+    rsDelta = 10;
+    A = r2Max / 2;
+    B = A + r2Delta + 1;
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CTmp = String.format("range_%d", rsBase + C);
+    DTmp = String.format("range_%d", rsBase + D);
+    query = String.format(
+        "SELECT * FROM %s WHERE r1 = %d AND r2 > %d AND r2 < %d AND rs > '%s' AND rs < '%s'",
+        tableName, r1, A, B, CTmp, DTmp);
+    expectedRowCount = r2Delta * rsDelta;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // In only -------------------------------------------------------------------------------------
+
+    // IN scans that should return 100 rows each.
+
+    String AtoB, CtoD;
+
+    // r2 IN {A ... B}.
+    r2Delta = 1;
+    A = r2Max / 2;
+    B = A + r2Delta + 1;
+    AtoB = String.format("%d", A + 1);
+    for (int i = A + 2; i < B; i++) {
+      AtoB += String.format(",%d", i);
+    }
+    query = String.format("SELECT * FROM %s WHERE r1 = %d AND r2 IN (%s)", tableName, r1, AtoB);
+    expectedRowCount = r2Delta * rsMax;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // rs IN {C ... D}.
+    rsDelta = 2;
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CtoD = String.format("'range_%d'", rsBase + C + 1);
+    for (int i = C + 2; i < D; i++) {
+      CtoD += String.format(",'range_%d'", rsBase + i);
+    }
+    query = String.format("SELECT * FROM %s WHERE r1 = %d AND rs IN (%s)", tableName, r1, CtoD);
+    expectedRowCount = r2Max * rsDelta;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // r2 IN {A ... B}    AND    rs IN {C ... D}.
+    r2Delta = 10;
+    rsDelta = 10;
+    A = r2Max / 2;
+    B = A + r2Delta + 1;
+    AtoB = String.format("%d", A + 1);
+    for (int i = A + 2; i < B; i++) {
+      AtoB += String.format(",%d", i);
+    }
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CtoD = String.format("'range_%d'", rsBase + C + 1);
+    for (int i = C + 2; i < D; i++) {
+      CtoD += String.format(",'range_%d'", rsBase + i);
+    }
+    query = String.format(
+        "SELECT * FROM %s WHERE r1 = %d AND r2 IN (%s) AND rs IN (%s)", tableName, r1, AtoB, CtoD);
+    expectedRowCount = r2Delta * rsDelta;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // Inequality AND IN on different columns ------------------------------------------------------
+
+    // Scans that should return 100 rows each.
+
+    // A < r2 < B    AND    rs IN {C ... D}.
+    r2Delta = 10;
+    rsDelta = 10;
+    A = r2Max / 2;
+    B = A + r2Delta + 1;
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CtoD = String.format("'range_%d'", rsBase + C + 1);
+    for (int i = C + 2; i < D; i++) {
+      CtoD += String.format(",'range_%d'", rsBase + i);
+    }
+    query = String.format(
+        "SELECT * FROM %s WHERE r1 = %d AND r2 > %d AND r2 < %d AND rs IN (%s)", tableName, r1, A,
+        B, CtoD);
+    expectedRowCount = r2Delta * rsDelta;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // r2 IN {A ... B}    AND    C < rs < D.
+    r2Delta = 10;
+    rsDelta = 10;
+    A = r2Max / 2;
+    B = A + r2Delta + 1;
+    AtoB = String.format("%d", A + 1);
+    for (int i = A + 2; i < B; i++) {
+      AtoB += String.format(",%d", i);
+    }
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CTmp = String.format("range_%d", rsBase + C);
+    DTmp = String.format("range_%d", rsBase + D);
+    query = String.format(
+        "SELECT * FROM %s WHERE r1 = %d AND r2 IN (%s) AND rs > '%s' AND rs < '%s'", tableName, r1,
+        AtoB, CTmp, DTmp);
+    expectedRowCount = r2Delta * rsDelta;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // Inequality AND IN on same column ------------------------------------------------------------
+
+    // Scans that should return 100 rows each.
+
+    // A < r2 < B    AND    r2 IN {A ... B}.
+    r2Delta = 1;
+    A = r2Max / 2;
+    B = A + r2Delta + 1;
+    AtoB = String.format("%d", A + 1);
+    for (int i = A + 2; i < B; i++) {
+      AtoB += String.format(",%d", i);
+    }
+    query = String.format("SELECT * FROM %s WHERE r1 = %d AND r2 > %d AND r2 < %d AND r2 IN (%s)",
+        tableName, r1, A, B, AtoB);
+    expectedRowCount = r2Delta * rsMax;
+    assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
+        intervalScanMaxRuntimeMillis * queryRunCount);
+    assertEquals(expectedRowCount, 100);
+
+    // C < rs < D    AND    rs IN {C ... D}.
+    rsDelta = 2;
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CTmp = String.format("range_%d", rsBase + C);
+    DTmp = String.format("range_%d", rsBase + D);
+    CtoD = String.format("'range_%d'", rsBase + C + 1);
+    for (int i = C + 2; i < D; i++) {
+      CtoD += String.format(",'range_%d'", rsBase + i);
+    }
+    query = String.format(
+        "SELECT * FROM %s WHERE r1 = %d AND rs IN (%s) AND rs > '%s' AND rs < '%s'", tableName,
+        r1, CtoD, CTmp, DTmp);
+    expectedRowCount = r2Max * rsDelta;
     assertQueryRuntimeWithRowCount(query, expectedRowCount, queryRunCount,
         intervalScanMaxRuntimeMillis * queryRunCount);
     assertEquals(expectedRowCount, 100);
@@ -1014,10 +1360,14 @@ public class TestPgPushdown extends BasePgSQLTest {
   }
 
   /**
-   * Tests execution time of SELECT/UPDATE ... WHERE ... IN (...) type of statements by comparing it
-   * with the execution time of similar non-optimized queries.
+   * Tests execution plan and elapsed time of SELECT/UPDATE/DELETE ... WHERE ... IN (...) type of
+   * statements by comparing it with the execution time of similar non-optimized queries.
    * <p>
    * Expects last column to be "v" of type INT.
+   * <p>
+   * Note that actual performance numbers are only verified for SELECT - performance of pushed down
+   * UPDATE/DELETE is close enough to the original that it might on rare occasions take even LONGER
+   * than non-optimized queries, leading to flaky tests. For them, we only check an execution plan.
    */
   private abstract class InClausePushdownTester {
     /** How many times would each query be iterated to get a total running time? */
@@ -1025,10 +1375,6 @@ public class TestPgPushdown extends BasePgSQLTest {
 
     /** Minimum speedup multiplier expected for pushed down SELECT-type queries */
     public final double minSelectSpeedup = 2;
-
-    // Since UPDATE is not batched, it's faster but still rather slow
-    /** Minimum speedup multiplier expected for pushed down UPDATE-type queries */
-    public final double minUpdateSpeedup = 1.5;
 
     public final String tableName;
 
@@ -1191,14 +1537,13 @@ public class TestPgPushdown extends BasePgSQLTest {
         assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery2)));
       }
 
-      long maxOptimizedTime = (long) (nonOptimizedTime / minUpdateSpeedup);
-
       // Plain optimized query
       {
         stmt.executeUpdate(getResetQuery());
         String query = getOptimizedUpdateQuery(valueToSet);
         assertPushdownPlan(stmt, query, true);
-        assertStatementRuntime(query, queryRunCount, maxOptimizedTime);
+        long optimizedTime = timeStatement(query, queryRunCount);
+        LOG.info("Optimized plain UPDATE total time (ms): " + optimizedTime);
         assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery1)));
         assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery2)));
       }
@@ -1215,7 +1560,8 @@ public class TestPgPushdown extends BasePgSQLTest {
           }
         }, true);
         try (PreparedStatement pquery = prepareUpdateQuery(queryString, valueToSet)) {
-          assertStatementRuntime(pquery, queryRunCount, maxOptimizedTime);
+          long optimizedTime = timeStatement(pquery, queryRunCount);
+          LOG.info("Optimized prepared UPDATE total time (ms): " + optimizedTime);
           assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery1)));
           assertEquals(updatedResult, getSortedRowList(stmt.executeQuery(selectQuery2)));
         }
@@ -1248,15 +1594,14 @@ public class TestPgPushdown extends BasePgSQLTest {
         assertEquals(tableSizeAfter, getTableSize(stmt));
       }
 
-      long maxOptimizedTime = (long) (nonOptimizedTime / minSelectSpeedup);
-
       // Plain optimized query
       {
         stmt.executeUpdate(truncateQuery);
         fillTable(stmt);
         String query = getOptimizedDeleteQuery();
         assertPushdownPlan(stmt, query, true);
-        assertStatementRuntime(query, queryRunCount, maxOptimizedTime);
+        long optimizedTime = timeStatement(query, queryRunCount);
+        LOG.info("Optimized plain DELETE total time (ms): " + optimizedTime);
         assertEquals(Collections.EMPTY_LIST, getSortedRowList(stmt.executeQuery(selectQuery)));
         assertEquals(tableSizeAfter, getTableSize(stmt));
       }
@@ -1274,7 +1619,8 @@ public class TestPgPushdown extends BasePgSQLTest {
           }
         }, true);
         try (PreparedStatement pquery = prepareSelectOrDeleteQuery(queryString)) {
-          assertStatementRuntime(pquery, queryRunCount, maxOptimizedTime);
+          long optimizedTime = timeStatement(pquery, queryRunCount);
+          LOG.info("Optimized prepared DELETE total time (ms): " + optimizedTime);
           assertEquals(Collections.EMPTY_LIST, getSortedRowList(stmt.executeQuery(selectQuery)));
           assertEquals(tableSizeAfter, getTableSize(stmt));
         }

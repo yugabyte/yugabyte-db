@@ -121,6 +121,11 @@ message BackfillIndexResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional fixed64 propagated_hybrid_time = 2;
+
+  // If non-empty, this is used to keep track of how far along
+  // the backfill has completed, so that it can be resumed.
+  // Encoded as the DocKey for the next row to be backfilled.
+  optional bytes backfilled_until = 3;
 }
 
 message CopartitionTableRequestPB {
@@ -269,6 +274,28 @@ message RemoveTableFromTabletResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message SplitTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  required bytes tablet_id = 3;
+
+  required bytes new_tablet1_id = 4;
+
+  required bytes new_tablet2_id = 5;
+
+  required bytes split_partition_key = 6;
+
+  required bytes split_encoded_key = 7;
+}
+
+message SplitTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -301,4 +328,6 @@ service TabletServerAdminService {
 
   rpc RemoveTableFromTablet(RemoveTableFromTabletRequestPB)
       returns (RemoveTableFromTabletResponsePB);
+
+  rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
 }

@@ -257,9 +257,6 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
 
-typedef scoped_refptr<TabletInfo> TabletInfoPtr;
-typedef std::vector<TabletInfoPtr> TabletInfos;
-
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
@@ -338,6 +335,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
   const std::string indexed_table_id() const;
 
+  bool is_index() const {
+    return !indexed_table_id().empty();
+  }
+
   // For index table
   bool is_local_index() const;
   bool is_unique_index() const;
@@ -352,6 +353,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
+
   // Add multiple tablets to this table.
   void AddTablets(const std::vector<TabletInfo*>& tablets);
 
@@ -379,9 +381,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
+    std::shared_lock<decltype(lock_)> l(lock_);
     return is_backfilling_;
   }
+
   void SetIsBackfilling(bool flag) {
+    std::lock_guard<decltype(lock_)> l(lock_);
     is_backfilling_ = flag;
   }
 
@@ -503,6 +508,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   YQLDatabase database_type() const;
 
   bool colocated() const;
+
+  ::yb::master::SysNamespaceEntryPB_State state() const;
 
   std::string ToString() const override;
 
@@ -659,8 +666,9 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
 };
 
 // Convenience typedefs.
-typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
-typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
+// Table(t)InfoMap ordered for deterministic locking.
+typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
+typedef std::map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
@@ -669,6 +677,13 @@ typedef std::unordered_map<UDTypeId, scoped_refptr<UDTypeInfo>> UDTypeInfoMap;
 typedef std::pair<NamespaceId, UDTypeName> UDTypeNameKey;
 typedef std::unordered_map<
     UDTypeNameKey, scoped_refptr<UDTypeInfo>, boost::hash<UDTypeNameKey>> UDTypeInfoByNameMap;
+
+template <class Info>
+void FillInfoEntry(const Info& info, SysRowEntry* entry) {
+  entry->set_id(info.id());
+  entry->set_type(info.metadata().state().type());
+  entry->set_data(info.metadata().state().pb.SerializeAsString());
+}
 
 }  // namespace master
 }  // namespace yb

@@ -1,7 +1,8 @@
 ---
-title: TPC-C
+title: Benchmark YSQL performance using TPC-C
+headerTitle: TPC-C
 linkTitle: TPC-C
-description: TPC-C
+description: Benchmark YSQL performance using TPC-C
 headcontent: Benchmark YugabyteDB using TPC-C
 menu:
   latest:
@@ -33,10 +34,14 @@ To download the TPC-C binaries, run the following commands.
 
 ```sh
 $ cd $HOME
-$ wget https://github.com/yugabyte/tpcc/releases/download/1.0/tpcc.tar.gz
+$ wget https://github.com/yugabyte/tpcc/releases/download/1.1/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
+
+{{< note title="Note" >}}
+The binaries are compiled with JAVA 13 and it is recommended to run these binaries with that version.
+{{< /note >}}
 
 ## Step 2. Start your database
 
@@ -44,7 +49,7 @@ Start the database using the steps mentioned [here](https://docs.yugabyte.com/la
 
 ## Step 3. Configure connection properties
 
-Set the following connection configurations in the workload configuration file (`config/workload_1.xml`).
+Set the following connection configurations in the workload configuration file (`config/workload_all.xml`).
 
 ```sh
 <!-- Connection details -->
@@ -81,25 +86,25 @@ Use the provided utility script (`./tpccbenchmark`) to run the TPC-C benchmark. 
 Before starting the workload, you will need to load the data first.
 
 ```sh
-$ ./tpccbenchmark -c config/workload_1.xml --create=true --load=true
+$ ./tpccbenchmark -c config/workload_all.xml --create=true --load=true
 ```
 
 Then, you can run the workload.
 
 ```sh
-$ ./tpccbenchmark -c config/workload_1.xml --execute=true -s 5 -o outputfile
+$ ./tpccbenchmark -c config/workload_all.xml --execute=true -s 5 -o outputfile
 ```
 
 You can also load and run the benchmark in a single step:
 
 ```sh
-$ ./tpccbenchmark -c config/workload_1.xml --create=true --load=true --execute=true -s 5 -o outputfile
+$ ./tpccbenchmark -c config/workload_all.xml --create=true --load=true --execute=true -s 5 -o outputfile
 ```
 
 The `config` directory has different configurations for various workloads. You can run any of those workloads by changing the configuration file.
 
 ```sh
-$ ./tpccbenchmark -c config/workload_2.xml --create=true --load=true --execute=true -s 5 -o outputfile
+$ ./tpccbenchmark -c config/workload_1.xml --create=true --load=true --execute=true -s 5 -o outputfile
 ```
 
 ## Output

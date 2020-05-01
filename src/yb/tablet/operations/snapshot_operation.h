@@ -37,6 +37,8 @@ class SnapshotOperationState : public OperationState {
         request_(request) {
   }
 
+  tserver::TabletSnapshotOpRequestPB* AllocateRequest();
+
   const tserver::TabletSnapshotOpRequestPB* request() const override { return request_; }
 
   tserver::TabletSnapshotOpRequestPB::Operation operation() const {
@@ -46,18 +48,14 @@ class SnapshotOperationState : public OperationState {
 
   void UpdateRequestFromConsensusRound() override;
 
-  void AcquireSchemaLock(rw_semaphore* l);
-
-  // Release the acquired schema lock.
-  // Crashes if the lock was not already acquired.
-  void ReleaseSchemaLock();
-
   // Note: request_ and response_ are set to NULL after this method returns.
   void Finish() {
     // Make the request NULL since after this operation commits
     // the request may be deleted at any moment.
     request_ = nullptr;
   }
+
+  CHECKED_STATUS Apply(int64_t leader_term);
 
   std::string ToString() const override;
 
@@ -66,12 +64,9 @@ class SnapshotOperationState : public OperationState {
   std::string GetSnapshotDir(const std::string& top_snapshots_dir) const;
 
  private:
-
+  std::unique_ptr<tserver::TabletSnapshotOpRequestPB> request_holder_;
   // The original RPC request and response.
   const tserver::TabletSnapshotOpRequestPB *request_;
-
-  // The lock held on the tablet's schema_lock_.
-  std::unique_lock<rw_semaphore> schema_lock_;
 
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperationState);
 };
@@ -93,6 +88,12 @@ class SnapshotOperation : public Operation {
 
   CHECKED_STATUS Prepare() override;
 
+  void AcquireSchemaLock(rw_semaphore* l);
+
+  // Release the acquired schema lock.
+  // Crashes if the lock was not already acquired.
+  void ReleaseSchemaLock();
+
   std::string ToString() const override;
 
  private:
@@ -102,6 +103,9 @@ class SnapshotOperation : public Operation {
   CHECKED_STATUS DoAborted(const Status& status) override;
 
   std::unique_ptr<SnapshotOperationState> state_;
+
+  // The lock held on the tablet's schema_lock_.
+  std::unique_lock<rw_semaphore> schema_lock_;
 
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperation);
 };

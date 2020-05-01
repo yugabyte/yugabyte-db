@@ -145,6 +145,8 @@ void SetVerboseLogLevel(int level);
 // workaround conflicts.
 Status SetInternalSignalNumber(int signum);
 
+using MasterAddressSource = std::function<std::vector<std::string>()>;
+
 // Creates a new YBClient with the desired options.
 //
 // Note that YBClients are shared amongst multiple threads and, as such,
@@ -197,6 +199,8 @@ class YBClientBuilder {
   // Sets the size of the threadpool for calling callbacks.
   YBClientBuilder& set_callback_threadpool_size(size_t size);
 
+  YBClientBuilder& wait_for_leader_election_on_init(bool should_wait = true);
+
   // Sets skip master leader resolution.
   // Used in tests, when we do not have real master.
   YBClientBuilder& set_skip_master_leader_resolution(bool value);
@@ -206,6 +210,10 @@ class YBClientBuilder {
   YBClientBuilder& set_tserver_uuid(const TabletServerId& uuid);
 
   YBClientBuilder& set_parent_mem_tracker(const std::shared_ptr<MemTracker>& mem_tracker);
+
+  YBClientBuilder& set_master_address_flag_name(const std::string& value);
+
+  YBClientBuilder& AddMasterAddressSource(const MasterAddressSource& source);
 
   // Creates the client.
   // Will use specified messenger if not nullptr.
@@ -264,6 +272,9 @@ class YBClient {
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress);
 
+  // Wait for create table is not in progress.
+  CHECKED_STATUS WaitForCreateTableToFinish(const YBTableName& table_name);
+
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
   CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
@@ -283,6 +294,16 @@ class YBClient {
   CHECKED_STATUS DeleteIndexTable(const std::string& table_id,
                                   YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
+
+  // Flush or compact the specified table.
+  // TODO(jason): it would be nice to have this take a list of table_ids.
+  CHECKED_STATUS FlushTable(const std::string& table_id,
+                            int timeout_secs,
+                            bool is_compaction);
+  // TODO(jason): it would be nice to have this take a list of table_names.
+  CHECKED_STATUS FlushTable(const YBTableName& table_name,
+                            int timeout_secs,
+                            bool is_compaction);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const string id);
@@ -311,7 +332,7 @@ class YBClient {
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
                                  const boost::optional<uint32_t>& next_pg_oid = boost::none,
-                                 bool colocated = false);
+                                 const bool colocated = false);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -324,7 +345,13 @@ class YBClient {
                                             const std::string& namespace_id = "",
                                             const std::string& source_namespace_id = "",
                                             const boost::optional<uint32_t>& next_pg_oid =
-                                            boost::none);
+                                            boost::none,
+                                            const bool colocated = false);
+
+  // Set 'create_in_progress' to true if a CreateNamespace operation is in-progress.
+  CHECKED_STATUS IsCreateNamespaceInProgress(const std::string& namespace_name,
+                                             const boost::optional<YQLDatabase>& database_type,
+                                             bool *create_in_progress);
 
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
@@ -357,6 +384,12 @@ class YBClient {
 
   Result<vector<master::NamespaceIdentifierPB>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
+
+  // Get namespace information.
+  CHECKED_STATUS GetNamespaceInfo(const std::string& namespace_id,
+                                  const std::string& namespace_name,
+                                  const boost::optional<YQLDatabase>& database_type,
+                                  master::GetNamespaceInfoResponsePB* ret);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
@@ -446,7 +479,9 @@ class YBClient {
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
-  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false);
+  // If use_cache is set to true, we return old value.
+  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
+      bool use_cache = false);
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
@@ -458,13 +493,7 @@ class YBClient {
   // List only those tables whose names pass a substring match on 'filter'.
   //
   // 'tables' is appended to only on success.
-  CHECKED_STATUS ListTables(
-      std::vector<YBTableName>* tables,
-      const std::string& filter = "",
-      bool exclude_ysql = false);
-
-  CHECKED_STATUS ListTablesWithIds(
-      std::vector<std::pair<std::string, YBTableName>>* tables,
+  Result<std::vector<YBTableName>> ListTables(
       const std::string& filter = "",
       bool exclude_ysql = false);
 
@@ -475,7 +504,8 @@ class YBClient {
                             std::vector<TabletId>* tablet_uuids,
                             std::vector<std::string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations = nullptr,
-                            bool update_tablets_cache = false);
+                            bool update_tablets_cache = false,
+                            bool require_tablets_running = false);
 
 
   Status GetTabletsFromTableId(
@@ -484,7 +514,8 @@ class YBClient {
 
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
-                            google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
+                            google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
+                            bool require_tablets_running = false);
 
   CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
                                    master::TabletLocationsPB* tablet_location);
@@ -507,6 +538,12 @@ class YBClient {
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   CHECKED_STATUS OpenTable(const YBTableName& table_name, std::shared_ptr<YBTable>* table);
   CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table);
+
+  Result<YBTablePtr> OpenTable(const TableId& table_id) {
+    YBTablePtr result;
+    RETURN_NOT_OK(OpenTable(table_id, &result));
+    return result;
+  }
 
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
@@ -644,6 +681,8 @@ class YBClient {
   ThreadPool* callback_threadpool();
 
   std::unique_ptr<Data> data_;
+
+  int tserver_count_cached_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };

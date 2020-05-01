@@ -25,8 +25,10 @@ import org.yb.util.RandomNumberUtil;
 import org.yb.util.SanitizerUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import java.sql.Array;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.PreparedStatement;
 import java.util.HashSet;
@@ -696,7 +698,7 @@ public class TestPgTransactions extends BasePgSQLTest {
                              "UPDATE test SET v = 3 WHERE k = 1", 1);
 
     // Verify JDBC single-row prepared statements use non-txn path.
-    int oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
 
     PreparedStatement insertStatement =
       connection.prepareStatement("INSERT INTO test VALUES (?, ?)");
@@ -715,7 +717,185 @@ public class TestPgTransactions extends BasePgSQLTest {
     updateStatement.setInt(2, 1);
     updateStatement.executeUpdate();
 
-    int newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
     assertEquals(oldTxnValue, newTxnValue);
+  }
+
+  /*
+   * Execute a query and check that either is succeeds or it fails with a transaction (conflict)
+   * error. Returns whether the query succeeded.
+   */
+  private boolean checkTxnExecute(Statement statement, String query) throws SQLException {
+    try {
+      statement.execute(query);
+      return true;
+    } catch (PSQLException e) {
+      assertTrue(e.getMessage(), isYBTransactionError(e));
+    }
+    return false;
+  }
+
+  /*
+   * Run two queries in two different connections for the number of requested iterations and in
+   * varying order of operations. Check that exactly one succeeds each iteration.
+   * Returns the number of successes for query1 (implying the rest are the query2 successes due to
+   * the "exactly one succeeds" check above.
+   */
+  public int checkConflictingStatements(Statement statement1,
+                                        String query1,
+                                        Statement statement2,
+                                        String query2,
+                                        int totalIterations) throws SQLException {
+    int txn1Successes = 0;
+
+    for (int i = 0; i < totalIterations; i++) {
+      // Vary the execution order throughout the runs.
+
+      // Expect begin transaction to always succeed.
+      if (i % 2 == 0) {
+        statement1.execute("BEGIN");
+        statement2.execute("BEGIN");
+      } else {
+        statement2.execute("BEGIN");
+        statement1.execute("BEGIN");
+      }
+
+      boolean txn1_success;
+      boolean txn2_success;
+
+      // Run the queries.
+      if (i % 4 < 2) { // i % 4 = 0,1
+        txn1_success = checkTxnExecute(statement1, query1);
+        txn2_success = checkTxnExecute(statement2, query2);
+      } else { // i % 4 = 2,3
+        txn2_success = checkTxnExecute(statement2, query2);
+        txn1_success = checkTxnExecute(statement1, query1);
+      }
+
+      // End the transaction(s).
+      if (i % 8 < 4) { // i % 8 = 0,1,2,3
+        txn1_success = checkTxnExecute(statement1, "END") && txn1_success;
+        txn2_success = checkTxnExecute(statement2, "END") && txn2_success;
+      } else { // i % 8 = 4,5,6,7
+        txn2_success = checkTxnExecute(statement2, "END") && txn2_success;
+        txn1_success = checkTxnExecute(statement1, "END") && txn1_success;
+      }
+
+      // Check that exactly one txn succeeded.
+      assertTrue(txn1_success ^ txn2_success);
+      if (txn1_success) {
+        txn1Successes += 1;
+      }
+    }
+
+    return txn1Successes;
+  }
+
+  @Test
+  public void testExplicitLocking() throws Exception {
+    Statement statement = connection.createStatement();
+
+    // Set up a simple key-value table.
+    statement.execute("CREATE TABLE test (k int PRIMARY KEY, v int)");
+    statement.execute("INSERT INTO test VALUES (1,1), (2,2), (3,3)");
+
+    // Set up a key-value table with an index on the value.
+    statement.execute("CREATE TABLE idx_test (k int PRIMARY KEY, v int)");
+    statement.execute("CREATE INDEX idx_test_idx on idx_test(v)");
+    statement.execute("INSERT INTO idx_test VALUES (1,1), (2,2), (3,3)");
+
+    // Using a smaller number of iterations when expecting one txn to always win (i.e. explicit
+    // locking vs regular transaction) and a larger number when expecting a coin-toss
+    // (i.e. explicit locking vs explicit locking) to more accurately test for a fair
+    // distribution in the latter case.
+    int numItersSmall = 32;
+    int numItersLarge = 120;
+
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
+
+      //--------------------------------------------------------------------------------------------
+      // Test explicit locking on key columns.
+
+      // Check that explicit locking always wins against regular transactions.
+      String selectStmt = "SELECT * FROM test WHERE k = 1 %s";
+      int txn1_successes = checkConflictingStatements(statement1,
+                                                      String.format(selectStmt, "FOR UPDATE"),
+                                                      statement2,
+                                                      "UPDATE test SET v = 10 WHERE k = 1",
+                                                      numItersSmall);
+      assertEquals(numItersSmall, txn1_successes);
+
+      txn1_successes = checkConflictingStatements(statement1,
+                                                  String.format(selectStmt, "FOR NO KEY UPDATE"),
+                                                  statement2,
+                                                  "UPDATE test SET v = 10 WHERE k = 1",
+                                                  numItersSmall);
+      assertEquals(numItersSmall, txn1_successes);
+
+      txn1_successes = checkConflictingStatements(statement1,
+                                                  String.format(selectStmt, "FOR SHARE"),
+                                                  statement2,
+                                                  "UPDATE test SET v = 10 WHERE k = 1",
+                                                  numItersSmall);
+      assertEquals(numItersSmall, txn1_successes);
+
+      // Check that for two explicit-locking statements exactly one succeeds.
+      txn1_successes = checkConflictingStatements(statement1,
+                                                  String.format(selectStmt, "FOR UPDATE"),
+                                                  statement2,
+                                                  String.format(selectStmt, "FOR NO KEY UPDATE"),
+                                                  numItersLarge);
+      checkTransactionFairness(txn1_successes, numItersLarge - txn1_successes, numItersLarge);
+
+      //--------------------------------------------------------------------------------------------
+      // Test explicit locking on value columns (without index).
+
+      // Check that explicit locking always wins against regular transactions.
+      txn1_successes = checkConflictingStatements(statement1,
+                                                  "SELECT * FROM test WHERE v = 1 FOR UPDATE",
+                                                  statement2,
+                                                  "UPDATE test SET v = 10 WHERE k = 2",
+                                                  numItersSmall);
+      assertEquals(numItersSmall, txn1_successes);
+
+      // Check that for two explicit-locking statements exactly one succeeds.
+      txn1_successes = checkConflictingStatements(statement1,
+                                                  "SELECT * FROM test WHERE v = 1 FOR UPDATE",
+                                                  statement2,
+                                                  "SELECT * FROM test WHERE v = 1 FOR SHARE",
+                                                  numItersLarge);
+      checkTransactionFairness(txn1_successes, numItersLarge - txn1_successes, numItersLarge);
+
+      //--------------------------------------------------------------------------------------------
+      // Test explicit locking on index columns.
+
+      // Check that explicit locking always wins against regular transactions.
+      // Update with condition on key column.
+      txn1_successes = checkConflictingStatements(statement1,
+                                                  "SELECT * FROM idx_test WHERE v = 1 FOR UPDATE",
+                                                  statement2,
+                                                  "UPDATE idx_test SET v = 10 WHERE k = 1",
+                                                  numItersSmall);
+      assertEquals(numItersSmall, txn1_successes);
+
+      // Update with condition on value column.
+      txn1_successes = checkConflictingStatements(statement1,
+                                                  "SELECT * FROM idx_test WHERE v = 1 FOR UPDATE",
+                                                  statement2,
+                                                  "UPDATE idx_test SET v = 10 WHERE v = 1",
+                                                  numItersSmall);
+      assertEquals(numItersSmall, txn1_successes);
+
+      // Check that for two explicit-locking statements exactly one succeeds.
+      txn1_successes = checkConflictingStatements(statement1,
+                                                  "SELECT * FROM idx_test WHERE v = 1 FOR UPDATE",
+                                                  statement2,
+                                                  "SELECT * FROM idx_test WHERE v = 1 FOR SHARE",
+                                                  numItersLarge);
+      checkTransactionFairness(txn1_successes, numItersLarge - txn1_successes, numItersLarge);
+    }
   }
 }

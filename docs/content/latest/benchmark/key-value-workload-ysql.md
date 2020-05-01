@@ -1,7 +1,8 @@
 ---
-title: Key-value workload
+title: Benchmark YSQL performance with key-value workloads
+headerTitle: Key-value workload
 linkTitle: Key-value workload
-description: Key-value workload
+description: Benchmark YSQL performance with key-value workloads.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Test YugabyteDB performance with a key-value workload.
 menu:

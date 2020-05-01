@@ -1,7 +1,8 @@
 ---
-title: 1. Install YugabyteDB
+title: Install YugabyteDB on Docker
+headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
-description: Install YugabyteDB
+description: Download and install YugabyteDB on Docker in less than five minutes.
 aliases:
   - /quick-start/install/
 menu:
@@ -13,9 +14,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
-hidePagination: true
 ---
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -55,7 +54,6 @@ The Docker option to run local clusters is recommended only for advanced Docker 
 
 {{< /note >}}
 
-
 ## Prerequisites
 
 You must have the Docker runtime installed on your localhost. Follow the links below to download and install Docker if you have not done so already.
@@ -69,7 +67,6 @@ You must have the Docker runtime installed on your localhost. Follow the links b
 <i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
 
 <i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
-
 
 ## Install
 

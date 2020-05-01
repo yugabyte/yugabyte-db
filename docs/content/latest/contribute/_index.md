@@ -1,7 +1,8 @@
 ---
 title: Get involved with YugabyteDB
+headerTitle: Get involved with YugabyteDB
 linkTitle: Get involved
-description: Get involved with YugabyteDB
+description: Contribute to the YugabyteDB code and documentation.
 image: /images/section_icons/index/quick_start.png
 headcontent: Contribute code and docs to improve YugabyteDB.
 type: page
@@ -9,7 +10,7 @@ section: CONTRIBUTOR GUIDES
 menu:
   latest:
     identifier: contribute
-    weight: 2900
+    weight: 2800
 ---
 
 We are big believers in open source. [YugabyteDB](https://github.com/yugabyte/yugabyte-db) is distributed under the Apache v2.0 license, which is very permissive open source license. We value external contributions and fully welcome them! We accept contributions as GitHub pull requests. This page contains everything you need to get you going quickly.
@@ -22,7 +23,7 @@ There are a number of resources to get started, here is a recommended reading li
 
 ## Sign the CLA
 
-Before your first contribution is accepted, you must complete the online form [Yugabyte CLA (contributor license agreement)](https://docs.google.com/forms/d/11hn-vBGhOZRunclC3NKmSX1cvQVrU--r0ldDLqasRIo/edit).
+When your first contribution is submitted as a pull request, you will be given a link to sign the [Yugabyte Individual Contributor License Agreement (CLA)](https://cla-assistant.io/yugabyte/yugabyte-db).
 
 ## Pick an area
 
@@ -34,7 +35,7 @@ This is the C++ code and the unit tests that comprise the core of YugabyteDB. Yo
 
 ### Docs
 
-[YugabyteDB documentation](/) uses the Hugo framework. There are two types of docs issues - infrastructure enhancements and adding content. You can [follow the steps outlined here](https://github.com/yugabyte/docs) to run a local version of the docs site. Next, look at the [contributing guide](https://github.com/yugabyte/docs/blob/master/CONTRIBUTING.md) to make your changes and contribute them.
+[YugabyteDB documentation](/) uses the Hugo framework. There are two types of docs issues - infrastructure enhancements and adding content. You can [follow the steps outlined here](https://github.com/yugabyte/yugabyte-db/tree/master/docs) to run a local version of the docs site. Next, look at the [contributing guide](https://github.com/yugabyte/yugabyte-db/blob/master/docs/CONTRIBUTING.md) to make your changes and contribute them.
 
 ## Find an issue
 

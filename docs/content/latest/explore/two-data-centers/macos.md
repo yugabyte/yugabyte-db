@@ -1,7 +1,8 @@
 ---
-title: Two data center (2DC)
+title: Explore two data center (2DC) deployment on macOS
+headerTitle: Two data center (2DC) deployment
 linkTitle: Two data center (2DC)
-description: Two data center (2DC) deployment
+description: Simulate a geo-distributed two data center (2DC) deployment with two local YugabyteDB clusters on macOS.
 aliases:
   - /latest/explore/two-data-centers/
   - /latest/explore/two-data-centers-macos/
@@ -277,5 +278,5 @@ $ ./bin/yb-ctl destroy --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-we
 
 For more information, see the following in the Architecture section:
 
-- [Two data center (2DC) deployments](../../architecture/2dc-deployments/)
-- [Change data capture (CDC)](../../architecture/cdc-architecture)
+- [Two data center (2DC) deployments](../../../architecture/2dc-deployments/)
+- [Change data capture (CDC)](../../../architecture/cdc-architecture)

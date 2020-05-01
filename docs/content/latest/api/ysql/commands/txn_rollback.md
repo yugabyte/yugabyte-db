@@ -1,8 +1,8 @@
 ---
-title: ROLLBACK
+title: ROLLBACK statement [YSQL]
+headerTitle: ROLLBACK
 linkTitle: ROLLBACK
-description: ROLLBACK
-summary: ROLLBACK
+description: Use the ROLLBACK statement to roll back the current transactions.
 menu:
   latest:
     identifier: api-ysql-commands-txn-rollback

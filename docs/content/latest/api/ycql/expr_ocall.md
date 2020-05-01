@@ -1,7 +1,9 @@
 ---
-title: Operator call
+title: Operators [YCQL]
+headerTitle: YCQL operators
+linkTitle: Operators
+description: Combine multiple expressions using YCQL operators supported in YugabyteDB.
 summary: Compounding expression using operators.
-description: Built-in operator call
 menu:
   latest:
     parent: api-cassandra
@@ -13,9 +15,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-An expression with operators is a compound expression that combines multiple expressions using builtin operators. The following sections discuss the supported operators in Yugabyte.
+An expression with operators is a compound expression that combines multiple expressions using built-in operators. The following sections discuss the YCQL operators in YugabyteDB.
 
-## Nullary operations
+## Null operators
 
 | Operator | Description |
 |----------|-------------|
@@ -23,7 +25,7 @@ An expression with operators is a compound expression that combines multiple exp
 
 <li> `EXISTS` and `NOT EXISTS` can only be used in the `IF` clause.
 
-## Unary operations
+## Unary operators
 
 | Operator | Description |
 |----------|-------------|
@@ -33,7 +35,7 @@ An expression with operators is a compound expression that combines multiple exp
 
 <li> Unary `-` and `+` can only be used with constant expressions such as `-77`.
 
-## Binary operations
+## Binary operators
 
 | Operator | Description |
 |----------|-------------|
@@ -50,7 +52,3 @@ An expression with operators is a compound expression that combines multiple exp
 <li>When `+` and `-` are applied to a NULL argument of `COUNTER` data type, the NULL expression is replaced with a zero value before the computation. When these operators are applied to a NULL expression of all other numeric data types, the computed value is always NULL.</li>
 <li>Operator `+` either prepends or appends a value to a LIST while operator `-` removes elements from LIST.</li>
 <li>Operator `+` inserts new distinct elements to a MAP or SET while operator `-` removes elements from them.</li>
-
-## See also
-
-- [All Expressions](..#expressions)

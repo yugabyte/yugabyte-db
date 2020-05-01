@@ -72,6 +72,11 @@ class LocalYBInboundCall : public YBInboundCall {
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
+  size_t AddRpcSidecar(Slice car) override {
+    sidecars_.push_back(RefCntBuffer(car));
+    return sidecars_.size() - 1;
+  }
+
  protected:
   void Respond(const google::protobuf::MessageLite& response, bool is_success) override;
 
@@ -80,7 +85,7 @@ class LocalYBInboundCall : public YBInboundCall {
 
   std::shared_ptr<LocalOutboundCall> outbound_call() const { return outbound_call_.lock(); }
 
-  const boost::container::small_vector_base<RefCntBuffer>& sidecars() const { return sidecars_; }
+  boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecars_;
 
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.
   std::weak_ptr<LocalOutboundCall> outbound_call_;

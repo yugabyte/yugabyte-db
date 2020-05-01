@@ -44,6 +44,7 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -97,13 +98,17 @@ DEFINE_int32(consensus_inject_latency_ms_in_notifications, 0,
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, hidden);
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
 
-DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
-
 DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "Interval up to which CDC consumer's checkpoint is considered for retaining log cache."
              "If we haven't received an updated checkpoint from CDC consumer within the interval "
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
+
+DEFINE_bool(enable_consensus_exponential_backoff, false,
+            "Whether exponential backoff based on number of retransmissions at tablet leader "
+            "for number of entries to replicate to lagging follower is enabled.");
+TAG_FLAG(enable_consensus_exponential_backoff, advanced);
+TAG_FLAG(enable_consensus_exponential_backoff, runtime);
 
 namespace {
 
@@ -165,10 +170,8 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
 }
 
 void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
-  last_leader_lease_expiration_sent_to_follower = CoarseTimePoint();
-  last_leader_lease_expiration_received_by_follower = CoarseTimePoint();
-  last_ht_lease_expiration_sent_to_follower = HybridTime::kMin.GetPhysicalValueMicros();
-  last_ht_lease_expiration_received_by_follower = HybridTime::kMin.GetPhysicalValueMicros();
+  leader_lease_expiration.Reset();
+  leader_ht_lease_expiration.Reset();
 }
 
 #define INSTANTIATE_METRIC(x) \
@@ -217,14 +220,14 @@ void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
   }
 }
 
-void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
+void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
                                      int64_t current_term,
                                      const RaftConfigPB& active_config) {
   LockGuard lock(queue_lock_);
-  CHECK(committed_index.IsInitialized());
+  CHECK(committed_op_id.IsInitialized());
   queue_state_.current_term = current_term;
-  queue_state_.committed_index = committed_index;
-  queue_state_.majority_replicated_opid = committed_index;
+  queue_state_.committed_op_id = committed_op_id;
+  queue_state_.majority_replicated_op_id = committed_op_id;
   queue_state_.active_config.reset(new RaftConfigPB(active_config));
   CHECK(IsRaftConfigVoter(local_peer_uuid_, *queue_state_.active_config))
       << local_peer_pb_.ShortDebugString() << " not a voter in config: "
@@ -278,7 +281,7 @@ PeerMessageQueue::TrackedPeer* PeerMessageQueue::TrackPeerUnlocked(const string&
 
   // We don't know how far back this peer is, so set the all replicated watermark to
   // MinimumOpId. We'll advance it when we know how far along the peer is.
-  queue_state_.all_replicated_opid = MinimumOpId();
+  queue_state_.all_replicated_op_id = MinimumOpId();
   return tracked_peer;
 }
 
@@ -351,7 +354,7 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
     if (queue_state_.last_appended.index() < id.index()) {
       queue_state_.last_appended = id;
     }
-    fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_index.index());
+    fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_op_id.index());
 
     if (queue_state_.mode != Mode::LEADER) {
       log_cache_.EvictThroughOp(id.index());
@@ -418,7 +421,14 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   bool is_voter = false;
   bool is_new;
   int64_t next_index;
+  int64_t to_index;
   HybridTime propagated_safe_time;
+
+  // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
+  if (context_) {
+    propagated_safe_time = context_->PreparePeerRequest();
+  }
+
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -433,11 +443,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
     is_new = peer->is_new;
     if (!is_new) {
-      // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
-      if (context_ && FLAGS_propagate_safe_time) {
-        propagated_safe_time = context_->PropagatedSafeTime();
-      }
-
       now_ht = clock_->Now();
 
       auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
@@ -457,15 +462,15 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
       // Because of coarse clocks we subtract 2ms, to be sure that our local version of lease
       // does not expire after it expires at follower.
-      peer->last_leader_lease_expiration_sent_to_follower =
+      peer->leader_lease_expiration.last_sent =
           CoarseMonoClock::Now() + leader_lease_duration_ms * 1ms - kCoarseClockPrecision * 2;
-      peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
+      peer->leader_ht_lease_expiration.last_sent = ht_lease_expiration_micros;
     } else {
       now_ht = clock_->Now();
       request->clear_leader_lease_duration_ms();
       request->clear_ht_lease_expiration();
-      peer->last_leader_lease_expiration_received_by_follower = CoarseTimePoint();
-      peer->last_ht_lease_expiration_sent_to_follower = 0;
+      peer->leader_lease_expiration.Reset();
+      peer->leader_ht_lease_expiration.Reset();
     }
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
@@ -473,14 +478,25 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // This is initialized to the queue's last appended op but gets set to the id of the
     // log entry preceding the first one in 'messages' if messages are found for the peer.
     preceding_id = queue_state_.last_appended;
-    request->mutable_committed_index()->CopyFrom(queue_state_.committed_index);
+    *request->mutable_committed_op_id() = queue_state_.committed_op_id;
     request->set_caller_term(queue_state_.current_term);
     unreachable_time =
         MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time);
     if (member_type) *member_type = peer->member_type;
     if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
     *needs_remote_bootstrap = peer->needs_remote_bootstrap;
+
     next_index = peer->next_index;
+    if (FLAGS_enable_consensus_exponential_backoff && peer->last_num_messages_sent >= 0) {
+      // Previous request to peer has not been acked. Reduce number of entries to be sent
+      // in this attempt using exponential backoff. Note that to_index is inclusive.
+      to_index = next_index + std::max<int64_t>((peer->last_num_messages_sent >> 1) - 1, 0);
+    } else {
+      // Previous request to peer has been acked or a heartbeat response has been received.
+      // Transmit as many entries as allowed.
+      to_index = 0;
+    }
+
     if (peer->member_type == RaftPeerPB::VOTER) {
       is_voter = true;
     }
@@ -513,8 +529,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   if (!is_new) {
     // The batch of messages to send to the peer.
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
-
-    auto result = ReadFromLogCache(next_index - 1, 0 /* to_index */, max_batch_size, uuid);
+    auto result = ReadFromLogCache(next_index - 1, to_index, max_batch_size, uuid);
     if (PREDICT_FALSE(!result.ok())) {
       if (PREDICT_TRUE(result.status().IsNotFound())) {
         std::string msg = Format("The logs necessary to catch up peer $0 have been "
@@ -533,6 +548,16 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       request->mutable_ops()->AddAllocated(msg.get());
     }
 
+    {
+      LockGuard lock(queue_lock_);
+      auto peer = FindPtrOrNull(peers_map_, uuid);
+      if (PREDICT_FALSE(peer == nullptr)) {
+        return STATUS(NotFound, "Peer not tracked.");
+      }
+
+      peer->last_num_messages_sent = result->messages.size();
+    }
+
     ScopedTrackedConsumption consumption;
     if (result->read_from_disk_size) {
       consumption = ScopedTrackedConsumption(operations_mem_tracker_, result->read_from_disk_size);
@@ -540,7 +565,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     *msgs_holder = ReplicateMsgsHolder(
         request->mutable_ops(), std::move(result->messages), std::move(consumption));
 
-    if (propagated_safe_time && !result->have_more_messages) {
+    if (propagated_safe_time && !result->have_more_messages && to_index == 0) {
       // Get the current local safe time on the leader and propagate it to the follower.
       request->set_propagated_safe_time(propagated_safe_time.ToUint64());
     } else {
@@ -609,7 +634,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::O
   int64_t to_index;
   {
     LockGuard lock(queue_lock_);
-    to_index = queue_state_.majority_replicated_opid.index();
+    to_index = queue_state_.majority_replicated_op_id.index();
   }
   if (repl_index) {
     *repl_index = to_index;
@@ -703,6 +728,27 @@ void PeerMessageQueue::UpdateAllReplicatedOpId(OpId* result) {
   *result = new_op_id;
 }
 
+HAS_MEMBER_FUNCTION(InfiniteWatermarkForLocalPeer);
+
+template <class Policy, bool HasMemberFunction_InfiniteWatermarkForLocalPeer>
+struct GetInfiniteWatermarkForLocalPeer;
+
+template <class Policy>
+struct GetInfiniteWatermarkForLocalPeer<Policy, true> {
+  static auto Apply() {
+    return Policy::InfiniteWatermarkForLocalPeer();
+  }
+};
+
+template <class Policy>
+struct GetInfiniteWatermarkForLocalPeer<Policy, false> {
+  // Should not be invoked, but have to define to make compiler happy.
+  static typename Policy::result_type Apply() {
+    LOG(DFATAL) << "Invoked Apply when InfiniteWatermarkForLocalPeer is not defined";
+    return typename Policy::result_type();
+  }
+};
+
 template <class Policy>
 typename Policy::result_type PeerMessageQueue::GetWatermark() {
   DCHECK(queue_lock_.is_locked());
@@ -723,11 +769,13 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
   // in logic between handling of OpIds vs. leader leases:
   // - For OpIds, the local peer might actually be less up-to-date than followers.
   // - For leader leases, we always assume that we've replicated an "infinite" lease to ourselves.
-  const bool local_peer_infinite_watermark = Policy::LocalPeerHasInfiniteWatermark();
+  const bool local_peer_infinite_watermark =
+      HasMemberFunction_InfiniteWatermarkForLocalPeer<Policy>::value;
 
   if (num_peers_required == 1 && local_peer_infinite_watermark) {
     // We give "infinite lease" to ourselves.
-    return Policy::SingleNodeValue();
+    return GetInfiniteWatermarkForLocalPeer<
+        Policy, HasMemberFunction_InfiniteWatermarkForLocalPeer<Policy>::value>::Apply();
   }
 
   constexpr size_t kMaxPracticalReplicationFactor = 5;
@@ -800,21 +848,17 @@ CoarseTimePoint PeerMessageQueue::LeaderLeaseExpirationWatermark() {
       return result_type::min();
     }
 
-    static result_type SingleNodeValue() {
+    static result_type InfiniteWatermarkForLocalPeer() {
       return result_type::max();
     }
 
     static result_type ExtractValue(const TrackedPeer& peer) {
-      auto lease_exp = peer.last_leader_lease_expiration_received_by_follower;
+      auto lease_exp = peer.leader_lease_expiration.last_received;
       return lease_exp != CoarseTimePoint() ? lease_exp : CoarseTimePoint::min();
     }
 
     static const char* Name() {
       return "Leader lease expiration";
-    }
-
-    static bool LocalPeerHasInfiniteWatermark() {
-      return true;
     }
   };
 
@@ -831,20 +875,16 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
       return HybridTime::kMin.GetPhysicalValueMicros();
     }
 
-    static result_type SingleNodeValue() {
+    static result_type InfiniteWatermarkForLocalPeer() {
       return HybridTime::kMax.GetPhysicalValueMicros();
     }
 
     static result_type ExtractValue(const TrackedPeer& peer) {
-      return peer.last_ht_lease_expiration_received_by_follower;
+      return peer.leader_ht_lease_expiration.last_received;
     }
 
     static const char* Name() {
       return "Hybrid time leader lease expiration";
-    }
-
-    static bool LocalPeerHasInfiniteWatermark() {
-      return true;
     }
   };
 
@@ -861,20 +901,12 @@ uint64_t PeerMessageQueue::NumSSTFilesWatermark() {
       return 0;
     }
 
-    static result_type SingleNodeValue() {
-      return std::numeric_limits<result_type>::max();
-    }
-
     static result_type ExtractValue(const TrackedPeer& peer) {
       return peer.num_sst_files;
     }
 
     static const char* Name() {
       return "Num SST files";
-    }
-
-    static bool LocalPeerHasInfiniteWatermark() {
-      return false;
     }
   };
 
@@ -890,10 +922,6 @@ OpId PeerMessageQueue::OpIdWatermark() {
       return MinimumOpId();
     }
 
-    static result_type SingleNodeValue() {
-      return MaximumOpId();
-    }
-
     static result_type ExtractValue(const TrackedPeer& peer) {
       return peer.last_received;
     }
@@ -906,10 +934,6 @@ OpId PeerMessageQueue::OpIdWatermark() {
 
     static const char* Name() {
       return "OpId";
-    }
-
-    static bool LocalPeerHasInfiniteWatermark() {
-      return false;
     }
   };
 
@@ -978,6 +1002,9 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     // Update the peer status based on the response.
     peer->is_new = false;
     peer->last_successful_communication_time = MonoTime::Now();
+
+    // Reset so that next transmission is not considered a re-transmission.
+    peer->last_num_messages_sent = -1;
 
     if (response.has_status()) {
       const auto& status = response.status();
@@ -1070,37 +1097,32 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     // If our log has the next request for the peer or if the peer's committed index is lower than
     // our own, set 'more_pending' to true.
     result = log_cache_.HasOpBeenWritten(peer->next_index) ||
-        (peer->last_known_committed_idx < queue_state_.committed_index.index());
+        (peer->last_known_committed_idx < queue_state_.committed_op_id.index());
 
     mode_copy = queue_state_.mode;
     if (mode_copy == Mode::LEADER) {
       auto new_majority_replicated_opid = OpIdWatermark();
       if (!OpIdEquals(new_majority_replicated_opid, MinimumOpId())) {
         if (new_majority_replicated_opid.index() == MaximumOpId().index()) {
-          queue_state_.majority_replicated_opid = local_peer_->last_received;
+          queue_state_.majority_replicated_op_id = local_peer_->last_received;
         } else {
-          queue_state_.majority_replicated_opid = new_majority_replicated_opid;
+          queue_state_.majority_replicated_op_id = new_majority_replicated_opid;
         }
       }
-      majority_replicated.op_id = queue_state_.majority_replicated_opid;
 
-      peer->last_leader_lease_expiration_received_by_follower =
-          peer->last_leader_lease_expiration_sent_to_follower;
+      peer->leader_lease_expiration.OnReplyFromFollower();
+      peer->leader_ht_lease_expiration.OnReplyFromFollower();
 
-      peer->last_ht_lease_expiration_received_by_follower =
-          peer->last_ht_lease_expiration_sent_to_follower;
-
+      majority_replicated.op_id = queue_state_.majority_replicated_op_id;
       majority_replicated.leader_lease_expiration = LeaderLeaseExpirationWatermark();
-
       majority_replicated.ht_lease_expiration = HybridTimeLeaseExpirationWatermark();
-
       majority_replicated.num_sst_files = NumSSTFilesWatermark();
     }
 
-    UpdateAllReplicatedOpId(&queue_state_.all_replicated_opid);
+    UpdateAllReplicatedOpId(&queue_state_.all_replicated_op_id);
 
     auto evict_op = std::min(
-        queue_state_.all_replicated_opid.index(), GetCDCConsumerOpIdToEvict().index);
+        queue_state_.all_replicated_op_id.index(), GetCDCConsumerOpIdToEvict().index);
     log_cache_.EvictThroughOp(evict_op);
 
     UpdateMetrics();
@@ -1121,17 +1143,17 @@ PeerMessageQueue::TrackedPeer PeerMessageQueue::GetTrackedPeerForTests(string uu
 
 OpId PeerMessageQueue::GetAllReplicatedIndexForTests() const {
   LockGuard lock(queue_lock_);
-  return queue_state_.all_replicated_opid;
+  return queue_state_.all_replicated_op_id;
 }
 
 OpId PeerMessageQueue::GetCommittedIndexForTests() const {
   LockGuard lock(queue_lock_);
-  return queue_state_.committed_index;
+  return queue_state_.committed_op_id;
 }
 
 OpId PeerMessageQueue::GetMajorityReplicatedOpIdForTests() const {
   LockGuard lock(queue_lock_);
-  return queue_state_.majority_replicated_opid;
+  return queue_state_.majority_replicated_op_id;
 }
 
 OpId PeerMessageQueue::TEST_GetLastAppended() const {
@@ -1142,11 +1164,11 @@ OpId PeerMessageQueue::TEST_GetLastAppended() const {
 void PeerMessageQueue::UpdateMetrics() {
   // Since operations have consecutive indices we can update the metrics based on simple index math.
   metrics_.num_majority_done_ops->set_value(
-      queue_state_.committed_index.index() -
-      queue_state_.all_replicated_opid.index());
+      queue_state_.committed_op_id.index() -
+      queue_state_.all_replicated_op_id.index());
   metrics_.num_in_progress_ops->set_value(
       queue_state_.last_appended.index() -
-      queue_state_.committed_index.index());
+      queue_state_.committed_op_id.index());
 }
 
 void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
@@ -1248,6 +1270,11 @@ bool PeerMessageQueue::IsOpInLog(const yb::OpId& desired_op) const {
 
 void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
     const MajorityReplicatedData& majority_replicated_data) {
+  if (!majority_replicated_data.op_id.IsInitialized()) {
+    LOG_WITH_PREFIX_UNLOCKED(DFATAL)
+        << "Invalid majority replicated: " << majority_replicated_data.ToString();
+    return;
+  }
   WARN_NOT_OK(raft_pool_observers_token_->SubmitClosure(
       Bind(&PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask,
            Unretained(this),
@@ -1299,8 +1326,8 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
   {
     LockGuard lock(queue_lock_);
     if (new_committed_index.IsInitialized() &&
-        new_committed_index.index() > queue_state_.committed_index.index()) {
-      queue_state_.committed_index.CopyFrom(new_committed_index);
+        new_committed_index.index() > queue_state_.committed_op_id.index()) {
+      queue_state_.committed_op_id.CopyFrom(new_committed_index);
     }
   }
 }
@@ -1330,7 +1357,7 @@ bool PeerMessageQueue::PeerAcceptedOurLease(const std::string& uuid) const {
     return false;
   }
 
-  return peer->last_leader_lease_expiration_received_by_follower != CoarseTimePoint();
+  return peer->leader_lease_expiration.last_received != CoarseTimePoint();
 }
 
 bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
@@ -1341,11 +1368,11 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
     return false;
   }
   const bool peer_can_be_leader =
-      !OpIdLessThan(peer->last_received, queue_state_.majority_replicated_opid);
+      !OpIdLessThan(peer->last_received, queue_state_.majority_replicated_op_id);
   if (!peer_can_be_leader) {
     LOG(INFO) << Substitute(
         "Peer $0 cannot become Leader as it is not caught up: Majority OpId $1, Peer OpId $2",
-        peer_uuid, OpIdToString(queue_state_.majority_replicated_opid),
+        peer_uuid, OpIdToString(queue_state_.majority_replicated_op_id),
         OpIdToString(peer->last_received));
   }
   return peer_can_be_leader;
@@ -1369,9 +1396,9 @@ string PeerMessageQueue::QueueState::ToString() const {
   return Substitute("All replicated op: $0, Majority replicated op: $1, "
       "Committed index: $2, Last appended: $3, Current term: $4, Majority size: $5, "
       "State: $6, Mode: $7$8",
-      /* 0 */ OpIdToString(all_replicated_opid),
-      /* 1 */ OpIdToString(majority_replicated_opid),
-      /* 2 */ OpIdToString(committed_index),
+      /* 0 */ OpIdToString(all_replicated_op_id),
+      /* 1 */ OpIdToString(majority_replicated_op_id),
+      /* 2 */ OpIdToString(committed_op_id),
       /* 3 */ OpIdToString(last_appended),
       /* 4 */ current_term,
       /* 5 */ majority_size_,
@@ -1386,6 +1413,14 @@ size_t PeerMessageQueue::LogCacheSize() {
 
 size_t PeerMessageQueue::EvictLogCache(size_t bytes_to_evict) {
   return log_cache_.EvictThroughOp(std::numeric_limits<int64_t>::max(), bytes_to_evict);
+}
+
+Status PeerMessageQueue::FlushLogIndex() {
+  return log_cache_.FlushIndex();
+}
+
+Status PeerMessageQueue::CopyLogTo(const std::string& dest_dir) {
+  return log_cache_.CopyLogTo(dest_dir);
 }
 
 void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {

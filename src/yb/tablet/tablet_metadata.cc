@@ -42,6 +42,7 @@
 #include "yb/rocksdb/options.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/atomicops.h"
@@ -167,6 +168,13 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
 
 Status KvStoreInfo::LoadTablesFromPB(
     google::protobuf::RepeatedPtrField<TableInfoPB> pbs, TableId primary_table_id) {
+
+  // To avoid race conditions, send all the tables to live in the old tables farm forever.
+  // TODO(hector): Fix the race condition by converting unique_ptr of TableInfo to shared_ptr
+  for (auto& iter : tables) {
+    old_tables.push_back(std::move(iter.second));
+  }
+
   tables.clear();
   for (const auto& table_pb : pbs) {
     auto table_info = std::make_unique<TableInfo>();
@@ -222,6 +230,14 @@ void KvStoreInfo::ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const {
   }
 }
 
+namespace {
+
+std::string MakeTabletDirName(const TabletId& tablet_id) {
+  return Format("tablet-$0", tablet_id);
+}
+
+} // namespace
+
 // ============================================================================
 
 Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
@@ -263,7 +279,7 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
   }
 
   const string table_dir_name = Substitute("table-$0", table_id);
-  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
+  const string tablet_dir_name = MakeTabletDirName(raft_group_id);
   const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
   const string rocksdb_dir = JoinPathSegments(
       data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
@@ -381,7 +397,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
-  std::string log_prefix = Format("T $0 P $1: ", raft_group_id_, fs_manager_->uuid());
+  std::string log_prefix = consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid());
   docdb::InitRocksDBOptions(
       &rocksdb_options, log_prefix, nullptr /* statistics */, tablet_options);
 
@@ -393,6 +409,11 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     LOG(ERROR) << "Failed to destroy regular DB at: " << rocksdb_dir << ": " << status;
   } else {
     LOG(INFO) << "Successfully destroyed regular DB at: " << rocksdb_dir;
+  }
+
+  if (fs_manager_->env()->FileExists(rocksdb_dir)) {
+    auto s = fs_manager_->env()->DeleteRecursively(rocksdb_dir);
+    LOG_IF(WARNING, !s.ok()) << "Unable to delete rocksdb data directory " << rocksdb_dir;
   }
 
   const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
@@ -407,6 +428,11 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     }
   }
 
+  if (fs_manager_->env()->FileExists(intents_dir)) {
+    auto s = fs_manager_->env()->DeleteRecursively(intents_dir);
+    LOG_IF(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
+  }
+
   // Flushing will sync the new tablet_data_state_ to disk and will now also
   // delete all the data.
   RETURN_NOT_OK(Flush());
@@ -416,6 +442,15 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   // (unless deleting any orphans failed during the last Flush()), so that we
   // don't try to re-delete the deleted orphaned blocks on every startup.
   return Flush();
+}
+
+bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  const auto& rocksdb_dir = kv_store_.rocksdb_dir;
+  const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
+  return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
+      !fs_manager_->env()->FileExists(rocksdb_dir) &&
+      !fs_manager_->env()->FileExists(intents_dir);
 }
 
 Status RaftGroupMetadata::DeleteSuperBlock() {
@@ -453,7 +488,7 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
                                const bool colocated)
     : state_(kNotWrittenYet),
       raft_group_id_(std::move(raft_group_id)),
-      partition_(std::move(partition)),
+      partition_(std::make_shared<Partition>(std::move(partition))),
       primary_table_id_(table_id),
       kv_store_(KvStoreId(raft_group_id), rocksdb_dir),
       fs_manager_(fs_manager),
@@ -521,7 +556,9 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
                                 " found " + superblock.raft_group_id(),
                                 superblock.DebugString());
     }
-    Partition::FromPB(superblock.partition(), &partition_);
+    Partition partition;
+    Partition::FromPB(superblock.partition(), &partition);
+    partition_ = std::make_shared<Partition>(partition);
     primary_table_id_ = superblock.primary_table_id();
     colocated_ = superblock.colocated();
 
@@ -606,7 +643,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   // Convert to protobuf.
   RaftGroupReplicaSuperBlockPB pb;
   pb.set_raft_group_id(raft_group_id_);
-  partition_.ToPB(pb.mutable_partition());
+  partition_->ToPB(pb.mutable_partition());
 
   kv_store_.ToPB(primary_table_id_, pb.mutable_kv_store());
 
@@ -776,12 +813,20 @@ void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
 }
 
 string RaftGroupMetadata::LogPrefix() const {
-  return Substitute("T $0 P $1: ", raft_group_id_, fs_manager_->uuid());
+  return consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid());
 }
 
 TabletDataState RaftGroupMetadata::tablet_data_state() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return tablet_data_state_;
+}
+
+std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
+  return JoinPathSegments(DirName(wal_dir_), MakeTabletDirName(raft_group_id));
+}
+
+std::string RaftGroupMetadata::GetSubRaftGroupDataDir(const RaftGroupId& raft_group_id) const {
+  return JoinPathSegments(DirName(kv_store_.rocksdb_dir), MakeTabletDirName(raft_group_id));
 }
 
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
@@ -793,13 +838,13 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock));
   metadata->raft_group_id_ = raft_group_id;
-  const string tablet_dir_name = Substitute("tablet-$0", raft_group_id);
-  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir_name);
+  metadata->wal_dir_ = GetSubRaftGroupWalDir(raft_group_id);
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
-  metadata->kv_store_.rocksdb_dir = JoinPathSegments(
-      DirName(kv_store_.rocksdb_dir), tablet_dir_name);
-  metadata->partition_ = partition;
+  metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
+  *metadata->partition_ = partition;
+  metadata->state_ = kInitialized;
+  metadata->tablet_data_state_ = TABLET_DATA_UNKNOWN;
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
 }

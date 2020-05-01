@@ -5,6 +5,7 @@ description: Explore core features
 headcontent:
 image: /images/section_icons/index/explore.png
 section: GET STARTED
+block_indexing: true
 menu:
   v1.3:
     identifier: explore

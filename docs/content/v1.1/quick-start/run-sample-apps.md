@@ -2,6 +2,7 @@
 title: 6. Run Sample Apps
 linkTitle: 6. Run Sample Apps
 description: Run Sample Apps
+block_indexing: true
 menu:
   v1.1:
     parent: quick-start

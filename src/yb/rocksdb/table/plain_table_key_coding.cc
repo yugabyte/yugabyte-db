@@ -172,7 +172,7 @@ Status PlainTableKeyEncoder::AppendKey(const Slice& key,
     meta_bytes_buf[*meta_bytes_buf_size] = PlainTableFactory::kValueTypeSeqId0;
     *meta_bytes_buf_size += 1;
   } else {
-    file->Append(key_to_write);
+    RETURN_NOT_OK(file->Append(key_to_write));
     *offset += key_to_write.size();
   }
 

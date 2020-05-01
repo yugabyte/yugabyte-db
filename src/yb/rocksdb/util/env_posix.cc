@@ -261,8 +261,8 @@ class PosixEnv : public Env {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
       if (errno != EEXIST) {
-        LOG(DFATAL) << "Not exists: " << name;
         result = STATUS_IO_ERROR(name, errno);
+        LOG(DFATAL) << "Mkdir failed: " << result;
       } else if (!DirExists(name)) { // Check that name is actually a
                                      // directory.
         // Message is taken from mkdir
@@ -370,7 +370,9 @@ class PosixEnv : public Env {
       *result = buf;
     }
     // Directory may already exist
-    CreateDir(*result);
+    if (!DirExists(*result)) {
+      RETURN_NOT_OK(CreateDir(*result));
+    }
     return Status::OK();
   }
 

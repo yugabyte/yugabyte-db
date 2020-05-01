@@ -2,6 +2,7 @@
 title: API compatibility FAQ
 linkTitle: API compatibility FAQ
 description: API compatibility FAQ
+block_indexing: true
 menu:
   v2.0:
     identifier: faq-api-compatibility

@@ -1,7 +1,9 @@
 ---
-title: DELETE
+title: DELETE statement [YCQL]
+headerTitle: DELETE
+linkTitle: DELETE
 summary: Deletes rows from a table.
-description: DELETE
+description: Use the DELETE statement to remove rows from a specified table that meet a given condition. 
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DELETE` statement removes rows from a specified table that meet a given condition. Currently, YugabyteDB can deletes one row at a time. Deleting multiple rows is not yet supported.
+Use the `DELETE` statement to remove rows from a specified table that meet a given condition. Currently, YugabyteDB can deletes one row at a time. Deleting multiple rows is not yet supported.
 
 ## Syntax
 
@@ -59,7 +61,7 @@ Where
 - The `if_expression` can only apply to non-key columns (regular columns).
 - The `if_expression` can contain any logical and boolean operators.
 - Deleting only some column values from a row is not yet supported.
-- `IF EXISTS` and `IF NOT EXISTS` options are mostly for symmetry with the [`INSERT`](../dml_insert) and [`UPDATE`](dml_update) commands.
+- `IF EXISTS` and `IF NOT EXISTS` options are mostly for symmetry with the [`INSERT`](../dml_insert) and [`UPDATE`](../dml_update) commands.
   - `IF EXISTS` works like a normal delete but additionally returns whether the delete was applied (a row was found with that primary key).
   - `IF NOT EXISTS` is effectively a no-op since rows that do not exist cannot be deleted (but returns whether no row was found with that primary key).
 

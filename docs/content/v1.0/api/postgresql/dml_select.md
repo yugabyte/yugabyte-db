@@ -2,6 +2,7 @@
 title: SELECT
 summary: Retrieves rows from a table
 description: SELECT
+block_indexing: true
 menu:
   v1.0:
     identifier: api-postgresql-select

@@ -43,6 +43,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -191,7 +192,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       this.name = name;
       this.index = index;
     }
-    
+
     public String toString() {
       return "{name: " + name + ", index: " + index + "}";
     }
@@ -465,6 +466,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates a task list to update the disk size of the nodes.
+   *
+   * @param nodes : a collection of nodes that need to be updated.
+   */
+  public void createUpdateDiskSizeTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
+    for (NodeDetails node : nodes) {
+      InstanceActions.Params params = new InstanceActions.Params();
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add device info.
+      params.deviceInfo = userIntent.deviceInfo;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
+      // Create and add a task for this node.
+      InstanceActions task = new InstanceActions(NodeManager.NodeCommandType.Disk_Update);
+      task.initialize(params);
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    subTaskGroupQueue.add(subTaskGroup);
+  }
+
+  /**
    * Creates a task list to start the tservers on the set of passed in nodes and adds it to the task
    * queue.
    *
@@ -551,6 +581,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.assignPublicIP = cloudInfo.assignPublicIP;
       params.useTimeSync = cloudInfo.useTimeSync;
       params.cmkArn = taskParams().cmkArn;
+      params.ipArnString = userIntent.awsArnString;
+
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);
@@ -578,6 +610,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
                                                  boolean isMasterInShellMode,
                                                  boolean updateMasterAddrsOnly) {
+    return createConfigureServerTasks(nodes, isMasterInShellMode,
+                                      updateMasterAddrsOnly /* updateMasterAddrs */,
+                                      false /* isMaster */);
+  }
+
+  public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
+                                                 boolean isMasterInShellMode,
+                                                 boolean updateMasterAddrsOnly,
+                                                 boolean isMaster) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -605,7 +646,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       params.allowInsecure = taskParams().allowInsecure;
       params.rootCA = taskParams().rootCA;
-      
+
+      // Development testing variable.
+      params.itestS3PackagePath = taskParams().itestS3PackagePath;
+
       UUID custUUID = Customer.get(Universe.get(taskParams().universeUUID).customerId).uuid;
 
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
@@ -613,7 +657,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.updateMasterAddrsOnly = updateMasterAddrsOnly;
       if (updateMasterAddrsOnly) {
         params.type = UpgradeTaskType.GFlags;
-        params.setProperty("processType", ServerType.TSERVER.toString());
+        if (isMaster) {
+          params.setProperty("processType", ServerType.MASTER.toString());
+        } else {
+          params.setProperty("processType", ServerType.TSERVER.toString());
+        }
       }
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = new AnsibleConfigureServers();
@@ -688,5 +736,40 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNodesAndRF(cluster.clusterType, cluster.userIntent.numNodes,
                                          cluster.userIntent.replicationFactor);
     }
+  }
+
+  // Subtask to update gflags in memory.
+  public void createSetFlagInMemoryTasks(Collection<NodeDetails> nodes,
+                                         ServerType serverType,
+                                         boolean force,
+                                         Map<String, String> gflags,
+                                         boolean updateMasterAddrs) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("InMemoryGFlagUpdate", executor);
+    for (NodeDetails node : nodes) {
+      // Create the task params.
+      SetFlagInMemory.Params params = new SetFlagInMemory.Params();
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // The server type for the flag.
+      params.serverType = serverType;
+      // If the flags need to be force updated.
+      params.force = force;
+      // The flags to update.
+      params.gflags = gflags;
+      // If only master addresses need to be updated.
+      params.updateMasterAddrs = updateMasterAddrs;
+
+      // Create the task.
+      SetFlagInMemory setFlag = new SetFlagInMemory();
+      setFlag.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addTask(setFlag);
+    }
+    // Add the task list to the task queue.
+    subTaskGroupQueue.add(subTaskGroup);
+    // Configure the user facing subtask for this task list.
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 }

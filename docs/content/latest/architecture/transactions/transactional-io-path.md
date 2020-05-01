@@ -1,14 +1,15 @@
 ---
 title: Transactional IO path
+headerTitle: Transactional IO path
 linkTitle: Transactional IO path
-description: Transactional IO path
+description: Learn how YugabyteDB manages the write path of a transaction.
 aliases:
   - /architecture/transactions/transactional-io-path/
 menu:
   latest:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
-    weight: 1154
+    weight: 1156
 isTocNested: true
 showAsideToc: true
 ---
@@ -34,7 +35,7 @@ any conflict resolution.
 
 ![distributed_txn_write_path](/images/architecture/txn/distributed_txn_write_path.svg)
 
-### 1. Client's request
+### 1. Client requests transaction
 
 The client sends a request to a YugabyteDB tablet server that requires a distributed transaction. We
 currently only support transactions that can be expressed by a single client request.  Here is an
@@ -52,7 +53,7 @@ the steps involved in this transaction, as described below. This orchestration o
 is performed by a component we call a *transaction manager*. Every transaction is handled by exactly
 one transaction manager.
 
-### 2. Creating a transaction record
+### 2. Create a transaction record
 
 We assign a *transaction id* and select a *transaction status tablet* that would keep track of
 a *transaction status record* that has the following fields:
@@ -63,7 +64,7 @@ a *transaction status record* that has the following fields:
 
 It makes sense to select a transaction status tablet in a way such that the transaction manager's tablet server is also the leader of its Raft group, because this allows to cut the RPC latency on querying and updating the transaction status. But in the most general case, the transaction status tablet might not be hosted on the same tablet server that initiates the transaction.
 
-### 3. Writing provisional records
+### 3. Write provisional records
 
 We start writing *provisional records* to tablets containing the rows we need to modify.  These provisional records contain the transaction id, the values we are trying to write, and the provisional hybrid timestamp. This provisional hybrid timestamp is not the final commit timestamp, and will in general be different for different provisional records within the same transaction. In contrast, there is only one commit hybrid timestamp for the entire transaction.
 
@@ -71,13 +72,13 @@ As we write the provisional records, we might encounter conflicts with other tra
 this case we would have to abort and restart the transaction. These restarts still happen
 transparently to the client up to a certain number of retries.
 
-### 4. Committing the transaction
+### 4. Commit the transaction
 
 When the transaction manager has written all the provisional records, it commits the transaction by sending an RPC request to the transaction status tablet. The commit operation will only succeed if the transaction has not yet been aborted due to conflicts.  The atomicity and durability of the commit operation is guaranteed by the transaction status tablet's Raft group. Once the commit operation is complete, all provisional records immediately become visible to clients.
 
 The commit request the transaction manager sends to the status tablet includes the list of tablet IDs of all tablets that participate in the transaction. Clearly, no new tablets can be added to this set by this point. The status tablet needs this information to orchestrate cleaning up provisional records in participating tablets.
 
-### 5. Sending the response back to client
+### 5. Send the response back to client
 
 The YQL engine sends the response back to the client. If any client (either the same one or
 different) sends a read request for the keys that were written, the new values are guaranteed to be reflected in the response, because the transaction is already committed. This property of a database is sometimes called the "read your own writes" guarantee.

@@ -1,19 +1,20 @@
 ---
-title: YB-Master
-linkTitle: YB-Master
-description: YB-Master
+title: YB-Master Service
+headerTitle: YB-Master Service
+linkTitle: YB-Master Service
+description: Learn about how the YB-Master Service and nodes manage tablet (shard) metadata and coordinate configuration changes.
 aliases:
   - /latest/architecture/concepts/yb-master/
 menu:
   latest:
     identifier: architecture-concepts-yb-master
-    parent: architecture-concepts
+    parent: key-concepts
     weight: 1126
 isTocNested: true
 showAsideToc: true
 ---
 
-The YB-Master is the keeper of system metadata and records such as what tables exist in the system, where their tablets live, what users and roles exist, the permissions associated with them, and so on.
+The YB-Master Service is the keeper of system metadata and records such as what tables exist in the system, where their tablets live, what users and roles exist, the permissions associated with them, and so on.
 
 It is also responsible for coordinating background operations (such as load-balancing or initiating re-replication of under-replicated data) and performing a variety of administrative operations such as creating, altering, and dropping tables.
 

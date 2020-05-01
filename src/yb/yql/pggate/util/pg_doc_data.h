@@ -15,20 +15,15 @@
 #define YB_YQL_PGGATE_UTIL_PG_DOC_DATA_H_
 
 #include "yb/util/bytes_formatter.h"
-#include "yb/common/pgsql_resultset.h"
 #include "yb/yql/pggate/util/pg_wire.h"
 
 namespace yb {
 namespace pggate {
 
+CHECKED_STATUS WriteColumn(const QLValuePB& col_value, faststring *buffer);
+
 class PgDocData : public PgWire {
  public:
-  static CHECKED_STATUS WriteTuples(const PgsqlResultSet& tuples, faststring *buffer);
-
-  static CHECKED_STATUS WriteTuple(const PgsqlRSRow& tuple, faststring *buffer);
-
-  static CHECKED_STATUS WriteColumn(const QLValue& col_value, faststring *buffer);
-
   static void LoadCache(const string& data, int64_t *total_row_count, Slice *cursor);
 
   static PgWireDataHeader ReadDataHeader(Slice *cursor);

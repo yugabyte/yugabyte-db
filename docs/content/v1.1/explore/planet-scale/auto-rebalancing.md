@@ -2,6 +2,7 @@
 title: Auto Rebalancing
 linkTitle: 3. Auto Rebalancing
 description: Auto Rebalancing
+block_indexing: true
 menu:
   v1.1:
     identifier: auto-rebalancing

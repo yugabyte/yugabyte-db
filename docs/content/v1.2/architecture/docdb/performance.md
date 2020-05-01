@@ -2,6 +2,7 @@
 title: Performance
 linkTitle: Performance
 description: Making DocDB High-Performance
+block_indexing: true
 menu:
   v1.2:
     identifier: docdb-performance

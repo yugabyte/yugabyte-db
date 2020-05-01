@@ -49,8 +49,7 @@ bool LibPqTestBase::TransactionalFailure(const Status& status) {
     return false;
   }
   YBPgErrorCode code = PgsqlErrorTag::Decode(pgerr);
-  return code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE ||
-         code == YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION;
+  return code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
 }
 
 } // namespace pgwrapper

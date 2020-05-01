@@ -3,6 +3,7 @@ title: Statements
 description: Statements
 summary: Statements
 image: /images/section_icons/api/ysql.png
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands

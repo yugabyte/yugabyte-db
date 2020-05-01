@@ -1,7 +1,8 @@
 ---
-title: Fault tolerance
+title: Explore fault tolerance on Kubernetes
+headerTitle: Fault tolerance
 linkTitle: Fault tolerance
-description: Fault tolerance
+description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Kubernetes (Minikube).
 aliases:
   - /latest/explore/fault-tolerance-kubernetes/
 menu:
@@ -81,7 +82,7 @@ To check the cluster status, you need to access the Admin UI on port `7000` expo
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000.
+Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000.
 
 ## 3. Connect to YugabyteDB Shell
 

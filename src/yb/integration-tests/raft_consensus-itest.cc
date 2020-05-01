@@ -87,6 +87,7 @@ DECLARE_int32(rpc_timeout);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(not_leader_rejections);
 METRIC_DECLARE_gauge_int64(raft_term);
+METRIC_DECLARE_counter(log_cache_disk_reads);
 
 namespace yb {
 namespace tserver {
@@ -387,8 +388,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   }
 
   // Writes 'num_writes' operations to the current leader. Each of the operations
-  // has a payload of around 128KB. Causes a gtest failure on error.
-  void Write128KOpsToLeader(int num_writes);
+  // has a payload of around `size_bytes`. Causes a gtest failure on error.
+  void WriteOpsToLeader(int num_writes, size_t size_bytes);
 
   // Check for and restart any TS that have crashed.
   // Returns the number of servers restarted.
@@ -694,7 +695,7 @@ TEST_F(RaftConsensusITest, TestRunLeaderElection) {
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * num_iters * 2);
 }
 
-void RaftConsensusITest::Write128KOpsToLeader(int num_writes) {
+void RaftConsensusITest::WriteOpsToLeader(int num_writes, size_t size_bytes) {
   TServerDetails* leader = nullptr;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
 
@@ -704,8 +705,8 @@ void RaftConsensusITest::Write128KOpsToLeader(int num_writes) {
   rpc.set_timeout(MonoDelta::FromMilliseconds(10000));
   int key = 0;
 
-  // generate a 128Kb dummy payload.
-  string test_payload(128 * 1024, '0');
+  // generate dummy payload.
+  string test_payload(size_bytes, '0');
   for (int i = 0; i < num_writes; i++) {
     rpc.Reset();
     req.Clear();
@@ -736,12 +737,61 @@ TEST_F(RaftConsensusITest, TestCatchupAfterOpsEvicted) {
 
   // Insert 3MB worth of data.
   const int kNumWrites = 25;
-  ASSERT_NO_FATALS(Write128KOpsToLeader(kNumWrites));
+  ASSERT_NO_FATALS(WriteOpsToLeader(kNumWrites, 128_KB));
 
   // Now unpause the replica, the lagging replica should eventually catch back up.
   ASSERT_OK(replica_ets->Resume());
 
   ASSERT_ALL_REPLICAS_AGREE(kNumWrites);
+}
+
+// Test that when a follower is stopped for a long time, the log cache
+// reads few ops from disk due to exponential backoff on number of ops
+// to replicate to an unresponsive follower.
+TEST_F(RaftConsensusITest, TestCatchupOpsReadFromDisk) {
+  vector<string> extra_flags = {
+      "--log_cache_size_limit_mb=1"s,
+      "--enable_consensus_exponential_backoff=true"s
+  };
+  ASSERT_NO_FATALS(BuildAndStart(extra_flags));
+  TServerDetails* replica = tablet_replicas_.begin()->second;
+  ASSERT_TRUE(replica != nullptr);
+  ExternalTabletServer* replica_ets = cluster_->tablet_server_by_uuid(replica->uuid());
+
+  // Pause a replica.
+  ASSERT_OK(replica_ets->Pause());
+  LOG(INFO)<< "Paused replica " << replica->uuid() << ", starting to write.";
+
+  // Insert 3MB worth of data.
+  const int kNumWrites = 1000;
+  ASSERT_NO_FATALS(WriteOpsToLeader(kNumWrites, 3_KB));
+
+  // Allow for unsuccessful replication attempts to lagging follower.
+  SleepFor(20s);
+
+  // Now unpause the replica, the lagging replica should eventually catch back up.
+  ASSERT_OK(replica_ets->Resume());
+
+  // Wait for successful replication to resumed follower.
+  ASSERT_OK(WaitForServersToAgree(30s, tablet_servers_, tablet_id_,
+                                  kNumWrites));
+
+  // Find number of ops read from disk at leader - value from non-leaders will be zero,
+  // hence it is unncessary to omit values from followers.
+  int64_t ops_read_from_disk = 0;
+  for (const auto& tablet_replica : tablet_replicas_) {
+    ops_read_from_disk += ASSERT_RESULT(
+        cluster_->tablet_server_by_uuid(tablet_replica.second->uuid())->GetInt64Metric(
+            &METRIC_ENTITY_tablet,
+            nullptr,
+            &METRIC_log_cache_disk_reads,
+            "value"));
+  }
+  LOG(INFO)<< "Ops read from disk: " << ops_read_from_disk;
+
+  // NOTE: empirically determined threshold.
+  const int kOpsReadFromDiskThreshold = kNumWrites * 2;
+  ASSERT_LE(ops_read_from_disk, kOpsReadFromDiskThreshold);
 }
 
 TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
@@ -1627,7 +1677,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   req.set_dest_uuid(replica_ts->uuid());
   req.set_caller_uuid("fake_caller");
   req.set_caller_term(2);
-  req.mutable_committed_index()->CopyFrom(MakeOpId(1, 1));
+  req.mutable_committed_op_id()->CopyFrom(MakeOpId(1, 1));
   req.mutable_preceding_id()->CopyFrom(MakeOpId(1, 1));
 
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
@@ -1686,7 +1736,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   req.clear_ops();
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 2));
   AddOp(MakeOpId(2, 3), &req);
-  req.mutable_committed_index()->CopyFrom(MakeOpId(2, 4));
+  req.mutable_committed_op_id()->CopyFrom(MakeOpId(2, 4));
   rpc.Reset();
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error()) << resp.DebugString();
@@ -1701,7 +1751,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   resp.Clear();
   req.clear_ops();
   LOG(INFO) << "Now send some more ops, and commit the earlier ones.";
-  req.mutable_committed_index()->CopyFrom(MakeOpId(2, 4));
+  req.mutable_committed_op_id()->CopyFrom(MakeOpId(2, 4));
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
   AddOp(MakeOpId(2, 5), &req);
   AddOp(MakeOpId(2, 6), &req);
@@ -1742,7 +1792,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
             << "the earlier ops.";
   {
     req.mutable_preceding_id()->CopyFrom(MakeOpId(leader_term, 6));
-    req.mutable_committed_index()->CopyFrom(MakeOpId(leader_term, 6));
+    req.mutable_committed_op_id()->CopyFrom(MakeOpId(leader_term, 6));
     req.clear_ops();
     rpc.Reset();
     ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
@@ -2863,7 +2913,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
   req.set_tablet_id(tablet_id_);
   req.set_caller_uuid(tservers[2]->instance_id.permanent_uuid());
   req.set_caller_term(0);
-  req.mutable_committed_index()->CopyFrom(MakeOpId(0, 0));
+  req.mutable_committed_op_id()->CopyFrom(MakeOpId(0, 0));
   req.mutable_preceding_id()->CopyFrom(MakeOpId(0, 0));
   for (int i = 0; i < kNumOps; i++) {
     AddOp(MakeOpId(0, 1 + i), &req);

@@ -1,8 +1,8 @@
 ---
-title: REASSIGN OWNED
+title: REASSIGN OWNED statement [YSQL]
+headerTitle: REASSIGN OWNED
 linkTitle: REASSIGN OWNED
-description: REASSIGN OWNED
-summary: Roles (users and groups)
+description: Use the REASSIGN OWNED statement to change the ownership of database objects owned by any of the "old_roles" to "new_role".
 menu:
   latest:
     identifier: api-ysql-commands-reassign-owned

@@ -16,7 +16,7 @@ import _ from 'lodash';
 const moment = require('moment');
 
 // TODO set predefined defaults another way not to share defaults this way
-const OVERVIEW_METRICS_INTERVAL_MS = 36000;
+const OVERVIEW_METRICS_INTERVAL_MS = 15000;
 
 const panelTypes = {
   overview: {
@@ -41,13 +41,21 @@ class OverviewMetrics extends Component {
     type: PropTypes.oneOf(Object.keys(panelTypes)).isRequired,
     nodePrefixes: PropTypes.array
   }
-
   static defaultProps = {
     nodePrefixes: []
+  }
+  constructor(props) {
+    super(props);
+    const refreshMetrics = localStorage.getItem('__yb_refresh_metrics__') != null &&
+      localStorage.getItem('__yb_refresh_metrics__') !== "false";
+    this.state = {
+      autoRefresh: refreshMetrics,
+    };
   }
 
   componentDidMount(){
     const { currentCustomer } = this.props;
+    const { autoRefresh } = this.state;
     const self = this;
     const pollingInterval = getPromiseState(currentCustomer).isSuccess() ?
       getFeatureState(currentCustomer.data.features, "universes.details.overview.metricsInterval", OVERVIEW_METRICS_INTERVAL_MS) :
@@ -59,13 +67,39 @@ class OverviewMetrics extends Component {
       startMoment: moment().subtract("1", "hours"), 
       endMoment: moment()
     });
-    this.timeout = setInterval(() => {
-      self.queryMetricsType({
-        ...self.props.graph.graphFilter,
-        startMoment: moment().subtract("1", "hours"), 
-        endMoment: moment()
-      });
-    }, pollingInterval);
+    if (autoRefresh) {
+      this.timeout = setInterval(() => {
+        self.queryMetricsType({
+          ...self.props.graph.graphFilter,
+          startMoment: moment().subtract("1", "hours"),
+          endMoment: moment()
+        });
+      }, pollingInterval);
+    }
+  }
+
+  handleToggleRefresh = () => {
+    const { currentCustomer, graph } = this.props;
+    const { autoRefresh } = this.state;
+    const pollingInterval = getPromiseState(currentCustomer).isSuccess() ?
+      getFeatureState(currentCustomer.data.features, "universes.details.overview.metricsInterval", OVERVIEW_METRICS_INTERVAL_MS) :
+      OVERVIEW_METRICS_INTERVAL_MS;
+
+    // eslint-disable-next-line eqeqeq
+    if (!autoRefresh && this.timeout == undefined) {
+      this.timeout = setInterval(() => {
+        this.queryMetricsType({
+          ...graph.graphFilter,
+          startMoment: moment().subtract("1", "hours"),
+          endMoment: moment()
+        });
+      }, pollingInterval);
+    } else {
+      clearInterval(this.timeout);
+      delete(this.timeout);
+    }
+    localStorage.setItem('__yb_refresh_metrics__', !autoRefresh);
+    this.setState({autoRefresh: !autoRefresh});
   }
 
   queryMetricsType = graphFilter => {
@@ -100,12 +134,16 @@ class OverviewMetrics extends Component {
 
   componentWillUnmount() {
     this.props.resetMetrics();
-    clearInterval(this.timeout);
-    delete(this.timeout);
+    // eslint-disable-next-line eqeqeq
+    if (this.timeout != undefined) {
+      clearInterval(this.timeout);
+      delete(this.timeout);
+    }
   }
 
   render() {
     const { type, graph: { metrics } } = this.props;
+    const { autoRefresh } = this.state;
     const metricKeys = panelTypes[type].metrics;
     let panelItem = metricKeys.filter((metricKey) => (
       metricKey !== "disk_usage" && metricKey !== "cpu_usage"))
@@ -151,7 +189,14 @@ class OverviewMetrics extends Component {
                   metricKey === "disk_usage" ? null :
                   <YBPanelLegend data={legendData} />
                 }
-                headerLeft={metrics[type][metricKey].layout.title + measureUnit}
+                headerLeft={
+                  <div className="metric-title">
+                    <span>{metrics[type][metricKey].layout.title + measureUnit}</span>
+                    <i className={autoRefresh ? "fa fa-pause" : "fa fa-refresh"}
+                      title={autoRefresh ? "Click to pause auto-refresh" : "Click to enable auto-refresh"}
+                      onClick={this.handleToggleRefresh}></i>
+                  </div>
+                }
                 body={
                   <MetricsPanelOverview
                     metricKey={metricKey}

@@ -1,7 +1,8 @@
 ---
-title: Date & Time Types
-summary: DATE, TIME and TIMESTAMP
-description: Date & Time Types
+title: Date and time data types (DATE, TIME, and TIMESTAMP) [YCQL]
+summary: DATE, TIME, and TIMESTAMP
+linkTitle: DATE, TIME, and TIMESTAMP
+description: Use the date and time data types (DATE, TIME, and TIMESTAMP) to specify data of date and time at a time zone.
 menu:
   latest:
     parent: api-cassandra
@@ -17,7 +18,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Datetime data types are used to specify data of date and time at a timezone, `DATE` for a specific day, `TIME` for time of day, and `TIMESTAMP` for the combination of both date and time.
+Use datetime data types to specify data of date and time at a time zone, `DATE` for a specific day, `TIME` for time of day, and `TIMESTAMP` for the combination of both date and time.
 
 ## Syntax
 

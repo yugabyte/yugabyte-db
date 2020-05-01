@@ -1,8 +1,8 @@
 ---
-title: SELECT
+title: SELECT statement [YSQL]
+headerTitle: SELECT
 linkTitle: SELECT
-summary: Retrieves rows from a table
-description: SELECT
+description: Use the SELECT statement to retrieve rows of specified columns that meet a given condition from a table.
 menu:
   latest:
     identifier: api-ysql-commands-select

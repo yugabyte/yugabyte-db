@@ -56,7 +56,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  virtual MonitoredTaskState AbortAndReturnPrevState() = 0;
+  virtual MonitoredTaskState AbortAndReturnPrevState(const Status& status) = 0;
 
   // Task State.
   virtual MonitoredTaskState state() const = 0;
@@ -79,6 +79,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     ASYNC_BACKFILL_TABLET_CHUNK,
     ASYNC_BACKFILL_DONE,
     BACKFILL_TABLE,
+    ASYNC_SPLIT_TABLET,
   };
 
   virtual Type type() const = 0;

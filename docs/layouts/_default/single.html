@@ -27,7 +27,7 @@
 					<div class="content-flex-container">
 						{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
 
-						<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}{{ if .Page.Params.beta }}<a class="tag-beta" href="{{ .Page.Params.beta }}">Beta</a>{{ end }}</h1>
+						<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Page.Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}{{ if .Page.Params.beta }}<a class="tag-beta" href="{{ .Page.Params.beta }}">Beta</a>{{ end }}</h1>
 
 						{{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
 						{{ $latestUrl := path.Join "latest" (after 2 $urlArray) }}
@@ -39,15 +39,14 @@
 						</div>
 						{{ end }}
 
-						{{if (.Params.showAsideToc) }}						
-						<div id="toc-static">{{ .TableOfContents }}</div>
-						{{ else }}
-						{{ .TableOfContents }}
+						{{if (.Params.showAsideToc) }}
+							<div id="toc-static">{{ .TableOfContents }}</div>
+						{{ else if (and (ge (len .TableOfContents) 50) (ne .Params.toc "false")) }}
+							{{ .TableOfContents }}
 						{{ end }}
 						{{ .Content }}
-					</div>		
-					
-					{{if (and (.Params.showAsideToc) (ne (print .TableOfContents) "")) }}
+					</div>
+					{{if (and (.Params.showAsideToc) (and (ge (len .TableOfContents) 50) (ne .Params.toc "false"))) }}
 					<div class="menu-flex-container">
 						<div class="toc-container" id="toc-aside">{{ .TableOfContents }}</div>
 					</div>

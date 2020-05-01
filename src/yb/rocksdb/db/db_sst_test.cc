@@ -136,7 +136,7 @@ TEST_F(DBTest, DontDeleteMovedFile) {
     ASSERT_OK(Flush());
   }
   // this should execute both L0->L1 and L1->(move)->L2 compactions
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   ASSERT_EQ("0,0,1", FilesPerLevel(0));
 
   // If the moved file is actually deleted (the move-safeguard in
@@ -184,7 +184,7 @@ TEST_F(DBTest, DeleteObsoleteFilesPendingOutputs) {
     ASSERT_OK(Flush());
   }
   // this should execute both L0->L1 and L1->(move)->L2 compactions
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   ASSERT_EQ("0,0,1", FilesPerLevel(0));
 
   test::SleepingBackgroundTask blocking_thread;
@@ -229,7 +229,7 @@ TEST_F(DBTest, DeleteObsoleteFilesPendingOutputs) {
   // finish the flush!
   blocking_thread.WakeUp();
   blocking_thread.WaitUntilDone();
-  dbfull()->TEST_WaitForFlushMemTable();
+  ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
   ASSERT_EQ("1,0,0,0,1", FilesPerLevel(0));
 
   metadata.clear();
@@ -243,7 +243,7 @@ TEST_F(DBTest, DeleteObsoleteFilesPendingOutputs) {
 #endif  // ROCKSDB_LITE
 
 TEST_F(DBTest, DBWithSstFileManager) {
-  std::shared_ptr<SstFileManager> sst_file_manager(NewSstFileManager(env_));
+  std::shared_ptr<SstFileManager> sst_file_manager(ASSERT_RESULT(NewSstFileManager(env_)));
   auto sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
 
   int files_added = 0;
@@ -265,8 +265,8 @@ TEST_F(DBTest, DBWithSstFileManager) {
   for (int i = 0; i < 25; i++) {
     GenerateNewRandomFile(&rnd);
     ASSERT_OK(Flush());
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
     // Verify that we are tracking all sst files in dbname_
     ASSERT_EQ(sfm->GetTrackedFiles(), GetAllSSTFiles());
   }
@@ -295,7 +295,7 @@ TEST_F(DBTest, DBWithSstFileManager) {
 
   // Verify that we track all the files again after the DB is closed and opened
   Close();
-  sst_file_manager.reset(NewSstFileManager(env_));
+  sst_file_manager.reset(ASSERT_RESULT(NewSstFileManager(env_)));
   options.sst_file_manager = sst_file_manager;
   sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
 
@@ -324,10 +324,8 @@ TEST_F(DBTest, RateLimitedDelete) {
 
   std::string trash_dir = test::TmpDir(env_) + "/trash";
   int64_t rate_bytes_per_sec = 1024 * 10;  // 10 Kbs / Sec
-  Status s;
-  options.sst_file_manager.reset(NewSstFileManager(
-      env_, nullptr, trash_dir, rate_bytes_per_sec, false, &s));
-  ASSERT_OK(s);
+  options.sst_file_manager.reset(ASSERT_RESULT(NewSstFileManager(
+      env_, nullptr, trash_dir, rate_bytes_per_sec, false)));
   auto sfm = static_cast<SstFileManagerImpl*>(options.sst_file_manager.get());
 
   Destroy(last_options_);
@@ -390,10 +388,8 @@ TEST_F(DBTest, DeleteSchedulerMultipleDBPaths) {
 
   std::string trash_dir = test::TmpDir(env_) + "/trash";
   int64_t rate_bytes_per_sec = 1024 * 1024;  // 1 Mb / Sec
-  Status s;
-  options.sst_file_manager.reset(NewSstFileManager(
-      env_, nullptr, trash_dir, rate_bytes_per_sec, false, &s));
-  ASSERT_OK(s);
+  options.sst_file_manager.reset(ASSERT_RESULT(NewSstFileManager(
+      env_, nullptr, trash_dir, rate_bytes_per_sec, false)));
   auto sfm = static_cast<SstFileManagerImpl*>(options.sst_file_manager.get());
 
   DestroyAndReopen(options);
@@ -466,10 +462,8 @@ TEST_F(DBTest, DestroyDBWithRateLimitedDelete) {
   Close();
   std::string trash_dir = test::TmpDir(env_) + "/trash";
   int64_t rate_bytes_per_sec = 1024 * 1024;  // 1 Mb / Sec
-  Status s;
-  options.sst_file_manager.reset(NewSstFileManager(
-      env_, nullptr, trash_dir, rate_bytes_per_sec, false, &s));
-  ASSERT_OK(s);
+  options.sst_file_manager.reset(ASSERT_RESULT(NewSstFileManager(
+      env_, nullptr, trash_dir, rate_bytes_per_sec, false)));
   ASSERT_OK(DestroyDB(dbname_, options));
 
   auto sfm = static_cast<SstFileManagerImpl*>(options.sst_file_manager.get());
@@ -480,7 +474,7 @@ TEST_F(DBTest, DestroyDBWithRateLimitedDelete) {
 #endif  // ROCKSDB_LITE
 
 TEST_F(DBTest, DBWithMaxSpaceAllowed) {
-  std::shared_ptr<SstFileManager> sst_file_manager(NewSstFileManager(env_));
+  std::shared_ptr<SstFileManager> sst_file_manager(ASSERT_RESULT(NewSstFileManager(env_)));
   auto sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
 
   Options options = CurrentOptions();
@@ -542,7 +536,7 @@ TEST_F(DBTest, DBWithMaxSpaceAllowedRandomized) {
     total_sst_files_size = 0;
     rocksdb::SyncPoint::GetInstance()->ClearTrace();
     rocksdb::SyncPoint::GetInstance()->EnableProcessing();
-    std::shared_ptr<SstFileManager> sst_file_manager(NewSstFileManager(env_));
+    std::shared_ptr<SstFileManager> sst_file_manager(ASSERT_RESULT(NewSstFileManager(env_)));
     auto sfm = static_cast<SstFileManagerImpl*>(sst_file_manager.get());
 
     Options options = CurrentOptions();
@@ -603,7 +597,7 @@ TEST_F(DBTest, OpenDBWithInfiniteMaxOpenFiles) {
     CompactRangeOptions compact_options;
     compact_options.change_level = true;
     compact_options.target_level = 2;
-    db_->CompactRange(compact_options, nullptr, nullptr);
+    ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
 
     // Create 12 Files in L0
     for (int i = 0; i < 12; i++) {
@@ -646,7 +640,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
         std::string val = "val_file_" + ToString(i);
         ASSERT_OK(Put(Key(j), val));
       }
-      Flush();
+      ASSERT_OK(Flush());
     }
     ASSERT_EQ("5", FilesPerLevel(0));
 
@@ -718,7 +712,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
     for (int i = 0; i < 10; i++) {
       ASSERT_OK(Delete(Key(i)));
     }
-    Flush();
+    ASSERT_OK(Flush());
     ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     ASSERT_EQ("", FilesPerLevel(0));
 
@@ -775,7 +769,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
     // Generate 5 files in L0
     for (int i = 0; i < 5; i++) {
       ASSERT_OK(Put(Key(i), "val"));
-      Flush();
+      ASSERT_OK(Flush());
     }
     ASSERT_EQ("5", FilesPerLevel(0));
 
@@ -848,7 +842,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
     for (int i = 0; i < 5; i++) {
       ASSERT_OK(Delete(Key(i)));
     }
-    Flush();
+    ASSERT_OK(Flush());
     ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     ASSERT_EQ("", FilesPerLevel(0));
 
@@ -899,7 +893,7 @@ TEST_F(DBTest, SSTsWithLdbSuffixHandling) {
   for (int i = 0; i < 10; ++i) {
     GenerateNewFile(&rnd, &key_id, false);
   }
-  Flush();
+  ASSERT_OK(Flush());
   Close();
   int const num_files = GetSstFileCount(dbname_);
   ASSERT_GT(num_files, 0);

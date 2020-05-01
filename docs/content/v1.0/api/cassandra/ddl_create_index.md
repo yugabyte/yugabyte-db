@@ -3,6 +3,7 @@ title: CREATE INDEX
 summary: Create a new index on a table
 description: CREATE INDEX
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v1.0:
     parent: api-cassandra

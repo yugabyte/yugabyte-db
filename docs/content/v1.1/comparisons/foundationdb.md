@@ -2,6 +2,7 @@
 title: FoundationDB
 linkTitle: FoundationDB
 description: FoundationDB
+block_indexing: true
 menu:
   v1.1:
     parent: comparisons

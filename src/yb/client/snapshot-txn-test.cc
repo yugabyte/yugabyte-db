@@ -38,6 +38,7 @@ using namespace std::literals;
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int32(inject_load_transaction_delay_ms);
+DECLARE_int32(inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(max_transactions_in_status_request);
 
@@ -138,7 +139,7 @@ std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* s
   // Clock skew is modified by a random amount every 100ms.
   return std::thread([cluster, stop] {
     const server::SkewedClock::DeltaTime upperbound =
-        std::chrono::microseconds(FLAGS_max_clock_skew_usec) / 2;
+        std::chrono::microseconds(GetAtomicFlag(&FLAGS_max_clock_skew_usec)) / 2;
     const auto lowerbound = -upperbound;
     while (!stop->load(std::memory_order_acquire)) {
       auto num_servers = cluster->num_tablet_servers();
@@ -583,7 +584,6 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
   TestThreadHolder thread_holder;
 
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
-    SetFlagOnExit set_flag_on_exit(&stop);
     int ts_idx_to_restart = 0;
     while (!stop.load(std::memory_order_acquire)) {
       std::this_thread::sleep_for(5s);
@@ -599,8 +599,6 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
   for (int i = 0; i != 25; ++i) {
     thread_holder.AddThreadFunctor(
         [this, &stop = thread_holder.stop_flag(), &pool, &key, &keys_to_check, &good_keys] {
-      SetFlagOnExit set_flag_on_exit(&stop);
-
       auto session = CreateSession();
       while (!stop.load(std::memory_order_acquire)) {
         int k = key.fetch_add(1, std::memory_order_acq_rel);
@@ -645,8 +643,6 @@ TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
 
   thread_holder.AddThreadFunctor(
       [this, &stop = thread_holder.stop_flag(), &keys_to_check, kNumWritesPerKey] {
-    SetFlagOnExit set_flag_on_exit(&stop);
-
     auto session = CreateSession();
     for (;;) {
       std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
@@ -706,16 +702,15 @@ void SnapshotTxnTest::TestRemoteBootstrap() {
       for (int transaction_idx = 0; !stop.load(std::memory_order_acquire); ++transaction_idx) {
         auto txn = CreateTransaction();
         session->SetTransaction(txn);
-        WriteRows(session, transaction_idx);
-        if (txn->CommitFuture().get().ok()) {
+        if (WriteRows(session, transaction_idx).ok() && txn->CommitFuture().get().ok()) {
           transactions.fetch_add(1);
         }
       }
     });
 
-    while (transactions.load(std::memory_order_acquire) < kTransactionsCount) {
-      std::this_thread::sleep_for(100ms);
-    }
+    ASSERT_OK(thread_holder.WaitCondition([&transactions] {
+      return transactions.load(std::memory_order_acquire) >= kTransactionsCount;
+    }));
 
     cluster_->mini_tablet_server(0)->Shutdown();
 
@@ -724,9 +719,10 @@ void SnapshotTxnTest::TestRemoteBootstrap() {
     std::this_thread::sleep_for(FLAGS_log_min_seconds_to_retain * 1s);
 
     auto start_transactions = transactions.load(std::memory_order_acquire);
-    while (transactions.load(std::memory_order_acquire) < start_transactions + kTransactionsCount) {
-      std::this_thread::sleep_for(100ms);
-    }
+    ASSERT_OK(thread_holder.WaitCondition([&transactions, start_transactions] {
+      return transactions.load(std::memory_order_acquire) >=
+             start_transactions + kTransactionsCount;
+    }));
 
     thread_holder.Stop();
 
@@ -774,8 +770,7 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
     for (int transaction_idx = 0; !stop.load(std::memory_order_acquire); ++transaction_idx) {
       auto txn = CreateTransaction();
       session->SetTransaction(txn);
-      WriteRows(session, transaction_idx);
-      if (txn->CommitFuture().get().ok()) {
+      if (WriteRows(session, transaction_idx).ok() && txn->CommitFuture().get().ok()) {
         transactions.fetch_add(1);
       }
     }
@@ -841,6 +836,29 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
 
     prev_ht = current_ht;
   }
+}
+
+TEST_F(SnapshotTxnTest, DeleteOnLoad) {
+  constexpr int kTransactions = 400;
+
+  FLAGS_inject_status_resolver_delay_ms = 150 * kTimeMultiplier;
+
+  DisableApplyingIntents();
+
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  auto session = CreateSession();
+  for (int i = 0; i != kTransactions; ++i) {
+    WriteData(WriteOpType::INSERT, i);
+  }
+
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  ASSERT_OK(client_->DeleteTable(table_.table()->name(), /* wait= */ false));
+
+  // Wait delete table request to replicate on alive node.
+  std::this_thread::sleep_for(1s * kTimeMultiplier);
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
 }
 
 } // namespace client

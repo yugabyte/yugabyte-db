@@ -19,9 +19,11 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -74,6 +76,11 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
       String masterAddrs = universe.getMasterAddresses();
 
+      Cluster currCluster = universe.getUniverseDetails()
+                                    .getClusterByUuid(taskParams().placementUuid);
+      UserIntent userIntent = currCluster.userIntent;
+      PlacementInfo pi = currCluster.placementInfo;
+
       // Update Node State to being removed.
       createSetNodeStateTask(currentNode, NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
@@ -116,13 +123,31 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       // removed and we know LoadBalancer will not be able to handle that.
       if (instanceAlive) {
 
-        createWaitForDataMoveTask()
-            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+        int rfInZone = PlacementInfoUtil.getZoneRF(pi, currentNode.cloudInfo.cloud,
+                                                   currentNode.cloudInfo.region,
+                                                   currentNode.cloudInfo.az);
+        int nodesInZone = PlacementInfoUtil.getNumActiveTserversInZone(
+            universe.getNodes(), currentNode.cloudInfo.cloud,
+            currentNode.cloudInfo.region, currentNode.cloudInfo.az);
 
-        // Stop the tserver process only if it is reachable.
+        if (rfInZone == -1 || nodesInZone == 0) {
+          throw new RuntimeException("Error getting placement info for cluster with node: " +
+                                     currentNode.nodeName);
+        }
+        // Perform a data migration and stop the tserver process only if it is reachable.
         boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
         LOG.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
         if (tserverReachable) {
+          // Since numNodes can never be less, that will mean there is a potential node to move
+          // data to.
+          if (userIntent.numNodes > userIntent.replicationFactor) {
+            // We only want to move data if the number of nodes in the zone are more than the RF
+            // of the zone.
+            if (nodesInZone > rfInZone) {
+              createWaitForDataMoveTask()
+                  .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+            }
+          }
           createTServerTaskForNode(currentNode, "stop")
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }

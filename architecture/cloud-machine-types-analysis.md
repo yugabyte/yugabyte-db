@@ -16,3 +16,5 @@ c5.2xlarge      8      16GiB    $248/month   +$100/TB/month    $350/month     $4
 c5.4xlarge      16     32GiB    $496/month   +$100/TB/month    $600/month     $700/month
 i3.2xlarge      8      61GiB    $455/month   +$0 (1.9TB disk)  $455/month     $455/month (1.9TB local SSD)
 ```
+
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/cloud-machine-types-analysis.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)

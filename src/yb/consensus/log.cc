@@ -39,10 +39,13 @@
 #include <boost/thread/shared_mutex.hpp>
 
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
+
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
@@ -54,6 +57,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/logging.h"
@@ -328,7 +332,7 @@ const Status Log::kLogShutdownStatus(
 
 Status Log::Open(const LogOptions &options,
                  const std::string& tablet_id,
-                 const std::string& tablet_wal_path,
+                 const std::string& wal_dir,
                  const std::string& peer_uuid,
                  const Schema& schema,
                  uint32_t schema_version,
@@ -337,16 +341,15 @@ Status Log::Open(const LogOptions &options,
                  int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log) {
 
-  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(tablet_wal_path)),
-                        Substitute("Failed to create table wal dir $0", DirName(tablet_wal_path)));
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
+                        Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
 
-  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, tablet_wal_path),
-                        Substitute("Failed to create tablet wal dir $0", tablet_wal_path));
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, wal_dir),
+                        Substitute("Failed to create tablet wal dir $0", wal_dir));
 
   scoped_refptr<Log> new_log(new Log(options,
-                                     tablet_wal_path,
+                                     wal_dir,
                                      tablet_id,
-                                     tablet_wal_path,
                                      peer_uuid,
                                      schema,
                                      schema_version,
@@ -357,15 +360,14 @@ Status Log::Open(const LogOptions &options,
   return Status::OK();
 }
 
-Log::Log(LogOptions options, string log_path,
-         string tablet_id, string tablet_wal_path, string peer_uuid, const Schema& schema,
-         uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity,
-         ThreadPool* append_thread_pool)
+Log::Log(
+    LogOptions options, string wal_dir, string tablet_id, string peer_uuid, const Schema& schema,
+    uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity,
+    ThreadPool* append_thread_pool)
     : options_(std::move(options)),
-      log_dir_(std::move(log_path)),
+      wal_dir_(std::move(wal_dir)),
       tablet_id_(std::move(tablet_id)),
       peer_uuid_(std::move(peer_uuid)),
-      tablet_wal_path_(std::move(tablet_wal_path)),
       schema_(schema),
       schema_version_(schema_version),
       log_state_(kLogInitialized),
@@ -378,7 +380,7 @@ Log::Log(LogOptions options, string log_path,
       allocation_state_(kAllocationNotStarted),
       metric_entity_(metric_entity),
       on_disk_size_(0),
-      log_prefix_(Format("T $0 P $1: ", tablet_id_, peer_uuid_)) {
+      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)) {
   set_wal_retention_secs(options.retention_secs);
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_max_threads(1).Build(&allocation_pool_));
   if (metric_entity_) {
@@ -390,12 +392,12 @@ Status Log::Init() {
   std::lock_guard<percpu_rwlock> write_lock(state_lock_);
   CHECK_EQ(kLogInitialized, log_state_);
   // Init the index
-  log_index_.reset(new LogIndex(log_dir_));
+  log_index_.reset(new LogIndex(wal_dir_));
   // Reader for previous segments.
   RETURN_NOT_OK(LogReader::Open(get_env(),
                                 log_index_,
                                 tablet_id_,
-                                tablet_wal_path_,
+                                wal_dir_,
                                 peer_uuid_,
                                 metric_entity_.get(),
                                 &reader_));
@@ -404,7 +406,7 @@ Status Log::Init() {
   // off in terms of sequence numbers.
   if (reader_->num_segments() != 0) {
     VLOG_WITH_PREFIX(1) << "Using existing " << reader_->num_segments()
-                        << " segments from path: " << tablet_wal_path_;
+                        << " segments from path: " << wal_dir_;
 
     vector<scoped_refptr<ReadableLogSegment> > segments;
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
@@ -548,7 +550,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
                      bool caller_owns_operation,
                      bool skip_wal_write) {
   if (!skip_wal_write) {
-        RETURN_NOT_OK(entry_batch->Serialize());
+    RETURN_NOT_OK(entry_batch->Serialize());
     Slice entry_batch_data = entry_batch->data();
     LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->flush_marker())
         << "Cannot call DoAppend() with no data";
@@ -730,7 +732,7 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   int max_to_delete = std::max(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
   if (segments_to_gc->size() > max_to_delete) {
     VLOG_WITH_PREFIX(2)
-        << "GCing " << segments_to_gc->size() << " in " << log_dir_
+        << "GCing " << segments_to_gc->size() << " in " << wal_dir_
         << " would not leave enough remaining segments to satisfy minimum "
         << "retention requirement. Only considering "
         << max_to_delete << "/" << reader_->num_segments();
@@ -863,7 +865,7 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
 Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   CHECK_GE(min_op_idx, 0);
 
-  LOG_WITH_PREFIX(INFO) << "Running Log GC on " << log_dir_ << ": retaining ops >= " << min_op_idx
+  LOG_WITH_PREFIX(INFO) << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
                         << ", log segment size = " << options_.segment_size_bytes;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
@@ -1027,17 +1029,53 @@ scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) c
   return reader_->GetSegmentBySequenceNumber(seq);
 }
 
+bool Log::HasOnDiskData(FsManager* fs_manager, const string& wal_dir) {
+  return fs_manager->env()->FileExists(wal_dir);
+}
+
 Status Log::DeleteOnDiskData(Env* env,
                              const string& tablet_id,
-                             const string& tablet_wal_path,
+                             const string& wal_dir,
                              const string& peer_uuid) {
-  if (!env->FileExists(tablet_wal_path)) {
+  if (!env->FileExists(wal_dir)) {
     return Status::OK();
   }
   LOG(INFO) << "T " << tablet_id << "P " << peer_uuid
-            << ": Deleting WAL dir " << tablet_wal_path;
-  RETURN_NOT_OK_PREPEND(env->DeleteRecursively(tablet_wal_path),
+            << ": Deleting WAL dir " << wal_dir;
+  RETURN_NOT_OK_PREPEND(env->DeleteRecursively(wal_dir),
                         "Unable to recursively delete WAL dir for tablet " + tablet_id);
+  return Status::OK();
+}
+
+Status Log::FlushIndex() {
+  if (!log_index_) {
+    return Status::OK();
+  }
+  return log_index_->Flush();
+}
+
+Status Log::CopyTo(const std::string& dest_wal_dir) {
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options_.env, dest_wal_dir),
+                        Format("Failed to create tablet WAL dir $0", dest_wal_dir));
+  // Make sure log segment we have so far are immutable, so we can hardlink them instead of copying.
+  RETURN_NOT_OK(AllocateSegmentAndRollOver());
+  RETURN_NOT_OK(log_index_->Flush());
+
+  auto* const env = options_.env;
+  const auto files = VERIFY_RESULT(env->GetChildren(wal_dir_, ExcludeDots::kTrue));
+
+  for (const auto& file : files) {
+    const auto src_path = JoinPathSegments(wal_dir_, file);
+    const auto dest_path = JoinPathSegments(dest_wal_dir, file);
+
+    // Segment files are immutable, so we can use hardlinks.
+    if (FsManager::IsWalSegmentFileName(file)) {
+      RETURN_NOT_OK(env->LinkFile(src_path, dest_path));
+    } else {
+      RETURN_NOT_OK_PREPEND(
+          CopyFile(env, src_path, dest_path), Format("Failed to copy file: $0", src_path));
+    }
+  }
   return Status::OK();
 }
 
@@ -1076,10 +1114,10 @@ Status Log::SwitchToAllocatedSegment() {
   // Increment "next" log segment seqno.
   active_segment_sequence_number_++;
   const string new_segment_path =
-      FsManager::GetWalSegmentFileName(tablet_wal_path_, active_segment_sequence_number_);
+      FsManager::GetWalSegmentFilePath(wal_dir_, active_segment_sequence_number_);
 
   RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
-  RETURN_NOT_OK(get_env()->SyncDir(log_dir_));
+  RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));
 
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(
@@ -1155,7 +1193,7 @@ Status Log::ReplaceSegmentInReaderUnlocked() {
 Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
                                      string* result_path,
                                      shared_ptr<WritableFile>* out) {
-  string path_tmpl = JoinPathSegments(log_dir_, kSegmentPlaceholderFileTemplate);
+  string path_tmpl = JoinPathSegments(wal_dir_, kSegmentPlaceholderFileTemplate);
   VLOG_WITH_PREFIX(2) << "Creating temp. file for place holder segment, template: " << path_tmpl;
   std::unique_ptr<WritableFile> segment_file;
   RETURN_NOT_OK(get_env()->NewTempWritableFile(opts,

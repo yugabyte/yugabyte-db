@@ -2,6 +2,7 @@
 title: GET
 linkTitle: GET
 description: GET
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

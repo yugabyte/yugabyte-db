@@ -1,7 +1,8 @@
 ---
-title: Explore sample apps
+title: Explore YugabyteDB sample applications
+headerTitle: Explore sample applications
 linkTitle: Explore sample apps
-description: Explore sample apps
+description: Explore sample applications running on YugabyteDB.
 headcontent: 
 image: /images/section_icons/index/develop.png
 aliases:

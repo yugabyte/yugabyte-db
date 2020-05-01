@@ -1095,22 +1095,22 @@ void HandleFlushDB(LocalCommandData data) {
 }
 
 void HandleFlushAll(LocalCommandData data) {
-  vector<yb::client::YBTableName> table_names;
   const string prefix = common::kRedisTableName;
-  Status s = data.client()->ListTables(&table_names, prefix);
-  if (!s.ok()) {
+  auto result = data.client()->ListTables(prefix);
+  if (!result.ok()) {
     RedisResponsePB resp;
-    const Slice message = s.message();
+    const Slice message = result.status().message();
     resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
     resp.set_error_message(message.data(), message.size());
     data.Respond(&resp);
     return;
   }
+  const auto& table_names = *result;
   // Gather table ids.
   vector<string> table_ids;
   for (const auto& name : table_names) {
     std::shared_ptr<client::YBTable> table;
-    s = data.client()->OpenTable(name, &table);
+    const auto s = data.client()->OpenTable(name, &table);
     if (!s.ok()) {
       RedisResponsePB resp;
       const Slice message = s.message();
@@ -1161,18 +1161,17 @@ void HandleCreateDB(LocalCommandData data) {
 void HandleListDB(LocalCommandData data) {
   RedisResponsePB resp;
   // Figure out the redis table name that we should be using.
-  vector<yb::client::YBTableName> table_names;
   const string prefix = common::kRedisTableName;
   const size_t prefix_len = strlen(common::kRedisTableName);
-  Status s = data.client()->ListTables(&table_names, prefix);
-  if (!s.ok()) {
-    const Slice message = s.message();
+  const auto result = data.client()->ListTables(prefix);
+  if (!result.ok()) {
+    const Slice message = result.status().message();
     resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
     resp.set_error_message(message.data(), message.size());
     data.Respond(&resp);
     return;
   }
-
+  const auto& table_names = *result;
   auto array_response = resp.mutable_array_response();
   vector<string> dbs;
   for (const auto& ybname : table_names) {

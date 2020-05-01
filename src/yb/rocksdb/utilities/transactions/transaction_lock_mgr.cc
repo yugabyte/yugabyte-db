@@ -394,7 +394,7 @@ void TransactionLockMgr::UnLock(TransactionImpl* txn, uint32_t column_family_id,
 
   TransactionID txn_id = txn->GetTxnID();
 
-  stripe->stripe_mutex->Lock();
+  CHECK_OK(stripe->stripe_mutex->Lock());
 
   const auto& iter = stripe->keys.find(key);
   if (iter != stripe->keys.end() && iter->second.txn_id == txn_id) {
@@ -453,7 +453,7 @@ void TransactionLockMgr::UnLock(const TransactionImpl* txn,
       assert(lock_map->lock_map_stripes_.size() > stripe_num);
       LockMapStripe* stripe = lock_map->lock_map_stripes_.at(stripe_num);
 
-      stripe->stripe_mutex->Lock();
+      CHECK_OK(stripe->stripe_mutex->Lock());
 
       for (const std::string* key : stripe_keys) {
         const auto& iter = stripe->keys.find(*key);

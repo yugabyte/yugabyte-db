@@ -1,7 +1,8 @@
 ---
 title: Check processes
 linkTitle: Check processes
-description: Check YugabyteDB processes
+headerTitle: Check YugabyteDB processes
+description: How to check if your YugabyteDB processes are running
 aliases:
   - /troubleshoot/nodes/check-processes/
 menu:
@@ -38,7 +39,7 @@ Once the processes are running, if they are not accessible from your client mach
 
 ## 2. Are the yb-master and yb-tserver endpoints accessible?
 
-Generally, the endpoints are: 
+Generally, the endpoints are:
 
 |      Description |                       URL |
 |------------------|---------------------------|
@@ -53,11 +54,11 @@ However, in some setups these endpoints may not be accessible, depending on the 
 
 ### IP not accessible
 
-- Private vs Public IP: Consider setting up a VPN or using the node’s public IP (e.g. get it from the machine status on your cloud-provider account).
+- Private versus Public IP: Consider setting up a VPN or using the node’s public IP (for example, get it from the machine status on your cloud-provider account).
 
 ### Ports closed
 
-- Cloud Account Configuration: Open the relevant ports (see below),  for TCP traffic on your cloud-provider account (e.g. security group rules).
+- Cloud Account Configuration: Open the relevant ports (see below), for TCP traffic on your cloud-provider account (for example, security group rules).
 
 - SELinux turned on: If your host has SELinux turned on, run the following commands to open the ports using firewall exceptions.
 

@@ -1,7 +1,8 @@
 ---
-title: RBAC model
+title: Role-based access control (RBAC) model in YSQL
 linkTitle: RBAC model
-description: Role-based access control (RBAC) model
+headerTitle: Role-based access control (RBAC) model
+description: The role-based access control (RBAC) model in YSQL is a collection of privileges on resources given to roles.
 headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
 menu:

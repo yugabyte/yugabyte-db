@@ -161,7 +161,7 @@ ReadableLogSegment::ReadableLogSegment(
       readable_file_(std::move(readable_file)),
       is_initialized_(false),
       footer_was_rebuilt_(false) {
-  env_util::OpenFileForRandom(Env::Default(), path_, &readable_file_checkpoint_);
+  CHECK_OK(env_util::OpenFileForRandom(Env::Default(), path_, &readable_file_checkpoint_));
 }
 
 Status ReadableLogSegment::Init(const LogSegmentHeaderPB& header,
@@ -563,7 +563,7 @@ ReadEntriesResult ReadableLogSegment::ReadEntries() {
   return result;
 }
 
-Result<std::pair<OpId, RestartSafeCoarseTimePoint>> ReadableLogSegment::ReadFirstEntryMetadata() {
+Result<FirstEntryMetadata> ReadableLogSegment::ReadFirstEntryMetadata() {
   TRACE_EVENT1("log", "ReadableLogSegment::ReadFirstOpId",
                "path", path_);
 
@@ -645,10 +645,10 @@ Result<std::pair<OpId, RestartSafeCoarseTimePoint>> ReadableLogSegment::ReadFirs
     return STATUS(NotFound, "Missing mono time in batch");
   }
 
-  yb::OpId op_id = yb::OpId::FromPB(current_batch.committed_op_id());
-  RestartSafeCoarseTimePoint time =
-          RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time());
-  return std::make_pair(op_id, time);
+  return FirstEntryMetadata {
+    .committed_op_id = yb::OpId::FromPB(current_batch.committed_op_id()),
+    .mono_time = RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time())
+  };
 }
 
 Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries) {

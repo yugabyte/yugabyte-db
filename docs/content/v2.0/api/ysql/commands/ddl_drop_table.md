@@ -3,6 +3,7 @@ title: DROP TABLE
 linkTitle: DROP TABLE
 summary: Remove a table
 description: DROP TABLE
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-table

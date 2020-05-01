@@ -2,6 +2,7 @@
 title: Node Status & Actions
 linkTitle: Node Status & Actions
 description: Node Status & Actions
+block_indexing: true
 menu:
   v1.1:
     identifier: manage-node-actions

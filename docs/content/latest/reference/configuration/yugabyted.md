@@ -1,8 +1,9 @@
 ---
-title: yugabyted
+title: yugabyted reference
+headerTitle: yugabyted
 linkTitle: yugabyted
-description: yugabyted
-beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
+description: Use yugabyted to simplify creating, running, and managing yb-tserver and yb-master servers.
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     identifier: yugabyted
@@ -20,7 +21,7 @@ The `yugabyted` executable file is located in the YugabyteDB home's `bin` direct
 
 yugabyted currently supports creating a 1-node cluster only. Ability to create multi-node clusters is under active development. 
 
-- For local multi-node clusers, use [`yb-ctl`](../../../admin/yb-ctl). 
+- For local multi-node clusters, use [`yb-ctl`](../../../admin/yb-ctl). 
 
 - For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master).
 
@@ -29,13 +30,19 @@ yugabyted currently supports creating a 1-node cluster only. Ability to create m
 ## Syntax
 
 ```sh
-yugabyted [-h] [ <command> ] [ <options> ]
+yugabyted [-h] [ <command> ] [ <flags> ]
 ```
 
 - *command*: command to run
-- *options*: one or more options, separated by spaces.
+- *flags*: one or more flags, separated by spaces.
 
-### Command-line help
+### Example 
+
+```sh
+$ ./bin/yugabyted start
+```
+
+### Online help
 
 You can access the overview command line help for `yugabyted` by running one of the following examples from the YugabyteDB home.
 
@@ -69,7 +76,7 @@ The following commands are available:
 
 Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This one-node cluster includes [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) services.
 
-### Syntax
+#### Syntax
 
 ```sh
  yugabyted start
@@ -90,7 +97,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your
    [ --ui <bool> ]
 ```
 
-### Options
+#### Flags
 
 ##### -h, --help
 
@@ -153,17 +160,17 @@ Enable or disable the "call home" feature that sends analytics data to Yugabyte.
 Enable or disable the webserver UI. Default is `true`.
 
 -----
-## stop
+### stop
 
 Use the `yugabted stop` command to stop a YugabyteDB cluster.
 
-### Syntax
+#### Syntax
 
 ```sh
 yugabyted stop [ -h ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
-## Options
+#### Flags
 
 ##### -h | --help
 
@@ -179,17 +186,17 @@ The directory where YugabyteDB will store data.
 
 -----
 
-## status
+### status
 
 Use the `yugabyted status` command to check the status.
 
-## Syntax
+#### Syntax
 
 ```
 yugabyted status [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
-## Options
+#### Flags
 
 ##### -h --help
 
@@ -205,17 +212,17 @@ The directory where YugabyteDB stores data.
 
 -----
 
-## version
+### version
 
 Use the `yugabyted version` command to check the version number.
 
-### Syntax
+#### Syntax
 
 ```
 yugabyted version [ -h | --help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
-### Options
+#### Flags
 
 ##### -h | --help
 
@@ -231,7 +238,7 @@ The directory where YugabyteDB stores data.
 
 -----
 
-## demo
+### demo
 
 Use the `yugabyted demo` command to start YugabyteDB with a retail demo database. Get started with YSQL by using the [Explore YSQL](../../../quick-start/explore-ysql) tutorial in the [Quick start](../../../quick-start/) guide.
 
@@ -241,13 +248,13 @@ When you quit the demo instance, the retail demo database is deleted and any cha
 
 {{< /note >}}
 
-### Syntax
+#### Syntax
 
 ```
 yugabyted demo [ -h | -help ] [ --config <config-file> ] [ --data_dir <data-directory> ]
 ```
 
-### Options
+#### Flags
 
 ##### -h | --help
 

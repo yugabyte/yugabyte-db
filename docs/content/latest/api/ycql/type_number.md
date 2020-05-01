@@ -1,7 +1,9 @@
 ---
-title: Non-integer
+title: Non-integer data types (FLOAT, DOUBLE, and DECIMAL) [YCQL]
+headerTitle: Non-integer
+linkTitle: Non-integer
 summary: FLOAT, DOUBLE, and DECIMAL
-description: Non-integer numbers
+description: Use the non-integer (floating-point and fixed-point) data types to specify non-integer numbers. 
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Floating-point and fixed-point numbers are used to specify non-integer numbers. Different floating point data types represent different precision numbers.
+Use the non-integer (floating-point and fixed-point) data types to specify non-integer numbers. Different floating point data types represent different precision numbers.
 
 Data type | Description | Decimal precision |
 ---------|-----|-----|

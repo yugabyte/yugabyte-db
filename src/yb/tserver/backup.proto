@@ -11,45 +11,57 @@
 // under the License.
 //
 
-syntax = "proto2";
+syntax = "proto3";
 
 package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
+import "google/protobuf/any.proto";
 import "yb/tserver/tserver.proto";
 
 service TabletServerBackupService {
-  rpc TabletSnapshotOp(TabletSnapshotOpRequestPB)
-      returns (TabletSnapshotOpResponsePB);
+  rpc TabletSnapshotOp(TabletSnapshotOpRequestPB) returns (TabletSnapshotOpResponsePB);
 }
 
 message TabletSnapshotOpRequestPB {
   enum Operation {
     UNKNOWN = 0;
-    CREATE = 1;
+    CREATE_ON_TABLET = 1; // Replicated at tserver, to create snapshot for a particular tablet.
     RESTORE = 2;
-    DELETE = 3;
+    DELETE_ON_TABLET = 3;
+    CREATE_ON_MASTER = 4; // Replicated at master, while creating snapshot for multiple tablets.
+    DELETE_ON_MASTER = 5;
   }
 
   // UUID of server this request is addressed to.
-  optional bytes dest_uuid = 1;
+  bytes dest_uuid = 1;
 
-  optional Operation operation = 2;
+  Operation operation = 2;
 
-  optional bytes snapshot_id = 3;
+  // In case of transactional id it is binary representation of snapshot UUID, i.e. 16 bytes.
+  // Otherwise it is hexadecimal representation of snapshot UUID, i.e. 32 bytes.
+  bytes snapshot_id = 3;
 
-  // Tablet to snapshot.
-  optional bytes tablet_id = 4;
+  // Tablets to snapshot. In case of CREATE_ON_MASTER it contains UUIDs of all tablets of snapshot.
+  // Otherwise it contains just one tablet.
+  repeated bytes tablet_id = 4;
 
-  optional fixed64 propagated_hybrid_time = 5;
+  fixed64 propagated_hybrid_time = 5;
 
   // Override the snapshot directory. Used in restoring sys catalog to avoid running initdb.
-  optional string snapshot_dir_override = 6;
+  string snapshot_dir_override = 6;
+
+  fixed64 snapshot_hybrid_time = 7;
+
+  // Extra data assigned for this snapshot request, so instance it could contain SysRowEntries.
+  google.protobuf.Any extra_data = 8;
+
+  bool imported = 9;
 }
 
 message TabletSnapshotOpResponsePB {
-  optional TabletServerErrorPB error = 1;
+  TabletServerErrorPB error = 1;
 
-  optional fixed64 propagated_hybrid_time = 2;
+  fixed64 propagated_hybrid_time = 2;
 }

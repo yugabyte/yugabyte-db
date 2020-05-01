@@ -5,6 +5,7 @@ import PropTypes from 'prop-types';
 import { components } from 'react-select';
 import { browserHistory } from 'react-router';
 import { YBFormSelect, YBFormToggle, YBFormInput } from '../../common/forms/fields';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { Row, Col } from 'react-bootstrap';
 import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray, isEmptyString, isNonEmptyString } from 'utils/ObjectUtils';
 import { Field } from 'formik';
@@ -13,6 +14,26 @@ import * as cron from 'cron-validator';
 import * as Yup from "yup";
 
 import '../common.scss';
+
+const schemaValidation =  Yup.object().shape({
+  backupTableUUID: Yup.string().when('tableKeyspace', {
+    is: (tableKeyspace) => !tableKeyspace,
+    then: Yup.string().required('Backup keyspace or table is required')
+  }),
+  tableKeyspace: Yup.string().when('backupTableUUID', {
+    is: (backupTableUUID) => !backupTableUUID,
+    then: Yup.string().required('Backup keyspace or table is required')
+  }),
+  storageConfigUUID: Yup.string()
+  .required('Storage Config is Required'),
+  enableSSE: Yup.bool(),
+  schedulingFrequency: Yup.number('Frequency must be a number'),
+  cronExpression: Yup.string().test({
+    name: "isValidCron",
+    test: (value) => (value && cron.isValidCron(value)) || !value,
+    message: 'Does not looks like a valid cron expression'
+  })
+}, ['backupTableUUID', 'tableKeyspace']);
 
 export default class CreateBackup extends Component {
   static propTypes = {
@@ -28,34 +49,37 @@ export default class CreateBackup extends Component {
       universeTables
     } = this.props;
 
-    if (isDefinedNotNull(values.backupTableUUID) &&
-        values.backupTableUUID.length &&
-        isDefinedNotNull(values.storageConfigUUID)) {
+    if (isDefinedNotNull(values.storageConfigUUID)) {
       const payload = {
         "storageConfigUUID": values.storageConfigUUID,
         "sse": values.enableSSE,
         "schedulingFrequency": isEmptyString(values.schedulingFrequency) ? null : values.schedulingFrequency,
         "cronExpression": isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
       };
-      if (values.backupTableUUID[0] === "fulluniverse") {
+      if (isDefinedNotNull(values.backupTableUUID) && values.backupTableUUID.length) {
+        if (values.backupTableUUID[0] === "fulluniverse") {
+          createUniverseBackup(universeUUID, payload);
+        } else if (values.backupTableUUID.length > 1) {
+          payload.tableUUIDList = values.backupTableUUID;
+          createUniverseBackup(universeUUID, payload);
+        } else {
+          const backupTable = universeTables
+                                .find((table) => table.tableUUID === values.backupTableUUID[0]);
+          payload.tableName = backupTable.tableName;
+          payload.keyspace = backupTable.keySpace;
+          payload.actionType = "CREATE";
+          createTableBackup(universeUUID, values.backupTableUUID, payload);
+        }
+      } else if (values.tableKeyspace) {
+        payload.keyspace = values.tableKeyspace.value;
         createUniverseBackup(universeUUID, payload);
-      } else if (values.backupTableUUID.length > 1) {
-        payload.tableUUIDList = values.backupTableUUID;
-        createUniverseBackup(universeUUID, payload);
-      } else {
-        const backupTable = universeTables
-                              .find((table) => table.tableUUID === values.backupTableUUID[0]);
-        payload.tableName = backupTable.tableName;
-        payload.keyspace = backupTable.keySpace;
-        payload.actionType = "CREATE";
-        createTableBackup(universeUUID, values.backupTableUUID, payload);
       }
       onHide();
       browserHistory.push('/universes/' + universeUUID + "/backups");
     }
   };
 
-  backupItemChanged = (props, option) => {
+  backupTableChanged = (props, option) => {
     if (isNonEmptyObject(option) && option.value === "fulluniverse") {
       props.form.setFieldValue(props.field.name, option);
     } else if (isNonEmptyArray(option)) {
@@ -73,12 +97,14 @@ export default class CreateBackup extends Component {
   }
 
   render() {
-    const { visible, onHide, tableInfo, storageConfigs, universeTables } = this.props;
+    const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
     const storageOptions = storageConfigs.map((config) => {
       return {value: config.configUUID, label: config.name + " Storage"};
     });
     const initialValues = this.props.initialValues;
+
     let tableOptions = [];
+    const keyspaceOptions = [{ value: '', label: 'None'}];
     let modalTitle = "Create Backup";
     if (isNonEmptyObject(tableInfo)) {
       tableOptions = [{
@@ -88,7 +114,9 @@ export default class CreateBackup extends Component {
       modalTitle = modalTitle + " for " + tableInfo.keySpace + "." + tableInfo.tableName;
       initialValues.backupTableUUID = tableOptions[0];
     } else {
+      const keyspaces = new Set();
       tableOptions = universeTables.map((tableInfo) => {
+        keyspaces.add(tableInfo.keySpace);
         return {value: tableInfo.tableUUID, label: tableInfo.keySpace + "." + tableInfo.tableName};
       }).sort((a, b) => a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1);
       tableOptions = [
@@ -103,6 +131,9 @@ export default class CreateBackup extends Component {
           options: tableOptions
         }
       ];
+      keyspaces.forEach(key => {
+        keyspaceOptions.push({ value: key, label: key});
+      });
     }
 
     initialValues.schedulingFrequency = "";
@@ -131,41 +162,78 @@ export default class CreateBackup extends Component {
           onFormSubmit={(values) => {
             const payload = {
               ...values,
-              backupTableUUID: values.backupTableUUID.map(x => x.value),
+              backupTableUUID: Array.isArray(values.backupTableUUID) ? 
+                values.backupTableUUID.map(x => x.value) : [values.backupTableUUID.value],
               storageConfigUUID: values.storageConfigUUID.value,
             };
             this.createBackup(payload);
           }}
           initialValues={initialValues}
-          validationSchema={
-            Yup.object().shape({
-              backupTableUUID: Yup.string()
-              .required('Backup Table is Required'),
-              storageConfigUUID: Yup.string()
-              .required('Storage Config is Required'),
-              enableSSE: Yup.bool(),
-              schedulingFrequency: Yup.number('Frequency must be a number'),
-              cronExpression: Yup.string().test({
-                name: "isValidCron",
-                test: (value) => (value && cron.isValidCron(value)) || !value,
-                message: 'Does not looks like a valid cron expression'
-              })
-            })
-          }
-          render={props => {
-            const isSchedulingFrequencyReadOnly = props.values.cronExpression !== "";
-            const isCronExpressionReadOnly = props.values.schedulingFrequency !== "";
+          validationSchema={schemaValidation}
+          render={({values: { cronExpression, schedulingFrequency, backupTableUUID, storageConfigUUID }}) => {
+            const isSchedulingFrequencyReadOnly = cronExpression !== "";
+            const isCronExpressionReadOnly = schedulingFrequency !== "";
+            const isTableSelected = backupTableUUID && backupTableUUID.length && backupTableUUID[0].value !== 'fulluniverse';
+            const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
 
             // params for backupTableUUID <Field>
             // NOTE: No entire keyspace selection implemented
             return (<Fragment>
+              {isScheduled &&
+                <div className="backup-frequency-control">                  
+                  <Row>
+                    <Col xs={6}>
+                      <Field
+                        name="schedulingFrequency"
+                        component={YBFormInput}
+                        readOnly={isSchedulingFrequencyReadOnly}
+                        type={"number"}
+                        label={"Backup frequency"}
+                        placeholder={"Interval in ms"}
+                      />
+                    </Col>
+                  </Row>
+                  <div className="separating-text">OR</div>
+                  <Row>
+                    <Col xs={6}>
+                      <Field
+                        name="cronExpression"
+                        component={YBFormInput}
+                        readOnly={isCronExpressionReadOnly}
+                        placeholder={"Cron expression"}
+                        label={"Cron expression"}
+                      />
+                    </Col>
+                    <Col lg={1} className="cron-expr-tooltip">
+                      <YBInfoTip title="Cron Expression Format"
+                        content={<div><code>Min&nbsp; Hour&nbsp; Day&nbsp; Mon&nbsp; Weekday</code>
+                          <pre><code>*    *    *    *    *  command to be executed</code></pre>
+                          <pre><code>┬    ┬    ┬    ┬    ┬<br />
+│    │    │    │    └─  Weekday  (0=Sun .. 6=Sat)<br />
+│    │    │    └──────  Month    (1..12)<br />
+│    │    └───────────  Day      (1..31)<br />
+│    └────────────────  Hour     (0..23)<br />
+└─────────────────────  Minute   (0..59)</code></pre>
+                        </div>} />  
+                    </Col>
+                  </Row>
+                </div>
+              }
               <Field
                 name="storageConfigUUID"
                 component={YBFormSelect}
                 label={"Storage"}
-                onInputChanged={this.storageConfigChanged}
                 options={storageOptions}
               />
+              {!!keyspaceOptions.length &&
+                <Field
+                  name="tableKeyspace"
+                  component={YBFormSelect}
+                  label="Table keyspace"
+                  options={keyspaceOptions}
+                  isDisabled={isTableSelected || tableInfo} // Disable if backup table is specified
+                />
+              }
               <Field
                 name="backupTableUUID"
                 component={YBFormSelect}
@@ -176,38 +244,14 @@ export default class CreateBackup extends Component {
                 label={`Tables to backup`}
                 options={tableOptions}
                 isMulti={true}
-                onChange={this.backupItemChanged}
+                onChange={this.backupTableChanged}
                 readOnly={isNonEmptyObject(tableInfo)}
               />
-              <Field
+              {s3StorageSelected && <Field
                 name="enableSSE"
                 component={YBFormToggle}
                 label={"Enable Server-Side Encryption"}
-              />
-              <div className="backup-frequency-control">
-                <span>or</span>
-                <Row>
-                  <Col xs={6}>
-                    <Field
-                      name="schedulingFrequency"
-                      component={YBFormInput}
-                      readOnly={isSchedulingFrequencyReadOnly}
-                      type={"number"}
-                      label={"Backup frequency"}
-                      placeholder={"Interval in ms"}
-                    />
-                  </Col>
-                  <Col xs={6}>
-                    <Field
-                      name="cronExpression"
-                      component={YBFormInput}
-                      readOnly={isCronExpressionReadOnly}
-                      label={" "}
-                      placeholder={"Cron expression"}
-                    />
-                  </Col>
-                </Row>
-              </div>
+              />}
             </Fragment>);
           }}
         />

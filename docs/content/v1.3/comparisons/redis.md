@@ -2,6 +2,7 @@
 title: Redis in-memory store
 linkTitle: Redis in-memory store
 description: Redis in-memory store
+block_indexing: true
 menu:
   v1.3:
     parent: comparisons

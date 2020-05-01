@@ -15,6 +15,7 @@
 
 #include "yb/common/ql_scanspec.h"
 
+#include "yb/common/ql_expr.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 
@@ -474,19 +475,19 @@ vector<QLValuePB> QLScanRange::range_values(const bool lower_bound) const {
 
 //-------------------------------------- QL scan spec ---------------------------------------
 
-QLScanSpec::QLScanSpec(QLExprExecutor::SharedPtr executor)
-    : QLScanSpec(nullptr, nullptr, true, executor) {
+QLScanSpec::QLScanSpec(QLExprExecutorPtr executor)
+    : QLScanSpec(nullptr, nullptr, true, std::move(executor)) {
 }
 
 QLScanSpec::QLScanSpec(const QLConditionPB* condition,
                        const QLConditionPB* if_condition,
                        const bool is_forward_scan,
-                       QLExprExecutor::SharedPtr executor)
+                       QLExprExecutorPtr executor)
     : YQLScanSpec(YQL_CLIENT_CQL),
       condition_(condition),
       if_condition_(if_condition),
       is_forward_scan_(is_forward_scan),
-      executor_(executor) {
+      executor_(std::move(executor)) {
   if (executor_ == nullptr) {
     executor_ = std::make_shared<QLExprExecutor>();
   }

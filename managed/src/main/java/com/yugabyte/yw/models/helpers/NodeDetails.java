@@ -183,7 +183,8 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isRemovable() {
-    return state == NodeState.ToBeAdded || state == NodeState.Removed;
+    return state == NodeState.ToBeAdded || state == NodeState.Removed
+      || state == NodeState.Decommissioned;
   }
 
   @JsonIgnore
@@ -191,4 +192,17 @@ public class NodeDetails {
     return this.placementUuid != null && this.placementUuid.equals(placementUuid);
   }
 
+  @JsonIgnore
+  public String getRegion() {
+    return this.cloudInfo.region;
+  }
+
+  @JsonIgnore
+  public String getZone() {
+    return this.cloudInfo.az;
+  }
+
+  public int getNodeIdx() {
+    return this.nodeIdx;
+  }
 }

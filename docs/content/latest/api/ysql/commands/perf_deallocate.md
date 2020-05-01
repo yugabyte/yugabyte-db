@@ -1,8 +1,8 @@
 ---
-title: DEALLOCATE
+title: DEALLOCATE statement [YSQL]
+headerTitle: DEALLOCATE
 linkTitle: DEALLOCATE
-summary: Deallocate a prepared statement
-description: DEALLOCATE
+description: Use the `DEALLOCATE` statement to deallocate a previously prepared SQL statement.
 menu:
   latest:
     identifier: api-ysql-commands-deallocate

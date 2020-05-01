@@ -417,11 +417,11 @@ MiniTabletServer* MiniCluster::find_tablet_server(const std::string& uuid) {
 }
 
 string MiniCluster::GetMasterFsRoot(int idx) {
-  return JoinPathSegments(fs_root_, Substitute("master-$0-root", idx));
+  return JoinPathSegments(fs_root_, Substitute("master-$0-root", idx + 1));
 }
 
 string MiniCluster::GetTabletServerFsRoot(int idx) {
-  return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx));
+  return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx + 1));
 }
 
 tserver::TSTabletManager* MiniCluster::GetTabletManager(int idx) {
@@ -799,6 +799,34 @@ MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_
   }
 
   return nullptr;
+}
+
+void ShutdownAllTServers(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    cluster->mini_tablet_server(i)->Shutdown();
+  }
+}
+
+Status StartAllTServers(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    RETURN_NOT_OK(cluster->mini_tablet_server(i)->Start());
+  }
+
+  return Status::OK();
+}
+
+void ShutdownAllMasters(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_masters(); ++i) {
+    cluster->mini_master(i)->Shutdown();
+  }
+}
+
+Status StartAllMasters(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_masters(); ++i) {
+    RETURN_NOT_OK(cluster->mini_master(i)->Start());
+  }
+
+  return Status::OK();
 }
 
 }  // namespace yb

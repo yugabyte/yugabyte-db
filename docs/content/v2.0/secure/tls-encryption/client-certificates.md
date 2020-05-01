@@ -4,6 +4,7 @@ linkTitle: Create client certificates
 description: Create client certificates
 headcontent: Generate client certificates to connect to YugabyteDB clusters.
 image: /images/section_icons/secure/prepare-nodes.png
+block_indexing: true
 menu:
   v2.0:
     identifier: client-certificates

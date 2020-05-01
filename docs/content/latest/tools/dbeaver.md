@@ -1,7 +1,8 @@
 ---
-title: DBeaver
+title: Use DBeaver with YugabyteDB YSQL
+headerTitle: DBeaver
 linkTitle: DBeaver
-description: DBeaver
+description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
 menu:
   latest:
     identifier: dbeaver
@@ -11,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[DBeaver](https://dbeaver.io/) is a free (and [open source](https://github.com/dbeaver/dbeaver)) multi-platform, cross-platform database tool for developers, SQL programmers, database administrators, and analysts. DBeaver is written in Java, based on the [Eclipse](https://www.eclipse.org/) platform, and supports supports any database that ha a JDBC driver, including PostgreSQL, MariaDB, and MySQL. And, using the PostgreSQL JDBC driver, you can use DBeaver with YugabyteDB.
+[DBeaver](https://dbeaver.io/) is a free (and [open source](https://github.com/dbeaver/dbeaver)) multi-platform, cross-platform database tool for developers, SQL programmers, database administrators, and analysts. DBeaver is written in Java, based on the [Eclipse](https://www.eclipse.org/) platform, and supports supports any database that has a JDBC driver, including PostgreSQL, MariaDB, and MySQL. And, using the PostgreSQL JDBC driver, you can use DBeaver with YugabyteDB.
 
 The [DBeaver Community Edition](https://dbeaver.io/) includes these features:
 

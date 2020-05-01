@@ -98,7 +98,7 @@ TEST(TestOnce, YBOnceDynamicTest) {
 static void InitOrGetInitted(Thing* t, int i) {
   if (i % 2 == 0) {
     LOG(INFO) << "Thread " << i << " initting";
-    t->Init();
+    ASSERT_OK(t->Init());
   } else {
     LOG(INFO) << "Thread " << i << " value: " << t->once_.initted();
   }

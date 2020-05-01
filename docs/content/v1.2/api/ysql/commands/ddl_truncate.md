@@ -3,6 +3,7 @@ title: TRUNCATE
 linkTitle: TRUNCATE
 summary: Clear all rows in a table
 description: TRUNCATE
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-truncate

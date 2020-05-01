@@ -37,11 +37,13 @@
 #include <deque>
 #include <queue>
 #include <vector>
+#include <iostream>
 
 #include "yb/server/clock.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/opid.h"
 #include "yb/util/enums.h"
+#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 namespace tablet {
@@ -85,6 +87,7 @@ class MvccManager {
  public:
   // `prefix` is used for logging.
   explicit MvccManager(std::string prefix, server::ClockPtr clock);
+  ~MvccManager();
 
   // Set special RF==1 mode flag to handle safe time requests correctly in case
   // there are no heartbeats to update internal propagated_safe_time_ correctly.
@@ -147,6 +150,11 @@ class MvccManager {
   // Returns time of last replicated operation.
   HybridTime LastReplicatedHybridTime() const;
 
+  class MvccOpTrace;
+
+  void TEST_DumpTrace(std::ostream* out);
+
+
  private:
   HybridTime DoGetSafeTime(HybridTime min_allowed,
                            CoarseTimePoint deadline,
@@ -154,6 +162,13 @@ class MvccManager {
                            std::unique_lock<std::mutex>* lock) const;
 
   const std::string& LogPrefix() const { return prefix_; }
+
+  struct InvariantViolationLoggingHelper;
+  InvariantViolationLoggingHelper InvariantViolationLogPrefix() const;
+
+  friend std::ostream& operator<<(
+      std::ostream& out, const InvariantViolationLoggingHelper& helper);
+
   void PopFront(std::lock_guard<std::mutex>* lock);
 
   std::string prefix_;
@@ -185,6 +200,8 @@ class MvccManager {
   mutable SafeTimeWithSource max_safe_time_returned_with_lease_;
   mutable SafeTimeWithSource max_safe_time_returned_without_lease_;
   mutable SafeTimeWithSource max_safe_time_returned_for_follower_ { HybridTime::kMin };
+
+  std::unique_ptr<MvccOpTrace> op_trace_ GUARDED_BY(mutex_);
 };
 
 }  // namespace tablet

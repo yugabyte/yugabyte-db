@@ -4,6 +4,7 @@ linkTitle: RBAC model
 description: Role-based access control (RBAC) model
 headcontent: How role-based access control works
 image: /images/section_icons/secure/rbac-model.png
+block_indexing: true
 menu:
   v2.0:
     identifier: rbac-model-ycql

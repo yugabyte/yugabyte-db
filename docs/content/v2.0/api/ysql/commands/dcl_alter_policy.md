@@ -3,6 +3,7 @@ title: ALTER POLICY
 linkTitle: ALTER POLICY
 description: ALTER POLICY
 summary: Alter row level security policy
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-alter-policy

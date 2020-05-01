@@ -251,7 +251,7 @@ public class AccessManager extends DevopsBase {
     if (edit && (configFileName == null || configFileContent == null)) {
       return null;
     }
-    
+
     if (configFileName == null) {
       throw new RuntimeException("Missing KUBECONFIG_NAME data in the provider config.");
     } else if (configFileContent == null) {

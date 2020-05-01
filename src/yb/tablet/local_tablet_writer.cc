@@ -53,7 +53,8 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
 
   auto state = std::make_unique<WriteOperationState>(tablet_, &req_, &resp_);
   auto operation = std::make_unique<WriteOperation>(
-      std::move(state), OpId::kUnknownTerm, CoarseTimePoint::max() /* deadline */, this);
+      std::move(state), OpId::kUnknownTerm, ScopedOperation(),
+      CoarseTimePoint::max() /* deadline */, this);
   write_promise_ = std::promise<Status>();
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 

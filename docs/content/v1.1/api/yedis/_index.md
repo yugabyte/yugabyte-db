@@ -5,6 +5,7 @@ description: Yugabyte DIctionary Service (YEDIS)
 summary: Reference for Redis-compatible YEDIS API
 image: /images/section_icons/api/yedis.png
 headcontent: 
+block_indexing: true
 menu:
   v1.1:
     identifier: api-redis

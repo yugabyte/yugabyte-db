@@ -2,6 +2,7 @@
 title: Azure Cosmos DB
 linkTitle: Azure Cosmos DB
 description: Azure Cosmos DB
+block_indexing: true
 menu:
   v1.3:
     identifier: azure-cosmos

@@ -1,7 +1,8 @@
 ---
-title: TiDB
+title: Compare TiDB with YugabyteDB
+headerTitle: TiDB
 linkTitle: TiDB
-description: TiDB
+description: Compare TiDB with YugabyteDB.
 aliases:
   - /comparisons/tidb/
 menu:
@@ -18,4 +19,3 @@ The following posts cover some more details around how YugabyteDB differs from T
 
 - [What is Distributed SQL?](https://blog.yugabyte.com/what-is-distributed-sql/)
 - [Implementing Distributed Transactions the Google Way: Percolator vs. Spanner](https://blog.yugabyte.com/implementing-distributed-transactions-the-google-way-percolator-vs-spanner/)
-

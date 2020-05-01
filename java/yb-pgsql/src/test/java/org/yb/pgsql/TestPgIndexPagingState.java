@@ -35,12 +35,12 @@ public class TestPgIndexPagingState extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgIndexPagingState.class);
 
   @Override
-  protected String pgPrefetchLimit() {
+  protected Integer getYsqlPrefetchLimit() {
     // Set the prefetch limit to 2 to create the test scenarios where we got the paging state for
     // an index table of a sys catalog.
     //
     // See github #1865.
-    return "2";
+    return 2;
   }
 
   @Test

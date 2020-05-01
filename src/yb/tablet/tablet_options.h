@@ -19,6 +19,12 @@
 #include "yb/util/env.h"
 #include "yb/rocksdb/env.h"
 
+#include "yb/client/client_fwd.h"
+
+#include "yb/server/server_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
 namespace rocksdb {
 class Cache;
 class EventListener;
@@ -27,7 +33,16 @@ class Env;
 }
 
 namespace yb {
+
 class Env;
+class MetricRegistry;
+
+namespace log {
+
+class LogAnchorRegistry;
+
+}
+
 namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(IsDropTable);
@@ -38,6 +53,25 @@ struct TabletOptions {
   std::vector<std::shared_ptr<rocksdb::EventListener>> listeners;
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
+};
+
+struct TabletInitData {
+  RaftGroupMetadataPtr metadata;
+  std::shared_future<client::YBClient*> client_future;
+  scoped_refptr<server::Clock> clock;
+  std::shared_ptr<MemTracker> parent_mem_tracker;
+  std::shared_ptr<MemTracker> block_based_table_mem_tracker;
+  MetricRegistry* metric_registry = nullptr;
+  scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
+  TabletOptions tablet_options;
+  std::string log_prefix_suffix;
+  TransactionParticipantContext* transaction_participant_context = nullptr;
+  client::LocalTabletFilter local_tablet_filter;
+  TransactionCoordinatorContext* transaction_coordinator_context = nullptr;
+  TransactionsEnabled txns_enabled = TransactionsEnabled::kTrue;
+  IsSysCatalogTablet is_sys_catalog = IsSysCatalogTablet::kFalse;
+  SnapshotCoordinator* snapshot_coordinator = nullptr;
+  TabletSplitter* tablet_splitter = nullptr;
 };
 
 } // namespace tablet

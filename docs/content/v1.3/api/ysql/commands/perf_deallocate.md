@@ -3,6 +3,7 @@ title: DEALLOCATE
 linkTitle: DEALLOCATE
 summary: Deallocate a prepared statement
 description: DEALLOCATE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-deallocate

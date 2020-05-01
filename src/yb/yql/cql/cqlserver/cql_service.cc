@@ -26,6 +26,7 @@
 #include "yb/yql/cql/cqlserver/cql_server.h"
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -95,7 +96,7 @@ CQLServiceImpl::~CQLServiceImpl() {
 
 client::YBClient* CQLServiceImpl::client() const {
   auto client = async_client_init_.client();
-  if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
+  if (client && !is_metadata_initialized_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
       // Add local tserver if available.
@@ -123,7 +124,20 @@ void CQLServiceImpl::CompleteInit() {
 }
 
 void CQLServiceImpl::Shutdown() {
+  decltype(processors_) processors;
+  {
+    std::lock_guard<std::mutex> guard(processors_mutex_);
+    processors.swap(processors_);
+  }
+  for (const auto& processor : processors) {
+    processor->Shutdown();
+  }
+
   async_client_init_.Shutdown();
+  auto client = this->client();
+  if (client) {
+    client->messenger()->Shutdown();
+  }
 }
 
 void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {

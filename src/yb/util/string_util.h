@@ -120,7 +120,17 @@ inline std::string VectorToString(const std::vector<T>& vec) {
 bool EqualsIgnoreCase(const std::string &string1,
                       const std::string &string2);
 
-std::string RightPadToWidth(const std::string& s, int w);
+template <class T>
+std::string RightPadToWidth(const T& val, int width) {
+  std::stringstream ss;
+  ss << val;
+  string ss_str = ss.str();
+  int64_t padding = width - ss_str.size();
+  if (padding <= 0) {
+    return ss_str;
+  }
+  return ss_str + string(padding, ' ');
+}
 
 // Returns true if s ends with substring end, and s has at least one more character before
 // end. If left is a valid string pointer, it will contain s minus the end substring.

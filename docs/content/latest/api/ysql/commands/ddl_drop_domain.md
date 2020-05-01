@@ -1,8 +1,8 @@
 ---
-title: DROP DOMAIN
+title: DROP DOMAIN statement [YSQL]
+headerTitle: DROP DOMAIN
 linkTitle: DROP DOMAIN
-summary: Remove a domain
-description: DROP DOMAIN
+description: Use the DROP DOMAIN statement to remove a domain from the database.
 menu:
   latest:
     identifier: api-ysql-commands-drop-domain

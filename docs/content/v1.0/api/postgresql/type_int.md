@@ -2,6 +2,7 @@
 title: INTEGER
 summary: Signed integers of different ranges
 description: Integer Types
+block_indexing: true
 menu:
   v1.0:
     identifier: api-postgresql-int

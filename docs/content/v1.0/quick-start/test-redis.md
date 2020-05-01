@@ -2,6 +2,7 @@
 title: 4. Test YEDIS API
 linkTitle: 4. Test YEDIS API
 description: Test YugabytE DIctionary Service (YEDIS) API
+block_indexing: true
 menu:
   v1.0:
     parent: quick-start

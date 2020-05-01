@@ -17,22 +17,15 @@ import org.yb.client.YBClient;
 import org.yb.tserver.Tserver.TabletServerErrorPB;
 
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
+import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.forms.RollingRestartParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import play.api.Play;
 
-public class WaitForServerReady extends AbstractTaskBase {
+public class WaitForServerReady extends ServerSubTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(WaitForServerReady.class);
-
-  // The YB client to use.
-  private YBClientService ybService;
 
   // Time to wait (in millisec) during each iteration of server readiness check.
   private static final int WAIT_EACH_ATTEMPT_MS = 1000;
@@ -44,13 +37,7 @@ public class WaitForServerReady extends AbstractTaskBase {
   private static final int MAX_TOTAL_WAIT_MS = 600000;
 
   // Parameters for wait task.
-  public static class Params extends UniverseTaskParams {
-    // The name of the node which contains the server process.
-    public String nodeName;
-
-    // Server type running on the above node for which we will wait.
-    public ServerType serverType;
-
+  public static class Params extends ServerSubTaskParams {
     // Time to wait (as a backup) in case the server does not support is-ready check rpc.
     public int waitTimeMs;
   }
@@ -58,18 +45,6 @@ public class WaitForServerReady extends AbstractTaskBase {
   @Override
   protected Params taskParams() {
     return (Params)taskParams;
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
-  }
-
-  @Override
-  public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", " + taskParams().nodeName +
-        ", type=" + taskParams().serverType + ")";
   }
 
   private void sleepFor(int waitTimeMs) {
@@ -90,48 +65,16 @@ public class WaitForServerReady extends AbstractTaskBase {
 
   @Override
   public void run() {
-    YBClient client = null;
+
+    checkParams();
+
     int numIters = 0;
     int userWaitTimeMs = taskParams().waitTimeMs != 0 ? taskParams().waitTimeMs :
                              RollingRestartParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
 
-    Universe universe = Universe.get(taskParams().universeUUID);
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
-    LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
-
-    if (masterAddresses == null || masterAddresses.isEmpty()) {
-      throw new IllegalArgumentException("Invalid master addresses " + masterAddresses + " for " +
-          taskParams().universeUUID);
-    }
-
-    client = ybService.getClient(masterAddresses, certificate);
-    NodeDetails node = universe.getNode(taskParams().nodeName);
-
-    if (node == null) {
-      throw new IllegalArgumentException("Node " + taskParams().nodeName + " not found in " +
-                                         "universe " + taskParams().universeUUID);
-    }
-
-    if (taskParams().serverType != ServerType.TSERVER &&
-        taskParams().serverType != ServerType.MASTER) {
-      throw new IllegalArgumentException("Unexpected server type " + taskParams().serverType +
-          " for universe " + taskParams().universeUUID);
-    }
-
+    YBClient client = getClient();
+    HostAndPort hp = getHostPort();
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
-    if (isTserverTask && !node.isTserver) {
-      throw new IllegalArgumentException("Task server type " + taskParams().serverType + " is " +
-                                         "not for a node running tserver : " + node.toString());
-    }
-
-    if (!isTserverTask && !node.isMaster) {
-      throw new IllegalArgumentException("Task server type " + taskParams().serverType + " is " +
-                                         "not for a node running master : " + node.toString());
-    }
-
-    HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip,
-        isTserverTask ? node.tserverRpcPort : node.masterRpcPort);
 
     IsServerReadyResponse response = null;
     try {
@@ -173,6 +116,6 @@ public class WaitForServerReady extends AbstractTaskBase {
 
     // Sleep for the remaining portion of user specified time, if any.
     sleepRemaining(userWaitTimeMs, numIters);
-    ybService.closeClient(client, masterAddresses);
+    closeClient(client);
   }
 }

@@ -1,9 +1,10 @@
 ---
-title: Scaling queries
+title: Benchmark scaling YSQL queries
+headerTitle: Scaling YSQL queries
 linkTitle: Scaling queries
-description: Scaling queries
-image: /images/section_icons/explore/high_performance.png
-headcontent: Benchmark YugabyteDB using different queries
+description: Benchmark scaling YSQL queries in YugabyteDB
+aliases:
+  - /latest/benchmark/scalability/scaling-queries/
 menu:
   latest:
     identifier: scaling-queries-1-ysql
@@ -175,4 +176,8 @@ The architecture of a YugabyteDB cluster is shown in the figure below. The YB-TS
 ![CPU usage](/images/benchmark/scalability/yugabytedb-cluster.png)
 
 To those new to the Raft consensus protocol, the simplest explanation is that it is a protocol with which a cluster of nodes can agree on values. It is arguably the most popular distributed consensus protocol in use today. Business-critical cloud-native systems like `etcd` (the configuration store for Kubernetes) and `consul` (HashiCorp’s popular service discovery solution) are built on Raft as a foundation. YugabyteDB uses Raft for both leader election as well as the actual data replication. The benefits of YugabyteDB’s use of Raft including rapid scaling (with fully-automatic rebalancing) are highlighted in the Yugabyte blog on [“How Does the Raft Consensus-Based Replication Protocol Work in YugabyteDB?”](https://blog.yugabyte.com/how-does-the-raft-consensus-based-replication-protocol-work-in-yugabyte-db/). Raft is tightly integrated with a high-performance document store (extended from RocksDB) to deliver on the promise of massive write scalability combined with strong consistency and low latency.
+
+## Next steps
+
+You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack](http://www.yugabyte.com/slack).
 

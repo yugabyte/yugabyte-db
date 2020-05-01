@@ -5,6 +5,7 @@ description: APIs
 image: /images/section_icons/index/api.png
 headcontent: YugabyteDB API Reference 
 section: REFERENCE
+block_indexing: true
 menu:
   v1.2:
     identifier: api

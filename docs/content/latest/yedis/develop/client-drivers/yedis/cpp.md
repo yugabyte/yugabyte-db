@@ -1,13 +1,27 @@
+---
+title: Build a YugabyteDB application using C++ and YEDIS
+headerTitle: Build an application using C++
+linkTitle: C++
+description: Use C++ to build a YugabyteDB application that interacts with YEDIS
+aliases:
+ - /latest/yedis/develop/client-drivers/cpp
+menu:
+  latest:
+    identifier: client-drivers-yedis-cpp
+    parent: develop-yedis
+isTocNested: true
+showAsideToc: true
+---
 
 ## Prerequisites
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the Redis shell. If
-  not please follow these steps in the [Quick Start guide](../../../quick-start/).
-- have C++11.
+- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If
+  not, follow the steps in [Quick start](../../../../quick-start/).
+- have C++ 11 or later.
 
-## Installing the Redis C++ driver
+## Install the Redis C++ driver
 
 We use the [`cpp_redis`](https://redis.io/clients#c--) driver. To install the library do the following:
 
@@ -43,7 +57,7 @@ $ make
 $ make install
 ```
 
-## Writing a hello world Redis application
+## Write the HelloWorld C++ application
 
 Create a file `ybredis_hello_world.cpp` and copy the contents below:
 
@@ -95,7 +109,7 @@ int main() {
 }
 ```
 
-## Running the application
+## Run the application
 
 To compile the file, run the following command.
 

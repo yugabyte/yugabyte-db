@@ -41,6 +41,7 @@ set(TABLET_SRCS
   tablet_bootstrap.cc
   tablet_bootstrap_if.cc
   tablet_component.cc
+  tablet_error.cc
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
   tablet_peer.cc
@@ -50,12 +51,14 @@ set(TABLET_SRCS
   operation_order_verifier.cc
   operations/operation.cc
   operations/change_metadata_operation.cc
+  operations/history_cutoff_operation.cc
   operations/operation_driver.cc
   operations/operation_tracker.cc
+  operations/snapshot_operation.cc
+  operations/split_operation.cc
   operations/truncate_operation.cc
   operations/update_txn_operation.cc
   operations/write_operation.cc
-  operations/snapshot_operation.cc
   maintenance_manager.cc
   mvcc.cc
   tablet_metadata.cc

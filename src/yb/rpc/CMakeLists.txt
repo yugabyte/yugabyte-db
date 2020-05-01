@@ -69,6 +69,7 @@ set(YRPC_SRCS
     local_call.cc
     rpc_call.cc
     periodic.cc
+    poller.cc
     proxy.cc
     reactor.cc
     remote_method.cc

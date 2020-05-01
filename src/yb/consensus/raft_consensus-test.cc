@@ -154,7 +154,8 @@ class RaftConsensusSpy : public RaftConsensus {
                     parent_mem_tracker,
                     mark_dirty_clbk,
                     YQL_TABLE_TYPE,
-                    nullptr /* retryable_requests */) {
+                    nullptr /* retryable_requests */,
+                    yb::OpId() /* split_op_id */) {
     // These "aliases" allow us to count invocations and assert on them.
     ON_CALL(*this, StartConsensusOnlyRoundUnlocked(_))
         .WillByDefault(Invoke(this,
@@ -671,7 +672,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
     replicate->set_hybrid_time(clock_->Now().ToUint64());
   }
 
-  request.mutable_committed_index()->CopyFrom(MakeOpId(3, 6));
+  request.mutable_committed_op_id()->CopyFrom(MakeOpId(3, 6));
 
   ConsensusResponsePB response;
   ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
@@ -687,7 +688,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
 
   request.mutable_ops()->Clear();
   request.mutable_preceding_id()->CopyFrom(MakeOpId(3, 9));
-  request.mutable_committed_index()->CopyFrom(MakeOpId(3, 9));
+  request.mutable_committed_op_id()->CopyFrom(MakeOpId(3, 9));
 
   ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.has_error());

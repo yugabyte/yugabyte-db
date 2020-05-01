@@ -2,6 +2,7 @@
 title: yb-admin
 linkTitle: yb-admin
 description: yb-admin
+block_indexing: true
 menu:
   v2.0:
     identifier: yb-admin
@@ -9,6 +10,7 @@ menu:
     weight: 2465
 isTocNested: 4
 showAsideToc: true
+block_indexing: true
 ---
 
 The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.

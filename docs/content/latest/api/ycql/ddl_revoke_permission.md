@@ -1,8 +1,9 @@
-
 ---
-title: REVOKE PERMISSION
+title: REVOKE PERMISSION statement [YCQL]
+headerTitle: REVOKE PERMISSION
+linkTitle: REVOKE PERMISSION
 summary: Revoke a permission from a role
-description: REVOKE PERMISSION
+description: Use the REVOKE PERMISSION statement to revoke a permission (or all the granted permissions) from a role.
 menu:
   latest:
     parent: api-cassandra
@@ -16,11 +17,11 @@ showAsideToc: true
 
 ## Synopsis
 
-The `REVOKE PERMISSION` statement is used to revoke a permission (or all the granted permissions) from a role.
+Use the `REVOKE PERMISSION` statement to revoke a permission (or all the granted permissions) from a role.
 
 When a database object is deleted (keyspace, table, or role), all the permissions on that object are automatically deleted.
 
-This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
 
 ## Syntax
 

@@ -2,6 +2,7 @@
 title: GRANT ROLE
 summary: Grant a role to another role
 description: GRANT ROLE
+block_indexing: true
 menu:
   v1.2:
     parent: api-cassandra

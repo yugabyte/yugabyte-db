@@ -47,7 +47,8 @@ class UserList extends Component {
     const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
     const self = this;
     const formatActionButtons = function(item, row, disabled) {
-      if (row.uuid !== loginUserId) {
+      const {customer} = self.props;
+      if (row.uuid !== loginUserId && !isDisabled(customer.data.features, "universe.create")) {
         return (
           <ButtonGroup>
             <DropdownButton className="btn btn-default"

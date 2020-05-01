@@ -8,8 +8,8 @@
 #
 # Unless required by applicable law or agreed to in writing, software distributed under the License
 # is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-# or implied.  See the License for the specific language governing permissions and limitations
-# under the License.
+# or implied.  See the License for the specific language governing permissions and limitations under
+# the License.
 #
 
 # Common bash code for test scripts/
@@ -31,14 +31,14 @@ NON_GTEST_TESTS=(
   db_sanity_test
   merge_test
 )
+make_regex_from_list NON_GTEST_TESTS "${NON_GTEST_TESTS[@]}"
 
 # There gtest suites have internal dependencies between tests, so those tests can't be run
 # separately.
 TEST_BINARIES_TO_RUN_AT_ONCE=(
   tests-rocksdb/thread_local_test
 )
-
-make_regexes_from_lists NON_GTEST_TESTS TEST_BINARIES_TO_RUN_AT_ONCE
+make_regex_from_list TEST_BINARIES_TO_RUN_AT_ONCE "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}"
 
 VALID_TEST_BINARY_DIRS_PREFIX="tests"
 VALID_TEST_BINARY_DIRS_RE="^${VALID_TEST_BINARY_DIRS_PREFIX}-[0-9a-zA-Z\-]+"

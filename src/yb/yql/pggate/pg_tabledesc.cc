@@ -17,6 +17,8 @@
 
 #include "yb/client/table.h"
 
+#include "yb/common/pg_system_attr.h"
+
 namespace yb {
 namespace pggate {
 
@@ -76,6 +78,10 @@ Status PgTableDesc::GetColumnInfo(int16_t attr_number, bool *is_primary, bool *i
 
 bool PgTableDesc::IsTransactional() const {
   return table_->schema().table_properties().is_transactional();
+}
+
+bool PgTableDesc::IsColocated() const {
+  return table_->colocated();
 }
 
 const std::vector<std::string>& PgTableDesc::GetPartitions() const {

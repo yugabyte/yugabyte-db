@@ -42,12 +42,6 @@ class MasterServiceBase {
   explicit MasterServiceBase(Master* server) : server_(server) {}
 
  protected:
-  // If 's' is not OK and 'resp' has no application specific error set,
-  // set the error field of 'resp' to match 's' and set the code to
-  // UNKNOWN_ERROR.
-  template<class RespClass>
-  static void CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp);
-
   template <class ReqType, class RespType, class FnType>
   void HandleOnLeader(const ReqType* req, RespType* resp, rpc::RpcContext* rpc, FnType f,
                       HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);

@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpT
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -58,7 +57,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       setNodeNames(UniverseOpType.CREATE, universe);
 
       PlacementInfo pi = taskParams().getPrimaryCluster().placementInfo;
-      
+
       selectNumMastersAZ(pi);
 
       // Update the user intent.
@@ -80,7 +79,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       Set<NodeDetails> tserversAdded = getPodsToAdd(placement.tservers, null, ServerType.TSERVER,
                                                     isMultiAz);
-      
+
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(tserversAdded, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

@@ -2,6 +2,7 @@
 title: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Google Kubernetes Engine (GKE)
+block_indexing: true
 menu:
   v2.0:
     parent: deploy-kubernetes

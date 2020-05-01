@@ -1,0 +1,80 @@
+name: CI
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - README.md
+
+  pull_request:
+    branches:
+      - master
+    paths-ignore:
+      - README.md
+      - 'docs/**'
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        name:
+          - "CentOS 7"
+        include:
+          - name: "CentOS 7"
+            os: ubuntu-latest
+            docker_image: yugabyteci/yb_build_infra_centos7:v2020-03-28T07_29_17
+
+    if: >
+      (github.event_name == 'push' &&
+       !contains(github.event.head_commit.message, 'skip ci') &&
+       !contains(github.event.head_commit.message, 'ci skip')) ||
+      github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build code without tests
+        run: |
+          echo "OSTYPE (outside Docker): $OSTYPE"
+          echo "Build name: ${{ matrix.name }}"
+          echo "Docker image: ${{ matrix.docker_image }}"
+          if [[ $OSTYPE == linux* ]]; then
+            build_dir_in_container=/opt/yb-build/yugabyte-db
+            docker run \
+              -i \
+              "-w=$build_dir_in_container" \
+              --mount type=bind,source="$PWD",target="$build_dir_in_container" \
+              "${{ matrix.docker_image }}" \
+              bash -c '
+                set -euo pipefail -x
+                echo "OSTYPE (inside Docker): $OSTYPE"
+                echo "PATH: $PATH"
+                export PATH=/usr/local/bin:$PATH
+                ( set -x; ls -l /usr/local/bin )
+                set +e
+                ( set -x; which ninja )
+                ( set -x; which cmake ) 
+                set -e
+                chown -R yugabyteci .
+                sudo -u yugabyteci bash -c "
+                  set -euo pipefail
+                  export PATH=/usr/local/bin:\$PATH
+                  df -H /
+                  echo ::group::Building the code without tests
+                  ./yb_build.sh release packaged --download-thirdparty --ninja
+                  echo ::endgroup::
+                  df -H /
+                "
+              '
+          elif [[ $OSTYPE == darwin* ]]; then
+            system_profiler SPSoftwareDataType
+            sw_vers
+            ./yb_build.sh release
+          fi

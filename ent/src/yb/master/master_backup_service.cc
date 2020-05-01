@@ -32,16 +32,16 @@ void MasterBackupServiceImpl::CreateSnapshot(const CreateSnapshotRequestPB* req,
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::CreateSnapshot);
 }
 
-void MasterBackupServiceImpl::IsSnapshotOpDone(const IsSnapshotOpDoneRequestPB* req,
-                                               IsSnapshotOpDoneResponsePB* resp,
-                                               RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsSnapshotOpDone);
-}
-
 void MasterBackupServiceImpl::ListSnapshots(const ListSnapshotsRequestPB* req,
                                             ListSnapshotsResponsePB* resp,
                                             RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListSnapshots);
+}
+
+void MasterBackupServiceImpl::ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
+                                                       ListSnapshotRestorationsResponsePB* resp,
+                                                       RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListSnapshotRestorations);
 }
 
 void MasterBackupServiceImpl::RestoreSnapshot(const RestoreSnapshotRequestPB* req,

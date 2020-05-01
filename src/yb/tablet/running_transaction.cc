@@ -70,7 +70,7 @@ void RunningTransaction::Aborted() {
 
 void RunningTransaction::RequestStatusAt(const StatusRequest& request,
                                          std::unique_lock<std::mutex>* lock) {
-  DCHECK_LT(request.global_limit_ht, HybridTime::kMax);
+  DCHECK_LE(request.global_limit_ht, HybridTime::kMax);
   DCHECK_LE(request.read_ht, request.global_limit_ht);
 
   if (last_known_status_hybrid_time_ > HybridTime::kMin) {
@@ -134,7 +134,7 @@ void RunningTransaction::Abort(client::YBClient* client,
   }
   tserver::AbortTransactionRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
-  req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+  req.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
   req.set_propagated_hybrid_time(context_.participant_context_.Now().ToUint64());
   context_.rpcs_.RegisterAndStart(
       client::AbortTransaction(
@@ -186,7 +186,7 @@ void RunningTransaction::SendStatusRequest(
   tserver::GetTransactionStatusRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
   req.add_transaction_id()->assign(
-      pointer_cast<const char*>(metadata_.transaction_id.data), metadata_.transaction_id.size());
+      pointer_cast<const char*>(metadata_.transaction_id.data()), metadata_.transaction_id.size());
   req.set_propagated_hybrid_time(context_.participant_context_.Now().ToUint64());
   context_.rpcs_.RegisterAndStart(
       client::GetTransactionStatus(
@@ -328,7 +328,7 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
           Format("Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
                  "last known: $2 at $3", waiter.read_ht, waiter.global_limit_ht,
                  TransactionStatus_Name(transaction_status), time_of_status), Slice(),
-          PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION) ));
+          PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) ));
     }
   }
 }
@@ -382,7 +382,7 @@ std::string RunningTransaction::LogPrefix() const {
 Status MakeAbortedStatus(const TransactionId& id) {
   return STATUS(
       TryAgain, Format("Transaction aborted: $0", id), Slice(),
-      PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION));
+      PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
 }
 
 } // namespace tablet

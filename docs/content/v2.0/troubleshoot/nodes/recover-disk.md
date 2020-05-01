@@ -2,6 +2,7 @@
 title: Disk failure
 linkTitle: Disk failure
 description: Recover failing disk
+block_indexing: true
 menu:
   v2.0:
     parent: troubleshoot-nodes

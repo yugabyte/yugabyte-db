@@ -1,8 +1,8 @@
 ---
-title: CREATE TABLE
+title: CREATE TABLE [YSQL]
+headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
-summary: Create a new table in a database
-description: CREATE TABLE
+description: Use the CREATE TABLE statement to create a new table in a database.
 menu:
   latest:
     identifier: api-ysql-commands-create-table
@@ -36,10 +36,10 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.diagram.md" /%}}
   </div>
 </div>
 
@@ -83,26 +83,61 @@ This clause is used to specify a default value for the column. If an `INSERT` st
 
 Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well.
 
-### Split Into
+### SPLIT INTO
 
-The `SPLIT INTO` clause specifies the number of tablets that will be created for the table. This is useful for two data center (2DC) deployments. See example below: [Create CDC table specifying number of tablets](#create-cdc-table-specifying-number-of-tablets).
+For hash-sharded tables, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the table. The hash range is then evenly split across those tablets.
 
-### Colocated
+Pre-splitting tablets, using `SPLIT INTO`, distributes write and read workloads on a production cluster. For example, if you have 3 servers, splitting the table into 30 tablets can provide write throughput on the table. For an example, see [Create a table specifying the number of tablets](#create-a-table-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
 
-This feature is currently in [Beta](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+By default, YugabyteDB pre-splits a table in `ysql_num_shards_per_tserver * num_of_tserver` shards. The `SPLIT INTO` clause can be used to override that setting on a per-table basis.
+
+{{< /note >}}
+
+### SPLIT AT VALUES
+
+{{< note title="Note" >}}
+
+The `SPLIT AT VALUES` feature is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< /note >}}
+
+For range-partitioned tables, you can use the `SPLIT AT VALUES` clause to set split points to pre-split range-sharded tables.
+
+**Example**
+
+```postgresql
+CREATE TABLE tbl(
+  a int,
+  b int,
+  primary key(a asc, b desc)
+) SPLIT AT VALUES((100), (200), (200, 5));
+```
+
+In the example above, there are three split points and so four tablets will be created:
+
+- tablet 1: `a=<lowest>, b=<lowest>` to `a=100, b=<lowest>`
+- tablet 2: `a=100, b=<lowest>` to `a=200, b=<lowest>`
+- tablet 3: `a=200, b=<lowest>` to `a=200, b=5`
+- tablet 4: `a=200, b=5` to `a=<highest>, b=<highest>`
+
+### COLOCATED
+
+{{< note title="Note" >}}
+
+This feature is currently in [BETA](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< /note >}}
 
 For colocated databases, specify `false` to opt this table out of colocation. This means that the table won't be stored on the same tablet as the rest of the tables for this database, but instead, will have its own set of tablets.
 Use this option for large tables that need to be scaled out. See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for more details on when colocation is useful.
 
-Note that `colocated = true` has no effect if the database that this table is part of is not colocated since colocation today is supported only at the database level.
+Note that `COLOCATED = true` has no effect if the database that this table is part of is not colocated since colocation today is supported only at the database level.
 
 ### Storage parameters
 
-Storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
+Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
 
 ## Examples
 
@@ -223,16 +258,15 @@ yugabyte=# CREATE TABLE translations(message_id int UNIQUE,
                                      message_txt text);
 ```
 
-### Create table specifying number of tablets
+### Create a table specifying the number of tablets
 
-You can use the `CREATE TABLE` statement with the `SPLIT INTO` clause to specify the number of tablets for the table.
-This is useful for two data center (2DC) deployments that require identical number of tablets on both clusters.
+To specify the number of tablets for a table, you can use the `CREATE TABLE` statement with the [`SPLIT INTO`](#split-into) clause.
 
 ```postgresql
-yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT (INTO 10 TABLETS);
+yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT INTO 10 TABLETS;
 ```
 
-### Opt table out of colocation
+### Opt a table out of colocation
 
 ```postgresql
 yugabyte=# CREATE DATABASE company WITH colocated = true;

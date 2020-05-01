@@ -1,7 +1,8 @@
 ---
-title: FoundationDB
+title: Compare FoundationDB with YugabyteDB
+headerTitle: FoundationDB
 linkTitle: FoundationDB
-description: FoundationDB
+description: Compare FoundationDB with YugabyteDB.
 aliases:
   - /comparisons/foundationdb/
 menu:

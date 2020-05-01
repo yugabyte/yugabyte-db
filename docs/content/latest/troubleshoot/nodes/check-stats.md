@@ -1,7 +1,8 @@
 ---
 title: System statistics
 linkTitle: System statistics
-description: Check system statistics
+headerTitle: Check system statistics
+description: How to check system statistics on your YugabyteDB cluster
 aliases:
   - /troubleshoot/nodes/check-stats/
 menu:
@@ -44,7 +45,7 @@ If `top` reports high CPU usage for the `auditd` process, it may have some rules
 $ auditctl -e 0
 ```
 
-and check if this improves peformance.
+and check if this improves performance.
 
 To re-enable it afterwards, run:
 
@@ -54,7 +55,7 @@ $ auditctl -e 1
 
 ## YugabyteDB processes state
 
-YugabyteDB provides web endpoints where the current state of each process is aggregated. This includes logs, gflags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
+YugabyteDB provides web endpoints where the current state of each process is aggregated. This includes logs, flags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
 
 | Description | URL |
 |-------------|-----|
@@ -63,4 +64,8 @@ YugabyteDB provides web endpoints where the current state of each process is agg
 | Redis Metrics | `<node-ip>:11000/metrics` |
 | CQL Metrics | `<node-ip>:12000/metrics` |
 
-_Note that, when running `yb-ctl` locally with default settings, it will create three local ips `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node._
+{{< note title="Note" >}}
+
+When running `yb-ctl` locally with default values, three local IP addresses will be created: `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node.
+
+{{< /note >}}

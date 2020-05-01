@@ -1,8 +1,8 @@
 ---
-title: CREATE FUNCTION
+title: CREATE FUNCTION statement [YSQL]
+headerTitle: CREATE FUNCTION
 linkTitle: CREATE FUNCTION
-summary: Create a new function in a database
-description: CREATE FUNCTION
+description: Use the CREATE FUNCTION statement to define a new function in a database.
 menu:
   latest:
     identifier: api-ysql-commands-create-function

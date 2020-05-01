@@ -2,6 +2,7 @@
 title: pgAdmin
 linkTitle: pgAdmin
 description: pgAdmin
+block_indexing: true
 menu:
   v2.0:
     identifier: pgadmin

@@ -141,12 +141,12 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // TODO(bogdan): why do namespaces/tables report 2 writes?
     // Check that we inserted the right number of rows for the first table:
-    // - 2 for the namespace
+    // - 3 for the namespace
     // - 2 for the table
     // - 4 * FLAGS_yb_num_shards_per_tserver for the tablets:
     //    CREATING, PREPARING, first heartbeat, leader election heartbeat
     int after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
-    int expected_rows = 2 + 2 + FLAGS_yb_num_shards_per_tserver * 4;
+    int expected_rows = 3 + 2 + FLAGS_yb_num_shards_per_tserver * 4;
     EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted)
         << "Expected 2 writes for the table and 4 per each tablet";
 

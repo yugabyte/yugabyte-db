@@ -142,6 +142,15 @@ struct ReadEntriesResult {
   Status status;
 };
 
+struct FirstEntryMetadata {
+  yb::OpId committed_op_id;
+  RestartSafeCoarseTimePoint mono_time;
+
+  std::string ToString() const {
+    return Format("{ committed_op_id: $0 mono_time: $1 }", committed_op_id, mono_time);
+  }
+};
+
 // A segment of the log can either be a ReadableLogSegment (for replay and
 // consensus catch-up) or a WritableLogSegment (where the Log actually stores
 // state). LogSegments have a maximum size defined in LogOptions (set from the
@@ -189,8 +198,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // In case of failure status field of result is not ok.
   ReadEntriesResult ReadEntries();
 
-  // Reads the op ID and time of the first entry in the segment
-  Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> ReadFirstEntryMetadata();
+  // Reads the metadata of the first entry in the segment
+  Result<FirstEntryMetadata> ReadFirstEntryMetadata();
 
   // Rebuilds this segment's footer by scanning its entries.
   // This is an expensive operation as it reads and parses the whole segment

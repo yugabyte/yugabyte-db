@@ -1,8 +1,9 @@
 ---
-title: CDC to Kafka
+title: Use change data capture (CDC) to Kafka
+headerTitle: Change data capture (CDC) to Kafka
 linkTitle: CDC to Kafka
-description: Change data capture (CDC) to Kafka
-beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
+description: Learn how to use change data capture (CDC) API to send data changes to Apache Kafka.
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
     parent: cdc
@@ -23,7 +24,7 @@ Create a YugabyteDB cluster using the steps outlined in [Manual Deployment](../.
 
 ### Java
 
-A JRE (or JDK), for Java 8 or 11, is installed. JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+A JRE (or JDK), for Java 8 or 11, is installed. 
 
 {{< note title="Note" >}}
 

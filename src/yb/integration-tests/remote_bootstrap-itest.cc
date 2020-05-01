@@ -259,9 +259,7 @@ void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
   crash_test_tablet_id_ = tablets[0];
 
   crash_test_workload_->Start();
-  while (crash_test_workload_->rows_inserted() < 100) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
+  crash_test_workload_->WaitInserted(100);
 
   // Remote bootstrap doesn't see the active WAL segment, and we need to
   // download a file to trigger the fault in this test. Due to the log index
@@ -393,9 +391,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   string zombie_leader_uuid = cluster_->tablet_server(zombie_leader_index)->uuid();
   ASSERT_OK(itest::StartElection(ts_map_[zombie_leader_uuid].get(), tablet_id, timeout));
   workload.Start();
-  while (workload.rows_inserted() < 100) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
+  workload.WaitInserted(100);
   workload.StopAndJoin();
 
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
@@ -485,6 +481,10 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
 // the relevant files are either read or opened, meaning that an in-progress
 // remote bootstrap can complete even after a tablet is officially "deleted" on
 // the source server. This is also a regression test for KUDU-1009.
+
+// For yugbayteDB we have modified this test. We no longer expect the remote bootstrap
+// to finish successfully after the tablet has been deleted in the leader, but we do
+// expect the leader to not crash.
 void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_type) {
   MonoDelta timeout = MonoDelta::FromSeconds(10);
   const int kTsIndex = 0; // We'll test with the first TS.
@@ -494,9 +494,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   TestWorkload workload(cluster_.get());
   workload.Setup(table_type);
   workload.Start();
-  while (workload.rows_inserted() < 1000) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
+  workload.WaitInserted(1000);
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -532,9 +530,11 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
 
   // Now finish bootstrapping!
   tablet::TabletStatusListener listener(meta);
-  ASSERT_OK(rb_client.FetchAll(&listener));
-  // Call Finish, which closes the remote session.
-  ASSERT_OK(rb_client.Finish());
+
+  // This will fail because the leader won't have any rocksdb files since they were deleted when
+  // we called DeleteTablet.
+  ASSERT_NOK(rb_client.FetchAll(&listener));
+  ASSERT_OK(rb_client.EndRemoteSession());
   ASSERT_OK(rb_client.Remove());
 
   SleepFor(MonoDelta::FromMilliseconds(500));  // Give a little time for a crash (KUDU-1009).
@@ -590,9 +590,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
   ASSERT_OK(itest::StartElection(leader_ts, tablet_id, timeout));
   workload.Start();
-  while (workload.rows_inserted() < 100) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
+  workload.WaitInserted(100);
   workload.StopAndJoin();
 
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
@@ -726,9 +724,7 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
   workload.set_num_write_threads(10);
   workload.Setup(table_type);
   workload.Start();
-  while (workload.rows_inserted() < 20000) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
+  workload.WaitInserted(20000);
   workload.StopAndJoin();
 
   for (const string& tablet_id : tablet_ids) {
@@ -797,9 +793,7 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   workload.set_num_write_threads(1);
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
   workload.Start();
-  while (workload.rows_inserted() < 200) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
+  workload.WaitInserted(200);
   workload.StopAndJoin();
 
   for (const string& tablet_id : tablet_ids) {
@@ -1002,9 +996,7 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
 
   // Start writing, wait for some rows to be inserted.
   workload.Start();
-  while (workload.rows_inserted() < 100) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
+  workload.WaitInserted(100);
 
   // Tombstone the tablet on one of the servers (TS 1)
   ASSERT_OK(itest::DeleteTablet(replica_ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none,
@@ -1180,9 +1172,7 @@ TEST_F(RemoteBootstrapITest, TestVeryLongRemoteBootstrap) {
   TestWorkload workload(cluster_.get());
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
   workload.Start();
-  while (workload.rows_inserted() < 10) {
-    SleepFor(MonoDelta::FromMilliseconds(1));
-  }
+  workload.WaitInserted(10);
   LOG(INFO) << "Stopping workload";
   workload.StopAndJoin();
 
@@ -1212,6 +1202,108 @@ TEST_F(RemoteBootstrapITest, TestVeryLongRemoteBootstrap) {
 
   // Ensure all the servers agree before we proceed.
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
+                                                  ClusterVerifier::AT_LEAST,
+                                                  workload.rows_inserted()));
+}
+
+TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
+  std::vector<std::string> ts_flags = {
+      "--follower_unavailable_considered_failed_sec=30",
+      "--raft_heartbeat_interval_ms=50",
+      "--consensus_rpc_timeout_ms=300",
+      "--TEST_delay_removing_peer_with_failed_tablet_secs=10",
+      "--memstore_size_mb=1",
+      // Increase the number of missed heartbeats used to detect leader failure since in slow
+      // testing instances it is very easy to miss the default (6) heartbeats since they are being
+      // sent very fast (50ms).
+      "--leader_failure_max_missed_heartbeat_periods=40.0"
+  };
+
+  std::vector<std::string> master_flags = {"--enable_load_balancing=true"};
+
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 3));
+
+  const auto kTimeout = 40s;
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3, kTimeout));
+
+  // Populate a tablet with some data.
+  LOG(INFO) << "Starting workload";
+  TestWorkload workload(cluster_.get());
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.set_payload_bytes(1024);
+  workload.Start();
+  workload.WaitInserted(5000);
+  LOG(INFO) << "Stopping workload";
+  workload.StopAndJoin();
+
+  // Figure out the tablet id of the created tablet.
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, 1, kTimeout, &tablets));
+  string tablet_id = tablets[0].tablet_status().tablet_id();
+
+  TServerDetails* leader_ts;
+  // Find out who's leader.
+  ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, kTimeout, &leader_ts));
+
+  TServerDetails* non_leader_ts = nullptr;
+  int non_leader_idx = -1;
+  // Find the first non-leader TS.
+  for (int i = 0; i < 3; i++) {
+    if (cluster_->tablet_server(i)->uuid() != leader_ts->uuid()) {
+      non_leader_ts = ts_map_[cluster_->tablet_server(i)->uuid()].get();
+      non_leader_idx = i;
+      break;
+    }
+  }
+
+  ASSERT_NE(non_leader_ts, nullptr);
+  ASSERT_NE(non_leader_idx, -1);
+
+  ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::RUNNING, kTimeout));
+
+  auto* env = Env::Default();
+  const string& data_dir = cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->GetFullDataDir();
+  auto meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
+  auto metadata_path = JoinPathSegments(meta_dir, tablet_id);
+  tablet::RaftGroupReplicaSuperBlockPB superblock;
+  ASSERT_OK(pb_util::ReadPBContainerFromPath(env, metadata_path, &superblock));
+  string tablet_data_dir = superblock.kv_store().rocksdb_dir();
+  const auto& rocksdb_files = ASSERT_RESULT(env->GetChildren(tablet_data_dir, ExcludeDots::kTrue));
+  ASSERT_GT(rocksdb_files.size(), 0);
+  for (const auto& file : rocksdb_files) {
+    if (file.size() > 4 && file.substr(file.size() - 4) == ".sst") {
+      ASSERT_OK(env->DeleteFile(JoinPathSegments(tablet_data_dir, file)));
+      LOG(INFO) << "Deleted file " << JoinPathSegments(tablet_data_dir, file);
+    }
+  }
+
+  // Restart the tserver so that the tablet gets marked as FAILED when it's bootstrapped.
+  // Flag TEST_delay_removing_peer_with_failed_tablet_secs will keep the tablet in the FAILED state
+  // for the specified amount of time so that we can verify that it was indeed marked as FAILED.
+  cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->Shutdown();
+  ASSERT_OK(cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->Restart());
+
+  ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::FAILED, kTimeout, 500ms));
+  LOG(INFO) << "Tablet " << tablet_id << " in state FAILED in tablet server "
+            << non_leader_ts->uuid();
+
+  // After setting the tablet state to FAILED, the leader will detect that this TS needs to be
+  // removed from the config so that it can be remote bootstrapped again. Check that this process
+  // completes successfully.
+  ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::RUNNING, kTimeout));
+  LOG(INFO) << "Tablet " << tablet_id << " in state RUNNING in tablet server "
+            << non_leader_ts->uuid();
+
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, leader_ts, tablet_id, kTimeout));
+  LOG(INFO) << "Number of voters for tablet " << tablet_id << " is 3";
+
+  // Ensure all the servers agree before we proceed.
+  ASSERT_OK(WaitForServersToAgree(kTimeout, ts_map_, tablet_id, workload.batches_completed()));
 
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());

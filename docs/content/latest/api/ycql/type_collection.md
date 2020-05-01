@@ -1,7 +1,9 @@
 ---
-title: MAP, SET, LIST
+title: Collection data types (MAP, LIST, and SET) [YSQL]
+headerTitle: Collection data types (MAP, LIST, and SET)
+linkTitle: Collection
 summary: MAP, SET and LIST types
-description: Collection Types
+description: Use collection data types to specify columns for data objects that can contain more than one value.
 menu:
   latest:
     parent: api-cassandra
@@ -15,7 +17,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Collection data types are used to specify columns for data objects that can contains more than one value.
+Use collection data types to specify columns for data objects that can contain more than one value.
 
 ### LIST
 
@@ -45,7 +47,7 @@ set_literal ::= '{' [ expression ...] '}'
 
 Where 
 
-- Columns of type `LIST`, 'MAP', or `SET` cannot be part of the `PRIMARY KEY`.
+- Columns of type `LIST`, `MAP`, or `SET` cannot be part of the `PRIMARY KEY`.
 - `type` must be a [non-parametric data type](../#data-types) or a [frozen](../type_frozen) data type.
 - `key_type` must be any data type that is allowed in a primary key (Currently `FROZEN` and all non-parametric data types except `BOOL`).
 - For `map_literal` the left-side `expression` represents the key and the right-side one represents the value.

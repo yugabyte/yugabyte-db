@@ -114,6 +114,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS ConnectDatabase(const std::string& database_name);
 
+  CHECKED_STATUS IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+
   //------------------------------------------------------------------------------------------------
   // Operations on Database Objects.
   //------------------------------------------------------------------------------------------------
@@ -181,7 +183,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Start operation buffering. It is possible that previous sql statment raised an error
   // and collected operations has not been flushed. All ot them will be silently ignored.
-  CHECKED_STATUS StartOperationsBuffering();
+  void StartOperationsBuffering();
+  // Clean all previously buffered operations (from previous failed query).
+  void ResetOperationsBuffering();
   // Flush all pending operations.
   CHECKED_STATUS FlushBufferedOperations();
 
@@ -268,6 +272,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id);
 
+  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
+      bool use_cache = false);
+
  private:
   CHECKED_STATUS FlushBufferedOperationsImpl();
   CHECKED_STATUS FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool transactional);
@@ -311,7 +318,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //                non-read-only operations we make sure to start a YB transaction.
   // We are returning a raw pointer here because the returned session is owned either by the
   // PgTxnManager or by this object.
-  Result<client::YBSession*> GetSession(bool transactional, bool read_only_op);
+  Result<client::YBSession*> GetSession(bool transactional,
+                                        bool read_only_op,
+                                        bool needs_pessimistic_locking = false);
 
   // Flush buffered write operations from the given buffer.
   Status FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool transactional);

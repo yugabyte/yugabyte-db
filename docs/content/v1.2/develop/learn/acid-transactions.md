@@ -2,6 +2,7 @@
 title: 4. ACID Transactions
 linkTitle: 4. ACID Transactions
 description: ACID Transactions
+block_indexing: true
 menu:
   v1.2:
     identifier: acid-transactions

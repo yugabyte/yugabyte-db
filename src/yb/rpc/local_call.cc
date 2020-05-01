@@ -54,11 +54,10 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
 }
 
 Result<Slice> LocalOutboundCall::GetSidecar(int idx) const {
-  if (idx < 0 || idx >= inbound_call_->sidecars().size()) {
-    return STATUS(InvalidArgument, strings::Substitute(
-        "Index $0 does not reference a valid sidecar", idx));
+  if (idx < 0 || idx >= inbound_call_->sidecars_.size()) {
+    return STATUS_FORMAT(InvalidArgument, "Index $0 does not reference a valid sidecar", idx);
   }
-  return inbound_call_->sidecars()[idx].as_slice();
+  return inbound_call_->sidecars_[idx].as_slice();
 }
 
 LocalYBInboundCall::LocalYBInboundCall(

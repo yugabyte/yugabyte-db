@@ -1,8 +1,8 @@
 ---
-title: RESET
+title: RESET statement [YSQL]
+headerTitle: RESET
 linkTitle: RESET
-summary: Reset a system or session variable to factory settings.
-description: RESET
+description: Use the RESET statement to restore the value of a run-time parameter to the default value.
 menu:
   latest:
     identifier: api-ysql-commands-reset

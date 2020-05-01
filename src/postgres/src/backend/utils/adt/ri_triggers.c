@@ -2702,7 +2702,6 @@ BuildYBTupleId(Relation pk_rel, Relation fk_rel, Relation idx_rel,
 	prepare_params.index_only_scan = true;
 	prepare_params.use_secondary_index = (RelationGetRelid(idx_rel) == RelationGetRelid(pk_rel)) ?
 			false : true;
-	prepare_params.querying_systable = IsSystemRelation(idx_rel) ? true : false;
 
 	HandleYBStatus(YBCPgNewSelect(
 		YBCGetDatabaseOid(idx_rel), RelationGetRelid(idx_rel), &prepare_params, &ybc_stmt));

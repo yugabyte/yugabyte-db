@@ -3,35 +3,33 @@
   <!--[if IE 7 ]><html class="no-js ie7"><![endif]-->
   <!--[if IE 8 ]><html class="no-js ie8"><![endif]-->
   <!--[if IE 9 ]><html class="no-js ie9"><![endif]-->
-  <!--[if (gt IE 9)|!(IE)]><!--> <html class="no-js"> <!--<![endif]-->
+  <!--[if (gt IE 9)|!(IE)]><!--> <html class="no-js" {{ with .Site.LanguageCode }}lang="{{ . }}"{{ end }}> <!--<![endif]-->
 
-  <head {{ with .Site.LanguageCode }}lang="{{ . }}"{{ end }}>
+  <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1">
-    <meta http-equiv="X-UA-Compatible" content="IE=10" />
     <title>{{ .Title }}{{ if not .IsHome }} | {{ .Site.Title }}{{ end }}</title>
-    {{ .Hugo.Generator }}
+    {{ hugo.Generator }}
 
-    {{ with .Site.Params.description }}
-    <meta name="description" content="{{ . }}">
-    {{ end }}
+    <meta name="description" content="{{ if .Description }}{{ .Description }}{{ else if .Site.Params.Description }}{{ .Site.Params.Description }}{{ else }}YugabyteDB is a transactional, high-performance database.{{ end }}">
     <link rel="canonical" href="{{ .Permalink }}">
     {{ with .Site.Params.author }}
     <meta name="author" content="{{ . }}">
     {{ end }}
 
-    {{ with .Site.Params.block_indexing }}
-    <meta name="robots" content="noindex">
-    <meta name="googlebot" content="noindex">
+    {{ with .Params.block_indexing }}
+    <meta name="robots" content="noindex, nofollow">
     {{ end }}
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@yugabyte" />
-    <meta property="og:url" content="{{ .Permalink }}">
-    <meta property="og:title" content="{{ .Title }}{{ if not .IsHome }} | {{ .Site.Title }}{{ end }}">
-    <meta property="og:description" content="The high-performance distributed SQL database for global, internet-scale apps.">
-    {{ with .Site.Params.logo }}<meta property="og:image" content="{{ . | absURL }}">{{ end }}
-    {{ with .Site.Title }}<meta name="apple-mobile-web-app-title" content="{{ . }}">{{ end }}
+    <meta property="og:url" content="{{ .Permalink }}" />
+    <meta property="og:title" content="{{ .Title }}{{ if not .IsHome }} | {{ .Site.Title }}{{ end }}" />
+    <meta property="og:description" content="{{ if .Description }}{{ .Description }}{{ else }}The high-performance distributed SQL database for global, internet-scale apps.{{ end }}" />
+    {{ with .Site.Params.logo }}<meta property="og:image" content="{{ . | absURL }}" />{{ end }}
+    {{ with .Site.Title }}<meta name="apple-mobile-web-app-title" content="{{ . }}" />{{ end }}
+    <meta property="og:type" content="website" />
+    <meta property="og:app_id" content="342998679454500" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 

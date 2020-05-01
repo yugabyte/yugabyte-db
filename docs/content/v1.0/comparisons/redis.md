@@ -2,6 +2,7 @@
 title: Redis
 linkTitle: Redis
 description: Redis
+block_indexing: true
 menu:
   v1.0:
     parent: comparisons

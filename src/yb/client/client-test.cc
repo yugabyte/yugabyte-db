@@ -130,6 +130,7 @@ using base::subtle::NoBarrier_AtomicIncrement;
 using base::subtle::NoBarrier_Load;
 using base::subtle::NoBarrier_Store;
 using master::CatalogManager;
+using master::GetNamespaceInfoResponsePB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TabletLocationsPB;
@@ -188,7 +189,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
  protected:
-
   static const string kKeyspaceName;
   static const YBTableName kTableName;
   static const YBTableName kTable2Name;
@@ -474,8 +474,7 @@ void CheckRowCount(const TableHandle& table) {
 } // namespace
 
 TEST_F(ClientTest, TestListTables) {
-  vector<YBTableName> tables;
-  ASSERT_OK(client_->ListTables(&tables));
+  auto tables = ASSERT_RESULT(client_->ListTables());
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
     return n1.ToString() < n2.ToString();
   });
@@ -483,7 +482,7 @@ TEST_F(ClientTest, TestListTables) {
   ASSERT_EQ(kTableName, tables[0]) << "Tables:" << AsString(tables);
   ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << AsString(tables);
   tables.clear();
-  ASSERT_OK(client_->ListTables(&tables, "testtb2"));
+  tables = ASSERT_RESULT(client_->ListTables("testtb2"));
   ASSERT_EQ(1, tables.size());
   ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << AsString(tables);
 }
@@ -825,7 +824,6 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     EXPECT_EQ(all_rows[0], rows.front());
     EXPECT_EQ(all_rows[14], rows.back());
   }
-
 }
 
 static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
@@ -1112,7 +1110,6 @@ TEST_F(ClientTest, TestApplyToSessionWithoutFlushing_OpsBuffered) {
 // that we get an error on Apply() rather than sending a too-large
 // RPC to the server.
 TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
-
   // Applying a bunch of small rows without a flush should result
   // in an error.
   {
@@ -1262,6 +1259,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     table_alterer->DropColumn("int_val")
       ->AddColumn("new_col")->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
+    // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
   }
 
@@ -1271,11 +1269,11 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
               ->Alter());
+    // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
     ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
 
-    vector<YBTableName> tables;
-    ASSERT_OK(client_->ListTables(&tables));
+    const auto tables = ASSERT_RESULT(client_->ListTables());
     ASSERT_TRUE(::util::gtl::contains(tables.begin(), tables.end(), kRenamedTableName));
     ASSERT_FALSE(::util::gtl::contains(tables.begin(), tables.end(), kTableName));
   }
@@ -1294,8 +1292,7 @@ TEST_F(ClientTest, TestDeleteTable) {
   // NOTE that it returns when the operation is completed on the master side
   string tablet_id = GetFirstTabletId(client_table_.get());
   ASSERT_OK(client_->DeleteTable(kTableName));
-  vector<YBTableName> tables;
-  ASSERT_OK(client_->ListTables(&tables));
+  const auto tables = ASSERT_RESULT(client_->ListTables());
   ASSERT_FALSE(::util::gtl::contains(tables.begin(), tables.end(), kTableName));
 
   // Wait until the table is removed from the TS
@@ -2110,7 +2107,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   EXPECT_OK(schemaBuilder.Build(&schema));
   Status s = table_creator->table_name(pgsql_table_name)
       .table_id(kPgsqlTableId)
-      .schema(&schema_)
+      .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(PGSQL_TABLE_TYPE)
       .num_tablets(1)
@@ -2134,7 +2131,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   // Create a YQL table using range partition.
   s = table_creator->table_name(yql_table_name)
-      .schema(&schema_)
+      .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(YQL_TABLE_TYPE)
       .num_tablets(1)
@@ -2153,5 +2150,95 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
   EXPECT_OK(session->Apply(write_op));
 }
+
+// TODO(jason): enable the test in clang when we use clang version at least 9 (otherwise, there is a
+// compilation error: P0428R2).
+#if !defined(__clang__)
+TEST_F(ClientTest, FlushTable) {
+  const tablet::Tablet* tablet;
+  constexpr int kTimeoutSecs = 30;
+  int current_row = 0;
+
+  {
+    std::shared_ptr<TabletPeer> tablet_peer;
+    string tablet_id = GetFirstTabletId(client_table2_.get());
+    for (auto& ts : cluster_->mini_tablet_servers()) {
+      ASSERT_TRUE(ts->server()->tablet_manager()->LookupTablet(tablet_id, &tablet_peer));
+      if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+        break;
+      }
+    }
+    tablet = tablet_peer->tablet();
+  }
+
+  auto test_good_flush_and_compact = ([&]<class T>(T table_id_or_name) {
+    int initial_num_sst_files = tablet->GetCurrentVersionNumSSTFiles();
+
+    // Test flush table.
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 1);
+
+    // Insert and flush more rows.
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    InsertTestRows(client_table2_, 1, current_row++);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+
+    // Test compact table.
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 3);
+    ASSERT_OK(client_->FlushTable(table_id_or_name, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), 1);
+  });
+
+  test_good_flush_and_compact(client_table2_.table()->id());
+  test_good_flush_and_compact(client_table2_.table()->name());
+
+  auto test_bad_flush_and_compact = ([&]<class T>(T table_id_or_name) {
+    // Test flush table.
+    ASSERT_NOK(client_->FlushTable(table_id_or_name, kTimeoutSecs, false /* is_compaction */));
+    // Test compact table.
+    ASSERT_NOK(client_->FlushTable(table_id_or_name, kTimeoutSecs, true /* is_compaction */));
+  });
+
+  test_bad_flush_and_compact("bad table id");
+  test_bad_flush_and_compact(YBTableName(
+      YQLDatabase::YQL_DATABASE_CQL,
+      "bad namespace name",
+      "bad table name"));
+}
+#endif  // !defined(__clang__)
+
+TEST_F(ClientTest, GetNamespaceInfo) {
+  const std::string kPgsqlKeyspaceID = "1234";
+  const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
+  GetNamespaceInfoResponsePB resp;
+
+  // Setup.
+  ASSERT_OK(client_->CreateNamespace(kPgsqlKeyspaceName,
+                                     YQLDatabase::YQL_DATABASE_PGSQL,
+                                     "" /* creator_role_name */,
+                                     kPgsqlKeyspaceID,
+                                     "" /* source_namespace_id */,
+                                     boost::none /* next_pg_oid */,
+                                     true /* colocated */));
+
+  // CQL non-colocated.
+  ASSERT_OK(client_->GetNamespaceInfo(
+        "" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
+  ASSERT_EQ(resp.namespace_().name(), kKeyspaceName);
+  ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_CQL);
+  ASSERT_FALSE(resp.colocated());
+
+  // SQL colocated.
+  ASSERT_OK(client_->GetNamespaceInfo(
+        kPgsqlKeyspaceID, "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_EQ(resp.namespace_().id(), kPgsqlKeyspaceID);
+  ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
+  ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
+  ASSERT_TRUE(resp.colocated());
+}
+
 }  // namespace client
 }  // namespace yb

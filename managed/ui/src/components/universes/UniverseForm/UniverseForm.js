@@ -209,6 +209,7 @@ class UniverseForm extends Component {
         enableYSQL: self.getYSQLstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
+        awsArnString: formValues[clusterType].awsArnString,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
@@ -353,10 +354,8 @@ class UniverseForm extends Component {
           <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell active-stepper-cell' : 'stepper-cell'}>
             1. Primary Cluster
           </FlexShrink>
-          <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}
-            data-yb-beta
-          >
-            2. Read Replica (Beta)
+          <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}>
+            2. Read Replica
           </FlexShrink>
         </FlexContainer>
       </h2>);
@@ -387,7 +386,7 @@ class UniverseForm extends Component {
     }
 
     if (this.state.currentView === "Primary" && type !== "Edit" && type !== "Async") {
-      asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" data-yb-beta btnText={"Configure Read Replica (Beta)"} onClick={this.configureReadOnlyCluster}/>;
+      asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Configure Read Replica"} onClick={this.configureReadOnlyCluster}/>;
     }
 
     const {universe: {currentUniverse: {data: {universeDetails}}}, modal } = this.props;
@@ -397,7 +396,7 @@ class UniverseForm extends Component {
       if(readOnlyCluster) {
         asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Delete this configuration"} onClick={showDeleteReadReplicaModal}/>;
       } else {
-        //asyncReplicaBtn = <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={"Add Read Replica (Beta)"} onClick={this.configureReadOnlyCluster}/>;
+        //asyncReplicaBtn = <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={"Add Read Replica"} onClick={this.configureReadOnlyCluster}/>;
       }
     }
     let submitTextLabel = "";
@@ -406,9 +405,9 @@ class UniverseForm extends Component {
     } else {
       if (type === "Async") {
         if(readOnlyCluster) {
-          submitTextLabel = "Edit Read Replica (Beta)" ;
+          submitTextLabel = "Edit Read Replica" ;
         } else {
-          submitTextLabel = "Add Read Replica (Beta)";
+          submitTextLabel = "Add Read Replica";
         }
       } else {
         submitTextLabel = "Save";
@@ -505,8 +504,10 @@ class UniverseForm extends Component {
       const currentCluster = this.state.currentView === "Primary" ? getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters) : getReadOnlyCluster(universe.currentUniverse.data.universeDetails.clusters);
       const newCluster = this.state.currentView === "Primary" ? getPrimaryCluster(universeConfigTemplate.data.clusters): getReadOnlyCluster(universeConfigTemplate.data.clusters);
       const placementUuid = newCluster.uuid;
-      const oldNodes = universeConfigTemplate.data.nodeDetailsSet.filter(node => node.placementUuid === placementUuid && node.nodeName);
-      const newNodes = universeConfigTemplate.data.nodeDetailsSet.filter(node => node.placementUuid === placementUuid && !node.nodeName);
+      const oldNodes = universeConfigTemplate.data.nodeDetailsSet
+                        .filter(node => node.placementUuid === placementUuid && node.nodeName && node.isTserver);
+      const newNodes = universeConfigTemplate.data.nodeDetailsSet
+                        .filter(node => node.placementUuid === placementUuid && !node.nodeName);
       const oldConfig = {};
       if (currentCluster) {
         oldConfig.numVolumes =  currentCluster.userIntent.deviceInfo.numVolumes;

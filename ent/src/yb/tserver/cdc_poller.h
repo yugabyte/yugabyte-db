@@ -19,6 +19,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/locks.h"
 #include "yb/util/status.h"
 
 #ifndef ENT_SRC_YB_TSERVER_CDC_POLLER_H
@@ -81,10 +82,14 @@ class CDCPoller {
   std::function<bool()> should_continue_polling_;
   std::function<void(void)> remove_self_from_pollers_map_;
 
-  consensus::OpId op_id_;
+  // Although this is processing serially, it might be on a different thread in the ThreadPool.
+  // Using mutex to guarantee cache flush, preventing TSAN warnings.
+  std::mutex data_mutex_;
 
-  yb::Status status_;
-  std::shared_ptr<cdc::GetChangesResponsePB> resp_;
+  consensus::OpId op_id_ GUARDED_BY(data_mutex_);
+
+  yb::Status status_ GUARDED_BY(data_mutex_);
+  std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);
 
   std::unique_ptr<cdc::CDCOutputClient> output_client_;
   std::shared_ptr<CDCClient> producer_client_;
@@ -93,8 +98,8 @@ class CDCPoller {
   CDCConsumer* cdc_consumer_;
 
   std::atomic<bool> is_polling_{true};
-  int poll_failures_{0};
-  int apply_failures_{0};
+  int poll_failures_ GUARDED_BY(data_mutex_){0};
+  int apply_failures_ GUARDED_BY(data_mutex_){0};
 };
 
 } // namespace enterprise

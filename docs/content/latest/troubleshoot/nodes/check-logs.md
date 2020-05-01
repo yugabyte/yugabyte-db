@@ -1,6 +1,7 @@
 ---
 title: Inspect logs
 linkTitle: Inspect logs
+headerTitle: Inspect YugabyteDB logs
 description: Inspect YugabyteDB logs
 aliases:
   - /troubleshoot/nodes/check-logs/
@@ -19,7 +20,7 @@ The logs for each node are written to a subdirectory of the YugabyteDB `yugabyte
 - When you use `yb-ctl` to create local YugabyteDB clusters on a single host (for example, your laptop), the default location for each node is `/yugabyte-data/node-<node_nr>/`. 
 For a 3-node cluster, the `yb-ctl` utility creates three directories: `node-1`, `node-2` and `node-3`.
 - For a multi-node cluster deployment to multiple hosts, the location where YugabyteDB disks are set up can vary (for example, `/home/centos/`, `/mnt/`, or another directory) on each node (host).
-- When using the `--fs_data_dirs` option with multiple directories, logs will be saved in the first directory in the list.
+- When using the `--fs_data_dirs` flag with multiple directories, logs will be saved in the first directory in the list.
 - When using Yugabyte Platform, logs are located in `/home/yugabyte/{master,tserver}/logs`. This is a symlink to the first directory in `--fs_data_dirs` list.
 
 In the sections below, the YugabyteDB `yugabyte-data` directory is represented by `<yugabyte-data-directory>`.
@@ -48,10 +49,10 @@ Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. In ca
 
 There are 3 types of logs:
 
-For YB-Master and YB-TServer, the log rotation size is controlled by the `--max_log_size` configuration option.
+For YB-Master and YB-TServer, the log rotation size is controlled by the `--max_log_size` flag.
 
 `--max_log_size=256` will limit each file to 256MB. The default size is 1.8 GB.
 
 For YSQL, we also have the additional `postgres*log` files. These logs have daily and size-based log rotation, that is a new log file will be created each day or a log reaches 10 MB size.
 
-For available configuration options, see [YB-Master logging options](../../../reference/configuration/yb-master/#logging-options) and [YB-TServer logging options](../../../reference/configuration/yb-tserver/#logging-options).
+For available configuration flags, see [YB-Master logging flags](../../../reference/configuration/yb-master/#logging-flags) and [YB-TServer logging flags](../../../reference/configuration/yb-tserver/#logging-flags).

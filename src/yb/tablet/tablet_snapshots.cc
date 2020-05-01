@@ -15,6 +15,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/common/snapshot.h"
+
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
@@ -27,7 +29,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
-#include "yb/util/pending_op_counter.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
 
@@ -51,56 +53,13 @@ bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
   return boost::ends_with(dir, kTempSnapshotDirSuffix);
 }
 
-Status TabletSnapshots::Bootstrap(SnapshotOperationState* tx_state) {
-  RETURN_NOT_OK(Prepare(tx_state));
-
-  return Apply(tx_state);
-}
-
-Status TabletSnapshots::Apply(SnapshotOperationState* tx_state) {
-  // Apply the snapshot operation to the tablet.
-  switch (tx_state->request()->operation()) {
-    case tserver::TabletSnapshotOpRequestPB::CREATE: {
-      return Create(tx_state);
-    }
-    case tserver::TabletSnapshotOpRequestPB::RESTORE: {
-      return Restore(tx_state);
-    }
-    case tserver::TabletSnapshotOpRequestPB::DELETE: {
-      return Delete(tx_state);
-    }
-    case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-  }
-
-  FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation,
-                           tx_state->request()->operation());
-}
-
-Status TabletSnapshots::Replicated(SnapshotOperationState* tx_state) {
-  RETURN_NOT_OK(Apply(tx_state));
-
-  // The schema lock was acquired by Tablet::PrepareForCreateSnapshot.
-  // Normally, we would release it in tablet.cc after applying the operation,
-  // but currently we need to wait until after the COMMIT message is logged
-  // to release this lock as a workaround for KUDU-915. See the same TODO in
-  // AlterSchemaOperation().
-  tx_state->ReleaseSchemaLock();
-
-  // Now that all of the changes have been applied and the commit is durable
-  // make the changes visible to readers.
-  TRACE("SnapshotOperation: making snapshot visible");
-  tx_state->Finish();
-
-  return Status::OK();
-}
-
-Status TabletSnapshots::Prepare(SnapshotOperationState* tx_state) {
-  tx_state->AcquireSchemaLock(&schema_lock());
+Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
+  operation->AcquireSchemaLock(&schema_lock());
   return Status::OK();
 }
 
 Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter());
   RETURN_NOT_OK(scoped_read_operation);
 
   Status s = regular_db().Flush(rocksdb::FlushOptions());
@@ -115,8 +74,10 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
       Format("Unable to create snapshots directory $0", top_snapshots_dir));
 
   Env* const env = metadata().fs_manager()->env();
-  const string snapshot_dir = JoinPathSegments(top_snapshots_dir,
-                                               tx_state->request()->snapshot_id());
+  auto snapshot_hybrid_time = HybridTime::FromPB(tx_state->request()->snapshot_hybrid_time());
+  auto is_transactional_snapshot = snapshot_hybrid_time.is_valid();
+
+  const string snapshot_dir = tx_state->GetSnapshotDir(top_snapshots_dir);
   // Delete previous snapshot in the same directory if it exists.
   if (env->FileExists(snapshot_dir)) {
     LOG_WITH_PREFIX(INFO) << "Deleting old snapshot dir " << snapshot_dir;
@@ -181,6 +142,15 @@ Status TabletSnapshots::Create(SnapshotOperationState* tx_state) {
     return s.CloneAndPrepend("Cannot create RocksDB checkpoint");
   }
 
+  if (is_transactional_snapshot) {
+    rocksdb::Options rocksdb_options;
+    tablet().InitRocksDBOptions(&rocksdb_options, /* log_prefix= */ std::string());
+    docdb::RocksDBPatcher patcher(tmp_snapshot_dir, rocksdb_options);
+
+    RETURN_NOT_OK(patcher.Load());
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
+  }
+
   RETURN_NOT_OK_PREPEND(
       env->RenameFile(tmp_snapshot_dir, snapshot_dir),
       Format("Cannot rename temp snapshot dir $0 to $1", tmp_snapshot_dir, snapshot_dir));
@@ -239,16 +209,10 @@ Status TabletSnapshots::RestoreCheckpoint(
   // TODO: snapshot current DB and try to restore it in case of failure.
   RETURN_NOT_OK(ResetRocksDBs(/* destroy= */ true));
 
-  auto s = rocksdb::CopyDirectory(
-      &rocksdb_env(), dir, db_dir, rocksdb::CreateIfMissing::kTrue);
+  auto s = CopyDirectory(&rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
     return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
-  }
-
-  if (!intents_db_dir.empty()) {
-    auto intents_tmp_dir = JoinPathSegments(dir, tablet::kIntentsSubdir);
-    rocksdb_env().RenameFile(intents_db_dir, intents_db_dir);
   }
 
   // Reopen database from copied checkpoint.
@@ -293,8 +257,10 @@ Status TabletSnapshots::RestoreCheckpoint(
 
 Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
   const std::string top_snapshots_dir = SnapshotsDirName(metadata().rocksdb_dir());
-  const std::string snapshot_dir =
-      JoinPathSegments(top_snapshots_dir, tx_state->request()->snapshot_id());
+  const auto& snapshot_id = tx_state->request()->snapshot_id();
+  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  const std::string snapshot_dir = JoinPathSegments(
+      top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();
@@ -327,8 +293,9 @@ Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
   return Status::OK();
 }
 
-Status TabletSnapshots::CreateCheckpoint(const std::string& dir) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter());
+Status TabletSnapshots::CreateCheckpoint(
+    const std::string& dir, const CreateIntentsCheckpointIn create_intents_checkpoint_in) {
+  ScopedRWOperation scoped_read_operation(&pending_op_counter());
   RETURN_NOT_OK(scoped_read_operation);
 
   auto temp_intents_dir = dir + kIntentsDBSuffix;
@@ -354,7 +321,8 @@ Status TabletSnapshots::CreateCheckpoint(const std::string& dir) {
   if (status.ok()) {
     status = rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir);
   }
-  if (status.ok() && has_intents_db()) {
+  if (status.ok() && has_intents_db() &&
+      create_intents_checkpoint_in == CreateIntentsCheckpointIn::kUseIntentsDbSuffix) {
     status = Env::Default()->RenameFile(temp_intents_dir, final_intents_dir);
   }
 

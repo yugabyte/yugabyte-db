@@ -215,10 +215,12 @@ YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
 class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
  public:
   RemoteTablet(std::string tablet_id,
-               Partition partition)
+               Partition partition,
+               uint64 split_depth)
       : tablet_id_(std::move(tablet_id)),
         log_prefix_(Format("T $0: ", tablet_id_)),
         partition_(std::move(partition)),
+        split_depth_(split_depth),
         stale_(false) {
   }
 
@@ -237,6 +239,11 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   // Whether the tablet has been marked as stale.
   bool stale() const;
+
+  // Mark this tablet as already split.
+  void MarkAsSplit();
+
+  bool is_split() const;
 
   // Mark any replicas of this tablet hosted by 'ts' as failed. They will
   // not be returned in future cache lookups.
@@ -296,6 +303,9 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   MonoTime refresh_time() { return refresh_time_.load(std::memory_order_acquire); }
 
+  // See TabletLocationsPB::split_depth.
+  uint64 split_depth() { return split_depth_; }
+
  private:
   // Same as ReplicasAsString(), except that the caller must hold mutex_.
   std::string ReplicasAsStringUnlocked() const;
@@ -303,10 +313,12 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   const std::string tablet_id_;
   const std::string log_prefix_;
   const Partition partition_;
+  const uint64 split_depth_;
 
   // All non-const members are protected by 'mutex_'.
   mutable rw_spinlock mutex_;
   bool stale_;
+  bool is_split_ = false;
   std::vector<RemoteReplica> replicas_;
 
   // Last time this object was refreshed. Initialized to MonoTime::Min() so we don't have to be
@@ -383,6 +395,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   RemoteTabletPtr ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       const std::string* partition_group_start);
+
+  void InvalidateTableCache(const TableId& table_id);
 
  private:
   friend class LookupRpc;

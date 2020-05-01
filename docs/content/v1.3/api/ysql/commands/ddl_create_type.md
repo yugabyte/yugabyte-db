@@ -3,6 +3,7 @@ title: CREATE TYPE
 linkTitle: CREATE TYPE
 summary: Create a new type in a database
 description: CREATE TYPE
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-create-type

@@ -164,6 +164,9 @@ const YBTable* AsyncRpc::table() const {
 void AsyncRpc::Finished(const Status& status) {
   Status new_status = status;
   if (tablet_invoker_.Done(&new_status)) {
+    if (tablet().is_split()) {
+      ops_[0]->yb_op->MarkTablePartitionsAsStale();
+    }
     ProcessResponseFromTserver(new_status);
     batcher_->RemoveInFlightOpsAfterFlushing(ops_, new_status, MakeFlushExtraResult());
     batcher_->CheckForFinishedFlush();
@@ -288,7 +291,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
     req_.set_batch_idx(ops_.front()->batch_idx);
   }
   auto& transaction_metadata = batcher_->transaction_metadata();
-  if (!transaction_metadata.transaction_id.is_nil()) {
+  if (!transaction_metadata.transaction_id.IsNil()) {
     SetTransactionMetadata(transaction_metadata, &req_);
     bool serializable = transaction_metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
     LOG_IF(DFATAL, has_read_time && serializable)

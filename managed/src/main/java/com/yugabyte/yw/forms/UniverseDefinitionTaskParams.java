@@ -88,7 +88,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
   public boolean updateSucceeded = true;
-  
+
   // The next cluster index to be used when a new read-only cluster is added.
   public int nextClusterIndex = 1;
 
@@ -97,6 +97,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // but defaults to true since we want universes created through pre-TLS YW to be
   // unaffected.
   public boolean allowInsecure = true;
+
+  // Development flag to download package from s3 bucket.
+  public String itestS3PackagePath = "";
 
   /**
    * Allowed states for an imported universe.
@@ -147,7 +150,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     // The placement information computed from the user intent.
     public PlacementInfo placementInfo = null;
-    
+
     // The cluster index by which node names are sorted when shown in UI.
     // This is set internally by the placement util in the server, client should not set it.
     public int index = 0;
@@ -267,6 +270,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public boolean enableClientToNodeEncrypt = false;
 
     public boolean enableVolumeEncryption = false;
+
+    public String awsArnString;
 
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match

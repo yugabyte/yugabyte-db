@@ -2,7 +2,8 @@
 title: YugabyteDB CDC connector
 linkTitle: YugabyteDB CDC connector
 description: YugabyteDB CDC connector
-beta: /faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v2.0:
     parent: cdc

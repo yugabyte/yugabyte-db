@@ -2,6 +2,7 @@
 title: Apache Spark
 linkTitle: Apache Spark
 description: Apache Spark
+block_indexing: true
 menu:
   v1.2:
     identifier: apache-spark

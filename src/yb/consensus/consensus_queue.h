@@ -75,6 +75,35 @@ struct MajorityReplicatedData;
 // The id for the server-wide consensus queue MemTracker.
 extern const char kConsensusQueueParentTrackerId[];
 
+// Utility structure to track value sent to and received by follower.
+template <class Value>
+struct FollowerWatermark {
+  const Value initial;
+
+  // When value is sent to follower, its value is written to last_sent.
+  Value last_sent;
+
+  // After follower successfully process our request, we copy value from last_sent to last_received.
+  Value last_received;
+
+  explicit FollowerWatermark(const Value& initial_ = Value())
+      : initial(initial_), last_sent(initial_), last_received(initial_) {}
+
+  void Reset() {
+    last_sent = initial;
+    last_received = initial;
+  }
+
+  void OnReplyFromFollower() {
+    last_received = last_sent;
+  }
+
+  std::string ToString() const {
+    return Format("{ last_sent: $0 last_received: $1 }", last_sent, last_received);
+  }
+};
+
+
 // Tracks the state of the peers and which transactions they have replicated.  Owns the LogCache
 // which actually holds the replicate messages which are en route to the various peers.
 //
@@ -113,6 +142,9 @@ class PeerMessageQueue {
     // Next index to send to the peer.  This corresponds to "nextIndex" as specified in Raft.
     int64_t next_index = kInvalidOpIdIndex;
 
+    // Number of ops starting from next_index_ to retransmit.
+    int64_t last_num_messages_sent = -1;
+
     // The last operation that we've sent to this peer and that it acked. Used for watermark
     // movement.
     OpId last_received;
@@ -128,23 +160,15 @@ class PeerMessageQueue {
     // successful communication ever took place.
     MonoTime last_successful_communication_time;
 
-    // The leader sets this field to the time of sending request + leader lease duration, and uses
-    // it when handling the response to establish the majority replicated lease expiration
-    // timestamp. This is not actually sent to the follower: what we're sending is the lease
-    // duration, not an expiration timestamp, because the timestamp is specific to the leader's
-    // monotonic clock.
-    CoarseTimePoint last_leader_lease_expiration_sent_to_follower;
+    // Leader lease expiration from this follower's point of view.
+    FollowerWatermark<CoarseTimePoint> leader_lease_expiration;
 
-    // The last leader lease expiration timestamp received by the follower described by this
-    // TrackedPeer. We set this to the value of what we sent to that follower
-    // (last_leader_lease_expiration_sent_to_follower) when we receive the follower's response.
-    CoarseTimePoint last_leader_lease_expiration_received_by_follower;
+    // Leader hybrid time lease expiration from this follower's point of view.
+    FollowerWatermark<MicrosTime> leader_ht_lease_expiration{
+        HybridTime::kMin.GetPhysicalValueMicros()};
 
-    MicrosTime last_ht_lease_expiration_sent_to_follower =
-        HybridTime::kMin.GetPhysicalValueMicros();
-
-    MicrosTime last_ht_lease_expiration_received_by_follower =
-        HybridTime::kMin.GetPhysicalValueMicros();
+    // History cutoff from this follower's point of view.
+    FollowerWatermark<HybridTime> history_cutoff{HybridTime::kMin};
 
     // Whether the follower was detected to need remote bootstrap.
     bool needs_remote_bootstrap = false;
@@ -185,7 +209,7 @@ class PeerMessageQueue {
   //
   // 'active_config' is the currently-active Raft config. This must always be a superset of the
   // tracked peers, and that is enforced with runtime CHECKs.
-  virtual void SetLeaderMode(const OpId& committed_index,
+  virtual void SetLeaderMode(const OpId& committed_op_id,
                              int64_t current_term,
                              const RaftConfigPB& active_config);
 
@@ -329,6 +353,10 @@ class PeerMessageQueue {
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
+  CHECKED_STATUS FlushLogIndex();
+
+  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
+
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);
 
@@ -369,14 +397,14 @@ class PeerMessageQueue {
   struct QueueState {
 
     // The first operation that has been replicated to all currently tracked peers.
-    OpId all_replicated_opid = MinimumOpId();
+    OpId all_replicated_op_id = MinimumOpId();
 
     // The index of the last operation replicated to a majority.  This is usually the same as
-    // 'committed_index' but might not be if the terms changed.
-    OpId majority_replicated_opid = MinimumOpId();
+    // 'committed_op_id' but might not be if the terms changed.
+    OpId majority_replicated_op_id = MinimumOpId();
 
     // The index of the last operation to be considered committed.
-    OpId committed_index = MinimumOpId();
+    OpId committed_op_id = MinimumOpId();
 
     // The opid of the last operation appended to the queue.
     OpId last_appended = MinimumOpId();

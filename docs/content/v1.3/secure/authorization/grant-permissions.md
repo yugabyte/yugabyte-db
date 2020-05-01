@@ -4,6 +4,7 @@ linkTitle: 3. Grant permissions
 description: 3. Grant permissions
 headcontent: Grant permissions in YCQL
 image: /images/section_icons/secure/grant-permissions.png
+block_indexing: true
 menu:
   v1.3:
     identifier: secure-authorization-grant-permissions

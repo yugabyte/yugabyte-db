@@ -1,8 +1,8 @@
 ---
 title: TRUNCATE
+headerTitle: TRUNCATE
 linkTitle: TRUNCATE
-summary: Clear all rows in a table
-description: TRUNCATE
+description:  Use the TRUNCATE statement to clear all rows in a table.
 menu:
   latest:
     identifier: api-ysql-commands-truncate

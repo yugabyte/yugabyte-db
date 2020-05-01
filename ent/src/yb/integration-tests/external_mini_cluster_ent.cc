@@ -12,8 +12,6 @@
 
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 
-#include "yb/master/master_backup.proxy.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
@@ -24,21 +22,6 @@
 DECLARE_string(certs_dir);
 
 namespace yb {
-
-using yb::master::MasterBackupServiceProxy;
-
-std::shared_ptr<MasterBackupServiceProxy> master_backup_proxy(
-    ExternalMiniCluster* cluster) {
-  CHECK_EQ(cluster->num_masters(), 1);
-  return master_backup_proxy(cluster, 0);
-}
-
-std::shared_ptr<MasterBackupServiceProxy> master_backup_proxy(
-    ExternalMiniCluster* cluster, int idx) {
-  CHECK_LT(idx, cluster->num_masters());
-  return std::make_shared<MasterBackupServiceProxy>(
-      &cluster->proxy_cache(), CHECK_NOTNULL(cluster->master(idx))->bound_rpc_addr());
-}
 
 void StartSecure(
     std::unique_ptr<ExternalMiniCluster>* cluster,

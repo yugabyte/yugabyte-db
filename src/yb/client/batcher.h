@@ -166,8 +166,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     force_consistent_read_ = value;
   }
 
-  void WriteWithHybridTime(HybridTime ht) {
-    write_with_hybrid_time_ = ht;
+  void SetHybridTimeForWrite(HybridTime ht) {
+    hybrid_time_for_write_ = ht;
   }
 
   YBTransactionPtr transaction() const;
@@ -314,7 +314,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   ConsistentReadPoint* read_point_ = nullptr;
 
   // Used for backfilling at a historic timestamp.
-  HybridTime write_with_hybrid_time_ = HybridTime::kInvalid;
+  HybridTime hybrid_time_for_write_ = HybridTime::kInvalid;
 
   // Force consistent read on transactional table, even we have only single shard commands.
   ForceConsistentRead force_consistent_read_;

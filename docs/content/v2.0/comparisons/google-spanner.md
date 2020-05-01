@@ -2,6 +2,7 @@
 title: Google Cloud Spanner
 linkTitle: Google Cloud Spanner
 description: Google Cloud Spanner
+block_indexing: true
 menu:
   v2.0:
     parent: comparisons

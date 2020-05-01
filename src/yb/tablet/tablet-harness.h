@@ -126,22 +126,7 @@ class TabletHarness {
     }
 
     clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitial);
-    TabletOptions tablet_options;
-    tablet_ = std::make_shared<Tablet>(
-        metadata,
-        std::shared_future<client::YBClient*>(),
-        clock_,
-        std::shared_ptr<MemTracker>(),
-        std::shared_ptr<MemTracker>(),
-        metrics_registry_.get(),
-        new log::LogAnchorRegistry(),
-        tablet_options,
-        std::string() /* log_pefix_suffix */,
-        nullptr /* transaction_participant_context */,
-        client::LocalTabletFilter(),
-        nullptr /* transaction_coordinator_context */,
-        IsSysCatalogTablet::kFalse,
-        TransactionsEnabled::kFalse);
+    tablet_ = std::make_shared<Tablet>(MakeTabletInitData(metadata));
     return Status::OK();
   }
 
@@ -155,25 +140,32 @@ class TabletHarness {
     RaftGroupMetadataPtr metadata;
     RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &metadata));
     TabletOptions tablet_options;
-    auto tablet = std::make_shared<Tablet>(
-        metadata,
-        std::shared_future<client::YBClient*>(),
-        clock_,
-        std::shared_ptr<MemTracker>(),
-        std::shared_ptr<MemTracker>(),
-        metrics_registry_.get(),
-        new log::LogAnchorRegistry(),
-        tablet_options,
-        std::string() /* log_pefix_suffix */,
-        nullptr /* transaction_participant_context */,
-        client::LocalTabletFilter(),
-        nullptr /* transaction_coordinator_context */,
-        IsSysCatalogTablet::kFalse,
-        TransactionsEnabled::kFalse);
+    auto tablet = std::make_shared<Tablet>(MakeTabletInitData(metadata));
     RETURN_NOT_OK(tablet->Open());
     tablet->MarkFinishedBootstrapping();
     RETURN_NOT_OK(tablet->EnableCompactions(/* operation_pause */ nullptr));
     return tablet;
+  }
+
+  TabletInitData MakeTabletInitData(const RaftGroupMetadataPtr& metadata) {
+    return TabletInitData {
+      .metadata = metadata,
+      .client_future = std::shared_future<client::YBClient*>(),
+      .clock = clock_,
+      .parent_mem_tracker = std::shared_ptr<MemTracker>(),
+      .block_based_table_mem_tracker = std::shared_ptr<MemTracker>(),
+      .metric_registry = metrics_registry_.get(),
+      .log_anchor_registry = new log::LogAnchorRegistry(),
+      .tablet_options = TabletOptions(),
+      .log_prefix_suffix = std::string(),
+      .transaction_participant_context = nullptr,
+      .local_tablet_filter = client::LocalTabletFilter(),
+      .transaction_coordinator_context = nullptr,
+      .txns_enabled = TransactionsEnabled::kFalse,
+      .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr
+    };
   }
 
   server::Clock* clock() const {

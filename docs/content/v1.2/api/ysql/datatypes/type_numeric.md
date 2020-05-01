@@ -3,6 +3,7 @@ title: NUMERIC
 linktitle: Numeric
 description: Numeric Types
 summary: Signed integers and Floating and Fixed point numbers
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-datatypes-numeric

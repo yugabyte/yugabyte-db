@@ -30,13 +30,12 @@ YB_STRONGLY_TYPED_BOOL(RequestSent);
 // PgDocResult represents a batch of rows in ONE reply from tablet servers.
 class PgDocResult {
  public:
-  // Public types.
-  typedef std::shared_ptr<PgDocResult> SharedPtr;
-  typedef std::shared_ptr<const PgDocResult> SharedPtrConst;
-
   explicit PgDocResult(string&& data);
   PgDocResult(string&& data, std::list<int64_t>&& row_orders);
   ~PgDocResult();
+
+  PgDocResult(const PgDocResult&) = delete;
+  PgDocResult& operator=(const PgDocResult&) = delete;
 
   // Get the order of the next row in this batch.
   int64_t NextRowOrder();
@@ -112,10 +111,17 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Execute the op. Return true if the request has been sent and is awaiting the result.
   virtual Result<RequestSent> Execute(bool force_non_bufferable = false);
 
-  // Get the result of the op. Empty string is used to indicate end of data.
-  CHECKED_STATUS GetResult(std::list<PgDocResult::SharedPtr> *rowsets);
+  // Get the result of the op. No rows will be added to rowsets in case end of data reached.
+  CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets);
 
   Result<int32_t> GetRowsAffectedCount() const;
+
+  // Instruct this doc_op to abandon execution and querying data by setting end_of_data_ to 'true'.
+  // - This op will not send request to tablet server.
+  // - This op will return empty result-set when being requested for data.
+  void AbandonExecution() {
+    end_of_data_ = true;
+  }
 
  protected:
   // Session control.
@@ -137,17 +143,18 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Exec control parameters.
   PgExecParameters exec_params_;
 
-  // Caching state variables.
-  std::list<PgDocResult::SharedPtr> result_cache_;
+  // Suppress sending new request after processing response.
+  // Next request will be sent in case upper level will ask for additional data.
+  bool suppress_next_result_prefetching_ = false;
 
  private:
   CHECKED_STATUS SendRequest(bool force_non_bufferable);
 
-  CHECKED_STATUS ProcessResponse(const Status& exec_status);
+  Result<std::list<PgDocResult>> ProcessResponse(const Status& exec_status);
 
   virtual CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) = 0;
 
-  virtual CHECKED_STATUS ProcessResponseImpl(const Status& exec_status) = 0;
+  virtual Result<std::list<PgDocResult>> ProcessResponseImpl() = 0;
 
   virtual int32_t GetRowsAffectedCountImpl() const { return 0; }
 
@@ -169,6 +176,7 @@ class PgDocReadOp : public PgDocOp {
 
   // Constructors & Destructors.
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+              const PgTableDesc::ScopedRefPtr& table_desc,
               size_t num_hash_key_columns,
               std::unique_ptr<client::YBPgsqlReadOp> read_op);
 
@@ -180,7 +188,7 @@ class PgDocReadOp : public PgDocOp {
  private:
   // Process response from DocDB.
   CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) override;
-  CHECKED_STATUS ProcessResponseImpl(const Status& exec_status) override;
+  Result<std::list<PgDocResult>> ProcessResponseImpl() override;
 
   // Analyze options and pick the appropriate prefetch limit.
   void SetRequestPrefetchLimit();
@@ -203,6 +211,8 @@ class PgDocReadOp : public PgDocOp {
   //
   // Also updates the value of can_produce_more_ops_.
   void InitializeNextOps(int num_ops);
+
+  void InitializeParallelSelectCountOps(int select_parallelism);
 
   // Used internally for InitializeNextOps to keep track of which permutation should be used
   // to construct the next read_op.
@@ -228,6 +238,11 @@ class PgDocReadOp : public PgDocOp {
   // 1) Partition columns are not bound but the request hasn't been sent yet.
   // 2) Partition columns are bound and some permutations remain unprocessed.
   bool can_produce_more_ops_ = true;
+
+  PgTableDesc::ScopedRefPtr table_desc_;
+
+  // Offset to use for next element in partition_keys.
+  int partition_keys_next_to_use_ = 0;
 
   // Operation(s).
   //
@@ -283,7 +298,7 @@ class PgDocWriteOp : public PgDocOp {
 
  private:
   CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) override;
-  CHECKED_STATUS ProcessResponseImpl(const Status& exec_status) override;
+  Result<std::list<PgDocResult>> ProcessResponseImpl() override;
   int32_t GetRowsAffectedCountImpl() const override { return rows_affected_count_; }
 
   std::shared_ptr<client::YBPgsqlWriteOp> write_op_;

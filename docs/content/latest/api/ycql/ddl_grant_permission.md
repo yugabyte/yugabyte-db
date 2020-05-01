@@ -1,7 +1,9 @@
 ---
-title: GRANT PERMISSION
+title: GRANT PERMISSION statement [YCQL]
+headerTitle: GRANT PERMISSION
+linkTitle: GRANT PERMISSION
 summary: Grant a permission to a role
-description: GRANT PERMISSION
+description: Use the GRANT PERMISSION statement to grant a permission (or all the available permissions) to a role.
 menu:
   latest:
     parent: api-cassandra
@@ -15,11 +17,11 @@ showAsideToc: true
 
 ## Synopsis
 
-The `GRANT PERMISSION` statement is used to grant a permission (or all the available permissions) to a role.
+Use the `GRANT PERMISSION` statement to grant a permission (or all the available permissions) to a role.
 
 When a database object is created (keyspace, table, or role), an automatic and explicit grant of all the permissions relevant to the object are granted to the role creating it.
 
-This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
 
 ## Syntax
 

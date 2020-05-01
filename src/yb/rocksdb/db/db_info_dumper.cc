@@ -36,6 +36,20 @@
 
 namespace rocksdb {
 
+void HandleLogFile(const DBOptions& options, const std::string& path, const std::string& file,
+                   std::string* wal_info) {
+  uint64_t file_size;
+  auto status = options.env->GetFileSize(path + "/" + file, &file_size);
+  if (status.ok()) {
+    char str[16];
+    snprintf(str, sizeof(str), "%" PRIu64, file_size);
+    wal_info->append(file).append(" size: ").append(str).append(" ; ");
+  } else {
+    RHEADER(options.info_log, "Failed to get log file size %s: %s\n",
+            file.c_str(), status.ToString().c_str());
+  }
+}
+
 void DumpDBFileSummary(const DBOptions& options, const std::string& dbname) {
   if (options.info_log == nullptr) {
     return;
@@ -68,17 +82,18 @@ void DumpDBFileSummary(const DBOptions& options, const std::string& dbname) {
       case kIdentityFile:
         RHEADER(options.info_log, "IDENTITY file:  %s\n", file.c_str());
         break;
-      case kDescriptorFile:
-        env->GetFileSize(dbname + "/" + file, &file_size);
-        RHEADER(options.info_log, "MANIFEST file:  %s size: %" PRIu64 " Bytes\n",
-            file.c_str(), file_size);
-        break;
+      case kDescriptorFile: {
+          auto status = env->GetFileSize(dbname + "/" + file, &file_size);
+          if (status.ok()) {
+            RHEADER(options.info_log, "MANIFEST file:  %s size: %" PRIu64 " Bytes\n",
+                file.c_str(), file_size);
+          } else {
+            RHEADER(options.info_log, "Failed to get MANIFEST file size %s: %s\n",
+                    file.c_str(), status.ToString().c_str());
+          }
+        } break;
       case kLogFile:
-        env->GetFileSize(dbname + "/" + file, &file_size);
-        char str[16];
-        snprintf(str, sizeof(str), "%" PRIu64, file_size);
-        wal_info.append(file).append(" size: ").
-            append(str).append(" ; ");
+        HandleLogFile(options, dbname, file, &wal_info);
         break;
       case kTableFile:
         if (++file_num < 10) {
@@ -127,11 +142,7 @@ void DumpDBFileSummary(const DBOptions& options, const std::string& dbname) {
     for (std::string file : files) {
       if (ParseFileName(file, &number, &type)) {
         if (type == kLogFile) {
-          env->GetFileSize(options.wal_dir + "/" + file, &file_size);
-          char str[16];
-          snprintf(str, sizeof(str), "%" PRIu64, file_size);
-          wal_info.append(file).append(" size: ").
-              append(str).append(" ; ");
+          HandleLogFile(options, options.wal_dir, file, &wal_info);
         }
       }
     }

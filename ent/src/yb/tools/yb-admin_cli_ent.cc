@@ -17,6 +17,8 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tools/yb-admin_client.h"
+#include "yb/util/stol_utils.h"
+#include "yb/util/string_case.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -35,36 +37,44 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
   Register(
-      "list_snapshots", "",
-      [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(),
+      "list_snapshots", " [SHOW_DETAILS]",
+      [client](const CLIArguments& args) -> Status {
+        bool show_details = false;
+
+        if (args.size() >= 3) {
+          string uppercase_flag;
+          ToUpperCase(args[2], &uppercase_flag);
+
+          if (uppercase_flag == "SHOW_DETAILS") {
+            show_details = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details),
                               "Unable to list snapshots");
         return Status::OK();
       });
 
   Register(
       "create_snapshot",
-      " <keyspace> <table_name> [<keyspace> <table_name>]... [flush_timeout_in_seconds]"
-      " (default 60, set 0 to skip flushing)",
+      " <(<keyspace> <table_name>)|<table_id>> [<(<keyspace> <table_name>)|<table_id>>]..."
+      " [deprecated_flush_timeout_in_seconds]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 4) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-
-        const int num_tables = (args.size() - 2)/2;
-        vector<YBTableName> tables;
-        tables.reserve(num_tables);
-
-        for (int i = 0; i < num_tables; ++i) {
-          tables.push_back(VERIFY_RESULT(ResolveTableName(client, args[2 + i*2], args[3 + i*2])));
-        }
-
-        int timeout_secs = 60;
-        if (args.size() % 2 == 1) {
-          timeout_secs = std::stoi(args[args.size() - 1].c_str());
-        }
-
-        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, timeout_secs),
+        const auto tables = VERIFY_RESULT(ResolveTableNames(
+            client, args.begin() + 2, args.end(),
+            [](auto i, const auto& end) -> Status {
+              if (std::next(i) == end) {
+                // Keep the deprecated flush timeout parsing for backward compatibility.
+                const int timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
+                cerr << "Ignored deprecated table flush timeout: " << timeout_secs << endl;
+                return Status::OK();
+              }
+              return ClusterAdminCli::kInvalidArguments;
+            }
+        ));
+        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));
         return Status::OK();
@@ -140,12 +150,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "list_replica_type_counts", " <keyspace> <table_name>",
+      "list_replica_type_counts", " <(<keyspace> <table_name>)|<table_id>>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        const auto table_name = VERIFY_RESULT(ResolveTableName(client, args[2], args[3]));
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin() + 2, args.end()));
         RETURN_NOT_OK_PREPEND(client->ListReplicaTypeCounts(table_name),
                               "Unable to list live and read-only replica counts");
         return Status::OK();

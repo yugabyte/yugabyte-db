@@ -113,6 +113,10 @@ std::string OperationState::LogPrefix() const {
   return Format("$0: ", this);
 }
 
+HybridTime OperationState::WriteHybridTime() const {
+  return hybrid_time();
+}
+
 OperationCompletionCallback::OperationCompletionCallback()
     : code_(tserver::TabletServerErrorPB::UNKNOWN_ERROR) {
 }

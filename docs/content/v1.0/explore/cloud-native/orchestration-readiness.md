@@ -2,6 +2,7 @@
 title: Orchestration Readiness
 linkTitle: 4. Orchestration Readiness 
 description: Orchestration Readiness
+block_indexing: true
 menu:
   v1.0:
     identifier: orchestration-readiness

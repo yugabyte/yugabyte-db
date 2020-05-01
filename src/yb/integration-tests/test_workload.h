@@ -46,6 +46,7 @@ struct TestWorkloadOptions {
   int payload_bytes = 11;
   int num_write_threads = 4;
   int write_batch_size = 50;
+  int ttl = -1;
   MonoDelta default_rpc_timeout = std::chrono::seconds(60);
   std::chrono::milliseconds write_timeout = std::chrono::seconds(20);
   bool timeout_allowed = false;
@@ -85,6 +86,10 @@ class TestWorkload {
 
   void set_write_batch_size(int s) {
     options_.write_batch_size = s;
+  }
+
+  void set_ttl(int ttl) {
+    options_.ttl = ttl;
   }
 
   void set_client_default_rpc_timeout_millis(int t) {

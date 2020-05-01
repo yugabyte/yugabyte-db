@@ -1,8 +1,8 @@
 ---
-title: CREATE GROUP
+title: CREATE GROUP statement [YSQL]
+headerTitle: CREATE GROUP
 linkTitle: CREATE GROUP
-description: CREATE GROUP
-summary: Groups and roles
+description: Use the CREATE GROUP statement to create a group role. CREATE GROUP is an alias for CREATE ROLE and is used to create a group role.
 menu:
   latest:
     identifier: api-ysql-commands-create-group

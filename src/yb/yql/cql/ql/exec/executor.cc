@@ -784,6 +784,16 @@ Status Executor::GetOffsetOrLimit(
 Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context) {
   const shared_ptr<client::YBTable>& table = tnode->table();
   if (table == nullptr) {
+    // If this is a request for 'system.peers_v2' table make sure that we send the appropriate error
+    // so that the client driver can query the proper peers table i.e. 'system.peers' based on the
+    // error.
+    if (tnode->is_system() &&
+        tnode->table_name().table_name() == "peers_v2" &&
+        tnode->table_name().namespace_name() == "system") {
+      string error_msg = "Unknown keyspace/cf pair (system.peers_v2)";
+      return exec_context_->Error(tnode, error_msg, ErrorCode::SERVER_ERROR);
+    }
+
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
     // result.
     return tnode->is_system() ? Status::OK()
@@ -2064,8 +2074,10 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
   for (const auto& index_table : tnode->pk_only_indexes()) {
     const IndexInfo* index =
         VERIFY_RESULT(tnode->table()->index_map().FindIndex(index_table->id()));
-    const bool index_ready_to_accept = (is_upsert ? index->AllowWrites() : index->AllowDelete());
+    const bool index_ready_to_accept = (is_upsert ? index->HasWritePermission()
+                                                  : index->HasDeletePermission());
     if (!index_ready_to_accept) {
+      VLOG(2) << "Index not ready to apply operaton " << index->ToString();
       // We are in the process of backfilling the index. It should not be updated with a
       // write/delete yet. The backfill stage will update the index for such entries.
       continue;

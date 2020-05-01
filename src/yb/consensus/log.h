@@ -46,6 +46,7 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/fs/fs_manager.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/util/async_util.h"
@@ -105,7 +106,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // After a successful Open() the Log is ready to receive entries.
   static CHECKED_STATUS Open(const LogOptions &options,
                              const std::string& tablet_id,
-                             const std::string& tablet_wal_path,
+                             const std::string& wal_dir,
                              const std::string& peer_uuid,
                              const Schema& schema,
                              uint32_t schema_version,
@@ -161,11 +162,14 @@ class Log : public RefCountedThreadSafe<Log> {
   // Syncs all state and closes the log.
   CHECKED_STATUS Close();
 
+  // Return true if there is any on-disk data for the given tablet.
+  static bool HasOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
+
   // Delete all WAL data from the log associated with this tablet.
   // REQUIRES: The Log must be closed.
   static CHECKED_STATUS DeleteOnDiskData(Env* env,
                                          const std::string& tablet_id,
-                                         const std::string& tablet_wal_path,
+                                         const std::string& wal_dir,
                                          const std::string& peer_uuid);
 
   // Returns a reader that is able to read through the previous segments. The reader pointer is
@@ -284,6 +288,12 @@ class Log : public RefCountedThreadSafe<Log> {
     return cdc_min_replicated_index_.load(std::memory_order_acquire);
   }
 
+  CHECKED_STATUS FlushIndex();
+
+  // Copies log to a new dir.
+  // Flushes necessary files and uses hard links where it is safe.
+  CHECKED_STATUS CopyTo(const std::string& dest_wal_dir);
+
  private:
   friend class LogTest;
   friend class LogTestBase;
@@ -310,8 +320,7 @@ class Log : public RefCountedThreadSafe<Log> {
     kAllocationFinished // Next segment ready
   };
 
-  Log(LogOptions options, std::string log_path,
-      std::string tablet_id, std::string tablet_wal_path, std::string peer_uuid,
+  Log(LogOptions options, std::string wal_dir, std::string tablet_id, std::string peer_uuid,
       const Schema& schema, uint32_t schema_version,
       const scoped_refptr<MetricEntity>& metric_entity, ThreadPool* append_thread_pool);
 
@@ -377,16 +386,15 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   LogOptions options_;
-  std::string log_dir_;
+
+  // The dir path where the write-ahead log for this tablet is stored.
+  std::string wal_dir_;
 
   // The ID of the tablet this log is dedicated to.
   std::string tablet_id_;
 
   // Peer this log is dedicated to.
   std::string peer_uuid_;
-
-  // The path where the write-ahead log for this tablet is stored.
-  std::string tablet_wal_path_;
 
   // Lock to protect modifications to schema_ and schema_version_.
   mutable rw_spinlock schema_lock_;

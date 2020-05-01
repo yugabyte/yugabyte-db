@@ -19,8 +19,16 @@
 
 #include "yb/client/table.h"
 
+#include "yb/common/snapshot.h"
+
 namespace yb {
 namespace master {
+
+struct TableDescription {
+  scoped_refptr<NamespaceInfo> namespace_info;
+  scoped_refptr<TableInfo> table_info;
+  TabletInfos tablet_infos;
+};
 
 // This wraps around the proto containing CDC stream information. It will be used for
 // CowObject managed access.
@@ -179,9 +187,12 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
   // Returns true if the snapshot deleting is in-progress.
   bool IsDeleteInProgress() const;
 
-  CHECKED_STATUS AddEntries(const scoped_refptr<NamespaceInfo> ns,
-                            const scoped_refptr<TableInfo>& table,
-                            const std::vector<scoped_refptr<TabletInfo> >& tablets);
+  CHECKED_STATUS AddEntries(const TableDescription& table_description);
+
+  static void AddEntries(
+      const TableDescription& table_description,
+      google::protobuf::RepeatedPtrField<SysRowEntry>* out,
+      google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos);
 
  private:
   friend class RefCountedThreadSafe<SnapshotInfo>;

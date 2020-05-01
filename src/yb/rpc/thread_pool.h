@@ -21,6 +21,8 @@
 
 #include "yb/gutil/port.h"
 
+#include "yb/util/tostring.h"
+
 namespace yb {
 
 class Status;
@@ -44,6 +46,10 @@ struct ThreadPoolOptions {
   std::string name;
   size_t queue_limit;
   size_t max_workers;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(name, queue_limit, max_workers);
+  }
 };
 
 class ThreadPool {

@@ -1,8 +1,8 @@
 ---
-title: CREATE CAST
+title: CREATE CAST statement [YSQL]
+headerTitle: CREATE CAST
 linkTitle: CREATE CAST
-summary: Create a new cast
-description: CREATE CAST
+description: Use the CREATE CAST statement to create a new cast.
 menu:
   latest:
     identifier: api-ysql-commands-create-cast

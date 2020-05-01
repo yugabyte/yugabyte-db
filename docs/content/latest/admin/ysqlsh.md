@@ -1,7 +1,8 @@
 ---
-title: ysqlsh
+title: ysqlsh - YSQL shell/CLI for YugabyteDB
+headerTitle: ysqlsh
 linkTitle: ysqlsh
-description: ysqlsh shell for YSQL
+description: Interact with distributed SQL databases using the YSQL shell (ysqlsh), a command line interface (CLI).
 aliases:
   - /develop/tools/ysqlsh/
   - /latest/develop/tools/ysqlsh/
@@ -14,6 +15,8 @@ isTocNested: 5
 showAsideToc: true
 ---
 
+## Overview
+
 The YugabyteDB SQL shell (`ysqlsh`) provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/). It enables you to:
 
 - interactively enter SQL queries and see the query results
@@ -22,15 +25,31 @@ The YugabyteDB SQL shell (`ysqlsh`) provides a CLI for interacting with Yugabyte
 
 `ysqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 
+### Example
+
+```sh
+$ ./bin/ysqlsh
+```
+```
+ysqlsh (11.2-YB-2.0.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+## Online help
+
+Run `ysqlsh --help` to display the online help.
+
 ## Syntax
 
 ```
 ysqlsh [ <option>...] [ <dbname> [ <username> ]]
 ```
 
-### Default options
+### Default flags
 
-When you open `ysqlsh`, the following default options (aka flags) are set so that the user does not have to specify them.
+When you open `ysqlsh`, the following default flags (aka flags) are set so that the user does not have to specify them.
 
 - host: `-h 127.0.0.1`
 - port: `-p 5433`
@@ -44,20 +63,7 @@ For v2.0.0 users, the default user `yugabyte` has no password. If you do not wan
 
 {{< /note >}}
 
-### Example
-
-```sh
-$ ./bin/ysqlsh
-```
-
-```
-ysqlsh (11.2-YB-2.0.0.0-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-## Options
+## Flags
 
 ##### -a, --echo-all
 
@@ -73,9 +79,9 @@ Print failed SQL statements to standard error output. This is equivalent to sett
 
 ##### -c *command*, --command=*command*
 
-Specifies that `ysqlsh` is to execute the given command string, *command*. This option can be repeated and combined in any order with the `-f` option. When either `-c` or `-f` is specified, `ysqlsh` does not read commands from standard input; instead it terminates after processing all the `-c` and `-f` options in sequence.
+Specifies that `ysqlsh` is to execute the given command string, *command*. This flag can be repeated and combined in any order with the `-f` flag. When either `-c` or `-f` is specified, `ysqlsh` does not read commands from standard input; instead it terminates after processing all the `-c` and `-f` flags in sequence.
 
-The command (*command*) must be either a command string that is completely parsable by the server (that is, it contains no `ysqlsh`-specific features), or a single backslash (`\`) command. Thus, you cannot mix SQL and `ysqlsh` meta-commands within a `-c` option. To achieve that, you could use repeated `-c` options or pipe the string into `ysqlsh`, for example:
+The command (*command*) must be either a command string that is completely parsable by the server (that is, it contains no `ysqlsh`-specific features), or a single backslash (`\`) command. Thus, you cannot mix SQL and `ysqlsh` meta-commands within a `-c` flag. To achieve that, you could use repeated `-c` flags or pipe the string into `ysqlsh`, for example:
 
 ```postgresql
 ysqlsh -c '\x' -c 'SELECT * FROM foo;'
@@ -359,7 +365,7 @@ To print your current working directory, use `\! pwd`.
 
 Outputs information about the current database connection, including database, user, host, and port.
 
-##### \copy { *table* [ ( *column_list* ) ] | ( *query* ) } { from | to } { '*filename*' | program '*command*' | stdin | stdout | pstdin | pstdout } [ [ with ] ( *option* [, ...] ) ]
+##### \copy { *table* [ ( *column_list* ) ] | ( *query* ) } { from | to } { '*filename*' | program '*command*' | stdin | stdout | pstdin | pstdout } [ \[ with \] ( *option* [, ...] ) ]
 
 Performs a frontend (client) copy. This is an operation that runs an SQL `COPY` statement, but instead of the server reading or writing the specified file, `ysqlsh` reads or writes the file and routes the data between the server and the local file system. This means that file accessibility and privileges are those of the local user, not the server, and no SQL superuser privileges are required.
 

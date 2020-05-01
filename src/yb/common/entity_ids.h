@@ -36,6 +36,7 @@ using UDTypeId = std::string;
 using CDCStreamId = std::string;
 
 using PeerId = std::string;
+using SnapshotId = std::string;
 using TabletServerId = PeerId;
 using TabletId = std::string;
 

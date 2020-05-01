@@ -56,7 +56,7 @@ class MultiStageAlterTable {
 
  private:
   // Start Index Backfill process/step for the specified table/index.
-  static void
+  static Status
   StartBackfillingData(CatalogManager *catalog_manager,
                        const scoped_refptr<TableInfo> &indexed_table,
                        IndexInfoPB idx_info);
@@ -66,17 +66,17 @@ class BackfillTablet;
 class BackfillChunk;
 class BackfillTableJob;
 
-// This class is responsible for backfilling the specified indices on the
+// This class is responsible for backfilling the specified indexes on the
 // indexed_table.
 class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
  public:
   BackfillTable(Master *master, ThreadPool *callback_pool,
                 const scoped_refptr<TableInfo> &indexed_table,
-                std::vector<IndexInfoPB> indices);
+                std::vector<IndexInfoPB> indexes);
 
   void Launch();
 
-  void UpdateSafeTime(const Status& s, HybridTime ht);
+  Status UpdateSafeTime(const Status& s, HybridTime ht);
 
   void Done(const Status& s);
 
@@ -84,7 +84,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   ThreadPool* threadpool() { return callback_pool_; }
 
-  const std::vector<IndexInfoPB>& indices() const { return indices_to_build_; }
+  const std::vector<IndexInfoPB>& indexes() const { return indexes_to_build_; }
 
   std::string index_ids() const {
     return index_ids_;
@@ -142,7 +142,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Master* master_;
   ThreadPool* callback_pool_;
   const scoped_refptr<TableInfo> indexed_table_;
-  const std::vector<IndexInfoPB> indices_to_build_;
+  const std::vector<IndexInfoPB> indexes_to_build_;
   int32_t schema_version_;
   int64_t leader_term_;
 
@@ -158,20 +158,13 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
 class BackfillTableJob : public MonitoredTask {
  public:
-  explicit BackfillTableJob(std::weak_ptr<BackfillTable> backfill_table)
-      : start_timestamp_(MonoTime::Now()), backfill_table_(backfill_table) {}
+  explicit BackfillTableJob(std::shared_ptr<BackfillTable> backfill_table)
+      : start_timestamp_(MonoTime::Now()), backfill_table_(backfill_table),
+        index_ids_(backfill_table_->index_ids()) {}
 
   Type type() const override { return BACKFILL_TABLE; }
 
   std::string type_name() const override { return "Backfill Table"; }
-
-  std::string description() const override {
-    auto retain_bt = backfill_table_;
-    if (!IsStateTerminal(state()) && retain_bt) {
-      return retain_bt->description();
-    }
-    return "Backfilling Table Done";
-  }
 
   MonoTime start_timestamp() const override { return start_timestamp_; }
 
@@ -179,30 +172,15 @@ class BackfillTableJob : public MonitoredTask {
     return completion_timestamp_;
   }
 
-  MonitoredTaskState AbortAndReturnPrevState() override {
-    auto old_state = state();
-    while (!IsStateTerminal(old_state)) {
-      if (state_.compare_exchange_strong(old_state,
-                                         MonitoredTaskState::kAborted)) {
-        return old_state;
-      }
-      old_state = state();
-    }
-    return old_state;
-  }
+  std::string description() const override;
 
   MonitoredTaskState state() const override {
     return state_.load(std::memory_order_acquire);
   }
 
-  void SetState(MonitoredTaskState new_state) {
-    auto old_state = state();
-    if (!IsStateTerminal(old_state)) {
-      if (state_.compare_exchange_strong(old_state, new_state) && IsStateTerminal(new_state)) {
-        MarkDone();
-      }
-    }
-  }
+  void SetState(MonitoredTaskState new_state);
+
+  MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
 
   void MarkDone() {
     completion_timestamp_ = MonoTime::Now();
@@ -213,6 +191,7 @@ class BackfillTableJob : public MonitoredTask {
   MonoTime start_timestamp_, completion_timestamp_;
   std::atomic<MonitoredTaskState> state_{MonitoredTaskState::kWaiting};
   std::shared_ptr<BackfillTable> backfill_table_;
+  std::string index_ids_;
 };
 
 // A background task which is responsible for backfilling rows from a given
@@ -222,10 +201,10 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   BackfillTablet(
       std::shared_ptr<BackfillTable> backfill_table, const scoped_refptr<TabletInfo>& tablet);
 
-  void Launch() { LaunchNextChunk(); }
+  void Launch() { LaunchNextChunkOrDone(); }
 
-  void LaunchNextChunk();
-  void Done(const Status& status);
+  void LaunchNextChunkOrDone();
+  void Done(const Status& status, const std::string& optional_next_row);
 
   Master* master() { return backfill_table_->master(); }
 
@@ -235,33 +214,29 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
     return backfill_table_->read_time_for_backfill();
   }
 
-  const std::vector<IndexInfoPB>& indices() { return backfill_table_->indices(); }
+  const std::vector<IndexInfoPB>& indexes() { return backfill_table_->indexes(); }
 
   std::string index_ids() { return backfill_table_->index_ids(); }
 
   int32_t schema_version() { return backfill_table_->schema_version(); }
 
-  // Returns the partition key corresponding to the end of this chunk. This is encoded
-  // using the same hashing/partition scheme as used by the main/indexed table.
-  // As of Dec 2019, we consider the whole tablet range to be one chunk. But the plan is
-  // to subdivide this into smaller chunks going forward for better checkpointing
-  // and restartability (#2615).
-  std::string GetChunkEnd(std::string start) {
-    // TODO(#2615) : Ideally we want to split one tablet into multiple chunks, so that
-    // each chunk can make progress and finish relatively quickly.
-    return partition_.partition_key_end();
-  }
-
   const scoped_refptr<TabletInfo> tablet() { return tablet_; }
+
+  bool done() const {
+    return done_.load(std::memory_order_acquire);
+  }
 
  private:
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
   Partition partition_;
 
-  // partition keys corresponding to the start/end of the chunk being processed,
-  // and how far backfill has been already processed.
-  std::string chunk_start_, chunk_end_, processed_until_;
+  // if non-empty, corresponds to the row in the tablet up to which
+  // backfill has been already processed (non-inclusive). The next
+  // request to backfill has to start backfilling from this row till
+  // the end of the tablet range.
+  std::string next_row_to_backfill_;
+  std::atomic_bool done_{false};
 };
 
 class GetSafeTimeForTablet : public RetryingTSRpcTask {
@@ -313,17 +288,15 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
 // [start, end) on the indexed table.
 class BackfillChunk : public RetryingTSRpcTask {
  public:
-  BackfillChunk(
-      std::shared_ptr<BackfillTablet> backfill_tablet, const std::string& start,
-      const std::string& end)
-      : RetryingTSRpcTask(
-            backfill_tablet->master(), backfill_tablet->threadpool(),
-            gscoped_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
-            backfill_tablet->tablet()->table().get()),
-        backfill_tablet_(backfill_tablet),
-        start_key_(start),
-        end_key_(end) {
-    deadline_ = MonoTime::Max();  // Never time out.
+  BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
+                const std::string& start_key)
+      : RetryingTSRpcTask(backfill_tablet->master(),
+                          backfill_tablet->threadpool(),
+                          gscoped_ptr<TSPicker>(new PickLeaderReplica(
+                              backfill_tablet->tablet())),
+                          backfill_tablet->tablet()->table().get()),
+        backfill_tablet_(backfill_tablet), start_key_(start_key) {
+    deadline_ = MonoTime::Max(); // Never time out.
   }
 
   void Launch();
@@ -333,9 +306,9 @@ class BackfillChunk : public RetryingTSRpcTask {
   std::string type_name() const override { return "Backfill Index Table"; }
 
   std::string description() const override {
-    return yb::Format("Backfilling index tables $0 :  for $1 from $2 to $3",
-                      backfill_tablet_->index_ids(), tablet_id(), "start_key_",
-                      "end_key_");
+    return yb::Format("Backfilling index_ids $0 : for $1 from $2",
+                      backfill_tablet_->index_ids(), tablet_id(),
+                      b2a_hex(start_key_));
   }
 
   MonoTime ComputeDeadline() override;
@@ -358,7 +331,7 @@ class BackfillChunk : public RetryingTSRpcTask {
 
   tserver::BackfillIndexResponsePB resp_;
   std::shared_ptr<BackfillTablet> backfill_tablet_;
-  std::string start_key_, end_key_;
+  std::string start_key_;
 };
 
 }  // namespace master

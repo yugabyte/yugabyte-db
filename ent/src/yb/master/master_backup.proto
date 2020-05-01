@@ -16,6 +16,7 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/common/wire_protocol.proto";
 import "yb/master/master.proto";
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.
@@ -29,6 +30,7 @@ message SysSnapshotEntryPB {
     FAILED = 5;
     CANCELLED = 6;
     RESTORING = 7;
+    RESTORED = 8;
   }
 
   // Note: The id of the snapshot is not stored here as it is already part of
@@ -45,6 +47,8 @@ message SysSnapshotEntryPB {
 
   // Stored info about snapshot (1) namespaces (2) tables (3) tablets.
   repeated SysRowEntry entries = 3;
+
+  optional fixed64 snapshot_hybrid_time = 4;
 }
 
 ////////////////////////////////////////////////////////////
@@ -53,23 +57,20 @@ message SysSnapshotEntryPB {
 
 message CreateSnapshotRequestPB {
   repeated TableIdentifierPB tables = 1;
+  optional bool transaction_aware = 2;
+
+  // Automatically add table indexes into the snapshot.
+  optional bool add_indexes = 3 [default = false];
+
+  // Interpet this snapshot as imported:
+  // Snapshot will be created as COMPLETE and no tablet operations will be performed.
+  optional bool imported = 4;
 }
 
 message CreateSnapshotResponsePB {
   optional MasterErrorPB error = 1;
 
   optional bytes snapshot_id = 2;
-}
-
-message IsSnapshotOpDoneRequestPB {
-  optional bytes snapshot_id = 1;
-}
-
-message IsSnapshotOpDoneResponsePB {
-  optional MasterErrorPB error = 1;
-
-  // true if the create operation is completed, false otherwise
-  optional bool done = 2;
 }
 
 message SnapshotInfoPB {
@@ -95,6 +96,7 @@ message RestoreSnapshotRequestPB {
 
 message RestoreSnapshotResponsePB {
   optional MasterErrorPB error = 1;
+  optional bytes restoration_id = 2; // 16 bytes UUID
 }
 
 message DeleteSnapshotRequestPB {
@@ -107,6 +109,17 @@ message DeleteSnapshotResponsePB {
 
 message ImportSnapshotMetaRequestPB {
   optional SnapshotInfoPB snapshot = 1;
+}
+
+message ListSnapshotRestorationsRequestPB {
+  optional bytes snapshot_id = 1; // 16 bytes UUID
+  optional bytes restoration_id = 2; // 16 bytes UUID
+}
+
+message ListSnapshotRestorationsResponsePB {
+  optional AppStatusPB status = 1;
+
+  repeated SnapshotInfoPB restorations = 2;
 }
 
 // ID mapping pair: old ID (object ID on external cluster) TO new ID
@@ -132,8 +145,9 @@ message ImportSnapshotMetaResponsePB {
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
-  rpc IsSnapshotOpDone(IsSnapshotOpDoneRequestPB) returns (IsSnapshotOpDoneResponsePB);
   rpc ListSnapshots(ListSnapshotsRequestPB) returns (ListSnapshotsResponsePB);
+  rpc ListSnapshotRestorations(ListSnapshotRestorationsRequestPB)
+      returns (ListSnapshotRestorationsResponsePB);
   rpc RestoreSnapshot(RestoreSnapshotRequestPB) returns (RestoreSnapshotResponsePB);
   rpc DeleteSnapshot(DeleteSnapshotRequestPB) returns (DeleteSnapshotResponsePB);
   rpc ImportSnapshotMeta(ImportSnapshotMetaRequestPB) returns (ImportSnapshotMetaResponsePB);
