@@ -38,25 +38,27 @@ It produces thus result:
 
 **Semantics:**
 
-The  `DO` block below uses badly-designed `text` values for the delimiter and the null indicator, thus:
-
-- the delimiter: `' !'::text`
-
-- the null indicator: `'~ '::text`
-
-The code shows how this can lead to an outcome that takes the human quite an effort to predict when the input contains this sequence:
-
-&#160;&#160;&#160; &#60;tilda&#62;&#60;space&#62;&#60;exclamationPoint&#62;
-
-Effort is needed because the delimiter `text` value ends with the same character, &#60;space&#62;, that the null indicator `text` value starts with. You therefore need to know, and mentally apply, the priority rule:
+The interpretation of the delimiter `text` value and the null indicator `text` uses this priority rule:
 
 - _First_, the delimiter `text` value is consumed; _and only then_ is the null indicator `text` value consumed.
 
-The example uses just such a troublesome input. The troublesome sequence is shown in typewriter font here:
+However, this rule matters only when these two crtical values are defined by more than one character and when one starts with a sequence that the other ends with.
+
+Yugabyte recommends, therefore, that when you can choose the `text` values for the delimiter and for the null indicator, you simply choose two different single characters. This is what the simple example, above, does. Of course, you must be sure that neither occurs in any of the `text` values that you want to convert into `text[]` arrays. (There is no escaping mechanism.)
+
+Predicting the outcome when unfortunate choices for these two values were made will therefore require some mental effort. The  `DO` block below demonstrates an example of this, thus:
+
+- the delimiter is `' !'::text`
+
+- the null indicator is `'~ '::text`
+
+And the input contains this sequence:
+
+&#160;&#160;&#160; &#60;tilda&#62;&#60;space&#62;&#60;exclamationPoint&#62;
+
+The troublesome sequence is shown in typewriter font here:
 
 &#160;&#160;&#160; dog house !~  !x! `~ !` cat flap !  !
-
-Yugabyte recommends, therefore, that when you can choose the `text` values for the delimiter and for the null indicator, you simply choose two different single characters. This is what the simple example, above, does. Of course, you must be sure that neither occurs in any of the `text` values that you want to convert into `text[]` arrays.
 
 These considerations, together with the fact that it can produce only a `text[]` output, mean that the `string_to_array()` function has limited usefulness.
 
@@ -105,7 +107,7 @@ begin
   (result             =  expected_result)    and
   (delim_first_result =  expected_result)    and
   (null_first_result  <> delim_first_result) and
-  (null_first_result  =  unexpected_result) and
+  (null_first_result  =  unexpected_result)  and
     true,
   'unexpected';
 end;

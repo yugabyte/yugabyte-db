@@ -13,8 +13,312 @@ isTocNested: false
 showAsideToc: false
 ---
 
-## Multidimensional array of numeric values
-You represent successive values in this kind of array (`numeric[]`, `int[]`, and so on) using the same convention that the primitive values of these types use.
+This section states a sufficient subset of the rules that allow you to write a syntactically correct array literal that expresses any set of values, for arrays of any scalar datatype, that you could want to create. The full set of rules allows more flexibility than do just those that are stated here. But because these are sufficient, we will not attempt to document the full, and rather complex, set. The explanations in this section will certainly allow you to interpret the `::text` typecast of any array value that you might see, for example in _ysqlsh_.
+
+We then state Yugabyte's recommendation in this space. And then we illustrate the rules with examples.
+
+## Statement of the rules
+
+The statement of these rules depends on understanding the notion of the canonical form of a literal. We introduced the idea (in the section on the `array[]` constructor, [here](../../array-constructor)) and explained there that the `::text` typecast of any kind of array shows us the canonical form of the literal (more carefully stated, the _value_ of this literal). It can be used to recreate the value.
+
+In fact, this definition, and the property that the canonical form of the literal is sufficient to recreate the value, hold for values of _all_ data types.
+
+Recall that every value within an array necessarily has the same datatype. If you follow the rules that are stated here, and illustrated in the demonstrations below, you will always produce a syntactically valid literal which expresses the semantics that you intend. It turns out that very many other variants, especially for `text[]` arrays, are legal and can produce the values that you intend. However, we will not document the rules that govern these exotic uses because it is always sufficient to create your literals in canonical form.
+
+Here is the sufficient set of rules.
+
+- The commas that delimit successive values, the curly braces that enclose the entire literal, and the inner curly braces that are used in the literals for multidimensional arrays, can be surrounded by arbitrary amounts of whitespace. If you want strictly to adhere to canonical form, then you ought not to do this. But doing so can improve the readability of _ad hoc_ manually typed literals. It can also make it easier to read trace output in a program that constructs array literals programmatically.
+- In numeric and `boolean` array literals, do _not_ surround the individual values with double quotes.
+- In the literal for a `timestamp[]` array, _do_ surround the individual values with double quotes—even though this is not strictly necessary.
+- In the literal for a `text[]` array, _do_ surround every individual value with double quotes, even though this is not always necessary. It _is_ necessary for any value that itself contains, as ordinary text, any whitespace or any of the characters that have syntactic significance within the outermost curly brace pair. This is the list:
+```
+   <space>   {   }   ,   "   \
+```
+- It's sufficient simply to write the curly braces and the comma ordinarily within the enclosing double quotes. But each of the double quote character and the backslash character must be escaped with an immediately preceding single backslash.
+
+
+## Always write array literals in canonical form
+
+Bear in mind that you will very rarely manually type literals in the way that this section does to demonstrate the rules. You'll do this only when teaching yourself, when prototyping new code, or when debugging. Rather, you'll typically create the literals programmatically—often in a client-side program that parses out the data values from, for example, an XML text file, or these days probably a JSON text file. In these scenarios, the target array is likely to have the data type `some_user_defined_row_type[]`. And when you create literals programmatically, you want to use the simplest rules that work and you have no need at all to omit arguably unnecessary double quote characters.
+
+**Yugabyte recommends that the array literals that you generate programmatically are always spelled using the canonical representations**
+
+You can relax this recommendation, to make tracing or debugging your code easier (as mentioned above), by using a newline between each successive encoded value in the array—at least when the values themselves use a lot of characters, as they might for _"row"_ type values.
+
+**Note:** you can hope that the client side programming language that you use, together with the driver that you use to issue SQL to YugabyteDB and to retrieve results, will allow the direct use of data types that your language defines that map directly to YSQL's array and _"row"_ type, just as they have scalar datatypes that map to `int`, `text`, `timestamp`, and `boolean`. For example Python has _"list"_ that maps to array and _"tuple"_ that maps to "row" type. And the _"psycopg2"_ driver that you use for YugabyteDB can map values of these datatypes to, for example, a `prepare` statement like the one shown below.
+
+**Note**: YSQL has support for converting a JSON array (and this includes a JSON array of JSON objects) directly into the corresponding YSQL array values.
+
+The rules for constructing literals for arrays of _"row"_ type values are described in a dedicated section, [here](../array-of-rows/).
+
+Your program will parse the input and create the required literals as ordinary text strings that you'll then provide as the actual argument to a `prepare` statement execution, leaving the typecast of the `text` actual argument, to the appropriate array data type, to the prepared `insert` or `update` statement like this:
+```
+prepare stmt(text) as insert into t(rs) values($1::rt[]);
+```
+Assume that in, this example, `rt` is some particular user-define _"row"_ type.
+## Examples to illustrate the rules
+
+Here are some examples of kinds array of primitive values:
+
+- array of numeric values (like `int` and `numeric`);
+- array of stringy values (like `text`, `varchar`, and `char`);
+- array of date-time values (like `timestamp`);
+- array of `boolean` values.
+
+It will be sufficient for our purpose of illustrating the rules that govern the construction of an array literal to consider only these.
+
+We'll use the `array[]` constructor to create representative values of each kind and inspect its `::text` typecast.
+
+### One-dimensional array of `int` values
+
+This example demonstrates the principle:
+
+```postgresql
+create table t(k serial primary key, v1 int[], v2 int[]);
+insert into t(v1) values (array[1, 2, 3]);
+select v1::text as text_typecast from t where k = 1
+\gset result_
+\echo :result_text_typecast
+```
+if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how  it works in the section on `array_agg()` and `unnest()`, [here](../../functions-operators/array-agg-unnest). 
+
+Notice that, in this example, the `select` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
+
+```
+{1,2,3}
+```
+We can see the general form already:
+
+- The (_value_ of) an array literal starts with the left curly brace and ends with the right curly brace.
+
+- The items within the braces are delimited by commas, and there is no space between one  item, the comma, and the next item. Nor is there any space between the left curly brace and the first item or between the last item and the right curly brace.
+
+The next subsection, _"Array of text values"_, shows that more needs to be said. But the two rules that we've already noticed always hold.
+
+To use the literal that we produced to create a value, we must enquote it and typecast it. We can do this with the `\set` metacommand:
+
+```postgresql
+\set canonical_literal '\'':result_text_typecast'\'::int[]'
+\echo :canonical_literal
+```
+. The `\echo` metacommand now shows this:
+```
+'{1,2,3}'::int[]
+```
+Next we use the canonical literal that we have produced to update `t.v2` so that we can confirm that we have recreated the value that the row constructor created:
+```postgresql
+update t set v2 = :canonical_literal where k = 1;
+select (v1 = v2)::text as "v1 = v2" from t where k = 1;
+```
+It shows this:
+```
+ v1 = v2 
+---------
+ true
+```
+As promised, the canonical form of the array literal does indeed recreate the identical value that the `array[]` constructor created.
+
+**Note:**
+
+Try this:
+```postgresql
+select 12512454.872::text;
+```
+The result is the canonical form, `12512454.872`. So this (though you rarely see it):
+```postgresql
+select 12512454.872::numeric;
+```
+runs without error. Now try this:
+
+```postgresql
+select to_number('12,512,454.872', '999G999G999D999999')::text;
+```
+This, too, runs without error because it uses the `to_number()` builtin function. The result here, too, is the canonical form, `12512454.872`—with no commas. Now try this:
+
+```postgresql
+select '12,512,454.872'::numeric;
+```
+This causes the _"22P02: invalid input syntax for type numeric"_ error. In other words, _only_ a `numeric` value in canonical form can be directly typecast using `::numeric`.
+
+We'll now anticipate, informally, what follows by using an array literal here. For now, take its syntax to mean what you'd intuitively expect. You must spell the representations for the values in a `numeric[]` array in canonical form. Try this:
+
+```postgresql
+select ('{123.456, -456.789}'::numeric[])::text;
+```
+It shows this:
+
+```
+ {123.456,-456.789}
+```
+
+Now try this:
+```postgresql
+select ('{9,123.456, -8,456.789}'::numeric[])::text;
+```
+It silently produces this presumably unintended result—an array of _four_ numeric values—because the commas are taken as delimiters and not as part of the representation of a single `numeric` value:
+```
+ {9,123.456,-8,456.789}
+```
+In an array literal (or in a _"row"_ type value literal), there is simply no way to accommodate forms that cannot be directly typecast. (The same holds for `timestamp` values as for `numeric` values.) YSQL inherits this limitation from PostgreSQL. It is the user's responsibility to work around this when preparing the literal because, of course, functions like _"to_number()"_ cannot be used within literals. Functions can, however, be used in an `array[]` value constructor as [the section on that topic](../../array-constructor/) shows.
+
+###  One-dimensional array of `text` values
+
+We'll use the _"Array of text int"_ example as a template for this and the subsequent subsections. The example sets array values each of which, apart from the single character `a`, needs some discussion. These are the characters (or, in one case, character sequence), listed here "bare" and with ten spaces between each:
+
+```
+     a          a b          ()          ,          '          "          \
+```
+
+```postgresql
+create table t(k serial primary key, v1 text[], v2 text[]);
+insert into t(v1) values (array['a', 'a b', '()', ',', '{}', $$'$$, '"', '\']);
+select v1::text as text_typecast from t where k = 1
+\gset result_
+\echo :result_text_typecast
+```
+For ordinary reasons, we must do something special to establish the single quote within the surrounding array literal which itself must be enquoted for using in SQL. Dollar quotes are a convenient choice. The `\echo` metacommand shows this:
+
+```
+{a,"a b",(),",","{}",',"\"","\\"}
+```
+This is rather hard (for the human) to parse. To make the rules easier to see, we have discarded the left and right curly braces and have surrounded the syntactically significant commas with four spaces on each side:
+```
+     a    ,    "a b"    ,    ()    ,    ","    ,    "{}"    '    ,    "\""    ,    "\\"
+```
+In addition to the first two rules, we notice the following.
+
+- Double quotes are used to surround a value that includes any spaces. (Though the example doesn't show it, this applies to leading and trailing spaces too.)
+- The left and right parentheses are _not_ surrounded with double quotes. Though these have syntactic significance in other parsing contexts, they are insignificant within the curly braces of an array literal.
+- The comma _has_ been surrounded by double quotes. This is because it _does_ have syntactic significance, as the value delimiter, within the curly braces of an array literal.
+- The curly braces _have_ been surrounded by double quotes. This is because interior curly braces _do_ have syntactic significance, as we'll see below, in the array literal for a multidimensional array.
+- The single quote is _not_ surrounded with double quotes. Though it has syntactic significance in other parsing contexts, it is insignificant within the curly braces of an array literal. This holds, also, for all sorts of other punctuation characters like `;` and  `:` and `[` and `]` and so on.
+- The double quote has been escaped with a single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the (one and only) quoting mechanism, within the curly braces of an array literal.
+- The backslash has also been escaped with another single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the escape character, within the curly braces of an array literal.
+
+There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this easily with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the curly braces for a `text[]` array literal with double quotes.
+
+To use the literal that we produced above to recreate the value, we must enquote it and typecast it. We can do this, as we did for the `int[]` example above, with the `\set` metacommand. But we must use dollar quotes because the literal itself has an interior single quote.
+
+```postgresql
+\set canonical_literal '$$':result_text_typecast'$$'::text[]
+\echo :canonical_literal
+```
+The `\echo` metacommand now shows this:
+```
+$${a,"a b",(),",",',"\"","\\"}$$::text[]
+```
+Next we use the canonical literal to update `t.v2` so that we can confirm that we have recreated the value that the row constructor created:
+```postgresql
+update t set v2 = :canonical_literal where k = 1;
+select (v1 = v2)::text as "v1 = v2" from t where k = 1;
+```
+Again, it shows this:
+```
+ v1 = v2 
+---------
+ true
+```
+So, again as promised, the canonical form of the array literal does indeed recreate the identical value that the `array[]` constructor created.
+
+### One-dimensional array of `timestamp` values
+
+This example demonstrates the principle:
+
+```postgresql
+create table t(k serial primary key, v1 timestamp[], v2 timestamp[]);
+insert into t(v1) values (array[
+    '2019-01-27 11:48:33'::timestamp,
+    '2020-03-30 14:19:21'::timestamp
+  ]);
+select v1::text as text_typecast from t where k = 1
+\gset result_
+\echo :result_text_typecast
+```
+The `\echo` metacommand shows this:
+
+```
+{"2019-01-27 11:48:33","2020-03-30 14:19:21"}
+```
+We learn one further rule from this:
+
+- The `::timestamp` typecastable strings within the curly braces are tightly surrounded with double quotes.
+
+To use the literal that we produced to create a value, we must enquote it and typecast it. We can do this with the `\set` metacommand:
+
+```postgresql
+\set canonical_literal '\'':result_text_typecast'\'::timestamp[]'
+\echo :canonical_literal
+```
+. The `\echo` metacommand now shows this:
+```
+'{"2019-01-27 11:48:33","2020-03-30 14:19:21"}'::timestamp[]
+```
+Next we use the canonical literal to update `t.v2` so that we can confirm that we have recreated the value that the row constructor created:
+```postgresql
+update t set v2 = :canonical_literal where k = 1;
+select (v1 = v2)::text as "v1 = v2" from t where k = 1;
+```
+It shows this:
+```
+ v1 = v2 
+---------
+ true
+```
+Once again, as promised, the canonical form of the array literal does indeed recreate the identical value that the `array[]` constructor created.
+
+### One-dimensional array of `boolean` values (and `null` in general)
+
+This example demonstrates the principle:
+
+```postgresql
+create table t(k serial primary key, v1 boolean[], v2 boolean[]);
+insert into t(v1) values (array[
+    true,
+    false,
+    null
+  ]);
+select v1::text as text_typecast from t where k = 1
+\gset result_
+\echo :result_text_typecast
+```
+The `\echo` metacommand shows this:
+
+```
+{t,f,NULL}
+```
+We learn two further rules from this:
+
+- The canonical representations of `true` and `false` within the curly braces for a `boolean[]` array are `t` and `f`. They are not surrounded by double quotes.
+- To specify `null`, the canonical form uses upper case `NULL` and does not surround this with double quotes.
+
+Though the example doesn't show this, `NULL` is not case-sensitive. But to compose a literal that adheres to canonical form, you ought to spell it using upper case. And this is how you specify `null` within the array literal for _any_ data type. (A different rule applies for fields within the literal for _"row"_ type value).
+
+**Note:** if you surrounded `NULL` within a literal for a `text[]` array, then it would be silently interpreted as an ordinary `text` value that just happens to be spelled that way.
+
+To use the literal that we produced to create a value, we must enquote it and typecast it. We can do this with the `\set` metacommand:
+
+```postgresql
+\set canonical_literal '\'':result_text_typecast'\'::boolean[]'
+\echo :canonical_literal
+```
+. The `\echo` metacommand now shows this:
+```
+'{t,f,NULL}'::boolean[]
+```
+Next we use the canonical literal to update `t.v2` so that we can confirm that we have recreated the value that the row constructor created:
+```postgresql
+update t set v2 = :canonical_literal where k = 1;
+select (v1 = v2)::text as "v1 = v2" from t where k = 1;
+```
+It shows this:
+```
+ v1 = v2 
+---------
+ true
+```
+Yet again, as promised, the canonical form of the array literal does indeed recreate the identical value that the `array[]` constructor created.
+
+### Multidimensional array of `int` values
 
 ```postgresql
 create table t(k serial primary key, v int[]);
@@ -70,13 +374,9 @@ Here is the `select` result:
  3 | {{{1,2},{3,4}},{{5,6},{7,8}}}
  4 | [3:4][5:6][7:8]={{{1,2},{3,4}},{{5,6},{7,8}}}
 ```
-Notice that whitespace in the inserted literals is insignificant, and that the `text` typecasts use whitespace (actually, the lack thereof) conventionally.
+We see again that whitespace in the inserted literals for numeric values is insignificant, and that the `text` typecasts use whitespace (actually, the lack thereof) conventionally.
 
-The result of typecasting the value of an array, a _"row"_ type value, and in fact the value of _any_ data type with `::text` can always be used as the literal to re-establish the starting value. In general, you need to surround the literal with single quotes (or, equivalently, with dollar quotes) to use it in a SQL statement or a PL/pgSQL program. But you can (and should) use the literals for numeric data types without surrounding quotes. By extension, the same recommendation applies to the representations of primitive numeric values within an array literal.
-
-We shall refer to the result of the `::text` typecast of the value of any datatype as the _canonical representation_ of the literal that creates that value.
-
-Notice the spelling of the array literal for the row with `k = 4`. The optional syntax `[3:4][5:6][7:8]` specifies the lower and upper bounds, respectively, for the first, the second, and the third dimension. (This is the same syntax that you use to specify a slice of an existing array.) When the freedom to specify the bounds is not exercised, then they are assumed all to start at `1`, and the canonocal form of the literal does not show the bounds.
+Notice the spelling of the array literal for the row with `k = 4`. The optional syntax `[3:4][5:6][7:8]` specifies the lower and upper bounds, respectively, for the first, the second, and the third dimension. This is the same syntax that you use to specify a slice of an existing array (see [here](../../functions-operators/slice-operator)). When the freedom to specify the bounds is not exercised, then they are assumed all to start at `1`, and then the canonical form of the literal does not show the bounds.
 
 When the freedom is exercised, the bounds for _every_ dimension must be specified. Specifying the bounds gives you, of course, an opportunity for error. If the length along each axis that you (implicitly) specify doesn't agree with the lengths that emerge from the actual values listed between the surrounding outer `{}` pair, then you get the _"22P02 invalid_text_representation"_  error with this prose explanation:
 
@@ -84,268 +384,3 @@ When the freedom is exercised, the bounds for _every_ dimension must be specifie
 malformed array literal...
 Specified array dimensions do not match array contents.
 ```
-**Note:**
-
-Try this:
-```postgresql
-select 12512454.872::text;
-```
-The result is the canonical form, `12512454.872`. So this (though you rarely see it):
-```postgresql
-select 12512454.872::numeric;
-```
-runs without error. Now try this:
-
-```postgresql
-select to_number('12,512,454.872', '999G999G999D999999')::text;
-```
-This, too, runs without error because it uses the `to_number()` builtin function. The result here, too, is the canonical form, `12512454.872`—with no commas. Now try this:
-
-```postgresql
-select '12,512,454.872'::numeric;
-```
-This causes the _"22P02: invalid input syntax for type numeric"_ error. In other words, _only_ a `numeric` value in canonical form can be directly typecast using `::numeric`.
-
-You must spell the representations for the values in a `numeric[]` array in canonical form. Try this:
-
-```postgresql
-select ('{123.456, -456.789}'::numeric[])::text;
-```
-It shows this:
-
-```
- {123.456,-456.789}
-```
-
-Now try this:
-```postgresql
-select ('{9,123.456, -8,456.789}'::numeric[])::text;
-```
-It silently produces this presumably unintended result—an array of _four_ numeric values—because the commas are taken as delimiters and not as part of the representation of a single `numeric` value:
-```
- {9,123.456,-8,456.789}
-```
-In an array literal (or in a _"row"_ type value"_ type value literal), there is simply no way to accommodate forms that cannot be directly typecast. (The same holds for `timestamp` values as for `numeric` values.) SQL inherits this limitation from PostgreSQL. It is the user's responsibility to work around this when preparing the literal because, of course, functions like _"to_number()"_ cannot be used within literals. They can, however, be used in an `array[]` value constructor as [the section on that topic](../../constructors/) shows.
-
-## One-dimensional array of boolean values
-
-To understand how arrays of the remaining primitive data types should be written, it's sufficient to consider the one-dimensional case. The understanding generalizes to the multidimensional case.
-
-The literals for the `boolean` data type  are `t` and `f` (which must be quoted for use). In contrast, `true` and `false` are reserved words in both SQL and PL/pgSQL. But PostgreSQL, and therefore YSQL, are forgiving. Try this:
-
-```postgresql
-select true,  't'::boolean, 'true'::boolean,
-       false, 'f'::boolean, 'false'::boolean;
-```
-It shows this:
-```
- t    | t    | t    | f    | f    | f
-```
-_ysqlsh_ (inheriting this behavior from _psql_) shows boolean values using the `t` or `f` representations. But a `boolean` value that is explicitly typecast to `::text` is displayed as `true`. The result of the following two maximally terse queries is consistent with this rule. First this:
-```postgresql
-select true;
-```
-and then this:
-```postgresql
-select true::text;
-```
-The first example shows `t` and the second example shows `true`.
-
-This example cuts _ysqlsh_ out of the picture and uses a PL/pgSQL `assert` thus:
-
-```postgresql
-do $body$
-declare
-  t1 constant boolean := true;
-  t2 constant boolean := 't'::boolean;
-  t3 constant boolean := 'true'::boolean;
-begin
-  assert
-    t1 and t2 and t3 and (t1::text = 'true'),
-  'assert failed';
-end;
-$body$;
-```
-We shall see in the next sections that `null` is even more special. It has no canonical literal. You can specify `null` for a primitive data type only by using the reserved word `null`. The same holds for an array literal. But you can specify it for a field in a _"row"_ type value"_  _only_ by leaving no whitespace between the successive delimiters for that field.
-
-Here, then, is how the literal for a `boolean` array should be written:
-```postgresql
-select ('{t,  f}'::boolean[])::text;
-```
-However, it _may_ be written thus:
-```postgresql
-select ('{true,  false}'::boolean[])::text;
-```
-reflecting the same forgiveness that was mentioned above. Each of these two queries shows the same result:
-```
- {t,f}
-```
-Here's how to convince yourself that you really did get the values that you intended to set:
-
-```postgresql
-with
-  v as (select '{t, f}'::boolean[] as a)
-select a[1], a[2] from v;
-```
-It shows this:
-```
- t | f
-```
-## One-dimensional array of timestamp values
-
-First recap how the literal for a primitive `timestamp` value can be written:
-```postgresql
-select ('   2017-07-04   11:17:42   '::timestamp)::text;
-```
-It shows this:
-```
- 2017-07-04 11:17:42
-```
-However, you're very unlikely to see the freedom to use whitespace liberally, that this example shows, in real application code. While it doesn't confuse the parser, it will doubtless confuse the human reader. Yugabyte recommends against exploiting this freedom.
-
-Now try this:
-
-```postgresql
-select (array[
-    '2019-02-14 22:39:21'::timestamp,
-    '2017-07-04 11:17:42'::timestamp
-  ]::timestamp[])::text;
-```
-
-It shows this:
-
-```
-{"2019-02-14 22:39:21","2017-07-04 11:17:42"}
-```
- We see from this that the canonical representation of a value within an array literal of type `timestamp[]`takes this form:
-
-- The representation of each `timestamp` value has the form of the canonical representation of such a value, as produced by the `::timestamp` typecast of a primitive value, tightly surrounded by double quotes.
-
-- There is no whitespace between the opening and closing curly braces and the comma delimiters and the double-quoted representations of the values that they delimit.
-
-Apart from the fact that `timestamp` values are double-quoted, this is the same convention that the canonical forms of the literals for arrays of numeric values (`int[]`, `numeric[]`, and so on) and for `boolean` values use.
-
-Now try this contrived example:
-```postgresql
-select (
-  '{  2019-02-14   22:39:21 ,  2017-07-04 11:17:42 }'::timestamp[]
-  )::text;
-```
-It produces the same  canonical representation  for the `timestamp[]` array that was produced when the array value was created using the `array[]` type constructor—the same text that inspired the present example:
-```
- {"2019-02-14 22:39:21","2017-07-04 11:17:42"}
-```
-
-Notice that the surrounding double quotes that the canonical representation uses are not present in the input, and that whitespace has been used liberally to confuse the human reader between the enclosing `{}` pair. But the parser manages not to be confused because the delimiters (the `{` character, the `,` character, and the `}` character) are sufficient for its purposes. However, Yugabyte recommends against exploiting this freedom.
-
-We see, then, that the fact that the canonical representation of a `timestamp[]` array surrounds the values with double quotes is the result of convention rather than necessity. When the values of a particular datatype have no interior spaces, they are not surrounded by double quotes. But when, like `timestamp` they do, then they are so surrounded. The same rule holds—more or less—for `text[]` arrays. But, as we shall see, there are some additional subtleties.
-
-## One-dimensional array of text values
-
-Try this:
-```postgresql
-select '>'||'   dog  house   '::text||'<';
-```
-It shows this:
-```
- >   dog  house   <
-```
-This emphasises the fact that a `text` value—in contrast to values of non-stringy data types—can start and end with arbitrary numbers of spaces and can contain interior runs of spaces—and that these spaces are semantically significant. Now try this:
-```postgresql
-with
-  v as (select '{a,   dog  house   ,b}'::text[] as a)
-select '>'||a[1]||'<', '>'||a[2]||'<', '>'||a[3]||'<' from v;
-```
-It shows this:
-```
- >a<      | >dog  house< | >b<
-```
-We see that, with no further punctuation, the text value starts with the first non-whitespace character after the comma delimiter and ends with the last non-whitespace character before the next comma delimiter. Use this query to see the canonical form of the literal for this array value:
-```postgresql
-select '{a,   dog  house   ,b}'::text[];
-```
-It shows this:
-```
-{a,"dog  house",b}
-```
-And now try this:
-```postgresql
-with
-  v as (select '{"a", "   dog  house   ", "b"}'::text[] as a)
-select '>'||a[1]||'<', '>'||a[2]||'<', '>'||a[3]||'<' from v;
-```
-It shows this:
-```
- >a<      | >   dog  house   < | >b<
-```
-as presumably was intended. We see, therefore, that double quotes are essential around a string value that is intended to start or end with whitespace, that they may be used even around a single character where whitespace doesn't enter the picture, and that whitespace (as we already saw) between successive array elements following a delimiter (left curly brace or comma) and preceding the next delimiter (comma or right curly brace) is insignificant,
-
-Here's an example from the following section on [literals for values of a _"row"_ type value](../row/):
-```postgresql
-create type rt as (f1 text, f2 text, f3 text);
-
-with
-  v as (select '(a,   dog  house   ,b)'::rt as r)
-select '>'||(r).f1||'<', '>'||(r).f2||'<', '>'||(r).f3||'<' from v;
-```
-It shows this:
-```
- >a<      | >   dog  house   < | >b<
-```
-This outcome might surprise you. The rules that explain why the outcomes of these two examples (array literal and _"row"_ type value literal) differ in this way are defined authoritatively in the PostgreSQL documentation [here](https://www.postgresql.org/docs/11/arrays.html) and [here](https://www.postgresql.org/docs/11/rowtypes.html). But `::text` typecasting the array value shows us the canonical form of the literal:
-```postgresql
-select ('(a,   dog  house   ,b)'::rt)::text;
-```
-It shows this:
-```
- (a,"   dog  house   ",b)
-```
-We can understand the rules needed to write this form with far less effort than it takes to understand the full set of rules that predict that the examples above are legal and will produce the effects that are seen.
-
-Finally, in the topic of the literal for a `text[]` array, we must consider the case that the desired value for an element looks like this:
-```
-She said "Write it like this '{1, 2}' (no \)."
-```
-This `text` value contains double quotes, a backslash, left and right curly braces, and a comma—all of which have defined punctuation roles in the grammar for an array literal. Further, the value contains single quotes—and this character has a defined punctuation role in the grammars for SQL and PL/pgSQL. The interior single quotes are handled by doubling them up, or, for better readability, by using dollar quotes to surround the text literal. And, for the rules that interpret a `text` value as an array literal, it is both necessary and sufficient to surround an element that is to be interpreted as a `text` value for the left and right curly braces, and the comma, to be treated as ordinary content. This is exactly analogous to how quoting a `text` literal in SQL and in PL/pgSQL shields characters within the value, such as `+`, `=`, `/`, and so on that normally have syntactic significance, from the parser. This leaves only the double quotes and the backslash needing special treatment. Surprisingly, doubling up a double quote doesn't work. The backslash escape technique, familiar from other programming languages, and from JSON, is the right approach for both of these troublesome characters.
-
-Try this:
-```postgresql
-with v as (
-  select
-    $arr${x,"She said \"Write it like this '{1, 2}' (no \\).\""}$arr$::text[]
-  as a)
-select a[2] from v;
-```
-It shows the desired `text` value for the second element.
-
-## NULLs in array literals
-
-Try this, using the [array constructor](../../constructors):
-```postgresql
-select (array [42::int, null::int, 17::int]::int[])::text;
-```
-It produces this:
-
-```
- {42,NULL,17}
-```
-This might a surprise. Here (and uniquely for the canonical representation of an array literal) `null` is represented by the character string `NULL` (it isn't case-sensitive). This contrast with how a primitive value (of any data type) that is `null` is represented in _ysqlsh_ output—in the same way that the empty string is represented. You might have guessed that this would work:
-```postgresql
-select '{42,,17}'::int[];
-```
-But it fails with the _"22P02: malformed array literal:"_ error.
-
-## Always write array literals in canonical form
-
-Bear in mind that you will very rarely manually type literals in the way that this section has used to demonstrate the rules. You'll do this only when teaching yourself, when prototyping new code, or when debugging. Rather, you'll typically create the literals programmatically—often in a client-side program that parses out the data values from, for example, an XML text file, or these days probably a JSON text file. In these scenarios, the target array is likely to have the data type `some_user_defined_row_type[]`. The rules for these kinds of array are described in the section [The literal for an array of _"row"_ type values](../array-of-rows/). Your program will parse the input and create the required literals as ordinary text strings that you'll then provide as the actual argument to a `prepare` statement execution, leaving the typecast of the `text` actual argument, to the appropriate array data type, to the prepared `insert` or `update` statement like this:
-
-```
-prepare stmt(text) as insert into t(rs) values($1::rt[]);
-```
-Example code to do this is presented in the section _"[Programmatic construction of the literal for an array of _"row"_ type values](../programmatic-literal-construction/)"_.
-
-You can create any desired array value simply by using the canonical form of the literal. We have already seen many examples of this. And, as mentioned above, the set of rules that you need to understand how to write a literal in canonical form, to produce the value that you want, is considerably smaller than that of all the rules that prescribe how to write all the legal variants of array literals.
-
-**Yugabyte recommends that the array literals that you generate programmatically are always spelled using the canonical representations**
-
-You can relax this recommendation, to make tracing or debugging your code easier, by using a newline between each successive encoded value in the array.

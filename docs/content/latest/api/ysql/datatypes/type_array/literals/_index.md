@@ -15,7 +15,7 @@ showAsideToc: false
 
 ## The spelling of a literal value, alone, typically doesn't establish its data type
 
-You will already be familiar with the notion of a literal as a way to represent a specific value of some particular data type. A literal can be used at any syntax spot, in YSQL and in PL/pgSQL, where an expression is legal. Often, the spelling of the literal isn't sufficient, alone, to establish the data type of the value—especially in YSQL where any value can be typecast to a `text` value. In fact, many typecasts are done implicitly, driven by the context of usage. However, it's good practice to know what you're doing (as it _always_ is) and to make all typecasts explicit by spelling out the typecast. Here is an example and a counter-example:
+You will already be familiar with the notion of a literal as a way to represent a specific value of some particular data type. A literal can be used at any syntax spot, in SQL and in PL/pgSQL, where an expression is legal. Often, the spelling of the literal, alone, isn't sufficient to establish the data type of the value—especially in YSQL where any value can be typecast to a `text` value. In fact, many typecasts are done implicitly, driven by the context of usage. However, it's good practice to know what you're doing (as it _always_ is) and to make all typecasts explicit by spelling out the typecast. Here is an example and a counter-example:
 
 ```postgresql
 create table t(k serial primary key, v numeric);
@@ -40,7 +40,7 @@ Here is the result:
 
 The convention used by _ysqlsh_, inherited from PostgreSQL's _psql_, is to display selected `numeric` values with exactly, and only, sufficient precision. So we see that `42.7` was implicitly typecast to the nearest `int` value, `43` by the invocation of `execute bad()` and then typecast back to the numeric value `43.0`on inserting it into the target column—to be displayed on selecting it as bare `42`. This is a telling example of a confusing, and therefore bad, practice.
 
-We shall see that explicit typecasting is critically important when array literals are used.
+We shall see that explicit typecasting is critically important when array literals are used. We return to the topic in the dedicated section _"[The critical importance of explicit typecasting](./importance-of-typecasting)"_.
 
 ## Array literals for array datatypes with primitive, and then composite, values
 
@@ -49,7 +49,7 @@ These three examples introduce the topic informally. First an array of primitive
 \t on
 select '{1, 2, 3}'::int[];
 ```
-The `\t on` metacommand supresses column headers and the rule-off unders these. Unless the headers are important for understanding, query output from _ysqlsh_ will be shown, throughout the present "arrays" major section, without these.
+The `\t on` metacommand suppresses column headers and the rule-off under these. Unless the headers are important for understanding, query output from _ysqlsh_ will be shown, throughout the present "arrays" major section, without these.
 
 This is the output that the first example produces:
 
@@ -78,18 +78,16 @@ We can see, then, that when an array literal is used in a SQL statement, it must
 
 The identical rules that apply for forming an array literal for use in a SQL statement apply when an array literal is used in an expression in a PL/pgSQL program.
 
-The following subsections will present the rules carefully and, when the rules allow some freedom, will give recommendations. These rules are covered in this two sections of the PostgreSQL documentation:
+The following subsections will present the rules carefully and, when the rules allow some freedom, will give recommendations. These rules are covered in these two sections of the PostgreSQL documentation:
 
 - [8.15. Arrays](https://www.postgresql.org/docs/11/arrays.html)
 
 - [8.16. Composite Types](https://www.postgresql.org/docs/11/rowtypes.html)
 
-The [first subsection](./array-of-primitive-values/) gives the rules for array literals whose values are scalars (i.e. are of primitive data types).  
+The [first subsection](./array-of-primitive-values/) gives the rules for array literals whose values are scalars (for example, are of primitive data types).  
 
-The [second subsection](./importance-of-typecasting/) revisits the crtically important topic of typecasting.
+The [second subsection](./importance-of-typecasting/) revisits the critically important topic of typecasting.
 
 The [third subsection](./row/) gives the rules for the literal for a value of a _"row"_ type. These rules are essential to the understanding of  the next section.
 
 The [fourth subsection](./array-of-rows/) gives the rules for array literals whose values are composite (i.e. a _"row"_ type).
-
-The [fifth subsection](./rules-summary/) summarises the rules for literals of arrays of primitive and _"row"_ type values.

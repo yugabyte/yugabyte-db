@@ -56,7 +56,7 @@ It shows this:
 ----------------------
  (1,a) | (2,) | (3,c)
 ```
-Notice that, maybe to your surprise, the third, `null`, array value is simply not represented
+Notice that the third, `null`, array value is simply not represented.
 
 Now do this;
 ```postgresql
@@ -75,5 +75,5 @@ It shows this:
  (1,a) | (2,) | ? | (3,c)
 ```
 
-The third array value is now represented by `?`. But the fact that `f2 is null` within the second array value is _not_ represented by `?`. This might surpise you too.
+The third array value is now represented by `?`. But the fact that `f2 is null` within the second array value is _not_ represented by `?`. In other words, this null-visualization techique is applied only at the granulatity of top-level array values and not within such values when they are composite.
 

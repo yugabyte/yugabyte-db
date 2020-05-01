@@ -12,108 +12,230 @@ isTocNested: false
 showAsideToc: false
 ---
 
-> **Monday 27-Apr-2020. To_Do. This section is still work-in-progress. The text and example needed to complete it are ready in draft. The work to incorporate this is relatively small.**
+We now combine the understanding of how to write the literal for an array of primitive values with that of how to write the literal for a _"row"_ type value.
 
-We now combine the understanding of how to write the literal for an array of primitive values with that of how to write the literal for a _"row"_ type value. First, recall this example from the section To_Do:
+This section uses the same approach as did the section that explained the rules for the literal for an array of primitive values [here](../array-of-primitive-values/) and the section that explained the rules for the literal for a _"row"_ type value [here](../row/): first it states the rules; and then it illustrates these with examples.
+
+## Statement of the rules
+
+Just as in the section that stated the rules for literals for an array of primitive values, [here](../array-of-primitive-values/#statement-of-the-rules), the statement of these rules depends on understanding the notion of the canonical form of a literal.
+
+If you follow the rules that are stated here, and illustrated in the demonstration below, then you will always produce a syntactically valid literal which expresses the semantics that you intend. There are very many other legal variants—especially because of the freedoms for `text[]` values. This can also produce the result that you intend. However, we will not document these rules because it is always sufficient to create your literals in canonical form.
+
+The sufficient set of rules can be stated tersely:
+
+- Start off with the opening left curly brace
+
+- First prepare the literal for each _"row"_ type value according to the rules set out in the [previous section](../row/).
+
+- Then understand that when these are used within the literal for _"row"_ type value within the literal for an array, the _"row"_ must itself be surrounded with double quotes, just like is the rule for, say, `timestamp` values or `text` values that include spaces or other troublesome characters.
+
+- Then understand that this implies that any occurrences of double quotes and backslashes within the surrounding parentheses of the _"row"_ type literal must be escaped a second time: _double-quote_ becomes _backslash-double-quote_; and _backslash_ becomes _backslash-backslash_.
+
+- Therefore, to avoid wrongly escaping the double quotes that will surround the parentheses,
+
+  -  *first:* do the inner escaping;
+  - and only then surround the complete representation for the _"row"_ type value with unescaped double quotes.
+
+- Finish off with the closing right curly brace.
+
+These rules are presented in pseudocode [at the end](./#pseudocode-for-generating-the-literal-for-a-one-dimensional-array-of-row-type-values) of this subsection.
+
+## Example to illustrate the rules.
+
+The example uses a  _"row"_ type with four fields: an `int` field; a `text` field; a `timestamp` field; and a `boolean` field; Only the `text` field needs deliberate design so the all of the "challenging" scenarios are illustrated. These are they:
+```
+     <space>     ,     (     )     "     \
+```
+First, we create the _"row"_ type:
+```postgresql
+create type rt as (n int, s text, t timestamp, b boolean);
+```
+Then we create a table with a column with data type `rt` so that we can populate it with six rows that jointly, in their `text` fields, use all of the "challenging" characters listed above:
+```postgresql
+create table t1(k int primary key, v rt);
+```
+Then we populate the table by building the _"row"_ type values bottom-up using appropriately typed PL/pgSQL variables in a `DO` block, and inspect the result. This technique, allows the actual primitive values that we choose for this demonstration so be seen individually as the ordinary SQL literals that each data type requires. This makes the code hugely more readable, and therefore more understandable, than any other approach. In other words, it shows that, for humanly written code, the usability of a value constructor for any composite value is very much grater than that of the literal that produces the same value. Of course, this benefit is of no consequence for a programmatically constructed literal.
+```postgresql
+do $body$
+declare
+  n1 constant int := 1;
+  s1 constant text := ' ';
+  t1 constant timestamp := '2091-01-20 12:10:05';
+  b1 constant boolean := true;
+
+  n2 constant int := 2;
+  s2 constant text := ',';
+  t2 constant timestamp := '2002-01-20 12:10:05';
+  b2 constant boolean := false;
+
+  n3 constant int := 3;
+  s3 constant text := '(';
+  t3 constant timestamp := '2003-01-20 12:10:05';
+  b3 constant boolean := null;
+
+  n4 constant int:= 4;
+  s4 constant text := ')';
+  t4 constant timestamp := '2004-01-20 12:10:05';
+  b4 constant boolean := true;
+
+  n5 constant int:= 5;
+  s5 constant text := '"';
+  t5 constant timestamp := '2005-01-20 12:10:05';
+  b5 constant boolean := false;
+
+  n6 constant int:= 6;
+  s6 constant text := '\';
+  t6 constant timestamp := '2006-01-20 12:10:05';
+  b6 constant boolean := null;
+begin
+  insert into t1(k, v) values
+    (1, (n1, s1, t1, b1)),
+    (2, (n2, s2, t2, b2)),
+    (3, (n3, s3, t3, b3)),
+    (4, (n4, s4, t4, b4)),
+    (5, (n5, s5, t5, b5)),
+    (6, (n6, s6, t6, b6));
+end;
+$body$;
+
+select v::text as lit from t1 order by k;
+```
+
+This is the result:
+```
+               lit                
+----------------------------------
+ (1," ","2091-01-20 12:10:05",t)
+ (2,",","2002-01-20 12:10:05",f)
+ (3,"(","2003-01-20 12:10:05",)
+ (4,")","2004-01-20 12:10:05",t)
+ (5,"""","2005-01-20 12:10:05",f)
+ (6,"\\","2006-01-20 12:10:05",)
+```
+
+The `int` field and the `timestamp` field are unremarkable given only that we understand that the representation of the `timestamp` values, in order to meet the canonical form requirement,  must be double-quoted. The `boolean` fields are unremarkable, too, as long as we remember that `null` is represented by leaving no space between the delimiters that surround that field. This leave just the `text` fields for consideration. here are the field representations themselves, without the clutter of the delimiters:
+```
+     " "     ","     "("     ")"     """"     "\\"
+```
+
+The first four are unremarkable, as long as we remember that each of these four single characters, as shown at the start, must be ordinarily surrounded by double quotes. That leaves just the last two:
+
+- The single double quote occurrence, in the source data, must be doubled up and then surrounded by double quotes.
+- The single backslash occurrence, in the source data, must be doubled up and then surrounded by double quotes.
+
+Next, we'll concatenate our six _"row"_ type values into an array value by using the `array_agg()` function, (It's described [here](../../functions-operators/array-agg-unnest/#array-agg)), like this:
+```postgresql
+select array_agg(v order by k) from t1;
+```
+
+The demonstration is best served by inserting this value into a new table, thus:
+```postgresql
+create table t2(k int primary key, v1 rt[], v1_text_typecast text, v2 rt[]);
+insert into t2(k, v1)
+select 1, array_agg(v order by k) from t1;
+```
+
+The `\get` technique that we used in the earlier sections is not viable here because there's an upper limit on its size. So, instead, we'll simple insert the literal that we produce by `text` typecasting `t2.v1` into the companion `v1_text_typecast` field in the same table, thus:
 
 ```postgresql
-create table t(k serial primary key, v int[]);
-
-insert into t(v) values('
-    {1,  2}
-  '::int[]);
-
-select k, v from t order by k;
+update t2 set v1_text_typecast =
+(select v1::text from t2 where k = 1);
 ```
-It produces this result:
-```
- k |   v   
----+-------
- 1 | {1,2}
-```
-Now try this:
+Finally, we use this array literal to recreate the original value and check that it's identical to what we started with, thus:
 ```postgresql
-insert into t(v) values('
-    {
-      "1",
-      "2"
-    }
-'::int[]);
+update t2 set v2 = 
+(select v1_text_typecast from t2 where k = 1)::rt[];
 
-select k, v from t order by k;
+select (v1 = v2)::text as "v1 = v2" from t2 where k = 1;
 ```
-This `insert` statement was derived from the previous one simply by adding whitespace and by enclosing the `int` literals for the first and second array value in double quotes.
-
-It produces this result:
+As promised, the canonical form of the array literal does indeed recreate the identical value that the _`array_agg()` function created:
 
 ```
- k |   v   
----+-------
- 1 | {1,2}
+ v1 = v2 
+---------
+ true
 ```
 
-So the values within the literal for an array may optionally be surrounded by double quotes. At least, they my be so surrounded when the values are of a primitive non-stringy data type.
-
-Create the same _"row"_ type the was used in the section  _"[The literal for a _"row"_ type value](../row/)"_:
-
+We haven't yet looked at the literal for the array of _"row"_ type values. Now is the moment to do so, thus:
 ```postgresql
-create type rt as (a int, b int);
+select v1_text_typecast from t2 where k = 1;
 ```
-and this table:
-```postgresql
-create table t(k serial primary key, rs rt[]);
+The result that's produced is too hard to read without some manual introduction of whitespace. But this is allowed around the commas that delimit successive values within an array literal, thus:
+
 ```
-The syntax for the literal for an array of values of a user-defined _"row"_ type of course uses, for the _"row"_ type value itself, the same syntax between the opening parenthesis and the closing parenthesis that was explained in the section [The literal for a _"row"_ type value](../row/).
-
-
-
-
-
-Now insert a _"row"_ type value using the literal for the `rt[]`type:
-
-```postgresql
-insert into t(rs) values
-  ('{"(1, 2)", "(3, 4)"}'::rt[]);
-```
-Now insert a second _"row"_ type value, making more dramatic use of whitespace:
-```postgresql
-insert into t(rs) values
-  ('{
-      "(5, 6)",
-      "(7, 8)"
-    }'::rt[]);
+{
+  "(1,\"a \",\"2091-01-20 12:10:05\",t)",
+  "(2,\", \",\"2002-01-20 12:10:05\",f)",
+  "(3,\"( \",\"2003-01-20 12:10:05\",)",
+  "(4,\" )\",\"2004-01-20 12:10:05\",t)",
+  "(5,\"\"\"\",\"2005-01-20 12:10:05\",f)",
+  "(6,\"\\\\\",\"2006-01-20 12:10:05\",)"
+}
 ```
 
-Check the result in the obvious way:
+With some effort, you'll see that this is indeed the properly formed canonical representation for the literal for an array of _"row"_ type values that the rules set out above specify.
 
-```postgresql
-select k, rs::text from t order by k;
-```
-It produces this result:
-```
- k |        rs         
----+-------------------
- 1 | {"(1,2)","(3,4)"}
- 2 | {"(5,6)","(7,8)"}
-```
-This looks a lot like the literal values used for the input. But notice that the whitespace in the input was insignificant and the convention for the `::text` type cast of a _"row"_ type value is to remove the whitespace between values.
+## Multidimensional array of "row" type values
 
-The best way to confirm that the `insert` really did produce the intended result is to specify the _"row"_ type value fields individually for the first _"row"_ type value, thus:
+You can work out the rules for a multidimensional array of "row" type values, should you need these, by straightforward induction from what has already been explained this enclosing _"[Create an array value using a literal](../../literals/)"_ section.
 
-```postgresql
-select
-  k,
-  (rs[1]).a as r1a,
-  (rs[1]).b as r1b,
-  (rs[2]).a as r2a,
-  (rs[2]).b as r2b
-from t order by k;
+## Pseudocode for generating the literal for a one-dimensional array of "row" type values
+
+This pseudocode shows how to create an array literal of _"row"_ type values that have the same shape as `type rt` in the example above. The input is a succession of an arbitrary number of `(n, s, t, b)` tuples. The text below was derived by straightforward manual massage from actual working, and tested, Python code. The code was written simply an an exercise to verify the correctness of the algorithm.
+
+The pseudocode does retain Python locutions; but don't be distracted by this. The meaning is clear enough to allow description of the algorithm. The various special characters were all set up as manifest constants with self-describing names.
+
+Notice that the algorithm inserts a newline after the opening curly brace, between the pairs of representations of each _"row"_ type value, and before the closing curly brace. While, strictly speaking, this means that the literal it produces is not in canonical form, this has no effect (as has been shown many times by example throughout the present _"[Arrays](../../../type_array/)"_ major section
+
 ```
-(The parentheses around `rs[n]` are essential.) This is the result:
-```
- k | r1a | r1b | r2a | r2b 
----+-----+-----+-----+-----
- 1 |   1 |   2 |   3 |   4
- 2 |   5 |   6 |   7 |   8
+"Start a new array literal":
+  wip_literal = lft_crly_brace + nl
+
+"For each next (n, s, t, b) tuple that defines a "row" type value":
+  curr_rec = dbl_quote + lft_parens
+
+  # Field "n" maps to a SQL numeric
+  if n is None:
+    curr_rec += comma
+  else:
+    curr_rec += (str(n) + comma)
+
+  # Field "s" maps to a SQL text.
+  if s is None:
+    curr_rec += comma
+  else:
+    # Fist, do the escaping needed for a stringy value
+    # as field in record literal value.
+    s = s.replace(bk_slash, two_bk_slashes)
+    s = s.replace(dbl_quote, two_dbl_quotes)
+    s = dbl_quote + s + dbl_quote
+
+    # Next, do the escaping to fix the bare record representation
+    # for use as a array element.
+    s = s.replace(bk_slash, two_bk_slashes)
+    s = s.replace(dbl_quote, bk_slash_dbl_quote)
+    curr_rec += (s + comma)
+
+    # Field "t" maps to a SQL timestamp.
+    if t is None:
+      curr_rec += comma
+    else:
+      curr_rec += (bk_slash_dbl_quote + t + bk_slash_dbl_quote + comma)
+
+    # Field "b" maps to a SQL boolean.
+    # It's the last field, we do nothing if it's neither "t" nor "f"
+    if (b == "t" or b == "f"):
+      curr_rec += b
+
+  # Now there are no more inout tuples.
+  curr_rec = curr_rec + rgt_parens + dbl_quote
+  wip_literal = wip_literal + curr_rec + comma + nl
+
+# Now there are no more input tuples.
+"Finish off":
+  # Remove the final (comma + nl), put the nl back,
+  # and add the closing curly brace.
+  wip_literal = wip_literal[:-2] + nl + rgt_crly_brace
 ```
 

@@ -11,7 +11,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-These two functions have mutually complementary effects in the following sense. After this sequence (the notation is informal):
+For one-dimensional arrays, but _only for these_ (see the section _"Multidimensional array_agg() and unnest()"_ [below](./#multidimensional-array-and-and-unnest)), these two functions have mutually complementary effects in the following sense. After this sequence (the notation is informal):
 ```
 array_agg of "setof tuples #1" => "result array"
 unnest of "result array" => "setof tuples #3"
@@ -22,7 +22,7 @@ For this reason, the two functions, `array_agg()` and `unnest()`, are described 
 
 ## array_agg()
 
-In normal use, `array_agg()` is applied to the _select list_ from a physical table—or maybe from a view that encapsulates the query. This is shown in the _"[Realistic use case](#realistic-use-case)"_ example below. But first, we can demonstrate the functionality without creating and populating a table by using, instead, the `values` statement. Try this:
+In normal use, `array_agg()` is applied to the _select list_ from a physical table—or maybe from a view that encapsulates the query. This is shown in the _"[Realistic use case](./#realistic-use-case)"_ example below. But first, we can demonstrate the functionality without creating and populating a table by using, instead, the `values` statement. Try this:
 
 ```postgresql
 values
@@ -59,6 +59,36 @@ It produces this result:
 ```
 We recognize this as the value of the literal that represents an array of tuples that are shape-compatible with type rt. Recall from the "_[array[] constructor](../../array-constructor/)_" section that this value doesn't encode the type name. In fact, we could typecast it to any shape compatible type.
 
+We can understand the effect of `array_agg()` thus:
+
+- Treat each row as a `rt[]` array with a single-value;
+-  Concatenate (see the `||` operator [here](../concatenation/#the-operator)) the values from all the rows in the specified order into a new `rt[]` array.
+
+This code illustrates this point:
+```postgresql
+-- Eqivalent to this:
+with tab as (
+  values
+    ((1, 'dog')::rt),
+    ((2, 'cat')::rt),
+    ((3, 'ant')::rt)
+  )
+select array_agg(column1 order by column1) as array_literal
+from tab;
+
+-- Can be seen as this:
+with tab as (
+  values
+    ((1, 'dog')::rt),
+    ((2, 'cat')::rt),
+    ((3, 'ant')::rt)
+  )
+select
+  array[(1, 'dog')::rt] ||
+  array[(2, 'cat')::rt] ||
+  array[(3, 'ant')::rt]
+as arr;
+```
 To prepare for the demonstration of `unnest()`, we'll save this single-valued result into a _ysqlsh_ variable by using the `\gset` metacommand. This takes a single argument, conventionally spelled with a trailing underscore (for example `result_`) and re-runs the `select` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `select` doesn't return a single row, then you get a clear error.) In general, when the _select list_ has _N_ members, called `c1` through `cN`, each of these values is stored in automatically created variables called `result_c1` through `result_cN`. Immediately after running the `with... select array_agg(...) as array_literal...`query above, do this:
 
 ```postgresql
@@ -105,6 +135,75 @@ The parentheses around the column alias `rec` are required to remove what the SQ
 ```
 
 As promised, the original `setof` tuples has been recovered.
+
+## Multidimensional array_agg() and unnest()
+
+Start by aggregating three `int[]` array instances and by preparing the result as an `int[]` literal for the next step using the same `\gset` technique that we used above:
+```postgresql
+with tab as (
+  values
+    ('{1, 2, 3}'::int[]),
+    ('{4, 5, 6}'::int[]),
+    ('{7, 8, 9}'::int[]))
+select array_agg(column1 order by column1) as array_literal
+from tab
+
+\gset result_
+\set unnest_arg '\'':result_array_literal'\'::int[]'
+\echo :unnest_arg
+```
+Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. Ths simply makes the _ysqlsh_ output less noisy. This is the result:
+
+```
+'{{1,2,3},{4,5,6},{7,8,9}}'::int[]
+```
+We recognize this as the literal for a two-dimensional array. Now use this as the actual argument for `unnest()`:
+```postgresql
+select unnest(:unnest_arg) as val 
+order by 1;
+```
+It produces this result:
+```
+ val 
+-----
+   1
+   2
+   3
+   4
+   5
+   6
+   7
+   8
+   9
+```
+This `setof` result lists all of the input array's "leaf" values in row-major order.
+
+Notice that, for the multidimensional case, we did _not_, therefore, regain the original input to `array_agg()`. We can emphasize this point by aggregating the result:
+
+```postgresql
+with v as
+  (select unnest(:unnest_arg) as val)
+select array_agg(val order by val) from v;
+```
+It produces this result:
+```
+      array_agg      
+---------------------
+ {1,2,3,4,5,6,7,8,9}
+```
+We started with a two-dimensional array. But now we have a one-dimensional array with the same values as the input array in the same row-major order.
+
+This result has the same semantic content that the `array_to_string()` function produces:
+
+```postgresql
+select array_to_string(:unnest_arg, ',');
+```
+It produces this result:
+```
+  array_to_string  
+-------------------
+ 1,2,3,4,5,6,7,8,9
+```
 
 ## Realistic use case
 
@@ -408,7 +507,7 @@ set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
 where master_pk = 2;
 ```
 
-The more complex, but semantically equivalent, locution is used as a workaround for [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296). See the account of the `array_replace()` function, [here](../replace-a-value#array-replace), for more information. The code above will be updated when that issue is fixed.
+The more complex, but semantically equivalent, locution is used as a workaround for [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296). See the account of the `array_replace()` function, [here](../replace-a-value/#array-replace), for more information. The code above will be updated when that issue is fixed.
 
 - Implementing the requirement that the values of _"detail_name"_ must be unique for a given _"masters"_ row is trivial in the old regime:
 ```postgresql

@@ -86,7 +86,7 @@ create table t2(
 ```
 Notice that it appears, optionally, to let you specify how many values each dimension holds. (The Standard syntax allows the specification of the length of just one dimension.) However, these apparent declarations of intent, too, are simply ignored. Moreover, even the _dimensionality_ is ignored. The value, in a particular row, in a table column with an array data type (or its cousin, a variable in a PL/pgSQL program) can hold an array value of _any_ dimensionality. This is demonstrated by example in the section _"[The literal for an array of primitive values](./literals/array-of-primitive-values/)"_. This means that declaring an array using the reserved word `array`, which apparently lets you define only a one-dimensional array, and declaring an array using `[]`, which apparently lets you define array of any dimensionality, where one, some, or all of the dimensions are nominally constrained, are entirely equivalent.
 
-The fact that different rows in the same table column can hold array values of different dimensionality might surprise you. However, this is easily explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value—as a single integer—along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the builtin array functions are supported only for one-dimensional arrays.
+Notice that different rows in the same table column can hold array values of different dimensionality. This is explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value—as a single integer—along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the builtin array functions are supported only for one-dimensional arrays.
 
 Yugabyte recommends that, for uniformity, you choose to declare arrays only with this syntax:
 
@@ -123,7 +123,7 @@ Because `v` has no constraint, it can be `null`, just like when its data type is
 update t set v = v||'{null}'::int[] where k = 2;
 select k, v, array_dims(v) as dims from t where k = 2;
 ```
-The `||` operator is explained in the section [_"Array concatenation functions and operators"_](.//functions-operators/concatenation/#the-operator). The query shows this:
+The `||` operator is explained in the section [_"Array concatenation functions and operators"_](./functions-operators/concatenation/#the-operator). The query shows this:
 
 ```
  k |      v      | dims  

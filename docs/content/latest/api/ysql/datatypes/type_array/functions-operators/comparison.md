@@ -41,7 +41,9 @@ There is, of course, a well-defined priority among the comparisons. Briefly, val
 
 ### Pairwise comparison of values
 
-The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [here](../functions-operators/properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `is not distinct from` semantics. This might surprise you, because the `=` operator comparison rule for free-standing scalar values non-negotiably uses `null` semantics but, of course, lets you use `is not distinct from` comparison if this better suits your purpose. Moreover (and this might surprise you), when a `not null` array value is pairwise compared with a `null` value, the `not null` value is deemed to be _less than_ the `null` value.
+The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [here](../functions-operators/properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `is not distinct from` semantics. Moreover, when a `not null` array value is pairwise compared with a `null` value, the `not null` value is deemed to be _less than_ the `null` value.
+
+Notice the contrast with the `=` operator comparison rule for free-standing scalar values. This comparison uses `null` semantics but, of course, lets you use `is not distinct from` comparison if this better suits your purpose. 
 
 Otherwise, the comparison rules are the same as those for scalar values and, by extension, with those for, for example, _"row"_ type values.
 
@@ -212,9 +214,8 @@ begin
   ------------------------------------------------------------------------------
   -- Basic demonstration of equaliy when the geom. properties of
   -- the two arrays are identical.
-  -- Shows that pairwise comparison uses ""IS NOT DISTINCT FROM" semanticsand NOT
+  -- Shows that pairwise comparison uses ""IS NOT DISTINCT FROM" semantics and NOT
   -- the conventional NULL semantics used when scalars are compared.
-  -- This is a surprise.
   declare
     a constant int[] := '{10, null, 30}';
     b constant int[] := '{10, null, 30}'; -- Identical to a.
@@ -223,7 +224,7 @@ begin
       (a = b),
     '"a = b" assert failed';
 
-    -- Because of this surprise, we don't need ever to write this.
+    -- Because of this, we don't need ever to write this.
     assert
       (a is not distinct from b),
     '"a is not distinct from b" assert failed';
@@ -262,7 +263,7 @@ begin
       (a <  b),
     '"a < b" assert failed';
 
-    -- Again, because of this surprise, we don't need ever to write this.
+    -- Again, because of this, we don't need ever to write this.
     assert
       (a is distinct from b) ,
     '"a is distinct from b" assert failed';
@@ -425,7 +426,7 @@ This section demonstrates each of the rules that the _"Containment and overlap o
 
 ```postgresql
 -- Any two arrays can be compared without error if they have the same datatype.
--- Insensitve to the geom. properties.
+-- Insensitive to the geom. properties.
 do $body$
 declare
   a constant int[] := '[2:3][4:5]={{10, 20}, {30, 40}}';

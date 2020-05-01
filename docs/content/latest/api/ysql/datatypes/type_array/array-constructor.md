@@ -41,7 +41,9 @@ This is the result:
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
-Whenever an array value is showin in _ysqlsh_, it is implicitly `::text` typecasted. If the use of double quotes and backslashes surprises, or confuses you, then see the whole of the section on array literals, [here](../literals/). Users who are familiar with the rules that this section describes often find it expedient, for example when prototyping code that builds an array literal, simply to create an example value first, _ad hoc_, using the `array[]` constructor, like the code above does, to see an example of the syntax that their code must create programmatically.
+Whenever an array value is shown in _ysqlsh_, it is implicitly `::text` typecasted. And this `text` value can be used immediately, simply by enquoting it and typecasting it to the appropriate array data type, to recreate the starting value. We shall refer to this form of the literal, characterized as we can see here by its comlete lack if whitespace except within `text` scalar values (and within date-time scalar values) as the _canonical form_ of the literal. See the whole of the section on array literals, [here](../literals/) to learn why, for example, we see four consecutive backslashes.
+
+Users who are familiar with the rules that are described in that section often find it expedient, for example when prototyping code that builds an array literal, simply to create an example value first, _ad hoc_, using the `array[]` constructor, like the code above does, to see an example of the syntax that their code must create programmatically.
 
 ## Using the array[] constructor in PL/pgSQL code
 
@@ -62,7 +64,7 @@ begin
   one_d_1 := array[r[1], r[2], r[3]];
   assert (one_d_1 = r), 'assert failed';
 ```
-The `array_dims()` function is documented  [here](../functions-operators/properties#array-dims).
+The `array_dims()` function is documented  [here](../functions-operators/properties/#array-dims).
 
 Run this to create the required user-defined _"row"_ type and the table function and then to invoke it.
 
