@@ -88,6 +88,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
     defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+                                              Universe.HelmLegacy.V3.toString()));
   }
 
   private void setupUniverse(boolean setMasters) {
@@ -105,6 +107,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
     defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    defaultUniverse.setConfig(ImmutableMap.of(Universe.HELM2_LEGACY,
+                                              Universe.HelmLegacy.V3.toString()));
   }
 
   private void setupCommon() {

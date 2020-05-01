@@ -49,6 +49,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           universe.getUniverseDetails().getPrimaryCluster().userIntent;
       UUID providerUUID = UUID.fromString(userIntent.provider);
 
+      Map<String, String> universeConfig = universe.getConfig();
+      boolean runHelmDelete = universeConfig.containsKey(Universe.HELM2_LEGACY);
+
       PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
 
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));
@@ -65,9 +68,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       SubTaskGroup helmDeletes = new SubTaskGroup(
           KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
       helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
-      SubTaskGroup volumeDeletes = new SubTaskGroup(
-          KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
-      volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+
       SubTaskGroup namespaceDeletes = new SubTaskGroup(
           KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(), executor);
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
@@ -78,18 +79,14 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
         Map<String, String> config = entry.getValue();
 
-        // Delete the helm deployments.
-        helmDeletes.addTask(createDestroyKubernetesTask(
-            universe.getUniverseDetails().nodePrefix, azName, config,
-            KubernetesCommandExecutor.CommandType.HELM_DELETE,
-            providerUUID));
-            
-        // Delete the PVs created for the deployments.
-        volumeDeletes.addTask(createDestroyKubernetesTask(
-            universe.getUniverseDetails().nodePrefix, azName, config,
-            KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
-            providerUUID));
-        
+        if (runHelmDelete) {
+          // Delete the helm deployments.
+          helmDeletes.addTask(createDestroyKubernetesTask(
+              universe.getUniverseDetails().nodePrefix, azName, config,
+              KubernetesCommandExecutor.CommandType.HELM_DELETE,
+              providerUUID));
+        }
+
         // Delete the namespaces of the deployments.
         namespaceDeletes.addTask(createDestroyKubernetesTask(
             universe.getUniverseDetails().nodePrefix, azName, config,
@@ -99,7 +96,6 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       }
 
       subTaskGroupQueue.add(helmDeletes);
-      subTaskGroupQueue.add(volumeDeletes);
       subTaskGroupQueue.add(namespaceDeletes);
 
       // Create tasks to remove the universe entry from the Universe table.
