@@ -104,7 +104,7 @@ Here is the result:
      }                   +
 ```
 
-The `+` characters are a device that _ysqlsh_ inherits from _psql_ to visualize newlines. They are not present in the to-be-displayed value itself.
+The `+` characters are a device that _ysqlsh_ inherits from _psql_ to visualise newlines. They are not present in the to-be-displayed value itself.
 
 Here is an example of proper practice where the typecasting is explicit. First an opaque internal representation of the specified `int[]` array is established. Of course, whitespace has no meaning here. And then the conventional `text` representation of that value is derived for display by _ysqlsh_.
 

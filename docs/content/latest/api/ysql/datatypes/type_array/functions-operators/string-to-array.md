@@ -42,7 +42,7 @@ The interpretation of the delimiter `text` value and the null indicator `text` u
 
 - _First_, the delimiter `text` value is consumed; _and only then_ is the null indicator `text` value consumed.
 
-However, this rule matters only when these two crtical values are defined by more than one character and when one starts with a sequence that the other ends with.
+However, this rule matters only when these two critical values are defined by more than one character and when one starts with a sequence that the other ends with.
 
 Yugabyte recommends, therefore, that when you can choose the `text` values for the delimiter and for the null indicator, you simply choose two different single characters. This is what the simple example, above, does. Of course, you must be sure that neither occurs in any of the `text` values that you want to convert into `text[]` arrays. (There is no escaping mechanism.)
 

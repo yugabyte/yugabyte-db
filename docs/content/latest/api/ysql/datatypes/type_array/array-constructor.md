@@ -12,25 +12,26 @@ isTocNested: false
 showAsideToc: false
 ---
 
-**Purpose:** The array[] value constructor is a special variadic function that creates an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an array literal—but in this case, this must be the _only_ value in the construcor's list. 
+The `array[]` value constructor is a special variadic function. Uniquely among all the functions described in the present major _"[Array data types and functionality](../../type_array/)"_ section, it uses square brackets to surround its list of actual arguments.
+
+## Purpose and signature
+
+**Purpose:** create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an  _[array literal](../literals/)_. 
 
 **Signature** 
-
 ```
 input value:       [anyarray | [ anyelement, [anyelement]* ]
 return value:      anyarray
 ```
+**Notes:** You can meet the goal of creating an array from directly specified values, instead, by using an _[array literal](../literals/)_.
 
-**Notes:** The alternative approach that meets the same goal of creating an array from directly specified values to use an _[array literal](../literals/)_.
-
-These two functions also create an array value from scratch:
+These thee ordinary functions also create an array value from scratch:
 
 - The _[array_fill()](../functions-operators/array-fill/)_ builtin SQL function creates a "blank canvas" array of the specified shape with all values set the same to what you want.
+- The _[array_agg()](../functions-operators/array-agg-unnest/#array-agg)_ builtin SQL function creates an array (of, in general, an implied _"row"_ type) from a SQL subquery.
+- The _"[text_to_array()](../functions-operators/string-to-array/)"_ builtin SQL function creates a `text[]`array from a single `text` value that uses a a specifiable delimiter to beak it into individual values.
 
-- The _[array_agg()](../functions-operators/array-agg-unnest/#array-agg)_ builtin SQL function creates an array (of. in general, an implied _"row"_ type) from a SQL subquery.
-
-## Example:
-
+**Example:**
 ```postgresql
 create type rt as (f1 int, f2 text);
 select array[(1, 'a')::rt, (2, 'b')::rt, (3, 'dog \ house')::rt]::rt[] as arr;
@@ -41,18 +42,18 @@ This is the result:
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
-Whenever an array value is shown in _ysqlsh_, it is implicitly `::text` typecasted. And this `text` value can be used immediately, simply by enquoting it and typecasting it to the appropriate array data type, to recreate the starting value. We shall refer to this form of the literal, characterized as we can see here by its comlete lack if whitespace except within `text` scalar values (and within date-time scalar values) as the _canonical form_ of the literal. See the whole of the section on array literals, [here](../literals/) to learn why, for example, we see four consecutive backslashes.
+Whenever an array value is shown in _ysqlsh_, it is implicitly `::text` typecasted. And this `text` value can be used immediately, simply by enquoting it and typecasting it to the appropriate array data type, to recreate the starting value. We shall refer to this form of the literal, characterized as we can see here by its complete lack if whitespace except within `text` scalar values (and within date-time scalar values) as the _canonical form_ of the literal. See the whole of the section on array literals, [here](../literals/) to learn why, for example, we see four consecutive backslashes.
 
 Users who are familiar with the rules that are described in that section often find it expedient, for example when prototyping code that builds an array literal, simply to create an example value first, _ad hoc_, using the `array[]` constructor, like the code above does, to see an example of the syntax that their code must create programmatically.
 
 ## Using the array[] constructor in PL/pgSQL code
 
-The example below attemps to make many teaching points in one piece of code.
+The example below attempts to make many teaching points in one piece of code.
 
-- The acual syntax, when the expressions that the `array[]` constructor uses are all literals, is far simpler than the syntax that governs how to construct an array literal.
+- The actual syntax, when the expressions that the `array[]` constructor uses are all literals, is far simpler than the syntax that governs how to construct an array literal.
 - You can use all of YSQL's array functionality in PL/pgSQL code, just as you can in SQL statements. The code creates and invokes a table function, and not just a banal `DO` block,  to emphasize this interoperability point.
 - Array-like functionality is essential in any programming language.
-- The `array[]` constructor is most valuable when the expressions that it uses are composed using declared variables, and especially formal parameters, that are used to build whtever values are intended. In this example, the values have the user-defined data type `rt`. In other words, the `array[]` constructor is particularly valuable when you build an array programmatically from scalar values that you know first at run time.
+- The `array[]` constructor is most valuable when the expressions that it uses are composed using declared variables, and especially formal parameters, that are used to build whatever values are intended. In this example, the values have the user-defined data type `rt`. In other words, the `array[]` constructor is particularly valuable when you build an array programmatically from scalar values that you know first at run time.
 - It vividly demonstrates the semantic effect of the `array[]` constructor like this:
 ```
 declare
@@ -142,7 +143,7 @@ It produces two rows. This is the first:
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
 
-This is identical to the result for the simple example shown above. The readabity of the second row is improved enormously by adding some whitespace manually:
+This is identical to the result for the simple example shown above. The readability of the second row is improved enormously by adding some whitespace manually:
 
 ```
 {
@@ -154,7 +155,7 @@ This is identical to the result for the simple example shown above. The readabit
 
 ## Using the array[] constructor in a prepared statement
 
-This example empasizes the value of using the `array[]` constructor over using an array literal because it lets you use expressions like `chr()` within it.
+This example emphasizes the value of using the `array[]` constructor over using an array literal because it lets you use expressions like `chr()` within it.
 ```postgresql
 -- Don't create "type rt" if it's still there followng the previous examples.
 create type rt as (f1 int, f2 text);
@@ -165,7 +166,7 @@ prepare stmt(rt[]) as insert into t(arr) values($1);
 -- It's essintial to typecast the individual "rt" values.
 execute stmt(array[(104, chr(104))::rt, (105, chr(105))::rt, (106, chr(106))::rt]);
 ```
-This execution of the prepared statement, using an array literal as the actual argument, is sematically equivalent;
+This execution of the prepared statement, using an array literal as the actual argument, is semantically equivalent;
 ```postgresql
 execute stmt('{"(104,h)","(105,i)","(106,j)"}');
 ```

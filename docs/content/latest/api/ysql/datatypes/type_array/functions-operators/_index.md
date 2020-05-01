@@ -90,7 +90,7 @@ These functions require that the two arrays have the same datatype and compatibl
 
 | Function | 1-d only? | Description |
 | ---- | ---- | ---- |
-| [array_to_string()](./array-to-string) | | Returns a `text` value computed by representing each array value, traversing these in row-major order, by its `::text` typecast, using the supplied delimiter between each such representation. (The result therefore loses all information about the arrays geometric properties.) Optionallys represent `null` by the supplied `text` value. |
+| [array_to_string()](./array-to-string) | | Returns a `text` value computed by representing each array value, traversing these in row-major order, by its `::text` typecast, using the supplied delimiter between each such representation. (The result therefore loses all information about the arrays geometric properties.) Optionally represent `null` by the supplied `text` value. |
 
 ## Table function to transform an array into a "SETOF anyelement"
 

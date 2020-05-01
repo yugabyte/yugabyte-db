@@ -11,13 +11,13 @@ isTocNested: false
 showAsideToc: false
 ---
 
-These functions return the various dimensional properties that jointly characterize an array. This set of thre completely specify the shape and size:
+These functions return the various dimensional properties that jointly characterize an array. These three together completely specify the shape and size:
 
 - its dimensionality (`int`) ;
 - the lower bound along each dimension (`int`);
 - the upper bound along each dimension (`int`).
 
-There are functions for returing two other properties: the length along each dimension (`int`); and its cardinality (`int`). But each of these can be derived from set set of the lower and upper bounds for all the dimensions. There is also a function that returns the values for the lower and upper bounds for all the dimensions as a single `text` value.
+There are functions for returning two other properties: the length along each dimension (`int`); and its cardinality (`int`). But each of these can be derived from set set of the lower and upper bounds for all the dimensions. There is also a function that returns the values for the lower and upper bounds for all the dimensions as a single `text` value.
 
 ## Overview
 

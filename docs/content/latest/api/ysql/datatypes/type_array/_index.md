@@ -226,7 +226,7 @@ insert into t(k, v) values(2,
 
 The formatting emphasizes that its edge is ragged. It causes a _"22P02: malformed array literal"_ error whose detail says _"Multidimensional arrays must have sub-arrays with matching dimensions"_.
 
-Finally, in this sketch, this `DO` block shows how you can visualize the values in a two-dimensional array as a rectangular grid.
+Finally, in this sketch, this `DO` block shows how you can visualise the values in a two-dimensional array as a rectangular grid.
 
 ```postgresql
 do $body$

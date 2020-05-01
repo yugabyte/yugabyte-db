@@ -152,7 +152,7 @@ from tab
 \set unnest_arg '\'':result_array_literal'\'::int[]'
 \echo :unnest_arg
 ```
-Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. Ths simply makes the _ysqlsh_ output less noisy. This is the result:
+Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This simply makes the _ysqlsh_ output less noisy. This is the result:
 
 ```
 '{{1,2,3},{4,5,6},{7,8,9}}'::int[]
@@ -340,7 +340,7 @@ begin
 end;
 $body$;
 ```
-Notice that this is not a general purpose funtion. Rather, it expects that the input is a _"details_t[]"_ array. So it first checks that this pre-condition is met. It then discovers the lower and upper bounds of the array so that it can loop over its values. It uses these functions for reporting the geometric properties of  the input array: `array_ndims()`, [here](../../functions-operators/properties/#array-ndims);`array_lower()`, [here](../../functions-operators/properties/#array-lower); and `array_upper()`, [here](../../functions-operators/properties/#array-upper).
+Notice that this is not a general purpose function. Rather, it expects that the input is a _"details_t"_ array. So it first checks that this pre-condition is met. It then discovers the lower and upper bounds of the array so that it can loop over its values. It uses these functions for reporting the geometric properties of  the input array: `array_ndims()`, [here](../../functions-operators/properties/#array-ndims); `array_lower()`, [here](../../functions-operators/properties/#array-lower); and `array_upper()`, [here](../../functions-operators/properties/#array-upper).
 
 Invoke it like this:
 
@@ -427,7 +427,7 @@ Notice that if you choose the _"masters_with_details"_ approach (either as a mig
 
 **Pros:**
 
-- You can enforce the mandatory one-to-many requirement declaraively and effortlessly.
+- You can enforce the mandatory one-to-many requirement declaratively and effortlessly.
 - Changing and querying the data will be faster because you use single table, single-row access rather than two-table, multi-row access.
 - You can trivially recapture the query functionality of the two-table approach by implementing a _"new_data"_ unnesting view as has been shown. So you can still find, for example, rows in the _"masters_with_details"_ table where the "details" array has the specified values like this:
 ```postgresql
@@ -499,7 +499,7 @@ master_pk, seq;
 ```
 &#160;&#160;&#160;&#160;The result is identical to the result shown for querying  _"original_data"_ above.
 
-**Note:** The update statement, using as it does a subquery from a view defined in a `with` cluase as the actual arguement for `array_replace()`,  seems to be unnecessarily complex. You might expect to use this:
+**Note:** The update statement, using as it does a subquery from a view defined in a `with` clause as the actual argument for `array_replace()`,  seems to be unnecessarily complex. You might expect to use this:
 
 ```
 update masters_with_details

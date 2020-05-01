@@ -75,5 +75,5 @@ It shows this:
  (1,a) | (2,) | ? | (3,c)
 ```
 
-The third array value is now represented by `?`. But the fact that `f2 is null` within the second array value is _not_ represented by `?`. In other words, this null-visualization techique is applied only at the granulatity of top-level array values and not within such values when they are composite.
+The third array value is now represented by `?`. But the fact that `f2 is null` within the second array value is _not_ represented by `?`. In other words, this technique for visualising `null` is applied only at the granularity of top-level array values and not within such values when they are composite.
 
