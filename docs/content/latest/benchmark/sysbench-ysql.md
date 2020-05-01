@@ -25,13 +25,16 @@ isTocNested: true
 
 </ul>
 
+## Overview
 sysbench is a popular tool for benchmarking databases like Postgres and MySQL, as well as system capabilities like CPU, memory and I/O. Follow the steps below to run Sysbench against YugabyteDB.
 
 The [YugabyteDB version of sysbench](https://github.com/yugabyte/sysbench) is forked from the [official](https://github.com/akopytov/sysbench) version with a few modifications to better reflect YugabyteDB's distributed nature.
 
-## 1. Install Sysbench
+## Running the benchmark
 
-You can do this by running the following commands.
+### 1. Prerequisites
+
+Install sysbench using the following steps.
 
 ```sh
 $ cd $HOME
@@ -44,41 +47,61 @@ $ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
 The above steps will install the sysbench utility in '/usr/local/bin'
 {{< /note >}}
 
-## 2. Start YugabyteDB
+Make sure you have the YSQL shell `ysqlsh` exported to the `PATH` variable. You can download [`ysqlsh`](https://download.yugabyte.com/) if you do not have it.
+```sh
+$ export PATH=$PATH:/path/to/ysqlsh
+```
 
-Start your YugabyteDB cluster by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/explore-ysql/).
+### 2. Start YugabyteDB
+Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
 
-## 3. Run all OLTP workloads
+{{< tip title="Tip" >}}
+You will need the IP addresses of the nodes in the cluster for the next step.
+{{< /tip>}}
 
+### 3. Run the benchmark
 There is a handy shell script `run_sysbench.sh` that loads the data and runs the various workloads.
 ```sh
-./run_sysbench.sh <ip>
+./run_sysbench.sh --ip <ip>
 ```
-This script runs all the 8 workloads using 64 threads with the number of tables as 10 and the table size as 100k.
+This script runs all the 8 workloads using 64 threads with the number of tables as 10 and the table size as 100k. If you want to run the benchmark with a different count of tables and tablesize:
+```sh
+./run_sysbench.sh --ip <ip> --numtables <number of tables> --tablesize <number of rows in each table>
+```
 
-{{< note title="Note" >}}
-Make sure that the `ysqlsh` path is correctly configured in the shell script.
-{{< /note >}}
-
-## 4. Run individual workloads (optional)
+### 4. Run individual workloads (optional)
 
 This section outlines instructions in case you need to run workloads individually. Before starting the workload we need to load the data first.
 
 ```sh
-sysbench oltp_point_select --table-size=1000000 \
- --range_key_partitioning=true --serial_cache_size=1000 \
- --db-driver=pgsql --pgsql-host=127.0.0.1 --pgsql-port=5433 \
- --pgsql-user=yugabyte --pgsql-db=yugabyte prepare
+$ sysbench oltp_point_select        \
+      --num-tables=10               \
+      --table-size=100000           \
+      --range_key_partitioning=true \
+      --db-driver=pgsql             \
+      --pgsql-host=127.0.0.1        \
+      --pgsql-port=5433             \
+      --pgsql-user=yugabyte         \
+      --pgsql-db=yugabyte           \
+      prepare
 ```
 
 Then we can run the workload as follows
 
 ```sh
-sysbench oltp_point_select --table-size=1000000 \
- --range_key_partitioning=true --db-driver=pgsql \
- --pgsql-host=127.0.0.1 --pgsql-port=5433 \
- --pgsql-user=yugabyte  --pgsql-db=yugabyte \
- --threads=64 --time=120 --warmup-time=120 run
+$ sysbench oltp_point_select        \
+      --num-tables=10               \
+      --table-size=100000           \
+      --range_key_partitioning=true \
+      --db-driver=pgsql             \
+      --pgsql-host=127.0.0.1        \
+      --pgsql-port=5433             \
+      --pgsql-user=yugabyte         \
+      --pgsql-db=yugabyte           \
+      --threads=64                  \
+      --time=120                    \
+      --warmup-time=120             \
+      run
 ```
 
 The choice of different workloads are:
@@ -91,8 +114,13 @@ The choice of different workloads are:
 * oltp_update_non_index
 * oltp_delete
 
-## 5. Expected results
-When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores and 32GB of RAM) all belonging to the same AZ with the client VM running in the same AZ we get the following results:
+## Expected results
+
+### Setup
+
+When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same AZ with the client VM running in the same AZ, we get the following results:
+
+### 10 Tables Each with 100k Rows
 
 | Workload   | Throughput (txns/sec) | Latency (ms)
 -------------|-----------|----------|
