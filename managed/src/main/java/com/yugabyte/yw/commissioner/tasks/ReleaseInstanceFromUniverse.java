@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -93,6 +94,12 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       // Update Node State to Decommissioned.
       createSetNodeStateTask(currentNode, NodeState.Decommissioned)
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+
+      // Delete and reset node metadata for onprem universes.
+      if (userIntent.providerType.equals(CloudType.onprem)) {
+        deleteNodeFromUniverseTask(taskParams().nodeName)
+          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      }
 
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent.providerType,

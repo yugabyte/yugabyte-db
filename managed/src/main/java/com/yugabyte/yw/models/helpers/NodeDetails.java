@@ -183,7 +183,8 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isRemovable() {
-    return state == NodeState.ToBeAdded || state == NodeState.Removed;
+    return state == NodeState.ToBeAdded || state == NodeState.Removed
+      || state == NodeState.Decommissioned;
   }
 
   @JsonIgnore

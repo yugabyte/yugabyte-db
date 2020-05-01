@@ -118,7 +118,7 @@ class GcpMetadata():
         try:
             # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
             project = network_data.split('/')[1]
-        except IndexError:
+        except (IndexError, AttributeError):
             return None
 
         compute = discovery.build('compute', 'beta')
@@ -552,7 +552,7 @@ class GoogleCloudAdmin():
         body = {
             "sizeGb": args.volume_size
         }
-        print ("Got instance info: " + str(instance_info))
+        print("Got instance info: " + str(instance_info))
         for disk in instance_info['disks']:
             # Bootdisk should be ignored.
             if disk['index'] != 0:
