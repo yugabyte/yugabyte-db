@@ -58,7 +58,7 @@
 #define JUMBLE_SIZE				1024	/* query serialization buffer size */
 
 #define MAX_RESPONSE_BUCKET 10
-#define MAX_REL_LEN			2
+#define MAX_REL_LEN			255
 #define MAX_BUCKETS			10
 #define MAX_OBJECT_CACHE	100
 
