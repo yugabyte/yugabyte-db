@@ -38,7 +38,7 @@ YB_NETWORK_NAME = "yb-gcp-network"
 YB_SUBNET_FORMAT = "yb-subnet-{}"
 YB_PEERING_CONNECTION_FORMAT = "yb-peering-{}-with-{}"
 YB_FIREWALL_NAME = "yb-internal-firewall"
-YB_FIREWALL_TARGET_TAGS = ["cluster-server"]
+YB_FIREWALL_TARGET_TAGS = "cluster-server"
 
 
 GCP_SCRATCH = "scratch"
@@ -94,7 +94,7 @@ def gcp_request_limit_retry(fn):
 
 
 def get_firewall_tags():
-    return os.environ.get('YB_FIREWALL_TAGS', '').split(',') or YB_FIREWALL_TARGET_TAGS
+    return os.environ.get('YB_FIREWALL_TAGS', YB_FIREWALL_TARGET_TAGS).split(',')
 
 
 class GcpMetadata():
