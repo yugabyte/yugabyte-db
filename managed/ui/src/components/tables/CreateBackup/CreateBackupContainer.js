@@ -47,7 +47,8 @@ function mapStateToProps(state, ownProps) {
     initialFormValues.storageConfigUUID = {value: storageConfigs[0].configUUID, label: storageConfigs[0].name + " Storage"};
   }
 
-  const tablesList = state.tables.universeTablesList.filter((table) => !table.isIndexTable);
+  const tablesList = state.tables.universeTablesList.filter((table) =>
+    !table.isIndexTable && table.tableType !== "PGSQL_TABLE_TYPE");
   return {
     storageConfigs: storageConfigs,
     universeDetails: state.universe.currentUniverse.data.universeDetails,
