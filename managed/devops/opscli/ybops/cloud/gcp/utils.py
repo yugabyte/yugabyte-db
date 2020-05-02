@@ -407,9 +407,19 @@ class NetworkManager():
             # Only update if any of these CIDRs are not already there or if targetFlags should
             # be updated.
             firewall = firewalls[0]
-            if set(firewall.get("sourceRanges")) != set(ip_cidr_list) or \
-                    set(firewall.get("targetTags")) != set(get_firewall_tags()):
-                return fw_object.patch(
+            source_cidrs = set(firewall.get("sourceRanges"))
+            new_cidrs = set(ip_cidr_list)
+            union_cidrs = source_cidrs | new_cidrs
+
+            current_tags = set(firewall.get("targetTags"))
+            new_tags = set(get_firewall_tags())
+            union_tags = current_tags | new_tags
+            if source_cidrs != union_cidrs or current_tags != union_tags:
+                body["sourceRanges"] = list(union_cidrs)
+                body["targetTags"] = list(union_tags)
+                # Use 'fw_object.update' and not 'fw_object.patch' to update firewall metadata
+                # without removing pre-existing info.
+                return fw_object.update(
                     project=self.project,
                     firewall=firewall_name,
                     body=body).execute()
