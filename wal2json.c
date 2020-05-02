@@ -56,6 +56,7 @@ typedef struct
 	bool		include_type_oids;	/* include data type oids */
 	bool		include_typmod;		/* include typmod in types */
 	bool		include_domain_data_type;	/* include underlying data type of the domain */
+	bool		include_column_positions;	/* include column numbers */
 	bool		include_not_null;	/* include not-null constraints */
 
 	bool		pretty_print;		/* pretty-print JSON? */
@@ -241,6 +242,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_type_oids = false;
 	data->include_typmod = true;
 	data->include_domain_data_type = false;
+	data->include_column_positions = false;
 	data->pretty_print = false;
 	data->write_in_chunks = false;
 	data->include_lsn = false;
@@ -402,6 +404,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				data->include_domain_data_type = true;
 			}
 			else if (!parse_bool(strVal(elem->arg), &data->include_domain_data_type))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "include-column-positions") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(DEBUG1, "include-column-positions argument is null");
+				data->include_column_positions = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->include_column_positions))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
@@ -899,6 +914,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	StringInfoData		colnames;
 	StringInfoData		coltypes;
 	StringInfoData		coltypeoids;
+	StringInfoData		colpositions;
 	StringInfoData		colnotnulls;
 	StringInfoData		colvalues;
 	char				comma[3] = "";
@@ -909,6 +925,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	initStringInfo(&coltypes);
 	if (data->include_type_oids)
 		initStringInfo(&coltypeoids);
+	if (data->include_column_positions)
+		initStringInfo(&colpositions);
 	if (data->include_not_null)
 		initStringInfo(&colnotnulls);
 	initStringInfo(&colvalues);
@@ -933,6 +951,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		appendStringInfo(&coltypes, "%s%s%s\"columntypes\":%s[", data->ht, data->ht, data->ht, data->sp);
 		if (data->include_type_oids)
 			appendStringInfo(&coltypeoids, "%s%s%s\"columntypeoids\":%s[", data->ht, data->ht, data->ht, data->sp);
+		if (data->include_column_positions)
+			appendStringInfo(&colpositions, "%s%s%s\"columnpositions\":%s[", data->ht, data->ht, data->ht, data->sp);
 		if (data->include_not_null)
 			appendStringInfo(&colnotnulls, "%s%s%s\"columnoptionals\":%s[", data->ht, data->ht, data->ht, data->sp);
 		appendStringInfo(&colvalues, "%s%s%s\"columnvalues\":%s[", data->ht, data->ht, data->ht, data->sp);
@@ -1081,6 +1101,9 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 		ReleaseSysCache(type_tuple);
 
+		if (!replident && data->include_column_positions)
+			appendStringInfo(&colpositions, "%s%d", comma, attr->attnum);
+
 		if (isnull)
 		{
 			appendStringInfo(&colvalues, "%snull", comma);
@@ -1164,6 +1187,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfo(&coltypes, "],%s", data->nl);
 		if (data->include_type_oids)
 			appendStringInfo(&coltypeoids, "],%s", data->nl);
+		if (data->include_column_positions)
+			appendStringInfo(&colpositions, "],%s", data->nl);
 		if (data->include_not_null)
 			appendStringInfo(&colnotnulls, "],%s", data->nl);
 		if (hasreplident)
@@ -1178,6 +1203,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		appendStringInfoString(ctx->out, coltypes.data);
 	if (data->include_type_oids)
 		appendStringInfoString(ctx->out, coltypeoids.data);
+	if (data->include_column_positions)
+		appendStringInfoString(ctx->out, colpositions.data);
 	if (data->include_not_null)
 		appendStringInfoString(ctx->out, colnotnulls.data);
 	appendStringInfoString(ctx->out, colvalues.data);
@@ -1186,6 +1213,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	pfree(coltypes.data);
 	if (data->include_type_oids)
 		pfree(coltypeoids.data);
+	if (data->include_column_positions)
+		pfree(colpositions.data);
 	if (data->include_not_null)
 		pfree(colnotnulls.data);
 	pfree(colvalues.data);
@@ -1736,6 +1765,16 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 				appendStringInfoString(ctx->out, ",\"optional\":false");
 			else
 				appendStringInfoString(ctx->out, ",\"optional\":true");
+		}
+
+		/*
+		 * Print position for columns. Positions are only available for new
+		 * tuple (INSERT, UPDATE).
+		 */
+		if (kind == PGOUTPUTJSON_CHANGE && data->include_column_positions)
+		{
+			appendStringInfoString(ctx->out, ",\"position\":");
+			appendStringInfo(ctx->out, "%d", attr->attnum);
 		}
 
 		appendStringInfoChar(ctx->out, '}');

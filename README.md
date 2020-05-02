@@ -104,6 +104,7 @@ Parameters
 * `include-typmod`: add modifier to types that have it (eg. varchar(20) instead of varchar). Default is _true_.
 * `include-type-oids`: add type oids. Default is _false_.
 * `include-domain-data-type`: replace domain name with the underlying data type. Default is _false_.
+* `include-column-positions`: add column position (_pg_attribute.attnum_). Default is _false_.
 * `include-not-null`: add _not null_ information as _columnoptionals_. Default is _false_.
 * `pretty-print`: add spaces and indentation to JSON structures. Default is _false_.
 * `write-in-chunks`: write after every change instead of every changeset. Default is _false_.
