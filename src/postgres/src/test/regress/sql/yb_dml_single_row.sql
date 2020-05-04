@@ -619,3 +619,103 @@ SELECT * FROM single_row_default_col ORDER BY k;
 -- Setting b to null should not be allowed.
 UPDATE single_row_default_col SET b = NULL, c = 5 WHERE k = 3;
 SELECT * FROM single_row_default_col ORDER BY k;
+
+--
+-- Test array types.
+--
+
+-----------------------------------
+-- int[] arrays.
+
+CREATE TABLE array_t1(k int PRIMARY KEY, arr int[]);
+INSERT INTO array_t1(k, arr) VALUES (1, '{1, 2, 3, 4}'::int[]);
+SELECT * FROM array_t1 ORDER BY k;
+
+-- the || operator.
+UPDATE array_t1 SET arr = arr||'{5, 6}'::int[] WHERE k = 1;
+SELECT * FROM array_t1 ORDER BY k;
+
+-- array_cat().
+UPDATE array_t1 SET arr = array_cat(arr, '{7, 8}'::int[]) WHERE k = 1;
+SELECT * FROM array_t1 ORDER BY k;
+
+-- array_append().
+UPDATE array_t1 SET arr = array_append(arr, 9::int) WHERE k = 1;
+SELECT * FROM array_t1 ORDER BY k;
+
+-- array_prepend().
+UPDATE array_t1 SET arr = array_prepend(0::int, arr) WHERE k = 1;
+SELECT * FROM array_t1 ORDER BY k;
+
+-- array_remove().
+UPDATE array_t1 SET arr = array_remove(arr, 4) WHERE k = 1;
+SELECT * FROM array_t1 ORDER BY k;
+
+-- array_replace().
+UPDATE array_t1 SET arr = array_replace(arr, 7, 77) WHERE k = 1;
+SELECT * FROM array_t1 ORDER BY k;
+
+-----------------------------------
+-- text[] arrays.
+
+CREATE TABLE array_t2(k int PRIMARY KEY, arr text[]);
+INSERT INTO array_t2(k, arr) VALUES (1, '{a, b}'::text[]);
+SELECT * FROM array_t2 ORDER BY k;
+
+UPDATE array_t2 SET arr = array_replace(arr, 'b', 'p') WHERE k = 1;
+SELECT * FROM array_t2 ORDER BY k;
+
+UPDATE array_t2 SET arr = '{x, y, z}'::text[] WHERE k = 1;
+SELECT * FROM array_t2 ORDER BY k;
+
+UPDATE array_t2 SET arr[2] = 'q' where k = 1;
+SELECT * FROM array_t2 ORDER BY k;
+
+-----------------------------------
+-- Arrays of composite types.
+
+CREATE TYPE rt as (f1 int, f2 text);
+CREATE TABLE array_t3(k int PRIMARY KEY, arr rt[] NOT NULL);
+INSERT INTO array_t3(k, arr) VALUES (1, '{"(1,a)", "(2,b)"}'::rt[]);
+SELECT * FROM array_t3 ORDER BY k;
+
+UPDATE array_t3 SET arr = '{"(1,c)", "(2,d)"}'::rt[] WHERE k = 1;
+SELECT * FROM array_t3 ORDER BY k;
+
+UPDATE array_t3 SET arr[2] = '(2,e)'::rt WHERE k = 1;
+SELECT * FROM array_t3 ORDER BY k;
+
+UPDATE array_t3 SET arr = array_replace(arr, '(1,c)', '(1,p)') WHERE k = 1;
+SELECT * FROM array_t3 ORDER BY k;
+
+-----------------------------------
+-- Test more builtin array types.
+-- INT2ARRAYOID, FLOAT8ARRAYOID, CHARARRAYOID.
+
+CREATE TABLE array_t4(k int PRIMARY KEY, arr1 int2[], arr2 double precision[], arr3 char[]);
+INSERT INTO array_t4(k, arr1, arr2, arr3) VALUES (1, '{1, 2, 3}'::int2[], '{1.5, 2.25, 3.25}'::float[], '{a, b, c}'::char[]);
+SELECT * FROM array_t4 ORDER BY k;
+
+-- array_replace().
+UPDATE array_t4 SET arr1 = array_replace(arr1, 2::int2, 22::int2) WHERE k = 1;
+UPDATE array_t4 SET arr2 = array_replace(arr2, 2.25::double precision, 22.25::double precision) WHERE k = 1;
+UPDATE array_t4 SET arr3 = array_replace(arr3, 'b'::char, 'x'::char) WHERE k = 1;
+SELECT * FROM array_t4 ORDER BY k;
+
+-- array_cat().
+UPDATE array_t4 SET arr1 = array_cat(arr1, '{4, 5}'::int2[]) WHERE k = 1;
+UPDATE array_t4 SET arr2 = array_cat(arr2, '{4.5, 5.25}'::double precision[][]) WHERE k = 1;
+UPDATE array_t4 SET arr3 = array_cat(arr3, '{d, e, f}'::char[]) WHERE k = 1;
+SELECT * FROM array_t4 ORDER BY k;
+
+-- array_prepend().
+UPDATE array_t4 SET arr1 = array_prepend(0::int2, arr1),
+                    arr2 = array_prepend(0.5::double precision, arr2),
+                    arr3 = array_prepend('z'::char, arr3) WHERE k = 1;
+SELECT * FROM array_t4 ORDER BY k;
+
+-- array_remove().
+UPDATE array_t4 SET arr1 = array_remove(arr1, 3::int2),
+                    arr2 = array_remove(arr2, 3.25::double precision),
+                    arr3 = array_remove(arr3, 'c'::char) WHERE k = 1;
+SELECT * FROM array_t4 ORDER BY k;
