@@ -78,6 +78,8 @@ export const ADD_TLS_CERT_RESET = 'ADD_TLS_CERT_RESET';
 export const ADD_TLS_CERT = 'ADD_TLS_CERT';
 export const ADD_TLS_CERT_RESPONSE = 'ADD_TLS_CERT_RESPONSE';
 
+export const FETCH_CLIENT_CERT = 'FETCH_CLIENT_CERT';
+
 export const REFRESH_RELEASES = 'REFRESH_RELEASES';
 export const REFRESH_RELEASES_RESPONSE = 'REFRESH_RELEASES_RESPONSE';
 
@@ -316,6 +318,15 @@ export function addCertificateResponse(response) {
 export function addCertificateReset() {
   return {
     type: ADD_TLS_CERT_RESET
+  };
+}
+
+export function retrieveClientCertificate(certUUID, config) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/certificates/${certUUID}`, config);
+  return {
+    type: FETCH_CLIENT_CERT,
+    payload: request
   };
 }
 

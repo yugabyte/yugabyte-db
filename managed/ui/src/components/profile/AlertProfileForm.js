@@ -50,9 +50,11 @@ export default class AlertProfileForm extends Component {
 
     const validationSchema = Yup.object().shape({
       alertingData: Yup.object({
-        sendAlertsToYb: Yup.boolean(),
+        sendAlertsToYb: Yup.boolean()
+          .default(false)
+          .nullable(),
 
-        alertingEmail: Yup.string().nullable(),
+        alertingEmail: Yup.string().email('Must be an email').nullable(),
 
         checkIntervalMs: Yup.number()
           .typeError('Must specify a number'),
@@ -60,7 +62,9 @@ export default class AlertProfileForm extends Component {
         statusUpdateIntervalMs: Yup.number()
           .typeError('Must specify a number'),
 
-        reportOnlyErrors: Yup.boolean(),
+        reportOnlyErrors: Yup.boolean()
+          .default(false)
+          .nullable(),
       }),
       callhomeLevel: Yup.string()
     });
