@@ -145,9 +145,6 @@ static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* o
         writer.String(rpczResult[i].query);
       }
 
-      writer.String("application_name");
-      writer.String(rpczResult[i].application_name);
-
       writer.String("process_start_time");
       writer.String(rpczResult[i].process_start_timestamp);
 
