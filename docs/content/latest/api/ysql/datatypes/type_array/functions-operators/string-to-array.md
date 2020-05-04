@@ -46,7 +46,7 @@ However, this rule matters only when these two critical values are defined by mo
 
 Yugabyte recommends, therefore, that when you can choose the `text` values for the delimiter and for the null indicator, you simply choose two different single characters. This is what the simple example, above, does. Of course, you must be sure that neither occurs in any of the `text` values that you want to convert into `text[]` arrays. (There is no escaping mechanism.)
 
-Predicting the outcome when unfortunate choices for these two values were made will therefore require some mental effort. The  `DO` block below demonstrates an example of this, thus:
+Predicting the outcome when unfortunate choices for these two values were made will therefore require some mental effort. The `DO` block below demonstrates an example of this, thus:
 
 - the delimiter is `' !'::text`
 

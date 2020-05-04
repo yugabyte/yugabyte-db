@@ -12,7 +12,8 @@ showAsideToc: false
 ---
 
 The `||` operator implements, by itself, all of the functionality that each of the `array_cat()`, `array_append()`, and `array_prepend()` functions individually implement. Yugabyte therefore recommends that you use the `||` operator and avoid the functions. They are documented here for completeness—especially in case you find them in inherited code.
-## The || operator
+
+## The `||` operator
 
 **Purpose:** Return the concatenation of any number of compatible `anyarray` and `anyelement` values.
 
@@ -69,7 +70,7 @@ where k = 1;
 ```
 ## array_cat()
 
-**Purpose:** Return the concatenation of two compatible `anyarray`  values.
+**Purpose:** Return the concatenation of two compatible `anyarray` values.
 
 **Signature**
 ```
@@ -141,7 +142,7 @@ begin
 end;
 $body$;
 ```
-## || operator semantics
+## Concatenation semantics
 
 **Semantics for one-arrays**
 

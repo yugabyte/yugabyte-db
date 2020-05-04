@@ -19,7 +19,7 @@ input value:       [lb-1:ub-1] ... [lb-N:ub-N]anyarray
 return value:      anyarray
 ```
 **Notes:**
-- You must specify the lower and upper slicing bounds, as `int` values for each  of the input array's N dimensions.
+- You must specify the lower and upper slicing bounds, as `int` values for each of the input array's N dimensions.
 - The specified slicing bounds must not exceed the source array's bounds.
 - The new array has the same dimensionality as the source array and its lower bound is 1 on each axis.
 

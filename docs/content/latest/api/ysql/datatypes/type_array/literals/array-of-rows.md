@@ -43,7 +43,7 @@ These rules are presented in pseudocode [at the end](./#pseudocode-for-generatin
 
 ## Example to illustrate the rules.
 
-The example uses a  _"row"_ type with four fields: an `int` field; a `text` field; a `timestamp` field; and a `boolean` field; Only the `text` field needs deliberate design so the all of the "challenging" scenarios are illustrated. These are they:
+The example uses a _"row"_ type with four fields: an `int` field; a `text` field; a `timestamp` field; and a `boolean` field. This is enough to illustrate all of the rules. These "challenging" characters need particular care:
 ```
      <space>     ,     (     )     "     \
 ```
@@ -114,7 +114,7 @@ This is the result:
  (6,"\\","2006-01-20 12:10:05",)
 ```
 
-The `int` field and the `timestamp` field are unremarkable given only that we understand that the representation of the `timestamp` values, in order to meet the canonical form requirement,  must be double-quoted. The `boolean` fields are unremarkable, too, as long as we remember that `null` is represented by leaving no space between the delimiters that surround that field. This leave just the `text` fields for consideration. here are the field representations themselves, without the clutter of the delimiters:
+The `int` field and the `timestamp` field are unremarkable given only that we understand that the representation of the `timestamp` values, in order to meet the canonical form requirement, must be double-quoted. The `boolean` fields are unremarkable, too, as long as we remember that `null` is represented by leaving no space between the delimiters that surround that field. This leave just the `text` fields for consideration. here are the field representations themselves, without the clutter of the delimiters:
 ```
      " "     ","     "("     ")"     """"     "\\"
 ```
@@ -205,7 +205,7 @@ Notice that the algorithm inserts a newline after the opening curly brace, betwe
   if s is None:
     curr_rec += comma
   else:
-    # Fist, do the escaping needed for a stringy value
+    # First, do the escaping needed for any stringy value
     # as field in record literal value.
     s = s.replace(bk_slash, two_bk_slashes)
     s = s.replace(dbl_quote, two_dbl_quotes)

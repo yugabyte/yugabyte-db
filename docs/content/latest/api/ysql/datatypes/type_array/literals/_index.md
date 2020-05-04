@@ -1,8 +1,8 @@
 ---
-title: Create an array value using a literal
+title: Creating an array value using a literal
 linkTitle: Literals
-headerTitle: Create an array value using a literal
-description: Create an array value using a literal
+headerTitle: Creating an array value using a literal
+description: Creating an array value using a literal
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -13,38 +13,13 @@ isTocNested: false
 showAsideToc: false
 ---
 
-## The spelling of a literal value, alone, typically doesn't establish its data type
+This section introduces array literals informally with a few examples. Its subsections, listed below, explain formally how you construct syntactically correct array literals that establish the values that you intend.
 
-You will already be familiar with the notion of a literal as a way to represent a specific value of some particular data type. A literal can be used at any syntax spot, in SQL and in PL/pgSQL, where an expression is legal. Often, the spelling of the literal, alone, isn't sufficient to establish the data type of the value—especially in YSQL where any value can be typecast to a `text` value. In fact, many typecasts are done implicitly, driven by the context of usage. However, it's good practice to know what you're doing (as it _always_ is) and to make all typecasts explicit by spelling out the typecast. Here is an example and a counter-example:
+An array literal starts with a left curly brace. This is followed by some number of comma-separated literal representations for the array's values. Sometimes, the value representations need not be double-quoted—but _may_ be. And sometimes the value representations must be double-quoted. The array literal then ends with a right curly brace. Depending on the array's data type, its values might be scalar, or they might be composite. For example, they might be _"row"_ type values; or they might be arrays. The literal for a multidimensional array is written as an array of arrays of arrays... and so on. They might even be values of a user-defined domain which is based on an array data type. This somewhat exotic, but potentially very useful, notion is discussed in a dedicated subsection [here](to_do).
 
-```postgresql
-create table t(k serial primary key, v numeric);
+To use such a literal in SQL or in PL/pgSQL it must be enquoted in the same way as is an ordinary `text` literal. You can enquote an array literal using dollar quotes, if this suits your purpose, just as you can for a `text` literal. You sometimes need to follow the closing quote with a suitable typecast operator for the array datatype that you intend. And sometimes the context of use uniquely determines the literal's datatype. It's never wrong to write the typecast explicitly—and it's a good practice always to do this.
 
-prepare good(numeric) as insert into t(v) values ($1::numeric);
-execute good(17.8::numeric);
-
-prepare bad(int) as insert into t(v) values ($1);
-execute bad(42.7);
-
-select k, v from t order by k;
-```
-
-Here is the result:
-
-```
- k |  v   
----+------
- 1 | 17.8
- 2 |   43
-```
-
-The convention used by _ysqlsh_, inherited from PostgreSQL's _psql_, is to display selected `numeric` values with exactly, and only, sufficient precision. So we see that `42.7` was implicitly typecast to the nearest `int` value, `43` by the invocation of `execute bad()` and then typecast back to the numeric value `43.0`on inserting it into the target column—to be displayed on selecting it as bare `42`. This is a telling example of a confusing, and therefore bad, practice.
-
-We shall see that explicit typecasting is critically important when array literals are used. We return to the topic in the dedicated section _"[The critical importance of explicit typecasting](./importance-of-typecasting)"_.
-
-## Array literals for array datatypes with primitive, and then composite, values
-
-These three examples introduce the topic informally. First an array of primitive `int` values:
+Here, in use in a SQL `select`, is the literal for a one-dimensional array of primitive `int` values:
 ```postgresql
 \t on
 select '{1, 2, 3}'::int[];
@@ -62,32 +37,54 @@ select '{"1", "2", "3"}'::int[];
 ```
 It produces the identical output to the first example, where no double quotes were used.
 
-The third example defines an array whose values are instances of a _"row"_ type:
-```postgresql
-create type rt as (a int, b int);
+The third example defines a two-dimensional array of `int` values:
 
-select '{"(1, 2)", "(3, 4)", "(5, 6)"}'::rt[];
+```postgresql
+select '
+   {
+      {11, 12, 13},
+      {21, 22, 23}
+    }
+  '::int[];
+```
+
+It produces this result:
+
+```
+ {{11,12,13},{21,22,23}}
+```
+
+The fourth example defines an array whose values are instances of a _"row"_ type:
+
+```postgresql
+create type rt as (a int, b text);
+
+select '
+  {
+    "(1,a1 a2)",
+    "(2,b1 b2)",
+    "(3,c1 v2)"
+  }
+'::rt[];
 ```
 It produces this output:
 ```
- {"(1,2)","(3,4)","(5,6)"}
+ {"(1,\"a1 a2\")","(2,\"b1 b2\")","(3,\"c1 v2\")"}
 ```
-All whitespace has been removed. But the double quotes are retained. This suggests that they are significant. Test this by removing them. It causes the _"22P02: malformed row literal"_ error.
+All whitespace (except, of course, within the text values) has been removed. The double quotes around the representation of each _"row"_ type value are retained. This suggests that they are significant. (Test this by removing them. It causes the _"22P02: malformed row literal"_ error.) Most noticeably, there are clearly rules at work in connection with the representation of each `text` value within the representation of each _"row"_ type value.
 
-We can see, then, that when an array literal is used in a SQL statement, it must be quoted (using either single quotes or dollar quotes), just as is the case for a primitive `text` literal. Within the quotes, it starts with the left curly brace and ends with the right curly brace. And the closing quote is followed by a typecast to the appropriate array type. Within the curly braces, the values that the literal defines are delimited by commas, can always be surrounded by double quotes, sometimes need not be so surrounded, and sometimes must be.
+The following subsections present the rules carefully and, when the rules allow some freedom, give recommendations.
 
-The identical rules that apply for forming an array literal for use in a SQL statement apply when an array literal is used in an expression in a PL/pgSQL program.
+The [first subsection](./text-typecasting-and-literals/) establishes the important notions that allow you to distinguish between a _literal_ and the _text of the literal_. It's the text of an array literal that, by following specific grammar rules for this class of literal, actually defines the intended value. The literal, as a whole, enquotes this bare text and typecasts it to the desired target array data type.
 
-The following subsections will present the rules carefully and, when the rules allow some freedom, will give recommendations. These rules are covered in these two sections of the PostgreSQL documentation:
+The [second subsection](./array-of-primitive-values/) gives the rules for array literals whose values are scalars (for example, are of primitive data types).
+
+The [third subsection](./row/) gives the rules for the literal for a value of a _"row"_ type. These rules are essential to the understanding of the next section.
+
+The [fourth subsection](./array-of-rows/) gives the rules for array literals whose values are composite (i.e. a _"row"_ type).
+
+The rules that these four subsections present are covered in these two sections of the PostgreSQL documentation:
 
 - [8.15. Arrays](https://www.postgresql.org/docs/11/arrays.html)
 
 - [8.16. Composite Types](https://www.postgresql.org/docs/11/rowtypes.html)
-
-The [first subsection](./array-of-primitive-values/) gives the rules for array literals whose values are scalars (for example, are of primitive data types).  
-
-The [second subsection](./importance-of-typecasting/) revisits the critically important topic of typecasting.
-
-The [third subsection](./row/) gives the rules for the literal for a value of a _"row"_ type. These rules are essential to the understanding of  the next section.
-
-The [fourth subsection](./array-of-rows/) gives the rules for array literals whose values are composite (i.e. a _"row"_ type).

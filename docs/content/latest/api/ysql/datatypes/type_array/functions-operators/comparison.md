@@ -13,7 +13,7 @@ showAsideToc: false
 
 ## Comparison operators overview
 
-**Purpose:** Each of the comparison operators returns `true` or `false`  according to the outcome of the particular comparison test between the input [LHS and RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) arrays.
+**Purpose:** Each of the comparison operators returns `true` or `false` according to the outcome of the particular comparison test between the input [LHS and RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) arrays.
 
 **Signature**
 
@@ -23,7 +23,7 @@ These operators all have the same signature, thus:
 input value:       anyarray, anyarray
 return value:      boolean
 ```
-**Notes:** These operators require that the LHS and RHS arrays have the same datatype. (It's the same rule for the comparison of scalars.) However, they do _not_ require that the arrays have identical geometric properties—and rules are defined so that a difference between one or more of these properties does not mean that they are necessarily simply unequal. Rather, the LHS array might be deemed to be less than, or greater than, the RHS array. We need, therefore, to understand the comparison algorithm.
+**Notes:** These operators require that the LHS and RHS arrays have the same datatype. (It's the same rule for the comparison of scalars.) However, they do _not_ require that the arrays have identical geometric properties. Rules are defined so that a difference between one or more of these properties does not mean that they are necessarily simply unequal. Rather, the LHS array might be deemed to be less than, or greater than, the RHS array. We need, therefore, to understand the comparison algorithm.
 
 ### Comparison criteria
 
@@ -36,7 +36,7 @@ These are the unique characteristics of an array with respect to the algorithm t
 
 The other geometric properties (the length(s) along each dimension and the upper bound(s) on each dimension) can be derived from the properties that the bullets list.
 
-There is, of course, a well-defined priority among the comparisons. Briefly, value comparison is done first—and only if no difference is detected are the geometric properties compared.
+There is, of course, a well-defined priority among the comparisons. Briefly, value comparison is done first. Then, but only if no difference is detected, are the geometric properties compared.
 
 
 ### Pairwise comparison of values
@@ -71,7 +71,7 @@ The _"Containment and overlap operators semantics"_ section, [below](./#containm
 
 ## Examples for each operator
 
-### The = and <> operator
+### The `=` and `<>` operator
 
 - The `=` operator returns `true` if the LHS and RHS arrays are equal.
 - The `<>` operator is the natural complement: it returns `true` if the LHS and RHS arrays are not equal.
@@ -110,7 +110,7 @@ This is the result:
  true
 ```
 
-### The >, >=, <=, <, and <> operators
+### The `>` and `>=` and `<=` and `<` and `<>` operators
 
 These four operators implement the familiar inequality comparisons.
 - The `>` operator returns `true` if the LHS array is greater than the RHS array.
@@ -139,7 +139,7 @@ This is the result:
  true                            | true
 ```
 
-### The @> and <@ operators
+### The `@>` and `<@` operators
 
 - The `@>` operator returns `true` if the LHS array contains the RHS array—i.e. if every distinct value in the RHS array is found among the LHS array's distinct values.
 - The `<@` operator is the natural complement: it returns `true` if every distinct value in the LHS array is found among the RHS array's distinct values.
@@ -163,9 +163,9 @@ This is the result:
  true                       | true
 ```
 
-### The &&  <> operator
+### The `&&` operator
 
-The `&&` operator returns `true` if the LHS and RHS arrays overlap — i.e. if they have at least one value in common. The definition of this operator makes it insensitive to which of the two to-be-compared is used on the LHS and which is used on the RHS.
+The `&&` operator returns `true` if the LHS and RHS arrays overlap—i.e. if they have at least one value in common. The definition of this operator makes it insensitive to which of the two to-be-compared is used on the LHS and which is used on the RHS.
 
 ```postgresql
 with

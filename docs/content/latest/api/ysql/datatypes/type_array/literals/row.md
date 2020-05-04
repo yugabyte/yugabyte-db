@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-The word "row" has two different uses—but these uses are really different sides of the same coin. A row in a schema-level table is actually an occurrence of a _"row"_ type—in other words, a _"row"_ type value. In this case, the schema-level _"row"_ type is created automatically as a side effect of executing the _"create table"_ statement. It has the same name as the table. (This is allowed because tables and types are in different namespaces.) Further, a column in a schema-level table can have a user-defined _"row"_ type as its data type, and in this case the _"row"_ type need not be partnered with a table.
+The word "row" has two different uses; but these uses are really different sides of the same coin. A row in a schema-level table is actually an occurrence of a _"row"_ type—in other words, a _"row"_ type value. In this case, the schema-level _"row"_ type is created automatically as a side effect of executing the _"create table"_ statement. It has the same name as the table. (This is allowed because tables and types are in different namespaces.) Further, a column in a schema-level table can have a user-defined _"row"_ type as its data type, and in this case the _"row"_ type need not be partnered with a table.
 
 You might see the term _"record"_ when you use the `\df` metacommand to show the signature of a function. Briefly, it's an anonymous _"row"_ type. You produce a record instance when you use a literal that has the correct form of a _"row"_ type but when you omit the typecast operator. If you adhere to recommended practice, and always explicitly typecast such literals, then you needn't try to understand what a record is.
 
@@ -36,8 +36,8 @@ Here is the sufficient set of rules.
 
 - The commas that delimit successive values, and opening and closing parentheses, must not be surrounded by whitespace.
 - Do _not_ surround the individual representations of numeric and `boolean` primitive values with double quotes.
-- _Do_ surround the individual representations of  `timestamp` values with double quotes—even though this is not strictly necessary.
-- _Do_ surround every individual representation of  a `text` value with double quotes, even though this is not always necessary. It _is_ necessary for any value that itself contains, as ordinary text, any whitespace or any of the characters that have syntactic significance within the outermost curly brace pair. This is the list:
+- _Do_ surround the individual representations of `timestamp` values with double quotes, even though this is not strictly necessary.
+- _Do_ surround every individual representation of a `text` value with double quotes, even though this is not always necessary. It _is_ necessary for any value that itself contains, as ordinary text, any whitespace or any of the characters that have syntactic significance within the outermost curly brace pair. This is the list:
 
 ```
    <space>   (   )   ,   "   \
@@ -75,7 +75,7 @@ select v1::text as text_typecast from t where k = 1
 ```
 The keyword `row` names the _"row"_ type constructor function. It is optional, but is used here for emphasis.
 
-if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how  it works in the section on `array_agg()` and `unnest()`, [here](../../functions-operators/array-agg-unnest). 
+if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how it works in the section on `array_agg()` and `unnest()`, [here](../../functions-operators/array-agg-unnest). 
 
 Notice that, in this example, the `select` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 
@@ -86,9 +86,9 @@ In this case, the value of the `::text` typecast has the identical form to that 
 
 We can see the general form already:
 
-- The (_value_ of) a _"row"_ type literal starts with the left parenthesis and ends with the right parenthesis.
+- The (_text_ of) a _"row"_ type literal starts with the left parenthesis and ends with the right parenthesis.
 
-- The items within the parentheses are delimited by commas, and there is no space between one  item, the comma, and the next item. Nor is there any space between the left parenthesis and the first item or between the last item and the right parenthesis.
+- The items within the parentheses are delimited by commas, and there is no space between one item, the comma, and the next item. Nor is there any space between the left parenthesis and the first item or between the last item and the right parenthesis.
 
 The next subsection, _"Row type with text fields"_, shows that more needs to be said. But the two rules that we've already noticed always hold.
 
@@ -148,7 +148,7 @@ In addition to the first two rules, we notice the following.
 - Double quotes are used to surround a value that includes any spaces. (Though the example doesn't show it, this applies to leading and trailing spaces too.)
 - The comma _has_ been surrounded by double quotes. This is because it _does_ have syntactic significance, as the value delimiter, within the parentheses of a _"row"_ type literal.
 - The parentheses _have_ been surrounded by double quotes. This is because these _do_ have syntactic significance.
-- The single quote is _not_ surrounded with double quotes. Though it has syntactic significance in other parsing contexts, it is insignificant within the parentheses of a _"row"_ type literal. This holds, also, for all sorts of other punctuation characters like `;` and  `:` and `[` and `]` and so on.
+- The single quote is _not_ surrounded with double quotes. Though it has syntactic significance in other parsing contexts, it is insignificant within the parentheses of a _"row"_ type literal. This holds, also, for all sorts of other punctuation characters like `;` and `:` and `[` and `]` and so on.
 - The double quote has been escaped by doubling it up and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the (one and only) quoting mechanism, within the parentheses of a _"row"_ type literal.
 - The backslash has also been escaped with another single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the escape character, within the parentheses of a _"row"_ type literal.
 - `null` is represented in a _"row"_ type literal simply by the absence of any characters between two successive delimiters: between the left parenthesis and the first comma, between two successive commas, or between the last comma and the right parenthesis.

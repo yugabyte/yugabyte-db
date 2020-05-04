@@ -3,7 +3,6 @@ title: The literal for an array of primitive values
 linkTitle: Array of primitive values
 headerTitle: The literal for an array of primitive values
 description: The literal for an array of primitive values
-image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: array-of-primitive-values
@@ -19,7 +18,7 @@ We then state Yugabyte's recommendation in this space. And then we illustrate th
 
 ## Statement of the rules
 
-The statement of these rules depends on understanding the notion of the canonical form of a literal. We introduced the idea (in the section on the `array[]` constructor, [here](../../array-constructor)) and explained there that the `::text` typecast of any kind of array shows us the canonical form of the literal (more carefully stated, the _value_ of this literal). It can be used to recreate the value.
+The statement of these rules depends on understanding the notion of the canonical form of a literal. We defined this idea [here](../text-typecasting-and-literals/#defining-the-canonical-form-of-a-literal) and explained there that the `::text` typecast of any kind of array shows us the canonical form of the literal (more carefully stated, the _text_ of this literal). It can be used to recreate the value.
 
 In fact, this definition, and the property that the canonical form of the literal is sufficient to recreate the value, hold for values of _all_ data types.
 
@@ -39,7 +38,7 @@ Here is the sufficient set of rules.
 
 ## Always write array literals in canonical form
 
-Bear in mind that you will very rarely manually type literals in the way that this section does to demonstrate the rules. You'll do this only when teaching yourself, when prototyping new code, or when debugging. Rather, you'll typically create the literals programmatically—often in a client-side program that parses out the data values from, for example, an XML text file, or these days probably a JSON text file. In these scenarios, the target array is likely to have the data type `some_user_defined_row_type[]`. And when you create literals programmatically, you want to use the simplest rules that work and you have no need at all to omit arguably unnecessary double quote characters.
+Bear in mind that you will very rarely manually type literals in the way that this section does to demonstrate the rules. You'll do this only when teaching yourself, when prototyping new code, or when debugging. Rather, you'll typically create the literals programmatically—often in a client-side program that parses out the data values from, for example, an XML text file or, these days, probably a JSON text file. In these scenarios, the target array is likely to have the data type `some_user_defined_row_type[]`. And when you create literals programmatically, you want to use the simplest rules that work and you have no need at all to omit arguably unnecessary double quote characters.
 
 **Yugabyte recommends that the array literals that you generate programmatically are always spelled using the canonical representations**
 
@@ -80,7 +79,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how  it works in the section on `array_agg()` and `unnest()`, [here](../../functions-operators/array-agg-unnest). 
+if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how it works in the section on `array_agg()` and `unnest()`, [here](../../functions-operators/array-agg-unnest). 
 
 Notice that, in this example, the `select` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 
@@ -89,9 +88,9 @@ Notice that, in this example, the `select` statement is terminated by the `\gset
 ```
 We can see the general form already:
 
-- The (_value_ of) an array literal starts with the left curly brace and ends with the right curly brace.
+- The (_text_ of) an array literal starts with the left curly brace and ends with the right curly brace.
 
-- The items within the braces are delimited by commas, and there is no space between one  item, the comma, and the next item. Nor is there any space between the left curly brace and the first item or between the last item and the right curly brace.
+- The items within the braces are delimited by commas, and there is no space between one item, the comma, and the next item. Nor is there any space between the left curly brace and the first item or between the last item and the right curly brace.
 
 The next subsection, _"Array of text values"_, shows that more needs to be said. But the two rules that we've already noticed always hold.
 
@@ -155,13 +154,13 @@ Now try this:
 ```postgresql
 select ('{9,123.456, -8,456.789}'::numeric[])::text;
 ```
-It silently produces this presumably unintended result—an array of _four_ numeric values—because the commas are taken as delimiters and not as part of the representation of a single `numeric` value:
+It silently produces this presumably unintended result (an array of _four_ numeric values) because the commas are taken as delimiters and not as part of the representation of a single `numeric` value:
 ```
  {9,123.456,-8,456.789}
 ```
 In an array literal (or in a _"row"_ type value literal), there is simply no way to accommodate forms that cannot be directly typecast. (The same holds for `timestamp` values as for `numeric` values.) YSQL inherits this limitation from PostgreSQL. It is the user's responsibility to work around this when preparing the literal because, of course, functions like _"to_number()"_ cannot be used within literals. Functions can, however, be used in an `array[]` value constructor as [the section on that topic](../../array-constructor/) shows.
 
-###  One-dimensional array of `text` values
+### One-dimensional array of `text` values
 
 We'll use the _"Array of text int"_ example as a template for this and the subsequent subsections. The example sets array values each of which, apart from the single character `a`, needs some discussion. These are the characters (or, in one case, character sequence), listed here "bare" and with ten spaces between each:
 
@@ -191,7 +190,7 @@ In addition to the first two rules, we notice the following.
 - The left and right parentheses are _not_ surrounded with double quotes. Though these have syntactic significance in other parsing contexts, they are insignificant within the curly braces of an array literal.
 - The comma _has_ been surrounded by double quotes. This is because it _does_ have syntactic significance, as the value delimiter, within the curly braces of an array literal.
 - The curly braces _have_ been surrounded by double quotes. This is because interior curly braces _do_ have syntactic significance, as we'll see below, in the array literal for a multidimensional array.
-- The single quote is _not_ surrounded with double quotes. Though it has syntactic significance in other parsing contexts, it is insignificant within the curly braces of an array literal. This holds, also, for all sorts of other punctuation characters like `;` and  `:` and `[` and `]` and so on.
+- The single quote is _not_ surrounded with double quotes. Though it has syntactic significance in other parsing contexts, it is insignificant within the curly braces of an array literal. This holds, also, for all sorts of other punctuation characters like `;` and `:` and `[` and `]` and so on.
 - The double quote has been escaped with a single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the (one and only) quoting mechanism, within the curly braces of an array literal.
 - The backslash has also been escaped with another single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the escape character, within the curly braces of an array literal.
 
@@ -378,7 +377,7 @@ We see again that whitespace in the inserted literals for numeric values is insi
 
 Notice the spelling of the array literal for the row with `k = 4`. The optional syntax `[3:4][5:6][7:8]` specifies the lower and upper bounds, respectively, for the first, the second, and the third dimension. This is the same syntax that you use to specify a slice of an existing array (see [here](../../functions-operators/slice-operator)). When the freedom to specify the bounds is not exercised, then they are assumed all to start at `1`, and then the canonical form of the literal does not show the bounds.
 
-When the freedom is exercised, the bounds for _every_ dimension must be specified. Specifying the bounds gives you, of course, an opportunity for error. If the length along each axis that you (implicitly) specify doesn't agree with the lengths that emerge from the actual values listed between the surrounding outer `{}` pair, then you get the _"22P02 invalid_text_representation"_  error with this prose explanation:
+When the freedom is exercised, the bounds for _every_ dimension must be specified. Specifying the bounds gives you, of course, an opportunity for error. If the length along each axis that you (implicitly) specify doesn't agree with the lengths that emerge from the actual values listed between the surrounding outer `{}` pair, then you get the _"22P02 invalid_text_representation"_ error with this prose explanation:
 
 ```
 malformed array literal...

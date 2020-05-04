@@ -17,7 +17,7 @@ return value:      anyarray
 ```
 **Purpose:** return a new "blank canvas" array of the specified shape with all cells set to the same specified value.
 
-- The first parameter determines the value to which to set every cell—and thereby determines the new array's data type. It can be a value of a primitive data type; or, for example, a _"record"_ type value. It can also be written `null::some_type` if this suits your purpose. You would presumably set a `not null` value if, for example, you wanted to insert the array into a table column on which you have created a constraint based on a PL/pgSQL function that explicitly tests the array's geometric properties and the `not null` status of each of its values Try this:
+- The first parameter determines the value to which to set every cell. It thereby determines the new array's data type. It can be a value of a primitive data type; or, for example, a _"record"_ type value. It can also be written `null::some_type` if this suits your purpose. You would presumably set a `not null` value if, for example, you wanted to insert the array into a table column on which you have created a constraint based on a PL/pgSQL function that explicitly tests the array's geometric properties and the `not null` status of each of its values Try this:
 ```postgresql
 select pg_typeof(array_fill(null::text, '{1}')) as "type of the new array";
 ```
@@ -27,12 +27,12 @@ select pg_typeof(array_fill(null::text, '{1}')) as "type of the new array";
 -----------------------
  text[]
 ```
-- The second parameter is an `int[]`  array. Each of its values specifies the value that `array_length(new_arr, n)` returns—where `n` is the dimension number, starting with the major dimension. So the cardinality of the array that you supply here specifies the value returned by `array_ndims(new_arr)`.
-- The third parameter is optional. When supplied, it must be an `int[]`  array with the same cardinality as the second parameter. Each of its values specifies the value that `array_lower(new_arr, n)` returns.
+- The second parameter is an `int[]` array. Each of its values specifies the value that `array_length(new_arr, n)` returns—where `n` is the dimension number, starting with the major dimension. So the cardinality of the array that you supply here specifies the value returned by `array_ndims(new_arr)`.
+- The third parameter is optional. When supplied, it must be an `int[]` array with the same cardinality as the second parameter. Each of its values specifies the value that `array_lower(new_arr, n)` returns.
 
 The shape of the new array is therefore fully specified by the second and third parameters.
 
-**Note:** Why does `array_fill()` exist? In other words, why not simply set the values that you want by directly indexing each cell and assigning the value you want to it? Recall that, as described in the _"[Synopsis](../../#synopsis)"_,  an array value is rectilinear—and this means that its shape, when its number of dimensions exceeds one, is non-negotiaby fixed at creation time. This `DO` block emphasizes the point.
+**Note:** Why does `array_fill()` exist? In other words, why not simply set the values that you want by directly indexing each cell and assigning the value you want to it? Recall that, as described in the _"[Synopsis](../../#synopsis)"_, an array value is rectilinear. This means that its shape, when its number of dimensions exceeds one, is non-negotiaby fixed at creation time. This `DO` block emphasizes the point.
 
 ```postgresql
 do $body$
