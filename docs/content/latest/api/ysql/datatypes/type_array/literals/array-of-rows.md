@@ -179,7 +179,7 @@ With some effort, you'll see that this is indeed the properly formed canonical r
 
 ## Multidimensional array of "row" type values
 
-You can work out the rules for a multidimensional array of "row" type values, should you need these, by straightforward induction from what has already been explained this enclosing _"[Create an array value using a literal](../../literals/)"_ section.
+You can work out the rules for a multidimensional array of "row" type values, should you need these, by straightforward induction from what has already been explained this enclosing [Create an array value using a literal](../../literals/) section.
 
 ## Pseudocode for generating the literal for a one-dimensional array of "row" type values
 
