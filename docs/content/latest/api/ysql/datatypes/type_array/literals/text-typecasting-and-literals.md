@@ -226,7 +226,7 @@ Here is the general rule.
 
 A simple way to see examples of the bare text that specifies an array value, when used as a component in the literal, is to create the value using the constructor and then to inspect its `::text` typecast. But the safe way to create the text of a literal for an intended value is to understand the syntax and semantics that govern its composition.
 
-When we need to make this distinction, throughout the whole of this major _"[Arrays](../../../type_array/)"_ section, we shall distinguish between:
+When this difference is useful, the [Arrays](../../../type_array/) section distinguishes between:
 
 - (1) the _literal_ for the intended value (i.e. the whole thing with the enquoting and the typecast, when one or both of these are needed);
 - and (2) the _text of the literal_ for the intended value (that is, the bare text that specifies this value).
