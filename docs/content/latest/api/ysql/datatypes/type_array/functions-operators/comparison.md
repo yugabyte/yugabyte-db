@@ -191,7 +191,7 @@ This is the result:
 This section demonstrates each of the rules that the [Comparison operators overview](./#comparison-operators-overview) section above stated.
 
 ```postgresql
--- Any two arrays can be compared without error if they have the same datatype.
+-- Any two arrays can be compared without error if they have the same data type.
 do $body$
 begin
   ------------------------------------------------------------------------------
