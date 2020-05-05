@@ -51,7 +51,7 @@ First, we create the _"row"_ type:
 ```postgresql
 create type rt as (n int, s text, t timestamp, b boolean);
 ```
-Then we create a table with a column with data type `rt` so that we can populate it with six rows that jointly, in their `text` fields, use all of the "challenging" characters listed above:
+Next, you create a table with a column with data type `rt` so that you can populate it with six rows that jointly, in their `text` fields, use all of the "challenging" characters listed above:
 ```postgresql
 create table t1(k int primary key, v rt);
 ```
