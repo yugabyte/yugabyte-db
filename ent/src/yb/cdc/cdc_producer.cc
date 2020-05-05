@@ -28,6 +28,9 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+DEFINE_int32(cdc_transaction_timeout_ms, 0,
+  "Don't check for an aborted transaction unless its original write is lagging by this duration.");
+
 namespace yb {
 namespace cdc {
 
@@ -203,7 +206,7 @@ Result<TransactionStatusResult> GetTransactionStatus(
 // Build transaction status as of hybrid_time.
 Result<TxnStatusMap> BuildTxnStatusMap(const ReplicateMsgs& messages,
                                        bool more_replicate_msgs,
-                                       const HybridTime& hybrid_time,
+                                       const HybridTime& cdc_read_hybrid_time,
                                        TransactionParticipant* txn_participant) {
   TxnStatusMap txn_map;
   // First go through all APPLYING records and mark transaction as committed.
@@ -230,18 +233,21 @@ Result<TxnStatusMap> BuildTxnStatusMap(const ReplicateMsgs& messages,
       if (!txn_map.count(txn_id)) {
         TransactionStatusResult txn_status(TransactionStatus::PENDING, HybridTime::kMin);
 
-        auto result = GetTransactionStatus(txn_id, hybrid_time, txn_participant);
+        auto result = GetTransactionStatus(txn_id, cdc_read_hybrid_time, txn_participant);
         if (!result.ok()) {
           if (result.status().IsNotFound()) {
-            // Consider the transaction as aborted only if more_replicate_msgs is false.
-            // If more_replicate_messages is true, then it's possible that transaction is committed
-            // but we haven't read the commit message yet.
-            // Such a transaction will be considered as pending and will not be returned by CDC
-            // producer until the transaction is committed.
+            // Naive heuristic for handling whether a transaction is aborted or still pending:
+            // 1. If the normal transaction timeout is not reached, assume good operation.
+            // 2. If more_replicate_messages, assume a race between reading
+            //    TransactionParticipant & LogCache.
             // TODO (#2405) : Handle long running or very large transactions correctly.
             if (!more_replicate_msgs) {
-              LOG(INFO) << "Transaction not found, considering it aborted: " << txn_id;
-              txn_status = TransactionStatusResult::Aborted();
+              auto timeout = HybridTime::FromPB(msg->hybrid_time())
+                  .AddMilliseconds(FLAGS_cdc_transaction_timeout_ms);
+              if (timeout < cdc_read_hybrid_time) {
+                LOG(INFO) << "Transaction not found, considering it aborted: " << txn_id;
+                txn_status = TransactionStatusResult::Aborted();
+              }
             }
           } else {
             return result.status();
