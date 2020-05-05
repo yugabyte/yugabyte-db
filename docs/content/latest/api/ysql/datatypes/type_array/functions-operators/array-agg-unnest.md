@@ -152,7 +152,7 @@ from tab
 \set unnest_arg '\'':result_array_literal'\'::int[]'
 \echo :unnest_arg
 ```
-Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This simply makes the _ysqlsh_ output less noisy. This is the result:
+Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This simply makes the `ysqlsh` output less noisy. This is the result:
 
 ```
 '{{1,2,3},{4,5,6},{7,8,9}}'::int[]
