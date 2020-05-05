@@ -477,7 +477,7 @@ master_pk, seq;
          2 | Mary        |   3 | bobcat
          2 | Mary        |   4 | horse
 ```
-- Here's how you achieve the same effect, and check that it worked as intended, in the new regime. Notice that you need to know the value of _"seq"_ for the _"rt"_ object that has the _"detail_name"_ value of interest. This is easy to do by implementing a dedicated PL/pgSQL function that encapsulates `array_replace()` or the replaces a value directly by addressing it using its index. But it's hard to do without that (These methods are described [here](../../functions-operators/replace-a-value/)).
+- Here's how you achieve the same effect, and check that it worked as intended, in the new regime. Notice that you need to know the value of _"seq"_ for the _"rt"_ object that has the _"detail_name"_ value of interest. This is easy to do by implementing a dedicated PL/pgSQL function that encapsulates `array_replace()` or the replaces a value directly by addressing it using its index. But it's hard to do without that (these methods are described in [Replace a value](../../functions-operators/replace-a-value/)).
 
 ```postgresql
 with v as (
