@@ -8,8 +8,8 @@ menu:
     identifier: array-constructor
     parent: api-ysql-datatypes-array
     weight: 10
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 The `array[]` value constructor is a special variadic function. Uniquely among all the functions described in the present major _"[Array data types and functionality](../../type_array/)"_ section, it uses square brackets to surround its list of actual arguments.
@@ -190,4 +190,3 @@ It shows this:
 --------
  true
 ```
-
