@@ -285,7 +285,7 @@ create table masters_with_details (
   master_name text not null,
   details details_t[] not null);
 ```
-Notice that we made the _"details"_ column `not null`. This was a choice. It adds semantics that are very hard to capture in the original two table design without tricky, and therefore error-prone, programming of triggers and the like. We have implemented the so-called _"mandatory one-to-many"_ rule. In the present example, the rule says (in the domain of the entity relationship model that specifies the requirements) that an occurrence of a _"Master"_ entity type cannot exist unless it has at least one, but possibly many, child occurrences of a _"Detail"_ entity type.
+Notice that you made the _"details"_ column `not null`. This was a choice. It adds semantics that are very hard to capture in the original two table design without tricky, and therefore error-prone, programming of triggers and the like. We have implemented the so-called _"mandatory one-to-many"_ rule. In the present example, the rule says (in the domain of the entity-relationship model that specifies the requirements) that an occurrence of a _"Master"_ entity type cannot exist unless it has at least one, but possibly many, child occurrences of a _"Detail"_ entity type.
 
 Next, populate the new table and inspect its contents:
 ```postgresql
