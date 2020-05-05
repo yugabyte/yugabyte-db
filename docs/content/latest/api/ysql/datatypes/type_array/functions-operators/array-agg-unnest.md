@@ -109,7 +109,7 @@ As the sketch at the start of this page indicated, the input to unnest is an arr
 \echo :unnest_arg
 ```
 
-The `\set` metacommand uses the backslash character to escape the single quote character that it also uses to surround the string that it assigns to the target _ysqlsh_ variable. The `\echo` metacommand shows this:
+The `\set` metacommand uses the backslash character to escape the single quote character that it also uses to surround the string that it assigns to the target `ysqlsh` variable. The `\echo` metacommand shows this:
 ```
 '{"(1,dog)","(2,cat)","(3,ant)"}'::rt[]
 ```
