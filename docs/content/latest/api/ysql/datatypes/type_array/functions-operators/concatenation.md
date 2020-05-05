@@ -197,7 +197,7 @@ declare
   -- along arr_1's SECOND dimension.
   arr_3 constant int[] := array[31, 32, 33];
 
-  -- Notice that bad_arr is demensionally INCOMPATIBE with arr_1:
+  -- Notice that bad_arr is dimensionally INCOMPATIBLE with arr_1:
   -- they have different lengths along their SECOND major dimension.
   bad_arr constant int[] :=
     array[
