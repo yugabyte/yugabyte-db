@@ -129,7 +129,7 @@ Next, you concatenate our six _"row"_ type values into an array value by using t
 select array_agg(v order by k) from t1;
 ```
 
-The demonstration is best served by inserting this value into a new table, thus:
+The demonstration is best served by inserting this value into a new table, like this:
 ```postgresql
 create table t2(k int primary key, v1 rt[], v1_text_typecast text, v2 rt[]);
 insert into t2(k, v1)
