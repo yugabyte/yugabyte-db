@@ -124,7 +124,7 @@ The first four are unremarkable, as long as you remember that each of these four
 - The single double quote occurrence, in the source data, must be doubled up and then surrounded by double quotes.
 - The single backslash occurrence, in the source data, must be doubled up and then surrounded by double quotes.
 
-Next, we'll concatenate our six _"row"_ type values into an array value by using the `array_agg()` function, (It's described [here](../../functions-operators/array-agg-unnest/#array-agg)), like this:
+Next, you concatenate our six _"row"_ type values into an array value by using the `array_agg()` function (described in [`array_agg()`](../../functions-operators/array-agg-unnest/#array-agg)), like this:
 ```postgresql
 select array_agg(v order by k) from t1;
 ```
