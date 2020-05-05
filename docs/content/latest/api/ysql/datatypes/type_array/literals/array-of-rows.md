@@ -41,7 +41,7 @@ The sufficient set of rules can be stated tersely:
 
 These rules are presented in pseudocode [at the end](./#pseudocode-for-generating-the-literal-for-a-one-dimensional-array-of-row-type-values) of this subsection.
 
-## Example to illustrate the rules.
+## Example to illustrate the rules
 
 The example uses a _"row"_ type with four fields: an `int` field; a `text` field; a `timestamp` field; and a `boolean` field. This is enough to illustrate all of the rules. These "challenging" characters need particular care:
 ```
