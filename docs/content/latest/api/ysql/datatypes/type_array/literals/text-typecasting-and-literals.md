@@ -220,7 +220,7 @@ These are three special cases of a more general rule. In some cases (for example
 
 Here is the general rule.
 
-- The literal for a value of any data type is the possibly enquoted bare text that specifies the intended value followed by the typecast operator to the desired target data type.
+- The literal for a value of any data type is the possibly enquoted bare text that specifies the intended value, followed by the typecast operator to the desired target data type.
 - This rule is applied recursively, for the literal for a composite value, but with different actual rules at different levels of nesting. For example, the literal for an array value as a whole must be typecasted. But, because the data type of every value in the array is already determined, the bare text that specifies these values is _not_ typecasted.
 - The `::text` typecast of any value can always be used as the bare text of the literal that will recreate that value.
 
