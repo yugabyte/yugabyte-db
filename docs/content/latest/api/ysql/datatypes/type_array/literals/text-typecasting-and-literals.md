@@ -178,7 +178,7 @@ It shows the result:
 -----------+-----+-----------------+-----------
  42.932771 | cat | dog's breakfast | {1,2,3}}
 ```
- You won't be surprised by this. But we need to establish the proper terms of art that allow us to describe what's going on precisely and correctly. The remaining sections in the present enclosing section rely on this.
+ You won't be surprised by this. But you need to establish the proper terms of art that allow you to describe what's going on precisely and correctly. The remaining sections in the present enclosing section rely on this.
 
 Consider this first:
 
