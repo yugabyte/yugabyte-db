@@ -12,7 +12,7 @@ showAsideToc: false
 ---
 Each of the approaches described in this section, using the `array_replace()` built-in function and setting an addressed array value explicitly and in place, can be used to change values in an array. But the two approaches differ importantly:
 
-- `array_replace()` changes all values that match the specified value to the same new value, insensitively to their address in the array;
+- `array_replace()` changes all values that match the specified value to the same new value, insensitively to their address in the array.
 
 - setting an addressed array value changes that one value insensitively to its present value.
 
