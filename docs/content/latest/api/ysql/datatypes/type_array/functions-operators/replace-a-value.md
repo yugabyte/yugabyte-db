@@ -307,7 +307,7 @@ begin
   --   arr[2:2][1:4] = array[new_val];
   -- causes a compilation error.
 
-  -- Similarly, this is meaningless. (But it doesb't cause a compilation error.)
+  -- Similarly, this is meaningless. (But it doesn't cause a compilation error.)
   -- Because it's a 2-d array, its values (individual values or slices) must be
   -- addressed using two indexes or two slice ranges.
   assert
