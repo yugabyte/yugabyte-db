@@ -32,7 +32,7 @@ select pg_typeof(array_fill(null::text, '{1}')) as "type of the new array";
 
 The shape of the new array is, therefore, fully specified by the second and third parameters.
 
-**Note:** Why does `array_fill()` exist? In other words, why not simply set the values that you want by directly indexing each cell and assigning the value you want to it? Recall that, as described in the _"[Synopsis](../../#synopsis)"_, an array value is rectilinear. This means that its shape, when its number of dimensions exceeds one, is non-negotiaby fixed at creation time. This `DO` block emphasizes the point.
+**Note:** Why does `array_fill()` exist? In other words, why not simply set the values that you want by directly indexing each cell and assigning the value you want to it? Recall that, as described in [Synopsis](../../#synopsis), an array value is rectilinear. This means that its shape, when its number of dimensions exceeds one, is non-negotiably fixed at creation time. This `DO` block emphasizes the point.
 
 ```postgresql
 do $body$
