@@ -197,7 +197,7 @@ Notice, too, that the value that `array_dims()` returns can be computed from the
 
 The procedure has some particular requirements:
 
-- the cardinality of each of the two supplied arrays must be the same;
+- the cardinality of each of the two supplied arrays must be the same.
 - the actual array values, in row-major order, must be the same, pairwise.
 
 These requirements might seem to be arbitrary. They are implemented so that the procedure can deliver two bonus benefits. It demonstrates how to traverse array values in row-major order using the values returned by the functions that this section describes. In this way, it shows you what the term "row-major order" means. And it compares the values, pairwise, for equality. This comparison rule is the basis of the semantics of the comparison operations described [here](../comparison).
