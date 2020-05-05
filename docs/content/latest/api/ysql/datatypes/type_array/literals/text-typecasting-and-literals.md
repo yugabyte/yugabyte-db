@@ -202,7 +202,7 @@ Now consider these two:
 
 The parsing rules of both SQL and PL/pgSQL (or more properly stated, the definitions of the grammars of these two languages) require that `text` literals are enquoted. Moreover, there are two syntactic mechanisms for doing this: the ordinary single quote; and so-called dollar quotes, where `$$` is a special case of the more general `$anything_you_want$`. You might think that the `::text` typecast is redundant here. But don't forget that the text of these literals might be used to establish `varchar` or `char` values.
 
-We see already, then, that the rules for composing a `numeric` literal and a `text` literal are different:
+You see already, then, that the rules for composing a `numeric` literal and a `text` literal are different:
 
 - You compose a `numeric` literal by following the bare text that specifies the intended value with the `::numeric` typecast operator.
 
