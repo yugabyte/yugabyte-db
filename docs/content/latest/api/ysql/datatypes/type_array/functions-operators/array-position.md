@@ -36,7 +36,7 @@ as arr;
 input value:       anyarray, anyelement [, int]
 return value:      int
 ```
-**Notes:** the third, optional, parameter lets you specify the _inclusive_ index value at which to start the search.
+**Notes:** The optional third parameter specifies the _inclusive_ index value at which to start the search.
 
 **Example:**
 ```postgresql
