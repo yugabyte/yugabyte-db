@@ -39,7 +39,7 @@ It shows this:
 -----------------------------------
  {{{"(1,a)","(2,)",NULL,"(3,c)"}}}
 ```
-See the section _"The literal for a 'row' type value"_, [here](../../literals/row/) to understand the syntax for the literal for a _"row"_ type value—especially when a field is `null`.
+To understand the syntax for the literal for a _"row"_ type value—especially when a field is `null`, see  [The literal for a 'row' type value](../../literals/row/).
 
 Now do this:
 ```postgresql
