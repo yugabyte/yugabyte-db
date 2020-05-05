@@ -79,7 +79,7 @@ First, the [Text typecasting and literals](./text-typecasting-and-literals/) sec
 
 Second, the [Array of primitive values](./array-of-primitive-values/) section gives the rules for array literals whose values are scalars (for example, are of primitive data types).
 
-The [third subsection](./row/) gives the rules for the literal for a value of a _"row"_ type. These rules are essential to the understanding of the next section.
+Third, the [Row](./row/) section gives the rules for the literal for a value of a _"row"_ type. These rules are essential to the understanding of the next section.
 
 The [fourth subsection](./array-of-rows/) gives the rules for array literals whose values are composite (that is, a _"row"_ type).
 
