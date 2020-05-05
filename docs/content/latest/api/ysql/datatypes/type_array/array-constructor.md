@@ -16,7 +16,7 @@ The `array[]` value constructor is a special variadic function. Uniquely among a
 
 ## Purpose and signature
 
-**Purpose:** create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an _[array literal](../literals/)_. 
+**Purpose:** Create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an [array literal](../literals/). 
 
 **Signature** 
 ```
