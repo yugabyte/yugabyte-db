@@ -214,7 +214,7 @@ You've already seen, informally, some examples of array literals. Here is the ru
 
 - You compose the bare text that specifies the intended value by writing an utterance in a dedicated grammar that starts with the left curly brace and ends with the right curly brace. (This grammar is the focus of the remainder of this section.) Then you enquote this bare text (however you choose to do the quoting) and then typecast it to the desired target array data type.
 
-These are three special cases of a more general rule. In some cases (for example in the literal for a _"row"_ type value) the enquoting mechanism might be optional (depending on the intended value) and, when written uses _double quote_ as the the enquoting character. But here, too, the general rule is the same. The bare text that specifies the intended value can always be correctly written as the `::text` typecast of that value.
+These are three special cases of a more general rule. In some cases (for example in the literal for a _"row"_ type value) the enquoting mechanism might be optional (depending on the intended value) and, when written uses _double quote_ as the enquoting character. But here, too, the general rule is the same. The bare text that specifies the intended value can always be correctly written as the `::text` typecast of that value.
 
 ## Stating the general rule
 
