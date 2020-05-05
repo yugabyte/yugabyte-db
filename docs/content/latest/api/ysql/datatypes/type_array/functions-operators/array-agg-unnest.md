@@ -11,7 +11,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-For one-dimensional arrays, but _only for these_ (see the section _"Multidimensional array_agg() and unnest()"_ [below](./#multidimensional-array-and-and-unnest)), these two functions have mutually complementary effects in the following sense. After this sequence (the notation is informal):
+For one-dimensional arrays, but _only for these_ (see [Multidimensional array_agg() and unnest()](./#multidimensional-array-and-and-unnest)), these two functions have mutually complementary effects in the following sense. After this sequence (the notation is informal):
 ```
 array_agg of "setof tuples #1" => "result array"
 unnest of "result array" => "setof tuples #3"
