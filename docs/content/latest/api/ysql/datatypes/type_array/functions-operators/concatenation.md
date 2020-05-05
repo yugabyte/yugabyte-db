@@ -126,7 +126,7 @@ $body$;
 input value:              anyelement, anyarray
 return value:             anyarray`
 ```
-**Notes:** the `DO` block shows that the `||` operator is able to implement the full functionality of the `array_prepend()` function. The values, must be compatible.
+**Notes:** The `DO` block shows that the `||` operator is able to implement the full functionality of the `array_prepend()` function. The values must be compatible.
 
 ```postgresql
 do $body$
