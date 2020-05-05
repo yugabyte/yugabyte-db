@@ -102,7 +102,7 @@ The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 The text of the literal is now available for re-use, as was intended.
 ## unnest()
 
-As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of `array_agg()` left us with in the _ysqlsh_ variable `result_array_literal` in a SQL statement, we must quote it and typecast it to `rt[]`. This is easily done with the `\set` metacommand, thus:
+As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of `array_agg()` left us with in the `ysqlsh` variable `result_array_literal` in a SQL statement, we must quote it and typecast it to `rt[]`. This is easily done with the `\set` metacommand, thus:
 
 ```postgresql
 \set unnest_arg '\'':result_array_literal'\'::rt[]'
