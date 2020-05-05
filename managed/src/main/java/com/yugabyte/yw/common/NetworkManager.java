@@ -35,8 +35,11 @@ public class NetworkManager extends DevopsBase {
     }
   }
 
-  public JsonNode query(UUID regionUUID) {
-    return execAndParseCommandRegion(regionUUID, "query", Collections.emptyList());
+  public JsonNode query(UUID regionUUID, String customPayload) {
+    List<String> commandArgs = new ArrayList();
+    commandArgs.add("--custom_payload");
+    commandArgs.add(customPayload);
+    return execAndParseCommandRegion(regionUUID, "query", commandArgs);
   }
 
   public JsonNode cleanup(UUID regionUUID) {

@@ -41,14 +41,14 @@ public class CloudQueryHelperTest extends FakeDBApplication {
   ArgumentCaptor<HashMap> cloudCredentials;
 
   private enum CommandType {
-  	zones,
-  	instance_types,
-  	host_info
+    zones,
+    instance_types,
+    host_info
   };
 
   @Before
   public void beforeTest() {
-  	defaultCustomer = ModelFactory.testCustomer();
+    defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     command = ArgumentCaptor.forClass(ArrayList.class);
@@ -67,49 +67,49 @@ public class CloudQueryHelperTest extends FakeDBApplication {
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
 
     switch (command) {
-    	case zones:
-    		return cloudQueryHelper.getZones(regionUUID);
-    	case instance_types:
-    		ArrayList<Region> regionList = new ArrayList<Region>();
-    		regionList.add(Region.get(regionUUID));
-    		return cloudQueryHelper.getInstanceTypes(regionList);
-    	default:
-    		return cloudQueryHelper.currentHostInfo(Common.CloudType.aws, ImmutableList.of("vpc-id"));
+      case zones:
+        return cloudQueryHelper.getZones(regionUUID);
+      case instance_types:
+        ArrayList<Region> regionList = new ArrayList<Region>();
+        regionList.add(Region.get(regionUUID));
+        return cloudQueryHelper.getInstanceTypes(regionList, "");
+      default:
+        return cloudQueryHelper.currentHostInfo(Common.CloudType.aws, ImmutableList.of("vpc-id"));
     }
   }
 
   @Test
   public void testGetZonesSuccess() {
-  	Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-  	Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
-  	JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.zones);
-  	assertValue(json, "foo", "bar");
+    Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+    Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
+    JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.zones);
+    assertValue(json, "foo", "bar");
   }
 
   @Test
   public void testGetZonesFailure() {
-  	Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-  	Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
-  	JsonNode json = runCommand(gcpRegion.uuid, true, CommandType.zones);
-  	assertErrorNodeValue(json, "YBCloud command query (zones) failed to execute.");
+    Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+    Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
+    JsonNode json = runCommand(gcpRegion.uuid, true, CommandType.zones);
+    assertErrorNodeValue(json, "YBCloud command query (zones) failed to execute.");
   }
 
   @Test
   public void testGetInstanceTypesSuccess() {
-  	Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-  	Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
-  	ArrayList<Region> regionList = new ArrayList<>();
-  	regionList.add(gcpRegion);
-  	JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.instance_types);
-  	assertValue(json, "foo", "bar");
+    Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+    Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
+    ArrayList<Region> regionList = new ArrayList<>();
+    regionList.add(gcpRegion);
+    JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.instance_types);
+    assertValue(json, "foo", "bar");
   }
 
   @Test
   public void testGetInstanceTypesFailure() {
-  	Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-  	Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
-  	JsonNode json = runCommand(gcpRegion.uuid, true, CommandType.instance_types);
-  	assertErrorNodeValue(json, "YBCloud command query (instance_types) failed to execute.");
+    Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+    Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
+    JsonNode json = runCommand(gcpRegion.uuid, true, CommandType.instance_types);
+    assertErrorNodeValue(json, "YBCloud command query (instance_types) failed to execute.");
   }
 
   @Test

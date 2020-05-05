@@ -76,7 +76,7 @@ public class NetworkManagerTest extends FakeDBApplication {
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
 
     if (commandType.equals("query")) {
-      return networkManager.query(regionUUID);
+      return networkManager.query(regionUUID, "");
     } else if (commandType.equals("cleanup")) {
       return networkManager.cleanup(regionUUID);
     }
@@ -111,6 +111,31 @@ public class NetworkManagerTest extends FakeDBApplication {
         (Map<String, String>) cloudCredentials.capture());
     assertEquals(String.join(" ", command.getValue()),
         "bin/ybcloud.sh aws network bootstrap --custom_payload {}");
+    assertValue(json, "foo", "bar");
+  }
+
+  @Test
+  public void testGcpBootstrapCommandWithProvider() {
+    Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer());
+    Region gcpRegion = Region.create(gcpProvider, "us-west1", "US West1", "yb-image");
+    JsonNode json = runBootstrap(null, gcpRegion.provider.uuid, "{}", false);
+    Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
+        (Map<String, String>) cloudCredentials.capture());
+    assertEquals(String.join(" ", command.getValue()),
+        "bin/ybcloud.sh gcp network bootstrap --custom_payload {}");
+    assertValue(json, "foo", "bar");
+  }
+
+  @Test
+  public void testGcpBootstrapCommandWithPayload() {
+    Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer());
+    Region gcpRegion = Region.create(gcpProvider, "us-west1", "US West1", "yb-image");
+    String payload = "{\"region\": \"gcptest\"}";
+    JsonNode json = runBootstrap(null, gcpRegion.provider.uuid, payload, false);
+    Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
+        (Map<String, String>) cloudCredentials.capture());
+    assertEquals(String.join(" ", command.getValue()),
+        "bin/ybcloud.sh gcp network bootstrap --custom_payload " + payload);
     assertValue(json, "foo", "bar");
   }
 

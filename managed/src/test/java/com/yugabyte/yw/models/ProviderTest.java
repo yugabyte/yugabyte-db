@@ -4,12 +4,14 @@ package com.yugabyte.yw.models;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
@@ -161,5 +163,32 @@ public class ProviderTest extends FakeDBApplication {
     assertNotNull(provider.uuid);
     assertNull(provider.getAwsHostedZoneId());
     assertNull(provider.getAwsHostedZoneId());
+  }
+
+  @Test
+  public void testGetCloudParamsNoRegions() {
+    Provider provider = ModelFactory.gcpProvider(defaultCustomer);
+    CloudBootstrap.Params params = provider.getCloudParams();
+    assertNotNull(params);
+    Map<String, CloudBootstrap.Params.PerRegionMetadata> metadata = params.perRegionMetadata;
+    assertNotNull(metadata);
+    assertEquals(0, metadata.size());
+  }
+
+  @Test
+  public void testGetCloudParamsWithRegion() {
+    Provider provider = ModelFactory.gcpProvider(defaultCustomer);
+    String subnetId = "subnet-1";
+    String regionCode = "region-1";
+    Region region = Region.create(provider, regionCode, "test region", "default-image");
+    AvailabilityZone az = AvailabilityZone.create(region, "az-1", "A Zone", subnetId);
+    CloudBootstrap.Params params = provider.getCloudParams();
+    assertNotNull(params);
+    Map<String, CloudBootstrap.Params.PerRegionMetadata> metadata = params.perRegionMetadata;
+    assertNotNull(metadata);
+    assertEquals(1, metadata.size());
+    CloudBootstrap.Params.PerRegionMetadata data = metadata.get(regionCode);
+    assertNotNull(data);
+    assertEquals(subnetId, data.subnetId);
   }
 }
