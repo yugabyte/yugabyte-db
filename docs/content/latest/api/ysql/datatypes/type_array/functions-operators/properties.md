@@ -35,7 +35,7 @@ insert into t(k, arr_1, arr_2) values(1,
 
 You will use it in the example for each of the functions. (The optional syntax items `[3:10]` and `[2:3][2:5]` specify the lower and upper bounds along the one dimension of the first array and along both dimensions of the second array. This syntax is explained in [Multidimensional array of numeric values](../../literals/array-of-primitive-values/#multidimensional-array-of-numeric-values).
 
-Run the `select` statement for each function to illustrate what produces for the same pair of input arrays
+Run the `SELECT` statement for each function to illustrate what produces for the same pair of input arrays.
 
 ### array_ndims()
 
