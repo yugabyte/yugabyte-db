@@ -26,7 +26,7 @@ The sufficient set of rules can be stated tersely:
 
 - Start off with the opening left curly brace.
 
-- First, prepare the literal for each _"row"_ type value according to the rules set out in the [previous section](../row/).
+- First, prepare the literal for each _"row"_ type value according to the rules set out in the previous [Row](../row/) section.
 
 - Then, understand that when these are used within the literal for _"row"_ type value within the literal for an array, the _"row"_ must itself be surrounded with double quotes, just like is the rule for, say, `timestamp` values or `text` values that include spaces or other troublesome characters.
 
