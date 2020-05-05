@@ -208,7 +208,7 @@ You see already, then, that the rules for composing a `numeric` literal and a `t
 
 - You compose a `text` literal by enquoting the bare text that specifies the intended value (however you choose to do the quoting) and by then following this with the `::text` typecast operator.
 
-(If you did, foolishly, enquote the bare text in a `numeric` literal then you would _not_ see an error. Rather, you would get implicit but undesirable behavior: first a genuine `text` value would be generated internally and then this, in turn, would be typecasted to the `numeric` value.)
+(If you did enquote the bare text in a `numeric` literal, then you would _not_ see an error. Rather, you would get implicit but undesirable behavior: first, a genuine `text` value would be generated internally, and then, this, in turn, would be typecasted to the `numeric` value.)
 
 We've already seen, informally, some examples of array literals. Here is the rule:
 
