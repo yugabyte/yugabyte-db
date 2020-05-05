@@ -142,7 +142,7 @@ boolean:              true
 2-d array             {{1,2},{3,4}}
 array of "row" type:  {"(42.1763,\"dog house\",\"2020-05-03 22:25:42.932771\",t)","(19.8651,\"cat flap\",\"2020-05-04 22:25:42.932771\",f)"}
 ```
-The remaining sections in the present _"[Creating an array value using a literal](../../literals/)"_ enclosing section explain the syntax of the last three `text` values.
+The remaining sections in the present [Creating an array value using a literal](../../literals/) section explain the syntax of the last three `text` values.
 
 ## boolean values show special text forms in _ysqlsh_
 
