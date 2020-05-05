@@ -15,7 +15,7 @@ showAsideToc: false
 input value:       anyelement, int[] [, int[]]
 return value:      anyarray
 ```
-**Purpose:** return a new "blank canvas" array of the specified shape with all cells set to the same specified value.
+**Purpose:** Return a new "blank canvas" array of the specified shape with all cells set to the same specified value.
 
 - The first parameter determines the value to which to set every cell. It thereby determines the new array's data type. It can be a value of a primitive data type; or, for example, a _"record"_ type value. It can also be written `null::some_type` if this suits your purpose. You would presumably set a `not null` value if, for example, you wanted to insert the array into a table column on which you have created a constraint based on a PL/pgSQL function that explicitly tests the array's geometric properties and the `not null` status of each of its values Try this:
 ```postgresql
@@ -121,4 +121,3 @@ It reports this error, as expected:
 ```
 2202E: array subscript out of range
 ```
-
