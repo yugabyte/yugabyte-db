@@ -235,7 +235,7 @@ begin
 end;
 $body$;
 ```
-_Array of "record" type values_. The definition of *"rt"* used here is the same as the example above used used. Don't create again if it already exists.
+_Array of "record" type values_. The definition of *"rt"* used here is the same as the example above used. Don't create again if it already exists.
 ```postgresql
 create type rt as (f1 int, f2 text);
 
