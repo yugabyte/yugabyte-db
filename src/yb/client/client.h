@@ -530,6 +530,7 @@ class YBClient {
   Result<bool> TableExists(const YBTableName& table_name);
 
   Result<bool> IsLoadBalanced(uint32_t num_servers);
+  Result<bool> IsLoadBalancerIdle();
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.

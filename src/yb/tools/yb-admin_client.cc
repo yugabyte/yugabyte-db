@@ -736,18 +736,10 @@ Status ClusterAdminClient::GetLeaderBlacklistCompletion() {
 
 Status ClusterAdminClient::GetIsLoadBalancerIdle() {
   CHECK(initted_);
-  const auto result = InvokeRpc(
-      &MasterServiceProxy::IsLoadBalancerIdle, master_proxy_.get(),
-      master::IsLoadBalancerIdleRequestPB());
 
-  if (result.ok() ||
-      master::MasterError(result.status()) ==
-        master::MasterErrorPB::LOAD_BALANCER_RECENTLY_ACTIVE) {
-    cout << "Idle = " << result.ok() << endl;
-    return Status::OK();
-  }
-
-  return result.status();
+  const bool is_idle = VERIFY_RESULT(yb_client_->IsLoadBalancerIdle());
+  cout << "Idle = " << is_idle << endl;
+  return Status::OK();
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
