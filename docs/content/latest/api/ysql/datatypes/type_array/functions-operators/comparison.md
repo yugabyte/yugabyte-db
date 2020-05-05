@@ -34,7 +34,7 @@ These are the unique characteristics of an array with respect to the algorithm t
 - the number of dimensions;
 - the lower bound(s) on each dimension.
 
-The other geometric properties (the length(s) along each dimension and the upper bound(s) on each dimension) can be derived from the properties that the bullets list.
+The other geometric properties (the length(s) along each dimension and the upper bounds on each dimension) can be derived from the properties that the bullets list.
 
 There is, of course, a well-defined priority among the comparisons. Briefly, value comparison is done first. Then, but only if no difference is detected, are the geometric properties compared.
 
