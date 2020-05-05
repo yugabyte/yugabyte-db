@@ -168,7 +168,7 @@ prepare stmt(rt[]) as insert into t(arr) values($1);
 -- It's essential to typecast the individual "rt" values.
 execute stmt(array[(104, chr(104))::rt, (105, chr(105))::rt, (106, chr(106))::rt]);
 ```
-This execution of the prepared statement, using an array literal as the actual argument, is semantically equivalent;
+This execution of the prepared statement, using an array literal as the actual argument, is semantically equivalent:
 ```postgresql
 execute stmt('{"(104,h)","(105,i)","(106,j)"}');
 ```
