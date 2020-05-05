@@ -10,7 +10,7 @@ menu:
 isTocNested: false
 showAsideToc: false
 ---
-**Purpose:** return a one-dimensional `text[]` array by splitting the input `text` value into subvalues using the specified `text` value as the delimiter. Optionally allows a specified `text` value to be interpreted as `null`.
+**Purpose:** return a one-dimensional `text[]` array by splitting the input `text` value into subvalues using the specified `text` value as the delimiter. Optionally, allows a specified `text` value to be interpreted as `null`.
 
 **Signature:** 
 
