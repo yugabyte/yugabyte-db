@@ -249,7 +249,7 @@ begin
   end;
 
   ------------------------------------------------------------------------------
-  -- Demonstration of inequaliy when the geom. properties of
+  -- Demonstration of inequality when the geometric properties of
   -- the two arrays are identical.
   -- Here, the first pairwise difference is NOT NULL versus NULL.
   declare
