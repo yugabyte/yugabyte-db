@@ -46,7 +46,7 @@ The `array[]` constructor, and the three functions, create an array from scratch
 
 ## Operators for comparing two arrays
 
-These operators require that the [LHS and RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) arrays have the same datatype.
+These operators require that the [LHS and RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) arrays have the same data type.
 
 | Operator | 1-d only? | Description |
 | ---- | ---- | ---- |
