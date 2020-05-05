@@ -10,7 +10,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-These functions require that the to-be-searched array is one-dimensional. They return the index value(s) of the specified to-be-searched-for value in the specified to-be-searched array.
+These functions require that the to-be-searched array is one-dimensional. They return the index values of the specified to-be-searched-for value in the specified to-be-searched array.
 
 Create `view v` now. The examples below use it.
 ```postgresql
