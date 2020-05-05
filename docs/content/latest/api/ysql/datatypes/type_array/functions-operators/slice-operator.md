@@ -11,7 +11,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-**Purpose:** return a new array whose length is defined by specifying the slice's lower and upper bound along each dimension.
+**Purpose:** Return a new array whose length is defined by specifying the slice's lower and upper bound along each dimension.
 
 **Signature:**
 ```
