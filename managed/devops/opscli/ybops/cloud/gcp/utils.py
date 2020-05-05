@@ -201,30 +201,31 @@ class NetworkManager():
         }
 
     def get_network_data(self, network_name):
+        # If user has specified network data through per_region_meta, then do not validate any
+        # data through GCP API and simply return the relevant fields.
+        output_region_to_subnet_map = {}
+        for region in self.per_region_meta.keys():
+            output_region_to_subnet_map[region] = self.per_region_meta.get(
+                region, {}).get("subnetId")
+
+        if output_region_to_subnet_map:
+            return self.network_info_as_json(network_name, output_region_to_subnet_map)
+
         networks = self.get_networks(network_name)
         if len(networks) == 0:
             raise YBOpsRuntimeError("Invalid target VPC: {}".format(network_name))
         network = networks[0]
-        output_region_to_subnet_map = {}
+
         subnet_map = self.get_region_subnet_map(network.get("selfLink"))
         for region_name, scope in subnet_map.iteritems():
             region = region_name.split("/")[1]
             subnets = [s["name"] for s in scope.get("subnetworks", [])]
-            if self.per_region_meta:
-                desired_region_metadata = self.per_region_meta.get(region)
-                if not desired_region_metadata or not desired_region_metadata.get("subnetId"):
-                    continue
-                desired_subnet = desired_region_metadata.get("subnetId")
-                if desired_subnet not in subnets:
-                    raise YBOpsRuntimeError(
-                        "Invalid target subnet: {}".format(desired_subnet))
-                subnets = [desired_subnet]
             if len(subnets) > 0:
                 output_region_to_subnet_map[region] = subnets
         return self.network_info_as_json(network_name, output_region_to_subnet_map)
 
     def bootstrap(self):
-        # If given a target VPC, then query and validate its data, don't create anything...
+        # If given a target VPC, then don't create anything.
         if self.dest_vpc_id:
             return self.get_network_data(self.dest_vpc_id)
         # If we were not given a target VPC, then we'll try to provision our custom network.
@@ -320,6 +321,10 @@ class NetworkManager():
             project=self.project, network=network_name).execute()
 
     def get_subnetworks(self, region, name=None):
+        saved_subnet = self.per_region_meta.get(region, {}).get("subnetId")
+        if saved_subnet:
+            return saved_subnet
+
         network_name = YB_NETWORK_NAME
         if self.dest_vpc_id is not None:
             network_name = self.dest_vpc_id
@@ -518,7 +523,7 @@ class GoogleCloudAdmin():
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
 
-    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None):
+    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta={}):
         return NetworkManager(
             self.project, self.compute, self.metadata, dest_vpc_id, host_vpc_id, per_region_meta)
 
@@ -602,14 +607,8 @@ class GoogleCloudAdmin():
         """
 
     def get_zones(self, region, max_results=LIST_MAX_RESULTS):
-        filter = "(status eq UP)(region eq {})".format(REGIONS_RESOURCE_URL_FORMAT.format(
-            self.project, region))
-        fields = "items(name)"
-        zone_items = self.compute.zones().list(project=self.project,
-                                               filter=filter,
-                                               fields=fields,
-                                               maxResults=max_results).execute()
-        return [item["name"] for item in zone_items["items"]]
+        return ["{}-{}".format(region, zone)
+                for zone in self.metadata['regions'].get(region, {}).get('zones', [])]
 
     def get_instance_types_by_zone(self, zone):
         fields = "items(name,description,guestCpus,memoryMb,isSharedCpu)"
