@@ -44,7 +44,7 @@ This is the result:
 ```
 Whenever an array value is shown in `ysqlsh`, it is implicitly `::text` typecasted. And this `text` value can be used immediately, simply by enquoting it and typecasting it to the appropriate array data type, to recreate the starting value. We refer to this form of the literal, characterized as you can see here by its complete lack of whitespace except within `text` scalar values (and within date-time scalar values), as the _canonical form_ of the literal. This term is defined formally in [Defining the canonical form of a literal](../literals/text-typecasting-and-literals/#defining-the-canonical-form-of-a-literal).
 
-See the whole of the section on array literals, [here](../literals/) to learn why, for example, we see four consecutive backslashes.
+To learn why you see four consecutive backslashes, see [Array literals](../literals/).
 
 Users who are familiar with the rules that are described in that section often find it expedient, for example when prototyping code that builds an array literal, simply to create an example value first, _ad hoc_, using the `array[]` constructor, like the code above does, to see an example of the syntax that their code must create programmatically.
 
