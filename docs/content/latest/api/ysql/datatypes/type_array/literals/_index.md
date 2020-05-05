@@ -75,7 +75,7 @@ All whitespace (except, of course, within the text values) has been removed. The
 
 The following subsections present the rules carefully and, when the rules allow some freedom, give recommendations.
 
-The [first subsection](./text-typecasting-and-literals/) establishes the important notions that allow you to distinguish between a _literal_ and the _text of the literal_. It's the text of an array literal that, by following specific grammar rules for this class of literal, actually defines the intended value. The literal, as a whole, enquotes this bare text and typecasts it to the desired target array data type.
+First, the [Text typecasting and literals](./text-typecasting-and-literals/) section establishes the important notions that allow you to distinguish between a _literal_ and the _text of the literal_. It's the text of an array literal that, by following specific grammar rules for this class of literal, actually defines the intended value. The literal, as a whole, enquotes this bare text and typecasts it to the desired target array data type.
 
 The [second subsection](./array-of-primitive-values/) gives the rules for array literals whose values are scalars (for example, are of primitive data types).
 
