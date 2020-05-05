@@ -81,7 +81,7 @@ The [second subsection](./array-of-primitive-values/) gives the rules for array 
 
 The [third subsection](./row/) gives the rules for the literal for a value of a _"row"_ type. These rules are essential to the understanding of the next section.
 
-The [fourth subsection](./array-of-rows/) gives the rules for array literals whose values are composite (i.e. a _"row"_ type).
+The [fourth subsection](./array-of-rows/) gives the rules for array literals whose values are composite (that is, a _"row"_ type).
 
 The rules that these four subsections present are covered in these two sections of the PostgreSQL documentation:
 
