@@ -118,10 +118,6 @@ public class CustomerControllerTest extends WithApplication {
     params.put("name", "Test Customer");
     params.put("password", "new-password");
     params.put("confirmPassword", "new-password");
-    ObjectNode alertingData = Json.newObject();
-    alertingData.put("sendAlertsToYb", true);
-    alertingData.put("reportOnlyErrors", false);
-    params.put("alertingData", alertingData);
     params.put("callhomeLevel", "LOW");
     Result result = route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
@@ -131,6 +127,30 @@ public class CustomerControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
     assertThat(json.get("name").asText(), is(equalTo("Test Customer")));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerPUTWithAlertingData() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "admin");
+    params.put("name", "Test Customer");
+    ObjectNode alertingData = Json.newObject();
+    String alertEmail = "alerts@yugabyte.com";
+    alertingData.put("alertingEmail", alertEmail);
+    alertingData.put("sendAlertsToYb", true);
+    alertingData.put("reportOnlyErrors", false);
+    params.put("alertingData", alertingData);
+    params.put("callhomeLevel", "LOW");
+    Result result = route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+    CustomerConfig config = CustomerConfig.getAlertingData(customer.uuid);
+    assertEquals(alertEmail, config.data.get("alertingEmail").asText());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
     assertAuditEntry(0, customer.uuid);
   }
 
