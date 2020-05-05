@@ -224,7 +224,7 @@ Here is the general rule.
 - This rule is applied recursively, for the literal for a composite value, but with different actual rules at different levels of nesting. For example, the literal for an array value as a whole must be typecasted. But, because the data type of every value in the array is already determined, the bare text that specifies these values is _not_ typecasted.
 - The `::text` typecast of any value can always be used as the bare text of the literal that will recreate that value.
 
-A simple way to see examples of the bare text that specifies an array value, when used as a component in the literal, is to create the value using the constructor and then to inspect its `::text` typecast. But, of course, the safe way to create the text of a literal for an intended value is to understand the syntax and semantics that govern its composition.
+A simple way to see examples of the bare text that specifies an array value, when used as a component in the literal, is to create the value using the constructor and then to inspect its `::text` typecast. But the safe way to create the text of a literal for an intended value is to understand the syntax and semantics that govern its composition.
 
 When we need to make this distinction, throughout the whole of this major _"[Arrays](../../../type_array/)"_ section, we shall distinguish between:
 
