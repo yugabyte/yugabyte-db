@@ -69,7 +69,7 @@ These operators require that the [LHS and RHS](https://en.wikipedia.org/wiki/Sid
 
 ## Functions and operators for concatenating an array with an array or an element
 
-These functions require that the two arrays have the same datatype and compatible dimensionality.
+These functions require that the two arrays have the same data type and compatible dimensionality.
 
 | Function or operator | 1-d only? | Description |
 | ---- | ---- | ---- |
