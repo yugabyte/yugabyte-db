@@ -77,7 +77,7 @@ The following subsections present the rules carefully and, when the rules allow 
 
 First, the [Text typecasting and literals](./text-typecasting-and-literals/) section establishes the important notions that allow you to distinguish between a _literal_ and the _text of the literal_. It's the text of an array literal that, by following specific grammar rules for this class of literal, actually defines the intended value. The literal, as a whole, enquotes this bare text and typecasts it to the desired target array data type.
 
-The [second subsection](./array-of-primitive-values/) gives the rules for array literals whose values are scalars (for example, are of primitive data types).
+Second, the [Array of primitive values](./array-of-primitive-values/) section gives the rules for array literals whose values are scalars (for example, are of primitive data types).
 
 The [third subsection](./row/) gives the rules for the literal for a value of a _"row"_ type. These rules are essential to the understanding of the next section.
 
