@@ -188,7 +188,7 @@ This is the result:
 
 ## Equality and inequality semantics
 
-This section demonstrates each of the rules that the _"Comparison operators overview"_ section, [above](./#comparison-operators-overview), stated.
+This section demonstrates each of the rules that the [Comparison operators overview](./#comparison-operators-overview) section above stated.
 
 ```postgresql
 -- Any two arrays can be compared without error if they have the same datatype.
