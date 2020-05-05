@@ -210,7 +210,7 @@ You see already, then, that the rules for composing a `numeric` literal and a `t
 
 (If you did enquote the bare text in a `numeric` literal, then you would _not_ see an error. Rather, you would get implicit but undesirable behavior: first, a genuine `text` value would be generated internally, and then, this, in turn, would be typecasted to the `numeric` value.)
 
-We've already seen, informally, some examples of array literals. Here is the rule:
+You've already seen, informally, some examples of array literals. Here is the rule:
 
 - You compose the bare text that specifies the intended value by writing an utterance in a dedicated grammar that starts with the left curly brace and ends with the right curly brace. (This grammar is the focus of the remaining sections in the present enclosing section.) Then you enquote this bare text (however you choose to do the quoting) and then you typecast it to the desired target array data type.
 
