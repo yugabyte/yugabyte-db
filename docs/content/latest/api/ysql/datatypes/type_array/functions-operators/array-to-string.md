@@ -11,7 +11,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-**Purpose:** return a `text` value computed by representing each array value, traversing these in row-major order, by its `::text` typecast, using the supplied delimiter between each such representation. (The result therefore loses all information about the arrays geometric properties.) Optionally represent `null` by the supplied `text` value.
+**Purpose:** Return a `text` value computed by representing each array value, traversing these in row-major order, by its `::text` typecast, using the supplied delimiter between each such representation. (The result, therefore, loses all information about the arrays geometric properties.) Optionally, represent `null` by the supplied `text` value.
 
 **Signature:**
 ```
@@ -76,4 +76,3 @@ It shows this:
 ```
 
 The third array value is now represented by `?`. But the fact that `f2 is null` within the second array value is _not_ represented by `?`. In other words, this technique for visualising `null` is applied only at the granularity of top-level array values and not within such values when they are composite.
-
