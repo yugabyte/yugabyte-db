@@ -114,6 +114,21 @@ set_metric_names(void)
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
 }
 
+/*
+ * Function to calculate milliseconds elapsed since start_time.
+ */
+static long
+getElapsedMs(TimestampTz start_time) 
+{
+  long secs;
+  int microsecs;
+
+  TimestampDifference(start_time, GetCurrentTimestamp(), &secs, &microsecs);
+
+  long millisecs = (secs * 1000) + (microsecs / 1000);
+  return millisecs;
+}
+
 void
 pullRpczEntries(void)
 {
@@ -167,16 +182,19 @@ pullRpczEntries(void)
 
       rpcz[i].process_start_timestamp = (char *) palloc(MAXDATELEN + 1);
       strcpy(rpcz[i].process_start_timestamp, timestamptz_to_str(beentry->st_proc_start_timestamp));
+      rpcz[i].process_running_for_ms = getElapsedMs(beentry->st_proc_start_timestamp);
 
       if (beentry->st_xact_start_timestamp)
       {
         rpcz[i].transaction_start_timestamp = (char *) palloc(MAXDATELEN + 1);
         strcpy(rpcz[i].transaction_start_timestamp,
                timestamptz_to_str(beentry->st_xact_start_timestamp));
+        rpcz[i].transaction_running_for_ms = getElapsedMs(beentry->st_xact_start_timestamp);
       }
       else
       {
         rpcz[i].transaction_start_timestamp = NULL;
+        rpcz[i].transaction_running_for_ms = 0;
       }
 
       if (beentry->st_activity_start_timestamp)
@@ -184,10 +202,12 @@ pullRpczEntries(void)
         rpcz[i].query_start_timestamp = (char *) palloc(MAXDATELEN + 1);
         strcpy(rpcz[i].query_start_timestamp,
                timestamptz_to_str(beentry->st_activity_start_timestamp));
+        rpcz[i].query_running_for_ms = getElapsedMs(beentry->st_activity_start_timestamp);
       }
       else
       {
         rpcz[i].query_start_timestamp = NULL;
+        rpcz[i].query_running_for_ms = 0;
       }
 
       rpcz[i].backend_type = (char *) palloc(40);
