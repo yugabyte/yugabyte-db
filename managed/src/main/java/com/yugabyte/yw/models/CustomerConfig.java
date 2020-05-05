@@ -167,6 +167,14 @@ public class CustomerConfig extends Model {
       .findUnique();
   }
 
+  public static CustomerConfig getAlertingData(UUID customerUUID) {
+    return CustomerConfig.find.where()
+            .eq("customer_uuid", customerUUID)
+            .eq("type", ConfigType.ALERTS.toString())
+            .eq("name", ALERTS_PREFERENCES)
+            .findUnique();
+  }
+
   public static CollectionLevel getOrCreateCallhomeLevel(UUID customerUUID){
     CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customerUUID);
     if (callhomeConfig == null) CustomerConfig.createCallHomeConfig(customerUUID);
