@@ -8,8 +8,8 @@ menu:
     identifier: array-of-rows
     parent: array-literals
     weight: 40
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 We now combine the understanding of how to write the literal for an array of primitive values with that of how to write the literal for a _"row"_ type value.
@@ -238,4 +238,3 @@ Notice that the algorithm inserts a newline after the opening curly brace, betwe
   # and add the closing curly brace.
   wip_literal = wip_literal[:-2] + nl + rgt_crly_brace
 ```
-
