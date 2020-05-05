@@ -58,7 +58,7 @@ This is the result:
 
 ## array_positions()
 
-**Purpose:** return the indexes, in the supplied array, of all occurrences the specified value.
+**Purpose:** Return the indexes, in the supplied array, of all occurrences of the specified value.
 
 **Signature:**
 
