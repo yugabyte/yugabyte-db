@@ -60,7 +60,7 @@ and then this:
 ```
 The example suffers from the problem that [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296) tracks. (This same issue also affects the `array_remove()` and the `array_replace()` functions.) If you run this example as presented, then the `UPDATE` statement causes a timeout error of a severity that in order to continue, you must restart the crashed tserver.
 
-The documentation, here, will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, simply by creating `table t` without a primary key constraint. But this violates proper practice. Here is a viable workaround. Simply use this `update` statement instead of the one shown above:
+This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, simply by creating `table t` without a primary key constraint. But this violates proper practice. Here is a viable workaround. Simply use this `UPDATE` statement instead of the one shown above:
 ```postgresql
 with v as (
   select '{1, 2}'::int[]||arr||6::int as new_arr from t where k = 1)
