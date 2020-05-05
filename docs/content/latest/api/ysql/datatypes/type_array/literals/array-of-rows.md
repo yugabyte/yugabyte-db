@@ -143,7 +143,7 @@ The `\get` technique that you used in the earlier sections is not viable here be
 update t2 set v1_text_typecast =
 (select v1::text from t2 where k = 1);
 ```
-Finally, we use this array literal to recreate the original value and check that it's identical to what we started with, thus:
+Finally, use this array literal to recreate the original value and check that it's identical to what you started with, thus:
 ```postgresql
 update t2 set v2 = 
 (select v1_text_typecast from t2 where k = 1)::rt[];
