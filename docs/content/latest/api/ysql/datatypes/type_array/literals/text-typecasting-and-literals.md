@@ -235,7 +235,7 @@ When we need to make this distinction, throughout the whole of this major _"[Arr
 
 ## Defining the "canonical form of a literal"
 
-The term _"canonical form"_ applies specifically to the _text of a literal_ rather than to the _literal as a whole_. But when the text of a literal is in canonical form, we say that the literal as a whole, too, is in canonical form.
+The term _"canonical form"_ applies specifically to the _text of a literal_ rather than to the _literal as a whole_. But when the text of a literal is in canonical form, the literal as a whole, too, is in canonical form.
 
 The canonical form of the text of a literal that produces a specific value, of any data type, is quite simply the `::text` typecast of that value.
 
