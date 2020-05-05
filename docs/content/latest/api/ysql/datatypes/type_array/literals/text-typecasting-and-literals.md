@@ -33,7 +33,7 @@ $body$;
 
 It demonstrates a universal rule that YSQL inherits from PostgreSQL:
 
-- Any value of any data type, primitive or composite, can be `::text` typecasted. Similarly there always exists a `text` value that, when properly spelled, can be typecasted to a value of any desired data type, primitive or composite.
+- Any value of any data type, primitive or composite, can be `::text` typecasted. Similarly, there always exists a `text` value that, when properly spelled, can be typecasted to a value of any desired data type, primitive or composite.
 - If you `::text` typecast a value of any data type and then typecast that `text` value to the original value's data type, then the value that you get is identical to the original value.
 
 The following `DO` block applies the pattern using a representative range of both primitive and composite datatypes. (The data type `text`, as the degenerate case, is not included.) It also displays the value of the `::text` typecast for each data type.
