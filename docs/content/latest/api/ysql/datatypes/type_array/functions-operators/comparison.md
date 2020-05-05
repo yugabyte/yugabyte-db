@@ -67,7 +67,7 @@ These three operators are insensitive to the geometric properties of the two to-
 - The two containment operators test if the distinct set of values in one array contains, or is contained by, the distinct set of values in the other array.
 - The overlap operator tests if the distinct set of values in one array and the distinct set of values in the other array have at least one value in common.
 
-The _"Containment and overlap operators semantics"_ section, [below](./#containment-and-overlap-operators-semantics) demonstrates each of the rules that this section has stated.
+The [Containment and overlap operators semantics](./#containment-and-overlap-operators-semantics) section below demonstrates each of the rules that this section has stated.
 
 ## Examples for each operator
 
