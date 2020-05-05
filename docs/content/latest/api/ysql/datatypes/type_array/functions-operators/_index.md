@@ -12,7 +12,7 @@ menu:
 isTocNested: false
 showAsideToc: false
 ---
-Most of the functions and operators listed here can use an array of any dimensionality. But, among these, four functions accept only, or produce only, a one-dimensional array. This property is called out by the second column _"1-d only?"_ in the tables that follow. The restricted status is indicated by _"1-d"_ in that function's row. When the field is blank, there is no dimensionality restriction.
+Most of the functions and operators listed here can use an array of any dimensionality, but four of the functions accept, or produce, only a one-dimensional array. This property is called out by the second column _"1-d only?"_ in the tables that follow. The restricted status is indicated by _"1-d"_ in that function's row. When the field is blank, there is no dimensionality restriction.
 
 ## Functions for creating arrays from scratch 
 
