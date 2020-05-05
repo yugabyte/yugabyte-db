@@ -114,7 +114,7 @@ This is the result:
  (6,"\\","2006-01-20 12:10:05",)
 ```
 
-The `int` field and the `timestamp` field are unremarkable given only that we understand that the representation of the `timestamp` values, in order to meet the canonical form requirement, must be double-quoted. The `boolean` fields are unremarkable, too, as long as we remember that `null` is represented by leaving no space between the delimiters that surround that field. This leave just the `text` fields for consideration. here are the field representations themselves, without the clutter of the delimiters:
+The `int` field and the `timestamp` field are unremarkable given only that we understand that the representation of the `timestamp` values, in order to meet the canonical form requirement, must be double-quoted. The `boolean` fields are unremarkable, too, as long as we remember that `null` is represented by leaving no space between the delimiters that surround that field. This leaves just the `text` fields for consideration. Here are the field representations themselves, without the clutter of the delimiters:
 ```
      " "     ","     "("     ")"     """"     "\\"
 ```
