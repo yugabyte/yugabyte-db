@@ -164,7 +164,7 @@ Above you saw that even when you explicitly `::text` typecast a composite value,
 
 ## The relationship between the text typecast of a value and the literal that creates that value
 
-Try this in _ysqlsh_:
+Try this in `ysqlsh`:
 ```postgresql
 select
   42.932771::numeric          as n,
