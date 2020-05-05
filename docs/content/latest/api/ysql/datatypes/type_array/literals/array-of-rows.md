@@ -35,7 +35,7 @@ The sufficient set of rules can be stated tersely:
 - Therefore, to avoid wrongly escaping the double quotes that will surround the parentheses,
 
   -  *first*, do the inner escaping;
-  - and only then surround the complete representation for the _"row"_ type value with unescaped double quotes.
+  - and only then, surround the complete representation for the _"row"_ type value with unescaped double quotes.
 
 - Finish off with the closing right curly brace.
 
