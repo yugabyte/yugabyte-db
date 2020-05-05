@@ -14,7 +14,7 @@ showAsideToc: true
 
 We now combine the understanding of how to write the literal for an array of primitive values with that of how to write the literal for a _"row"_ type value.
 
-This section follows the same approach used in the section that explained the rules for the literal for an array of primitive values [here](../array-of-primitive-values/) and the section that explained the rules for the literal for a _"row"_ type value [here](../row/): first, it states the rules, and then it illustrates these with examples.
+This section follows the same approach used in the section that explained the rules for the literal for an array of primitive values [here](../array-of-primitive-values/) and the section that explained the rules for [the literal for a _"row"_ type value](../row/): first, it states the rules, and then it illustrates these with examples.
 
 ## Statement of the rules
 
