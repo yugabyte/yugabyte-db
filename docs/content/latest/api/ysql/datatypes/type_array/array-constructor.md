@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The `array[]` value constructor is a special variadic function. Uniquely among all the functions described in the present major _"[Array data types and functionality](../../type_array/)"_ section, it uses square brackets to surround its list of actual arguments.
+The `array[]` value constructor is a special variadic function. Uniquely among all the functions described in this [Array data types and functionality](../../type_array/) section, it uses square brackets (`[]`) to surround its list of actual arguments.
 
 ## Purpose and signature
 
