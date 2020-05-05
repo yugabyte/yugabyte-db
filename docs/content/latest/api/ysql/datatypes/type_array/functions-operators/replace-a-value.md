@@ -314,7 +314,7 @@ begin
     arr[2] is null,
   'unexpected';
 
-  -- Change the individual, addreessable, values one by one.
+  -- Change the individual, addressable, values one by one.
   for j in array_lower(arr, 2)..array_upper(arr, 2) loop
     arr[2][j] := new_val[j];
   end loop; 
