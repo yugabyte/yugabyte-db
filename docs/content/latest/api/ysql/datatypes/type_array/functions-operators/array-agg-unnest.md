@@ -499,7 +499,7 @@ master_pk, seq;
 ```
 &#160;&#160;&#160;&#160;The result is identical to the result shown for querying _"original_data"_ above.
 
-**Note:** The update statement, using as it does a subquery from a view defined in a `with` clause as the actual argument for `array_replace()`, seems to be unnecessarily complex. You might expect to use this:
+**Note:** The `UPDATE` statement, using as it does a subquery from a view defined in a `WITH` clause as the actual argument for `array_replace()`, seems to be unnecessarily complex. You might expect to use this:
 
 ```
 update masters_with_details
