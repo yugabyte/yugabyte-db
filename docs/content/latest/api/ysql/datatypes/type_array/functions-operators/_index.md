@@ -67,7 +67,7 @@ These operators require that the [LHS and RHS](https://en.wikipedia.org/wiki/Sid
 | ---- | ---- | ---- |
 |[[lb1:ub1]...[lbN:ubN]](./slice-operator/) | | Returns a new array whose length is defined by specifying the slice's lower and upper bound along each dimension. These specified slicing bounds must not exceed the source array's bounds. The new array has the same dimensionality as the source array and its lower bound is `1` on each axis. |
 
-## Functions and operators for concatenating an array with an array or with an element
+## Functions and operators for concatenating an array with an array or an element
 
 These functions require that the two arrays have the same datatype and compatible dimensionality.
 
