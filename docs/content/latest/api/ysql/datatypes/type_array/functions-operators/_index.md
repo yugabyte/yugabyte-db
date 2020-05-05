@@ -1,8 +1,8 @@
 ---
 title: SQL functions and operators for arrays
 linkTitle: Functions and operators
-headerTitle: Builtin SQL functions and operators for arrays
-description: Builtin SQL functions and operators for arrays
+headerTitle: Built-in SQL functions and operators for arrays
+description: Built-in SQL functions and operators for arrays
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

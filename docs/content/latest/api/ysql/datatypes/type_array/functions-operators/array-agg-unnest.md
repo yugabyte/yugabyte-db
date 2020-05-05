@@ -39,7 +39,7 @@ It produces this result:
        2 | cat
        3 | ant
 ```
-Notice that YSQL has named the _select list_ items `column1` and `column2`. The result is a so-called `setof`. It means a set of rows, just as is produced by a `select` statement. (You'll see this word if you describe the `generate_series()` builtin table function with the `\df` metacommand.) To use the rows that the `values` statement produces as the input for `array_agg()`, we need to use a named `type`, thus:
+Notice that YSQL has named the _select list_ items `column1` and `column2`. The result is a so-called `setof`. It means a set of rows, just as is produced by a `select` statement. (You'll see this word if you describe the `generate_series()` built-in table function with the `\df` metacommand.) To use the rows that the `values` statement produces as the input for `array_agg()`, we need to use a named `type`, thus:
 ```postgresql
 create type rt as (k int, v text);
 

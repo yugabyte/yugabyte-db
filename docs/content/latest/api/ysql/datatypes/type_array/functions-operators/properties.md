@@ -202,7 +202,7 @@ The procedure has some particular requirements:
 
 These requirements might seem to be arbitrary. They are implemented so that the procedure can deliver two bonus benefits. It demonstrates how to traverse array values in row-major order using the values returned by the functions that this section describes. In this way, it shows you what the term "row-major order" means. And it compares the values, pairwise, for equality. This comparison rule is the basis of the semantics of the comparison operations described [here](../comparison).
 
-**Note:** there are no builtin functions for computing, for example, the product of two matrixes or the product of a vector and a matrix. (A vector is a one-dimensional array, and a matrix is a two-dimensional array.) But, as long as you know how to traverse the values in a matrix in row-major order, it's easy to implement the missing vector and matrix multiplication functionality for yourself.
+**Note:** there are no built-in functions for computing, for example, the product of two matrixes or the product of a vector and a matrix. (A vector is a one-dimensional array, and a matrix is a two-dimensional array.) But, as long as you know how to traverse the values in a matrix in row-major order, it's easy to implement the missing vector and matrix multiplication functionality for yourself.
 
 ```postgresql
 create procedure assert_semantics_and_traverse_values(

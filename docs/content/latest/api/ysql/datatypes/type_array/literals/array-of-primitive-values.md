@@ -132,7 +132,7 @@ runs without error. Now try this:
 ```postgresql
 select to_number('12,512,454.872', '999G999G999D999999')::text;
 ```
-This, too, runs without error because it uses the `to_number()` builtin function. The result here, too, is the canonical form, `12512454.872`—with no commas. Now try this:
+This, too, runs without error because it uses the `to_number()` built-in function. The result here, too, is the canonical form, `12512454.872`—with no commas. Now try this:
 
 ```postgresql
 select '12,512,454.872'::numeric;

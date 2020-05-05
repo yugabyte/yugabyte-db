@@ -27,9 +27,9 @@ return value:      anyarray
 
 These thee ordinary functions also create an array value from scratch:
 
-- The _[array_fill()](../functions-operators/array-fill/)_ builtin SQL function creates a "blank canvas" array of the specified shape with all values set the same to what you want.
-- The _[array_agg()](../functions-operators/array-agg-unnest/#array-agg)_ builtin SQL function creates an array (of, in general, an implied _"row"_ type) from a SQL subquery.
-- The _"[text_to_array()](../functions-operators/string-to-array/)"_ builtin SQL function creates a `text[]`array from a single `text` value that uses a a specifiable delimiter to beak it into individual values.
+- The _[array_fill()](../functions-operators/array-fill/)_ built-in SQL function creates a "blank canvas" array of the specified shape with all values set the same to what you want.
+- The _[array_agg()](../functions-operators/array-agg-unnest/#array-agg)_ built-in SQL function creates an array (of, in general, an implied _"row"_ type) from a SQL subquery.
+- The _"[text_to_array()](../functions-operators/string-to-array/)"_ built-in SQL function creates a `text[]`array from a single `text` value that uses a a specifiable delimiter to beak it into individual values.
 
 **Example:**
 ```postgresql

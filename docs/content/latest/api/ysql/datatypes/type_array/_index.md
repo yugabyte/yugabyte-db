@@ -2,7 +2,7 @@
 title: YSQL array
 linkTitle: Array
 headerTitle: Array data types and functionality
-description: YSQL lets you construct an array data type, of any dimensionality, of any builtin or user-defined data type. You can use this constructed data type for a table column and for a variable or formal parameter in a PL/pgSQL procedure.
+description: YSQL lets you construct an array data type, of any dimensionality, of any built-in or user-defined data type. You can use this constructed data type for a table column and for a variable or formal parameter in a PL/pgSQL procedure.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -49,7 +49,7 @@ new_arr := source_arr[3:4][7:9];
 ```
 **Note:** A one-dimensional array is a special case because, uniquely among N-dimensional shapes, it is tautologically rectilinear. You can increase the length of such an array implicitly, simply by setting a value in a cell that has a lower index value than the present lower bound or a higher index value than the present upper bound. Once you've done this, there is no way to reduce the length because there is no explicit operation for this and no "unset" operation for a specified cell. You can, however, create a slice so that the new array has the source array's original size.
 
-The following properties determine the shape of an array. Each can be observed using the listed dedicated builtin SQL function. The first formal parameter (with data type `anyarray`) is the array of interest . When appropriate, there's a second formal parameter (with data type `int`) that specifies the dimension of interest. The return is an `int` value, except in one case where it's a `text` value, as detailed below.
+The following properties determine the shape of an array. Each can be observed using the listed dedicated built-in SQL function. The first formal parameter (with data type `anyarray`) is the array of interest . When appropriate, there's a second formal parameter (with data type `int`) that specifies the dimension of interest. The return is an `int` value, except in one case where it's a `text` value, as detailed below.
 
 - _[array_ndims()](functions-operators/properties/#array-ndims)_ — returns the dimensionality of the specified array.
 
@@ -86,7 +86,7 @@ create table t2(
 ```
 Notice that it appears, optionally, to let you specify how many values each dimension holds. (The Standard syntax allows the specification of the length of just one dimension.) However, these apparent declarations of intent, too, are simply ignored. Moreover, even the _dimensionality_ is ignored. The value, in a particular row, in a table column with an array data type (or its cousin, a variable in a PL/pgSQL program) can hold an array value of _any_ dimensionality. This is demonstrated by example in the section _"[The literal for an array of primitive values](./literals/array-of-primitive-values/)"_. This means that declaring an array using the reserved word `array`, which apparently lets you define only a one-dimensional array, and declaring an array using `[]`, which apparently lets you define array of any dimensionality, where one, some, or all of the dimensions are nominally constrained, are entirely equivalent.
 
-Notice that different rows in the same table column can hold array values of different dimensionality. This is explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value, as a single integer, along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the builtin array functions are supported only for one-dimensional arrays.
+Notice that different rows in the same table column can hold array values of different dimensionality. This is explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value, as a single integer, along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the built-in array functions are supported only for one-dimensional arrays.
 
 Yugabyte recommends that, for uniformity, you choose to declare arrays only with this syntax:
 
@@ -97,7 +97,7 @@ create table t2(
   two_dimensional_array int[]);
 ```
 
-The `array_ndims()` builtin function lets you define a table constraint to insist that the array dimensionality is fixed for every row in a table column with such a data type. The `array_length()` builtin function lets you insist that each dimension of a multidimensional array has a specified length for every row, or that its length doesn't exceed a specified limit for any row.
+The `array_ndims()` built-in function lets you define a table constraint to insist that the array dimensionality is fixed for every row in a table column with such a data type. The `array_length()` built-in function lets you insist that each dimension of a multidimensional array has a specified length for every row, or that its length doesn't exceed a specified limit for any row.
 
 ## Atomically null vs having all values null
 
@@ -212,7 +212,7 @@ It shows this:
            2 |            2 |            3 | [1:2][1:3]
 ```
 
-The `array_ndims()` builtin function reports the dimensionality of the array; `array_length()` reports the length of the specified dimension (i.e. the number of values that this dimension has); and `array_dims()` presents the same information, as a single `text` value, as using `array_length()` in turn for each dimension does. Notice that `array_length()` returns a _single_ `int` value for the specified dimension. Its design rests upon a rule, exemplified by saying that a two-dimensional array must be a rectangle (it cannot have a ragged edge). In the same way, a three-dimensional array must be a cuboid (it cannot have an uneven surface). This notoion, though its harder to visualise, continues to apply as the number of dimensions increases.
+The `array_ndims()` built-in function reports the dimensionality of the array; `array_length()` reports the length of the specified dimension (i.e. the number of values that this dimension has); and `array_dims()` presents the same information, as a single `text` value, as using `array_length()` in turn for each dimension does. Notice that `array_length()` returns a _single_ `int` value for the specified dimension. Its design rests upon a rule, exemplified by saying that a two-dimensional array must be a rectangle (it cannot have a ragged edge). In the same way, a three-dimensional array must be a cuboid (it cannot have an uneven surface). This notoion, though its harder to visualise, continues to apply as the number of dimensions increases.
 
 Here's an example that violates the rule:
 ```postgresql
@@ -338,7 +338,7 @@ create table laps(
     references trips(trip_start_ts, userid)
     match full on delete cascade on update restrict);
 ```
-**Note:** in PostgreSQL, the maximum number of values that an array of any dimensionality can hold is `(2^27 - 1)` (about 137 million). If you exceed this limit, then you get a clear _"54000: array size exceeds the maximum allowed (134217727)"_ error. This maps to the PL/pgSQL exception `program_limit_exceeded`. In PostgreSQL, array values are stored out of line. However, in YugabyteDB's YSQL subsystem, they are stored in line, just like, for example, a `json` or `jsonb` value. As a consequence, the maximum number of values that a YSQL array can accommodate is smaller than PostgreSQL's limit. Moreover, the actual YSQL limit depends on circumstances—and when it's exceeded you get a "time out" error. Experiment shows that the limit is about 30 million values. You can easily test this for yourself using the `array_fill()` builtin function (described [here](./functions-operators/array-fill/)).
+**Note:** in PostgreSQL, the maximum number of values that an array of any dimensionality can hold is `(2^27 - 1)` (about 137 million). If you exceed this limit, then you get a clear _"54000: array size exceeds the maximum allowed (134217727)"_ error. This maps to the PL/pgSQL exception `program_limit_exceeded`. In PostgreSQL, array values are stored out of line. However, in YugabyteDB's YSQL subsystem, they are stored in line, just like, for example, a `json` or `jsonb` value. As a consequence, the maximum number of values that a YSQL array can accommodate is smaller than PostgreSQL's limit. Moreover, the actual YSQL limit depends on circumstances—and when it's exceeded you get a "time out" error. Experiment shows that the limit is about 30 million values. You can easily test this for yourself using the `array_fill()` built-in function (described [here](./functions-operators/array-fill/)).
 
 With about 100,000 GPS data points, a 300 km trip is very easily accommodated.
 
