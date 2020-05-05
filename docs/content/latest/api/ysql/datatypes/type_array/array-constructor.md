@@ -165,7 +165,7 @@ create table t(k serial primary key, arr rt[]);
 
 prepare stmt(rt[]) as insert into t(arr) values($1);
 
--- It's essintial to typecast the individual "rt" values.
+-- It's essential to typecast the individual "rt" values.
 execute stmt(array[(104, chr(104))::rt, (105, chr(105))::rt, (106, chr(106))::rt]);
 ```
 This execution of the prepared statement, using an array literal as the actual argument, is semantically equivalent;
