@@ -25,7 +25,7 @@ return value:             anyarray`
 ```
 **Notes:** "_Compatible"_ is used here to denote two requirements:
 
-- The values within the array, or the value of the scalar, must be of the same data type., for example an `int[]` array and an `int` scalar.
+- The values within the array, or the value of the scalar, must be of the same data type, for example, an `int[]` array and an `int` scalar.
 - The LHS and the RHS must be _dimensionally_ compatible. For example you can produce a one-dimensional array: _either_ by concatenating two scalars; _or_ by concatenating a scalar and a one-dimensional array; _or_ by concatenating two one-dimensional arrays. This notion extends to multidimensional arrays. The next bullet gives the rules.
 - When you concatenate two N-dimensional arrays, the lengths along the major (i.e. the first dimension) may be different but the lengths along the other dimensions must be identical. And when (as the analogy of concatenating a one-dimensional array and a scalar) you concatenate an N-dimensional and a (N-1)-dimensional array, the lengths along the dimensions of the (N-1)-dimensional array must all be identical to the corresponding lengths along the dimensions that follow the major dimension in the N-dimensional array.
 
