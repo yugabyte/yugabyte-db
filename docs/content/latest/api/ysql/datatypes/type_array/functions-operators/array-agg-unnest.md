@@ -57,7 +57,7 @@ It produces this result:
 ---------------------------------
  {"(1,dog)","(2,cat)","(3,ant)"}
 ```
-We recognize this as the text of the literal that represents an array of tuples that are shape-compatible with type rt. Recall from the "_[array[] constructor](../../array-constructor/)_" section that this value doesn't encode the type name. In fact, we could typecast it to any shape compatible type.
+We recognize this as the text of the literal that represents an array of tuples that are shape-compatible with type rt. Recall from the [array[] constructor](../../array-constructor/) section that this value doesn't encode the type name. In fact, we could typecast it to any shape compatible type.
 
 We can understand the effect of `array_agg()` thus:
 
