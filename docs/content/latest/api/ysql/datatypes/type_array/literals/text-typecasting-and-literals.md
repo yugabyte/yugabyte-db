@@ -160,7 +160,7 @@ For all but `boolean` values, the string of characters that `ysqlsh` uses to dis
 
 This behavior is inherited from `psql`.
 
-We saw above that even when you explicitly `::text` typecast a composite value, `true` and `false` are represented as `t` and `f`. You can't influence this outcome because it has to do with the rules for deriving the `text` of the typecast and _not_ with the convention that _ysqlsh_ uses. This asymmetry was established very many years ago; and it will not change.
+Above you saw that even when you explicitly `::text` typecast a composite value, `true` and `false` are represented as `t` and `f`. You can't influence this outcome because it has to do with the rules for deriving the `text` of the typecast and _not_ with the convention that `ysqlsh` uses. This asymmetry was established many years ago, and it will not change.
 
 ## The relationship between the text typecast of a value and the literal that creates that value
 
