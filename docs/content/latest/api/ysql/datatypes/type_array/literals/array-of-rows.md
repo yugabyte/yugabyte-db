@@ -55,7 +55,7 @@ Next, you create a table with a column with data type `rt` so that you can popul
 ```postgresql
 create table t1(k int primary key, v rt);
 ```
-Then we populate the table by building the _"row"_ type values bottom-up using appropriately typed PL/pgSQL variables in a `DO` block, and inspect the result. This technique, allows the actual primitive values that we choose for this demonstration so be seen individually as the ordinary SQL literals that each data type requires. This makes the code hugely more readable, and therefore more understandable, than any other approach. In other words, it shows that, for humanly written code, the usability of a value constructor for any composite value is very much grater than that of the literal that produces the same value. Of course, this benefit is of no consequence for a programmatically constructed literal.
+Finally, you populate the table by building the _"row"_ type values bottom-up using appropriately typed PL/pgSQL variables in a `DO` block and inspect the result. This technique allows the actual primitive values that we choose for this demonstration so be seen individually as the ordinary SQL literals that each data type requires. This makes the code more readable and more understandable than any other approach. In other words, it shows that, for humanly written code, the usability of a value constructor for any composite value is much greater than that of the literal that produces the same value. Of course, this benefit is of no consequence for a programmatically constructed literal.
 ```postgresql
 do $body$
 declare
