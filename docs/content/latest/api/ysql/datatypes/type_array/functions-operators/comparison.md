@@ -59,7 +59,7 @@ When _both_ all possible value comparisons _and_ the cardinality comparison resu
 
 This means that the lower bound(s) are significant when two arrays are compared _only_ when they are identical in pairwise value comparison, cardinality, and the number of dimensions. Then the array with the greater lower bound, in dimension order, is deemed to be the greater array.
 
-The _"Equality and inequality semantics"_ section, [below](./#equality-and-inequality-semantics) demonstrates each of the rules that this _"Comparison operators overview"_ , section has stated.
+The [Equality and inequality semantics](./#equality-and-inequality-semantics) section demonstrates each of the rules that this _"Comparison operators overview"_  section has stated.
 
 ## Containment and overlap operators overview
 
