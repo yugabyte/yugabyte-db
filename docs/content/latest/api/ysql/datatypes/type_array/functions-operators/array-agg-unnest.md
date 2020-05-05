@@ -207,7 +207,7 @@ It produces this result:
 
 ## Realistic use case
 
-The basic illustration of the functionality of `array_agg()` showed how it can convert the entire contents of a table (or, by extension, the `setof` rows defined by a `select` execution) into a single array value. This can be useful to return a large `select` result in its entirety (in other words in a single round trip) to a client program.
+The basic illustration of the functionality of `array_agg()` showed how it can convert the entire contents of a table (or, by extension, the `setof` rows defined by a `SELECT` execution) into a single array value. This can be useful to return a large `SELECT` result in its entirety (in other words, in a single round trip) to a client program.
 
 Another use is to populate a single newly-created _"masters_with_details"_ table from the fully projected and unrestricted _inner join_ of a classic _"masters"_ and _"details"_ pair of tables. The new table has all the columns that the source _"masters"_ table has and all of its rows. And it has an additional _"details"_ column that holds, for each _"masters"_ row, a _"details_t[]"_ array that represents all of the child rows that it has in the source _"details"_ table. The type _"details_t"_ has all of the columns of the _"details"_ table except the _"details.masters_pk"_ foreign key column. This column vanishes because, as the _join_ column, it vanishes in the _"inner join"_. The _"details"_ table's "payload" is now held in place in a single multivalued field in the new _"masters_with_details"_ table.
 
