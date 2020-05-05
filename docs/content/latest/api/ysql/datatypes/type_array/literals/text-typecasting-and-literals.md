@@ -156,7 +156,7 @@ This is the result:
 -----------+------------
  t         | true
 ```
-For all but `boolean` values, the string of characters that _ysqlsh_ uses to display any value is the `::text` typecast of that value. (After all, the only feasible means of display is strings of characters.) But uniquely for the two `boolean` values `true` and `false` it uses the single characters `t` and `f` rather than their `::text` typecasts—unless you explicitly write the typecast. 
+For all but `boolean` values, the string of characters that `ysqlsh` uses to display any value is the `::text` typecast of that value. (After all, the only feasible means of display is strings of characters.) But uniquely for the two `boolean` values `true` and `false` it uses the single characters `t` and `f` rather than their `::text` typecasts—unless you explicitly write the typecast. 
 
 This behavior is inherited from `psql`.
 
