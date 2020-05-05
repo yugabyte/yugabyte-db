@@ -115,11 +115,18 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
+  protected Map<String, String> getMasterFlags() {
+    return new TreeMap<>();
+  }
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
       builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
+    }
+    for (Map.Entry<String, String> entry : getMasterFlags().entrySet()) {
+      builder.addMasterArgs("--" + entry.getKey() + "=" + entry.getValue());
     }
     builder.enablePostgres(false);
   }

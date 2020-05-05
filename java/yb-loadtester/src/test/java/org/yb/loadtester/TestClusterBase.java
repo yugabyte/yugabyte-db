@@ -90,6 +90,25 @@ public class TestClusterBase extends BaseCQLTest {
     return TEST_TIMEOUT_SEC;
   }
 
+  void updateMiniClusterClient() throws Exception {
+    miniCluster.startSyncClient(true /* waitForMasterLeader */);
+    client = miniCluster.getClient();
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flags = super.getMasterFlags();
+    // Speed up the load balancer.
+    // TODO(bogdan): commented out until we figure out #4412.
+    /*
+    flags.put("load_balancer_max_concurrent_adds", "5");
+    flags.put("load_balancer_max_over_replicated_tablets", "5");
+    flags.put("load_balancer_max_concurrent_removals", "5");
+    flags.put("load_balancer_max_concurrent_moves", "5");
+    */
+    return flags;
+  }
+
   @Override
   protected void afterStartingMiniCluster() throws Exception {
     cqlContactPoints = miniCluster.getCQLContactPointsAsString();
@@ -291,40 +310,8 @@ public class TestClusterBase extends BaseCQLTest {
     for (HostAndPort originalMaster : originalMasters.keySet()) {
       // Add new master.
       HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
-
-      // Wait for new master to be online.
-      assertTrue(client.waitForMaster(masterRpcHostPort, NEW_MASTER_TIMEOUT_MS));
-
-      LOG.info("New master online: " + masterRpcHostPort.toString());
-
-      // Add new master to the config.
-      ChangeConfigResponse response = client.changeMasterConfig(masterRpcHostPort.getHostText(),
-        masterRpcHostPort.getPort(), true);
-      assertFalse("ChangeConfig has error: " + response.errorMessage(), response.hasError());
-
-      LOG.info("Added new master to config: " + masterRpcHostPort.toString());
-
-      // Wait for heartbeat interval to ensure tservers pick up the new masters.
-      Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
-
-      // Remove old master.
-      response = client.changeMasterConfig(originalMaster.getHostText(), originalMaster.getPort(),
-                                           false);
-      assertFalse("ChangeConfig has error: " + response.errorMessage(), response.hasError());
-
-      LOG.info("Removed old master from config: " + originalMaster.toString());
-
-      // Wait for the new leader to be online.
-      client.waitForMasterLeader(NEW_MASTER_TIMEOUT_MS);
-      LOG.info("Done waiting for new leader");
-
-      // Kill the old master.
-      miniCluster.killMasterOnHostPort(originalMaster);
-
-      LOG.info("Killed old master: " + originalMaster.toString());
-
-      // Verify no load tester errors.
-      loadTesterRunnable.verifyNumExceptions();
+      addMaster(masterRpcHostPort);
+      removeMaster(originalMaster);
     }
   }
 
@@ -358,6 +345,8 @@ public class TestClusterBase extends BaseCQLTest {
 
     LOG.info("Added new master to config: " + newMaster.toString());
 
+    updateMiniClusterClient();
+
     // Wait for hearbeat interval to ensure tservers pick up the new masters.
     Thread.sleep(4 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
   }
@@ -376,6 +365,8 @@ public class TestClusterBase extends BaseCQLTest {
 
     // Kill the old master.
     miniCluster.killMasterOnHostPort(oldMaster);
+
+    updateMiniClusterClient();
 
     LOG.info("Killed old master: " + oldMaster.toString());
 
