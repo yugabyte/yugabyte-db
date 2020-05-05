@@ -185,7 +185,7 @@ You can work out the rules for a multidimensional array of "row" type values, sh
 
 This pseudocode shows how to create an array literal of _"row"_ type values that have the same shape as `type rt` in the example above. The input is a succession of an arbitrary number of `(n, s, t, b)` tuples. The text below was derived by straightforward manual massage from actual working, and tested, Python code. The code was written simply an an exercise to verify the correctness of the algorithm.
 
-The pseudocode does retain Python locutions; but don't be distracted by this. The meaning is clear enough to allow description of the algorithm. The various special characters were all set up as manifest constants with self-describing names.
+The pseudocode does retain Python locutions, but don't be distracted by this. The meaning is clear enough to allow a description of the algorithm. The various special characters were all set up as manifest constants with self-describing names.
 
 Notice that the algorithm inserts a newline after the opening curly brace, between the pairs of representations of each _"row"_ type value, and before the closing curly brace. While, strictly speaking, this means that the literal it produces is not in canonical form, this has no effect (as has been shown many times by example throughout the present _"[Arrays](../../../type_array/)"_ major section
 
