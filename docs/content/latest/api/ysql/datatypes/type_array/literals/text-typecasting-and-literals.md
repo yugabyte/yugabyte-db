@@ -186,7 +186,7 @@ Consider this first:
 42.932771::numeric
 ```
 
-This is the literal that the SQL language (at least in YSQL and PostgreSQL) uses to establish the corresponding strongly typed `numeric` value. (PL/pgSQL uses the same form for the same purpose.) But, to state the obvious, a SQL statement and a PL/pgSQL source are nothing but strings of characters. That means that, in our present context, this:
+This is the literal that the SQL language (at least in the YSQL and PostgreSQL dialects) uses to establish the corresponding strongly-typed `numeric` value. (PL/pgSQL uses the same form for the same purpose.) But, to state the obvious, a SQL statement and a PL/pgSQL source are nothing but strings of characters. That means that, in the present context, this:
 
 ```
 42.932771
