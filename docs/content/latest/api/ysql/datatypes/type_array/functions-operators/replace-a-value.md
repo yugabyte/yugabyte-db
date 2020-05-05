@@ -267,7 +267,7 @@ begin
 end;
 $body$;
 ```
-_Two-dimensional array of primitive scalar values_. This is sufficient to illustrate the semantics of the general multidimensional case. The approach is the just the same as when `array_replace()` is used to meet the same goal. You have no choice but to target the values explicitly.
+_Two-dimensional array of primitive scalar values_. This is sufficient to illustrate the semantics of the general multidimensional case. The approach is just the same as when `array_replace()` is used to meet the same goal. You have no choice but to target the values explicitly.
 
 ```postgresql
 do $body$
