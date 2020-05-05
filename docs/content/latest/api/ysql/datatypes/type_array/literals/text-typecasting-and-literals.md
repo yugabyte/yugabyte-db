@@ -228,7 +228,7 @@ A simple way to see examples of the bare text that specifies an array value, whe
 
 When this difference is useful, the [Arrays](../../../type_array/) section distinguishes between:
 
-- (1) the _literal_ for the intended value (i.e. the whole thing with the enquoting and the typecast, when one or both of these are needed);
+- (1) the _literal_ for the intended value (that is, the whole thing with the enquoting and the typecast, when one or both of these are needed);
 - and (2) the _text of the literal_ for the intended value (that is, the bare text that specifies this value).
 
 **Note:** Often, the data type of the assignment target (for example, a field in a column in a schema-level table or a variable in a PL/pgSQL program) is sufficient implicitly to specify the intended typecast without writing the operator. But it's never harmful to write it. Moreover, in some cases, omitting the explicit typecast can bring performance costs. For this reason, Yugabyte recommends that you always write the explicit typecast unless you are certain beyond all doubt that omitting it brings no penalty.
