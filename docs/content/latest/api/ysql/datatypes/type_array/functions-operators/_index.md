@@ -23,7 +23,7 @@ The `array[]` constructor, and the three functions, create an array from scratch
 | [array[]](./../array-constructor/) | | The array[] value constructor is a special variadic function that creates an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an _[array literal](../literals/)_. |
 | [array_fill()](./array-fill/) | | Returns a new "blank canvas" array of the specified shape with all cells set to the same specified value. |
 | [array_agg()](./array-agg-unnest/#array-agg) | | Returns an array (of an implied _"row"_ type) from a SQL subquery. |
-| [string_to_array()](./string-to-array/) | 1-d | Returns a one-dimensional `text[]` array by splitting the input `text` value into subvalues using the specified `text` value as the delimiter. Optionally allows a specified `text` value to be interpreted as `null`. |
+| [string_to_array()](./string-to-array/) | 1-d | Returns a one-dimensional `text[]` array by splitting the input `text` value into subvalues using the specified `text` value as the delimiter. Optionally, allows a specified `text` value to be interpreted as `null`. |
 
 ## Functions for reporting the geometric properties of an array
 
