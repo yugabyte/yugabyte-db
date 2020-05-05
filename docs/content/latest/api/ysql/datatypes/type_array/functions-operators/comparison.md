@@ -141,7 +141,7 @@ This is the result:
 
 ### The `@>` and `<@` operators
 
-- The `@>` operator returns `true` if the LHS array contains the RHS array—i.e. if every distinct value in the RHS array is found among the LHS array's distinct values.
+- The `@>` operator returns `true` if the LHS array contains the RHS array—that is, if every distinct value in the RHS array is found among the LHS array's distinct values.
 - The `<@` operator is the natural complement: it returns `true` if every distinct value in the LHS array is found among the RHS array's distinct values.
 
 ```postgresql
