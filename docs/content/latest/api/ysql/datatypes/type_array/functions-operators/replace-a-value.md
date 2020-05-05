@@ -88,7 +88,7 @@ end;
 $body$;
 ```
 
-_One-dimensional array of _"record"_ type values_. The definition of _"rt"_ used here is the same as the example above used used. Don't create again if it already exists.
+_One-dimensional array of _"record"_ type values_. The definition of _"rt"_ used here is the same as the example above used. Don't create again if it already exists.
 
 ```postgresql
 create type rt as (f1 int, f2 text);
