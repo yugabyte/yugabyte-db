@@ -89,7 +89,7 @@ select
   array[(3, 'ant')::rt]
 as arr;
 ```
-To prepare for the demonstration of `unnest()`, we'll save this single-valued result into a _ysqlsh_ variable by using the `\gset` metacommand. This takes a single argument, conventionally spelled with a trailing underscore (for example `result_`) and re-runs the `select` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `select` doesn't return a single row, then you get a clear error.) In general, when the _select list_ has _N_ members, called `c1` through `cN`, each of these values is stored in automatically created variables called `result_c1` through `result_cN`. Immediately after running the `with... select array_agg(...) as array_literal...`query above, do this:
+To prepare for the demonstration of `unnest()`, we'll save this single-valued result into a `ysqlsh` variable by using the `\gset` metacommand. This takes a single argument, conventionally spelled with a trailing underscore (for example, `result_`) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the _select list_ has _N_ members, called `c1` through `cN`, each of these values is stored in automatically-created variables called `result_c1` through `result_cN`. Immediately after running the `with... select array_agg(...) as array_literal...`query above, do this:
 
 ```postgresql
 \gset result_
