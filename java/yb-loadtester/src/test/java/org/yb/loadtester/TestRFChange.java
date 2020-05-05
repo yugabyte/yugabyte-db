@@ -14,11 +14,11 @@ package org.yb.loadtester;
 
 import org.junit.Test;
 
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import org.junit.runner.RunWith;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestRFChange extends TestClusterBase {
 
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
