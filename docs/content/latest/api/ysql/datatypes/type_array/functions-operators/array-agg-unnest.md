@@ -62,7 +62,7 @@ We recognize this as the text of the literal that represents an array of tuples 
 We can understand the effect of `array_agg()` thus:
 
 - Treat each row as a `rt[]` array with a single-value.
-- Concatenate (see the `||` operator [here](../concatenation/#the-operator)) the values from all the rows in the specified order into a new `rt[]` array.
+- Concatenate (see the [`||` operator](../concatenation/#the-operator)) the values from all the rows in the specified order into a new `rt[]` array.
 
 This code illustrates this point:
 ```postgresql
