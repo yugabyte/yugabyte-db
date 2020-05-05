@@ -39,7 +39,7 @@ Run the `SELECT` statement for each function to illustrate what produces for the
 
 ### array_ndims()
 
-**Purpose:** Returns the number of dimensions (i.e. its _dimensionality_) of the specified array.
+**Purpose:** Returns the number of dimensions (that is, the _dimensionality_) of the specified array.
 
 **Signature:**
 ```
