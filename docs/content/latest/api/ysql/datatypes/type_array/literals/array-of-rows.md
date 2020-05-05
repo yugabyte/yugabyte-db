@@ -18,7 +18,7 @@ This section follows the same approach used in the section that explained the ru
 
 ## Statement of the rules
 
-Just as in the section that stated the rules for literals for an array of primitive values, [here](../array-of-primitive-values/#statement-of-the-rules), the statement of these rules depends on understanding the notion of the canonical form of a literal.
+Just as in the [Statement of the rules](../array-of-primitive-values/#statement-of-the-rules) section that stated the rules for literals for an array of primitive values, the statement of these rules depends on understanding the notion of the canonical form of a literal.
 
 If you follow the rules that are stated here and illustrated in the demonstration below, then you will always produce a syntactically valid literal which expresses the semantics that you intend. There are many other legal variants—especially because of the freedoms for `text[]` values. This can also produce the result that you intend. However, we will not document these rules because it is always sufficient to create your literals in canonical form.
 
