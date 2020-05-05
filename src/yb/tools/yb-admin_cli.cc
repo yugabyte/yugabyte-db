@@ -83,6 +83,17 @@ CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
   return Status::OK();
 }
 
+CHECKED_STATUD MasterLeaderStepDown(
+    ClusterAdminClientClass* client,
+    const ClusterAdminCli::CLIArguments& args){
+  if(args.size()<3){
+    return ClusterAdminCLi::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(client->MasterLeaderStepDownWithNewLeader(
+          args[2]), "Unable to step down master leader");
+  return Status::OK();
+}
+
 CHECKED_STATUS LeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
@@ -632,7 +643,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       std::bind(&ChangeBlacklist, client, _1, true, "Unable to change leader blacklist"));
 
   Register(
-      "leader_stepdown", " tablet_id dest_ts_uuid",
+      "master_leader_stepdown"," <leader_uuid> <dest_uuid>",
+      std::bind(&MasterLeaderStepDown, client, _1));
+
+  Register(
+      "leader_stepdown", " <tablet_id> <dest_ts_uuid>",
       std::bind(&LeaderStepDown, client, _1));
 
   Register(
