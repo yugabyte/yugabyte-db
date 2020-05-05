@@ -251,7 +251,7 @@ begin
   ------------------------------------------------------------------------------
   -- Demonstration of inequaliy when the geom. properties of
   -- the two arrays are identical.
-  -- Here, the first pairwise difference is NOT NUL vs NULL.
+  -- Here, the first pairwise difference is NOT NULL versus NULL.
   declare
     a constant int[] := '{10, 20,   30}';
     b constant int[] := '{10, null, 29}';
@@ -450,4 +450,3 @@ begin
 end;
 $body$;
 ```
-
