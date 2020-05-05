@@ -291,7 +291,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
           }
 
           auto client_result = yb::client::YBClientBuilder()
-              .set_client_name("CDCConsumerRemote::" + uuid)
+              .set_client_name("CDCConsumerRemote")
               .add_master_server_addr(uuid_master_addrs_[uuid])
               .skip_master_flagfile()
               .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))

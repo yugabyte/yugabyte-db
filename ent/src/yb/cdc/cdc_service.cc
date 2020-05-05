@@ -311,6 +311,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
+  auto original_leader_term = tablet_peer->LeaderTerm();
 
   // If we we can't serve this tablet...
   if (s.IsNotFound() || tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
@@ -353,6 +354,8 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   int64_t last_readable_index;
   consensus::ReplicateMsgsHolder msgs_holder;
   MemTrackerPtr mem_tracker = GetMemTracker(tablet_peer, producer_tablet);
+
+  // Read the latest changes from the Log.
   s = cdc::GetChanges(
       req->stream_id(), req->tablet_id(), op_id, *record->get(), tablet_peer, mem_tracker,
       &msgs_holder, resp, &last_readable_index);
@@ -362,6 +365,17 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
       s.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
       context);
 
+  // Verify leadership was maintained for the duration of the GetChanges() read.
+  s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
+  if (s.IsNotFound() || tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY ||
+      tablet_peer->LeaderTerm() != original_leader_term) {
+    SetupErrorAndRespond(resp->mutable_error(),
+        STATUS(NotFound, Format("Not leader for $0", req->tablet_id())),
+        CDCErrorPB::TABLET_NOT_FOUND, &context);
+    return;
+  }
+
+  // Store information about the last server read & remote client ACK.
   uint64_t last_record_hybrid_time = resp->records_size() > 0 ?
       resp->records(resp->records_size() - 1).time() : 0;
 

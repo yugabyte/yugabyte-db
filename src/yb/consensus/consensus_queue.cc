@@ -656,9 +656,13 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::O
   // The batch of messages read from cache.
 
   int64_t to_index;
+  bool pending_messages = false;
   {
     LockGuard lock(queue_lock_);
-    to_index = queue_state_.majority_replicated_op_id.index();
+    // Use committed_op_id because it's already been processed by the Transaction codepath.
+    to_index = queue_state_.committed_op_id.index();
+    // Determine if there are pending operations in RAFT but not yet LogCache.
+    pending_messages = to_index != queue_state_.majority_replicated_op_id.index();
   }
   if (repl_index) {
     *repl_index = to_index;
@@ -681,7 +685,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::O
         "The logs from index $0 have been garbage collected and cannot be read ($1)",
         after_op_index, result.status());
   }
-
+  if (result.ok()) {
+    result->have_more_messages |= pending_messages;
+  }
   return result;
 }
 
