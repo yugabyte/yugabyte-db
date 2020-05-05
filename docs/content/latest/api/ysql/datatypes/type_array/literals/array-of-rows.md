@@ -150,7 +150,7 @@ update t2 set v2 =
 
 select (v1 = v2)::text as "v1 = v2" from t2 where k = 1;
 ```
-As promised, the canonical form of the array literal does indeed recreate the identical value that the _`array_agg()` function created:
+As promised, the canonical form of the array literal does indeed recreate the identical value that the `array_agg()` function created:
 
 ```
  v1 = v2 
