@@ -148,14 +148,23 @@ static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* o
       writer.String("process_start_time");
       writer.String(rpczResult[i].process_start_timestamp);
 
+      writer.String("process_running_for_ms");
+      writer.Int64(rpczResult[i].process_running_for_ms);
+
       if (rpczResult[i].transaction_start_timestamp) {
         writer.String("transaction_start_time");
         writer.String(rpczResult[i].transaction_start_timestamp);
+
+        writer.String("transaction_running_for_ms");
+        writer.Int64(rpczResult[i].transaction_running_for_ms);
       }
 
       if (rpczResult[i].query_start_timestamp) {
         writer.String("query_start_time");
         writer.String(rpczResult[i].query_start_timestamp);
+
+        writer.String("query_running_for_ms");
+        writer.Int64(rpczResult[i].query_running_for_ms);
       }
 
       writer.String("application_name");
