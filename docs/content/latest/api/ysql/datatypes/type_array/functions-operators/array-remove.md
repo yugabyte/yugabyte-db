@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** return a new array where _every_ occurrence of the specified value has been removed from the specified input array.
+**Purpose:** Return a new array where _every_ occurrence of the specified value has been removed from the specified input array.
 
 **Signature:**
 ```
