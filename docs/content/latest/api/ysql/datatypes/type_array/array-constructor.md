@@ -72,7 +72,7 @@ The `array_dims()` function is documented [here](../functions-operators/properti
 Run this to create the required user-defined _"row"_ type and the table function and then to invoke it.
 
 ```postgresql
--- Don't create "type rt" if it's still there followng the previous example.
+-- Don't create "type rt" if it's still there following the previous example.
 create type rt as (f1 int, f2 text);
 
 create function some_arrays()
