@@ -96,4 +96,4 @@ These functions require that the two arrays have the same data type and compatib
 
 | Function | 1-d only? | Description |
 | ---- | ---- | ---- |
-| [unnest()](./array-agg-unnest/#unnest) | | Use in the "from" clause of a "select" statement". The simple overload accepts a single "anyarray" value and returns a "SETOF anyelement". The exotic overload accepts a variadic list of "anyarray" values and returns a "SETOF" with many columns where each in turn has the output of the corresponding simple overload. |
+| [unnest()](./array-agg-unnest/#unnest) | | Use in the `FROM` clause of a `SELECT` statement. The simple overload accepts a single `anyarray` value and returns a `SETOF anyelement`. The exotic overload accepts a variadic list of `anyarray` values and returns a `SETOF` with many columns where each, in turn, has the output of the corresponding simple overload. |
