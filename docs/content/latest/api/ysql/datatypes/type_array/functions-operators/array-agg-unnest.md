@@ -124,7 +124,7 @@ select
 from rows
 order by 1;
 ```
-The parentheses around the column alias `rec` are required to remove what the SQL compiler would otherwise see as an ambiguity, and would report as a _"42P01"_ error. This is the result:
+The parentheses around the column alias `rec` are required to remove what the SQL compiler would otherwise see as an ambiguity, and would report as a `42P01` error. This is the result:
 
 ```
  k |  v  
