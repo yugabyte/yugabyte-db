@@ -24,7 +24,7 @@ If you follow the rules that are stated here and illustrated in the demonstratio
 
 The sufficient set of rules can be stated tersely:
 
-- Start off with the opening left curly brace
+- Start off with the opening left curly brace.
 
 - First, prepare the literal for each _"row"_ type value according to the rules set out in the [previous section](../row/).
 
