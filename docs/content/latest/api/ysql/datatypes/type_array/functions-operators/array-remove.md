@@ -18,7 +18,7 @@ showAsideToc: true
 input value:       anyarray, anyelement
 return value:      anyarray
 ```
-**Notes:** this function requires the array from which value(s) are to be removed is one-dimensional. This restriction is easily understood in light of the fact that arrays are rectilinear—in other words, the geometry of an array whose dimensionality is two or more is fixed at creation time. The examples given in the explanation of the `array_fill()` function, [here](.././array-fill), illustrate this rule.
+**Notes:** This function requires the array from which values are to be removed is one-dimensional. This restriction is easily understood in light of the fact that arrays are rectilinear—in other words, the geometry of an array whose dimensionality is two or more is fixed at creation time. For examples illustrating this rule, see [`array_fill()`](.././array-fill).
 
 **Example:**
 ```postgresql
