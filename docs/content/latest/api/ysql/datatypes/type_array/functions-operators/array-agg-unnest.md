@@ -16,7 +16,7 @@ For one-dimensional arrays, but _only for these_ (see [Multidimensional array_ag
 array_agg of "setof tuples #1" => "result array"
 unnest of "result array" => "setof tuples #3"
 ```
-the _"setof tuples #3"_ has identical shape and content to that of _"setof tuples #1"_. And the data type of _"result array"_ is an array of the data type of the tuples.
+The `setof tuples #3` has identical shape and content to that of `setof tuples #1`. And the data type of _"result array"_ is an array of the data type of the tuples.
 
 For this reason, the two functions, `array_agg()` and `unnest()`, are described in the same section.
 
