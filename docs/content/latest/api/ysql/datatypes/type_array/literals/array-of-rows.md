@@ -28,7 +28,7 @@ The sufficient set of rules can be stated tersely:
 
 - First, prepare the literal for each _"row"_ type value according to the rules set out in the [previous section](../row/).
 
-- Then understand that when these are used within the literal for _"row"_ type value within the literal for an array, the _"row"_ must itself be surrounded with double quotes, just like is the rule for, say, `timestamp` values or `text` values that include spaces or other troublesome characters.
+- Then, understand that when these are used within the literal for _"row"_ type value within the literal for an array, the _"row"_ must itself be surrounded with double quotes, just like is the rule for, say, `timestamp` values or `text` values that include spaces or other troublesome characters.
 
 - Then understand that this implies that any occurrences of double quotes and backslashes within the surrounding parentheses of the _"row"_ type literal must be escaped a second time: _double-quote_ becomes _backslash-double-quote_; and _backslash_ becomes _backslash-backslash_.
 
