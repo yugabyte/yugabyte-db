@@ -507,7 +507,7 @@ set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
 where master_pk = 2;
 ```
 
-The more complex, but semantically equivalent, locution is used as a workaround for [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296). See the account of the `array_replace()` function, [here](../replace-a-value/#array-replace), for more information. The code above will be updated when that issue is fixed.
+The more complex, but semantically equivalent, locution is used as a workaround for [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296). For more information, see [`array_replace()`](../replace-a-value/#array-replace). The code above will be updated when that issue is fixed.
 
 - Implementing the requirement that the values of _"detail_name"_ must be unique for a given _"masters"_ row is trivial in the old regime:
 ```postgresql
