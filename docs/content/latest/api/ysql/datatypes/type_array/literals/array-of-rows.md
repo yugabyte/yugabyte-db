@@ -119,7 +119,7 @@ The `int` field and the `timestamp` field are unremarkable given only that we un
      " "     ","     "("     ")"     """"     "\\"
 ```
 
-The first four are unremarkable, as long as we remember that each of these four single characters, as shown at the start, must be ordinarily surrounded by double quotes. That leaves just the last two:
+The first four are unremarkable, as long as you remember that each of these four single characters, as shown at the start, must be ordinarily surrounded by double quotes. That leaves just the last two:
 
 - The single double quote occurrence, in the source data, must be doubled up and then surrounded by double quotes.
 - The single backslash occurrence, in the source data, must be doubled up and then surrounded by double quotes.
