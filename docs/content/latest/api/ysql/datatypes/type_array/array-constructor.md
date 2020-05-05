@@ -145,7 +145,7 @@ It produces two rows. This is the first:
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
 
-This is identical to the result for the simple example shown above. The readability of the second row is improved enormously by adding some whitespace manually:
+The following example returns the same results, but the readability of the second row is improved by adding some whitespace manually:
 
 ```
 {
