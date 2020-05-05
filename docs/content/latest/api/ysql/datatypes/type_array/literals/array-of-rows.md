@@ -136,7 +136,8 @@ insert into t2(k, v1)
 select 1, array_agg(v order by k) from t1;
 ```
 
-The `\get` technique that we used in the earlier sections is not viable here because there's an upper limit on its size. So, instead, we'll simple insert the literal that we produce by `text` typecasting `t2.v1` into the companion `v1_text_typecast` field in the same table, thus:
+The `\get` technique that you used in the earlier sections is not viable here because there's an upper limit on its size. So, instead insert the literal that you produce by `text` typecasting `t2.v1` into the companion `v1_text_typecast` field in the same table, like this:
+
 
 ```postgresql
 update t2 set v1_text_typecast =
