@@ -158,7 +158,7 @@ As promised, the canonical form of the array literal does indeed recreate the id
  true
 ```
 
-We haven't yet looked at the literal for the array of _"row"_ type values. Now is the moment to do so, thus:
+You haven't yet looked at the literal for the array of _"row"_ type values. Now is the moment to do so, thus:
 ```postgresql
 select v1_text_typecast from t2 where k = 1;
 ```
