@@ -643,7 +643,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       std::bind(&ChangeBlacklist, client, _1, true, "Unable to change leader blacklist"));
 
   Register(
-      "master_leader_stepdown"," <leader_uuid> <dest_uuid>",
+      "master_leader_stepdown"," <dest_uuid>",
       std::bind(&MasterLeaderStepDown, client, _1));
 
   Register(
