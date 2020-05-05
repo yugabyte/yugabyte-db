@@ -29,7 +29,7 @@ as arr;
 ```
 ## array_position()
 
-**Purpose:** return the index, in the supplied array, of the specified value. Optionally starts searching at the specified index.
+**Purpose:** Return the index, in the supplied array, of the specified value. Optionally, starts searching at the specified index.
 
 **Signature:**
 ```
