@@ -231,7 +231,7 @@ begin
   end;
 
   ------------------------------------------------------------------------------
-  -- Basic demonstration of inequaliy when the geom. properties of
+  -- Basic demonstration of inequality when the geometric properties of
   -- the two arrays are identical.
   -- When the first difference is encountered in row-major order, the comparison
   -- is made. Other differences are irrelevant.
