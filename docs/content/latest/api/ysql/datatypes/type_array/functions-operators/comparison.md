@@ -41,7 +41,7 @@ There is, of course, a well-defined priority among the comparisons. Briefly, val
 
 ### Pairwise comparison of values
 
-The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [here](../functions-operators/properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `is not distinct from` semantics. Moreover, when a `not null` array value is pairwise compared with a `null` value, the `not null` value is deemed to be _less than_ the `null` value.
+The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [Joint semantics](../functions-operators/properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `is not distinct from` semantics. Moreover, when a `not null` array value is pairwise compared with a `null` value, the `not null` value is deemed to be _less than_ the `null` value.
 
 Notice the contrast with the `=` operator comparison rule for free-standing scalar values. This comparison uses `null` semantics but, of course, lets you use `is not distinct from` comparison if this better suits your purpose. 
 
