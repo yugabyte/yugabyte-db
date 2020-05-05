@@ -165,7 +165,7 @@ This is the result:
 
 ### The `&&` operator
 
-The `&&` operator returns `true` if the LHS and RHS arrays overlap—i.e. if they have at least one value in common. The definition of this operator makes it insensitive to which of the two to-be-compared is used on the LHS and which is used on the RHS.
+The `&&` operator returns `true` if the LHS and RHS arrays overlap—that is, if they have at least one value in common. The definition of this operator makes it insensitive to which of the two to-be-compared is used on the LHS and which is used on the RHS.
 
 ```postgresql
 with
