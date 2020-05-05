@@ -119,7 +119,7 @@ end;
 $body$;
 ```
 ## array_prepend()
-**Purpose:** Return an array that results from prepending a scalar value to (i.e. _before_) an array value.
+**Purpose:** Return an array that results from prepending a scalar value to (that is, _before_) an array value.
 
 **Signature**
 ```
