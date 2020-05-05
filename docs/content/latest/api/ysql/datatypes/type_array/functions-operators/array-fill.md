@@ -30,7 +30,7 @@ select pg_typeof(array_fill(null::text, '{1}')) as "type of the new array";
 - The second parameter is an `int[]` array. Each of its values specifies the value that `array_length(new_arr, n)` returns—where `n` is the dimension number, starting with the major dimension. So the cardinality of the array that you supply here specifies the value returned by `array_ndims(new_arr)`.
 - The third parameter is optional. When supplied, it must be an `int[]` array with the same cardinality as the second parameter. Each of its values specifies the value that `array_lower(new_arr, n)` returns.
 
-The shape of the new array is therefore fully specified by the second and third parameters.
+The shape of the new array is, therefore, fully specified by the second and third parameters.
 
 **Note:** Why does `array_fill()` exist? In other words, why not simply set the values that you want by directly indexing each cell and assigning the value you want to it? Recall that, as described in the _"[Synopsis](../../#synopsis)"_, an array value is rectilinear. This means that its shape, when its number of dimensions exceeds one, is non-negotiaby fixed at creation time. This `DO` block emphasizes the point.
 
