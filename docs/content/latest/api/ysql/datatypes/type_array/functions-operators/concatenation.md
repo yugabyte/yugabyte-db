@@ -58,7 +58,7 @@ and then this:
 ------------------
  {1,2,3,4,5,6}
 ```
-The example suffers from the problem that [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296) tracks. (This same issue also affects the `array_remove()` and the `array_replace()` functions.) If you run this example as presented, then the `update` statement causes a timeout error of a severity that means that, to continue, you must restart the crashed tserver.
+The example suffers from the problem that [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296) tracks. (This same issue also affects the `array_remove()` and the `array_replace()` functions.) If you run this example as presented, then the `UPDATE` statement causes a timeout error of a severity that in order to continue, you must restart the crashed tserver.
 
 The documentation, here, will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, simply by creating `table t` without a primary key constraint. But this violates proper practice. Here is a viable workaround. Simply use this `update` statement instead of the one shown above:
 ```postgresql
