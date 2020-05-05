@@ -18,7 +18,7 @@ Each of the approaches described in this section, using the `array_replace()` bu
 
 ## array_replace()
 
-**Purpose:** Return a new array which is derived from the input array by replacing _every_ array value that is equal to the specified existing value with the specified new value.
+**Purpose:** Return a new array that is derived from the input array by replacing _every_ array value that is equal to the specified existing value with the specified new value.
 
 **Signature** 
 
@@ -325,4 +325,3 @@ begin
 end;
 $body$;
 ```
-
