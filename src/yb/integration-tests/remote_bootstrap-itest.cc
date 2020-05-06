@@ -757,11 +757,6 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
 }
 
 TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
-  if (!AllowSlowTests()) {
-    LOG(INFO) << "Skipping test in fast-test mode.";
-    return;
-  }
-
   constexpr int kMaxConcurrentTabletRemoteBootstrapSessions = 2;
 
   vector<string> ts_flags, master_flags;
@@ -775,6 +770,7 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   master_flags.push_back("--load_balancer_max_concurrent_tablet_remote_bootstraps=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions));
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
 
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
