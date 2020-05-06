@@ -435,6 +435,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--extra_gflags', default=None)
         self.parser.add_argument('--gflags', default=None)
         self.parser.add_argument('--replace_gflags', action="store_true")
+        self.parser.add_argument('--gflags_to_remove', default=None)
         self.parser.add_argument('--master_addresses_for_tserver')
         self.parser.add_argument('--master_addresses_for_master')
         self.parser.add_argument('--rootCA_cert')
@@ -506,6 +507,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)
+
+        if args.gflags_to_remove is not None:
+            self.extra_vars["gflags_to_remove"] = json.loads(args.gflags_to_remove)
 
         if args.rootCA_cert is not None:
             self.extra_vars["rootCA_cert"] = args.rootCA_cert

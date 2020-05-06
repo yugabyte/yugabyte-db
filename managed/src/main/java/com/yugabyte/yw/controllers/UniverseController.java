@@ -1258,8 +1258,7 @@ public class UniverseController extends AuthenticatedController {
           break;
         case GFlags:
           customerTaskType = CustomerTask.TaskType.UpgradeGflags;
-          if ((taskParams.masterGFlags == null || taskParams.masterGFlags.isEmpty()) &&
-              (taskParams.tserverGFlags == null || taskParams.tserverGFlags.isEmpty())) {
+          if (taskParams.masterGFlags == null && taskParams.tserverGFlags == null) {
             return ApiResponse.error(
                 BAD_REQUEST,
                 "gflags param is required for taskType: " + taskParams.taskType);

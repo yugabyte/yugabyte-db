@@ -133,8 +133,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
           didUpgradeUniverse = true;
           break;
         case GFlags:
-          if (!taskParams().masterGFlags.isEmpty() &&
-              !taskParams().masterGFlags.equals(primIntent.masterGFlags)) {
+          if (!taskParams().masterGFlags.equals(primIntent.masterGFlags)) {
             LOG.info("Updating Master gflags: {} for {} nodes in universe {}",
                 taskParams().masterGFlags, masterNodes.size(), universe.name);
             if (!taskParams().rollingUpgrade) {
@@ -157,8 +156,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
             }
             didUpgradeUniverse = true;
           }
-          if (!taskParams().tserverGFlags.isEmpty() &&
-              !taskParams().tserverGFlags.equals(primIntent.tserverGFlags)) {
+          if (!taskParams().tserverGFlags.equals(primIntent.tserverGFlags)) {
             LOG.info("Updating T-Server gflags: {} for {} nodes in universe {}",
                 taskParams().tserverGFlags, tServerNodes.size(), universe.name);
             if (taskParams().rollingUpgrade) {
@@ -357,8 +355,12 @@ public class UpgradeUniverse extends UniverseTaskBase {
     } else if (type == UpgradeTaskType.GFlags) {
       if (processType.equals(ServerType.MASTER)) {
         params.gflags = taskParams().masterGFlags;
+        params.gflagsToRemove = userIntent.masterGFlags.keySet().stream().filter(
+                flag -> !taskParams().masterGFlags.containsKey(flag)).collect(Collectors.toSet());
       } else {
         params.gflags = taskParams().tserverGFlags;
+        params.gflagsToRemove = userIntent.tserverGFlags.keySet().stream().filter(
+                flag -> !taskParams().tserverGFlags.containsKey(flag)).collect(Collectors.toSet());
       }
     }
 
