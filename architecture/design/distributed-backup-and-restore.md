@@ -33,11 +33,6 @@ The goals described above are for performing a **base backup** of the table. A *
 Support for point in time restores is planned, and will depend on the ability to perform base backups.
 
 
-
-> **Note:** Point in time restores will be an add-on to the basic feature of being able to perform a distributed backup at a point in time.
-
-
-
 # Design - performing base backups
 
 ### 1. Initiating a snapshot
