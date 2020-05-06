@@ -211,6 +211,8 @@ class ClusterAdminClient {
       const std::string& tablet_id,
       const std::string& dest_ts_uuid);
 
+  CHECKED_STATUS MasterLeaderStepDownWithNewLeader(const std::string& dest_ts_uuid);
+
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
   Result<TableNameResolver> BuildTableNameResolver();
@@ -250,7 +252,7 @@ class ClusterAdminClient {
       const PeerId& new_leader_uuid,
       std::unique_ptr<consensus::ConsensusServiceProxy>* leader_proxy);
 
-  CHECKED_STATUS MasterLeaderStepDownWithNewLeader(const std::string& dest_ts_uuid);
+
   CHECKED_STATUS StartElection(const std::string& tablet_id);
 
   CHECKED_STATUS MasterLeaderStepDown(const std::string& leader_uuid,
