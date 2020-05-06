@@ -1021,7 +1021,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
-    assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1081,7 +1081,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJsonMissingGFlags);
 
-    assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1104,7 +1104,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
-    assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1127,7 +1127,7 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
-    assertBadRequest(result, "gflags param is required for taskType: GFlags");
+    assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
   }
 

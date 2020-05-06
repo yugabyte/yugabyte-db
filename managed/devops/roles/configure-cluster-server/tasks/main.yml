@@ -77,6 +77,14 @@
     create: yes
   with_dict: "{{ gflags | default(_gflags) }}"
 
+- name: Configure | Delete {{ yb_process_type }} gflags
+  lineinfile:
+    dest: "{{ yb_conf_file }}"
+    regexp: "^--{{ item }}=(.*)"
+    state: absent
+  with_items: "{{ gflags_to_remove }}"
+  when: gflags_to_remove is defined
+
 - name: Configure | Add yb server ctl script
   vars:
     mount_paths: "{{ _mount_points | join(' ') }}"
