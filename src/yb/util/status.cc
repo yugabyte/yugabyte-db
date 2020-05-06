@@ -71,6 +71,8 @@ struct StatusCategories {
     return ss.str();
   }
 
+  // In debug mode log as many details as possible and crash.
+  // In release mode log a warning.
   void ReportMissingCategory(uint8_t category_id, const char* function_name) {
 #ifndef NDEBUG
     LOG(WARNING) << "Known categories: " << KnownCategoriesStr();
