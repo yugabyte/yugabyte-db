@@ -8,23 +8,37 @@ The traditional way to take backups in an RDBMS is to *dump* the data across all
 
 #### 1. ACID consistency
 * A snapshot should be consistent with on-going transactions. A transaction could affect rows across multiple tablets (potentially across multiple nodes). A snapshot should either completely include all the changes made by the transaction or fully exclude them.
-#### 2. Point-in-time consistency
 * If any transaction `t` is included into a snapshot, then all transactions that committed prior to this `t` should be included into the snapshot.
-#### 3. Recency of updates
+#### 2. Recency of updates
 * All updates/transactions committed before the snapshot request is initiated should be included in the snapshot. Transactions in progress at the time of issuing the snapshot request may or may not be included into the snapshot.
-#### 4. Efficiency for large data set sizes
+#### 3. Efficiency for large data set sizes
 * Time to perform an in-cluster snapshot should not depend on the dataset size. This implies that the database should not need to scan the data stored in order to perform a snapshot.
-#### 5. No dependency on cluster configuration or deployment topology
+#### 4. No dependency on cluster configuration or deployment topology
 * It should be possible to restore snapshots from a cluster into the same cluster or any other target cluster (with different number/type of nodes).
-#### 6. Support for secure clusters
+#### 5. Support for secure clusters
 * Authentication and authorization - support backing up users, roles and permissions
 * Encryption of data at rest - support backuping up data with encryption preserved as well as un-encrypted
-#### 7. Ease of use
+#### 6. Ease of use
 * This functionality should work across all the YugabyteDB APIs (YSQL and YCQL)
 * Extend this functionality to the YSQL grammar to simplify this process
 
+## Extending to point in time restores
 
-# Design
+The goals described above are for performing a **base backup** of the table. A **point in time restore** or PITR refers to being able to restore to a specified hybrid timestamp (which correlates with the physical time, but could differ up to the max clock skew). This could be achieved by one of the following techniques:
+* Starting from a base backup, apply WAL updates forward in time till the desired hybrid timestamp. This would be the same as starting from an older state of the cluster and moving it forward by applying updates.
+* Starting from the data in the cluster (or a later in-cluster snapshot), remove all updates applied after the desired hybrid timestamp. This is semantically the same as applying the *undo log* to abort select transactions.
+
+> **Note:** The former technique lends itself to implementing incremental backups by saving the WAL files on each node. The latter technique only allows point in time restores, and cannot be used to implement incremental backups. 
+
+Support for point in time restores is planned, and will depend on the ability to perform base backups.
+
+
+
+> **Note:** Point in time restores will be an add-on to the basic feature of being able to perform a distributed backup at a point in time.
+
+
+
+# Design - performing base backups
 
 ### 1. Initiating a snapshot
 The snapshot will be initiated from the YSQL or the YCQL query layer, because this would have a dependency on the schema. In the case of either API, snapshots can be performed at the following granularities:
