@@ -347,7 +347,7 @@ redis_rpcs_per_sec_all:
         "quit": "Quit"
         "flushdb": "FlushDB"
 
-redis_rpc_percentile:
+redis_server_rpc_p95:
   metric: "rpc_latency"
   function: "max"
   operator: "> 0"
@@ -357,7 +357,66 @@ redis_rpc_percentile:
     quantile: "p95"
   group_by: "service_method"
   layout:
-    title: "YEDIS Op Latency Percentile"
+    title: "YEDIS Op Latency (P95)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "get": "Get"
+        "mget": "MGet"
+        "hget": "HGet"
+        "tsget": "TsGet"
+        "hmget": "HMGet"
+        "hgetall": "HGetAll"
+        "hkeys": "HKeys"
+        "hvals": "HVals"
+        "hlen": "HLen"
+        "hexists": "HExists"
+        "hstrlen": "HStrLen"
+        "smembers": "SMembers"
+        "sismember": "SIsMember"
+        "scard": "SCard"
+        "strlen": "StrLen"
+        "exists": "Exists"
+        "getrange": "GetRange"
+        "set": "Set"
+        "mset": "MSet"
+        "hset": "HSet"
+        "hincrby": "HIncrBy"
+        "hmset": "HMSet"
+        "hdel": "HDel"
+        "sadd": "SAdd"
+        "srem": "SRem"
+        "tsadd": "TsAdd"
+        "tsrangebytime": "TsRangeByTime"
+        "tsrem": "TsRem"
+        "getset": "GetSet"
+        "append": "Append"
+        "del": "Del"
+        "setrange": "SetRange"
+        "incr": "Incr"
+        "echo": "Echo"
+        "auth": "Auth"
+        "config": "Config"
+        "info": "Info"
+        "role": "Role"
+        "ping": "Ping"
+        "command": "Command"
+        "quit": "Quit"
+        "flushdb": "FlushDB"
+      ticksuffix: "&nbsp;\u00B5s"
+
+redis_server_rpc_p99:
+  metric: "rpc_latency"
+  function: "max"
+  operator: "> 0"
+  filters:
+    server_type: "yb_redisserver"
+    service_type: "RedisServerService"
+    quantile: "p99"
+  group_by: "service_method"
+  layout:
+    title: "YEDIS Op Latency (P99)"
     xaxis:
       type: "date"
     yaxis:
@@ -568,7 +627,7 @@ redis_ops_latency_all:
     service_type: "RedisServerService"
   group_by: "service_method"
   layout:
-    title: "YEDIS Op Latency"
+    title: "YEDIS Op Latency (Avg)"
     xaxis:
       type: "date"
     yaxis:
@@ -1484,7 +1543,7 @@ ysql_server_rpc_per_second:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions|AggregatePushdowns"
   group_by: "service_method"
   layout:
     title: "Total YSQL Ops / Sec"
@@ -1507,10 +1566,10 @@ ysql_sql_latency:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions|AggregatePushdowns"
   group_by: "service_method"
   layout:
-    title: "YSQL Op Latency"
+    title: "YSQL Op Latency (Avg)"
     xaxis:
       type: "date"
     yaxis:
@@ -1523,19 +1582,42 @@ ysql_sql_latency:
         "Transactions": "Transactions"
       ticksuffix: "&nbsp;\u00B5s"
 
-# Unused right now.
-ysql_server_rpc_percentile:
+ysql_server_rpc_p95:
   metric: "rpc_latency"
   function: "max"
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions|AggregatePushdowns"
     quantile: "p95"
   group_by: "service_method"
   layout:
-    title: "YSQL Op Latency Percentile"
+    title: "YSQL Op Latency (P95)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "SelectStmt": "Select"
+        "InsertStmt": "Insert"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Other"
+        "Transactions": "Transactions"
+      ticksuffix: "&nbsp;\u00B5s"
+
+ysql_server_rpc_p99:
+  metric: "rpc_latency"
+  function: "max"
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions|AggregatePushdowns"
+    quantile: "p99"
+  group_by: "service_method"
+  layout:
+    title: "YSQL Op Latency (P99)"
     xaxis:
       type: "date"
     yaxis:
@@ -1583,7 +1665,7 @@ cql_sql_latency:
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
   group_by: "service_method"
   layout:
-    title: "YCQL Op Latency"
+    title: "YCQL Op Latency (Avg)"
     xaxis:
       type: "date"
     yaxis:
@@ -1597,7 +1679,7 @@ cql_sql_latency:
       #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
-cql_server_rpc_percentile:
+cql_server_rpc_p95:
   metric: "rpc_latency"
   function: "max"
   filters:
@@ -1607,7 +1689,30 @@ cql_server_rpc_percentile:
     quantile: "p95"
   group_by: "service_method"
   layout:
-    title: "YCQL Op Latency Percentile"
+    title: "YCQL Op Latency (P95)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "SelectStmt": "Select"
+        "InsertStmt": "Insert"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Other"
+        "Transaction": "Transactions"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_server_rpc_p99:
+  metric: "rpc_latency"
+  function: "max"
+  filters:
+    server_type: "yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction"
+    quantile: "p99"
+  group_by: "service_method"
+  layout:
+    title: "YCQL Op Latency (P99)"
     xaxis:
       type: "date"
     yaxis:

@@ -62,18 +62,25 @@ const panelTypes = {
       "lsm_rocksdb_compaction_time",
       "lsm_rocksdb_compaction_numfiles",
       "docdb_transaction"]},
-  proxies: {title: "Overall Ops and Latency",
-    metrics: ["ysql_server_rpc_per_second",
-      "ysql_sql_latency",
-      // "ysql_server_rpc_percentile",
+  ysql_ops: {title: "YSQL Ops and Latency",
+    metrics: [
+      "ysql_server_rpc_per_second",
+      "ysql_sql_latency"
+      // TODO(bogdan): Add these in once we have histogram support, see #3630.
+      // "ysql_server_rpc_p99"
+    ]},
+  ycql_ops: {title: "YCQL Ops and Latency",
+    metrics: [
       "cql_server_rpc_per_second",
       "cql_sql_latency",
-      "cql_server_rpc_percentile",
+      "cql_server_rpc_p99"
+    ]},
+  yedis_ops: {title: "YEDIS Ops and Latency",
+    metrics: [
       "redis_rpcs_per_sec_all",
       "redis_ops_latency_all",
-      "redis_rpc_percentile"
+      "redis_server_rpc_p99"
     ]},
-
   redis:  {title: "YEDIS Advanced",
     metrics: ["redis_yb_local_vs_remote_ops",
       "redis_yb_local_vs_remote_latency",
@@ -202,7 +209,8 @@ class GraphPanel extends Component {
 
     let panelData = <YBLoading />;
 
-    if (insecureLoginToken && type !== 'proxies') {
+    if (insecureLoginToken &&
+        !(type === 'ycql_ops' || type === 'ysql_ops' || type === 'yedis_ops')) {
       panelData = (<div className="oss-unavailable-warning">
         Only available on Yugabyte Platform.
       </div>);
