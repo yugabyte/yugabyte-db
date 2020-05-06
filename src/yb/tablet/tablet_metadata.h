@@ -63,6 +63,8 @@ namespace yb {
 namespace tablet {
 
 extern const int64 kNoDurableMemStore;
+extern const std::string kIntentsSubdir;
+extern const std::string kIntentsDBSuffix;
 
   // Table info.
 struct TableInfo {
@@ -217,15 +219,17 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   // Returns the partition of the Raft group.
-  const Partition& partition() const {
+  std::shared_ptr<Partition> partition() const {
     DCHECK_NE(state_, kNotLoadedYet);
+    std::lock_guard<MutexType> lock(data_mutex_);
     return partition_;
   }
 
   // Returns the primary table id. For co-located tables, the primary table is the table this Raft
   // group was first created for. For single-tenant table, it is the primary table.
-  const TableId& table_id() const {
+  TableId table_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
+    std::lock_guard<MutexType> lock(data_mutex_);
     return primary_table_id_;
   }
 
@@ -296,6 +300,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   std::string rocksdb_dir() const { return kv_store_.rocksdb_dir; }
+  std::string intents_rocksdb_dir() const { return kv_store_.rocksdb_dir + kIntentsDBSuffix; }
 
   std::string lower_bound_key() const { return kv_store_.lower_bound_key; }
   std::string upper_bound_key() const { return kv_store_.upper_bound_key; }
@@ -364,6 +369,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // in such a case, 'was_deleted' will be set to FALSE.
   CHECKED_STATUS DeleteTabletData(TabletDataState delete_type, const yb::OpId& last_logged_opid);
 
+  // Return true if this metadata references no regular data DB nor intents DB and is
+  // already marked as tombstoned. If this is the case, then calling DeleteTabletData
+  // would be a no-op.
+  bool IsTombstonedWithNoRocksDBData() const;
+
   // Permanently deletes the superblock from the disk.
   // DeleteTabletData() must first be called and the tablet data state must be
   // TABLET_DATA_DELETED.
@@ -383,6 +393,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   // Fully replace a superblock (used for bootstrap).
   CHECKED_STATUS ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &pb);
+
+  // Returns a new WAL dir path to be used for new Raft group `raft_group_id` which will be created
+  // as a result of this Raft group splitting.
+  // Uses the same root dir as for `this` Raft group.
+  std::string GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const;
+
+  // Returns a new Data dir path to be used for new Raft group `raft_group_id` which will be created
+  // as a result of this Raft group splitting.
+  // Uses the same root dir as for `this` Raft group.
+  std::string GetSubRaftGroupDataDir(const RaftGroupId& raft_group_id) const;
 
   // Creates a new Raft group metadata for the part of existing tablet contained in this Raft group.
   // Assigns specified Raft group ID, partition and key bounds for a new tablet.
@@ -472,7 +492,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   mutable Mutex flush_lock_;
 
   RaftGroupId raft_group_id_;
-  Partition partition_;
+  std::shared_ptr<Partition> partition_;
 
   // The primary table id. Primary table is the first table this Raft group is created for.
   // Additional tables can be added to this Raft group to co-locate with this table.
@@ -504,8 +524,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
 CHECKED_STATUS MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock);
 
-extern const std::string kIntentsSubdir;
-extern const std::string kIntentsDBSuffix;
+// Checks whether tablet data storage is ready for function, i.e. its creation or bootstrap process
+// has been completed and tablet is not deleted and not in process of being deleted.
+inline bool CanServeTabletData(TabletDataState state) {
+  return state == TabletDataState::TABLET_DATA_READY ||
+         state == TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+}
 
 } // namespace tablet
 } // namespace yb

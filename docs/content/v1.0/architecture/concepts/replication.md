@@ -2,6 +2,7 @@
 title: Replication
 linkTitle: Replication
 description: Data Replication with Raft Consensus
+block_indexing: true
 menu:
   v1.0:
     identifier: architecture-replication

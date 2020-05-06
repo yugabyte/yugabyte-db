@@ -2,6 +2,7 @@
 title: DROP DATABASE
 summary: Removes a database and all of its database objects
 description: DROP DATABASE
+block_indexing: true
 menu:
   v1.1:
     identifier: api-postgresql-drop-db

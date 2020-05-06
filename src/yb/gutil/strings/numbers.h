@@ -586,4 +586,6 @@ inline string UInt64ToString(uint64 ui64) {
   return StringPrintf("%7" PRIu64, ui64);
 }
 
+string HumanizeBytes(uint64_t bytes, int precision = 2);
+
 #endif // YB_GUTIL_STRINGS_NUMBERS_H

@@ -1,5 +1,5 @@
 ---
-title: Universe creation in YugabyteDB
+title: Universe creation
 headerTitle: Universe creation
 linkTitle: Universe creation
 description: Learn how YugabyteDB creates a universe with YB-TServer and YB-Master nodes.

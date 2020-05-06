@@ -18,13 +18,17 @@
 #include "yb/common/partition.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/pg_system_attr.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
+
+#include "yb/yql/pggate/util/pg_doc_data.h"
 
 DECLARE_bool(trace_docdb_calls);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
@@ -96,6 +100,12 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time << ", txn: " << txn_op_context_;
 
+  auto scope_exit = ScopeExit([this] {
+    if (!result_buffer_.empty()) {
+      NetworkByteOrder::Store64(result_buffer_.data(), result_rows_);
+    }
+  });
+
   switch (request_.stmt_type()) {
     case PgsqlWriteRequestPB::PGSQL_INSERT:
       return ApplyInsert(data, IsUpsert::kFalse);
@@ -116,11 +126,11 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 }
 
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
-  QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
+  QLTableRow table_row;
   if (!is_upsert) {
-    RETURN_NOT_OK(ReadColumns(data, table_row));
-    if (!table_row->IsEmpty()) {
-      VLOG(4) << "Duplicate row: " << table_row->ToString();
+    RETURN_NOT_OK(ReadColumns(data, &table_row));
+    if (!table_row.IsEmpty()) {
+      VLOG(4) << "Duplicate row: " << table_row.ToString();
       // Primary key or unique index value found.
       response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
       response_->set_error_message("Duplicate key found in primary key or unique index");
@@ -150,10 +160,10 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       << "Illegal write instruction";
 
     // Evaluate column value.
-    QLValue expr_result;
-    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+    QLExprResult expr_result;
+    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
     const SubDocument sub_doc =
-        SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
+        SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
 
     // Inserting into specified column.
     DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
@@ -168,9 +178,9 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
 }
 
 Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
-  QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
-  RETURN_NOT_OK(ReadColumns(data, table_row));
-  if (table_row->IsEmpty()) {
+  QLTableRow table_row;
+  RETURN_NOT_OK(ReadColumns(data, &table_row));
+  if (table_row.IsEmpty()) {
     // Row not found.
     response_->set_skipped(true);
     return Status::OK();
@@ -195,12 +205,12 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
              "Unsupported DocDB Expression");
 
       // Evaluate column value.
-      QLValue expr_result;
-      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result, &schema_));
+      QLExprResult expr_result;
+      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer(), &schema_));
 
       // Inserting into specified column.
       const SubDocument sub_doc =
-          SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
+          SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
 
       DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
@@ -215,9 +225,9 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     // table.
     bool is_match = true;
     if (request_.has_where_expr()) {
-      QLValue match;
-      RETURN_NOT_OK(EvalExpr(request_.where_expr(), table_row, &match));
-      is_match = match.bool_value();
+      QLExprResult match;
+      RETURN_NOT_OK(EvalExpr(request_.where_expr(), table_row, match.Writer()));
+      is_match = match.Value().bool_value();
     }
 
     if (is_match) {
@@ -234,11 +244,11 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         << "Illegal write instruction";
 
         // Evaluate column value.
-        QLValue expr_result;
-        RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+        QLExprResult expr_result;
+        RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
         const SubDocument sub_doc =
-            SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type());
+            SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type());
 
         // Inserting into specified column.
         DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
@@ -261,9 +271,9 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 }
 
 Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
-  QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
-  RETURN_NOT_OK(ReadColumns(data, table_row));
-  if (table_row->IsEmpty()) {
+  QLTableRow table_row;
+  RETURN_NOT_OK(ReadColumns(data, &table_row));
+  if (table_row.IsEmpty()) {
     // Row not found.
     response_->set_skipped(true);
     return Status::OK();
@@ -291,7 +301,7 @@ Status PgsqlWriteOperation::ApplyTruncateColocated(const DocOperationApplyData& 
 }
 
 Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
-                                        const QLTableRow::SharedPtr& table_row) {
+                                        QLTableRow* table_row) {
   // Filter the columns using primary key.
   if (doc_key_) {
     Schema projection;
@@ -305,7 +315,7 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (VERIFY_RESULT(iterator.HasNext())) {
-      RETURN_NOT_OK(iterator.NextRow(table_row.get()));
+      RETURN_NOT_OK(iterator.NextRow(table_row));
     } else {
       table_row->Clear();
     }
@@ -315,11 +325,16 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
   return Status::OK();
 }
 
-Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row) {
-  PgsqlRSRow* rsrow = resultset_.AllocateRSRow(request_.targets().size());
+Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
+  if (result_buffer_.empty()) {
+    // Reserve space for num rows.
+    pggate::PgWire::WriteInt64(0, &result_buffer_);
+  }
+  ++result_rows_;
   int rscol_index = 0;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
+      QLExprResult value;
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
         // Strip cotable id / pgtable id from the serialized DocKey before returning it as ybctid.
         Slice tuple_id = encoded_doc_key_.as_slice();
@@ -328,10 +343,11 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
         } else if (tuple_id.starts_with(ValueTypeAsChar::kPgTableOid)) {
           tuple_id.remove_prefix(1 + sizeof(PgTableOid));
         }
-        rsrow->rscol(rscol_index)->set_binary_value(tuple_id.data(), tuple_id.size());
+        value.Writer().NewValue().set_binary_value(tuple_id.data(), tuple_id.size());
       } else {
-        RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
+        RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer()));
       }
+      RETURN_NOT_OK(pggate::WriteColumn(value.Value(), &result_buffer_));
     }
     rscol_index++;
   }
@@ -384,30 +400,36 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
-                                   CoarseTimePoint deadline,
-                                   const ReadHybridTime& read_time,
-                                   const Schema& schema,
-                                   const Schema *index_schema,
-                                   PgsqlResultSet *resultset,
-                                   HybridTime *restart_read_ht) {
+Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
+                                           CoarseTimePoint deadline,
+                                           const ReadHybridTime& read_time,
+                                           const Schema& schema,
+                                           const Schema *index_schema,
+                                           faststring *result_buffer,
+                                           HybridTime *restart_read_ht) {
+  size_t fetched_rows = 0;
+  // Reserve space for fetched rows count.
+  pggate::PgWire::WriteInt64(0, result_buffer);
+  auto se = ScopeExit([&fetched_rows, result_buffer] {
+    NetworkByteOrder::Store64(result_buffer->data(), fetched_rows);
+  });
   VLOG(4) << "Read, read time: " << read_time << ", txn: " << txn_op_context_;
 
   // Fetching data.
   if (request_.batch_arguments_size() > 0) {
-    RETURN_NOT_OK(ExecuteBatch(ql_storage, deadline, read_time, schema, resultset,
-                               restart_read_ht));
+    fetched_rows = VERIFY_RESULT(ExecuteBatch(
+        ql_storage, deadline, read_time, schema, result_buffer, restart_read_ht));
     if (FLAGS_trace_docdb_calls) {
-      TRACE("Fetched $0 rows.", resultset->rsrow_count());
+      TRACE("Fetched $0 rows.", fetched_rows);
     }
     *restart_read_ht = table_iter_->RestartReadHt();
-    return Status::OK();
+    return fetched_rows;
   }
 
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
     if (request_.limit() == 0) {
-      return Status::OK();
+      return fetched_rows;
     }
     row_count_limit = request_.limit();
   }
@@ -419,6 +441,7 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   Schema projection;
   Schema index_projection;
   common::YQLRowwiseIteratorIf *iter;
+  const Schema* scan_schema;
 
   RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
   RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
@@ -434,8 +457,10 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
     const size_t idx = index_schema->find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
     ybbasectid_id = index_schema->column_id(idx);
+    scan_schema = index_schema;
   } else {
     iter = table_iter_.get();
+    scan_schema = &schema;
   }
 
   if (FLAGS_trace_docdb_calls) {
@@ -450,42 +475,43 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
 
   // Fetching data.
   int match_count = 0;
-  QLTableRow::SharedPtr row = std::make_shared<QLTableRow>();
-  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
+  QLTableRow row;
+  while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
          !scan_time_exceeded) {
 
-    row->Clear();
+    row.Clear();
 
     // If there is an index request, fetch ybbasectid from the index and use it as ybctid
     // to fetch from the base table. Otherwise, fetch from the base table directly.
     if (request_.has_index_request()) {
-      RETURN_NOT_OK(iter->NextRow(row.get()));
-      const auto& tuple_id = row->GetValue(ybbasectid_id);
+      RETURN_NOT_OK(iter->NextRow(&row));
+      const auto& tuple_id = row.GetValue(ybbasectid_id);
       SCHECK_NE(tuple_id, boost::none, Corruption, "ybbasectid not found in index row");
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
         return STATUS_FORMAT(Corruption, "ybctid $0 not found in indexed table", doc_key);
       }
-      row->Clear();
-      RETURN_NOT_OK(table_iter_->NextRow(projection, row.get()));
+      row.Clear();
+      RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
     } else {
-      RETURN_NOT_OK(iter->NextRow(projection, row.get()));
+      RETURN_NOT_OK(iter->NextRow(projection, &row));
     }
 
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
     if (request_.has_where_expr()) {
-      QLValue match;
-      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, &match));
-      is_match = match.bool_value();
+      QLExprResult match;
+      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, match.Writer()));
+      is_match = match.Value().bool_value();
     }
     if (is_match) {
       match_count++;
       if (request_.is_aggregate()) {
         RETURN_NOT_OK(EvalAggregate(row));
       } else {
-        RETURN_NOT_OK(PopulateResultSet(row, resultset));
+        RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
+        ++fetched_rows;
       }
     }
 
@@ -497,7 +523,8 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   }
 
   if (request_.is_aggregate() && match_count > 0) {
-    RETURN_NOT_OK(PopulateAggregate(row, resultset));
+    RETURN_NOT_OK(PopulateAggregate(row, result_buffer));
+    ++fetched_rows;
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms > 0) && request_.is_aggregate()) {
@@ -506,51 +533,55 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   }
 
   if (FLAGS_trace_docdb_calls) {
-    TRACE("Fetched $0 rows.", resultset->rsrow_count());
+    TRACE("Fetched $0 rows.", fetched_rows);
   }
   *restart_read_ht = iter->RestartReadHt();
 
-  return SetPagingStateIfNecessary(iter, resultset, row_count_limit, scan_time_exceeded);
+  RETURN_NOT_OK(SetPagingStateIfNecessary(
+      iter, fetched_rows, row_count_limit, scan_time_exceeded, scan_schema));
+
+  return fetched_rows;
 }
 
-Status PgsqlReadOperation::ExecuteBatch(const common::YQLStorageIf& ql_storage,
-                                        CoarseTimePoint deadline,
-                                        const ReadHybridTime& read_time,
-                                        const Schema& schema,
-                                        PgsqlResultSet *resultset,
-                                        HybridTime *restart_read_ht) {
+Result<size_t> PgsqlReadOperation::ExecuteBatch(const common::YQLStorageIf& ql_storage,
+                                                CoarseTimePoint deadline,
+                                                const ReadHybridTime& read_time,
+                                                const Schema& schema,
+                                                faststring *result_buffer,
+                                                HybridTime *restart_read_ht) {
   Schema projection;
   RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
 
-  QLTableRow::SharedPtr row = std::make_shared<QLTableRow>();
-  int row_count = 0;
+  QLTableRow row;
+  size_t row_count = 0;
   for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
     // Get the row.
     RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
                                          deadline, read_time, batch_argument.ybctid().value(),
                                          &table_iter_));
-    row->Clear();
+    row.Clear();
 
     SCHECK(VERIFY_RESULT(table_iter_->HasNext()), Corruption,
            "Given ybctid is not associated with any row in table");
-    RETURN_NOT_OK(table_iter_->NextRow(projection, row.get()));
+    RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
 
     // Populate result set.
-    RETURN_NOT_OK(PopulateResultSet(row, resultset));
+    RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
     row_count++;
   }
 
   // Set status for this batch.
   response_.set_batch_arg_count(row_count);
 
-  return Status::OK();
+  return row_count;
 }
 
 Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
-                                                     const PgsqlResultSet* resultset,
+                                                     size_t fetched_rows,
                                                      const size_t row_count_limit,
-                                                     const bool scan_time_exceeded) {
-  if (resultset->rsrow_count() >= row_count_limit || scan_time_exceeded) {
+                                                     const bool scan_time_exceeded,
+                                                     const Schema* schema) {
+  if (fetched_rows >= row_count_limit || scan_time_exceeded) {
     SubDocKey next_row_key;
     RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
     // When the "limit" number of rows are returned and we are asked to return the paging state,
@@ -559,10 +590,16 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
     // reading from this tablet.
     if (request_.return_paging_state()) {
       if (!next_row_key.doc_key().empty()) {
+        const auto& keybytes = next_row_key.Encode();
         PgsqlPagingStatePB* paging_state = response_.mutable_paging_state();
-        paging_state->set_next_partition_key(
-            PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
-        paging_state->set_next_row_key(next_row_key.Encode().data());
+        DSCHECK(schema != nullptr, IllegalState, "Missing schema");
+        if (schema->num_hash_key_columns() > 0) {
+          paging_state->set_next_partition_key(
+              PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+        } else {
+          paging_state->set_next_partition_key(keybytes.data());
+        }
+        paging_state->set_next_row_key(keybytes.data());
       }
     }
   }
@@ -570,13 +607,12 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIte
   return Status::OK();
 }
 
-Status PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row,
-                                             PgsqlResultSet *resultset) {
-  PgsqlRSRow *rsrow = resultset->AllocateRSRow(request_.targets().size());
-  int rscol_index = 0;
+Status PgsqlReadOperation::PopulateResultSet(const QLTableRow& table_row,
+                                             faststring *result_buffer) {
+  QLExprResult result;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
-    RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
-    rscol_index++;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, result.Writer()));
+    RETURN_NOT_OK(pggate::WriteColumn(result.Value(), result_buffer));
   }
   return Status::OK();
 }
@@ -591,7 +627,7 @@ Status PgsqlReadOperation::GetTupleId(QLValue *result) const {
   return Status::OK();
 }
 
-Status PgsqlReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table_row) {
+Status PgsqlReadOperation::EvalAggregate(const QLTableRow& table_row) {
   if (aggr_result_.empty()) {
     int column_count = request_.targets().size();
     aggr_result_.resize(column_count);
@@ -599,18 +635,16 @@ Status PgsqlReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table_row)
 
   int aggr_index = 0;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &aggr_result_[aggr_index]));
-    aggr_index++;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, aggr_result_[aggr_index++].Writer()));
   }
   return Status::OK();
 }
 
-Status PgsqlReadOperation::PopulateAggregate(const QLTableRow::SharedPtr& table_row,
-                                             PgsqlResultSet *resultset) {
+Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
+                                             faststring *result_buffer) {
   int column_count = request_.targets().size();
-  PgsqlRSRow *rsrow = resultset->AllocateRSRow(column_count);
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
-    *rsrow->rscol(rscol_index) = aggr_result_[rscol_index];
+    RETURN_NOT_OK(pggate::WriteColumn(aggr_result_[rscol_index].Value(), result_buffer));
   }
   return Status::OK();
 }

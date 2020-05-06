@@ -3,6 +3,7 @@ title: CREATE DOMAIN
 linkTitle: CREATE DOMAIN
 summary: Create a new domain in a database
 description: CREATE DOMAIN
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-create-domain

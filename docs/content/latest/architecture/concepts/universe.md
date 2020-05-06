@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: architecture-concepts-universe
-    parent: architecture-concepts
+    parent: key-concepts
     weight: 1122
 isTocNested: true
 showAsideToc: true
@@ -26,7 +26,7 @@ In most of the docs, the term `cluster` and `universe` are used interchangeably.
 The universe can be deployed in a variety of configurations depending on business requirements, and latency considerations. Some examples:
 
 - Single availability zone (AZ/rack/failure domain)
-- Multiple AZs in a region
+- Multiple availability zones (AZs) in a region
 - Multiple regions (with synchronous and asynchronous replication choices)
 
 ## Organization of user data
@@ -73,16 +73,10 @@ Below is an illustration of a simple 4-node YugabyteDB universe:
 
 ## Universe vs cluster
 
-A YugabyteDB universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServer services that are performing one of the following replication modes:
+A YugabyteDB universe comprises of exactly one primary cluster and zero or more read replica clusters. 
 
-- Synchronous replication
-- Asynchronous replication
+- A primary cluster can perform both writes and reads. Replication between nodes in a primary cluster is performed synchronously.
 
-The set of nodes that are performing strong replication are referred to as the **primary cluster** and other groups are called **read replica clusters**.
-
-Note that:
-
-- There is always one primary cluster in a universe.
-- There can be zero or more read replica clusters in that universe.
+- Read replica clusters can perform only reads. Writes sent to read replica clusters get automatically rerouted to the primary cluster for the universe. These clusters help in powering reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications. Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, nodes in a read replica cluster act as Raft observers that do not participate in the write path involing the Raft leader and Raft followers present in the primary cluster.
 
 For more information about read replica clusters, see [read replicas](../../docdb/replication/#read-only-replicas).

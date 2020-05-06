@@ -45,6 +45,7 @@
 #include <linux/falloc.h>
 #include <sys/sysinfo.h>
 #endif  // defined(__APPLE__)
+#include <sys/resource.h>
 
 #include <glog/logging.h>
 
@@ -963,6 +964,16 @@ class PosixEnv : public Env {
     return access(fname.c_str(), F_OK) == 0;
   }
 
+  virtual bool DirExists(const std::string& dname) override {
+    TRACE_EVENT1("io", "PosixEnv::DirExists", "path", dname);
+    ThreadRestrictions::AssertIOAllowed();
+    struct stat statbuf;
+    if (stat(dname.c_str(), &statbuf) == 0) {
+      return S_ISDIR(statbuf.st_mode);
+    }
+    return false;
+  }
+
   CHECKED_STATUS GetChildren(const std::string& dir,
                              ExcludeDots exclude_dots,
                              std::vector<std::string>* result) override {
@@ -1397,6 +1408,16 @@ class PosixEnv : public Env {
     uint64_t available_blocks = static_cast<uint64_t>(stat.f_bavail);
 
     return available_blocks * block_size;
+  }
+
+  Status GetUlimit(int resource, int64_t* soft_limit, int64_t* hard_limit) override {
+    struct rlimit lim;
+    if (getrlimit(resource, &lim) != 0) {
+      return STATUS_IO_ERROR("getrlimit() failed", errno);
+    }
+    if (soft_limit != NULL) *soft_limit = lim.rlim_cur;
+    if (hard_limit != NULL) *hard_limit = lim.rlim_max;
+    return Status::OK();
   }
 
  private:

@@ -79,6 +79,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     setDefaultNodeState(NodeState.Removed);
 
     mockClient = mock(YBClient.class);
+    mockWaits(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     when(mockClient.waitForServer(any(), anyInt())).thenReturn(true);
@@ -161,7 +162,6 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     TaskType.WaitForServer,
     TaskType.ChangeMasterConfig,
     TaskType.AnsibleConfigureServers,
-    TaskType.AnsibleConfigureServers,
     TaskType.AnsibleClusterServerCtl,
     TaskType.UpdateNodeProcess,
     TaskType.WaitForServer,
@@ -169,6 +169,9 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     TaskType.ModifyBlackList,
     TaskType.WaitForLoadBalance,
     TaskType.AnsibleConfigureServers,
+    TaskType.SetFlagInMemory,
+    TaskType.AnsibleConfigureServers,
+    TaskType.SetFlagInMemory,
     TaskType.SetNodeState,
     TaskType.UniverseUpdateSucceeded
   );
@@ -182,9 +185,11 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
-    Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
     Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+    Json.toJson(ImmutableMap.of()),
+    Json.toJson(ImmutableMap.of()),
+    Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
@@ -255,7 +260,8 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
 
     TaskInfo taskInfo = submitTask(DEFAULT_NODE_NAME, 4);
-    verify(mockNodeManager, times(6)).nodeCommand(any(), any());
+    // 5 calls for setting up the server and then 6 calls for setting the conf files.
+    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));

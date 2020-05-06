@@ -3,6 +3,7 @@ title: Overview
 linkTitle: Overview
 description: Overview
 type: page
+block_indexing: true
 menu:
   v1.0:
     identifier: overview

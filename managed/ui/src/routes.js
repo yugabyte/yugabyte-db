@@ -26,12 +26,14 @@ import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
 import Importer from './pages/Importer';
 import Certificates from './pages/Certificates';
-import Schedules from './pages/Schedules';
 import Releases from './pages/Releases';
 import { isDefinedNotNull } from './utils/ObjectUtils';
 
 const clearCredentials = () => {
-  localStorage.clear();
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('apiToken');
+  localStorage.removeItem('customerId');
+  localStorage.removeItem('userId');
   Cookies.remove('apiToken');
   Cookies.remove('authToken');
   Cookies.remove('customerId');
@@ -147,7 +149,6 @@ export default (store) => {
         <Route path="/logs" component={YugawareLogs}/>
         <Route path="/releases" component={Releases}/>
         <Route path="/certificates" component={Certificates}/>
-        <Route path="/schedules" component={Schedules}/>
       </Route>
     </Route>
   );

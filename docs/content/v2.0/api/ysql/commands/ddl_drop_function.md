@@ -3,6 +3,7 @@ title: DROP FUNCTION
 linkTitle: DROP FUNCTION
 summary: Remove a function
 description: DROP FUNCTION
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-function

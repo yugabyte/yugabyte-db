@@ -35,6 +35,8 @@
 #include "yb/server/clock.h"
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/cql_test_util.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/logging.h"
@@ -73,442 +75,22 @@ DECLARE_int64(external_mini_cluster_max_log_bytes);
 
 namespace yb {
 
-//------------------------------------------------------------------------------
-
-class CassandraBatch;
-class CassandraSession;
-class CassandraStatement;
-struct cass_json_t;
-
-// Cassandra CPP driver has his own functions to release objects, so we should use them for it.
-template <class T, void (*Func)(T*)>
-class FuncDeleter {
- public:
-  void operator()(T* t) const {
-    if (t) {
-      Func(t);
-    }
-  }
-};
-
-class CassandraValue {
- public:
-  explicit CassandraValue(const CassValue* value) : value_(value) {}
-
-  template <class Out>
-  void Get(Out* out) const;
-
-  template <class Out>
-  Out As() const {
-    Out result;
-    Get(&result);
-    return result;
-  }
-
-  std::string ToString() const;
-
- private:
-  const CassValue* value_;
-};
-
-typedef std::unique_ptr<
-    CassIterator, FuncDeleter<CassIterator, &cass_iterator_free>> CassIteratorPtr;
-
-class CassandraRowIterator {
- public:
-  explicit CassandraRowIterator(CassIterator* iterator) : cass_iterator_(iterator) {}
-
-  bool Next() {
-    return cass_iterator_next(cass_iterator_.get()) != cass_false;
-  }
-
-  template <class Out>
-  void Get(Out* out) const {
-    Value().Get(out);
-  }
-
-  CassandraValue Value() const {
-    return CassandraValue(cass_iterator_get_column(cass_iterator_.get()));
-  }
-
- private:
-  CassIteratorPtr cass_iterator_;
-};
-
-class CassandraRow {
- public:
-  explicit CassandraRow(const CassRow* row) : cass_row_(row) {}
-
-  template <class Out>
-  void Get(size_t index, Out* out) const {
-    return Value(index).Get(out);
-  }
-
-  CassandraValue Value(size_t index) const {
-    return CassandraValue(cass_row_get_column(cass_row_, index));
-  }
-
-  CassandraRowIterator CreateIterator() const {
-    return CassandraRowIterator(cass_iterator_from_row(cass_row_));
-  }
-
-  void TakeIterator(CassIteratorPtr iterator) {
-    cass_iterator_ = std::move(iterator);
-  }
-
- private:
-  const CassRow* cass_row_; // owned by iterator
-  CassIteratorPtr cass_iterator_;
-};
-
-class CassandraIterator {
- public:
-  explicit CassandraIterator(CassIterator* iterator) : cass_iterator_(iterator) {}
-
-  bool Next() {
-    return cass_iterator_next(cass_iterator_.get()) != cass_false;
-  }
-
-  CassandraRow Row() {
-    return CassandraRow(cass_iterator_get_row(cass_iterator_.get()));
-  }
-
-  void MoveToRow(CassandraRow* row) {
-    row->TakeIterator(std::move(cass_iterator_));
-  }
-
- private:
-  CassIteratorPtr cass_iterator_;
-};
-
-typedef std::unique_ptr<
-    const CassResult, FuncDeleter<const CassResult, &cass_result_free>> CassResultPtr;
-
-class CassandraResult {
- public:
-  explicit CassandraResult(const CassResult* result) : cass_result_(result) {}
-
-  CassandraIterator CreateIterator() const {
-    return CassandraIterator(cass_iterator_from_result(cass_result_.get()));
-  }
-
- private:
-  CassResultPtr cass_result_;
-};
-
-typedef std::unique_ptr<
-    const CassPrepared, FuncDeleter<const CassPrepared, &cass_prepared_free>> CassPreparedPtr;
-
-class CassandraPrepared {
- public:
-  explicit CassandraPrepared(const CassPrepared* prepared) : prepared_(prepared) {}
-
-  CassandraStatement Bind();
-
- private:
-  CassPreparedPtr prepared_;
-};
-
-typedef std::unique_ptr<
-    CassFuture, FuncDeleter<CassFuture, &cass_future_free>> CassFuturePtr;
-
-class CassandraFuture {
- public:
-  explicit CassandraFuture(CassFuture* future) : future_(future) {}
-
-  bool Ready() const {
-    return cass_future_ready(future_.get());
-  }
-
-  CHECKED_STATUS Wait() {
-    cass_future_wait(future_.get());
-    return CheckErrorCode();
-  }
-
-  CHECKED_STATUS WaitFor(MonoDelta duration) {
-    if (!cass_future_wait_timed(future_.get(), duration.ToMicroseconds())) {
-      return STATUS(TimedOut, "Future timed out");
-    }
-
-    return CheckErrorCode();
-  }
-
-  CassandraResult Result() {
-    return CassandraResult(cass_future_get_result(future_.get()));
-  }
-
-  CassandraPrepared Prepared() {
-    return CassandraPrepared(cass_future_get_prepared(future_.get()));
-  }
-
- private:
-  CHECKED_STATUS CheckErrorCode() {
-    const CassError rc = cass_future_error_code(future_.get());
-    VLOG(2) << "Last operation RC: " << rc;
-
-    if (rc != CASS_OK) {
-      const char* message = nullptr;
-      size_t message_sz = 0;
-      cass_future_error_message(future_.get(), &message, &message_sz);
-      if (rc == CASS_ERROR_LIB_REQUEST_TIMED_OUT) {
-        return STATUS(TimedOut, Slice(message, message_sz));
-      }
-      return STATUS(RuntimeError, Slice(message, message_sz));
-    }
-
-    return Status::OK();
-  }
-
-  CassFuturePtr future_;
-};
-
-typedef std::unique_ptr<
-    CassStatement, FuncDeleter<CassStatement, &cass_statement_free>> CassStatementPtr;
-
-class CassandraStatement {
- public:
-  explicit CassandraStatement(CassStatement* statement)
-      : cass_statement_(statement) {}
-
-  explicit CassandraStatement(const std::string& query, size_t parameter_count = 0)
-      : cass_statement_(cass_statement_new(query.c_str(), parameter_count)) {}
-
-  void Bind(size_t index, const string& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
-  }
-
-  void Bind(size_t index, const cass_bool_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_bool(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_float_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_float(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_double_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_double(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_int32_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_int32(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_int64_t& v) {
-    CHECK_EQ(CASS_OK, cass_statement_bind_int64(cass_statement_.get(), index, v));
-  }
-
-  void Bind(size_t index, const cass_json_t& v);
-
-  CassStatement* get() const {
-    return cass_statement_.get();
-  }
-
- private:
-  friend class CassandraBatch;
-  friend class CassandraSession;
-
-  CassStatementPtr cass_statement_;
-};
-
-typedef std::unique_ptr<CassBatch, FuncDeleter<CassBatch, &cass_batch_free>> CassBatchPtr;
-
-class CassandraBatch {
- public:
-  explicit CassandraBatch(CassBatchType type) : cass_batch_(cass_batch_new(type)) {}
-
-  void Add(CassandraStatement* statement) {
-    cass_batch_add_statement(cass_batch_.get(), statement->cass_statement_.get());
-  }
-
- private:
-  friend class CassandraSession;
-
-  CassBatchPtr cass_batch_;
-};
-
-struct DeleteSession {
-  void operator()(CassSession* session) const {
-    if (session != nullptr) {
-      WARN_NOT_OK(CassandraFuture(cass_session_close(session)).Wait(), "Close session");
-      cass_session_free(session);
-    }
-  }
-};
-
-typedef std::unique_ptr<CassSession, DeleteSession> CassSessionPtr;
-
-class CassandraSession {
- public:
-  CassandraSession() = default;
-
-  CHECKED_STATUS Connect(CassCluster* cluster) {
-    cass_session_.reset(CHECK_NOTNULL(cass_session_new()));
-    return CassandraFuture(cass_session_connect(cass_session_.get(), cluster)).Wait();
-  }
-
-  static Result<CassandraSession> Create(CassCluster* cluster) {
-    LOG(INFO) << "Create new session ...";
-    CassandraSession result;
-    RETURN_NOT_OK(result.Connect(cluster));
-    LOG(INFO) << "Create new session - DONE";
-    return result;
-  }
-
-  CHECKED_STATUS Execute(const CassandraStatement& statement) {
-    CassandraFuture future(cass_session_execute(
-        cass_session_.get(), statement.cass_statement_.get()));
-    return future.Wait();
-  }
-
-  Result<CassandraResult> ExecuteWithResult(const CassandraStatement& statement) {
-    CassandraFuture future(cass_session_execute(
-        cass_session_.get(), statement.cass_statement_.get()));
-    RETURN_NOT_OK(future.Wait());
-    return future.Result();
-  }
-
-  CassandraFuture ExecuteGetFuture(const CassandraStatement& statement) {
-    return CassandraFuture(
-        cass_session_execute(cass_session_.get(), statement.cass_statement_.get()));
-  }
-
-  CassandraFuture ExecuteGetFuture(const string& query) {
-    LOG(INFO) << "Execute query: " << query;
-    return ExecuteGetFuture(CassandraStatement(query));
-  }
-
-  CHECKED_STATUS ExecuteQuery(const string& query) {
-    LOG(INFO) << "Execute query: " << query;
-    return Execute(CassandraStatement(query));
-  }
-
-  Result<CassandraResult> ExecuteWithResult(const string& query) {
-    LOG(INFO) << "Execute query: " << query;
-    return ExecuteWithResult(CassandraStatement(query));
-  }
-
-  template <class Action>
-  CHECKED_STATUS ExecuteAndProcessOneRow(
-      const CassandraStatement& statement, const Action& action) {
-    auto result = VERIFY_RESULT(ExecuteWithResult(statement));
-    auto iterator = result.CreateIterator();
-    if (!iterator.Next()) {
-      return STATUS(IllegalState, "Row does not exists");
-    }
-    auto row = iterator.Row();
-    action(row);
-    if (iterator.Next()) {
-      return STATUS(IllegalState, "Multiple rows returned");
-    }
-    return Status::OK();
-  }
-
-  template <class Action>
-  CHECKED_STATUS ExecuteAndProcessOneRow(const std::string& query, const Action& action) {
-    return ExecuteAndProcessOneRow(CassandraStatement(query), action);
-  }
-
-  CHECKED_STATUS ExecuteBatch(const CassandraBatch& batch) {
-    return SubmitBatch(batch).Wait();
-  }
-
-  CassandraFuture SubmitBatch(const CassandraBatch& batch) {
-    return CassandraFuture(
-        cass_session_execute_batch(cass_session_.get(), batch.cass_batch_.get()));
-  }
-
-  Result<CassandraPrepared> Prepare(
-      const string& prepare_query, MonoDelta timeout = MonoDelta::kZero) {
-    VLOG(2) << "Execute prepare request: " << prepare_query << ", timeout: " << timeout;
-    auto deadline = CoarseMonoClock::now() + timeout;
-    for (;;) {
-      CassandraFuture future(cass_session_prepare(cass_session_.get(), prepare_query.c_str()));
-      auto wait_result = future.Wait();
-      if (wait_result.ok()) {
-        return future.Prepared();
-      }
-
-      if (timeout == MonoDelta::kZero || CoarseMonoClock::now() > deadline) {
-        return wait_result;
-      }
-      std::this_thread::sleep_for(100ms);
-    }
-  }
-
-  void Reset() {
-    cass_session_.reset();
-  }
-
- private:
-  CassSessionPtr cass_session_;
-};
-
-CassandraStatement CassandraPrepared::Bind() {
-  return CassandraStatement(cass_prepared_bind(prepared_.get()));
-}
-
-const MonoDelta kTimeOut = RegularBuildVsSanitizers(12s, 60s);
-
-class CppCassandraDriver {
- public:
-  explicit CppCassandraDriver(
-      const ExternalMiniCluster& mini_cluster, bool use_partition_aware_routing) {
-
-#define USE_LOCAL_CLUSTER 0
-#if USE_LOCAL_CLUSTER // Local cluster for testing
-    const uint16_t port = 9042;
-    const string hosts = "127.0.0.1,127.0.0.2,127.0.0.3";
-#else
-    const uint16_t port = mini_cluster.tablet_server(0)->cql_rpc_port();
-    string hosts = mini_cluster.tablet_server(0)->bind_host();
-
-    for (int i = 1; i < mini_cluster.num_tablet_servers(); ++i) {
-      hosts += ',' + mini_cluster.tablet_server(i)->bind_host();
-    }
-#endif
-
-    // Enable detailed tracing inside driver.
-    if (VLOG_IS_ON(4)) {
-      cass_log_set_level(CASS_LOG_TRACE);
-    }
-
-    LOG(INFO) << "Create Cassandra cluster to " << hosts << " :" << port << " ...";
-    cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
-    CHECK_EQ(CASS_OK, cass_cluster_set_contact_points(cass_cluster_, hosts.c_str()));
-    CHECK_EQ(CASS_OK, cass_cluster_set_port(cass_cluster_, port));
-    cass_cluster_set_request_timeout(cass_cluster_, kTimeOut.ToMilliseconds());
-
-    // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.
-    cass_cluster_set_partition_aware_routing(
-        cass_cluster_, use_partition_aware_routing ? cass_true : cass_false, 3);
-  }
-
-  ~CppCassandraDriver() {
-    LOG(INFO) << "Terminating driver...";
-
-    if (cass_cluster_) {
-      cass_cluster_free(cass_cluster_);
-      cass_cluster_ = nullptr;
-    }
-
-    LOG(INFO) << "Terminating driver - DONE";
-  }
-
-  Result<CassandraSession> CreateSession() {
-    return CassandraSession::Create(cass_cluster_);
-  }
-
- private:
-  CassCluster* cass_cluster_ = nullptr;
-};
+namespace util {
+
+template<class T>
+string type_name() { return "unknown"; } // COMPILATION ERROR: Specialize it for your type!
+// Supported types - get type name:
+template<> string type_name<string>() { return "text"; }
+template<> string type_name<cass_bool_t>() { return "boolean"; }
+template<> string type_name<cass_float_t>() { return "float"; }
+template<> string type_name<cass_double_t>() { return "double"; }
+template<> string type_name<cass_int32_t>() { return "int"; }
+template<> string type_name<cass_int64_t>() { return "bigint"; }
+template<> string type_name<CassandraJson>() { return "jsonb"; }
+
+} // namespace util
 
 //------------------------------------------------------------------------------
-
-Result<CassandraSession> EstablishSession(CppCassandraDriver* driver) {
-  auto session = VERIFY_RESULT(driver->CreateSession());
-  RETURN_NOT_OK(session.ExecuteQuery("USE test;"));
-  return session;
-}
 
 class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
  public:
@@ -519,7 +101,12 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     // Start up with 3 (default) tablet servers.
     ASSERT_NO_FATALS(StartCluster(ExtraTServerFlags(), ExtraMasterFlags(), 3, NumMasters()));
 
-    driver_.reset(CHECK_NOTNULL(new CppCassandraDriver(*cluster_, UsePartitionAwareRouting())));
+    std::vector<std::string> hosts;
+    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      hosts.push_back(cluster_->tablet_server(i)->bind_host());
+    }
+    driver_.reset(new CppCassandraDriver(
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting()));
 
     // Create and use default keyspace.
     session_ = ASSERT_RESULT(driver_->CreateSession());
@@ -563,11 +150,10 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
  protected:
   unique_ptr<CppCassandraDriver> driver_;
   CassandraSession session_;
-  friend void DoTestCreateUniqueIndexWithOnlineWrites(
-      CppCassandraDriverTest* test, bool delete_before_insert);
 };
 
 YB_STRONGLY_TYPED_BOOL(PKOnlyIndex);
+YB_STRONGLY_TYPED_BOOL(IsUnique);
 YB_STRONGLY_TYPED_BOOL(IncludeAllColumns);
 YB_STRONGLY_TYPED_BOOL(UserEnforced);
 
@@ -603,10 +189,15 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
   friend Result<IndexPermissions>
   TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex *test);
 
-  friend void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
-                                     PKOnlyIndex is_pk_only,
+  friend void TestBackfillIndexTable(CppCassandraDriverTestIndex* test,
+                                     PKOnlyIndex is_pk_only, IsUnique is_unique,
                                      IncludeAllColumns include_primary_key,
                                      UserEnforced user_enforced);
+
+  friend void DoTestCreateUniqueIndexWithOnlineWrites(
+      CppCassandraDriverTestIndex* test, bool delete_before_insert);
+
+  void TestUniqueIndexCommitOrder(bool commit_txn1, bool use_txn2);
 };
 
 class CppCassandraDriverTestIndexMultipleChunks
@@ -643,148 +234,6 @@ class CppCassandraDriverTestIndexNonResponsiveTServers : public CppCassandraDriv
         "--index_backfill_rpc_max_delay_ms=1"};
   }
 };
-
-//------------------------------------------------------------------------------
-
-struct cass_json_t {
-  cass_json_t() = default;
-  cass_json_t(const string& s) : str_(s) {} // NOLINT
-  cass_json_t(const char* s) : str_(s) {} // NOLINT
-
-  cass_json_t& operator =(const string& s) {
-    str_ = s;
-    return *this;
-  }
-  cass_json_t& operator =(const char* s) {
-    return operator =(string(s));
-  }
-
-  bool operator ==(const cass_json_t& j) const { return str_ == j.str_; }
-  bool operator !=(const cass_json_t& j) const { return !operator ==(j); }
-  bool operator <(const cass_json_t& j) const { return str_ < j.str_; }
-
-  string str_;
-};
-
-std::ostream& operator <<(std::ostream& s, const cass_json_t& v) {
-  return s << v.str_;
-}
-
-void CassandraStatement::Bind(size_t index, const cass_json_t& v) {
-  CHECK_EQ(CASS_OK, cass_statement_bind_string(cass_statement_.get(), index, v.str_.c_str()));
-}
-
-//------------------------------------------------------------------------------
-
-namespace util {
-
-template<class T>
-string type_name() { return "unknown"; } // COMPILATION ERROR: Specialize it for your type!
-// Supported types - get type name:
-template<> string type_name<string>() { return "text"; }
-template<> string type_name<cass_bool_t>() { return "boolean"; }
-template<> string type_name<cass_float_t>() { return "float"; }
-template<> string type_name<cass_double_t>() { return "double"; }
-template<> string type_name<cass_int32_t>() { return "int"; }
-template<> string type_name<cass_int64_t>() { return "bigint"; }
-template<> string type_name<cass_json_t>() { return "jsonb"; }
-
-// Supported types - read value:
-void read(const CassValue* val, string* v) {
-  const char* s = nullptr;
-  size_t sz = 0;
-  CHECK_EQ(CASS_OK, cass_value_get_string(val, &s, &sz));
-  *v = string(s, sz);
-}
-
-void read(const CassValue* val, Slice* v) {
-  const cass_byte_t* data = nullptr;
-  size_t size = 0;
-  CHECK_EQ(CASS_OK, cass_value_get_bytes(val, &data, &size));
-  *v = Slice(data, size);
-}
-
-void read(const CassValue* val, cass_bool_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_bool(val, v));
-}
-
-void read(const CassValue* val, cass_float_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_float(val, v));
-}
-
-void read(const CassValue* val, cass_double_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_double(val, v));
-}
-
-void read(const CassValue* val, cass_int32_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_int32(val, v));
-}
-
-void read(const CassValue* val, cass_int64_t* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_int64(val, v));
-}
-
-void read(const CassValue* val, cass_json_t* v) {
-  read(val, &v->str_);
-}
-
-void read(const CassValue* val, CassUuid* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_uuid(val, v));
-}
-
-void read(const CassValue* val, CassInet* v) {
-  CHECK_EQ(CASS_OK, cass_value_get_inet(val, v));
-}
-
-} // namespace util
-
-template <class Out>
-void CassandraValue::Get(Out* out) const {
-  util::read(value_, out);
-}
-
-std::string CassandraValue::ToString() const {
-  auto value_type = cass_value_type(value_);
-  switch (value_type) {
-    case CASS_VALUE_TYPE_BLOB:
-      return As<Slice>().ToDebugHexString();
-    case CASS_VALUE_TYPE_VARCHAR:
-      return As<std::string>();
-    case CASS_VALUE_TYPE_BIGINT:
-      return std::to_string(As<cass_int64_t>());
-    case CASS_VALUE_TYPE_INT:
-      return std::to_string(As<cass_int32_t>());
-    case CASS_VALUE_TYPE_UUID: {
-      char buffer[CASS_UUID_STRING_LENGTH];
-      cass_uuid_string(As<CassUuid>(), buffer);
-      return buffer;
-    }
-    case CASS_VALUE_TYPE_INET: {
-      char buffer[CASS_INET_STRING_LENGTH];
-      cass_inet_string(As<CassInet>(), buffer);
-      return buffer;
-    }
-    case CASS_VALUE_TYPE_MAP: {
-      std::string result = "{";
-      CassIteratorPtr iterator(cass_iterator_from_map(value_));
-      bool first = true;
-      while (cass_iterator_next(iterator.get())) {
-        if (first) {
-          first = false;
-        } else {
-          result += ", ";
-        }
-        result += CassandraValue(cass_iterator_get_map_key(iterator.get())).ToString();
-        result += " => ";
-        result += CassandraValue(cass_iterator_get_map_value(iterator.get())).ToString();
-      }
-      result += "}";
-      return result;
-    }
-    default:
-      return "Not supported: " + std::to_string(to_underlying(value_type));
-  }
-}
 
 //------------------------------------------------------------------------------
 
@@ -1110,24 +559,24 @@ TEST_F(CppCassandraDriverTest, TestBasicTypes) {
 }
 
 TEST_F(CppCassandraDriverTest, TestJsonBType) {
-  typedef TestTable<string, cass_json_t> MyTable;
+  typedef TestTable<string, CassandraJson> MyTable;
   MyTable table;
   ASSERT_OK(table.CreateTable(&session_, "test.json", {"key", "json"}, {"key"}));
 
-  MyTable::ColumnsTuple input("test", "{\"a\":1}");
+  MyTable::ColumnsTuple input("test", CassandraJson("{\"a\":1}"));
   table.Insert(&session_, input);
 
-  MyTable::ColumnsTuple output("test", "");
+  MyTable::ColumnsTuple output("test", CassandraJson(""));
   table.SelectOneRow(&session_, &output);
   table.Print("RESULT OUTPUT", output);
 
   LOG(INFO) << "Checking selected values...";
   ExpectEqualTuples(input, output);
 
-  get<1>(input) = "{\"b\":1}"; // 'json'
+  get<1>(input) = CassandraJson("{\"b\":1}"); // 'json'
   table.Update(&session_, input);
 
-  MyTable::ColumnsTuple updated_output("test", "");
+  MyTable::ColumnsTuple updated_output("test", CassandraJson(""));
   table.SelectOneRow(&session_, &updated_output);
   table.Print("UPDATED RESULT OUTPUT", updated_output);
 
@@ -1212,11 +661,11 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
       "}";
 
 
-  typedef TestTable<string, cass_json_t> MyTable;
+  typedef TestTable<string, CassandraJson> MyTable;
   MyTable table;
   ASSERT_OK(table.CreateTable(&session_, "basic", {"key", "json"}, {"key"}));
 
-  MyTable::ColumnsTuple input("test", long_json);
+  MyTable::ColumnsTuple input("test", CassandraJson(long_json));
   table.Insert(&session_, input);
 
   ASSERT_OK(session_.ExecuteQuery(
@@ -1232,12 +681,12 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
   ASSERT_OK(session_.ExecuteQuery("INSERT INTO basic(key, json) values ('test8', '{\"b\" : 1}');"));
 
   for (const string& key : {"test", "test0"} ) {
-    MyTable::ColumnsTuple output(key, "");
+    MyTable::ColumnsTuple output(key, CassandraJson(""));
     table.SelectOneRow(&session_, &output);
     table.Print("RESULT OUTPUT", output);
 
     LOG(INFO) << "Checking selected JSON object for key=" << key;
-    const string json = get<1>(output).str_; // 'json'
+    const string json = get<1>(output).value(); // 'json'
 
     ASSERT_EQ(json,
         "{"
@@ -1322,14 +771,14 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIndexSlowTServer,
           CppCassandraDriverTestIndexNonResponsiveTServers) {
   IndexPermissions perm =
       ASSERT_RESULT(TestBackfillCreateIndexTableSimple(this));
-  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_BACKFILL_FAILED);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
 }
 
 Result<IndexPermissions>
 TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex *test) {
-  RETURN_NOT_OK(test->session_.ExecuteQuery(
-      "create table test_table (k int primary key, v text) "
-      "with transactions = {'enabled' : true};"));
+  TestTable<cass_int32_t, string> table;
+  RETURN_NOT_OK(table.CreateTable(&test->session_, "test.test_table",
+                                  {"k", "v"}, {"(k)"}, true, 60s));
 
   LOG(INFO) << "Inserting one row";
   RETURN_NOT_OK(test->session_.ExecuteQuery(
@@ -1363,13 +812,15 @@ Result<int64_t> GetTableSize(CassandraSession *session, const std::string& table
   return size;
 }
 
-void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
-                            PKOnlyIndex is_pk_only,
-                            IncludeAllColumns include_primary_key = IncludeAllColumns::kFalse,
-                            UserEnforced user_enforced = UserEnforced::kFalse) {
+void TestBackfillIndexTable(
+    CppCassandraDriverTestIndex* test, PKOnlyIndex is_pk_only,
+    IsUnique is_unique = IsUnique::kFalse,
+    IncludeAllColumns include_primary_key = IncludeAllColumns::kFalse,
+    UserEnforced user_enforced = UserEnforced::kFalse) {
   constexpr int kLoops = 3;
   constexpr int kBatchSize = 10;
   constexpr int kNumBatches = 10;
+  constexpr int kExpectedCount = kBatchSize * kNumBatches;
 
   typedef TestTable<string, string, string> MyTable;
   typedef MyTable::ColumnsTuple ColumnsType;
@@ -1398,17 +849,30 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
         continue;
       }
       for (int i = 0; i != kBatchSize; ++i) {
-        ColumnsType tuple(Format("k-$0", batch_idx * kBatchSize + i),
-                          Format("k-$0", batch_idx * kBatchSize + i),
-                          Format("v-$0", loop * 1000 + batch_idx * kBatchSize + i));
+        const int key = batch_idx * kBatchSize + i;
+        // For non-unique tests, the value will be of the form v-l0xx where l is
+        // the loop number, and xx is the key.
+        // For unique index tests, the value will be a permutation of
+        //  1 .. kExpectedCount; or -1 .. -kExpectedCount for odd and even
+        //  loops.
+        const int value =
+            (is_unique ? (loop % 2 ? 1 : -1) *
+                             ((loop * 1000 + key) % kExpectedCount + 1)
+                       : loop * 1000 + key);
+        ColumnsType tuple(Format("k-$0", key), Format("k-$0", key),
+                          Format("v-$0", value));
         auto statement = prepared->Bind();
         table.BindInsert(&statement, tuple);
         batch.Add(&statement);
       }
       futures.push_back(test->session_.SubmitBatch(batch));
     }
-    // At the end of the second loop, we will issue the create index
-    if (loop == 2) {
+
+    // For unique index tests, we want to make sure each loop of writes is
+    // complete before issuing the next one. For non-unique index tests,
+    // we only wait for the writes to persist before issuing the
+    // create index command.
+    if (is_unique || loop == 2) {
       // Let us make sure that the writes so far have persisted.
       for (auto& future : futures) {
         if (!future.Wait().ok()) {
@@ -1416,17 +880,18 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
         }
       }
       futures.clear();
+    }
 
-      // We then issue the create index.
-      // The final loop of writes will be concurrent with the create index.
+    // At the end of the second loop, we will issue the create index.
+    // The remaining loop(s) of writes will be concurrent with the create index.
+    if (loop == 2) {
       create_index_future = test->session_.ExecuteGetFuture(
-        Format("create index index_by_value on test.key_value ($0) $1 $2;",
-          (is_pk_only ? "key2" : "value"),
-          (include_primary_key ? "include (key1, key2, value)" : " "),
-          (user_enforced ? "with transactions = { 'enabled' : false,"
-                                                 "'consistency_level' : 'user_enforced' }"
-                         : "")
-          ));
+          Format("create $0 index index_by_value on test.key_value ($1) $2 $3;",
+                 (is_unique ? "unique" : ""), (is_pk_only ? "key2" : "value"),
+                 (include_primary_key ? "include (key1, key2, value)" : " "),
+                 (user_enforced ? "with transactions = { 'enabled' : false,"
+                                  "'consistency_level' : 'user_enforced' }"
+                                : "")));
     }
   }
 
@@ -1453,7 +918,6 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
   auto main_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "key_value"));
   auto index_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "index_by_value"));
 
-  constexpr auto kExpectedCount = kBatchSize * kNumBatches;
   EXPECT_GE(main_table_size, kExpectedCount - kBatchSize * num_failures);
   EXPECT_LE(main_table_size, kExpectedCount + kBatchSize * num_failures);
   EXPECT_GE(index_table_size, kExpectedCount - kBatchSize * num_failures);
@@ -1464,26 +928,552 @@ void TestBackfillIndexTable(CppCassandraDriverTestIndex *test,
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndex, CppCassandraDriverTestIndex) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kFalse);
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
+                         IncludeAllColumns::kFalse);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndexPKOnly, CppCassandraDriverTestIndex) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kTrue, IncludeAllColumns::kFalse);
+  TestBackfillIndexTable(this, PKOnlyIndex::kTrue, IsUnique::kFalse,
+                         IncludeAllColumns::kFalse);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndexCovered, CppCassandraDriverTestIndex) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kTrue);
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
+                         IncludeAllColumns::kTrue);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableCreateIndexUserEnforced,
           CppCassandraDriverTestUserEnforcedIndex) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kTrue, UserEnforced::kTrue);
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
+                         IncludeAllColumns::kTrue, UserEnforced::kTrue);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableCreateUniqueIndex,
+          CppCassandraDriverTestIndex) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
+                         IncludeAllColumns::kFalse);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableCreateUniqueIndexCovered,
+          CppCassandraDriverTestIndex) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
+                         IncludeAllColumns::kTrue);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableCreateUniqueIndexUserEnforced,
+          CppCassandraDriverTestUserEnforcedIndex) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
+                         IncludeAllColumns::kTrue, UserEnforced::kTrue);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateJsonbIndex,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, CassandraJson> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (1, '{\"f1\": \"one\", \"f2\": \"one\"}');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (2, '{\"f1\": \"two\", \"f2\": \"two\"}');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (3, '{\"f1\": \"three\", \"f2\": \"three\"}');"));
+
+  LOG(INFO) << "Creating index";
+  auto s = session_.ExecuteQuery(
+      "create unique index test_table_index_by_v_f1 on test_table (v->>'f1');");
+  ASSERT_TRUE(s.ok() || s.IsTimedOut());
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v_f1");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  auto main_table_size =
+      ASSERT_RESULT(GetTableSize(&session_, "test_table"));
+  auto index_table_size =
+      ASSERT_RESULT(GetTableSize(&session_, "test_table_index_by_v_f1"));
+  ASSERT_EQ(main_table_size, index_table_size);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPasses,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (3, 'three');"));
+
+  LOG(INFO) << "Creating index";
+  auto s = session_.ExecuteQuery(
+      "create unique index test_table_index_by_v on test_table (v);");
+  ASSERT_TRUE(s.ok() || s.IsTimedOut());
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  LOG(INFO) << "Inserting more rows -- collisions will be detected.";
+  ASSERT_TRUE(!session_
+                   .ExecuteGetFuture(
+                       "insert into test_table (k, v) values (-1, 'one');")
+                   .Wait()
+                   .ok());
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (4, 'four');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (5, 'five');"));
+  ASSERT_TRUE(!session_
+                   .ExecuteGetFuture(
+                       "insert into test_table (k, v) values (-4, 'four');")
+                   .Wait()
+                   .ok());
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, cass_int32_t> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  constexpr int kNumRows = 10;
+  LOG(INFO) << "Inserting " << kNumRows << " rows";
+  for (int i = 1; i <= kNumRows; i++) {
+    ASSERT_OK(session_.ExecuteQuery(
+        Substitute("insert into test_table (k, v) values ($0, $0);", i)));
+  }
+
+  LOG(INFO) << "Creating index";
+  auto session2 = CHECK_RESULT(driver_->CreateSession());
+  ASSERT_OK(session2.ExecuteQuery("USE test;"));
+  CassandraFuture create_index_future = session2.ExecuteGetFuture(
+      "create unique index test_table_index_by_v on test_table (v);");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_WRITE_AND_DELETE, false);
+  if (perm != IndexPermissions::INDEX_PERM_WRITE_AND_DELETE) {
+    LOG(WARNING) << "IndexPermissions is already past WRITE_AND_DELETE. "
+                 << "This run of the test may not actually be doing anything "
+                    "non-trivial.";
+  }
+
+  const size_t kSleepTimeMs = 20;
+  LOG(INFO) << "Inserting " << kNumRows / 2 << " rows again.";
+  for (int i = 1; i < kNumRows / 2; i++) {
+    if (session_
+            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ok()) {
+      WARN_NOT_OK(session_.ExecuteQuery(Substitute(
+                      "insert into test_table (k, v) values ($0, $0);", i)),
+                  "Overwrite failed");
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+    } else {
+      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+    }
+  }
+
+  perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_DO_BACKFILL, false);
+  if (perm != IndexPermissions::INDEX_PERM_DO_BACKFILL) {
+    LOG(WARNING) << "IndexPermissions already past DO_BACKFILL";
+  }
+
+  LOG(INFO) << "Inserting " << kNumRows / 2 << " more rows again.";
+  for (int i = kNumRows / 2; i <= kNumRows; i++) {
+    if (session_
+            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ok()) {
+      WARN_NOT_OK(session_.ExecuteQuery(Substitute(
+                      "insert into test_table (k, v) values (-$0, $0);", i)),
+                  "Overwrite failed");
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+    } else {
+      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+    }
+  }
+
+  LOG(INFO) << "Waited on the Create Index to finish. Status  = "
+            << create_index_future.Wait();
+
+  perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPassesManyWrites,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  constexpr int kNumRows = 100;
+  LOG(INFO) << "Inserting " << kNumRows << " rows";
+  for (int i = 1; i <= kNumRows; i++) {
+    ASSERT_OK(session_.ExecuteQuery(
+        Substitute("insert into test_table (k, v) values ($0, 'v-$0');", i)));
+  }
+
+  LOG(INFO) << "Creating index";
+  auto session2 = CHECK_RESULT(driver_->CreateSession());
+  ASSERT_OK(session2.ExecuteQuery("USE test;"));
+  CassandraFuture create_index_future = session2.ExecuteGetFuture(
+      "create unique index test_table_index_by_v on test_table (v);");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_WRITE_AND_DELETE, false);
+  if (perm != IndexPermissions::INDEX_PERM_WRITE_AND_DELETE) {
+    LOG(WARNING) << "IndexPermissions is already past WRITE_AND_DELETE. "
+                 << "This run of the test may not actually be doing anything "
+                    "non-trivial.";
+  }
+
+  const size_t kSleepTimeMs = 20;
+  LOG(INFO) << "Inserting " << kNumRows / 2 << " rows again.";
+  for (int i = 1; i < kNumRows / 2; i++) {
+    if (session_
+            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ok()) {
+      WARN_NOT_OK(
+          session_.ExecuteQuery(Substitute(
+              "insert into test_table (k, v) values (-$0, 'v-$0');", i)),
+          "Overwrite failed");
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+    } else {
+      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+    }
+  }
+
+  perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_DO_BACKFILL, false);
+  if (perm != IndexPermissions::INDEX_PERM_DO_BACKFILL) {
+    LOG(WARNING) << "IndexPermissions already past DO_BACKFILL";
+  }
+
+  LOG(INFO) << "Inserting " << kNumRows / 2 << " more rows again.";
+  for (int i = kNumRows / 2; i <= kNumRows; i++) {
+    if (session_
+            .ExecuteQuery(Substitute("delete from test_table where k=$0;", i))
+            .ok()) {
+      WARN_NOT_OK(
+          session_.ExecuteQuery(Substitute(
+              "insert into test_table (k, v) values (-$0, 'v-$0');", i)),
+          "Overwrite failed");
+      SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+    } else {
+      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+    }
+  }
+
+  LOG(INFO) << "Waited on the Create Index to finish. Status  = "
+            << create_index_future.Wait();
+
+  perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateIdxTripleCollisionTest,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  ASSERT_OK(
+      session_.ExecuteQuery("insert into test_table (k, v) values (1, 'a')"));
+  ASSERT_OK(
+      session_.ExecuteQuery("insert into test_table (k, v) values (3, 'a')"));
+  ASSERT_OK(
+      session_.ExecuteQuery("insert into test_table (k, v) values (4, 'a')"));
+
+  LOG(INFO) << "Creating index";
+  // session_.ExecuteQuery("create unique index test_table_index_by_v on
+  // test_table (v);");
+  auto session2 = CHECK_RESULT(driver_->CreateSession());
+  ASSERT_OK(session2.ExecuteQuery("USE test;"));
+  CassandraFuture create_index_future = session2.ExecuteGetFuture(
+      "create unique index test_table_index_by_v on test_table (v);");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  {
+    IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+        client_.get(), table_name, index_table_name,
+        IndexPermissions::INDEX_PERM_DELETE_ONLY, false);
+    EXPECT_EQ(perm, IndexPermissions::INDEX_PERM_DELETE_ONLY);
+  }
+
+  CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 90s,
+                             CoarseMonoClock::Duration::max());
+  auto res = session_.ExecuteQuery("DELETE from test_table WHERE k=4");
+  LOG(INFO) << "Got " << yb::ToString(res);
+  while (!res.ok()) {
+    waiter.Wait();
+    res = session_.ExecuteQuery("DELETE from test_table WHERE k=4");
+    LOG(INFO) << "Got " << yb::ToString(res);
+  }
+
+  LOG(INFO) << "Waited on the Create Index to finish. Status  = "
+            << create_index_future.Wait();
+  {
+    IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+        client_.get(), table_name, index_table_name, IndexPermissions::INDEX_PERM_INDEX_UNUSED,
+        false);
+    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+  }
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails,
+          CppCassandraDriverTestIndex) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
+                              true, 60s));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (3, 'three');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-2, 'two');"));
+  LOG(INFO) << "Creating index";
+
+  auto s = session_.ExecuteQuery(
+      "create unique index test_table_index_by_v on test_table (v);");
+  ASSERT_TRUE(s.ok() || s.IsTimedOut());
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+
+  LOG(INFO)
+      << "Inserting more rows -- No collision checking for a failed index.";
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-3, 'three');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (4, 'four');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-4, 'four');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (5, 'five');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into test_table (k, v) values (-5, 'five');"));
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexWithOnlineWriteFails,
+          CppCassandraDriverTestIndex) {
+  DoTestCreateUniqueIndexWithOnlineWrites(this,
+                                          /* delete_before_insert */ false);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexWithOnlineWriteSuccess,
+          CppCassandraDriverTestIndex) {
+  DoTestCreateUniqueIndexWithOnlineWrites(this,
+                                          /* delete_before_insert */ true);
+}
+
+void DoTestCreateUniqueIndexWithOnlineWrites(CppCassandraDriverTestIndex* test,
+                                             bool delete_before_insert) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
+                                     "test_table_index_by_v");
+  IndexInfoPB index_info_pb;
+  YBTableInfo index_table_info;
+
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&test->session_, "test.test_table", {"k", "v"},
+                              {"(k)"}, true, 60s));
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(test->session_.ExecuteQuery(
+      "insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(test->session_.ExecuteQuery(
+      "insert into test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(test->session_.ExecuteQuery(
+      "insert into test_table (k, v) values (3, 'three');"));
+  LOG(INFO) << "Creating index";
+
+  bool create_index_failed = false;
+  bool duplicate_insert_failed = false;
+  {
+    auto session2 = CHECK_RESULT(test->driver_->CreateSession());
+    ASSERT_OK(session2.ExecuteQuery("USE test;"));
+
+    CassandraFuture create_index_future = session2.ExecuteGetFuture(
+        "create unique index test_table_index_by_v on test_table (v);");
+
+    auto session3 = CHECK_RESULT(test->driver_->CreateSession());
+    ASSERT_OK(session3.ExecuteQuery("USE test;"));
+    WaitUntilIndexPermissionIsAtLeast(
+        test->client_.get(), table_name, index_table_name,
+        IndexPermissions::INDEX_PERM_WRITE_AND_DELETE);
+    CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 90s,
+                               CoarseMonoClock::Duration::max());
+    if (delete_before_insert) {
+      while (true) {
+        auto res = session3
+                       .ExecuteGetFuture(
+                           "update test_table set v = 'foo' where  k = 2;")
+                       .Wait();
+        LOG(INFO) << "Got " << yb::ToString(res);
+        if (res.ok()) {
+          break;
+        }
+        waiter.Wait();
+      }
+      LOG(INFO) << "Successfully deleted the old value before inserting the "
+                   "duplicate value";
+    }
+    int retries = 0;
+    const int kMaxRetries = 12;
+    Status res;
+    while (++retries < kMaxRetries) {
+      res = session3.ExecuteGetFuture(
+                        "insert into test_table (k, v) values (-2, 'two');")
+                    .Wait();
+      LOG(INFO) << "Got " << yb::ToString(res);
+      if (res.ok()) {
+        break;
+      }
+      waiter.Wait();
+    }
+    duplicate_insert_failed = !res.ok();
+    if (!duplicate_insert_failed) {
+      LOG(INFO) << "Successfully inserted the duplicate value";
+    } else {
+      LOG(ERROR) << "Giving up on inserting the duplicate value after "
+                 << kMaxRetries << " tries.";
+    }
+
+    LOG(INFO) << "Waited on the Create Index to finish. Status  = "
+              << create_index_future.Wait();
+  }
+
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      test->client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  create_index_failed = (perm > IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  LOG(INFO) << "create_index_failed  = " << create_index_failed
+            << ", duplicate_insert_failed = " << duplicate_insert_failed;
+
+  auto main_table_size =
+      ASSERT_RESULT(GetTableSize(&test->session_, "test_table"));
+  auto index_table_size =
+      ASSERT_RESULT(GetTableSize(&test->session_, "test_table_index_by_v"));
+
+  if (!create_index_failed) {
+    EXPECT_EQ(main_table_size, index_table_size);
+  } else {
+    LOG(INFO) << "create index failed. "
+              << "main_table_size " << main_table_size
+              << " is allowed to differ from "
+              << "index_table_size " << index_table_size;
+  }
+  if (delete_before_insert) {
+    // Expect both the create index, and the duplicate insert to succeed.
+    ASSERT_TRUE(!create_index_failed && !duplicate_insert_failed);
+  } else {
+    // Expect exactly one of create index or the duplicate insert to succeed.
+    ASSERT_TRUE((create_index_failed && !duplicate_insert_failed) ||
+                (!create_index_failed && duplicate_insert_failed));
+  }
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestTableBackfillInChunks,
           CppCassandraDriverTestIndexMultipleChunks) {
-  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IncludeAllColumns::kTrue,
-                         UserEnforced::kFalse);
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
+                         IncludeAllColumns::kTrue, UserEnforced::kFalse);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestTableBackfillUniqueInChunks,
+          CppCassandraDriverTestIndexMultipleChunks) {
+  TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
+                         IncludeAllColumns::kTrue, UserEnforced::kFalse);
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestIndexUpdateConcurrentTxn, CppCassandraDriverTestIndex) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+  IndexInfoPB index_info_pb;
+  YBTableInfo index_table_info;
+
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true, 60s));
+
+  LOG(INFO) << "Inserting rows";
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (2, 'two');"));
+
+  LOG(INFO) << "Creating index";
+  {
+    auto session2 = CHECK_RESULT(driver_->CreateSession());
+    ASSERT_OK(session2.ExecuteQuery("USE test;"));
+
+    CassandraFuture create_index_future =
+        session2.ExecuteGetFuture("create index test_table_index_by_v on test_table (v);");
+
+    auto session3 = CHECK_RESULT(driver_->CreateSession());
+    ASSERT_OK(session3.ExecuteQuery("USE test;"));
+    WaitUntilIndexPermissionIsAtLeast(client_.get(), table_name, index_table_name,
+                                      IndexPermissions::INDEX_PERM_DELETE_ONLY);
+
+    WARN_NOT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (1, 'foo');"),
+                "updating k = 1 failed.");
+    WARN_NOT_OK(session3.ExecuteQuery("update test_table set v = 'bar' where  k = 2;"),
+                "updating k =2 failed.");
+
+    WaitUntilIndexPermissionIsAtLeast(client_.get(), table_name, index_table_name,
+                                      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  }
+
+  auto main_table_size = ASSERT_RESULT(GetTableSize(&session_, "test_table"));
+  auto index_table_size = ASSERT_RESULT(GetTableSize(&session_, "test_table_index_by_v"));
+  EXPECT_EQ(main_table_size, index_table_size);
 }
 
 TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestIndex) {
@@ -2079,7 +2069,7 @@ TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
           batch.Add(&statement);
         }
         auto future = session.SubmitBatch(batch);
-        auto status = future.WaitFor(kTimeOut / 2);
+        auto status = future.WaitFor(kCassandraTimeOut / 2);
         if (status.IsTimedOut()) {
           auto pw = ++pending_writes;
           auto mpw = max_pending_writes.load();
@@ -2102,6 +2092,36 @@ TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
 
   thread_holder.WaitAndStop(30s);
   LOG(INFO) << "Max pending writes: " << max_pending_writes.load();
+}
+
+TEST_F(CppCassandraDriverTest, BigQueryExpr) {
+  const std::string kTableName = "test.key_value";
+  typedef TestTable<std::string> MyTable;
+  MyTable table;
+  ASSERT_OK(table.CreateTable(&session_, kTableName, {"key"}, {"(key)"}));
+
+  constexpr size_t kRows = 400;
+  constexpr size_t kValueSize = RegularBuildVsSanitizers(256_KB, 4_KB);
+
+  auto prepared = ASSERT_RESULT(session_.Prepare(
+      Format("INSERT INTO $0 (key) VALUES (?);", kTableName)));
+
+  for (int32_t i = 0; i != kRows; ++i) {
+    auto statement = prepared.Bind();
+    statement.Bind(0, RandomHumanReadableString(kValueSize));
+    ASSERT_OK(session_.Execute(statement));
+  }
+
+  auto start = MonoTime::Now();
+  auto result = ASSERT_RESULT(session_.ExecuteWithResult(Format(
+      "SELECT MAX(key) FROM $0", kTableName)));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time: " << finish - start;
+
+  auto iterator = result.CreateIterator();
+  ASSERT_TRUE(iterator.Next());
+  LOG(INFO) << "Result: " << iterator.Row().Value(0).ToString();
+  ASSERT_FALSE(iterator.Next());
 }
 
 }  // namespace yb

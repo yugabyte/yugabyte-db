@@ -2,6 +2,7 @@
 title: TTL
 linkTitle: TTL
 description: TTL
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

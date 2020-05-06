@@ -2,6 +2,7 @@
 title: Global distribution
 linkTitle: Global distribution
 description: Global distribution
+block_indexing: true
 menu:
   v2.0:
     identifier: global-distribution-1-macos

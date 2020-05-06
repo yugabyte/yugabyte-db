@@ -1,8 +1,8 @@
 ---
-title: Use Python to build a YugabyteDB application
+title: Build a Python application that uses YSQL and Psycopg2
 headerTitle: Build a Python application
-linkTitle: Build a Python application
-description: Use Python and YSQL to build a YugabyteDB application
+linkTitle: Python
+description: Build a Python application that uses YSQL and Psycopg2
 aliases:
   - /develop/client-drivers/python/
   - /latest/develop/client-drivers/python/
@@ -23,7 +23,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
+      YSQL - Psycopg2
     </a>
   </li>
   <li >

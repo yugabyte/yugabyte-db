@@ -1,9 +1,8 @@
 ---
-title: CDC to Kafka
-headerTitle: CDC to Kafka
-linkTitle: CDC to Kafka
+title: Use change data capture (CDC) to Kafka
 headerTitle: Change data capture (CDC) to Kafka
-description: Learn how to use Change data capture (CDC) API to send data changes to Apache Kafka
+linkTitle: CDC to Kafka
+description: Learn how to use change data capture (CDC) API to send data changes to Apache Kafka.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:

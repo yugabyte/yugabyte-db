@@ -24,6 +24,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/tablet/tablet_error.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/logging.h"
@@ -48,9 +49,6 @@ inline void SetupErrorAndRespond(TabletServerErrorPB* error,
 
   StatusToPB(s, error->mutable_status());
   error->set_code(code);
-  // TODO: rename RespondSuccess() to just "Respond" or
-  // "SendResponse" since we use it for application-level error
-  // responses, and this just looks confusing!
   context->RespondSuccess();
 }
 
@@ -142,12 +140,9 @@ Result<std::shared_ptr<tablet::TabletPeer>> LookupTabletPeerOrRespond(
   // Check RUNNING state.
   tablet::RaftGroupStatePB state = result->state();
   if (PREDICT_FALSE(state != tablet::RUNNING)) {
-    Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::RaftGroupStatePB_Name(state));
-    if (state == tablet::FAILED) {
-      s = s.CloneAndAppend(result->error().ToString());
-    }
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::TABLET_NOT_RUNNING, context);
+    Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::RaftGroupStateError(state))
+        .CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
+    SetupErrorAndRespond(resp->mutable_error(), s, context);
     return s;
   }
 

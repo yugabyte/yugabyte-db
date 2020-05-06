@@ -41,15 +41,22 @@ class GenericBackoffWaiter {
 
     ++attempt_;
 
+    std::this_thread::sleep_for(DelayForTime(now));
+    return true;
+  }
+
+  Duration DelayForNow() const {
+    return DelayForTime(Clock::now());
+  }
+
+  Duration DelayForTime(TimePoint now) const {
     auto max_wait = std::min(deadline_ - now, max_wait_);
     int64_t base_delay_ms = attempt_ >= 29
         ? std::numeric_limits<int32_t>::max()
         : 1LL << (attempt_ + 3); // 1st retry delayed 2^4 ms, 2nd 2^5, etc..
     int64_t jitter_ms = RandomUniformInt(0, 50);
-    auto delay = std::min<decltype(max_wait)>(
+    return std::min<decltype(max_wait)>(
         std::chrono::milliseconds(base_delay_ms + jitter_ms), max_wait);
-    std::this_thread::sleep_for(delay);
-    return true;
   }
 
   size_t attempt() const {

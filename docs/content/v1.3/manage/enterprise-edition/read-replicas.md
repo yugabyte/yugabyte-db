@@ -3,6 +3,7 @@ title: Read replicas
 linkTitle: Read replicas
 description: Read replicas
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
+block_indexing: true
 menu:
   v1.3:
     identifier: manage-read-replicas

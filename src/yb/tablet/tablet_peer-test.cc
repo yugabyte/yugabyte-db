@@ -125,16 +125,14 @@ class TabletPeerTest : public YBTabletTest,
     addr->set_port(0);
 
     // "Bootstrap" and start the TabletPeer.
-    tablet_peer_.reset(
-        new TabletPeer(
-            make_scoped_refptr(tablet()->metadata()),
-            config_peer,
-            clock(),
-            tablet()->metadata()->fs_manager()->uuid(),
-            Bind(
-                &TabletPeerTest::TabletPeerStateChangedCallback,
-                Unretained(this),
-                tablet()->tablet_id()), &metric_registry_));
+    tablet_peer_.reset(new TabletPeer(
+        make_scoped_refptr(tablet()->metadata()), config_peer, clock(),
+        tablet()->metadata()->fs_manager()->uuid(),
+        Bind(
+            &TabletPeerTest::TabletPeerStateChangedCallback,
+            Unretained(this),
+            tablet()->tablet_id()),
+        &metric_registry_, nullptr /* tablet_splitter */));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
@@ -173,7 +171,8 @@ class TabletPeerTest : public YBTabletTest,
                                            metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */));
+                                           nullptr /* retryable_requests */,
+                                           yb::OpId() /* split_op_id */));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {
@@ -291,8 +290,8 @@ class DelayedApplyOperation : public WriteOperation {
   DelayedApplyOperation(CountDownLatch* apply_started,
                         CountDownLatch* apply_continue,
                         std::unique_ptr<WriteOperationState> state)
-      : WriteOperation(std::move(state), consensus::LEADER, CoarseTimePoint::max() /* deadline */,
-                       nullptr /* context */),
+      : WriteOperation(std::move(state), consensus::LEADER, ScopedOperation(),
+                       CoarseTimePoint::max() /* deadline */, nullptr /* context */),
         apply_started_(DCHECK_NOTNULL(apply_started)),
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }

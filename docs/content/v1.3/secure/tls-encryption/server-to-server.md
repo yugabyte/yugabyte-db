@@ -4,6 +4,7 @@ linkTitle: 2. Server-server encryption
 description: 2. Server-server encryption
 headcontent: Enable server to server encryption between YB-Masters and YB-TServers.
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
+block_indexing: true
 menu:
   v1.3:
     identifier: secure-tls-encryption-server-to-server

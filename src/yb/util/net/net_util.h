@@ -97,6 +97,11 @@ class HostPort {
     return std::move(result);
   }
 
+  template <class PB>
+  static HostPort FromPB(const PB& pb) {
+    return HostPort(pb.host(), pb.port());
+  }
+
   // Takes a vector of HostPort objects and returns a comma separated
   // string containing of "host:port" pairs. This method is the
   // "inverse" of ParseStrings().

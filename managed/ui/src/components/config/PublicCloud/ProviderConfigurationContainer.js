@@ -29,7 +29,7 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    createGCPProvider: (providerName, providerConfig) => {
+    createGCPProvider: (providerName, providerConfig, perRegionMetadata) => {
       Object.keys(providerConfig).forEach((key) => { if (typeof providerConfig[key] === 'string' || providerConfig[key] instanceof String) providerConfig[key] = providerConfig[key].trim(); });
       dispatch(createProvider("gcp", providerName.trim(), providerConfig)).then((response) => {
         dispatch(createProviderResponse(response.payload));
@@ -38,9 +38,9 @@ const mapDispatchToProps = (dispatch) => {
           const providerUUID = response.payload.data.uuid;
           const hostNetwork = providerConfig["network"];
           const params = {
-            "regionList": [],
             "hostVpcId": hostNetwork,
-            "destVpcId": providerConfig["use_host_vpc"] ? hostNetwork : ""
+            "destVpcId": hostNetwork,
+            "perRegionMetadata": perRegionMetadata
           };
           dispatch(bootstrapProvider(providerUUID, params)).then((boostrapResponse) => {
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));

@@ -128,6 +128,9 @@ class PgApiImpl {
   // Connect database. Switch the connected database to the given "database_name".
   CHECKED_STATUS ConnectDatabase(const char *database_name);
 
+  // Determine whether the given database is colocated.
+  CHECKED_STATUS IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+
   // Create database.
   CHECKED_STATUS NewCreateDatabase(const char *database_name,
                                    PgOid database_oid,
@@ -159,6 +162,9 @@ class PgApiImpl {
 
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
+  // Load table.
+  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
+
   //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
   CHECKED_STATUS NewCreateTable(const char *database_name,
@@ -176,6 +182,9 @@ class PgApiImpl {
                                       bool is_range, bool is_desc, bool is_nulls_first);
 
   CHECKED_STATUS CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets);
+
+  CHECKED_STATUS CreateTableAddSplitRow(PgStatement *handle, int num_cols,
+                                        YBCPgTypeEntity **types, uint64_t *data);
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 

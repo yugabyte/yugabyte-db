@@ -1,8 +1,8 @@
 ---
-title: Use Java to build a YugabyteDB application
-headerTitle: Build a Java app
-linkTitle: Build a Java app
-description: Follow this tutorial to use Java to build a simple YugabyteDB application.
+title: Build a Java application that uses YSQL
+headerTitle: Build a Java application
+linkTitle: Java
+description: Build a simple Java application that uses YSQL.
 aliases:
   - /develop/client-drivers/java/
   - /latest/develop/client-drivers/java/

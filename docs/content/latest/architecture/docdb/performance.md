@@ -2,7 +2,7 @@
 title: DocDB performance enhancements to RocksDB
 headerTitle: Performance
 linkTitle: Performance
-description: Learn about how DocDB enhanced RocksDB to help YugabyteDB achieve scalability and performance.
+description: Learn how DocDB enhances RocksDB for scale and performance.
 aliases:
   - /latest/architecture/concepts/docdb/performance/
 menu:
@@ -29,41 +29,26 @@ model—such as a row (comprising of columns), or collections types (such as lis
 arbitrary nesting—on top of a key-value store, but, more importantly, to implement efficient
 operations on this data model such as:
 
-* fine-grained updates to a part of the row or collection without incurring a read-modify-write
-  penalty of the entire row or collection
-* deleting/overwriting a row or collection/object at an arbitrary nesting level without incurring a
-  read penalty to determine what specific set of KVs need to be deleted
+* fine-grained updates to a part of the row or collection without incurring a read-modify-write penalty of the entire row or collection
+* deleting/overwriting a row or collection/object at an arbitrary nesting level without incurring a read penalty to determine what specific set of KVs need to be deleted
 * enforcing row/object level TTL based expiration
   
-A tighter coupling into the “read/compaction” layers of the underlying RocksDB key-value store is needed.
-Yugabyte uses RocksDB as an append-only store and operations, such as row or collection delete, are modeled
-as an insert of a special “delete marker”.  This allows deleting an entire subdocument efficiently
-by just adding one key-value pair to RocksDB. Read hooks automatically recognize these markers and
-suppress expired data. Expired values within the subdocument are cleaned up/garbage collected by our
-customized compaction hooks.
+A tighter coupling into the “read/compaction” layers of the underlying RocksDB key-value store is needed. Yugabyte uses RocksDB as an append-only store and operations, such as row or collection delete, are modeled as an insert of a special “delete marker”. This allows deleting an entire subdocument efficiently by just adding one key-value pair to RocksDB. Read hooks automatically recognize these markers and
+suppress expired data. Expired values within the subdocument are cleaned up/garbage collected by our customized compaction hooks.
 
 ### Raft vs RocksDB WAL logs
 
-DocDB uses Raft for replication. Changes to the distributed system are already recorded or journaled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional WAL mechanism in RocksDB (under DocDB) is unnecessary and adds overhead.
-For correctness, in addition to disabling the WAL mechanism in RocksDB, YugabyteDB tracks the Raft
-“sequence id” up to which data has been flushed from RocksDB’s memtables to SSTable files. This
-ensures that we can correctly garbage collect the Raft WAL logs as well as replay the minimal number
-of records from Raft WAL logs on a server crash or restart.
+DocDB uses Raft for replication. Changes to the distributed system are already recorded or journaled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional WAL mechanism in RocksDB (under DocDB) is unnecessary and adds overhead. For correctness, in addition to disabling the WAL mechanism in RocksDB, YugabyteDB tracks the Raft “sequence id” up to which data has been flushed from RocksDB’s memtables to SSTable files. This ensures that we can correctly garbage collect the Raft WAL logs as well as replay the minimal number of records from Raft WAL logs on a server crash or restart.
 
 ### MVCC at a higher layer
 
 Multi-version concurrency control (MVCC) in DocDB is done at a higher layer, and does not use the MVCC mechanism of RocksDB.
 
-The mutations to records in the
-system are versioned using hybrid-timestamps maintained at the YBase layer. As a result, the notion
-of MVCC as implemented in a vanilla RocksDB (using sequence IDs) is not necessary and only adds
-overhead. YugabyteDB does not use RocksDB’s sequence IDs, and instead uses hybrid-timestamps that are
-part of the encoded key to implement MVCC.
+The mutations to records in the system are versioned using hybrid-timestamps maintained at the YBase layer. As a result, the notion of MVCC as implemented in a vanilla RocksDB (using sequence IDs) is not necessary and only adds overhead. YugabyteDB does not use RocksDB’s sequence IDs, and instead uses hybrid-timestamps that are part of the encoded key to implement MVCC.
 
 ### Backups and snapshots
 
-These need to be higher level operations that take into consideration data in
-  DocDB as well as in the Raft logs to get a consistent cut of the state of the system.
+These need to be higher level operations that take into consideration data in DocDB as well as in the Raft logs to get a consistent cut of the state of the system.
 
 ## Data model aware Bloom filters
 
@@ -101,19 +86,11 @@ There are two instances where memory usage across components in a manner that is
 
 ### Server-global block cache
 
-A shared block cache is used across the
-DocDB/RocksDB instances of all the tablets hosted by a YB-TServer. This maximizes the use of memory
-resources, and avoids creating silos of cache that each need to be sized accurately for different
-user tables.
+A shared block cache is used across the DocDB/RocksDB instances of all the tablets hosted by a YB-TServer. This maximizes the use of memory resources, and avoids creating silos of cache that each need to be sized accurately for different user tables.
 
 ### Server-global memstore limits
 
-While per-memstore flush sizes can be
-configured, in practice, because the number of memstores may change over time as users create new
-tables, or tablets of a table move between servers, we have enhanced the storage engine to enforce a
-global memstore threshold. When such a threshold is reached, selection of which memstore to flush
-takes into account what memstores carry the oldest records (determined using hybrid timestamps) and
-therefore are holding up Raft logs and preventing them from being garbage collected.
+While per-memstore flush sizes can be configured, in practice, because the number of memstores may change over time as users create new tables, or tablets of a table move between servers, we have enhanced the storage engine to enforce a global memstore threshold. When such a threshold is reached, selection of which memstore to flush takes into account what memstores carry the oldest records (determined using hybrid timestamps) and therefore are holding up Raft logs and preventing them from being garbage collected.
 
 ## Scan-resistant block cache
 

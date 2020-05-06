@@ -236,8 +236,8 @@ void
 HandleYBStatus(YBCStatus status)
 {
 	if (!status) {
-    return;
-  }
+		return;
+	}
 	/* Copy the message to the current memory context and free the YBCStatus. */
 	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
 	char* msg_buf = DupYBStatusMessage(status, pg_err_code == ERRCODE_UNIQUE_VIOLATION);
@@ -252,6 +252,42 @@ HandleYBStatus(YBCStatus status)
 			 errcode(pg_err_code),
 			 yb_txn_errcode(txn_err_code),
 			 errhidecontext(true)));
+}
+
+void
+HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
+{
+	if (!status) {
+		return;
+	}
+	if (YBCStatusIsNotFound(status)) {
+		*not_found = true;
+		YBCFreeStatus(status);
+		return;
+	}
+	*not_found = false;
+
+	HandleYBStatus(status);
+}
+
+void
+HandleYBStmtStatusIgnoreNotFound(YBCStatus status, YBCPgStatement ybc_stmt, bool *not_found)
+{
+	if (!status) {
+		return;
+	}
+	if (YBCStatusIsNotFound(status)) {
+		*not_found = true;
+		YBCFreeStatus(status);
+		return;
+	}
+	*not_found = false;
+
+	if (ybc_stmt)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+	}
+	HandleYBStatus(status);
 }
 
 void
@@ -674,7 +710,12 @@ YBCGetDatabaseOid(Relation rel)
 void
 YBRaiseNotSupported(const char *msg, int issue_no)
 {
-	int signal_level = YBUnsupportedFeatureSignalLevel();
+	YBRaiseNotSupportedSignal(msg, issue_no, YBUnsupportedFeatureSignalLevel());
+}
+
+void
+YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level)
+{
 	if (issue_no > 0)
 	{
 		ereport(signal_level,

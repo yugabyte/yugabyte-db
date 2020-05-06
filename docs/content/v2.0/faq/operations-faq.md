@@ -2,6 +2,7 @@
 title: Operations FAQ
 linkTitle: Operations FAQ
 description: Operations FAQ
+block_indexing: true
 menu:
   v2.0:
     identifier: faq-operations

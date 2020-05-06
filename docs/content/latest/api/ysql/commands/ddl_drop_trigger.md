@@ -2,7 +2,6 @@
 title: DROP TRIGGER statement [YSQL]
 headerTitle: DROP TRIGGER
 linkTitle: DROP TRIGGER
-summary: Remove a trigger
 description: Use the DROP TRIGGER statement to remove a trigger from the database.
 menu:
   latest:

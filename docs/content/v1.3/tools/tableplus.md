@@ -2,6 +2,7 @@
 title: TablePlus
 linkTitle: TablePlus
 description: TablePlus 
+block_indexing: true
 menu:
   v1.3:
     identifier: tableplus

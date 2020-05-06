@@ -17,9 +17,9 @@ YugabyteDB’s sharding, replication and transactions architecture is similar to
 
 ## Advantages
 
-YugabyteDB beats CockroachDB in the context of multiple developer benefits including higher performance, stronger fit for internet-scale OLTP workloads, better PostgreSQL compatibility as well as higher data density. Following blogs highlight the architectural and implementation advantages that make these benefits possible.
+YugabyteDB beats CockroachDB in the context of multiple developer benefits including higher performance for large data sizes, better PostgreSQL compatibility, more flexible geo-distributed deployment options as well as higher data density. Following blogs highlight the architectural and implementation advantages that make these benefits possible.
 
-- [YugabyteDB vs CockroachDB Performance Benchmarks for Internet-Scale Transactional Workloads](https://blog.yugabyte.com/yugabyte-db-vs-cockroachdb-performance-benchmarks-for-internet-scale-transactional-workloads/)
+- [Bringing Truth to Competitive Benchmark Claims – YugabyteDB vs CockroachDB, Part 2](https://blog.yugabyte.com/yugabytedb-vs-cockroachdb-bringing-truth-to-performance-benchmark-claims-part-2/)
 
 - [Distributed PostgreSQL on a Google Spanner Architecture – Storage Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)
 
@@ -43,6 +43,6 @@ Following blogs highlight how YugabyteDB works as an open source, cloud native S
 
 - [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugabyteDB](https://blog.yugabyte.com/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db/)
 
-## Download benchmarking report
+## Join webinar
 
-[Download](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/) our comprehensive report that benchmarks YugabyteDB against CockroachDB while highlighting the architectural choices that enables YugabyteDB to have 3.5x better throughput and 3x lower latency.
+[Join the upcoming live webinar](https://www.yugabyte.com/yugabytedb-vs-cockroachdb/) to review the comprehensive report that benchmarks YugabyteDB against CockroachDB while highlighting the architectural choices that enables YugabyteDB to have 3x higher throughput and 4.5x lower latency.

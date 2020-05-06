@@ -29,27 +29,32 @@ export default class AlertProfileForm extends Component {
     if (isNonAvailable(customer.features, "main.profile")) browserHistory.push('/');
   }
 
+  componentDidUpdate() {
+    const { customerProfile, handleProfileUpdate } = this.props;
+    const { statusUpdated } = this.state;
+    if (statusUpdated && (getPromiseState(customerProfile).isSuccess() ||
+        getPromiseState(customerProfile).isError())) {
+      handleProfileUpdate(customerProfile.data);
+      this.setState({statusUpdated: false});
+    }
+  }
+
   render() {
     const {
       customer = {},
       users = [],
-      customerProfile,
       updateCustomerDetails
     } = this.props;
 
     showOrRedirect(customer.data.features, "main.profile");
 
-    if (this.state.statusUpdated &&
-        (getPromiseState(customerProfile).isSuccess() ||
-         getPromiseState(customerProfile).isError())) {
-      this.props.handleProfileUpdate(customerProfile.data);
-      this.setState({statusUpdated: false});
-    }
     const validationSchema = Yup.object().shape({
       alertingData: Yup.object({
-        sendAlertsToYb: Yup.boolean(),
+        sendAlertsToYb: Yup.boolean()
+          .default(false)
+          .nullable(),
 
-        alertingEmail: Yup.string().nullable(),
+        alertingEmail: Yup.string().email('Must be an email').nullable(),
 
         checkIntervalMs: Yup.number()
           .typeError('Must specify a number'),
@@ -57,7 +62,9 @@ export default class AlertProfileForm extends Component {
         statusUpdateIntervalMs: Yup.number()
           .typeError('Must specify a number'),
 
-        reportOnlyErrors: Yup.boolean(),
+        reportOnlyErrors: Yup.boolean()
+          .default(false)
+          .nullable(),
       }),
       callhomeLevel: Yup.string()
     });

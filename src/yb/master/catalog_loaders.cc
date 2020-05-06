@@ -187,7 +187,7 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
     << "Namespace already exists: " << ns_id;
 
   // Setup the namespace info.
-  NamespaceInfo *const ns = new NamespaceInfo(ns_id);
+  scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(ns_id);
   auto l = ns->LockForWrite();
   const auto& pb_data = l->data().pb;
 
@@ -198,17 +198,40 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
     l->mutable_data()->pb.set_database_type(GetDefaultDatabaseType(pb_data.name()));
   }
 
-  // Add the namespace to the IDs map and to the name map (if the namespace is not deleted).
-  catalog_manager_->namespace_ids_map_[ns_id] = ns;
-  if (!pb_data.name().empty()) {
-    catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
-  } else {
-    LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
+  // When upgrading, we won't have persisted this new field.
+  // TODO: Persist this change to disk instead of just changing memory.
+  auto state = metadata.state();
+  if (!metadata.has_state()) {
+    state = SysNamespaceEntryPB::RUNNING;
+    LOG(INFO) << "Changing metadata without state to RUNNING";
+    l->mutable_data()->pb.set_state(state);
   }
 
-  l->Commit();
+  switch(state) {
+    case SysNamespaceEntryPB::RUNNING:
+      // Add the namespace to the IDs map and to the name map (if the namespace is not deleted).
+      catalog_manager_->namespace_ids_map_[ns_id] = ns;
+      if (!pb_data.name().empty()) {
+        catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+      } else {
+        LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
+      }
 
-  LOG(INFO) << "Loaded metadata for namespace " << ns->ToString();
+      l->Commit();
+      LOG(INFO) << "Loaded metadata for namespace " << ns->ToString();
+      break;
+    case SysNamespaceEntryPB::DELETING: FALLTHROUGH_INTENDED;
+    case SysNamespaceEntryPB::DELETED: FALLTHROUGH_INTENDED;
+    case SysNamespaceEntryPB::FAILED: FALLTHROUGH_INTENDED;
+    case SysNamespaceEntryPB::PREPARING:
+      // TODO(NIC): Finish any remaining Delete steps.
+      LOG(INFO) << "Skipping metadata for namespace (state="  << metadata.state()
+                << "): " << ns->ToString();
+      break;
+    default:
+      FATAL_INVALID_ENUM_VALUE(SysNamespaceEntryPB_State, state);
+  }
+
   VLOG(1) << "Metadata for namespace " << ns->ToString() << ": " << metadata.ShortDebugString();
 
   return Status::OK();

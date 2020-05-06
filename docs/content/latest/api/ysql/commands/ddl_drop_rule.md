@@ -2,7 +2,6 @@
 title: DROP RULE statement [YSQL]
 headerTitle: DROP RULE
 linkTitle: DROP RULE
-summary: Remove a rule
 description: Use the DROP RULE statement to remove a rule.
 menu:
   latest:

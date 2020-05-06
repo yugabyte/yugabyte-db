@@ -2,6 +2,7 @@
 title: Amazon Elastic Kubernetes Service (EKS)
 linkTitle: Amazon Elastic Kubernetes Service (EKS)
 description: Amazon Elastic Kubernetes Service (EKS)
+block_indexing: true
 menu:
   v2.0:
     parent: deploy-kubernetes

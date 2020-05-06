@@ -22,6 +22,7 @@
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
 
+#include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
 
@@ -162,6 +163,7 @@ class ThreadPool::Impl {
         queue_full_status_(STATUS_SUBSTITUTE(ServiceUnavailable,
                                              "Queue is full, max items: $0",
                                              share_.options.queue_limit)) {
+    LOG(INFO) << "Starting thread pool " << share_.options.ToString();
     workers_.reserve(share_.options.max_workers);
     while (workers_.size() != share_.options.max_workers) {
       workers_.emplace_back(nullptr);

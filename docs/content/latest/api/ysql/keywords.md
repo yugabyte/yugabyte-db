@@ -1,8 +1,8 @@
 ---
-title: Keywords
+title: Keywords [YSQL]
+headerTitle: Keywords
 linkTitle: Keywords
-headerTitle: List of YSQL keywords
-description: The following list is a reference of all YSQL API keywords that work with YugabyteDB
+description: YSQL API keywords.
 summary: Reference for YSQL API
 image: /images/section_icons/api/ysql.png
 menu:

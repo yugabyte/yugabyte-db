@@ -164,6 +164,9 @@ const YBTable* AsyncRpc::table() const {
 void AsyncRpc::Finished(const Status& status) {
   Status new_status = status;
   if (tablet_invoker_.Done(&new_status)) {
+    if (tablet().is_split()) {
+      ops_[0]->yb_op->MarkTablePartitionsAsStale();
+    }
     ProcessResponseFromTserver(new_status);
     batcher_->RemoveInFlightOpsAfterFlushing(ops_, new_status, MakeFlushExtraResult());
     batcher_->CheckForFinishedFlush();

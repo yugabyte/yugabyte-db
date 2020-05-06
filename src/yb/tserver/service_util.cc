@@ -26,7 +26,9 @@ namespace tserver {
 void SetupErrorAndRespond(TabletServerErrorPB* error,
                           const Status& s,
                           rpc::RpcContext* context) {
-  SetupErrorAndRespond(error, s, TabletServerError(s).value(), context);
+  auto ts_error = TabletServerError::FromStatus(s);
+  SetupErrorAndRespond(
+      error, s, ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR, context);
 }
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {

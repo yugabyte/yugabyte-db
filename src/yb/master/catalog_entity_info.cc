@@ -307,11 +307,21 @@ void TableInfo::AddTablets(const vector<TabletInfo*>& tablets) {
 }
 
 void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
-  TabletInfo* old = nullptr;
-  if (UpdateReturnCopy(&tablet_map_,
-                       tablet->metadata().dirty().pb.partition().partition_key_start(),
-                       tablet, &old)) {
-    VLOG(1) << "Replaced tablet " << old->tablet_id() << " with " << tablet->tablet_id();
+  const auto& tablet_meta = tablet->metadata().dirty().pb;
+  const auto& partition_key_start = tablet_meta.partition().partition_key_start();
+  auto it = tablet_map_.find(partition_key_start);
+  if (it == tablet_map_.end()) {
+    tablet_map_.emplace(partition_key_start, tablet);
+  } else {
+    const auto old_split_depth = it->second->LockForRead()->data().pb.split_depth();
+    if (tablet_meta.split_depth() < old_split_depth) {
+      return;
+    }
+    VLOG(1) << "Replacing tablet " << it->second->tablet_id()
+            << " (split_depth = " << old_split_depth << ")"
+            << " with tablet " << tablet->tablet_id()
+            << " (split_depth = " << tablet_meta.split_depth() << ")";
+    it->second = tablet;
     // TODO: can we assert that the replaced tablet is not in Running state?
     // May be a little tricky since we don't know whether to look at its committed or
     // uncommitted state.
@@ -424,7 +434,7 @@ void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   if (abort_task) {
-    task->AbortAndReturnPrevState();
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Table closing"));
   }
 }
 
@@ -460,7 +470,7 @@ void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
   // to acquire the same lock to remove itself from pending_tasks_.
   for (const auto& task : abort_tasks) {
     VLOG(1) << __func__ << " Aborting task " << task.get() << " " << task->description();
-    task->AbortAndReturnPrevState();
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Table closing"));
   }
 }
 
@@ -586,9 +596,15 @@ bool NamespaceInfo::colocated() const {
   return l->data().pb.colocated();
 }
 
+::yb::master::SysNamespaceEntryPB_State NamespaceInfo::state() const {
+  auto l = LockForRead();
+  return l->data().pb.state();
+}
+
 string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
+
 
 // ================================================================================================
 // UDTypeInfo

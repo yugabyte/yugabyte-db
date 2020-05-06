@@ -2,7 +2,6 @@
 title: DROP DATABASE statement [YSQL]
 headerTitle: DROP DATABASE
 linkTitle: DROP DATABASE
-summary: Remove a database
 description: Use the DROP DATABASE statement to remove a database and all of its associated objects from the system. 
 menu:
   latest:

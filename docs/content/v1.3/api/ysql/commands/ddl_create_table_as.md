@@ -3,6 +3,7 @@ title: CREATE TABLE AS
 linkTitle: CREATE TABLE AS
 summary: Create a new table from a query result
 description: CREATE TABLE AS
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-create-table-as

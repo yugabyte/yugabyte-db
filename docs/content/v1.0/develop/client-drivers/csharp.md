@@ -2,6 +2,7 @@
 title: C#
 linkTitle: C#
 description: Develop C# Apps
+block_indexing: true
 menu:
   v1.0:
     identifier: client-drivers-csharp

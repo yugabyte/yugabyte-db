@@ -1,7 +1,8 @@
 ---
-title: currval()
-summary: Get the last value returned by `nextval()` in the current session
-description: currval()
+title: currval() function [YSQL]
+headerTitle: currval()
+linkTitle: currval()
+description: Returns the last value returned by the nextval() function for the specified sequence in the current session.
 menu:
   latest:
     identifier: api-ysql-exprs-currval

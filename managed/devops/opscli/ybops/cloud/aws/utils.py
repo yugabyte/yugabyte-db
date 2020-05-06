@@ -152,6 +152,7 @@ class YbVpcComponents:
         self.region = None
         self.vpc = None
         self.sg_yugabyte = None
+        self.customer_sgs = None
         self.route_table = None
         self.subnets = None
 
@@ -177,9 +178,9 @@ class YbVpcComponents:
             c.vpc = client.Vpc(vpc_id)
         else:
             c.vpc = get_vpc(client, RESOURCE_PREFIX_FORMAT.format(region))
-        sg_id = per_region_meta.get("customSecurityGroupId")
-        if sg_id:
-            c.sg_yugabyte = client.SecurityGroup(sg_id)
+        sg_ids = per_region_meta.get("customSecurityGroupId")
+        if sg_ids:
+            c.customer_sgs = [client.SecurityGroup(sg_id) for sg_id in sg_ids.split(",")]
         else:
             c.sg_yugabyte = get_security_group(
                 client, SG_YUGABYTE_PREFIX_FORMAT.format(region), c.vpc)
@@ -195,7 +196,8 @@ class YbVpcComponents:
         return c
 
     def as_json(self):
-        return vpc_components_as_json(self.vpc, self.sg_yugabyte, self.subnets)
+        sgs = self.customer_sgs if self.customer_sgs else [self.sg_yugabyte]
+        return vpc_components_as_json(self.vpc, sgs, self.subnets)
 
 
 class AwsBootstrapClient():
@@ -619,9 +621,9 @@ def set_yb_sg_and_fetch_vpc(metadata, region, dest_vpc_id):
     for r in rules:
         r.update({"cidr_ip": IGW_CIDR})
     add_cidr_to_rules(rules, dest_vpc.cidr_block)
-    sg = create_security_group(client=client, group_name=sg_group_name, vpc=dest_vpc,
-                               description="YugaByte SG", rules=rules)
-    return vpc_components_as_json(dest_vpc, sg, subnets)
+    sgs = [create_security_group(client=client, group_name=sg_group_name, vpc=dest_vpc,
+                                 description="YugaByte SG", rules=rules)]
+    return vpc_components_as_json(dest_vpc, sgs, subnets)
 
 
 def query_vpc(region):
@@ -683,18 +685,18 @@ def _get_name_from_tags(tags):
     return None
 
 
-def vpc_components_as_json(vpc, sg, subnets):
+def vpc_components_as_json(vpc, sgs, subnets):
     """Method takes VPC, Security Group and Subnets and returns a json data format with ids.
     Args:
         vpc (VPC Object): Region specific VPC object
-        sg (Security Group Object): Region specific Security Group object
+        sgs (List of Security Group Object): Region specific Security Group object
         subnets (subnet object map): Map of Subnet objects keyed of zone.
     Retuns:
         json (str): A Json string for yugaware to consume with necessary ids.
     """
     result = {}
     result["vpc_id"] = vpc.id
-    result["security_group"] = {"id": sg.group_id, "name": sg.group_name}
+    result["security_group"] = [{"id": sg.group_id, "name": sg.group_name} for sg in sgs]
     result["zones"] = {}
     for zone, subnet in subnets.iteritems():
         result["zones"][zone] = subnet.id
@@ -856,8 +858,9 @@ def create_instance(args):
         "InstanceType": args.instance_type,
     }
     # Network setup.
-    sg_id = args.security_group_id
-    if sg_id is None:
+    # Lets assume they have provided security group id comma delimited.
+    sg_ids = args.security_group_id.split(",") if args.security_group_id else None
+    if sg_ids is None:
         # Figure out which VPC this instance will be brought up in and search for the SG in there.
         # This is for a bit of backwards compatibility with the previous mode of potentially using
         # YW's VPC, in which we would still deploy a SG with the same name as in our normal VPCs.
@@ -867,12 +870,12 @@ def create_instance(args):
         vpc = get_vpc_for_subnet(client, args.cloud_subnet)
         sg_name = get_yb_sg_name(args.region)
         sg = get_security_group(client, sg_name, vpc)
-        sg_id = sg.id
+        sg_ids = [sg.id]
     vars["NetworkInterfaces"] = [{
         "DeviceIndex": 0,
         "AssociatePublicIpAddress": args.assign_public_ip,
         "SubnetId": args.cloud_subnet,
-        "Groups": [sg_id]
+        "Groups": sg_ids
     }]
     # Volume setup.
     volumes = []
@@ -887,6 +890,10 @@ def create_instance(args):
         ebs["Encrypted"] = True
         ebs["KmsKeyId"] = args.cmk_res_name
 
+    if args.iam_profile_arn is not None:
+        vars["IamInstanceProfile"] = {
+            "Arn": args.iam_profile_arn
+        }
     volumes.append({
         "DeviceName": "/dev/sda1",
         "Ebs": ebs
@@ -969,6 +976,22 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
     instance.create_tags(Tags=customer_tags)
 
 
+def update_disk(args, instance_id):
+    ec2_client = boto3.client('ec2', region_name=args.region)
+    device_names = set(get_device_names(args.instance_type, args.num_volumes))
+    instance = get_client(args.region).Instance(instance_id)
+    vol_ids = list()
+    for volume in instance.volumes.all():
+        for attachment in volume.attachments:
+            # Format of device name is /dev/xvd{} or /dev/nvme{}n1
+            if attachment['Device'].replace('/dev/', '') in device_names:
+                print("Updating volume {}".format(volume.id))
+                vol_ids.append(volume.id)
+                ec2_client.modify_volume(VolumeId=volume.id, Size=args.volume_size)
+    # Wait for volumes to be ready.
+    _wait_for_disk_modifications(ec2_client, vol_ids)
+
+
 def delete_route(rt, cidr):
     route = get_route_by_cidr(rt, cidr)
     if route is not None:
@@ -1028,3 +1051,24 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
           'Delay': 10,
           'MaxAttempts': 60
         })
+
+
+def _wait_for_disk_modifications(ec2_client, vol_ids):
+    num_vols_completed = 0
+    num_vols_to_modify = len(vol_ids)
+    # Loop till the progress is at 100
+    while True:
+        response = ec2_client.describe_volumes_modifications(VolumeIds=vol_ids)
+        # The response format can be found here:
+        # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_volumes_modifications
+        for entry in response['VolumesModifications']:
+            if entry['Progress'] == 100:
+                if entry['ModificationState'] != 'completed':
+                    raise YBOpsRuntimeError(("Disk {} could not be modified.").format(
+                        entry['VolumeId']))
+                else:
+                    num_vols_completed += 1
+        # This means all volumes have completed modification.
+        if num_vols_completed == num_vols_to_modify:
+            break
+        time.sleep(WAIT_TIME_BETWEEN_RETRIES)

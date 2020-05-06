@@ -4,6 +4,7 @@ linkTitle: Manage
 description: Manage YugabyteDB
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
+block_indexing: true
 menu:
   v1.1:
     identifier: manage

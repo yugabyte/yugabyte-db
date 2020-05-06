@@ -2,6 +2,7 @@
 title: ZSCORE
 linkTitle: ZSCORE
 description: ZSCORE
+block_indexing: true
 menu:
   v1.2:
     parent: api-yedis

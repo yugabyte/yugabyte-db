@@ -135,8 +135,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
   void VerifyTableExists(YBClient* client,
                          const YBTableName& table_name) {
     LOG(INFO) << "Verifying that " << table_name.ToString() << " exists on leader..";
-    vector<YBTableName> tables;
-    ASSERT_OK(client->ListTables(&tables));
+    const auto tables = ASSERT_RESULT(client->ListTables());
     ASSERT_TRUE(::util::gtl::contains(tables.begin(), tables.end(), table_name));
   }
 

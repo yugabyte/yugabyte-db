@@ -1,16 +1,15 @@
 ---
-title: Bulk export
+title: Bulk export for YCQL
+headerTitle: Bulk export
 linkTitle: Bulk export
-description: Bulk export
-image: /images/section_icons/manage/enterprise.png
-headcontent: Bulk export data from YugabyteDB.
+description: Bulk export for YCQL using cassandra-loader and cassandra-unloader.
+aliases:
+  - /latest/manage/data-migration/bulk-export/
 menu:
   latest:
     identifier: manage-bulk-export
     parent: manage-bulk-import-export
     weight: 707
-aliases:
-  - /latest/manage/data-migration/bulk-export/
 isTocNested: true
 showAsideToc: true
 ---

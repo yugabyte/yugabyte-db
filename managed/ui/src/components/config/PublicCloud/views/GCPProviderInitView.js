@@ -1,14 +1,55 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, {Component} from 'react';
+import React, { Component, Fragment } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBButton } from '../../../common/forms/fields';
-import { YBTextInputWithLabel, YBSelectWithLabel, YBDropZone } from '../../../common/forms/fields';
+import { YBButton, YBAddRowButton } from '../../../common/forms/fields';
+import { YBTextInputWithLabel, YBSelectWithLabel, YBDropZone, YBInputField } from '../../../common/forms/fields';
 import { change, Field } from 'redux-form';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
 import { isNonEmptyObject, isNonEmptyString } from 'utils/ObjectUtils';
-import { reduxForm } from 'redux-form';
+import { reduxForm, FieldArray } from 'redux-form';
+import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
+
+const validationIsRequired = value => value && value.trim() !== '' ? undefined : 'Required';
+
+class renderRegionInput extends Component {
+  componentDidMount() {
+    if (this.props.fields.length === 0) {
+      this.props.fields.push({});
+    }
+  }
+  render() {
+    const { fields } = this.props;
+    const regionMappingList = fields.map((item, idx) => (
+      <FlexContainer key={idx}>
+        <FlexGrow>
+          <Row>
+            <Col lg={6}>
+              <Field name={`${item}.region`} validate={validationIsRequired} component={YBInputField} placeHolder="Region Name"/>
+            </Col>
+            <Col lg={6}>
+              <Field name={`${item}.subnet`} validate={validationIsRequired} component={YBInputField} placeHolder="Subnet ID"/>
+            </Col>
+          </Row>
+        </FlexGrow>
+        <FlexShrink>
+          <i className="fa fa-times fa-fw delete-row-btn" onClick={() => fields.getAll().length > 1 ? fields.remove(idx) :  null}/>
+        </FlexShrink>
+      </FlexContainer>
+    ));
+    return (
+      <Fragment>
+        <div className="divider"></div>
+        <h5>Region mapping</h5>
+        <div className="form-field-grid">
+          {regionMappingList}
+          <YBAddRowButton btnText="Add region" onClick={() => fields.push({})} />
+        </div>
+      </Fragment>
+    );
+  }
+}
 
 class GCPProviderInitView extends Component {
   constructor(props) {
@@ -28,20 +69,29 @@ class GCPProviderInitView extends Component {
   createProviderConfig = vals => {
     const self = this;
     const gcpCreateConfig = {};
+    const perRegionMetadata = {};
     if (isNonEmptyString(vals.destVpcId)) {
       gcpCreateConfig["network"] = vals.destVpcId;
-      gcpCreateConfig["use_host_vpc"] = true;
-    } else {
-      gcpCreateConfig["use_host_vpc"] = false;
     }
     if (isNonEmptyString(vals.gcpProjectName)) {
       gcpCreateConfig["project_id"] = vals.gcpProjectName;
     }
+    gcpCreateConfig["use_host_vpc"] = vals.network_setup === "host_vpc";
+    if (vals.network_setup !== "new_vpc") {
+      vals.regionMapping.forEach((item) =>
+        perRegionMetadata[item.region] = { "subnetId": item.subnet}
+      );
+    }
+    if (isNonEmptyString(vals.firewall_tags)) {
+      gcpCreateConfig["YB_FIREWALL_TAGS"] = vals.firewall_tags;
+    }
     const providerName = vals.accountName;
     const configText = vals.gcpConfig;
     if (vals.credential_input === "local_service_account") {
-      return self.props.createGCPProvider(providerName, gcpCreateConfig);
+      gcpCreateConfig["use_host_credentials"] = true;
+      return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata);
     } else if (vals.credential_input === "upload_service_account_json" && isNonEmptyObject(configText)) {
+      gcpCreateConfig["use_host_credentials"] = false;
       const reader = new FileReader();
       reader.readAsText(configText);
       // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
@@ -51,7 +101,7 @@ class GCPProviderInitView extends Component {
         } catch (e) {
           self.setState({"error": "Invalid GCP config JSON file"});
         }
-        return self.props.createGCPProvider(providerName, gcpCreateConfig);
+        return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata);
       };
     } else {
       this.setState({"error": "GCP Config JSON is required"});
@@ -76,8 +126,10 @@ class GCPProviderInitView extends Component {
     const { hostInfo } = this.props;
     if (value === "host_vpc") {
       this.updateFormField("destVpcId", hostInfo["gcp"]["network"]);
+      this.updateFormField("gcpProjectName", hostInfo["gcp"]["project"]);
     } else {
       this.updateFormField("destVpcId", null);
+      this.updateFormField("gcpProjectName", null);
     }
     this.setState({networkSetupType: value});
   }
@@ -128,7 +180,7 @@ class GCPProviderInitView extends Component {
       );
     }
 
-    let destVpcField = <span />, gcpProjectField = <span />;
+    let destVpcField = <span />, gcpProjectField = <span />, regionInput = <span />;
     if (this.state.networkSetupType !== "new_vpc") {
       destVpcField = (
         <Row className="config-provider-row">
@@ -160,6 +212,8 @@ class GCPProviderInitView extends Component {
           </Col>
         </Row>
       );
+
+      regionInput = (<FieldArray name={'regionMapping'} component={renderRegionInput} />);
     }
 
     return (
@@ -198,8 +252,18 @@ class GCPProviderInitView extends Component {
                       onInputChanged={this.networkSetupChanged} />
                   </Col>
                 </Row>
+                <Row>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Firewall Tags</div>
+                  </Col>
+                  <Col lg={7}>
+                  <Field name="firewall_tags" placeHolder="my-firewall-tag-1,my-firewall-tag-2"
+                           component={YBTextInputWithLabel} className={"gcp-provider-input-field"}/>
+                  </Col>
+                </Row>
                 {gcpProjectField}
                 {destVpcField}
+                {regionInput}
               </Col>
             </Row>
           </div>
@@ -220,13 +284,13 @@ const validate = (values) => {
   if (!isNonEmptyObject(values.gcpConfig)) {
     errors.gcpConfig = 'Provider Config is Required';
   }
-  if (!isNonEmptyString(values.gcpProjectName) &&
-      values.network_setup === "existing_vpc") {
-    errors.gcpProjectName = 'Project Name is Required';
-  }
-  if (!isNonEmptyString(values.destVpcId) &&
-      values.network_setup === "existing_vpc") {
-    errors.destVpcId = 'VPC Network Name is Required';
+  if (values.network_setup === "existing_vpc") {
+    if (!isNonEmptyString(values.gcpProjectName)) {
+      errors.gcpProjectName = 'Project Name is Required';
+    }
+    if (!isNonEmptyString(values.destVpcId)) {
+      errors.destVpcId = 'VPC Network Name is Required';
+    }
   }
   return errors;
 };

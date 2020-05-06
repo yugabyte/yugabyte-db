@@ -14,12 +14,16 @@
 #ifndef YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 #define YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/master/master_fwd.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 
 #include "yb/tserver/backup.pb.h"
@@ -48,6 +52,18 @@ class SnapshotCoordinatorContext {
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
       TabletSnapshotOperationCallback callback) = 0;
 
+  virtual void SendDeleteTabletSnapshotRequest(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
+      TabletSnapshotOperationCallback callback) = 0;
+
+  virtual Result<ColumnId> MetadataColumnId() = 0;
+
+  virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
+
+  virtual rpc::Scheduler& Scheduler() = 0;
+
+  virtual bool IsLeader() = 0;
+
   virtual ~SnapshotCoordinatorContext() = default;
 };
 
@@ -57,8 +73,17 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context);
   ~MasterSnapshotCoordinator();
 
+  Result<TxnSnapshotId> Create(
+      const SysRowEntries& entries, bool imported, HybridTime snapshot_hybrid_time,
+      CoarseTimePoint deadline);
+
+  CHECKED_STATUS Delete(const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
+
   // As usual negative leader_term means that this operation was replicated at the follower.
-  CHECKED_STATUS Replicated(
+  CHECKED_STATUS CreateReplicated(
+      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+
+  CHECKED_STATUS DeleteReplicated(
       int64_t leader_term, const tablet::SnapshotOperationState& state) override;
 
   CHECKED_STATUS ListSnapshots(const TxnSnapshotId& snapshot_id, ListSnapshotsResponsePB* resp);
@@ -66,7 +91,15 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId& snapshot_id);
 
   CHECKED_STATUS ListRestorations(
-      const TxnSnapshotRestorationId& snapshot_id, ListSnapshotRestorationsResponsePB* resp);
+      const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
+      ListSnapshotRestorationsResponsePB* resp);
+
+  // Load snapshot data from system catalog RocksDB entry.
+  CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data);
+
+  void Start();
+
+  void Shutdown();
 
  private:
   class Impl;

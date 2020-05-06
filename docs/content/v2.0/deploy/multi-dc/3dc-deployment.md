@@ -2,6 +2,7 @@
 title: Three+ data center (3DC)
 linkTitle: Three+ data center (3DC)
 description: Three or more (3DC) deployments
+block_indexing: true
 menu:
   v2.0:
     parent: multi-dc

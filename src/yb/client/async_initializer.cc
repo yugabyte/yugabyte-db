@@ -38,6 +38,7 @@ AsyncClientInitialiser::AsyncClientInitialiser(
       master_addresses.push_back(hp.ToString());
     }
   }
+  VLOG(4) << "Master addresses for " << client_name << ": " << AsString(master_addresses);
   client_builder_.add_master_server_addr(JoinStrings(master_addresses, ","));
   client_builder_.set_skip_master_leader_resolution(master_addresses.size() == 1);
   client_builder_.set_metric_entity(metric_entity);
@@ -77,12 +78,14 @@ void AsyncClientInitialiser::InitClient() {
       LOG(INFO) << "Successfully built ybclient";
       client_holder_.reset(result->release());
       client_promise_.set_value(client_holder_.get());
-      break;
+      return;
     }
 
     LOG(ERROR) << "Failed to initialize client: " << result.status();
     std::this_thread::sleep_for(1s);
   }
+
+  client_promise_.set_value(nullptr);
 }
 
 }  // namespace client

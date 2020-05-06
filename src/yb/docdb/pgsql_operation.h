@@ -14,7 +14,6 @@
 #ifndef YB_DOCDB_PGSQL_OPERATION_H
 #define YB_DOCDB_PGSQL_OPERATION_H
 
-#include "yb/common/pgsql_resultset.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 
 #include "yb/docdb/doc_expr.h"
@@ -51,7 +50,11 @@ class PgsqlWriteOperation :
   const PgsqlWriteRequestPB& request() const { return request_; }
   PgsqlResponsePB* response() const { return response_; }
 
-  const PgsqlResultSet& resultset() const { return resultset_; }
+  const faststring& result_buffer() const { return result_buffer_; }
+
+  bool result_is_single_empty_row() const {
+    return result_rows_ == 1 && result_buffer_.size() == sizeof(int64_t);
+  }
 
   // Execute write.
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
@@ -75,9 +78,9 @@ class PgsqlWriteOperation :
 
   // Reading current row before operating on it.
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
-                             const QLTableRow::SharedPtr& table_row);
+                             QLTableRow* table_row);
 
-  CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row);
+  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row);
 
   // Reading path to operate on.
   CHECKED_STATUS GetDocPaths(GetDocPathsMode mode,
@@ -100,7 +103,8 @@ class PgsqlWriteOperation :
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
-  PgsqlResultSet resultset_;
+  int64_t result_rows_ = 0;
+  faststring result_buffer_;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {
@@ -114,40 +118,41 @@ class PgsqlReadOperation : public DocExprExecutor {
   const PgsqlReadRequestPB& request() const { return request_; }
   PgsqlResponsePB& response() { return response_; }
 
-  CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
+  Result<size_t> Execute(const common::YQLStorageIf& ql_storage,
                          CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
                          const Schema& schema,
                          const Schema *index_schema,
-                         PgsqlResultSet *result_set,
+                         faststring *result_buffer,
                          HybridTime *restart_read_ht);
-
-  CHECKED_STATUS ExecuteBatch(const common::YQLStorageIf& ql_storage,
-                              CoarseTimePoint deadline,
-                              const ReadHybridTime& read_time,
-                              const Schema& schema,
-                              PgsqlResultSet *resultset,
-                              HybridTime *restart_read_ht);
 
   CHECKED_STATUS GetTupleId(QLValue *result) const override;
 
   CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
 
  private:
-  CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row,
-                                   PgsqlResultSet *result_set);
+  Result<size_t> ExecuteBatch(const common::YQLStorageIf& ql_storage,
+                              CoarseTimePoint deadline,
+                              const ReadHybridTime& read_time,
+                              const Schema& schema,
+                              faststring *result_buffer,
+                              HybridTime *restart_read_ht);
 
-  CHECKED_STATUS EvalAggregate(const QLTableRow::SharedPtr& table_row);
+  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row,
+                                   faststring *result_buffer);
 
-  CHECKED_STATUS PopulateAggregate(const QLTableRow::SharedPtr& table_row,
-                                   PgsqlResultSet *resultset);
+  CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
+
+  CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row,
+                                   faststring *result_buffer);
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
   CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
-                                           const PgsqlResultSet* resultset,
+                                           size_t fetched_rows,
                                            const size_t row_count_limit,
-                                           const bool scan_time_exceeded);
+                                           const bool scan_time_exceeded,
+                                           const Schema* schema);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;

@@ -3,8 +3,6 @@ title: Create a local YugabyteDB cluster on Linux
 headerTitle: 2. Create a local YugabyteDB cluster
 linkTitle: 2. Create a local cluster
 description: Create a local YugabyteDB cluster on Linux in less than five minutes.
-aliases:
-  - /quick-start/create-local-cluster/
 menu:
   latest:
     parent: quick-start
@@ -49,10 +47,9 @@ showAsideToc: true
 
 </ul>
 
-
 ## 1. Create a local cluster
 
-You can use the [`yb-ctl`](../../../admin/yb-ctl/) utility, located in the `bin` directory of the YugabyteDB package, to create and administer a local cluster. The default data directory is `$HOME/yugabyte-data`. You can change the location of the data directory by using the [`--data_dir`](../../../admin/yb-ctl/#data-dir) configuration option.
+You can use the [`yb-ctl`](../../../admin/yb-ctl/) utility, located in the `bin` directory of the YugabyteDB package, to create and administer a local cluster. The default data directory is `$HOME/yugabyte-data`. You can change the location of the data directory by using the [`--data_dir`](../../../admin/yb-ctl/#data-dir) flag.
 
 To quickly create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../../admin/yb-ctl/#create-cluster) in the CLI reference.
 

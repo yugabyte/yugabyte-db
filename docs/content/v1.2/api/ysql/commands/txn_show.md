@@ -2,6 +2,7 @@
 title: SHOW TRANSACTION
 description: SHOW TRANSACTION
 summary: SHOW TRANSACTION
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-txn-show

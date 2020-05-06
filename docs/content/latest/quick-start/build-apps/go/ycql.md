@@ -1,8 +1,8 @@
 ---
-title: Build a YugabyteDB application using Go
+title: Build a Go application that uses YCQL
 headerTitle: Build a Go application
-linkTitle: Build a Go application
-description: Follow this tutorial to build a YugabyteDB application using Go
+linkTitle: Go
+description: Build a Go application that uses YCQL.
 menu:
   latest:
     parent: build-apps
@@ -39,7 +39,7 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [Quick start](../../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [Quick start](../../../../api/ycql/quick-start/).
 - installed Go version 1.8+
 
 ## Install the Go Cassandra driver

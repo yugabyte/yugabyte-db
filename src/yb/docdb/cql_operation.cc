@@ -236,8 +236,12 @@ Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response)
   // Determine if static / non-static columns are being written.
   bool write_static_columns = false;
   bool write_non_static_columns = false;
+  // TODO(Amit): Remove the DVLOGS after backfill features stabilize.
+  DVLOG(4) << "Processing request " << yb::ToString(*request);
   for (const auto& column : request_.column_values()) {
+    DVLOG(4) << "Looking at column : " << yb::ToString(column);
     auto schema_column = schema_.column_by_id(ColumnId(column.column_id()));
+    DVLOG(4) << "schema column : " << yb::ToString(schema_column);
     RETURN_NOT_OK(schema_column);
     if (schema_column->is_static()) {
       write_static_columns = true;
@@ -468,28 +472,51 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 }
 
 // Check if a duplicate value is inserted into a unique index.
-Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApplyData& data) {
+Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in \n"
           << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
   // We only need to check backwards for backfilled entries.
-  return VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kForward)) ||
-         (request_.is_backfilling() &&
-          VERIFY_RESULT(DuplicateUniqueIndexValue(data, Direction::kBackward)));
+  bool ret =
+      VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
+      (request_.is_backfilling() &&
+       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kBackward)));
+  if (!ret) {
+    VLOG(3) << "No collisions found";
+  }
+  return ret;
 }
 
-Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
+Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, Direction direction) {
-  VLOG(2) << "Looking for collision while going " << yb::ToString(direction);
+  VLOG(2) << "Looking for collision while going " << yb::ToString(direction)
+          << ". Trying to insert " << *pk_doc_key_;
   auto requested_read_time = data.read_time;
   if (direction == Direction::kForward) {
-    return DuplicateUniqueIndexValue(data, requested_read_time);
+    return HasDuplicateUniqueIndexValue(data, requested_read_time);
   }
 
-  // TODO: Handle Unique Index conflicts during backfill.
-  return false;
+  auto iter = CreateIntentAwareIterator(
+      data.doc_write_batch->doc_db(), BloomFilterMode::USE_BLOOM_FILTER,
+      pk_doc_key_->Encode().AsSlice(), request_.query_id(), txn_op_context_,
+      data.deadline, ReadHybridTime::Max());
+
+  HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+      iter.get(), SubDocKey(*pk_doc_key_), requested_read_time.read));
+  const HybridTime oldest_past_min_ht_liveness =
+      VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+          iter.get(),
+          SubDocKey(*pk_doc_key_, PrimitiveValue::SystemColumnId(
+                                      SystemColumnIds::kLivenessColumn)),
+          requested_read_time.read));
+  oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
+  if (!oldest_past_min_ht.is_valid()) {
+    return false;
+  }
+  return HasDuplicateUniqueIndexValue(
+      data, ReadHybridTime::SingleTime(oldest_past_min_ht));
 }
 
-Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
+Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
   DocQLScanSpec spec(*unique_index_key_schema_, *pk_doc_key_, request_.query_id(), true);
@@ -516,8 +543,9 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
         VLOG(2) << "Found collision while checking at " << yb::ToString(read_time)
                 << " Existing :" << yb::ToString(*value)
                 << " vs New :" << yb::ToString(column_value.expr().value()) << " used read time as "
-                << yb::ToString(data.read_time) << " data is now :\n"
-                << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+                << yb::ToString(data.read_time);
+        DVLOG(3) << "DocDB is now :\n"
+                 << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
         return true;
       }
     }
@@ -525,6 +553,25 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(
 
   VLOG(2) << "No collision while checking at " << yb::ToString(read_time);
   return false;
+}
+
+Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(IntentAwareIterator* iter,
+                                                  const SubDocKey& sub_doc_key,
+                                                  HybridTime min_read_time) {
+  HybridTime result;
+  VLOG(3) << "Doing iter->Seek " << *pk_doc_key_ << ".";
+  iter->Seek(*pk_doc_key_);
+  if (iter->valid()) {
+    const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
+    const Slice& sub_key_slice = bytes.AsSlice();
+    result = VERIFY_RESULT(
+        iter->FindOldestRecord(sub_key_slice, min_read_time));
+    VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
+            << SubDocKey::DebugSliceToString(sub_key_slice);
+  } else {
+    VLOG(3) << "iter->Seek " << *pk_doc_key_ << " turned out to be invalid";
+  }
+  return result;
 }
 
 Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_value,
@@ -536,9 +583,10 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
                                                bool is_insert) {
   using common::Jsonb;
   // Read the json column value inorder to perform a read modify write.
-  QLValue ql_value;
-  RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), &ql_value));
-  if (ql_value.IsNull()) {
+  QLExprResult temp;
+  RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), temp.Writer()));
+  const auto& ql_value = temp.Value();
+  if (IsNull(ql_value)) {
     return STATUS_SUBSTITUTE(QLError, "Invalid Json value: ", column_value.ShortDebugString());
   }
   Jsonb jsonb(std::move(ql_value.jsonb_value()));
@@ -612,11 +660,11 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
                                                const UserTimeMicros& user_timestamp,
                                                const ColumnSchema& column,
                                                DocPath* sub_path) {
-  QLValue expr_result;
-  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, &expr_result));
+  QLExprResult expr_result;
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   const yb::bfql::TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
   const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
+      SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type(), write_instr);
   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
 
   // Setting the value for a sub-column
@@ -667,11 +715,11 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   using yb::bfql::TSOpcode;
 
   // Typical case, setting a columns value
-  QLValue expr_result;
-  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, &expr_result));
+  QLExprResult expr_result;
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
   const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
+      SubDocument::FromQLValuePB(expr_result.Value(), column.sorting_type(), write_instr);
   switch (write_instr) {
     case TSOpcode::kToJson: FALLTHROUGH_INTENDED;
     case TSOpcode::kScalarInsert:
@@ -711,7 +759,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   }
 
   if (update_indexes_) {
-    new_row->AllocColumn(column_id, expr_result);
+    new_row->AllocColumn(column_id, expr_result.Value());
   }
   return Status::OK();
 }
@@ -753,7 +801,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     }
   }
 
-  if (insert_into_unique_index_ && VERIFY_RESULT(DuplicateUniqueIndexValue(data))) {
+  VLOG(3) << "insert_into_unique_index_ is " << insert_into_unique_index_;
+  if (insert_into_unique_index_ && VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
     VLOG(3) << "set_applied is set to " << false << " for over " << yb::ToString(existing_row);
     response_->set_applied(false);
     response_->set_status(QLResponsePB::YQL_STATUS_OK);
@@ -1032,6 +1081,7 @@ QLWriteRequestPB* QLWriteOperation::NewIndexRequest(const IndexInfo* index,
 Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLTableRow& new_row) {
   // Prepare the write requests to update the indexes. There should be at most 2 requests for each
   // index (one insert and one delete).
+  VLOG(2) << "Updating indexes";
   const auto& index_ids = request_.update_index_ids();
   index_requests_.reserve(index_ids.size() * 2);
   for (const TableId& index_id : index_ids) {
@@ -1041,14 +1091,16 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       index_key_changed = true;
     } else {
       QLWriteRequestPB* index_request =
-          (index->AllowWrites() ? NewIndexRequest(index, QLWriteRequestPB::QL_STMT_INSERT, new_row)
-                                : nullptr);
+          (index->HasWritePermission() ? NewIndexRequest(index,
+                                                         QLWriteRequestPB::QL_STMT_INSERT,
+                                                         new_row)
+                                       : nullptr);
       RETURN_NOT_OK(PrepareIndexWriteAndCheckIfIndexKeyChanged(
           this, existing_row, new_row, index, index_request, &index_key_changed));
     }
 
     // If the index key is changed, delete the current key.
-    if (index_key_changed && index->AllowDelete()) {
+    if (index_key_changed && index->HasDeletePermission()) {
       QLWriteRequestPB* index_request =
           NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE, new_row);
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
@@ -1059,9 +1111,9 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         // For new message expr_case == kColumnId when indexing expression is a column-ref.
         if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::EXPR_NOT_SET &&
             index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
-          QLValue result;
-          RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, &result));
-          key_column->mutable_value()->CopyFrom(result.value());
+          QLExprResult result;
+          RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, result.Writer()));
+          result.MoveTo(key_column->mutable_value());
         } else {
           auto result = existing_row.GetValue(index_column.indexed_column_id);
           if (result) {
@@ -1107,24 +1159,25 @@ Status PrepareIndexWriteAndCheckIfIndexKeyChanged(
         key_column->mutable_value()->CopyFrom(*result);
       }
     } else {
-      QLValue result;
+      QLExprResult result;
       if (existing_row.IsEmpty()) {
-        RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, &result));
+        RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, result.Writer()));
       } else {
         // The following code needs to be updated to support various expression including JSONB.
         // For each column in the index key, if there is a new value, see if the value is
         // specified in the new value. Otherwise, use the current value.
         if (new_row.IsColumnSpecified(index_column.indexed_column_id)) {
-          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, &result));
+          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, result.Writer()));
           if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
             index_key_changed = true;
           }
         } else {
-          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, existing_row, &result));
+          RETURN_NOT_OK(expr_executor->EvalExpr(
+              index_column.colexpr, existing_row, result.Writer()));
         }
       }
       if (key_column) {
-        key_column->mutable_value()->CopyFrom(result.value());
+        result.MoveTo(key_column->mutable_value());
       }
     }
   }
@@ -1375,14 +1428,9 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<common::QLScanSp
   resultset->AllocateRow();
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
-    QLValue value;
-    const QLValuePB* value_ptr = nullptr;
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &value, spec->schema(), &value_ptr));
-    if (value_ptr) {
-      resultset->AppendColumn(rscol_index, *value_ptr);
-    } else {
-      resultset->AppendColumn(rscol_index, value);
-    }
+    QLExprResult value;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer(), spec->schema()));
+    resultset->AppendColumn(rscol_index, value.Value());
     rscol_index++;
   }
 
@@ -1397,8 +1445,7 @@ Status QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
 
   int aggr_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &aggr_result_[aggr_index]));
-    aggr_index++;
+    RETURN_NOT_OK(EvalExpr(expr, table_row, aggr_result_[aggr_index++].Writer()));
   }
   return Status::OK();
 }
@@ -1407,7 +1454,7 @@ Status QLReadOperation::PopulateAggregate(const QLTableRow& table_row, QLResultS
   resultset->AllocateRow();
   int column_count = request_.selected_exprs().size();
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
-    resultset->AppendColumn(rscol_index, aggr_result_[rscol_index]);
+    resultset->AppendColumn(rscol_index, aggr_result_[rscol_index].Value());
   }
   return Status::OK();
 }

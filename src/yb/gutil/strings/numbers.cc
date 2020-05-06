@@ -28,9 +28,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <iomanip>
 #include <limits>
 using std::numeric_limits;
 #include <string>
+#include <sstream>
 using std::string;
 
 #include "yb/gutil/int128.h"
@@ -1473,3 +1475,23 @@ string UInt64ToString(uint64 ui64, const char* format) {
   return StringPrintf(format, ui64);
 }
 
+namespace {
+  constexpr int64_t kBytesPerGB = 1000000000;
+  constexpr int64_t kBytesPerMB = 1000000;
+  constexpr int64_t kBytesPerKB = 1000;
+}
+
+string HumanizeBytes(uint64_t bytes, int precision) {
+  std::ostringstream op_stream;
+  op_stream << std::fixed << std::setprecision(precision);
+  if (bytes >= kBytesPerGB) {
+    op_stream << static_cast<double> (bytes)/kBytesPerGB << " GB";
+  } else if (bytes >= kBytesPerMB) {
+    op_stream << static_cast<double> (bytes)/kBytesPerMB << " MB";
+  } else if (bytes >= kBytesPerKB) {
+    op_stream << static_cast<double> (bytes)/kBytesPerKB << " KB";
+  } else {
+    op_stream << bytes << " B";
+  }
+  return op_stream.str();
+}

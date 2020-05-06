@@ -2,6 +2,7 @@
 title: TSGET
 linkTitle: TSGET
 description: TSGET
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

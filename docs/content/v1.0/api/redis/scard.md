@@ -2,6 +2,7 @@
 title: SCARD
 linkTitle: SCARD
 description: SCARD
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

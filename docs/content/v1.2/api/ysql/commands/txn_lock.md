@@ -3,6 +3,7 @@ title: LOCK
 linkTitle: LOCK
 summary: Lock a table
 description: LOCK
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-lock

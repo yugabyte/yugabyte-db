@@ -2,6 +2,7 @@
 title: CONFIG
 linkTitle: CONFIG
 description: CONFIG
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

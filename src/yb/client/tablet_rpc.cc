@@ -281,6 +281,16 @@ bool TabletInvoker::Done(Status* status) {
     }
   }
 
+  if (status->IsIllegalState() &&
+      ErrorCode(rsp_err) == tserver::TabletServerErrorPB::TABLET_SPLIT) {
+    // Replace status error with TryAgain, so upper layer retry request after refreshing
+    // table partitioning metadata.
+    *status = STATUS(TryAgain, status->message());
+    tablet_->MarkAsSplit();
+    rpc_->Failed(*status);
+    return true;
+  }
+
   // Oops, we failed over to a replica that wasn't a LEADER. Unlikely as
   // we're using consensus configuration information from the master, but still possible
   // (e.g. leader restarted and became a FOLLOWER). Try again.

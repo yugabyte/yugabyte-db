@@ -16,6 +16,7 @@
 #include <unordered_map>
 
 #include "yb/client/schema.h"
+#include "yb/common/pg_system_attr.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/util/string_util.h"
@@ -154,6 +155,10 @@ Status PgExpr::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 Status PgExpr::Eval(PgDml *pg_stmt, QLValuePB *result) {
   // Expressions that are neither bind_variable nor constant don't need to be updated.
   // Only values for bind variables and constants need to be updated in the SQL requests.
+  return Status::OK();
+}
+
+Status PgExpr::Eval(QLValuePB *result) {
   return Status::OK();
 }
 
@@ -593,6 +598,10 @@ Status PgConstant::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 
 Status PgConstant::Eval(PgDml *pg_stmt, QLValuePB *result) {
   CHECK(pg_stmt != nullptr);
+  return Eval(result);
+}
+
+Status PgConstant::Eval(QLValuePB *result) {
   CHECK(result != nullptr);
   *result = ql_value_;
   return Status::OK();
@@ -643,6 +652,10 @@ PgColumnRef::PgColumnRef(int attr_num,
 }
 
 PgColumnRef::~PgColumnRef() {
+}
+
+bool PgColumnRef::is_ybbasetid() const {
+  return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
 }
 
 Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {

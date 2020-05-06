@@ -2,6 +2,7 @@
 title: API Compatibility
 linkTitle: API Compatibility
 description: API Compatibility
+block_indexing: true
 menu:
   v1.2:
     parent: faq

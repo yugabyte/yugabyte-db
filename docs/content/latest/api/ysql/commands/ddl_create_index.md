@@ -2,7 +2,6 @@
 title: CREATE INDEX statement [YSQL]
 headerTitle: CREATE INDEX
 linkTitle: CREATE INDEX
-summary: Create index on a table in a database
 description: Use the CREATE INDEX statement to create an index on the specified columns of the specified table.
 menu:
   latest:

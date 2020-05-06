@@ -2,6 +2,7 @@
 title: INSERT
 summary: Add new rows to a table
 description: INSERT
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-insert

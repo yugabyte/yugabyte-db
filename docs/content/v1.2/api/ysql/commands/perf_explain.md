@@ -2,6 +2,7 @@
 title: EXPLAIN
 description: EXPLAIN Command
 summary: EXPLAIN
+block_indexing: true
 menu:
   v1.2:
     identifier: api-ysql-commands-explain

@@ -2,6 +2,7 @@
 title: Sharding
 linkTitle: Sharding
 description: Sharding into Tablets
+block_indexing: true
 menu:
   v1.1:
     identifier: docdb-sharding

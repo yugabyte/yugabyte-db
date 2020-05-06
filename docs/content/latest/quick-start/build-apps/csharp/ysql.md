@@ -1,12 +1,12 @@
 ---
-title: Use C# to build a YugabyteDB YSQL application 
+title: Build a C# application that uses YSQL
 headerTitle: Build a C# application
 linkTitle: C#
 description: Use C# to build a YugabyteDB application that uses YSQL
 aliases:
   - /develop/client-drivers/csharp/
   - /latest/develop/client-drivers/csharp/
-  - /latest/develop/build-apps/csharp/
+  - /latest/quick-start/build-apps/csharp/
 menu:
   latest:
     identifier: build-apps-csharp-1-ysql
@@ -111,7 +111,7 @@ namespace Yugabyte_CSharp_Demo
 }
 ```
 
-### Running the C# application
+### Run the C# application
 
 Run the C# app from menu select `Run -> Start Without Debugging`
 

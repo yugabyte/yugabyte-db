@@ -83,7 +83,7 @@ In order to actually deploy YugabyteDB nodes in your AWS account, YugaWare will 
 
 ## KeyPairs
 
-In order to be able to provision EC2 instances with YugabyteDB, YugaWare will require SSH access to these. To that end, there are two options to choose from:
+In order to be able to provision EC2 instances with YugabyteDB, YugaWare will require SSH access to these. To that end, there are two  to choose from:
 
 - Allow YugaWare to create and manage [KeyPairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YugaWare will create KeyPairs across all the regions you choose to setup and store the relevant private key part of these locally in order to SSH into future EC2 instances.
 - Use your own already existing KeyPairs. For this you will need to provide the name of the KeyPair, as well as the private key content and the corresponding SSH user. **Note that currently, all this info must be the same across all the regions you choose to provision!**

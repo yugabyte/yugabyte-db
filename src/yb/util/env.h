@@ -270,6 +270,9 @@ class Env {
   // Returns true iff the named file exists.
   virtual bool FileExists(const std::string& fname) = 0;
 
+  // Returns true if the named directory exists and is a directory.
+  virtual bool DirExists(const std::string& dname) = 0;
+
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
   // Original contents of *results are dropped.
@@ -459,6 +462,9 @@ class Env {
 
   // Get free space available on the path's filesystem.
   virtual Result<uint64_t> GetFreeSpaceBytes(const std::string& path) = 0;
+
+  // Get ulimit
+  virtual CHECKED_STATUS GetUlimit(int resource, int64_t* soft_limit, int64_t* hard_limit) = 0;
  private:
   // No copying allowed
   Env(const Env&);
@@ -710,6 +716,7 @@ class EnvWrapper : public Env {
     return target_->NewRWFile(o, f, r);
   }
   bool FileExists(const std::string& f) override { return target_->FileExists(f); }
+  bool DirExists(const std::string& d) override { return target_->DirExists(d); }
   CHECKED_STATUS GetChildren(
       const std::string& dir, ExcludeDots exclude_dots, std::vector<std::string>* r) override {
     return target_->GetChildren(dir, exclude_dots, r);
@@ -783,6 +790,9 @@ class EnvWrapper : public Env {
   }
   Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
     return target_->GetFreeSpaceBytes(path);
+  }
+  CHECKED_STATUS GetUlimit(int resource, int64_t* soft_limit, int64_t* hard_limit) override {
+    return target_->GetUlimit(resource, soft_limit, hard_limit);
   }
  private:
   Env* target_;

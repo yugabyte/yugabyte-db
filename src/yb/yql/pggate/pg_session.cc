@@ -32,6 +32,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_error.h"
@@ -63,6 +64,7 @@ using client::YBTable;
 using client::YBTableName;
 using client::YBTableType;
 
+using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::IsInitDbDoneRequestPB;
 using yb::master::IsInitDbDoneResponsePB;
 using yb::master::MasterServiceProxy;
@@ -210,10 +212,10 @@ void InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       QLExprExecutor executor;
-      QLValue result;
-      auto s = executor.EvalExpr(column_value, nullptr, &result);
+      QLExprResult result;
+      auto s = executor.EvalExpr(column_value, nullptr, result.Writer());
 
-      components->push_back(docdb::PrimitiveValue::FromQLValuePB(result.value(), sorting_type));
+      components->push_back(docdb::PrimitiveValue::FromQLValuePB(result.Value(), sorting_type));
     }
     ++column_idx;
   }
@@ -262,8 +264,7 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
                                    bool force_non_bufferable) {
   auto& buffered_keys = pg_session_.buffered_keys_;
   if (pg_session_.buffering_enabled_ && !force_non_bufferable &&
-      op->type() == YBOperation::Type::PGSQL_WRITE &&
-      (!op->IsYsqlCatalogOp() || YBCIsInitDbModeEnvVarSet())) {
+      op->type() == YBOperation::Type::PGSQL_WRITE) {
     const auto& wop = *down_cast<client::YBPgsqlWriteOp*>(op.get());
     // Check for buffered operation related to same row.
     // If multiple operations are performed in context of single RPC second operation will not
@@ -285,13 +286,18 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
   if (!buffered_keys.empty()) {
     RETURN_NOT_OK(pg_session_.FlushBufferedOperationsImpl());
   }
+  bool needs_pessimistic_locking = false;
   bool read_only = op->read_only();
   if (op->type() == YBOperation::Type::PGSQL_READ) {
     const PgsqlReadRequestPB &read_req = down_cast<client::YBPgsqlReadOp *>(op.get())->request();
-    read_only = read_only && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_req));
+    auto row_mark_type = GetRowMarkTypeFromPB(read_req);
+    read_only = read_only && !IsValidRowMarkType(row_mark_type);
+    needs_pessimistic_locking = RowMarkNeedsPessimisticLock(row_mark_type);
   }
 
-  auto session = VERIFY_RESULT(pg_session_.GetSession(transactional_, read_only));
+  auto session = VERIFY_RESULT(pg_session_.GetSession(transactional_,
+                                                      read_only,
+                                                      needs_pessimistic_locking));
   if (!yb_session_) {
     yb_session_ = session->shared_from_this();
     if (transactional_ && read_time) {
@@ -411,6 +417,14 @@ PgSession::~PgSession() {
 
 Status PgSession::ConnectDatabase(const string& database_name) {
   connected_database_ = database_name;
+  return Status::OK();
+}
+
+Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated) {
+  GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(client_->GetNamespaceInfo(
+      GetPgsqlNamespaceId(database_oid), "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  *colocated = resp.colocated();
   return Status::OK();
 }
 
@@ -711,6 +725,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
 
   auto cached_yb_table = table_cache_.find(yb_table_id);
   if (cached_yb_table == table_cache_.end()) {
+    VLOG(4) << "Table cache MISS: " << table_id;
     Status s = client_->OpenTable(yb_table_id, &table);
     if (!s.ok()) {
       VLOG(3) << "LoadTable: Server returns an error: " << s;
@@ -720,6 +735,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
     }
     table_cache_[yb_table_id] = table;
   } else {
+    VLOG(4) << "Table cache HIT: " << table_id;
     table = cached_yb_table->second;
   }
 
@@ -779,10 +795,13 @@ bool PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op) {
              FLAGS_ysql_enable_manual_sys_table_txn_ctl);
 }
 
-Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
+Result<YBSession*> PgSession::GetSession(bool transactional,
+                                         bool read_only_op,
+                                         bool needs_pessimistic_locking) {
   if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
-    RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op));
+    RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op,
+                                                                    needs_pessimistic_locking));
     VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session: "
             << txn_session;
@@ -832,8 +851,6 @@ Status PgSession::FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool tra
         << ", table is transactional: "
         << op->table()->schema().table_properties().is_transactional()
         << ", initdb mode: " << YBCIsInitDbModeEnvVarSet();
-    // Catalog operations can be buffered only in InitDb mode
-    DCHECK(!op->IsYsqlCatalogOp() || YBCIsInitDbModeEnvVarSet());
     RETURN_NOT_OK(session->Apply(op));
   }
   const auto status = session->FlushFuture().get();

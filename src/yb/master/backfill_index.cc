@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <bitset>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <unordered_map>
@@ -195,7 +196,7 @@ Status MultiStageAlterTable::UpdateIndexPermission(
               index_table_id, IndexPermissions_Name(new_perm));
         }
         idx_pb->set_index_permissions(new_perm);
-        VLOG(1) << "Updating index permissions "
+        VLOG(1) << "Updating index permissions"
                 << " from " << IndexPermissions_Name(old_perm) << " to "
                 << IndexPermissions_Name(new_perm) << " schema_version from " << old_schema_version
                 << " to " << old_schema_version + 1 << ". New index info would be "
@@ -293,6 +294,13 @@ Status MultiStageAlterTable::StartBackfillingData(
   return Status::OK();
 }
 
+// Returns true, if the said IndexPermission is a transient state.
+// Returns false, if it is a state where the index can be. viz: READ_WRITE_AND_DELETE
+// and INDEX_UNUSED.
+bool IsTransientState(IndexPermissions perm) {
+  return perm != INDEX_PERM_READ_WRITE_AND_DELETE && perm != INDEX_PERM_INDEX_UNUSED;
+}
+
 bool MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table) {
   DVLOG(3) << __PRETTY_FUNCTION__ << yb::ToString(*indexed_table);
@@ -306,8 +314,7 @@ bool MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     auto l = indexed_table->LockForRead();
     for (int i = 0; i < l->data().pb.indexes_size(); i++) {
       const IndexInfoPB& idx_pb = l->data().pb.indexes(i);
-      if (idx_pb.has_index_permissions() &&
-          idx_pb.index_permissions() < INDEX_PERM_READ_WRITE_AND_DELETE) {
+      if (idx_pb.has_index_permissions() && IsTransientState(idx_pb.index_permissions())) {
         index_info_to_update = idx_pb;
         // Until we get to #2784, we'll have only one index being built at a time.
         LOG_IF(DFATAL, updated) << "For now, we cannot have multiple indexes build in parallel.";
@@ -323,33 +330,94 @@ bool MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   }
 
   const IndexPermissions old_perm = index_info_to_update.index_permissions();
-  if (old_perm == INDEX_PERM_DELETE_ONLY || old_perm == INDEX_PERM_WRITE_AND_DELETE) {
-    const IndexPermissions new_perm =
-        (old_perm == INDEX_PERM_DELETE_ONLY ? INDEX_PERM_WRITE_AND_DELETE : INDEX_PERM_DO_BACKFILL);
-    Status s = UpdateIndexPermission(catalog_manager, indexed_table,
-                                     index_info_to_update.table_id(), new_perm);
-    if (!s.ok()) {
-      LOG(WARNING) << "Could not update permission to "
-                   << IndexPermissions_Name(new_perm)
-                   << " Possible that the master-leader has changed, or a race "
-                      "with another thread trying to launch next version. "
-                   << s;
-    } else {
-      catalog_manager->SendAlterTableRequest(indexed_table);
-    }
-  } else {
-    LOG_IF(DFATAL, old_perm != INDEX_PERM_DO_BACKFILL)
-        << "Expect the old permission to be "
-        << "INDEX_PERM_DO_BACKFILL found " << IndexPermissions_Name(old_perm)
-        << " instead.";
-    TRACE("Starting backfill process");
-    VLOG(1) << ("Starting backfill process");
-    WARN_NOT_OK(StartBackfillingData(catalog_manager, indexed_table.get(), index_info_to_update),
-      "Could not launch Backfill");
+  IndexPermissions new_perm = INDEX_PERM_DELETE_ONLY;
+  switch (old_perm) {
+    case INDEX_PERM_DELETE_ONLY:
+      new_perm = INDEX_PERM_WRITE_AND_DELETE;
+      break;
+    case INDEX_PERM_WRITE_AND_DELETE:
+      new_perm = INDEX_PERM_DO_BACKFILL;
+      break;
+    case INDEX_PERM_DO_BACKFILL:
+      TRACE("Starting backfill process");
+      VLOG(1) << ("Starting backfill process");
+      WARN_NOT_OK(
+          StartBackfillingData(catalog_manager, indexed_table.get(), index_info_to_update),
+          "Could not launch Backfill");
+      return true;
+    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING:
+      new_perm = INDEX_PERM_DELETE_ONLY_WHILE_REMOVING;
+      break;
+    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:
+      new_perm = INDEX_PERM_INDEX_UNUSED;
+      break;
+    case INDEX_PERM_INDEX_UNUSED:
+      // TODO(Amit): #4039 Delete the index after ensuring that there is no
+      // pending txn.
+      WARN_NOT_OK(
+          catalog_manager->DeleteIndexInfoFromTable(
+              indexed_table->id(), index_info_to_update.table_id()),
+          yb::Format(
+              "failed to delete index_info for $0 from $1", index_info_to_update.table_id(),
+              indexed_table->id()));
+      return false;
+    case INDEX_PERM_READ_WRITE_AND_DELETE:
+      DCHECK(false) << "Not expected to be here.";
+      return false;
+  }
+  DCHECK(new_perm != INDEX_PERM_DELETE_ONLY);
+  Status s;
+  WARN_NOT_OK(
+      (s = UpdateIndexPermission(
+           catalog_manager, indexed_table, index_info_to_update.table_id(), new_perm)),
+      Format(
+          "Could not update permission to $0",
+          " Possible that the master-leader has changed, or a race "
+          "with another thread trying to launch next version. ", IndexPermissions_Name(new_perm)));
+  if (s.ok()) {
+    catalog_manager->SendAlterTableRequest(indexed_table);
   }
   return true;
 }
 
+// -----------------------------------------------------------------------------------------------
+// BackfillTableJob
+// -----------------------------------------------------------------------------------------------
+std::string BackfillTableJob::description() const {
+  const std::shared_ptr<BackfillTable> retain_bt = backfill_table_;
+  auto curr_state = state();
+  if (!IsStateTerminal(curr_state) && retain_bt) {
+    return retain_bt->description();
+  } else if (curr_state == MonitoredTaskState::kFailed) {
+    return Format("Backfilling $0 Failed", index_ids_);
+  } else if (curr_state == MonitoredTaskState::kAborted) {
+    return Format("Backfilling $0 Aborted", index_ids_);
+  } else {
+    DCHECK(curr_state == MonitoredTaskState::kComplete);
+    return Format("Backfilling $0 Done", index_ids_);
+  }
+}
+
+MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(const Status& status) {
+  auto old_state = state();
+  while (!IsStateTerminal(old_state)) {
+    if (state_.compare_exchange_strong(old_state,
+                                       MonitoredTaskState::kAborted)) {
+      return old_state;
+    }
+    old_state = state();
+  }
+  return old_state;
+}
+
+void BackfillTableJob::SetState(MonitoredTaskState new_state) {
+  auto old_state = state();
+  if (!IsStateTerminal(old_state)) {
+    if (state_.compare_exchange_strong(old_state, new_state) && IsStateTerminal(new_state)) {
+      MarkDone();
+    }
+  }
+}
 // -----------------------------------------------------------------------------------------------
 // BackfillTable
 // -----------------------------------------------------------------------------------------------
@@ -505,7 +573,7 @@ void BackfillTable::Done(const Status& s) {
                   "Failed to mark backfill as failed.");
     } else {
       LOG_WITH_PREFIX(INFO)
-          << "Some body else already aborted the index backfill.";
+          << "Somebody else already aborted the index backfill.";
     }
     return;
   }
@@ -541,12 +609,13 @@ Status BackfillTable::AlterTableStateToSuccess() {
 
 Status BackfillTable::AlterTableStateToAbort() {
   const TableId& index_table_id = indexes()[0].table_id();
-  RETURN_NOT_OK_PREPEND(MultiStageAlterTable::UpdateIndexPermission(
-                            master_->catalog_manager(), indexed_table_,
-                            index_table_id, INDEX_PERM_BACKFILL_FAILED),
-                        "Could not update permission to "
-                        "INDEX_PERM_BACKFILL_FAILED. Possible that the "
-                        "master-leader has changed.");
+  RETURN_NOT_OK_PREPEND(
+      MultiStageAlterTable::UpdateIndexPermission(
+          master_->catalog_manager(), indexed_table_, index_table_id,
+          INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING),
+      "Could not update permission to "
+      "INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING. Possible that the "
+      "master-leader has changed.");
   master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
   indexed_table_->SetIsBackfilling(false);
   backfill_job_->SetState(MonitoredTaskState::kFailed);
@@ -778,17 +847,16 @@ void GetSafeTimeForTablet::HandleResponse(int attempt) {
       case TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA:
       case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
         LOG(WARNING) << "TS " << permanent_uuid() << ": GetSafeTime failed for tablet "
-                     << tablet_->ToString() << " no further retry: " << status.ToString();
-        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
+                     << tablet_->ToString() << " no further retry: " << status;
+        TransitionToFailedState(MonitoredTaskState::kRunning, status);
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": GetSafeTime failed for tablet "
-                     << tablet_->ToString() << ": " << status.ToString() << " code "
-                     << resp_.error().code();
+                     << tablet_->ToString() << ": " << status << " code "<< resp_.error().code();
         break;
     }
   } else {
-    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+    TransitionToCompleteState();
     VLOG(1) << "TS " << permanent_uuid() << ": GetSafeTime complete on tablet "
             << tablet_->ToString();
   }
@@ -884,8 +952,8 @@ void BackfillChunk::HandleResponse(int attempt) {
       case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
         LOG(WARNING) << "TS " << permanent_uuid() << ": backfill failed for tablet "
                      << backfill_tablet_->tablet()->ToString()
-                     << " no further retry: " << status.ToString();
-        TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kFailed);
+                     << " no further retry: " << status;
+        TransitionToFailedState(MonitoredTaskState::kRunning, status);
         break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid() << ": backfill failed for tablet "
@@ -894,7 +962,7 @@ void BackfillChunk::HandleResponse(int attempt) {
         break;
     }
   } else {
-    TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
+    TransitionToCompleteState();
     VLOG(1) << "TS " << permanent_uuid() << ": backfill complete on tablet "
             << backfill_tablet_->tablet()->ToString();
   }

@@ -2,6 +2,7 @@
 title: Build a Java application
 linkTitle: Build a Java application
 description: Build a Java application
+block_indexing: true
 menu:
   v1.3:
     parent: build-apps

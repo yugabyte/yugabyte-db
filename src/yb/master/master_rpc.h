@@ -87,7 +87,8 @@ class GetLeaderMasterRpc : public rpc::Rpc {
                      rpc::Messenger* messenger,
                      rpc::ProxyCache* proxy_cache,
                      rpc::Rpcs* rpcs,
-                     bool should_timeout_to_follower_ = false);
+                     bool should_timeout_to_follower_ = false,
+                     bool wait_for_leader_election = true);
 
   ~GetLeaderMasterRpc();
 
@@ -138,6 +139,8 @@ class GetLeaderMasterRpc : public rpc::Rpc {
 
   // Should the rpc timeout and pick a random follower instead of waiting for leader.
   bool should_timeout_to_follower_;
+
+  bool wait_for_leader_election_;
 };
 
 } // namespace master

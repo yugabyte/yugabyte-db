@@ -2,6 +2,7 @@
 title: Function Call
 summary: Combination of one or more values.
 description: Built-in Function Call
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

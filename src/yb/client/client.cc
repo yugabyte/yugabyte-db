@@ -60,6 +60,7 @@
 
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
@@ -80,6 +81,8 @@ using yb::master::CreateTableRequestPB;
 using yb::master::CreateTableResponsePB;
 using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
+using yb::master::GetNamespaceInfoRequestPB;
+using yb::master::GetNamespaceInfoResponsePB;
 using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
@@ -88,6 +91,8 @@ using yb::master::GetTabletLocationsRequestPB;
 using yb::master::GetTabletLocationsResponsePB;
 using yb::master::IsLoadBalancedRequestPB;
 using yb::master::IsLoadBalancedResponsePB;
+using yb::master::IsLoadBalancerIdleRequestPB;
+using yb::master::IsLoadBalancerIdleResponsePB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::master::ListTablesRequestPB;
@@ -276,6 +281,11 @@ YBClientBuilder& YBClientBuilder::skip_master_flagfile(bool should_skip) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::wait_for_leader_election_on_init(bool should_wait) {
+  data_->wait_for_leader_election_on_init_ = should_wait;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::default_admin_operation_timeout(const MonoDelta& timeout) {
   data_->default_admin_operation_timeout_ = timeout;
   return *this;
@@ -323,8 +333,18 @@ YBClientBuilder& YBClientBuilder::set_parent_mem_tracker(const MemTrackerPtr& me
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::set_master_address_flag_name(const std::string& value) {
+  data_->master_address_flag_name_ = value;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::set_skip_master_leader_resolution(bool value) {
   data_->skip_master_leader_resolution_ = value;
+  return *this;
+}
+
+YBClientBuilder& YBClientBuilder::AddMasterAddressSource(const MasterAddressSource& source) {
+  data_->master_address_sources_.push_back(source);
   return *this;
 }
 
@@ -346,17 +366,22 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);
   c->data_->metric_entity_ = data_->metric_entity_;
 
+  c->data_->master_address_flag_name_ = data_->master_address_flag_name_;
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
+  c->data_->master_address_sources_ = data_->master_address_sources_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
   c->data_->skip_master_flagfile_ = data_->skip_master_flagfile_;
   c->data_->default_admin_operation_timeout_ = data_->default_admin_operation_timeout_;
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;
+  c->data_->wait_for_leader_election_on_init_ = data_->wait_for_leader_election_on_init_;
 
   // Let's allow for plenty of time for discovering the master the first
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
   RETURN_NOT_OK_PREPEND(
-      c->data_->SetMasterServerProxy(deadline, data_->skip_master_leader_resolution_),
+      c->data_->SetMasterServerProxy(deadline,
+          data_->skip_master_leader_resolution_,
+          data_->wait_for_leader_election_on_init_),
       "Could not locate the leader master");
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
@@ -424,6 +449,11 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->IsCreateTableInProgress(this, table_name, "" /* table_id */, deadline,
                                         create_in_progress);
+}
+
+Status YBClient::WaitForCreateTableToFinish(const YBTableName& table_name) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->WaitForCreateTableToFinish(this, table_name, "" /* table_id */, deadline);
 }
 
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
@@ -556,7 +586,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const std::string& namespace_id,
                                  const std::string& source_namespace_id,
                                  const boost::optional<uint32_t>& next_pg_oid,
-                                 bool colocated) {
+                                 const bool colocated) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
@@ -576,7 +606,19 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
     req.set_next_pg_oid(*next_pg_oid);
   }
   req.set_colocated(colocated);
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateNamespace);
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  Status s = data_->SyncLeaderMasterRpc<CreateNamespaceRequestPB, CreateNamespaceResponsePB>(
+        deadline, req, &resp, nullptr, "CreateNamespace", &MasterServiceProxy::CreateNamespace);
+  if (resp.has_error()) {
+    s = StatusFromPB(resp.error().status());
+  }
+  RETURN_NOT_OK(s);
+
+  // Verify that the namespace we found is running so that, once this request returns,
+  // the client can send operations without receiving a "namespace not found" error.
+  RETURN_NOT_OK(data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type,
+      CoarseMonoClock::Now() + default_admin_operation_timeout()));
+
   return Status::OK();
 }
 
@@ -585,15 +627,31 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const std::string& creator_role_name,
                                             const std::string& namespace_id,
                                             const std::string& source_namespace_id,
-                                            const boost::optional<uint32_t>& next_pg_oid) {
+                                            const boost::optional<uint32_t>& next_pg_oid,
+                                            const bool colocated) {
   Result<bool> namespace_exists = (!namespace_id.empty() ? NamespaceIdExists(namespace_id)
                                                          : NamespaceExists(namespace_name));
   if (VERIFY_RESULT(namespace_exists)) {
-    return Status::OK();
+    // Verify that the namespace we found is running so that, once this request returns,
+    // the client can send operations without receiving a "namespace not found" error.
+    return data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type,
+        CoarseMonoClock::Now() + default_admin_operation_timeout());
   }
 
-  return CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                         source_namespace_id, next_pg_oid);
+  Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
+                             source_namespace_id, next_pg_oid, colocated);
+  if (s.IsAlreadyPresent() && database_type && *database_type == YQLDatabase::YQL_DATABASE_CQL) {
+    return Status::OK();
+  }
+  return s;
+}
+
+Status YBClient::IsCreateNamespaceInProgress(const std::string& namespace_name,
+                                             const boost::optional<YQLDatabase>& database_type,
+                                             bool *create_in_progress) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->IsCreateNamespaceInProgress(this, namespace_name, database_type, deadline,
+      create_in_progress);
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
@@ -633,6 +691,28 @@ Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
     result.push_back(std::move(ns));
   }
   return result;
+}
+
+Status YBClient::GetNamespaceInfo(const std::string& namespace_id,
+                                  const std::string& namespace_name,
+                                  const boost::optional<YQLDatabase>& database_type,
+                                  master::GetNamespaceInfoResponsePB* ret) {
+  GetNamespaceInfoRequestPB req;
+  GetNamespaceInfoResponsePB resp;
+
+  if (!namespace_id.empty()) {
+    req.mutable_namespace_()->set_id(namespace_id);
+  }
+  if (!namespace_name.empty()) {
+    req.mutable_namespace_()->set_name(namespace_name);
+  }
+  if (database_type) {
+    req.mutable_namespace_()->set_database_type(*database_type);
+  }
+
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetNamespaceInfo);
+  ret->Swap(&resp);
+  return Status::OK();
 }
 
 Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
@@ -1048,13 +1128,31 @@ Result<bool> YBClient::IsLoadBalanced(uint32_t num_servers) {
   IsLoadBalancedResponsePB resp;
 
   req.set_expected_num_servers(num_servers);
-  // Cannot use CALL_SYNC_LEADER_MASTER_RPC directly since this is susbstituted with RETURN_NOT_OK
+  // Cannot use CALL_SYNC_LEADER_MASTER_RPC directly since this is substituted with RETURN_NOT_OK
   // and we want to capture the status to check if load is balanced.
   Status s = [&, this]() -> Status {
     CALL_SYNC_LEADER_MASTER_RPC(req, resp, IsLoadBalanced);
     return Status::OK();
   }();
   return s.ok();
+}
+
+Result<bool> YBClient::IsLoadBalancerIdle() {
+  IsLoadBalancerIdleRequestPB req;
+  IsLoadBalancerIdleResponsePB resp;
+
+  Status s = [&]() -> Status {
+    CALL_SYNC_LEADER_MASTER_RPC(req, resp, IsLoadBalancerIdle);
+    return Status::OK();
+  }();
+
+  if (s.ok()) {
+    return true;
+  } else if (master::MasterError(s) == master::MasterErrorPB::LOAD_BALANCER_RECENTLY_ACTIVE) {
+    return false;
+  } else {
+    return s;
+  }
 }
 
 Status YBClient::GetTabletsFromTableId(const string& table_id,
@@ -1076,7 +1174,8 @@ Status YBClient::GetTabletsFromTableId(const string& table_id,
 
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
-                            RepeatedPtrField<TabletLocationsPB>* tablets) {
+                            RepeatedPtrField<TabletLocationsPB>* tablets,
+                            bool require_tablets_running) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   if (table_name.has_table()) {
@@ -1090,6 +1189,7 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   } else if (max_tablets > 0) {
     req.set_max_returned_locations(max_tablets);
   }
+  req.set_require_tablets_running(require_tablets_running);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
   return Status::OK();
@@ -1116,9 +1216,10 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             vector<TabletId>* tablet_uuids,
                             vector<string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations,
-                            bool update_tablets_cache) {
+                            bool update_tablets_cache,
+                            bool require_tablets_running) {
   RepeatedPtrField<TabletLocationsPB> tablets;
-  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets));
+  RETURN_NOT_OK(GetTablets(table_name, max_tablets, &tablets, require_tablets_running));
   tablet_uuids->reserve(tablets.size());
   if (ranges != nullptr) {
     ranges->reserve(tablets.size());
@@ -1269,24 +1370,8 @@ Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
   return data_->SetReplicationInfo(this, replication_info, deadline);
 }
 
-Status YBClient::ListTables(vector<YBTableName>* tables,
-                            const string& filter,
-                            bool exclude_ysql) {
-  std::vector<std::pair<std::string, YBTableName>> tables_with_ids;
-  RETURN_NOT_OK(ListTablesWithIds(&tables_with_ids, filter, exclude_ysql));
-  tables->clear();
-  tables->reserve(tables_with_ids.size());
-  for (const auto& table_with_id : tables_with_ids) {
-    tables->emplace_back(table_with_id.second);
-  }
-  return Status::OK();
-}
-
-Status YBClient::ListTablesWithIds(
-    std::vector<std::pair<std::string, YBTableName>>* tables_with_ids,
-    const std::string& filter,
-    bool exclude_ysql) {
-  tables_with_ids->clear();
+Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
+                                                      bool exclude_ysql) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
@@ -1294,6 +1379,8 @@ Status YBClient::ListTablesWithIds(
     req.set_name_filter(filter);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
+  std::vector<YBTableName> result;
+  result.reserve(resp.tables_size());
   for (int i = 0; i < resp.tables_size(); i++) {
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
     DCHECK(table_info.has_namespace_());
@@ -1302,21 +1389,17 @@ Status YBClient::ListTablesWithIds(
     if (exclude_ysql && table_info.table_type() == TableType::PGSQL_TABLE_TYPE) {
       continue;
     }
-    tables_with_ids->emplace_back(
-        table_info.id(),
-        YBTableName(master::GetDatabaseTypeForTable(table_info.table_type()),
-                    table_info.namespace_().id(),
-                    table_info.namespace_().name(),
-                    table_info.id(),
-                    table_info.name()));
+    result.emplace_back(master::GetDatabaseTypeForTable(table_info.table_type()),
+                        table_info.namespace_().id(),
+                        table_info.namespace_().name(),
+                        table_info.id(),
+                        table_info.name());
   }
-  return Status::OK();
+  return result;
 }
 
 Result<bool> YBClient::TableExists(const YBTableName& table_name) {
-  vector<YBTableName> tables;
-  RETURN_NOT_OK(ListTables(&tables, table_name.table_name()));
-  for (const YBTableName& table : tables) {
+  for (const YBTableName& table : VERIFY_RESULT(ListTables(table_name.table_name()))) {
     if (table == table_name) {
       return true;
     }

@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -81,6 +82,12 @@ public class CustomerController extends AuthenticatedController {
     } else {
       responseJson.set("alertingData", null);
     }
+    CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
+    if (smtpConfig != null) {
+      responseJson.set("smtpData", smtpConfig.data);
+    } else {
+      responseJson.set("smtpData", null);
+    }
     responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
     Users user = (Users) ctx().args.get("user");
@@ -102,6 +109,24 @@ public class CustomerController extends AuthenticatedController {
       responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
       return badRequest(responseJson);
     }
+    JsonNode request = request().body().asJson();
+    if (request.has("alertingData")) {
+      Form<AlertingFormData> formData = formFactory.form(AlertingFormData.class).bindFromRequest();
+      if (formData.hasErrors()) {
+        responseJson.set("error", formData.errorsAsJson());
+        return badRequest(responseJson);
+      }
+
+      CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
+      if (config == null && formData.get().alertingData != null) {
+        config = CustomerConfig.createAlertConfig(
+                customerUUID, Json.toJson(formData.get().alertingData));
+      } else if (config != null && formData.get().alertingData != null) {
+        config.data = Json.toJson(formData.get().alertingData);
+        config.update();
+      }
+      return ok(Json.toJson(customer));
+    }
 
     Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
@@ -109,13 +134,14 @@ public class CustomerController extends AuthenticatedController {
       return badRequest(responseJson);
     }
 
-    CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
-    if (config == null && formData.get().alertingData != null) {
-      config = CustomerConfig.createAlertConfig(
-              customerUUID, Json.toJson(formData.get().alertingData));
-    } else if (config != null && formData.get().alertingData != null) {
-      config.data = Json.toJson(formData.get().alertingData);
-      config.update();
+
+    CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
+    if (smtpConfig == null && formData.get().smtpData != null) {
+      smtpConfig = CustomerConfig.createSmtpConfig(
+          customerUUID, Json.toJson(formData.get().smtpData));
+    } else if (smtpConfig != null && formData.get().smtpData != null) {
+      smtpConfig.data = Json.toJson(formData.get().smtpData);
+      smtpConfig.update();
     }
 
     // Features would be a nested json, so we should fetch it differently.

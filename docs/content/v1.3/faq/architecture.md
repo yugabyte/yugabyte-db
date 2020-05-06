@@ -2,6 +2,7 @@
 title: Architecture
 linkTitle: Architecture
 description: Architecture
+block_indexing: true
 menu:
   v1.3:
     identifier: faq-architecture

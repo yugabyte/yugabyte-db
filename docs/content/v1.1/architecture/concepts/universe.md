@@ -2,6 +2,7 @@
 title: Key Components
 linkTitle: Key Components
 description: Key Components
+block_indexing: true
 menu:
   v1.1:
     identifier: architecture-universe

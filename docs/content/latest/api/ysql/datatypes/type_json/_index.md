@@ -1,9 +1,9 @@
 ---
-title: JSON data types and functionality
+title: JSON data types and functionality [YSQL]
 headerTitle: JSON data types and functionality
 linkTitle: JSON
 summary: JSON and JSONB data types
-description: Learn about YugabyteDB support for JSON data types (json and jsonb) and their functions and operators.
+description: Learn about YSQL support for JSON data types (json and jsonb) and their functions and operators.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

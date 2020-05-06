@@ -2,6 +2,7 @@
 title: PUBSUB
 linkTitle: PUBSUB
 description: PUBSUB
+block_indexing: true
 menu:
   v2.0:
     parent: api-yedis

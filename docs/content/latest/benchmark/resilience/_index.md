@@ -1,5 +1,5 @@
 ---
-title: Benchmark resilience (fault tolerance) of YugabyteDB
+title: Benchmark resilience (fault tolerance)
 headerTitle: Resilience
 linkTitle: Resilience
 description: Benchmark YugabyteDB's ability to withstand component failure.

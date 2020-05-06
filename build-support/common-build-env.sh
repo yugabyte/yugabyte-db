@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 #@IgnoreInspection BashAddShebang
 
 # Copyright (c) YugaByte, Inc.
@@ -9,15 +11,15 @@
 #
 # Unless required by applicable law or agreed to in writing, software distributed under the License
 # is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-# or implied.  See the License for the specific language governing permissions and limitations
-# under the License.
+# or implied.  See the License for the specific language governing permissions and limitations under
+# the License.
 #
 
 # This is common between build and test scripts.
 set -euo pipefail
 
-if [[ $BASH_SOURCE == $0 ]]; then
-  echo "$BASH_SOURCE must be sourced, not executed" >&2
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  echo "${BASH_SOURCE[0]} must be sourced, not executed" >&2
   exit 1
 fi
 
@@ -45,7 +47,7 @@ set_yb_src_root() {
 }
 
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
-set_yb_src_root "$( cd "$( dirname "$BASH_SOURCE" )"/.. && pwd )"
+set_yb_src_root "$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. && pwd )"
 
 if [[ $YB_SRC_ROOT == */ ]]; then
   fatal "YB_SRC_ROOT ends with '/' (not allowed): '$YB_SRC_ROOT'"
@@ -57,6 +59,7 @@ if [[ ! -d $YB_BASH_COMMON_DIR || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ]] &&
   ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
 fi
 
+# shellcheck source=submodules/yugabyte-bash-common/src/yugabyte-bash-common.sh
 . "$YB_SRC_ROOT/submodules/yugabyte-bash-common/src/yugabyte-bash-common.sh"
 
 # -------------------------------------------------------------------------------------------------
@@ -119,9 +122,6 @@ readonly is_run_test_script
 # modules into it) as part of activate_virtualenv.
 yb_readonly_virtualenv=false
 
-# How long we'll wait while a concurrent process downloads and extracts a third-party archive.
-declare -i -r YB_DEP_DOWNLOAD_LOCK_WAIT_SEC=120
-
 YB_NFS_DOWNLOAD_CACHE_DIR=${YB_NFS_DOWNLOAD_CACHE_DIR:-$YB_JENKINS_NFS_HOME_DIR/download_cache}
 
 readonly -a VALID_BUILD_TYPES=(
@@ -138,6 +138,7 @@ readonly -a VALID_BUILD_TYPES=(
   tsan
   tsan_slow
 )
+make_regex_from_list VALID_BUILD_TYPES "${VALID_BUILD_TYPES[@]}"
 
 # Valid values of CMAKE_BUILD_TYPE passed to the top-level CMake build. This is the same as the
 # above with the exclusion of ASAN/TSAN.
@@ -148,6 +149,7 @@ readonly -a VALID_CMAKE_BUILD_TYPES=(
   profile_gen
   release
 )
+make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
   clang
@@ -155,17 +157,13 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc8
   zapcc
 )
+make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
 readonly -a VALID_LINKING_TYPES=(
   dynamic
   static
 )
-
-make_regexes_from_lists \
-  VALID_BUILD_TYPES \
-  VALID_CMAKE_BUILD_TYPES \
-  VALID_COMPILER_TYPES \
-  VALID_LINKING_TYPES
+make_regex_from_list VALID_LINKING_TYPES "${VALID_LINKING_TYPES[@]}"
 
 readonly BUILD_ROOT_BASENAME_RE=\
 "^($VALID_BUILD_TYPES_RAW_RE)-\
@@ -173,13 +171,6 @@ readonly BUILD_ROOT_BASENAME_RE=\
 ($VALID_LINKING_TYPES_RAW_RE)\
 (-ninja)?\
 (-clion)?$"
-
-# We first use this to find ephemeral drives.
-readonly EPHEMERAL_DRIVES_GLOB="/mnt/ephemeral* /mnt/d*"
-
-# We then filter the drives found using this.
-# The way we use this regex we expect it NOT to be anchored in the end.
-readonly EPHEMERAL_DRIVES_FILTER_REGEX="^/mnt/(ephemeral|d)[0-9]+"  # No "$" in the end.
 
 declare -i -r DIRECTORY_EXISTENCE_WAIT_TIMEOUT_SEC=100
 
@@ -189,10 +180,13 @@ readonly YB_DOWNLOAD_LOCKS_DIR=/tmp/yb_download_locks
 
 readonly YB_NFS_PATH_RE="^/(n|z|u|net|Volumes/net|servers|nfusr)/"
 
+# This is used in yb_build.sh and build-and-test.sh.
+# shellcheck disable=SC2034
 readonly -a MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
   dependency:go-offline
   dependency:resolve
   dependency:resolve-plugins
+  -DoutputFile=/dev/null
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -248,7 +242,8 @@ normalize_build_type() {
     fi
   fi
   validate_build_type "$build_type"
-  local lowercase_build_type=$( echo "$build_type" | to_lowercase )
+  local lowercase_build_type
+  lowercase_build_type=$( echo "$build_type" | to_lowercase )
   if [[ "$build_type" != "$lowercase_build_type" ]]; then
     # Only assign if we actually need to, because the build_type variable may already be read-only.
     build_type=$lowercase_build_type
@@ -287,7 +282,8 @@ set_build_root() {
     readonly BUILD_ROOT
   fi
 
-  if [[ -n ${predefined_build_root:-} && $predefined_build_root != $BUILD_ROOT ]] &&
+  if [[ -n ${predefined_build_root:-} &&
+        $predefined_build_root != "$BUILD_ROOT" ]] &&
      ! "$YB_BUILD_SUPPORT_DIR/is_same_path.py" "$predefined_build_root" "$BUILD_ROOT"; then
     fatal "An inconsistency between predefined BUILD_ROOT ('$predefined_build_root') and" \
           "computed BUILD_ROOT ('$BUILD_ROOT')."
@@ -295,7 +291,7 @@ set_build_root() {
 
   export BUILD_ROOT
   export YB_BUILD_ROOT=$BUILD_ROOT
-  set_use_ninja
+  decide_whether_to_use_ninja
 }
 
 # Resolve the BUILD_ROOT symlink and save the result to the real_build_root_path variable.
@@ -346,7 +342,7 @@ validate_build_type() {
   # Local variable named _build_type to avoid a collision with the global build_type variable.
   local _build_type=$1
   if ! is_valid_build_type "$_build_type"; then
-    fatal "Invalid build type: '$_build_type'. Valid build types are: ${VALID_BUILD_TYPES[@]}" \
+    fatal "Invalid build type: '$_build_type'. Valid build types are: ${VALID_BUILD_TYPES[*]}" \
           "(case-insensitive)."
   fi
 }
@@ -375,9 +371,10 @@ set_build_type_based_on_jenkins_job_name() {
     return
   fi
   local _build_type  # to avoid collision with the global build_type variable
-  local jenkins_job_name=$( echo "$JOB_NAME" | to_lowercase )
+  local jenkins_job_name
+  jenkins_job_name=$( echo "$JOB_NAME" | to_lowercase )
   for _build_type in "${VALID_BUILD_TYPES[@]}"; do
-    if [[ "-$jenkins_job_name-" =~ [-_]$_build_type[-_] ]]; then
+    if [[ "-$jenkins_job_name-" =~ [-_]${_build_type}[-_] ]]; then
       log "Using build type '$_build_type' based on Jenkins job name '$JOB_NAME'."
       readonly build_type=$_build_type
       return
@@ -436,10 +433,11 @@ set_compiler_type_based_on_jenkins_job_name() {
     fi
   else
     local compiler_type
-    local jenkins_job_name=$( echo "$JOB_NAME" | to_lowercase )
+    local jenkins_job_name
+    jenkins_job_name=$( echo "$JOB_NAME" | to_lowercase )
     YB_COMPILER_TYPE=""
     for compiler_type in "${VALID_COMPILER_TYPES[@]}"; do
-      if [[ "-$jenkins_job_name-" =~ [-_]$compiler_type[-_] ]]; then
+      if [[ "-$jenkins_job_name-" =~ [-_]${compiler_type}[-_] ]]; then
         log "Setting YB_COMPILER_TYPE='$compiler_type' based on Jenkins job name '$JOB_NAME'."
         YB_COMPILER_TYPE=$compiler_type
         break
@@ -460,29 +458,29 @@ validate_compiler_type() {
   local compiler_type
   if [[ $# -eq 0 ]]; then
     if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
-      fatal "$FUNCNAME is called with no arguments but YB_COMPILER_TYPE is not set or is empty"
+      fatal "${FUNCNAME[0]} is called with no arguments but YB_COMPILER_TYPE is not set or is empty"
     fi
     compiler_type=$YB_COMPILER_TYPE
   elif [[ $# -eq 1 ]]; then
     compiler_type=$1
   else
-    fatal "$FUNCNAME can only be called with 0 or 1 argument, got $# arguments: $*"
+    fatal "${FUNCNAME[0]} can only be called with 0 or 1 argument, got $# arguments: $*"
   fi
 
   if [[ ! $compiler_type =~ $VALID_COMPILER_TYPES_RE ]]; then
     fatal "Invalid compiler type: YB_COMPILER_TYPE='$compiler_type'" \
-          "(expected one of: ${VALID_COMPILER_TYPES[@]})."
+          "(expected one of: ${VALID_COMPILER_TYPES[*]})."
   fi
 }
 
 validate_cmake_build_type() {
   expect_num_args 1 "$@"
   local _cmake_build_type=$1
-  _cmake_build_type=$( echo "$_cmake_build_type" | tr A-Z a-z )
+  _cmake_build_type=$( echo "$_cmake_build_type" | to_lowercase )
   if [[ ! "$_cmake_build_type" =~ $VALID_CMAKE_BUILD_TYPES_RE ]]; then
     fatal "Invalid CMake build type (what we're about to pass to our CMake build as" \
           "_cmake_build_type): '$_cmake_build_type'." \
-          "Valid CMake build types are: ${VALID_CMAKE_BUILD_TYPES[@]}."
+          "Valid CMake build types are: ${VALID_CMAKE_BUILD_TYPES[*]}."
   fi
 }
 
@@ -495,7 +493,7 @@ ensure_using_clang() {
 }
 
 enable_tsan() {
-  cmake_opts+=( -DYB_USE_TSAN=1 )
+  cmake_opts+=( "-DYB_USE_TSAN=1" )
   ensure_using_clang
 }
 
@@ -520,7 +518,7 @@ set_cmake_build_type_and_compiler_type() {
 
   case "$build_type" in
     asan)
-      cmake_opts+=( -DYB_USE_ASAN=1 -DYB_USE_UBSAN=1 )
+      cmake_opts+=( "-DYB_USE_ASAN=1" "-DYB_USE_UBSAN=1" )
       cmake_build_type=fastdebug
       ensure_using_clang
     ;;
@@ -531,7 +529,7 @@ set_cmake_build_type_and_compiler_type() {
     ;;
     idebug|ifastdebug|irelease)
       cmake_build_type=${build_type:1}
-      cmake_opts+=( -DYB_INSTRUMENT_FUNCTIONS=1 )
+      cmake_opts+=( "-DYB_INSTRUMENT_FUNCTIONS=1" )
     ;;
     tsan)
       enable_tsan
@@ -584,32 +582,18 @@ set_cmake_build_type_and_compiler_type() {
 find_make_or_ninja_and_update_cmake_opts() {
   if using_ninja; then
     cmake_opts+=( -G Ninja )
-    make_program=ninja
-    if [[ -z ${YB_NINJA_PATH:-} ]]; then
-      local which_ninja=$( which ninja 2>/dev/null )
-      if [[ -f $which_ninja ]]; then
-        YB_NINJA_PATH=$which_ninja
-      elif using_linuxbrew; then
-        export YB_NINJA_PATH=$YB_LINUXBREW_DIR/bin/ninja
-        make_program=$YB_NINJA_PATH
-      elif using_custom_homebrew; then
-        export YB_NINJA_PATH=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
-        make_program=$YB_NINJA_PATH
-      else
-        fatal "Ninja not found"
-      fi
-    fi
-    if [[ ! -x $YB_NINJA_PATH ]]; then
-      fatal "Ninja path $YB_NINJA_PATH does not exist or is not executable"
-    fi
-    export YB_NINJA_PATH
-    make_file=build.ninja
+    find_ninja_executable
+    make_program=$YB_NINJA_PATH
+    # make_file is used in yb_build.sh
+    # shellcheck disable=SC2034
+    make_file="build.ninja"
   else
-    make_program=make
-    make_file=Makefile
+    make_program="make"
+    # shellcheck disable=SC2034
+    make_file="Makefile"
   fi
 
-  cmake_opts+=( -DCMAKE_MAKE_PROGRAM=$make_program )
+  cmake_opts+=( "-DCMAKE_MAKE_PROGRAM=$make_program" )
 }
 
 set_mvn_parameters() {
@@ -657,11 +641,11 @@ set_mvn_parameters() {
   fi
   export MVN_SETTINGS_PATH
 
-  declare -ag mvn_common_options=(
-    --batch-mode
-    -DbinDir="$BUILD_ROOT/bin"
-    -Dmaven.repo.local="$YB_MVN_LOCAL_REPO"
-    -Dyb.thirdparty.dir="$YB_THIRDPARTY_DIR"
+  mvn_common_options=(
+    "--batch-mode"
+    "-DbinDir=$BUILD_ROOT/bin"
+    "-Dmaven.repo.local=$YB_MVN_LOCAL_REPO"
+    "-Dyb.thirdparty.dir=$YB_THIRDPARTY_DIR"
   )
   log "The result of set_mvn_parameters:" \
       "YB_MVN_LOCAL_REPO=$YB_MVN_LOCAL_REPO," \
@@ -685,7 +669,7 @@ rsync_with_retries() {
     fi
     log "This was rsync attempt $attempt out of $max_attempts. Re-trying after a delay."
     sleep 1
-    let attempt+=1
+    (( attempt+=1 ))
   done
 }
 
@@ -732,7 +716,8 @@ build_yb_java_code_filter_save_output() {
   # [INFO] Downloading: https://repo.maven.apache.org/maven2/org/apache/maven/doxia/doxia-logging-api/1.1.2/doxia-logging-api-1.1.2.jar
   local has_local_output=false # default is output path variable is set by calling function
   if [[ -z ${java_build_output_path:-} ]]; then
-    local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
+    local java_build_output_path
+    java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
     has_local_output=true
   fi
   local -a mvn_opts=()
@@ -742,13 +727,13 @@ build_yb_java_code_filter_save_output() {
   fi
   set +e -x  # +e: do not fail on grep failure, -x: print the command to stderr.
   if mvn "${mvn_opts[@]}" "$@" 2>&1 | \
-      egrep -v --line-buffered "$MVN_OUTPUT_FILTER_REGEX" | \
+      grep -Ev --line-buffered "$MVN_OUTPUT_FILTER_REGEX" | \
       tee "$java_build_output_path"; then
     set +x # stop printing commands
     # We are testing for mvn build failure with grep, since we run mvn with '--fail-never' which
     # always returns success. '--fail-at-end' could have been another possibility, but that mode
     # skips dependent modules so most tests are often not run. Therefore, we resort to grep.
-    egrep "BUILD SUCCESS" "$java_build_output_path" &>/dev/null
+    grep -Eq "BUILD SUCCESS" "$java_build_output_path"
     local mvn_exit_code=$?
     set -e
     if [[ $has_local_output == "true" ]]; then
@@ -776,7 +761,8 @@ build_yb_java_code_filter_save_output() {
 }
 
 build_yb_java_code() {
-  local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
+  local java_build_output_path
+  java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
   build_yb_java_code_filter_save_output "$@"
   local mvn_exit_code=$?
   rm -f "$java_build_output_path"
@@ -784,7 +770,8 @@ build_yb_java_code() {
 }
 
 build_yb_java_code_with_retries() {
-  local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
+  local java_build_output_path
+  java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
   declare -i attempt=1
 
   while [[ $attempt -le $MAX_JAVA_BUILD_ATTEMPTS ]]; do
@@ -801,7 +788,7 @@ build_yb_java_code_with_retries() {
 
     rm -f "$java_build_output_path"
 
-    let attempt+=1
+    (( attempt+=1 ))
   done
   return 1
 }
@@ -815,56 +802,9 @@ build_yb_java_code_in_all_dirs() {
           "with these Maven arguments: $*"
       return 1
     fi
+    # shellcheck disable=SC2119
     popd
   done
-}
-
-# Create a directory on an ephemeral drive and link it into the given target location. If there are
-# no ephemeral drives, create the directory in place.
-# Parameters:
-#   target_path - The target path to create the directory or symlink at.
-#   directory_identifier - A unique identifier that will be used in naming the new directory
-#                          created on an ephemeral drive.
-create_dir_on_ephemeral_drive() {
-  expect_num_args 2 "$@"
-  local target_path=$1
-  local directory_identifier=$2
-
-  if [[ -z ${num_ephemeral_drives:-} ]]; then
-    # Collect available ephemeral drives. This is only done once.
-    local ephemeral_mountpoint
-    # EPHEMERAL_DRIVES_FILTER_REGEX is not supposed to be anchored in the end, so we need to add
-    # a "$" to filter ephemeral mountpoints correctly.
-    ephemeral_drives=()
-    for ephemeral_mountpoint in $EPHEMERAL_DRIVES_GLOB; do
-      if [[ -d $ephemeral_mountpoint &&
-            $ephemeral_mountpoint =~ $EPHEMERAL_DRIVES_FILTER_REGEX$ ]]; then
-        ephemeral_drives+=( "$ephemeral_mountpoint" )
-      fi
-    done
-
-    declare -r -i num_ephemeral_drives=${#ephemeral_drives[@]}  # "-r -i" means readonly integer.
-  fi
-
-  if [[ $num_ephemeral_drives -eq 0 ]]; then
-    if [[ -n ${YB_VERBOSE:-} && ! -d $target_path ]]; then
-      log "No ephemeral drives found, creating directory '$target_path' in place."
-    fi
-    mkdir_safe "$target_path"
-  else
-    local random_drive=${ephemeral_drives[$RANDOM % $num_ephemeral_drives]}
-    local actual_dir=$random_drive/${USER}__$jenkins_job_and_build/$directory_identifier
-    mkdir_safe "$actual_dir"
-
-    # Create the parent directory that we'll be creating a link in, if necessary.
-    if [[ ! -d ${target_path%/*} ]]; then
-      log "Directory $target_path does not exist, creating it before creating a symlink inside."
-      mkdir_safe "${target_path%/*}"
-    fi
-
-    ln -s "$actual_dir" "$target_path"
-    log "Created '$target_path' as a symlink to an ephemeral drive location '$actual_dir'."
-  fi
 }
 
 # Skip the most part of the normal C++ build output. Still keep the "100%" lines so we can see
@@ -872,7 +812,7 @@ create_dir_on_ephemeral_drive() {
 # redirected to stdout when invoking the C++ build.
 filter_boring_cpp_build_output() {
   # For Ninja, keep every 10th successful C/C++ compilation message.
-  egrep -v --line-buffered "\
+  grep -Ev --line-buffered "\
 ^(\[ *[0-9]{1,2}%\] +)*(\
 Building C(XX)? object |\
 Running C[+][+] protocol buffer compiler (with YRPC plugin )?on |\
@@ -948,7 +888,9 @@ find_compiler_by_type() {
         cc_executable=$YB_GCC8_PREFIX/bin/gcc-8
         cxx_executable=$YB_GCC8_PREFIX/bin/g++-8
       else
+        # shellcheck disable=SC2230
         cc_executable=$(which gcc-8)
+        # shellcheck disable=SC2230
         cxx_executable=$(which g++-8)
       fi
     ;;
@@ -978,7 +920,7 @@ find_compiler_by_type() {
           fi
         done
         if ! "$clang_found"; then
-          fatal "Failed to find clang at the following locations: ${clang_paths_to_try[@]}"
+          fatal "Failed to find clang at the following locations: ${clang_paths_to_try[*]}"
         fi
       fi
       if [[ -z ${cxx_executable:-} ]]; then
@@ -1010,7 +952,9 @@ find_compiler_by_type() {
         # This is a plain "gcc/g++/clang/clang++" compiler command name. Try to find the exact
         # compiler path using the "which" command.
         set +e
+        # shellcheck disable=SC2230
         compiler_path=$( remove_ccache_dir_from_path && which "${!compiler_var_name}" )
+        # shellcheck disable=SC2181
         if [[ $? -ne 0 ]]; then
           # "which" did not work, revert to the old value.
           compiler_path=${!compiler_var_name}
@@ -1038,6 +982,7 @@ pushd() {
   command pushd "$@" > /dev/null
 }
 
+# shellcheck disable=SC2120
 popd() {
   command popd "$@" > /dev/null
 }
@@ -1107,7 +1052,8 @@ download_and_extract_archive() {
 
 download_thirdparty() {
   download_and_extract_archive "$YB_THIRDPARTY_URL" /opt/yb-build/thirdparty
-  if [[ -n ${YB_THIRDPARTY_DIR:-} && $YB_THIRDPARTY_DIR != $extracted_dir ]]; then
+  if [[ -n ${YB_THIRDPARTY_DIR:-} &&
+        $YB_THIRDPARTY_DIR != "$extracted_dir" ]]; then
     log_thirdparty_and_toolchain_details
     fatal "YB_THIRDPARTY_DIR is already set to '$YB_THIRDPARTY_DIR', cannot set it to" \
           "'$extracted_dir'"
@@ -1120,9 +1066,11 @@ download_thirdparty() {
   # link to download and install the appropriate Linuxbrew package.
   local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
   if [[ -f $linuxbrew_url_path ]]; then
-    local linuxbrew_url=$(<"$linuxbrew_url_path")
+    local linuxbrew_url
+    linuxbrew_url=$(<"$linuxbrew_url_path")
     download_and_extract_archive "$linuxbrew_url" /opt/yb-build/brew
-    if [[ -n ${YB_LINUXBREW_DIR:-} && $YB_LINUXBREW_DIR != $extracted_dir ]]; then
+    if [[ -n ${YB_LINUXBREW_DIR:-} &&
+          $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
       log_thirdparty_and_toolchain_details
       fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
             "'$extracted_dir'"
@@ -1197,7 +1145,8 @@ try_set_linuxbrew_dir() {
         -d "$linuxbrew_dir/bin" &&
         -d "$linuxbrew_dir/lib" &&
         -d "$linuxbrew_dir/include" ]]; then
-    export YB_LINUXBREW_DIR=$(realpath "$linuxbrew_dir")
+    YB_LINUXBREW_DIR=$(realpath "$linuxbrew_dir")
+    export YB_LINUXBREW_DIR
     save_brew_path_to_build_dir
     return 0
   else
@@ -1214,7 +1163,7 @@ wait_for_directory_existence() {
       fatal "Gave up waiting for directory '$dir_path' to appear after $attempt seconds"
     fi
     log "Directory '$dir_path' not found, waiting for it to mount"
-    let attempt+=1
+    (( attempt+=1 ))
     sleep 1
   done
 }
@@ -1251,7 +1200,8 @@ detect_linuxbrew() {
     return
   fi
   if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/linuxbrew_path.txt ]]; then
-    export YB_LINUXBREW_DIR=$(<$BUILD_ROOT/linuxbrew_path.txt)
+    YB_LINUXBREW_DIR=$(<"$BUILD_ROOT/linuxbrew_path.txt")
+    export YB_LINUXBREW_DIR
     yb_linuxbrew_dir_where_from=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
     return
   fi
@@ -1269,8 +1219,10 @@ detect_linuxbrew() {
   if [[ ! -f $version_file ]]; then
     fatal "'$version_file' does not exist"
   fi
-  local linuxbrew_version=$( read_file_and_trim "$version_file" )
-  local linuxbrew_dirname="linuxbrew-$linuxbrew_version"
+  local linuxbrew_version
+  linuxbrew_version=$( read_file_and_trim "$version_file" )
+  local linuxbrew_dirname
+  linuxbrew_dirname="linuxbrew-$linuxbrew_version"
 
   local candidates=()
   local jenkins_linuxbrew_dir="$SHARED_LINUXBREW_BUILDS_DIR/$linuxbrew_dirname"
@@ -1306,7 +1258,7 @@ detect_linuxbrew() {
     yb_linuxbrew_dir_where_from=" (local installation)"
   else
     if [[ ${#candidates[@]} -gt 0 ]]; then
-      log "Could not find Linuxbrew in any of these directories: ${candidates[@]}."
+      log "Could not find Linuxbrew in any of these directories: ${candidates[*]}."
     else
       log "Could not find Linuxbrew candidate directories."
     fi
@@ -1332,7 +1284,8 @@ detect_custom_homebrew() {
   fi
   if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/custom_homebrew_path.txt ]]
   then
-    export YB_CUSTOM_HOMEBREW_DIR=$(<$BUILD_ROOT/custom_homebrew_path.txt)
+    YB_CUSTOM_HOMEBREW_DIR=$(<"$BUILD_ROOT/custom_homebrew_path.txt")
+    export YB_CUSTOM_HOMEBREW_DIR
     yb_custom_homebrew_dir_where_from=" (from file '$BUILD_ROOT/custom_homebrew_path.txt')"
     return
   fi
@@ -1343,7 +1296,8 @@ detect_custom_homebrew() {
 
   local version_for_jenkins_file=$YB_SRC_ROOT/thirdparty/homebrew_version_for_jenkins.txt
   if [[ -f $version_for_jenkins_file ]]; then
-    local version_for_jenkins=$( read_file_and_trim "$version_for_jenkins_file" )
+    local version_for_jenkins
+    version_for_jenkins=$( read_file_and_trim "$version_for_jenkins_file" )
     preferred_homebrew_dir="$SHARED_CUSTOM_HOMEBREW_BUILDS_DIR/homebrew_$version_for_jenkins"
     if [[ -d $preferred_homebrew_dir ]]; then
       if is_jenkins_user; then
@@ -1400,49 +1354,86 @@ using_custom_homebrew() {
   return 1  # false in bash
 }
 
-set_use_ninja() {
+decide_whether_to_use_ninja() {
   if [[ -z ${YB_USE_NINJA:-} ]]; then
+    # Autodetect whether we need to use Ninja at all, based on whether it is available.
+    export YB_USE_NINJA=0
     if [[ -n ${BUILD_ROOT:-} ]]; then
       if [[ $BUILD_ROOT == *-ninja ]]; then
         export YB_USE_NINJA=1
-      else
-        export YB_USE_NINJA=0
       fi
-    else
-      if which ninja &>/dev/null; then
+    elif command -v ninja || [[ -x /usr/local/bin/ninja ]]; then
+      export YB_USE_NINJA=1
+    elif using_linuxbrew; then
+      local yb_ninja_path_candidate=$YB_LINUXBREW_DIR/bin/ninja
+      if [[ -x $yb_ninja_path_candidate ]]; then
         export YB_USE_NINJA=1
-      elif using_linuxbrew; then
-        local yb_ninja_path=$YB_LINUXBREW_DIR/bin/ninja
-        if [[ -f $yb_ninja_path ]]; then
-          export YB_USE_NINJA=1
-          export YB_NINJA_PATH=$yb_ninja_path
-        fi
       fi
-    fi
-
-    if using_ninja && [[ -z ${yb_ninja_path:-} && "${yb_ninja_not_needed:-}" != "true" ]]; then
-      set +e
-      local which_ninja=$( which ninja 2>/dev/null )
-      set -e
-      if using_linuxbrew; then
-        local yb_ninja_path=$YB_LINUXBREW_DIR/bin/ninja
-        if [[ ! -f $yb_ninja_path ]]; then
-          fatal "When using Linuxbrew, Ninja must be installed as part of Linuxbrew, but this" \
-                "file does not exist: $yb_ninja_path"
-        fi
-      elif using_custom_homebrew; then
-        local yb_ninja_path=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
-        if [[ ! -f $yb_ninja_path ]]; then
-          fatal "When using custom Homebrew, Ninja must be installed as part of Linuxbrew, but" \
-                "this file does not exist: $yb_ninja_path"
-        fi
-      elif [[ -f $which_ninja ]]; then
-        local yb_ninja_path=$which_ninja
-      else
-        fatal "Could not set yb_ninja_path, ninja not found on PATH: $PATH"
+    elif using_custom_homebrew; then
+      local yb_ninja_path_candidate=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
+      if [[ -x $yb_ninja_path_candidate ]]; then
+        export YB_USE_NINJA=1
       fi
     fi
   fi
+
+  find_ninja_executable
+}
+
+find_ninja_executable() {
+  if ! using_ninja || [[ -n ${YB_NINJA_PATH:-} ]] ||
+     [[ ${yb_ninja_executable_not_needed:-} == "true" ]]; then
+    return
+  fi
+
+  if using_custom_homebrew; then
+    # On macOS, prefer to use Ninja from the custom Homebrew directory. That will change as we move
+    # away from Homebrew and Linuxbrew.
+    local yb_ninja_path_candidate=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
+    if [[ -x $yb_ninja_path_candidate ]]; then
+      export YB_NINJA_PATH=$yb_ninja_path_candidate
+      return
+    fi
+  fi
+
+  if [[ -x /usr/local/bin/ninja ]]; then
+    # This will eventually be the preferred Ninja executable on all platforms in our build
+    # environment.
+    export YB_NINJA_PATH=/usr/local/bin/ninja
+    return
+  fi
+
+  set +e
+  local which_ninja
+  which_ninja=$( command -v ninja )
+  set -e
+  if [[ -x $which_ninja ]]; then
+    export YB_NINJA_PATH=$which_ninja
+    return
+  fi
+
+  if using_linuxbrew; then
+    # On Linux, try to use Linux from Linuxbrew as a last resort.
+    local yb_ninja_path_candidate=$YB_LINUXBREW_DIR/bin/ninja
+    if [[ -x $yb_ninja_path_candidate ]]; then
+      export YB_NINJA_PATH=$yb_ninja_path_candidate
+      return
+    fi
+  fi
+
+  # -----------------------------------------------------------------------------------------------
+  # Ninja not found
+  # -----------------------------------------------------------------------------------------------
+
+  log "PATH: $PATH"
+  if is_linux; then
+    log "YB_LINUXBREW_DIR: ${YB_LINUXBREW_DIR:-undefined}"
+  fi
+  if is_mac; then
+    log "YB_CUSTOM_HOMEBREW_DIR: ${YB_CUSTOM_HOMEBREW_DIR:-undefined}"
+  fi
+
+  fatal "ninja executable not found"
 }
 
 using_ninja() {
@@ -1485,10 +1476,12 @@ detect_num_cpus_and_set_make_parallelism() {
   detect_num_cpus
   if [[ -z ${YB_MAKE_PARALLELISM:-} ]]; then
     if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
-      declare -i num_build_workers=$( wc -l "$YB_BUILD_WORKERS_FILE" | awk '{print $1}' )
+      declare -i num_build_workers
+      num_build_workers=$( wc -l "$YB_BUILD_WORKERS_FILE" | awk '{print $1}' )
       # Add one to the number of workers so that we cause the auto-scaling group to scale up a bit
       # by stressing the CPU on each worker a bit more.
-      declare -i effective_num_build_workers=$(( $num_build_workers + 1 ))
+      declare -i effective_num_build_workers
+      effective_num_build_workers=$(( num_build_workers + 1 ))
 
       # However, make sure this number is within a reasonable range.
       if [[ $effective_num_build_workers -lt $MIN_EFFECTIVE_NUM_BUILD_WORKERS ]]; then
@@ -1498,7 +1491,7 @@ detect_num_cpus_and_set_make_parallelism() {
         effective_num_build_workers=$MAX_EFFECTIVE_NUM_BUILD_WORKERS
       fi
 
-      YB_MAKE_PARALLELISM=$(( $effective_num_build_workers * $YB_NUM_CORES_PER_BUILD_WORKER ))
+      YB_MAKE_PARALLELISM=$(( effective_num_build_workers * YB_NUM_CORES_PER_BUILD_WORKER ))
     else
       YB_MAKE_PARALLELISM=$YB_NUM_CPUS
     fi
@@ -1594,24 +1587,6 @@ using_remote_compilation() {
   return 1  # "false" return value
 }
 
-# This is used for escaping command lines for remote execution.
-# From StackOverflow: https://goo.gl/sTKReB
-# Using this approach: "Put the whole string in single quotes. This works for all chars except
-# single quote itself. To escape the single quote, close the quoting before it, insert the single
-# quote, and re-open the quoting."
-#
-escape_cmd_line() {
-  escape_cmd_line_rv=""
-  for arg in "$@"; do
-    escape_cmd_line_rv+=" '"${arg/\'/\'\\\'\'}"'"
-    # This should be equivalent to the sed command below.  The quadruple backslash encodes one
-    # backslash in the replacement string. We don't need that in the pure-bash implementation above.
-    # sed -e "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/"
-  done
-  # Remove the leading space if necessary.
-  escape_cmd_line_rv=${escape_cmd_line_rv# }
-}
-
 debugging_remote_compilation() {
   [[ ${YB_DEBUG_REMOTE_COMPILATION:-undefined} == "1" ]]
 }
@@ -1667,7 +1642,11 @@ configure_remote_compilation() {
         log "Not using remote compilation: " \
             "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}. " \
             "See additional diagnostics below."
-        is_running_on_gcp && log "Running on GCP." || log "This is not GCP."
+        if is_running_on_gcp; then
+          log "Running on GCP."
+        else
+          log "This is not GCP."
+        fi
         if is_src_root_on_nfs; then
           log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS in YugaByte's distributed" \
               "build setup."
@@ -1682,7 +1661,7 @@ read_file_and_trim() {
   expect_num_args 1 "$@"
   local file_name=$1
   if [[ -f $file_name ]]; then
-    cat "$file_name" | sed -e 's/^[[:space:]]*//; s/[[:space:]]*$//'
+    sed 's/^[[:space:]]*//; s/[[:space:]]*$//' "$file_name"
   else
     log "File '$file_name' does not exist"
     return 1
@@ -1713,7 +1692,8 @@ find_shared_thirdparty_dir() {
 
   local shared_thirdparty_path_file="$YB_BUILD_SUPPORT_DIR/"
   shared_thirdparty_path_file+="shared_thirdparty_version_for_jenkins_${short_os_name}.txt"
-  local version=$(<"$shared_thirdparty_path_file")
+  local version
+  version=$(<"$shared_thirdparty_path_file")
   local thirdparty_dir_suffix="yugabyte-thirdparty-${version}/thirdparty"
   local existing_thirdparty_dir="${parent_dir_for_shared_thirdparty}/${thirdparty_dir_suffix}"
   if [[ -d $existing_thirdparty_dir ]]; then
@@ -1740,7 +1720,8 @@ find_or_download_thirdparty() {
   fi
   if ! "$is_clean_build"; then
     if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
-      local thirdparty_url_from_file=$(<"$BUILD_ROOT/thirdparty_url.txt")
+      local thirdparty_url_from_file
+      thirdparty_url_from_file=$(<"$BUILD_ROOT/thirdparty_url.txt")
       if [[ -n ${YB_THIRDPARTY_URL:-} &&
             "$YB_THIRDPARTY_URL" != "$thirdparty_url_from_file" ]]; then
         fatal "YB_THIRDPARTY_URL is explicitly set to '$YB_THIRDPARTY_URL' but file" \
@@ -1756,7 +1737,8 @@ find_or_download_thirdparty() {
     fi
 
     if [[ -f $BUILD_ROOT/thirdparty_path.txt ]]; then
-      local thirdparty_dir_from_file=$(<"$BUILD_ROOT/thirdparty_path.txt")
+      local thirdparty_dir_from_file
+      thirdparty_dir_from_file=$(<"$BUILD_ROOT/thirdparty_path.txt")
       if [[ -n ${YB_THIRDPARTY_DIR:-} &&
             "$YB_THIRDPARTY_DIR" != "$thirdparty_dir_from_file" ]]; then
         fatal "YB_THIRDPARTY_DIR is explicitly set to '$YB_THIRDPARTY_DIR' but file" \
@@ -1813,7 +1795,7 @@ log_thirdparty_and_toolchain_details() {
       echo "    YB_CUSTOM_HOMEBREW_DIR: $YB_CUSTOM_HOMEBREW_DIR$yb_custom_homebrew_dir_where_from"
     fi
     if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
-      echo "    YB_THIRDPARTY_URL: $YB_THIRDPARTY_URL"
+      echo "    YB_THIRDPARTY_URL: $YB_THIRDPARTY_URL$yb_thirdparty_url_where_from"
     fi
     if [[ -n ${YB_DOWNLOAD_THIRDPARTY:-} ]]; then
       echo "    YB_DOWNLOAD_THIRDPARTY: $YB_DOWNLOAD_THIRDPARTY"
@@ -1826,6 +1808,7 @@ log_thirdparty_and_toolchain_details() {
 
 handle_predefined_build_root_quietly=false
 
+# shellcheck disable=SC2120
 handle_predefined_build_root() {
   expect_num_args 0 "$@"
   if [[ -z ${predefined_build_root:-} ]]; then
@@ -1843,7 +1826,7 @@ handle_predefined_build_root() {
   if [[ $predefined_build_root != $YB_BUILD_INTERNAL_PARENT_DIR/* && \
         $predefined_build_root != $YB_BUILD_EXTERNAL_PARENT_DIR/* ]]; then
     # Sometimes $predefined_build_root contains symlinks on its path.
-    $YB_SRC_ROOT/build-support/validate_build_root.py \
+    "$YB_SRC_ROOT/build-support/validate_build_root.py" \
       "$predefined_build_root" \
       "$YB_BUILD_INTERNAL_PARENT_DIR" \
       "$YB_BUILD_EXTERNAL_PARENT_DIR"
@@ -1854,6 +1837,8 @@ handle_predefined_build_root() {
   if [[ $basename =~ $BUILD_ROOT_BASENAME_RE ]]; then
     local _build_type=${BASH_REMATCH[1]}
     local _compiler_type=${BASH_REMATCH[2]}
+    # _linking_type is unused. We always use dynamic linking. TODO: get rid of this parameter.
+    # shellcheck disable=SC2034
     local _linking_type=${BASH_REMATCH[3]}
     local _dash_ninja=${BASH_REMATCH[4]}
   else
@@ -1867,7 +1852,7 @@ handle_predefined_build_root() {
       log "Setting build type to '$build_type' based on predefined build root ('$basename')"
     fi
     validate_build_type "$build_type"
-  elif [[ $build_type != $_build_type ]]; then
+  elif [[ $build_type != "$_build_type" ]]; then
     fatal "Build type from the build root ('$_build_type' from '$predefined_build_root') does " \
           "not match current build type ('$build_type')."
   fi
@@ -1878,7 +1863,7 @@ handle_predefined_build_root() {
       log "Automatically setting compiler type to '$YB_COMPILER_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
-  elif [[ $YB_COMPILER_TYPE != $_compiler_type ]]; then
+  elif [[ $YB_COMPILER_TYPE != "$_compiler_type" ]]; then
     fatal "Compiler type from the build root ('$_compiler_type' from '$predefined_build_root') " \
           "does not match YB_COMPILER_TYPE ('$YB_COMPILER_TYPE')."
   fi
@@ -1895,7 +1880,7 @@ handle_predefined_build_root() {
           "of the YB_USE_NINJA env var ('$YB_USE_NINJA')"
   fi
 
-  set_use_ninja
+  decide_whether_to_use_ninja
 }
 
 # Remove the build/latest symlink to prevent Jenkins from showing every test twice in test results.
@@ -1911,7 +1896,8 @@ remove_latest_symlink() {
 # Assigns a random "test invocation id" that allows to kill stuck processes corresponding to this
 # instance of a particular test or the whole test suite.
 set_test_invocation_id() {
-  local timestamp=$( get_timestamp_for_filenames )
+  local timestamp
+  timestamp=$( get_timestamp_for_filenames )
   export YB_TEST_INVOCATION_ID=test_invocation_${timestamp}_${RANDOM}_${RANDOM}_$$
 }
 
@@ -1929,6 +1915,8 @@ kill_stuck_processes() {
         "killing it with SIGKILL."
     ps -p "$pid" -f
     if kill -9 "$pid"; then
+      # killed_stuck_processes is used in run-test.sh
+      # shellcheck disable=SC2034
       killed_stuck_processes=true
       log "Killed process $pid with SIGKILL."
     fi
@@ -2013,6 +2001,7 @@ activate_virtualenv() {
       # function might not even be present in our current shell. This is necessary because otherwise
       # the --user installation below will fail.
       set +eu
+      # shellcheck disable=SC1090
       . "$VIRTUAL_ENV/bin/activate"
       deactivate
       set -eu
@@ -2030,6 +2019,7 @@ activate_virtualenv() {
   fi
 
   set +u
+  # shellcheck disable=SC1090
   . "$virtualenv_dir"/bin/activate
   set -u
   local pip_no_cache=""
@@ -2112,7 +2102,10 @@ lint_java_code() {
 
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     local IFS=$'\n'
-    local java_test_files=( $(
+    local java_test_files
+    # The proposed syntax in SC2207 is too confusing.
+    # shellcheck disable=SC2207
+    java_test_files=( $(
       find "$java_project_dir" \( -name "Test*.java" -or -name "*Test.java" \) -and \
           -not -name "TestUtils.java" -and \
           -not -name "*Base.java" -and \
@@ -2169,7 +2162,7 @@ run_with_retries() {
     fi
     log "Warning: command failed with exit code $exit_code at attempt $attempt_index: $*." \
         "Waiting for $delay_sec sec, will then re-try for up to $max_attempts attempts."
-    let attempt_index+=1
+    (( attempt_index+=1 ))
     sleep "$delay_sec"
   done
   fatal "Failed to execute command after $max_attempts attempts: $*"
@@ -2191,11 +2184,12 @@ set_java_home() {
   fi
   # macOS has a peculiar way of setting JAVA_HOME
   local cmd_to_get_java_home="/usr/libexec/java_home --version 1.8"
-  local new_java_home=$( $cmd_to_get_java_home )
+  local new_java_home
+  new_java_home=$( $cmd_to_get_java_home )
   if [[ ! -d $new_java_home ]]; then
     fatal "Directory returned by '$cmd_to_get_java_home' does not exist: $new_java_home"
   fi
-  if [[ -n ${JAVA_HOME:-} && $JAVA_HOME != $new_java_home ]]; then
+  if [[ -n ${JAVA_HOME:-} && $JAVA_HOME != "$new_java_home" ]]; then
     log "Warning: updating JAVA_HOME from $JAVA_HOME to $new_java_home"
   else
     log "Setting JAVA_HOME: $new_java_home"
@@ -2234,7 +2228,7 @@ set_prebuilt_thirdparty_url() {
       log "Setting third-party URL to $auto_thirdparty_url"
       save_var_to_file_in_build_dir "$YB_THIRDPARTY_URL" thirdparty_url.txt
     elif [[ -n $auto_thirdparty_url ]]; then
-      if [[ $auto_thirdparty_url != $YB_THIRDPARTY_URL ]]; then
+      if [[ $auto_thirdparty_url != "$YB_THIRDPARTY_URL" ]]; then
         log "YB_THIRDPARTY_URL is already set to $YB_THIRDPARTY_URL, not trying to set it to" \
             "the default value of $auto_thirdparty_url"
       fi
@@ -2256,6 +2250,8 @@ if is_mac; then
   declare -i -r SIGUSR1_EXIT_CODE=158  # 128 + 30
 else
   # Linux
+  # SIGUSR1_EXIT_CODE is used in common-test-env.sh
+  # shellcheck disable=SC2034
   declare -i -r SIGUSR1_EXIT_CODE=138  # 128 + 10
 fi
 
@@ -2269,7 +2265,7 @@ else
 fi
 
 if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
-  fatal "Could not determine YB source directory from '$BASH_SOURCE':" \
+  fatal "Could not determine YB source directory from '${BASH_SOURCE[0]}':" \
         "$YB_BUILD_SUPPORT_DIR does not exist."
 fi
 

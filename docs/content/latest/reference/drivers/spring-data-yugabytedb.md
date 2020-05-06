@@ -12,7 +12,7 @@ menu:
     weight: 2940
 aliases:
   - /latest/reference/connectors/spring-data-yugabytedb
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 

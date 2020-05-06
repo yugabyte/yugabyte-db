@@ -1,8 +1,8 @@
 ---
-title: Use NodeJS to build a YugabyteDB application
+title: Build a NodeJS application that uses YCQL
 headerTitle: Build a NodeJS application
-linkTitle: Build a NodeJS application
-description: Build a NodeJS application
+linkTitle: NodeJS
+description: Build a NodeJS application that uses YCQL
 menu:
   latest:
     parent: build-apps
@@ -35,7 +35,7 @@ showAsideToc: true
   </li>
 </ul>
 
-## Installation
+## Install the NodeJS driver
 
 Install the YugabyteDB NodeJS driver for YCQL using the following command. You can find the source for the driver [here](https://github.com/yugabyte/cassandra-nodejs-driver).
 
@@ -49,7 +49,7 @@ $ npm install yb-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
 - installed a recent version of `node`. If not, you can find install instructions [here](https://nodejs.org/en/download/).
 
 We will be using the [async](https://github.com/caolan/async) JS utility to work with asynchronous Javascript. Install this by running the following command:
@@ -58,7 +58,7 @@ We will be using the [async](https://github.com/caolan/async) JS utility to work
 $ npm install --save async
 ```
 
-### Writing the JavaScript code
+### Write the JavaScript code
 
 Create a file `yb-cql-helloworld.js` and add the following content to it.
 
@@ -122,7 +122,7 @@ async.series([
 });
 ```
 
-### Running the application
+### Run the application
 
 To run the application, type the following:
 

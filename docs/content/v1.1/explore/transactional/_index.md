@@ -4,6 +4,7 @@ linkTitle: Transactional
 description: Transactional
 headcontent:
 image: /images/section_icons/explore/transactional.png
+block_indexing: true
 menu:
   v1.1:
     identifier: explore-transactional

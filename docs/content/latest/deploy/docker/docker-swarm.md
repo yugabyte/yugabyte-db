@@ -1,8 +1,8 @@
 ---
-title: Deploy a local YugabyteDB cluster using Docker Swarm
+title: Deploy a YugabyteDB cluster on Docker Swarm
 headerTitle: Docker
 linkTitle: Docker
-description: Learn how to use Docker Swarm to deploy a local YugabyteDB cluster
+description: Deploy a YugabyteDB cluster on Docker Swarm.
 aliases:
  - /deploy/docker-swarm/
  - /latest/deploy/docker-swarm/

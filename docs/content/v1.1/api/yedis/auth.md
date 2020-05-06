@@ -2,6 +2,7 @@
 title: AUTH
 linkTitle: AUTH
 description: AUTH
+block_indexing: true
 menu:
   v1.1:
     parent: api-redis

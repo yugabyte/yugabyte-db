@@ -2,6 +2,7 @@
 title: ZRANGE
 linkTitle: ZRANGE
 description: ZRANGE
+block_indexing: true
 menu:
   v1.2:
     parent: api-yedis

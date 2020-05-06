@@ -1,10 +1,10 @@
 ---
-title: Scaling YSQL queries
-headerTitles: Scaling YSQL queries
+title: Benchmark scaling YSQL queries
+headerTitle: Scaling YSQL queries
 linkTitle: Scaling queries
 description: Benchmark scaling YSQL queries in YugabyteDB
-image: /images/section_icons/explore/high_performance.png
-headcontent: Benchmark YugabyteDB using different queries
+aliases:
+  - /latest/benchmark/scalability/scaling-queries/
 menu:
   latest:
     identifier: scaling-queries-1-ysql

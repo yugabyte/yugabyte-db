@@ -1,15 +1,15 @@
 ---
-title: ysql_dump - YugabyteDB backup tool
+title: ysql_dump - back up a YSQL database
 headerTitle: ysql_dump
 linkTitle: ysql_dump
-description: Use ysql_dump to back up YugabyteDB databases into plain-text, SQL script files.
+description: Back up a specified YugabyteDB YSQL database into plain-text, SQL script file.
 headcontent: Extract a YugabyteDB database into a SQL script file.
 menu:
   latest:
     identifier: ysql-dump
     parent: admin
     weight: 2467
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -241,7 +241,7 @@ Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWN
 
 Show help about `ysql_dump` command line arguments and then exit.
 
-## Connection options
+## Database connection options
 
 The following command line options control the database connection parameters.
 

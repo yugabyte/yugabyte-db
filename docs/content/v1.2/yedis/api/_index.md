@@ -5,6 +5,7 @@ description: API Reference
 summary: Reference for the YEDIS API
 image: /images/section_icons/api/yedis.png
 headcontent: 
+block_indexing: true
 menu:
   v1.2:
     identifier: api-yedis

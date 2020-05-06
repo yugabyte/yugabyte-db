@@ -1,7 +1,6 @@
 {
   "all": {
     "%symlinks%": {
-      "bin/psql": "../postgres/bin/ysqlsh",
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
     ".": ["$BUILD_ROOT/version_metadata.json"],
@@ -32,7 +31,8 @@
       "submodules/yugabyte-installation/bin/yb-ctl",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
-      "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
     "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
     "postgres": ["$BUILD_ROOT/postgres/*"],
@@ -45,7 +45,6 @@
   },
   "cli": {
     "%symlinks%": {
-      "bin/psql": "../postgres/bin/ysqlsh",
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
     ".": ["$BUILD_ROOT/version_metadata.json"],
@@ -54,9 +53,13 @@
       "build-support/post_install.sh",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
-      "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
     "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
-    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"]
+    "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
+    "share": [
+      "sample/*.sql"
+    ]
   }
 }

@@ -2,6 +2,7 @@
 title: ECHO
 linkTitle: ECHO
 description: ECHO
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

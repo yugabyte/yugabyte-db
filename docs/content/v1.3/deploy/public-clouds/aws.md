@@ -2,6 +2,7 @@
 title: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Amazon Web Services
+block_indexing: true
 menu:
   v1.3:
     identifier: deploy-in-aws

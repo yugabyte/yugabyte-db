@@ -28,19 +28,29 @@
 
 namespace {
 
-uint64_t txn_priority_lower_bound = 0;
-uint64_t txn_priority_upper_bound = std::numeric_limits<uint64_t>::max();
+/*
+ * Bounds for transaction priority. We distinguish two classes of transactions:
+ *  1. high-pri, currently used for transactions/statements with explicit locking clauses
+ *    (e.g. SELECT .. FOR UPDATE).
+ *  2. regular used for all other transactions.
+ * We reserve the top uint32 range of txn priorities (uint64) for high priority transactions.
+ */
+uint64_t txn_priority_regular_lower_bound = 0;
+uint64_t txn_priority_highpri_upper_bound = std::numeric_limits<uint64_t>::max();
+uint64_t txn_priority_highpri_lower_bound = txn_priority_highpri_upper_bound -
+                                            std::numeric_limits<uint32_t>::max();
+uint64_t txn_priority_regular_upper_bound = txn_priority_highpri_lower_bound - 1;
 
 // Converts double value in range 0..1 to uint64_t value in range
-// 0..std::numeric_limits<uint64_t>::max()
+// 0..(txn_priority_highpri_lower_bound - 1)
 uint64_t ConvertBound(double value) {
   if (value <= 0.0) {
     return 0;
   }
   if (value >= 1.0) {
-    return std::numeric_limits<uint64_t>::max();
+    return txn_priority_highpri_lower_bound - 1;
   }
-  return value * std::numeric_limits<uint64_t>::max();
+  return value * (txn_priority_highpri_lower_bound - 1);
 }
 
 } // namespace
@@ -48,11 +58,15 @@ uint64_t ConvertBound(double value) {
 extern "C" {
 
 void YBCAssignTransactionPriorityLowerBound(double newval, void* extra) {
-  txn_priority_lower_bound = ConvertBound(newval);
+  txn_priority_regular_lower_bound = ConvertBound(newval);
+  // YSQL layer checks (guc.c) should ensure this.
+  DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
 }
 
 void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
-  txn_priority_upper_bound = ConvertBound(newval);
+  txn_priority_regular_upper_bound = ConvertBound(newval);
+  // YSQL layer checks (guc.c) should ensure this.
+  DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
 }
 
 }
@@ -121,7 +135,8 @@ void PgTxnManager::StartNewSession() {
   session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
-Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
+Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
+                                                      bool needs_pessimistic_locking) {
   if (ddl_txn_) {
     return Status::OK();
   }
@@ -165,9 +180,18 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
     } else {
       txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
     }
-    auto priority = RandomUniformInt(
-        txn_priority_lower_bound, std::max(txn_priority_lower_bound, txn_priority_upper_bound));
+
+    // Using high priority for transactions that need pessimistic locking.
+    uint64_t priority;
+    if (needs_pessimistic_locking) {
+      priority = RandomUniformInt(txn_priority_highpri_lower_bound,
+                                  txn_priority_highpri_upper_bound);
+    } else {
+      priority = RandomUniformInt(txn_priority_regular_lower_bound,
+                                  txn_priority_regular_upper_bound);
+    }
     txn_->SetPriority(priority);
+
     if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
       txn_->InitWithReadPoint(isolation, std::move(*session_->read_point()));
     } else {

@@ -46,6 +46,9 @@ class RefCntBuffer {
 
   explicit RefCntBuffer(const faststring& string);
 
+  explicit RefCntBuffer(const Slice& slice) :
+      RefCntBuffer(slice.data(), slice.size()) {}
+
   RefCntBuffer(const RefCntBuffer& rhs) noexcept;
   RefCntBuffer(RefCntBuffer&& rhs) noexcept;
 
@@ -102,8 +105,16 @@ class RefCntBuffer {
     return std::string(begin(), end());
   }
 
-  Slice as_slice() const {
+  Slice AsSlice() const {
     return Slice(data(), size());
+  }
+
+  Slice as_slice() const __attribute__ ((deprecated)) {
+    return Slice(data(), size());
+  }
+
+  void Shrink(size_t new_size) {
+    size_reference() = new_size;
   }
 
  private:

@@ -1,9 +1,8 @@
 ---
-title: jsonb_strip_nulls() and json_strip_nulls() [JSON]
+title: jsonb_strip_nulls() and json_strip_nulls()
 headerTitle: jsonb_strip_nulls and json_strip_nulls
 linkTitle: jsonb_strip_nulls()
-description: Use these JSON functions to find all key-value pairs, at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an object), and return a JSON value where each pair whose value is null has been removed.
-summary: jsonb_strip_nulls() and json_strip_nulls()
+description: Find all key-value pairs in the hierarchy of the supplied JSON compound value and return a JSON value where each null pair has been removed.
 menu:
   latest:
     identifier: jsonb-strip-nulls
@@ -13,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** Find all key-value pairs, at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an _object_), and return a JSON value where each pair whose value is null has been removed.
+**Purpose:** Find all key-value pairs at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an _object_), and return a JSON value where each pair whose value is null has been removed.
 
 **Signature** For the `jsonb` variant:
 

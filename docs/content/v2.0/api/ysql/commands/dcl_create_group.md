@@ -3,6 +3,7 @@ title: CREATE GROUP
 linkTitle: CREATE GROUP
 description: CREATE GROUP
 summary: Groups and roles
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-create-group

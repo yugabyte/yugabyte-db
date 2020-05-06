@@ -2,6 +2,7 @@
 title: PHP
 linkTitle: PHP
 description: Build a PHP application
+block_indexing: true
 menu:
   v2.0:
     identifier: build-apps-php

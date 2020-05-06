@@ -3,6 +3,7 @@ title: Benefits
 linkTitle: Benefits
 description: Benefits
 type: page
+block_indexing: true
 menu:
   v1.0:
     identifier: benefits

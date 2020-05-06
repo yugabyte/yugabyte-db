@@ -6,6 +6,7 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -19,10 +20,13 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.doReturn;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
@@ -37,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Arrays;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.ByteString;
@@ -73,6 +78,7 @@ import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.master.Master.RelationType;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -191,7 +197,7 @@ public class TablesControllerTest extends WithApplication {
         assertEquals(TableType.YQL_TABLE_TYPE.toString(), tableType);
         assertEquals("$$$Default", tableKeySpace);
       }
-
+      assertFalse(table.get("isIndexTable").asBoolean());
     }
     LOG.info("Processed " + numTables + " tables");
     assertEquals(numTables, tableNames.size());
@@ -276,6 +282,7 @@ public class TablesControllerTest extends WithApplication {
           "\"expectedUniverseVersion\":-1," +
           "\"tableUUID\":null," +
           "\"tableType\":\"YQL_TABLE_TYPE\"," +
+          "\"isIndexTable\":false," +
           "\"tableDetails\":{" +
             "\"tableName\":\"test_table\"," +
             "\"keyspace\":\"test_ks\"," +
@@ -549,6 +556,24 @@ public class TablesControllerTest extends WithApplication {
   }
 
   @Test
+  public void testCreateBackupOnDisabledTableFails() throws Exception {
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    Universe universe = createUniverse(customer.getCustomerId());
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(universe.universeUUID);
+    customer.save();
+
+    TablesController mockTablesController = spy(tablesController);
+
+    doReturn(true).when(mockTablesController).disableBackupOnTables(any(), any());
+    UUID uuid = UUID.randomUUID();
+    Result r = mockTablesController.createBackup(customer.uuid, universe.universeUUID, uuid);
+
+    assertBadRequest(r, "Invalid Table UUID: " + uuid + ". Cannot backup index or YSQL table.");
+  }
+
+  @Test
   public void testCreateBackupCronExpression() {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
@@ -705,5 +730,68 @@ public class TablesControllerTest extends WithApplication {
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDisallowBackup() throws Exception {
+    List<TableInfo> tableInfoList = new ArrayList<TableInfo>();
+    UUID table1Uuid = UUID.randomUUID();
+    UUID table2Uuid = UUID.randomUUID();
+    UUID indexUuid = UUID.randomUUID();
+    UUID ysqlUuid = UUID.randomUUID();
+    TableInfo ti1 = TableInfo.newBuilder()
+            .setName("Table1")
+            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setId(ByteString.copyFromUtf8(table1Uuid.toString()))
+            .setTableType(TableType.YQL_TABLE_TYPE)
+            .build();
+    TableInfo ti2 = TableInfo.newBuilder()
+            .setName("Table2")
+            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setId(ByteString.copyFromUtf8(table2Uuid.toString()))
+            .setTableType(TableType.YQL_TABLE_TYPE)
+            .build();
+    TableInfo ti3 = TableInfo.newBuilder()
+            .setName("TableIndex")
+            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setId(ByteString.copyFromUtf8(indexUuid.toString()))
+            .setTableType(TableType.YQL_TABLE_TYPE)
+            .setRelationType(RelationType.INDEX_TABLE_RELATION)
+            .build();
+    TableInfo ti4 = TableInfo.newBuilder()
+            .setName("TableYsql")
+            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setId(ByteString.copyFromUtf8(ysqlUuid.toString()))
+            .setTableType(TableType.PGSQL_TABLE_TYPE)
+            .build();
+
+
+    tableInfoList.add(ti1);
+    tableInfoList.add(ti2);
+    tableInfoList.add(ti3);
+    tableInfoList.add(ti4);
+
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+    when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
+    Universe universe = mock(Universe.class);
+    when(universe.getMasterAddresses(anyBoolean())).thenReturn("fake_address");
+    when(universe.getCertificate()).thenReturn("fake_certificate");
+
+
+    // Disallow on Index Table.
+    List<UUID> uuids = Arrays.asList(table1Uuid, table2Uuid, indexUuid);
+    assertTrue(tablesController.disableBackupOnTables(uuids, universe));
+
+
+    // Disallow on YSQL table.
+    uuids = Arrays.asList(table1Uuid, table2Uuid, ysqlUuid);
+    assertTrue(tablesController.disableBackupOnTables(uuids, universe));
+
+
+    // Allow on YCQL tables and empty list.
+    uuids = Arrays.asList(table1Uuid, table2Uuid);
+    assertFalse(tablesController.disableBackupOnTables(uuids, universe));
+
+    assertFalse(tablesController.disableBackupOnTables(new ArrayList<UUID>(), universe));
   }
 }

@@ -200,7 +200,9 @@ static const char *show_unix_socket_permissions(void);
 static const char *show_log_file_mode(void);
 static const char *show_data_directory_mode(void);
 
+static bool check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
+static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
@@ -3292,7 +3294,7 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&yb_transaction_priority_lower_bound,
 		0.0, 0.0, 1.0,
-		NULL, YBCAssignTransactionPriorityLowerBound, NULL
+		check_transaction_priority_lower_bound, YBCAssignTransactionPriorityLowerBound, NULL
 	},
 	{
 		{"yb_transaction_priority_upper_bound", PGC_USERSET, CLIENT_CONN_STATEMENT,
@@ -3301,7 +3303,7 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&yb_transaction_priority_upper_bound,
 		1.0, 0.0, 1.0,
-		NULL, YBCAssignTransactionPriorityUpperBound, NULL
+		check_transaction_priority_upper_bound, YBCAssignTransactionPriorityUpperBound, NULL
 	},
 
 	/* End-of-list marker */
@@ -10851,5 +10853,30 @@ show_data_directory_mode(void)
 	snprintf(buf, sizeof(buf), "%04o", data_directory_mode);
 	return buf;
 }
+
+static bool
+check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source)
+{
+	if (*newval > yb_transaction_priority_upper_bound) {
+		GUC_check_errdetail("must be less than or equal to yb_transaction_priority_upper_bound (%f)",
+		                    yb_transaction_priority_upper_bound);
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source)
+{
+	if (*newval < yb_transaction_priority_lower_bound) {
+		GUC_check_errdetail("must be greater than or equal to yb_transaction_priority_lower_bound (%f)",
+		                    yb_transaction_priority_lower_bound);
+		return false;
+	}
+
+	return true;
+}
+
 
 #include "guc-file.c"

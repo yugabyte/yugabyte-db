@@ -1,8 +1,8 @@
 ---
-title: Amazon Elastic Kubernetes Service (EKS)
+title: Deploy on Amazon Elastic Kubernetes Service (EKS) using Helm Chart
 headerTitle: Amazon Elastic Kubernetes Service (EKS)
 linkTitle: Amazon Elastic Kubernetes Service (EKS)
-description: Amazon Elastic Kubernetes Service (EKS)
+description: Deploy a multi-zone YugabyteDB cluster on Amazon Elastic Kubernetes Service (EKS) using Helm Chart.
 menu:
   latest:
     parent: deploy-kubernetes-mz
@@ -355,8 +355,8 @@ To connect and use the YSQL Shell (`ysqlsh`), run the following command.
 us-east-1a,us-east-1b,us-east-1c \
 
 ```sh
-$ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 /home/yugabyte/bin/ysqlsh \
- -- -h yb-tserver-0.yb-tservers.yb-demo-us-east-1a
+$ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh \
+  -h yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 ```
 
 To connect and use the YCQL Shell (`cqlsh`), run the following command.

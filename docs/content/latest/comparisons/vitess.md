@@ -1,8 +1,8 @@
 ---
-title: Compare Vitess to YugabyteDB
+title: Compare Vitess with YugabyteDB
 headerTitle: Vitess
 linkTitle: Vitess
-description: Compare Vitess to YugabyteDB
+description: Compare Vitess with YugabyteDB.
 aliases:
   - /comparisons/vitess/
 menu:

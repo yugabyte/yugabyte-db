@@ -2,6 +2,7 @@
 title: Aggregations
 linkTitle: 4. Aggregations
 description: Aggregations
+block_indexing: true
 menu:
   v1.1:
     identifier: pgsql-agg

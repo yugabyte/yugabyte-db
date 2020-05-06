@@ -152,7 +152,7 @@ class PgDml : public PgStatement {
   PgPrepareParameters prepare_params_ = { kInvalidOid /* index_oid */,
                                           false /* index_only_scan */,
                                           false /* use_secondary_index */,
-                                          false /* querying_systable */ };
+                                          false /* querying_colocated_table */ };
 
   // -----------------------------------------------------------------------------------------------
   // Data members for nested query: This is used for an optimization in PgGate.
@@ -190,7 +190,7 @@ class PgDml : public PgStatement {
 
   //------------------------------------------------------------------------------------------------
   // Data members for navigating the output / result-set from either seleted or returned targets.
-  std::list<PgDocResult::SharedPtr> rowsets_;
+  std::list<PgDocResult> rowsets_;
   int64_t current_row_order_ = 0;
 
   //------------------------------------------------------------------------------------------------

@@ -3,6 +3,7 @@ title: PostgreSQL JDBC Driver
 linkTitle: PostgreSQL JDBC Driver
 description: PostgreSQL JDBC Driver
 section: REFERENCE
+block_indexing: true
 menu:
   v2.0:
     identifier: postgresql-jdbc-driver

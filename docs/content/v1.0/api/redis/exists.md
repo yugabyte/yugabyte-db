@@ -2,6 +2,7 @@
 title: EXISTS
 linkTitle: EXISTS
 description: EXISTS
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

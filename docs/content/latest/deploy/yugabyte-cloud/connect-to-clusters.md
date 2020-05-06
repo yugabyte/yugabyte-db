@@ -1,9 +1,8 @@
 ---
-title: Connect to clusters
+title: Connect clients to YugabyteDB clusters
+headerTitle: Connect to clusters
 linkTitle: Connect to clusters
-description: Connect to clusters
-headcontent:
-image: /images/section_icons/deploy/enterprise.png
+description: Connect to clusters in Yugabyte Cloud using locally installed YugabyteDB clients.
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -35,7 +34,7 @@ Follow these steps to connect to your remote cluster using the [YSQL shell (`ysq
 1. Log into Yugabyte Cloud and click **Cluster** in the navigation bar. The list of available clusters appears.
 2. Click **Go to cluster** for your cluster. The Yugabyte Cloud Console appears.
 3. Click **Connect** to get the user credentials you need to access the remote cluster. The Connect dialog appears with user credentials
-   use **COPY** to copy a generated command that you can use to access the YCQL shell. The generated command includes options specifying
+   use **COPY** to copy a generated command that you can use to access the YCQL shell. The generated command includes flags specifying
    the host (`-h`), port (`-p`), username (`-U`), and database (`-d`). To specify the password The generated command connects to the default database (`yugabyte`).
 
    Here's an example of the generated command:
@@ -67,7 +66,7 @@ Follow these steps to connect to your remote cluster using the [YCQL shell (`cql
 1. Log into Yugabyte Cloud and click **Cluster** in the navigation bar. The list of available clusters appears.
 2. Click **Go to cluster** for your cluster. The Yugabyte Cloud Console appears.
 3. Click **Connect** to get the user credentials you need to access the remote cluster. The Connect dialog appears with user credentials
-   use **COPY** to copy a generated command that you can use to access the YCQL shell. The generated command includes options specifying
+   use **COPY** to copy a generated command that you can use to access the YCQL shell. The generated command includes flags specifying
    the host (`-h`), port (`-p`), username (`-U`), and database (`-d`). To specify the password The generated command connects to the default database (`yugabyte`).
 
     Here's an example of the generated command:

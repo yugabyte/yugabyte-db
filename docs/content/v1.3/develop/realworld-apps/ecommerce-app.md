@@ -2,6 +2,7 @@
 title: E-Commerce App
 linkTitle: E-Commerce App
 description: E-Commerce App
+block_indexing: true
 menu:
   v1.3:
     identifier: ecommerce-app

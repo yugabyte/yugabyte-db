@@ -115,7 +115,7 @@ The `DEFERRABLE` mode may be useful for long-running reports or back-ups.
 
 ## Examples
 
-Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/earlier-releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
 
 Create a sample table.
 

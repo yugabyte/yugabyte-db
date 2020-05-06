@@ -1,8 +1,8 @@
 ---
-title: Use Python to build a YugabyteDB application
-headerTitle: Build a Python app
-linkTitle: Build a Python app
-description: Use Python and YCQL to build a YugabyteDB application.
+title: Build a Python application that uses YCQL
+headerTitle: Build a Python application
+linkTitle: Python
+description: Build a Python application that uses YCQL.
 menu:
   latest:
     parent: build-apps
@@ -18,7 +18,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/python/ysql-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
+      YSQL - Psycopg2
     </a>
   </li>
   <li >
@@ -50,7 +50,7 @@ $ pip install yb-cassandra-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../quick-start/test-cassandra/).
+- installed YugabyteDB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../../api/ycql/quick-start/).
 
 
 ### Writing the python code

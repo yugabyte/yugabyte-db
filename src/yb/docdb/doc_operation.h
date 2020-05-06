@@ -33,6 +33,10 @@ struct DocOperationApplyData {
   CoarseTimePoint deadline;
   ReadHybridTime read_time;
   HybridTime* restart_read_ht;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(deadline, read_time, restart_read_ht);
+  }
 };
 
 // When specifiying the parent key, the constant -1 is used for the subkey index.

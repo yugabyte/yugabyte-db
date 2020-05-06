@@ -82,7 +82,9 @@ class YBTableCreator {
   // range partitioning.
   //
   // Optional.
-  YBTableCreator& set_range_partition_columns(const std::vector<std::string>& columns);
+  YBTableCreator& set_range_partition_columns(
+      const std::vector<std::string>& columns,
+      const std::vector<std::string>& split_rows = {});
 
   // For index table: sets the indexed table id of this index.
   YBTableCreator& indexed_table_id(const std::string& id);

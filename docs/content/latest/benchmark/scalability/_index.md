@@ -1,10 +1,10 @@
 ---
-title: Benchmark scalability of YugabyteDB
+title: Benchmark scalability
 headerTitle: Scalability
 linkTitle: Scalability
-description: Benchmark scalability of queries and datasets
+description: Benchmark scalability of queries and datasets in YugabyteDB.
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Adjusting capacity to meet demand
+headcontent: Benchmark adjusting capacity to meet demand
 menu:
   latest:
     identifier: scalability

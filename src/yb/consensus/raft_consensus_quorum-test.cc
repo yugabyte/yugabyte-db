@@ -180,22 +180,23 @@ class RaftConsensusQuorumTest : public YBTest {
           pool_token.get(),
           logs_[i]);
 
-      shared_ptr<RaftConsensus> peer(
-          new RaftConsensus(options_,
-                            std::move(cmeta),
-                            std::move(proxy_factory),
-                            std::move(queue),
-                            std::move(peer_manager),
-                            std::move(pool_token),
-                            metric_entity_,
-                            config_.peers(i).permanent_uuid(),
-                            clock_,
-                            operation_factory,
-                            logs_[i],
-                            parent_mem_trackers_[i],
-                            Bind(&DoNothing),
-                            DEFAULT_TABLE_TYPE,
-                            nullptr /* retryable_requests */));
+      shared_ptr<RaftConsensus> peer(new RaftConsensus(
+          options_,
+          std::move(cmeta),
+          std::move(proxy_factory),
+          std::move(queue),
+          std::move(peer_manager),
+          std::move(pool_token),
+          metric_entity_,
+          config_.peers(i).permanent_uuid(),
+          clock_,
+          operation_factory,
+          logs_[i],
+          parent_mem_trackers_[i],
+          Bind(&DoNothing),
+          DEFAULT_TABLE_TYPE,
+          nullptr /* retryable_requests */,
+          yb::OpId() /* split_op_id */));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);

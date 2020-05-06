@@ -2,6 +2,7 @@
 title: DROP KEYSPACE
 summary: Removes a keyspace
 description: DROP KEYSPACE
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

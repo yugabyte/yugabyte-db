@@ -2,6 +2,7 @@
 title: 3. JSON Documents
 linkTitle: 3. JSON Documents
 description: JSON Documents
+block_indexing: true
 menu:
   v1.1:
     identifier: json-documents

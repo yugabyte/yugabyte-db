@@ -2,6 +2,7 @@
 title: Local SSD
 linkTitle: Local SSD
 description: Local SSD
+block_indexing: true
 menu:
   v1.1:
     identifier: local-ssd

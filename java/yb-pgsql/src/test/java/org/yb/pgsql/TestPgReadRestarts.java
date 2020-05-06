@@ -119,6 +119,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectCount() throws Exception {
     new RegularStatementTester(
+        newConnectionBuilder(),
         "SELECT COUNT(*) FROM test_rr",
         getShortString(),
         false /* expectRestartErrors */
@@ -131,6 +132,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectCountPrepared() throws Exception {
     new PreparedStatementTester(
+        newConnectionBuilder(),
         "SELECT COUNT(*) FROM test_rr",
         getShortString(),
         false /* expectRestartErrors */
@@ -143,6 +145,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectCountPreparedParameterized() throws Exception {
     new PreparedStatementTester(
+        newConnectionBuilder(),
         "SELECT COUNT(*) FROM test_rr WHERE i >= ?",
         getShortString(),
         false /* expectRestartErrors */) {
@@ -165,6 +168,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarShort() throws Exception {
     new RegularStatementTester(
+        newConnectionBuilder(),
         "SELECT * FROM test_rr LIMIT 10",
         getShortString(),
         false /* expectRestartErrors */
@@ -177,6 +181,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarShortPrepared() throws Exception {
     new PreparedStatementTester(
+        newConnectionBuilder(),
         "SELECT * FROM test_rr LIMIT 10",
         getShortString(),
         false /* expectRestartErrors */
@@ -189,6 +194,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarShortPreparedParameterized() throws Exception {
     new PreparedStatementTester(
+        newConnectionBuilder(),
         "SELECT * FROM test_rr WHERE i >= ? LIMIT 10",
         getShortString(),
         false /* expectRestartErrors */) {
@@ -203,6 +209,96 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   }
 
   /**
+   * Same as the previous test but uses an array bindvar (via {@code UNNEST} function).
+   * <p>
+   * This is a separate case because postgres code binds an array as a pointer to a location within
+   * a portal memory context.
+   */
+  @Test
+  public void selectShortPreparedParameterizedArray() throws Exception {
+    new PreparedStatementTester(
+        newConnectionBuilder(),
+        "SELECT unnest(?::int[]), * FROM test_rr LIMIT 10",
+        getShortString(),
+        false /* expectRestartErrors */) {
+
+      @Override
+      public PreparedStatement createStatement(Connection conn) throws Exception {
+        PreparedStatement pstmt = super.createStatement(conn);
+        pstmt.setArray(1, conn.createArrayOf("int", new Object[] { 1 }));
+        return pstmt;
+      }
+    }.runTest();
+  }
+
+  /**
+   * Same as {@link #selectStarShort()} but uses YSQL connections in "simple" mode.
+   */
+  @Test
+  public void selectStarShort_simpleQueryMode() throws Exception {
+    new RegularStatementTester(
+        newConnectionBuilder().setPreferQueryMode("simple"),
+        "SELECT * FROM test_rr LIMIT 10",
+        getShortString(),
+        false /* expectRestartErrors */
+    ).runTest();
+  }
+
+  /**
+   * Same as the previous test but uses PreparedStatements (with no parameters)
+   */
+  @Test
+  public void selectStarShortPrepared_simpleQueryMode() throws Exception {
+    new PreparedStatementTester(
+        newConnectionBuilder().setPreferQueryMode("simple"),
+        "SELECT * FROM test_rr LIMIT 10",
+        getShortString(),
+        false /* expectRestartErrors */
+    ).runTest();
+  }
+
+  /**
+   * Same as the previous test but uses parameterized PreparedStatements with bindvars.
+   */
+  @Test
+  public void selectStarShortPreparedParameterized_simpleQueryMode() throws Exception {
+    new PreparedStatementTester(
+        newConnectionBuilder().setPreferQueryMode("simple"),
+        "SELECT * FROM test_rr WHERE i >= ? LIMIT 10",
+        getShortString(),
+        false /* expectRestartErrors */) {
+
+      @Override
+      public PreparedStatement createStatement(Connection conn) throws Exception {
+        PreparedStatement pstmt = super.createStatement(conn);
+        pstmt.setInt(1, 0);
+        return pstmt;
+      }
+    }.runTest();
+  }
+
+  /**
+   * Same as the previous test but relies on raw PREPARE/EXECUTE rather than JDBC-backed prepared
+   * statement.
+   */
+  @Test
+  public void selectStarShortExecute_simpleQueryMode() throws Exception {
+    new RegularStatementTester(
+        newConnectionBuilder().setPreferQueryMode("simple"),
+        "EXECUTE select_stmt(0)",
+        getShortString(),
+        false /* expectRestartErrors */) {
+
+      @Override
+      public Statement createStatement(Connection conn) throws Exception {
+        Statement stmt = super.createStatement(conn);
+        stmt.execute("PREPARE select_stmt (int) AS SELECT * FROM test_rr WHERE i >= $1 LIMIT 10");
+        return stmt;
+      };
+    }.runTest();
+  }
+
+  /**
    * Doing SELECT * operation on long strings, we MIGHT get read restart errors.
    * <p>
    * We expect data retrieved to be longer than what PG output buffer could handle, thus making
@@ -211,7 +307,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarLong() throws Exception {
     new RegularStatementTester(
-        "SELECT * FROM test_rr LIMIT 100",
+        newConnectionBuilder(),
+        "SELECT * FROM test_rr",
         getLongString(),
         true /* expectRestartErrors */
     ).runTest();
@@ -223,7 +320,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarLongPrepared() throws Exception {
     new PreparedStatementTester(
-        "SELECT * FROM test_rr LIMIT 100",
+        newConnectionBuilder(),
+        "SELECT * FROM test_rr",
         getLongString(),
         true /* expectRestartErrors */
     ).runTest();
@@ -235,7 +333,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   @Test
   public void selectStarLongPreparedParameterized() throws Exception {
     new PreparedStatementTester(
-        "SELECT * FROM test_rr WHERE i >= ? LIMIT 100",
+        newConnectionBuilder(),
+        "SELECT * FROM test_rr WHERE i >= ?",
         getLongString(),
         true /* expectRestartErrors */) {
 
@@ -294,9 +393,17 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   private static class InsertRunnable implements Runnable {
     private CountDownLatch startSignal = new CountDownLatch(1);
 
+    /**
+     * Connection builder that should be used for creating new connections.
+     * <p>
+     * <b>WARNING:</b> Builder is mutable! Make sure to copy it before changing its settings.
+     */
+    private ConnectionBuilder cb;
+
     private String stringToInsert;
 
-    public InsertRunnable(String stringToInsert) {
+    public InsertRunnable(ConnectionBuilder cb, String stringToInsert) {
+      this.cb = cb;
       this.stringToInsert = stringToInsert;
     }
 
@@ -307,7 +414,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     public void run() {
       int insertsSucceeded = 0;
       Random rnd = new Random();
-      try (Connection insertConn = newConnectionBuilder().connect();
+      try (Connection insertConn = cb.connect();
           PreparedStatement stmt = insertConn
               .prepareStatement("INSERT INTO test_rr (t, i) VALUES (?, ?)")) {
         stmt.setString(1, stringToInsert);
@@ -356,14 +463,18 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     /** Number of threads in a fixed thread pool */
     private static final int NUM_THREADS = 4;
 
+    private final ConnectionBuilder cb;
+
     private final String valueToInsert;
 
     /** Whether we expect errors to happen without transactions/in SNAPSHOT isolated transactions */
     private final boolean expectRestartErrors;
 
     public ConcurrentInsertSelectTester(
+        ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
+      this.cb = cb;
       this.valueToInsert = valueToInsert;
       this.expectRestartErrors = expectRestartErrors;
     }
@@ -376,7 +487,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
       ExecutorService es = Executors.newFixedThreadPool(NUM_THREADS);
       List<Future<?>> futures = new ArrayList<>();
 
-      InsertRunnable insertRunnable = new InsertRunnable(valueToInsert);
+      InsertRunnable insertRunnable = new InsertRunnable(cb, valueToInsert);
       Future<?> insertFuture = es.submit(insertRunnable);
       futures.add(insertFuture);
 
@@ -388,22 +499,28 @@ public class TestPgReadRestarts extends BasePgSQLTest {
         int selectsRestartRequired = 0;
         int selectsSucceeded = 0;
         boolean onlyEmptyResults = true;
-        for (/* No setup */; !insertFuture.isDone(); ++selectsAttempted) {
-          if (Thread.interrupted()) return; // Skips all post-loop checks
-          try (Stmt stmt = createStatement(connection)) {
-            List<Row> rows = getRowList(executeQuery(stmt));
-            if (!rows.isEmpty()) {
-              onlyEmptyResults = false;
-            }
-            ++selectsSucceeded;
-          } catch (Exception ex) {
-            if (isRestartReadError(ex)) {
-              ++selectsRestartRequired;
-            } else {
-              LOG.error("SELECT thread failed", ex);
-              fail("SELECT thread failed: " + ex.getMessage());
+        try (Connection conn = cb.connect();
+            Stmt stmt = createStatement(conn)) {
+          for (/* No setup */; !insertFuture.isDone(); ++selectsAttempted) {
+            if (Thread.interrupted()) return; // Skips all post-loop checks
+            try {
+              List<Row> rows = getRowList(executeQuery(stmt));
+              if (!rows.isEmpty()) {
+                onlyEmptyResults = false;
+              }
+              ++selectsSucceeded;
+            } catch (Exception ex) {
+              if (isRestartReadError(ex)) {
+                ++selectsRestartRequired;
+              } else {
+                LOG.error("SELECT thread failed", ex);
+                fail("SELECT thread failed: " + ex.getMessage());
+              }
             }
           }
+        } catch (Exception ex) {
+          LOG.error("Connection-wide exception! This shouldn't happen", ex);
+          fail("Connection-wide exception! This shouldn't happen: " + ex.getMessage());
         }
         LOG.info("SELECT (non-txn): " + selectsSucceeded + " of "
             + selectsAttempted + " succeeded");
@@ -440,14 +557,13 @@ public class TestPgReadRestarts extends BasePgSQLTest {
           int selectsAttempted = 0;
           int selectsFirstOpRestartRequired = 0;
           int selectsSucceeded = 0;
-          try (Connection selectTxnConn = newConnectionBuilder()
-              .setIsolationLevel(isolation)
-              .connect()) {
+          try (Connection selectTxnConn = cb.newBuilder().setIsolationLevel(isolation).connect();
+              Stmt stmt = createStatement(selectTxnConn)) {
             selectTxnConn.setAutoCommit(false);
             for (/* No setup */; !insertFuture.isDone(); ++selectsAttempted) {
               if (Thread.interrupted()) return; // Skips all post-loop checks
               int numCompletedOps = 0;
-              try (Stmt stmt = createStatement(selectTxnConn)) {
+              try {
                 List<Row> rows1 = getRowList(executeQuery(stmt));
                 ++numCompletedOps;
                 if (Thread.interrupted()) return; // Skips all post-loop checks
@@ -538,10 +654,11 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     protected String queryString;
 
     public RegularStatementTester(
+        ConnectionBuilder cb,
         String queryString,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(valueToInsert, expectRestartErrors);
+      super(cb, valueToInsert, expectRestartErrors);
       this.queryString = queryString;
     }
 
@@ -561,10 +678,11 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     protected String queryString;
 
     public PreparedStatementTester(
+        ConnectionBuilder cb,
         String queryString,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(valueToInsert, expectRestartErrors);
+      super(cb, valueToInsert, expectRestartErrors);
       this.queryString = queryString;
     }
 

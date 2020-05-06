@@ -270,6 +270,10 @@ Status PgApiImpl::ConnectDatabase(const char *database_name) {
   return pg_session_->ConnectDatabase(database_name);
 }
 
+Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated) {
+  return pg_session_->IsDatabaseColocated(database_oid, colocated);
+}
+
 Status PgApiImpl::NewCreateDatabase(const char *database_name,
                                     const PgOid database_oid,
                                     const PgOid source_database_oid,
@@ -343,6 +347,10 @@ Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
 }
 
+Result<PgTableDesc::ScopedRefPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
+  return pg_session_->LoadTable(table_id);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewCreateTable(const char *database_name,
@@ -379,6 +387,15 @@ Status PgApiImpl::CreateTableSetNumTablets(PgStatement *handle, int32_t num_tabl
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
+}
+
+Status PgApiImpl::CreateTableAddSplitRow(PgStatement *handle, int num_cols,
+                                           YBCPgTypeEntity **types, uint64_t *data) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgCreateTable*>(handle)->AddSplitRow(num_cols, types, data);
 }
 
 Status PgApiImpl::ExecCreateTable(PgStatement *handle) {

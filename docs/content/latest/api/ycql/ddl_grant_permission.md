@@ -21,7 +21,7 @@ Use the `GRANT PERMISSION` statement to grant a permission (or all the available
 
 When a database object is created (keyspace, table, or role), an automatic and explicit grant of all the permissions relevant to the object are granted to the role creating it.
 
-This statement is enabled by setting the YB-TServer configuration option [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#config-flags) to `true`.
 
 ## Syntax
 

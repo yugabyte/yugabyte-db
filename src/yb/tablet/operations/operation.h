@@ -56,9 +56,10 @@ class Tablet;
 class OperationCompletionCallback;
 class OperationState;
 
-YB_DEFINE_ENUM(OperationType,
-               (kWrite)(kChangeMetadata)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty)
-               (kHistoryCutoff));
+YB_DEFINE_ENUM(
+    OperationType,
+    (kWrite)(kChangeMetadata)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty)(kHistoryCutoff)
+    (kSplit));
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
@@ -110,6 +111,8 @@ class Operation {
 
   std::string LogPrefix() const;
 
+  virtual void SubmittedToPreparer() {}
+
   virtual ~Operation() {}
 
  private:
@@ -156,7 +159,7 @@ class OperationState {
     return tablet_;
   }
 
-  void SetTablet(Tablet* tablet) {
+  virtual void SetTablet(Tablet* tablet) {
     tablet_ = tablet;
   }
 
@@ -202,6 +205,10 @@ class OperationState {
     std::lock_guard<simple_spinlock> l(mutex_);
     return hybrid_time_.is_valid();
   }
+
+  // Returns hybrid time that should be used for storing this operation result in RocksDB.
+  // For instance it could be different from hybrid_time() for CDC.
+  virtual HybridTime WriteHybridTime() const;
 
   consensus::OpId* mutable_op_id() {
     return &op_id_;
@@ -369,6 +376,22 @@ class SynchronizerOperationCompletionCallback : public OperationCompletionCallba
 
  private:
   Synchronizer* synchronizer_;
+};
+
+class WeakSynchronizerOperationCompletionCallback : public OperationCompletionCallback {
+ public:
+  explicit WeakSynchronizerOperationCompletionCallback(std::weak_ptr<Synchronizer> synchronizer)
+      : synchronizer_(std::move(synchronizer)) {}
+
+  void OperationCompleted() override {
+    auto synchronizer = synchronizer_.lock();
+    if (synchronizer) {
+      synchronizer->StatusCB(status());
+    }
+  }
+
+ private:
+  std::weak_ptr<Synchronizer> synchronizer_;
 };
 
 }  // namespace tablet

@@ -80,8 +80,6 @@ using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
 using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
-using master::IsSnapshotOpDoneRequestPB;
-using master::IsSnapshotOpDoneResponsePB;
 using master::ListTablesRequestPB;
 using master::ListTablesResponsePB;
 using master::ListSnapshotsRequestPB;
@@ -190,38 +188,34 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(WaitFor(handler, 30s, handler_name, 100ms, 1.5));
   }
 
-  template <typename TReq, typename TResp, typename TProxy>
-  auto ProxyCallLambda(
-      const TReq* req, TResp* resp, TProxy* proxy,
-      Status (TProxy::*call)(const TReq&, TResp*, rpc::RpcController* controller)) {
-    return [=]() -> bool {
-      EXPECT_OK((proxy->*call)(*req, resp, ResetAndGetController()));
-      EXPECT_FALSE(resp->has_error());
-      EXPECT_TRUE(resp->has_done());
-      return resp->done();
-    };
-  }
-
   void WaitForSnapshotOpDone(const string& op_name, const string& snapshot_id) {
-    IsSnapshotOpDoneRequestPB is_snapshot_done_req;
-    IsSnapshotOpDoneResponsePB is_snapshot_done_resp;
-    is_snapshot_done_req.set_snapshot_id(snapshot_id);
-
     WaitTillComplete(
-        op_name, ProxyCallLambda(
-            &is_snapshot_done_req, &is_snapshot_done_resp,
-            proxy_backup_.get(), &MasterBackupServiceProxy::IsSnapshotOpDone));
+        op_name,
+        [this, &snapshot_id]() -> bool {
+          ListSnapshotsRequestPB list_req;
+          ListSnapshotsResponsePB list_resp;
+          list_req.set_snapshot_id(snapshot_id);
+
+          EXPECT_OK(proxy_backup_->ListSnapshots(list_req, &list_resp, ResetAndGetController()));
+          EXPECT_FALSE(list_resp.has_error());
+          EXPECT_EQ(list_resp.snapshots_size(), 1);
+          return list_resp.snapshots(0).entry().state() == SysSnapshotEntryPB::COMPLETE;
+        });
   }
 
   void WaitForCreateTableDone(const YBTableName& table_name) {
-    IsCreateTableDoneRequestPB is_create_done_req;
-    IsCreateTableDoneResponsePB is_create_done_resp;
-    table_name.SetIntoTableIdentifierPB(is_create_done_req.mutable_table());
-
     WaitTillComplete(
-        "IsCreateTableDone", ProxyCallLambda(
-            &is_create_done_req, &is_create_done_resp,
-            proxy_.get(), &MasterServiceProxy::IsCreateTableDone));
+        "IsCreateTableDone",
+        [this, &table_name]() -> bool {
+          IsCreateTableDoneRequestPB req;
+          IsCreateTableDoneResponsePB resp;
+          table_name.SetIntoTableIdentifierPB(req.mutable_table());
+
+          EXPECT_OK(proxy_->IsCreateTableDone(req, &resp, ResetAndGetController()));
+          EXPECT_FALSE(resp.has_error());
+          EXPECT_TRUE(resp.has_done());
+          return resp.done();
+        });
   }
 
   SnapshotId CreateSnapshot() {

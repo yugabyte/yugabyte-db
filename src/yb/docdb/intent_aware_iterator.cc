@@ -92,39 +92,45 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
 
   // Since TransactionStatusResult does not have default ctor we should init it somehow.
   TransactionStatusResult txn_status(TransactionStatus::ABORTED, HybridTime());
-  CoarseBackoffWaiter waiter(deadline_, 50ms /* max_wait */);
+  const auto kMaxWait = 50ms;
+  CoarseBackoffWaiter waiter(deadline_, kMaxWait);
   static const std::string kRequestReason = "get commit time"s;
   for(;;) {
-    std::promise<Result<TransactionStatusResult>> txn_status_promise;
-    auto future = txn_status_promise.get_future();
-    auto callback = [&txn_status_promise](Result<TransactionStatusResult> result) {
-      txn_status_promise.set_value(std::move(result));
+    auto txn_status_promise = std::make_shared<std::promise<Result<TransactionStatusResult>>>();
+    auto future = txn_status_promise->get_future();
+    auto callback = [txn_status_promise](Result<TransactionStatusResult> result) {
+      txn_status_promise->set_value(std::move(result));
     };
     txn_status_manager_->RequestStatusAt(
         {&transaction_id, read_time_.read, read_time_.global_limit, read_time_.serial_no,
               &kRequestReason,
-              TransactionLoadFlags{TransactionLoadFlag::kMustExist, TransactionLoadFlag::kCleanup},
+              TransactionLoadFlags{TransactionLoadFlag::kCleanup},
               callback});
-    future.wait();
-    auto txn_status_result = future.get();
-    if (txn_status_result.ok()) {
-      txn_status = std::move(*txn_status_result);
-      break;
-    }
-    if (txn_status_result.status().IsNotFound()) {
-      // We have intent w/o metadata, that means that transaction was already cleaned up.
-      LOG(WARNING) << "Intent for transaction w/o metadata: " << transaction_id;
-      return HybridTime::kMin;
-    }
-    LOG(WARNING)
-        << "Failed to request transaction " << yb::ToString(transaction_id) << " status: "
-        <<  txn_status_result.status();
-    if (!txn_status_result.status().IsTryAgain()) {
-      return std::move(txn_status_result.status());
+    auto future_status = future.wait_for(waiter.DelayForNow());
+    if (future_status == std::future_status::ready) {
+      auto txn_status_result = future.get();
+      if (txn_status_result.ok()) {
+        txn_status = *txn_status_result;
+        break;
+      }
+      if (txn_status_result.status().IsNotFound()) {
+        // We have intent w/o metadata, that means that transaction was already cleaned up.
+        LOG(WARNING) << "Intent for transaction w/o metadata: " << transaction_id;
+        return HybridTime::kMin;
+      }
+      LOG(WARNING)
+          << "Failed to request transaction " << yb::ToString(transaction_id) << " status: "
+          <<  txn_status_result.status();
+      if (!txn_status_result.status().IsTryAgain()) {
+        return std::move(txn_status_result.status());
+      }
+    } else {
+      LOG(INFO) << "Timed out waiting txn status, left to deadline: "
+                << MonoDelta(deadline_ - CoarseMonoClock::now());
     }
     DCHECK(FLAGS_transaction_allow_rerequest_status_in_tests);
     if (!waiter.Wait()) {
-      return STATUS(TimedOut, "");
+      return STATUS(TimedOut, "Timed out waiting for transaction status");
     }
   }
   VLOG(4) << "Transaction_id " << transaction_id << " at " << read_time_
@@ -827,6 +833,7 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
 
   RETURN_NOT_OK(status_);
   if (!valid()) {
+    VLOG(4) << "Returning kInvalid";
     return HybridTime::kInvalid;
   }
 
@@ -862,11 +869,15 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
   if (iter_valid_) {
     DocHybridTime regular_dht =
         VERIFY_RESULT(GetMatchingRegularRecordDocHybridTime(key_without_ht));
+    VLOG(4) << "Looking for Matching Regular Record found   =  " << regular_dht;
     if (regular_dht != DocHybridTime::kInvalid &&
         regular_dht.hybrid_time() > min_hybrid_time) {
       result.MakeAtMost(regular_dht.hybrid_time());
     }
+  } else {
+    VLOG(4) << "iter_valid_ is false";
   }
+  VLOG(4) << "Returning " << result;
   return result;
 }
 

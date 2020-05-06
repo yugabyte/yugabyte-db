@@ -4,6 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.HashMap;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -22,6 +25,8 @@ import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.master.Master.RelationType;
+import org.yb.Common.TableType;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -231,6 +236,7 @@ public class TablesController extends AuthenticatedController {
           node.put("tableName", table.getName());
           String tableUUID = table.getId().toStringUtf8();
           node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
+          node.put("isIndexTable", table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
           resultNode.add(node);
         }
       }
@@ -312,6 +318,10 @@ public class TablesController extends AuthenticatedController {
     taskParams.universeUUID = universeUUID;
     taskParams.customerUUID = customerUUID;
 
+    if (disableBackupOnTables(taskParams.tableUUIDList, universe)) {
+      String errMsg = "Invalid Table List, found index or YSQL table.";
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
     ObjectNode resultNode = Json.newObject();
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule = Schedule.create(customerUUID, taskParams,
@@ -351,6 +361,12 @@ public class TablesController extends AuthenticatedController {
       String errMsg = "Invalid Universe UUID: " + universeUUID;
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
+
+    if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
+      String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
     Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class)
         .bindFromRequest();
 
@@ -421,6 +437,12 @@ public class TablesController extends AuthenticatedController {
         LOG.error(errMsg);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
+
+      if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
+        String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
       // TODO: undo hardcode to AWS (required right now due to using EMR).
       Common.CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
       if (cloudType != aws) {
@@ -468,6 +490,40 @@ public class TablesController extends AuthenticatedController {
           + universeUUID;
       LOG.error(errMsg, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  public boolean disableBackupOnTables(List<UUID> tableUuids, Universe universe) {
+    if (tableUuids.isEmpty()) {
+      return false;
+    }
+
+    final String masterAddresses = universe.getMasterAddresses(true);
+    if (masterAddresses.isEmpty()) {
+      String errMsg = "Masters are not currently queryable.";
+      LOG.warn(errMsg);
+      return false;
+    }
+    String certificate = universe.getCertificate();
+    YBClient client = null;
+
+    try {
+      client = ybService.getClient(masterAddresses, certificate);
+      ListTablesResponse response = client.getTablesList();
+      List<TableInfo> tableInfoList = response.getTableInfoList();
+      // Match if the table is an index or ysql table.
+      return tableInfoList.stream().anyMatch(tableInfo ->
+              tableUuids.contains(
+                      getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", ""))) &&
+                      ((tableInfo.hasRelationType() && tableInfo.getRelationType() ==
+                              RelationType.INDEX_TABLE_RELATION) ||
+                      (tableInfo.hasTableType() && tableInfo.getTableType() ==
+                              TableType.PGSQL_TABLE_TYPE)));
+    } catch (Exception e) {
+      LOG.warn(e.toString());
+      return false;
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
   }
 }

@@ -1,9 +1,8 @@
 ---
-title: jsonb_typeof() and json_typeof() [JSON]
-linkTitle: jsonb_typeof()
-summary: jsonb_typeof() and json_typeof()
+title: jsonb_typeof() and json_typeof()
 headerTitle: jsonb_typeof() and json_typeof()
-description: Use these functions to return the data type of the JSON value as a SQL text value.
+linkTitle: jsonb_typeof()
+description: Return the data type of the JSON value as a SQL text value.
 menu:
   latest:
     identifier: jsonb-typeof

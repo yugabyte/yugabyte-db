@@ -3,6 +3,7 @@ title: PgExercises sample database
 linkTitle: PgExercises
 description: PgExercises sample database
 image: /images/sample-data/pgexercises/pgsql.png
+block_indexing: true
 menu:
   v1.3:
     identifier: pgexercises

@@ -89,6 +89,17 @@ class YBClient::Data {
                                 const master::AlterNamespaceRequestPB& req,
                                 CoarseTimePoint deadline);
 
+  CHECKED_STATUS IsCreateNamespaceInProgress(YBClient* client,
+                                const std::string& namespace_name,
+                                const boost::optional<YQLDatabase>& database_type,
+                                CoarseTimePoint deadline,
+                                bool *create_in_progress);
+
+  CHECKED_STATUS WaitForCreateNamespaceToFinish(YBClient* client,
+                                const std::string& namespace_name,
+                                const boost::optional<YQLDatabase>& database_type,
+                                CoarseTimePoint deadline);
+
   CHECKED_STATUS CreateTable(YBClient* client,
                              const master::CreateTableRequestPB& req,
                              const YBSchema& schema,
@@ -243,6 +254,7 @@ class YBClient::Data {
   // Works with both a distributed and non-distributed configuration.
   void SetMasterServerProxyAsync(CoarseTimePoint deadline,
                                  bool skip_resolution,
+                                 bool wait_for_leader_election,
                                  const StatusCallback& cb);
 
   // Synchronous version of SetMasterServerProxyAsync method above.
@@ -253,7 +265,8 @@ class YBClient::Data {
   // TODO (KUDU-492): Get rid of this method and re-factor the client
   // to lazily initialize 'master_proxy_'.
   CHECKED_STATUS SetMasterServerProxy(CoarseTimePoint deadline,
-                                      bool skip_resolution = false);
+                                      bool skip_resolution = false,
+                                      bool wait_for_leader_election = true);
 
   std::shared_ptr<master::MasterServiceProxy> master_proxy() const;
 
@@ -320,12 +333,23 @@ class YBClient::Data {
   // takes precedence over both 'master_server_addrs_file_' and 'master_server_addrs_'.
   std::string master_server_endpoint_;
 
+  // Flag name to fetch master addresses from flagfile.
+  std::string master_address_flag_name_;
   // This vector holds the list of master server addresses. Note that each entry in this vector
   // can either be a single 'host:port' or a comma separated list of 'host1:port1,host2:port2,...'.
+  std::vector<MasterAddressSource> master_address_sources_;
+  // User specified master server addresses.
   std::vector<std::string> master_server_addrs_;
+  // master_server_addrs_ + addresses from master_address_sources_.
+  std::vector<std::string> full_master_server_addrs_;
   mutable simple_spinlock master_server_addrs_lock_;
 
   bool skip_master_flagfile_ = false;
+
+  // If all masters are available but no leader is present on client init,
+  // this flag determines if the client returns failure right away
+  // or waits for a leader to be elected.
+  bool wait_for_leader_election_on_init_ = true;
 
   MonoDelta default_admin_operation_timeout_;
   MonoDelta default_rpc_timeout_;

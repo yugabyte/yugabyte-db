@@ -46,6 +46,7 @@ import java.util.*;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
@@ -76,6 +77,7 @@ import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.Ignore;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
@@ -2105,5 +2107,105 @@ public class UniverseControllerTest extends WithApplication {
                       username.capture(), password.capture());
     assertOk(result);
     assertAuditEntry(0, customer.uuid);
+  }
+
+  private void setupDiskUpdateTest(int diskSize, String instanceType,
+                                   PublicCloudConstants.StorageType storageType,
+                                   Universe u) {
+
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+        UserIntent userIntent = new UserIntent();
+        userIntent.instanceType = instanceType;
+        userIntent.providerType = CloudType.aws;
+        DeviceInfo di = new DeviceInfo();
+        di.volumeSize = diskSize;
+        di.numVolumes = 2;
+        di.storageType = storageType;
+        userIntent.deviceInfo = di;
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    // Save the updates to the universe.
+    Universe.saveDetails(u.universeUUID, updater);
+  }
+
+  @Test
+  public void testExpandDiskSizeFailureInvalidSize() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
+    u = Universe.get(u.universeUUID);
+
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
+    bodyJson.put("size", 50);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" +
+                 u.universeUUID + "/disk_update";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertBadRequest(result, "Size can only be increased.");
+  }
+
+  @Test
+  public void testExpandDiskSizeFailureInvalidStorage() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.Scratch, u);
+    u = Universe.get(u.universeUUID);
+
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
+    bodyJson.put("size", 150);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" +
+                 u.universeUUID + "/disk_update";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertBadRequest(result, "Scratch type disk cannot be modified.");
+  }
+
+  @Test
+  public void testExpandDiskSizeFailureInvalidInstance() {
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    setupDiskUpdateTest(100, "i3.xlarge", PublicCloudConstants.StorageType.GP2, u);
+    u = Universe.get(u.universeUUID);
+
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
+    bodyJson.put("size", 150);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" +
+                 u.universeUUID + "/disk_update";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertBadRequest(result, "Cannot modify i3 instance volumes.");
+  }
+
+  @Test
+  public void testExpandDiskSizeSuccess() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+            Matchers.any(UniverseDefinitionTaskParams.class)))
+            .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
+    u = Universe.get(u.universeUUID);
+
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
+    bodyJson.put("size", 150);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" +
+                 u.universeUUID + "/disk_update";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor
+            .forClass(UniverseTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.UpdateDiskSize), argCaptor.capture());
+    assertAuditEntry(1, customer.uuid);
   }
 }

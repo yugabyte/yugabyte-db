@@ -1,8 +1,8 @@
 ---
-title: PostgreSQL JDBC Driver
+title: Configure PostgreSQL JDBC Driver for YSQL
 headerTitle: PostgreSQL JDBC Driver
 linkTitle: PostgreSQL JDBC Driver
-description: Use the PostgreSQL JDBC Driver with YugabyteDB
+description: Use the PostgreSQL JDBC Driver with PostgreSQL-compatible YSQL.
 section: REFERENCE
 menu:
   latest:
@@ -11,11 +11,11 @@ menu:
     weight: 2910
 aliases:
   - /latest/reference/connectors/postgresql-jdbc-driver
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 
-Because YSQL is PostgreSQL compatible, you can use the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) with your favorite PostgreSQL tools and clients to develop and manage YugabyteDB.
+Because YSQL is PostgreSQL-compatible, you can use the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) with your favorite PostgreSQL tools and clients to develop and manage YugabyteDB.
 
 ## Download
 

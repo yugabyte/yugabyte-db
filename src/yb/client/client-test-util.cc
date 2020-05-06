@@ -117,5 +117,20 @@ YBSchema YBSchemaFromSchema(const Schema& schema) {
   return YBSchema(schema);
 }
 
+std::shared_ptr<YBqlReadOp> CreateReadOp(
+    int32_t key, const TableHandle& table, const std::string& value_column) {
+  auto op = table.NewReadOp();
+  auto req = op->mutable_request();
+  QLAddInt32HashValue(req, key);
+  auto value_column_id = table.ColumnId(value_column);
+  req->add_selected_exprs()->set_column_id(value_column_id);
+  req->mutable_column_refs()->add_ids(value_column_id);
+
+  QLRSColDescPB *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
+  rscol_desc->set_name(value_column);
+  table.ColumnType(value_column)->ToQLTypePB(rscol_desc->mutable_ql_type());
+  return op;
+}
+
 }  // namespace client
 }  // namespace yb

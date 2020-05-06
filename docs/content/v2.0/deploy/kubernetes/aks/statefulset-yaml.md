@@ -2,6 +2,7 @@
 title: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
 description: Azure Kubernetes Service (AKS)
+block_indexing: true
 menu:
   v2.0:
     parent: deploy-kubernetes

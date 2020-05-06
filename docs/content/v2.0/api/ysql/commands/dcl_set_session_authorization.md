@@ -3,6 +3,7 @@ title: SET SESSION AUTHORIZATION
 linkTitle: SET SESSION AUTHORIZATION
 description: SET SESSION AUTHORIZATION
 summary: Roles (users and groups)
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-set-session-authorization

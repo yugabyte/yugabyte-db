@@ -30,7 +30,7 @@ public class TestPgParallelSelect extends BasePgSQLTest {
   private static final int kNumShardsPerTserver = 20;
   private static final int kSlowdownPgsqlAggregateReadMs = 100;
   private static final long maxTotalMillis =
-    (long)((3 * kNumShardsPerTserver * kSlowdownPgsqlAggregateReadMs) / 2.0);
+    (long)((3 * kNumShardsPerTserver * kSlowdownPgsqlAggregateReadMs) * 0.9);
 
   private void verifyStatementPushdownMetric(Statement statement,
                                              String stmt,

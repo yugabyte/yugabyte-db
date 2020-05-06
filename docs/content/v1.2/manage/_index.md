@@ -5,6 +5,7 @@ description: Manage YugabyteDB
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 section: USER GUIDES
+block_indexing: true
 menu:
   v1.2:
     identifier: manage

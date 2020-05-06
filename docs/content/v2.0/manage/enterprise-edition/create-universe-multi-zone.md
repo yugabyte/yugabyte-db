@@ -2,6 +2,7 @@
 title: Create universe - Multi-zone
 linkTitle: Create universe  - Multi-zone
 description: Create universe - Multi-zone
+block_indexing: true
 menu:
   v2.0:
     identifier: manage-create-universe-multi-zone

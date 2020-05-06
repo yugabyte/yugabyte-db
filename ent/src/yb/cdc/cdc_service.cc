@@ -25,6 +25,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/pg_system_attr.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/raft_consensus.h"
@@ -112,10 +113,7 @@ CDCServiceImpl::CDCServiceImpl(TSTabletManager* tablet_manager,
 }
 
 CDCServiceImpl::~CDCServiceImpl() {
-  if (get_minimum_checkpoints_and_update_peers_thread_) {
-    cdc_service_stopped_.store(true, std::memory_order_release);
-    get_minimum_checkpoints_and_update_peers_thread_->join();
-  }
+  Shutdown();
 }
 
 namespace {
@@ -940,8 +938,15 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
 }
 
 void CDCServiceImpl::Shutdown() {
-  async_client_init_->Shutdown();
-  rpcs_.Shutdown();
+  if (async_client_init_) {
+    async_client_init_->Shutdown();
+    rpcs_.Shutdown();
+    if (get_minimum_checkpoints_and_update_peers_thread_) {
+      cdc_service_stopped_.store(true, std::memory_order_release);
+      get_minimum_checkpoints_and_update_peers_thread_->join();
+    }
+    async_client_init_ = boost::none;
+  }
 }
 
 Result<OpId> CDCServiceImpl::GetLastCheckpoint(

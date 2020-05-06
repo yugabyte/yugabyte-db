@@ -2,6 +2,7 @@
 title: DROP ROLE
 summary: Drop role
 description: DROP ROLE
+block_indexing: true
 menu:
   v2.0:
     parent: api-cassandra

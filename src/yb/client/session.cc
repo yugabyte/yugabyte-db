@@ -186,10 +186,10 @@ ConsistentReadPoint* YBSession::read_point() {
   return transaction_ ? &transaction_->read_point() : read_point_.get();
 }
 
-void YBSession::WriteWithHybridTime(HybridTime ht) {
+void YBSession::SetHybridTimeForWrite(HybridTime ht) {
   hybrid_time_for_write_ = ht;
   if (batcher_) {
-    batcher_->WriteWithHybridTime(hybrid_time_for_write_);
+    batcher_->SetHybridTimeForWrite(hybrid_time_for_write_);
   }
 }
 
@@ -203,7 +203,7 @@ internal::Batcher& YBSession::Batcher() {
     }
     batcher_->SetRejectionScoreSource(rejection_score_source_);
     if (hybrid_time_for_write_.is_valid()) {
-      batcher_->WriteWithHybridTime(hybrid_time_for_write_);
+      batcher_->SetHybridTimeForWrite(hybrid_time_for_write_);
     }
   }
   return *batcher_;

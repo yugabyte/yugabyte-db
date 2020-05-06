@@ -21,6 +21,7 @@ import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.util.MiscUtil.ThrowingRunnable;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
@@ -490,10 +491,6 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Connection 2 observes the new membership roles list.
       statement2.execute("SET ROLE some_group");
     }
-  }
-
-  private interface ThrowingRunnable {
-    void run() throws Throwable;
   }
 
   private static Optional<Throwable> captureThrow(ThrowingRunnable action) {

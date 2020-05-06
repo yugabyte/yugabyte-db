@@ -2,6 +2,7 @@
 title: SETRANGE
 linkTitle: SETRANGE
 description: SETRANGE
+block_indexing: true
 menu:
   v1.0:
     parent: api-redis

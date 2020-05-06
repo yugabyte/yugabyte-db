@@ -2,6 +2,7 @@
 title: Retail Analytics
 linkTitle: Retail Analytics
 description: Retail Analytics
+block_indexing: true
 menu:
   v2.0:
     identifier: retail-analytics

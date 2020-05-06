@@ -97,15 +97,22 @@ class MasterServiceImpl : public MasterServiceIf,
   void CreateNamespace(const CreateNamespaceRequestPB* req,
                        CreateNamespaceResponsePB* resp,
                        rpc::RpcContext rpc) override;
+  void IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
+                             IsCreateNamespaceDoneResponsePB* resp,
+                             rpc::RpcContext rpc) override;
   void DeleteNamespace(const DeleteNamespaceRequestPB* req,
                        DeleteNamespaceResponsePB* resp,
                        rpc::RpcContext rpc) override;
+  // TODO(NIC): Add IsDeleteNamespaceDone.
   void AlterNamespace(const AlterNamespaceRequestPB* req,
                       AlterNamespaceResponsePB* resp,
                       rpc::RpcContext rpc) override;
   void ListNamespaces(const ListNamespacesRequestPB* req,
                       ListNamespacesResponsePB* resp,
                       rpc::RpcContext rpc) override;
+  void GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
+                        GetNamespaceInfoResponsePB* resp,
+                        rpc::RpcContext rpc) override;
 
   void ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                         ReservePgsqlOidsResponsePB* resp,
@@ -278,6 +285,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                               GetUniverseReplicationResponsePB* resp,
                               rpc::RpcContext rpc) override;
+
+  void SplitTablet(
+      const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
  private:
 };

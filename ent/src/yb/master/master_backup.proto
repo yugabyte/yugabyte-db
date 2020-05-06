@@ -30,6 +30,7 @@ message SysSnapshotEntryPB {
     FAILED = 5;
     CANCELLED = 6;
     RESTORING = 7;
+    RESTORED = 8;
   }
 
   // Note: The id of the snapshot is not stored here as it is already part of
@@ -46,6 +47,8 @@ message SysSnapshotEntryPB {
 
   // Stored info about snapshot (1) namespaces (2) tables (3) tablets.
   repeated SysRowEntry entries = 3;
+
+  optional fixed64 snapshot_hybrid_time = 4;
 }
 
 ////////////////////////////////////////////////////////////
@@ -55,23 +58,19 @@ message SysSnapshotEntryPB {
 message CreateSnapshotRequestPB {
   repeated TableIdentifierPB tables = 1;
   optional bool transaction_aware = 2;
+
+  // Automatically add table indexes into the snapshot.
+  optional bool add_indexes = 3 [default = false];
+
+  // Interpet this snapshot as imported:
+  // Snapshot will be created as COMPLETE and no tablet operations will be performed.
+  optional bool imported = 4;
 }
 
 message CreateSnapshotResponsePB {
   optional MasterErrorPB error = 1;
 
   optional bytes snapshot_id = 2;
-}
-
-message IsSnapshotOpDoneRequestPB {
-  optional bytes snapshot_id = 1;
-}
-
-message IsSnapshotOpDoneResponsePB {
-  optional MasterErrorPB error = 1;
-
-  // true if the create operation is completed, false otherwise
-  optional bool done = 2;
 }
 
 message SnapshotInfoPB {
@@ -146,7 +145,6 @@ message ImportSnapshotMetaResponsePB {
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
-  rpc IsSnapshotOpDone(IsSnapshotOpDoneRequestPB) returns (IsSnapshotOpDoneResponsePB);
   rpc ListSnapshots(ListSnapshotsRequestPB) returns (ListSnapshotsResponsePB);
   rpc ListSnapshotRestorations(ListSnapshotRestorationsRequestPB)
       returns (ListSnapshotRestorationsResponsePB);

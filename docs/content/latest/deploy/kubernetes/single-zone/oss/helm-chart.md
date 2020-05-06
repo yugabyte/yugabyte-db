@@ -1,7 +1,8 @@
 ---
-title: Open Source Kubernetes 
-linkTitle: Open Source Kubernetes
-description: Open Source Kubernetes 
+title: Deploy on OSS Kubernetes using Helm Chart 
+headerTitle: Open source Kubernetes
+linkTitle: Open source Kubernetes
+description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
 aliases:
   - /latest/deploy/kubernetes/oss/
   - /latest/deploy/kubernetes/oss/helm-chart/
@@ -184,7 +185,7 @@ If you are running in a resource-constrained environment or a local environment,
 ```sh
 $ helm install yugabytedb/yugabyte \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
-resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb_demo --name yb-demo
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo --name yb-demo
 ```
 
 **For Helm 3:**
@@ -244,7 +245,7 @@ NOTES:
   kubectl exec --namespace yb-demo -it yb-tserver-0 bash
 
 5. Run YSQL shell from inside of a tablet server:
-  kubectl exec --namespace yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
+  kubectl exec --namespace yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh  -h yb-tserver-0.yb-tservers.yb-demo
 
 6. Cleanup YugabyteDB Pods
   helm delete yb-demo --purge
@@ -309,7 +310,7 @@ REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESC
 To connect and use the YSQL Shell `ysqlsh`, run the following command.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
+$ kubectl exec -n yb-demo -it yb-tserver-0 -- /home/yugabyte/bin/ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
 To connect and use the YCQL Shell `cqlsh`, run the following command.
@@ -403,9 +404,9 @@ In case you want to use a storage class other than the standard class for your d
 $ helm install yugabyte --namespace yb-demo --name yb-demo --set persistentVolume.storageClass=<name of provisioned storage> --wait
 ```
 
-### YugabyteDB configuration flags
+### Configure YB-Master and YB-TServer pods
 
-Setting configuration flags (aka gflags) on the yb-master/yb-tserver pods can be done at the command line or by overriding the values.yaml file in the charts repository. For example, the following example shows how to set the three geo-distribution related flags of `placement_cloud`,`placement_region` and `placement_zone` on a minikube cluster.
+Flags on the yb-master and yb-tserver pods can be done at the command line or by overriding the `values.yaml` file in the charts repository. For example, the following example shows how to set the three geo-distribution related flags of `placement_cloud`,`placement_region` and `placement_zone` on a Minikube cluster.
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \

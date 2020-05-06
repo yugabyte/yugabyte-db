@@ -383,10 +383,10 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   }
 
   string rocksdb_dir = JoinPathSegments(
-      cluster_->data_root(), "ts-0", "yb-data", "tserver", "data", "rocksdb",
+      cluster_->data_root(), "ts-1", "yb-data", "tserver", "data", "rocksdb",
       "table-" + parent_table_id, "tablet-" + tablet_id);
   string wal_dir = JoinPathSegments(
-      cluster_->data_root(), "ts-0", "yb-data", "tserver", "wals", "table-" + parent_table_id,
+      cluster_->data_root(), "ts-1", "yb-data", "tserver", "wals", "table-" + parent_table_id,
       "tablet-" + tablet_id);
   std::function<Result<bool>()> dirs_exist = [&] {
     return Env::Default()->FileExists(rocksdb_dir) && Env::Default()->FileExists(wal_dir);
@@ -402,10 +402,10 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
 
   // Remote bootstrap should create the correct tablet directory for the new tablet server.
   rocksdb_dir = JoinPathSegments(
-      cluster_->data_root(), "ts-3", "yb-data", "tserver", "data", "rocksdb",
+      cluster_->data_root(), "ts-4", "yb-data", "tserver", "data", "rocksdb",
       "table-" + parent_table_id, "tablet-" + tablet_id);
   wal_dir = JoinPathSegments(
-      cluster_->data_root(), "ts-3", "yb-data", "tserver", "wals", "table-" + parent_table_id,
+      cluster_->data_root(), "ts-4", "yb-data", "tserver", "wals", "table-" + parent_table_id,
       "tablet-" + tablet_id);
   ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(100), "Create data and wal directories"));
 }

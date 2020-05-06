@@ -3,6 +3,7 @@ title: Quick Start
 linkTitle: Quick Start
 description: Quick Start
 image: /images/section_icons/quick_start/explore_yedis.png
+block_indexing: true
 menu:
   v1.2:
     parent: yedis

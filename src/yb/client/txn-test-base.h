@@ -53,6 +53,8 @@ class TransactionTestBase : public KeyValueTableTest {
  protected:
   void SetUp() override;
 
+  void CreateTable();
+
   virtual uint64_t log_segment_size_bytes() const;
 
   CHECKED_STATUS WriteRows(
@@ -84,6 +86,10 @@ class TransactionTestBase : public KeyValueTableTest {
 
   void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT,
                   const std::string& column = kValueColumn);
+
+  void VerifyData(const WriteOpType op_type, const std::string& column = kValueColumn) {
+    VerifyData(/* num_transactions= */ 1, op_type, column);
+  }
 
   bool HasTransactions();
 

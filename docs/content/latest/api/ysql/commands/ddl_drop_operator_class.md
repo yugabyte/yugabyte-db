@@ -2,7 +2,6 @@
 title: DROP OPERATOR CLASS statement [YSQL]
 headerTitle: DROP OPERATOR CLASS
 linkTitle: DROP OPERATOR CLASS
-summary: Remove an operator class
 description: Use the DROP OPERATOR CLASS statement to remove an operator class.
 menu:
   latest:

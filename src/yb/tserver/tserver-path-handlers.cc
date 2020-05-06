@@ -446,8 +446,10 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
 
-    if (status.tablet_data_state() != TabletDataState::TABLET_DATA_COPYING &&
-        status.tablet_data_state() != TabletDataState::TABLET_DATA_READY) {
+    const auto tablet_data_state = status.tablet_data_state();
+    if (tablet_data_state != TabletDataState::TABLET_DATA_COPYING &&
+        tablet_data_state != TabletDataState::TABLET_DATA_READY &&
+        tablet_data_state != TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       continue;
     }
 
@@ -567,7 +569,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
       n_bytes = HumanReadableNumBytes::ToString(status.estimated_on_disk_size());
     }
     string partition = peer->tablet_metadata()->partition_schema()
-                            .PartitionDebugString(peer->status_listener()->partition(),
+                            .PartitionDebugString(*peer->status_listener()->partition(),
                                                   peer->tablet_metadata()->schema());
 
     auto tablet = peer->shared_tablet();

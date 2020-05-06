@@ -2,6 +2,7 @@
 title: SELECT
 linkTitle: "SELECT "
 description: SELECT
+block_indexing: true
 menu:
   v1.3:
     parent: api-yedis

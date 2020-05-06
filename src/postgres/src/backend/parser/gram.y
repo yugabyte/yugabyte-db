@@ -143,6 +143,9 @@ typedef struct ImportQual
 #define parser_ybc_not_support(pos, feature) \
 	ybc_not_support(pos, yyscanner, feature " not supported yet", -1)
 
+#define parser_ybc_warn_ignored(pos, feature, issue) \
+	ybc_not_support_signal(pos, yyscanner, feature " not supported yet and will be ignored", issue, WARNING)
+
 #define parser_ybc_signal_unsupported(pos, feature, issue) \
 	ybc_not_support(pos, yyscanner, feature " not supported yet", issue)
 
@@ -154,6 +157,7 @@ typedef struct ImportQual
 
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
+static void ybc_not_support_signal(int pos, core_yyscan_t yyscanner, const char *msg, int issue, int signal_level);
 static void ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue);
 static void ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg);
 static void check_beta_feature(int pos, core_yyscan_t yyscanner, const char* flag, const char* feature);
@@ -993,13 +997,13 @@ stmt :
 			| DropUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| FetchStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ImportForeignSchemaStmt { parser_ybc_not_support(@1, "This statement"); }
-			| ListenStmt { parser_ybc_not_support(@1, "This statement"); }
+			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
 			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
-			| NotifyStmt { parser_ybc_not_support(@1, "This statement"); }
+			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
 			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
-			| UnlistenStmt { parser_ybc_not_support(@1, "This statement"); }
+			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
 		;
 
 /*****************************************************************************
@@ -4259,6 +4263,7 @@ SplitClause:
       	}
       | AT VALUES '(' yb_split_points ')'
         {
+          parser_ybc_beta_feature(@1, "split_at");
       	  $$ = makeNode(OptSplit);
       	  $$->split_type = SPLIT_POINTS;
       	  $$->num_tablets = -1;
@@ -10469,7 +10474,6 @@ opt_instead:
 
 NotifyStmt: NOTIFY ColId notify_payload
 				{
-					parser_ybc_not_support(@1, "NOTIFY");
 					NotifyStmt *n = makeNode(NotifyStmt);
 					n->conditionname = $2;
 					n->payload = $3;
@@ -17098,9 +17102,8 @@ parser_init(base_yy_extra_type *yyext)
 }
 
 static void
-raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
+raise_feature_not_supported_signal(int pos, core_yyscan_t yyscanner, const char *msg, int issue, int signal_level)
 {
-	int signal_level = YBUnsupportedFeatureSignalLevel();
 	if (issue > 0)
 	{
 		ereport(signal_level,
@@ -17123,7 +17126,13 @@ raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, i
 }
 
 static void
-ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
+raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
+{
+	raise_feature_not_supported_signal(pos, yyscanner, msg, issue, YBUnsupportedFeatureSignalLevel());
+}
+
+static void
+ybc_not_support_signal(int pos, core_yyscan_t yyscanner, const char *msg, int issue, int signal_level)
 {
 	static int use_yb_parser = -1;
 	if (use_yb_parser == -1)
@@ -17133,8 +17142,14 @@ ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
 
 	if (use_yb_parser)
 	{
-		raise_feature_not_supported(pos, yyscanner, msg, issue);
+		raise_feature_not_supported_signal(pos, yyscanner, msg, issue, signal_level);
 	}
+}
+
+static void
+ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
+{
+	ybc_not_support_signal(pos, yyscanner, msg, issue, YBUnsupportedFeatureSignalLevel());
 }
 
 static void

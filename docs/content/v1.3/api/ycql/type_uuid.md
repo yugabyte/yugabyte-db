@@ -2,6 +2,7 @@
 title: UUID & TIMEUUID
 summary: UUID types
 description: UUID and TIMEUUID
+block_indexing: true
 menu:
   v1.3:
     parent: api-cassandra

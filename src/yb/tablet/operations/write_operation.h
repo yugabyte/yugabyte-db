@@ -53,14 +53,9 @@
 #include "yb/tablet/operations/operation.h"
 
 #include "yb/util/locks.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
-struct DecodedRowOperation;
-class ConstContiguousRow;
-
-namespace consensus {
-class Consensus;
-}
 
 namespace tserver {
 class WriteRequestPB;
@@ -165,11 +160,15 @@ class WriteOperationState : public OperationState {
     return force_txn_path_;
   }
 
+  void SetTablet(Tablet* tablet) override;
+
  private:
   // Reset the response, and row_ops_ (which refers to data
   // from the request). Request is owned by WriteOperation using a unique_ptr.
   // A copy is made at initialization, so we don't need to reset it.
   void ResetRpcFields();
+
+  HybridTime WriteHybridTime() const override;
 
   // pointers to the rpc context, request and response, lifecycle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
@@ -203,7 +202,6 @@ class WriteOperationContext {
  public:
   // When operation completes, its callback is executed.
   virtual void Submit(std::unique_ptr<Operation> operation, int64_t term) = 0;
-  virtual void Aborted(Operation* operation) = 0;
   virtual HybridTime ReportReadRestart() = 0;
 
   virtual ~WriteOperationContext() {}
@@ -213,9 +211,10 @@ class WriteOperationContext {
 class WriteOperation : public Operation {
  public:
   WriteOperation(std::unique_ptr<WriteOperationState> operation_state, int64_t term,
+                 ScopedOperation preparing_token,
                  CoarseTimePoint deadline, WriteOperationContext* context);
 
-  ~WriteOperation();
+  ~WriteOperation() = default;
 
   WriteOperationState* state() override {
     return down_cast<WriteOperationState*>(Operation::state());
@@ -304,9 +303,14 @@ class WriteOperation : public Operation {
   // Aborts the mvcc transaction.
   CHECKED_STATUS DoAborted(const Status& status) override;
 
-  WriteOperationContext& context_;
+  void SubmittedToPreparer() override {
+    preparing_token_ = ScopedOperation();
+  }
+
   const int64_t term_;
+  ScopedOperation preparing_token_;
   const CoarseTimePoint deadline_;
+  WriteOperationContext* const context_;
 
   // this transaction's start time
   MonoTime start_time_;
@@ -314,9 +318,6 @@ class WriteOperation : public Operation {
   HybridTime restart_read_ht_;
 
   docdb::DocOperations doc_ops_;
-
-  // True if operation was submitted, i.e. context_.Submit(this) was invoked.
-  bool submitted_;
 
   Tablet* tablet() { return state()->tablet(); }
 

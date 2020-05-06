@@ -2,6 +2,7 @@
 title: Design goals
 linkTitle: Design goals
 description: Design goals
+block_indexing: true
 menu:
   v2.0:
     identifier: architecture-design-goals

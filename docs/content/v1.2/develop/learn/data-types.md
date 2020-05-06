@@ -2,6 +2,7 @@
 title: 3. Data Types
 linkTitle: 3. Data Types
 description: Data Types
+block_indexing: true
 menu:
   v1.2:
     identifier: data-types

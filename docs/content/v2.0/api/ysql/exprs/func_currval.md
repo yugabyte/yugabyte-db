@@ -2,6 +2,7 @@
 title: currval()
 summary: Get the last value returned by `nextval()` in the current session
 description: currval()
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-exprs-currval

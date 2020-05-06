@@ -41,6 +41,10 @@ menu:
       identifier: intro
 markup:
   goldmark:
+    extensions:
+      typographer: false
+    parser:
+      autoHeadingIDType: blackfriday
     renderer:
       unsafe: true
   tableOfContents:

@@ -3,6 +3,7 @@ title: SET
 linkTitle: SET 
 summary: Set a session or system variable
 description: SET
+block_indexing: true
 menu:
   v1.3:
     identifier: api-ysql-commands-set

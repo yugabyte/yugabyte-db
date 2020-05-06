@@ -72,7 +72,6 @@ set(MASTER_SRCS
   permissions_manager.cc
   flush_manager.cc
   master.cc
-  master_error.cc
   master_options.cc
   master_service_base.cc
   master_service.cc
@@ -83,6 +82,7 @@ set(MASTER_SRCS
   master_snapshot_coordinator.cc
   sys_catalog.cc
   sys_catalog_initialization.cc
+  sys_catalog_writer.cc
   system_tablet.cc
   tasks_tracker.cc
   ts_descriptor.cc
@@ -139,11 +139,17 @@ ADD_YB_LIBRARY(master_rpc
   SRCS ${MASTER_RPC_SRCS}
   DEPS ${MASTER_RPC_LIBS})
 
+set(MASTER_ERROR_SRCS
+  master_error.cc)
+ADD_YB_LIBRARY(master_error
+  SRCS ${MASTER_ERROR_SRCS}
+  DEPS ${MASTER_RPC_LIBS})
+
 set(MASTER_UTIL_SRCS
   master_util.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
-  DEPS ${MASTER_RPC_LIBS})
+  DEPS master_error ${MASTER_RPC_LIBS})
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS

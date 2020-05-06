@@ -155,11 +155,13 @@ GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
                                        Messenger* messenger,
                                        rpc::ProxyCache* proxy_cache,
                                        rpc::Rpcs* rpcs,
-                                       bool should_timeout_to_follower)
+                                       bool should_timeout_to_follower,
+                                       bool wait_for_leader_election)
     : Rpc(deadline, messenger, proxy_cache),
       user_cb_(std::move(user_cb)),
       rpcs_(*rpcs),
-      should_timeout_to_follower_(should_timeout_to_follower) {
+      should_timeout_to_follower_(should_timeout_to_follower),
+      wait_for_leader_election_(wait_for_leader_election) {
   DCHECK(deadline != CoarseTimePoint::max());
 
   for (const auto& list : addrs) {
@@ -213,7 +215,8 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
   // the leader, or if there were network errors talking to all of the
   // nodes the error is retriable and we can perform a delayed retry.
   num_iters_++;
-  if (status.IsNetworkError() || status.IsNotFound()) {
+  if (status.IsNetworkError() || (wait_for_leader_election_ && status.IsNotFound())) {
+    VLOG(4) << "About to retry operation due to error: " << status.ToString();
     // TODO (KUDU-573): Allow cancelling delayed tasks on reactor so
     // that we can safely use DelayedRetry here.
     auto retry_status = mutable_retrier()->DelayedRetry(this, status);
@@ -223,6 +226,8 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
       return;
     }
   }
+  VLOG(4) << "Completed GetLeaderMasterRpc, calling callback with status "
+          << status.ToString();
   {
     std::lock_guard<simple_spinlock> l(lock_);
     // 'completed_' prevents 'user_cb_' from being invoked twice.

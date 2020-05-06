@@ -2,6 +2,7 @@
 title: 2. Secondary Indexes
 linkTitle: 2. Secondary Indexes
 description: Secondary Indexes
+block_indexing: true
 menu:
   v1.1:
     identifier: secondary-indexes

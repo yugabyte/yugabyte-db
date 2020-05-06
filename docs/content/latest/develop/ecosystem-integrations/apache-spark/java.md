@@ -1,30 +1,61 @@
-## Maven
+---
+title: Build a Java application using Apache Spark and YugabyteDB
+headerTitle: Apache Spark
+linkTitle: Apache Spark
+description: Build and run a Java-based sample word-count application using Apache Spark and YugabyteDB.
+menu:
+  latest:
+    identifier: apache-spark-2-java
+    parent: ecosystem-integrations
+    weight: 572
+showAsideToc: true
+isTocNested: true
+---
 
-Add the following snippet to your `pom.xml` for Scala 2.10:
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-```xml
-<dependency>
-  <groupId>com.yugabyte.spark</groupId>
-  <artifactId>spark-cassandra-connector_2.10</artifactId>
-  <version>2.0.5-yb-2</version>
-</dependency>
-```
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/scala" class="nav-link">
+      <i class="icon-scala" aria-hidden="true"></i>
+      Scala
+    </a>
+  </li>
 
-For Scala 2.11:
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/java" class="nav-link active">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      Java
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/develop/ecosystem-integrations/apache-spark/python" class="nav-link">
+      <i class="icon-python" aria-hidden="true"></i>
+      Python
+    </a>
+  </li>
+
+</ul>
+
+## Before you begin
+
+### Maven
+
+To build your Java application using the YugabyteDB Spark Connector for YCQL, add the following snippet to your `pom.xml` for Scala 2.11:
 
 ```xml
 <dependency>
   <groupId>com.yugabyte.spark</groupId>
   <artifactId>spark-cassandra-connector_2.11</artifactId>
-  <version>2.0.5-yb-2</version>
+  <version>2.4-yb-2</version>
 </dependency>
 ```
 
-## Sample application
+## Run a sample application
 
-### Running the Spark word-count sample application
+### Run the Spark word-count sample application
 
-You can run our Spark-based sample app with:
+You can run our Spark-based sample application with:
 
 ```sh
 $ java -jar yb-sample-apps.jar --workload CassandraSparkWordCount --nodes 127.0.0.1:9042
@@ -32,7 +63,7 @@ $ java -jar yb-sample-apps.jar --workload CassandraSparkWordCount --nodes 127.0.
 
 It reads data from a table with sentences — by default, it generates an input table `ybdemo_keyspace.lines`, computes the frequencies of the words, and writes the result to the output table `ybdemo_keyspace.wordcounts`.
 
-### Examining the source code
+### Examine the source code
 
 To look at the source code, you can check:
 
@@ -43,7 +74,7 @@ Most of the logic is in the `run()` method of the `CassandraSparkWordCount` clas
 
 ## Main sections of an Apache Spark program on Yugabyte
 
-### Initializing the Spark context
+### Initialize the Spark context
 
 The SparkConf object is configured as follows:
 
@@ -63,7 +94,7 @@ CassandraConnector connector = CassandraConnector.apply(conf);
 Session session = connector.openSession();
 ```
 
-### Setting the input source
+### Set the input source
 
 To set the input data for Spark, you can do one of the following.
 
@@ -83,7 +114,7 @@ JavaRDD<String> rows = javaFunctions(sc).cassandraTable(keyspace, inputTable)
 JavaRDD<String> rows = sc.textFile(inputFile);
 ```
 
-### Performing the word count processing
+### Perform the word count processing
 
 The word count is performed using the following code snippet.
 
@@ -94,7 +125,7 @@ JavaPairRDD<String, Integer> counts = rows.flatMap(line -> Arrays.asList(line.sp
                                           .reduceByKey((x, y) ->  x + y);
 ```
 
-### Setting the output table
+### Set the output table
 
 The output is written to the `outTable` table.
 

@@ -300,6 +300,9 @@ message SysTabletsEntryPB {
   // of how far along backfill has completed. Encoded as the DocKey for
   // the next row to be backfilled.
   optional bytes backfilled_until = 10;
+
+  // For tablets which are results of splitting we set this to split parent split_depth + 1.
+  optional uint64 split_depth = 11;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -380,6 +383,14 @@ message SysTablesEntryPB {
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
 message SysNamespaceEntryPB {
+  enum State {
+    UNKNOWN = 0;    // Unset or bad data. Unexpected state.
+    PREPARING = 1;  // Creating. Transitive State. Possible Next States: [RUNNING, FAILED].
+    FAILED = 2;     // Creation Failed. Permanent State.
+    RUNNING = 3;    // Live. Permanent State. Possible Next States: [FAILED, DELETING].
+    DELETING = 4;   // Delete Requested. Transitive State. Possible Next States: [DELETED].
+    DELETED = 5;    // Delete Finished on TServers or Tombstone. Final State before erasure.
+  }
   // Note: The id of the namespace is not stored here as it is already part of
   // SysRowEntry's id component.
 
@@ -394,6 +405,8 @@ message SysNamespaceEntryPB {
 
   // True if the namespace is colocated.
   optional bool colocated = 4 [ default = false ];
+
+  optional State state = 5 [ default = UNKNOWN ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -760,6 +773,9 @@ message TabletLocationsPB {
   optional bytes table_id = 7;
   // Table ids for all the tables on this tablet.
   repeated bytes table_ids = 8;
+
+  // For tablets which are results of splitting we set this to split parent split_depth + 1.
+  optional uint64 split_depth = 9;
 }
 
 // Info about a single tablet server, returned to the client as part
@@ -1060,6 +1076,9 @@ message GetTableSchemaResponsePB {
 
   // For index table: information about this index.
   optional IndexInfoPB index_info = 12;
+
+  // True if table is colocated.
+  optional bool colocated = 13;
 }
 
 // ============================================================================
@@ -1078,6 +1097,8 @@ message ListTabletServersResponsePB {
     required NodeInstancePB instance_id = 1;
     optional TSRegistrationPB registration = 2;
     optional int32 millis_since_heartbeat = 3;
+    optional bool alive = 4;
+    optional TServerMetricsPB metrics = 5;
   }
   repeated Entry servers = 2;
 }
@@ -1218,7 +1239,7 @@ message GetLoadMovePercentResponsePB {
 message IsLoadBalancerIdleRequestPB {
 }
 
-// When no errors, load balancer is active.
+// When no errors, load balancer is idle.
 message IsLoadBalancerIdleResponsePB {
   optional MasterErrorPB error = 1;
 }
@@ -1285,6 +1306,18 @@ message CreateNamespaceResponsePB {
   optional bytes id = 2;
 }
 
+message IsCreateNamespaceDoneRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+}
+
+message IsCreateNamespaceDoneResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // true if the create operation is completed, false otherwise
+  optional bool done = 2;
+}
+
 // Database type is added to metadata entries such that PGSQL clients cannot delete or connect to
 // CQL database_type and vice versa.
 message DeleteNamespaceRequestPB {
@@ -1299,6 +1332,7 @@ message DeleteNamespaceResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
+// TODO(NIC): Add IsDeleteNamespaceDone.
 
 message AlterNamespaceRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
@@ -1321,6 +1355,18 @@ message ListNamespacesResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated NamespaceIdentifierPB namespaces = 2;
+}
+
+message GetNamespaceInfoRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
+}
+
+message GetNamespaceInfoResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  optional NamespaceIdentifierPB namespace = 2;
+  optional bool colocated = 3;
 }
 
 // ============================================================================
@@ -1685,6 +1731,14 @@ message GetUniverseReplicationResponsePB {
   optional SysUniverseReplicationEntryPB entry = 2;
 }
 
+message SplitTabletRequestPB {
+  required bytes tablet_id = 1;
+}
+
+message SplitTabletResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -1709,9 +1763,12 @@ service MasterService {
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
 
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
+  rpc IsCreateNamespaceDone(IsCreateNamespaceDoneRequestPB)
+      returns (IsCreateNamespaceDoneResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
+  rpc GetNamespaceInfo(GetNamespaceInfoRequestPB) returns (GetNamespaceInfoResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);
@@ -1801,4 +1858,6 @@ service MasterService {
       returns (GetUniverseKeyRegistryResponsePB);
   rpc HasUniverseKeyInMemory(HasUniverseKeyInMemoryRequestPB)
       returns (HasUniverseKeyInMemoryResponsePB);
+
+  rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
 }

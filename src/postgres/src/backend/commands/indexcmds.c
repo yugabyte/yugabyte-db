@@ -565,8 +565,8 @@ DefineIndex(Oid relationId,
 	accessMethodName = stmt->accessMethod;
 
 	/*
-	 * In YugaByte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
-	 * the table is stored in YugaByte storage or not (such as temporary tables).
+	 * In Yugabyte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
+	 * the table is stored in Yugabyte storage or not (such as temporary tables).
 	 */
 	if (IsYugaByteEnabled())
 	{
@@ -890,7 +890,7 @@ DefineIndex(Oid relationId,
 					 stmt->oldNode, indexInfo, indexColNames,
 					 accessMethodId, tablespaceId,
 					 collationObjectId, classObjectId,
-					 coloptions, reloptions, stmt->options,
+					 coloptions, reloptions,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId);
@@ -1457,7 +1457,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	ListCell   *lc;
 	int			attn;
 	int			nkeycols = indexInfo->ii_NumIndexKeyAttrs;
-	bool use_yb_ordering = false;
+	bool		use_yb_ordering = false;
+	bool		colocated;
 
 	/* Allocate space for exclusion operator info, if needed */
 	if (exclusionOpNames)
@@ -1471,12 +1472,22 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	else
 		nextExclOp = NULL;
 
+	/*
+	 * Get whether the index will use Yugabyte ordering and whather it will be
+	 * colocated.  For now, regarding colocation, the index always follows the
+	 * indexed table, so just figure out whether the indexed table is
+	 * colocated.
+	 */
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YBIsPreparingTemplates())
 	{
 		Relation rel = RelationIdGetRelation(relId);
 		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
+		if (IsYBRelation(rel))
+			HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
+												 relId,
+												 &colocated));
 		RelationClose(rel);
 	}
 
@@ -1503,8 +1514,13 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 						range_index = true;
 						break;
 					case SORTBY_DEFAULT:
-						/* In YB mode first attr defaults to HASH others to ASC */
-						if (attn > 0)
+						/*
+						 * In YB mode, first attribute defaults to HASH and
+						 * other attributes default to ASC.  However, for
+						 * colocated tables, the first attribute defaults to
+						 * ASC.
+						 */
+						if (attn > 0 || colocated)
 						{
 							range_index = true;
 							break;
@@ -1771,10 +1787,14 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				attribute->ordering == SORTBY_HASH)
 				colOptionP[attn] |= INDOPTION_HASH;
 
-			/* In YugaByte use HASH as the default for the first column only */
+			/*
+			 * In Yugabyte, use HASH as the default for the first column of
+			 * non-colocated tables
+			 */
 			if (use_yb_ordering &&
 				attn == 0 &&
-				attribute->ordering == SORTBY_DEFAULT)
+				attribute->ordering == SORTBY_DEFAULT &&
+				!colocated)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */

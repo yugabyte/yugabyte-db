@@ -32,24 +32,44 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include <array>
+#include <sstream>
 #include <type_traits>
 
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/composite_key.hpp>
+#include <boost/multi_index/global_fun.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 #include <boost/tti/has_member_function.hpp>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/string_case.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+DEFINE_bool(wait_if_no_leader_master, false,
+            "When yb-admin connects to the cluster and no leader master is present, "
+            "this flag determines if yb-admin should wait for the entire duration of timeout or"
+            "in case a leader master appears in that duration or return error immediately.");
+
+DEFINE_string(certs_dir_name, "",
+              "Directory with certificates to use for secure server connection.");
 
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
@@ -103,14 +123,14 @@ static constexpr const char* kDBTypePrefixUnknown = "unknown";
 static constexpr const char* kDBTypePrefixCql = "ycql";
 static constexpr const char* kDBTypePrefixYsql = "ysql";
 static constexpr const char* kDBTypePrefixRedis = "yedis";
-
+static constexpr const char* kTableIDPrefix = "tableid";
 
 string FormatHostPort(const HostPortPB& host_port) {
   return Format("$0:$1", host_port.host(), host_port.port());
 }
 
 string FormatFirstHostPort(
-    const google::protobuf::RepeatedPtrField<yb::HostPortPB>& rpc_addresses) {
+    const RepeatedPtrField<HostPortPB>& rpc_addresses) {
   if (rpc_addresses.empty()) {
     return "N/A";
   } else {
@@ -118,10 +138,19 @@ string FormatFirstHostPort(
   }
 }
 
+string FormatDouble(double d, int precision = 2) {
+  std::ostringstream op_stream;
+  op_stream << std::fixed << std::setprecision(precision);
+  op_stream << d;
+  return op_stream.str();
+}
+
 const int kPartitionRangeColWidth = 56;
 const int kHostPortColWidth = 20;
 const int kTableNameColWidth = 48;
 const int kNumCharactersInUuid = 32;
+const int kLongColWidth = 15;
+const int kSmallColWidth = 8;
 const int kSleepTimeSec = 1;
 const int kNumberOfTryouts = 30;
 
@@ -146,14 +175,260 @@ Result<Response> ResponseResult(Response&& response,
   return std::move(response);
 }
 
+const char* DatabasePrefix(YQLDatabase db) {
+  switch(db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
+    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
+    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypePrefixUnknown;
+}
+
+Result<TypedNamespaceName> ResolveNamespaceName(const Slice& prefix, const Slice& name) {
+  auto db_type = YQL_DATABASE_UNKNOWN;
+  if (!prefix.empty()) {
+    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
+        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
+        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
+        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
+    for (const auto& p : type_prefixes) {
+      if (prefix == p.first) {
+        db_type = p.second;
+        break;
+      }
+    }
+
+    if (db_type == YQL_DATABASE_UNKNOWN) {
+      return STATUS_FORMAT(InvalidArgument, "Invalid db type name '$0'", prefix);
+    }
+  } else {
+    db_type = (name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS : YQL_DATABASE_CQL);
+  }
+  return TypedNamespaceName{.db_type = db_type, .name = name.cdata()};
+}
+
+Slice GetTableIdAsSlice(const YBTableName& table_name) {
+  return table_name.table_id();
+}
+
+Slice GetNamespaceIdAsSlice(const YBTableName& table_name) {
+  return table_name.namespace_id();
+}
+
+Slice GetTableNameAsSlice(const YBTableName& table_name) {
+  return table_name.table_name();
+}
+
+std::string FullNamespaceName(const master::NamespaceIdentifierPB& ns) {
+  return Format("$0.$1", DatabasePrefix(ns.database_type()), ns.name());
+}
+
+struct NamespaceKey {
+  explicit NamespaceKey(const master::NamespaceIdentifierPB& ns)
+      : db_type(ns.database_type()), name(ns.name()) {
+  }
+
+  NamespaceKey(YQLDatabase d, const Slice& n)
+      : db_type(d), name(n) {
+  }
+
+  YQLDatabase db_type;
+  Slice name;
+};
+
+struct NamespaceComparator {
+  using is_transparent = void;
+
+  bool operator()(const master::NamespaceIdentifierPB& lhs,
+                  const master::NamespaceIdentifierPB& rhs) const {
+    return (*this)(NamespaceKey(lhs), NamespaceKey(rhs));
+  }
+
+  bool operator()(const master::NamespaceIdentifierPB& lhs, const NamespaceKey& rhs) const {
+    return (*this)(NamespaceKey(lhs), rhs);
+  }
+
+  bool operator()(const NamespaceKey& lhs, const master::NamespaceIdentifierPB& rhs) const {
+    return (*this)(lhs, NamespaceKey(rhs));
+  }
+
+  bool operator()(const NamespaceKey& lhs, const NamespaceKey& rhs) const {
+    return lhs.db_type < rhs.db_type ||
+           (lhs.db_type == rhs.db_type && lhs.name.compare(rhs.name) < 0);
+  }
+};
+
+struct DotStringParts {
+  Slice prefix;
+  Slice value;
+};
+
+DotStringParts SplitByDot(const std::string& str) {
+  const size_t dot_pos = str.find('.');
+  DotStringParts result{.prefix = Slice(), .value = str};
+  if (dot_pos != string::npos) {
+    result.prefix = Slice(str.data(), dot_pos);
+    result.value.remove_prefix(dot_pos + 1);
+  }
+  return result;
+}
+
 }  // anonymous namespace
 
-ClusterAdminClient::ClusterAdminClient(string addrs,
-                                       int64_t timeout_millis,
-                                       string certs_dir)
+class TableNameResolver::Impl {
+ public:
+  struct TableIdTag;
+  struct TableNameTag;
+  using Values = std::vector<client::YBTableName>;
+
+  Impl(std::vector<YBTableName> tables, vector<master::NamespaceIdentifierPB> namespaces)
+      : current_namespace_(nullptr) {
+    std::move(tables.begin(), tables.end(), std::inserter(tables_, tables_.end()));
+    std::move(namespaces.begin(), namespaces.end(), std::inserter(namespaces_, namespaces_.end()));
+  }
+
+  Result<bool> Feed(const std::string& str) {
+    const auto result = FeedImpl(str);
+    if (!result.ok()) {
+      current_namespace_ = nullptr;
+    }
+    return result;
+  }
+
+  Values& values() {
+    return values_;
+  }
+
+ private:
+  Result<bool> FeedImpl(const std::string& str) {
+    auto parts = SplitByDot(str);
+    if (parts.prefix == kTableIDPrefix) {
+      RETURN_NOT_OK(ProcessTableId(parts.value));
+      return true;
+    } else {
+      if (!current_namespace_) {
+        RETURN_NOT_OK(ProcessNamespace(parts.prefix, parts.value));
+      } else {
+        if (parts.prefix.empty()) {
+          RETURN_NOT_OK(ProcessTableName(parts.value));
+          return true;
+        }
+        return STATUS(InvalidArgument, "Wrong table name " + str);
+      }
+    }
+    return false;
+  }
+
+  CHECKED_STATUS ProcessNamespace(const Slice& prefix, const Slice& value) {
+    DCHECK(!current_namespace_);
+    const auto ns = VERIFY_RESULT(ResolveNamespaceName(prefix, value));
+    const auto i = namespaces_.find(NamespaceKey(ns.db_type, ns.name));
+    if (i != namespaces_.end()) {
+      current_namespace_ = &*i;
+      return Status::OK();
+    }
+    return STATUS_FORMAT(
+        InvalidArgument, "Namespace '$0' of type '$1' not found",
+        ns.name, DatabasePrefix(ns.db_type));
+  }
+
+  CHECKED_STATUS ProcessTableId(const Slice& table_id) {
+    const auto& idx = tables_.get<TableIdTag>();
+    const auto i = idx.find(table_id);
+    if (i == idx.end()) {
+      return STATUS_FORMAT(InvalidArgument, "Table with id '$0' not found", table_id);
+    }
+    if (current_namespace_ && current_namespace_->id() != i->namespace_id()) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Table with id '$0' belongs to different namespace '$1'",
+          table_id, FullNamespaceName(*current_namespace_));
+    }
+    AppendTable(*i);
+    return Status::OK();
+  }
+
+  CHECKED_STATUS ProcessTableName(const Slice& table_name) {
+    DCHECK(current_namespace_);
+    const auto& idx = tables_.get<TableNameTag>();
+    const auto key = boost::make_tuple(Slice(current_namespace_->id()), table_name);
+    // For some reason idx.equal_range(key) failed to compile.
+    const auto range = std::make_pair(idx.lower_bound(key), idx.upper_bound(key));
+    switch (std::distance(range.first, range.second)) {
+      case 0:
+        return STATUS_FORMAT(
+            InvalidArgument, "Table with name '$0' not found in namespace '$1'",
+            table_name, FullNamespaceName(*current_namespace_));
+      case 1:
+        AppendTable(*range.first);
+        return Status::OK();
+      default:
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Namespace '$0' has multiple tables named '$1', specify table id instead",
+            FullNamespaceName(*current_namespace_), table_name);
+    }
+  }
+
+  void AppendTable(const YBTableName& table) {
+    current_namespace_ = nullptr;
+    values_.push_back(table);
+  }
+
+  using TableContainer = boost::multi_index_container<YBTableName,
+      boost::multi_index::indexed_by<
+          boost::multi_index::ordered_unique<
+              boost::multi_index::tag<TableIdTag>,
+              boost::multi_index::global_fun<const YBTableName&, Slice, &GetTableIdAsSlice>,
+              Slice::Comparator
+          >,
+          boost::multi_index::ordered_non_unique<
+              boost::multi_index::tag<TableNameTag>,
+              boost::multi_index::composite_key<
+                  YBTableName,
+                  boost::multi_index::global_fun<const YBTableName&, Slice, &GetNamespaceIdAsSlice>,
+                  boost::multi_index::global_fun<const YBTableName&, Slice, &GetTableNameAsSlice>
+              >,
+              boost::multi_index::composite_key_compare<
+                  Slice::Comparator,
+                  Slice::Comparator
+              >
+          >
+      >
+  >;
+
+  TableContainer tables_;
+  std::set<master::NamespaceIdentifierPB, NamespaceComparator> namespaces_;
+  const master::NamespaceIdentifierPB* current_namespace_;
+  Values values_;
+};
+
+TableNameResolver::TableNameResolver(std::vector<client::YBTableName> tables,
+                                     std::vector<master::NamespaceIdentifierPB> namespaces)
+    : impl_(new Impl(std::move(tables), std::move(namespaces))) {
+}
+
+TableNameResolver::TableNameResolver(TableNameResolver&&) = default;
+
+TableNameResolver::~TableNameResolver() = default;
+
+Result<bool> TableNameResolver::Feed(const std::string& value) {
+  return impl_->Feed(value);
+}
+
+std::vector<client::YBTableName>& TableNameResolver::values() {
+  return impl_->values();
+}
+
+ClusterAdminClient::ClusterAdminClient(string addrs, int64_t timeout_millis)
     : master_addr_list_(std::move(addrs)),
       timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
-      client_init_(certs_dir.empty()),
+      initted_(false) {}
+
+ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, int64_t timeout_millis)
+    : init_master_addr_(init_master_addr),
+      timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
       initted_(false) {}
 
 ClusterAdminClient::~ClusterAdminClient() {
@@ -162,22 +437,79 @@ ClusterAdminClient::~ClusterAdminClient() {
   }
 }
 
+Status ClusterAdminClient::DiscoverAllMasters(
+    const HostPort& init_master_addr,
+    std::string* all_master_addrs
+) {
+
+  std::unique_ptr<MasterServiceProxy> master_proxy(new MasterServiceProxy(
+      proxy_cache_.get(),
+      init_master_addr));
+
+  VLOG(0) << "Initializing master leader list from single master at "
+          << init_master_addr.ToString();
+  const auto list_resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
+      master_proxy.get(), ListMastersRequestPB()));
+  if (list_resp.masters().empty()) {
+    return  STATUS(NotFound, "no masters found");
+  }
+
+  std::vector<std::string> addrs;
+  for (const auto& master : list_resp.masters()) {
+    if (!master.has_registration()) {
+      LOG(WARNING) << master.instance_id().permanent_uuid() << " has no registration.";
+      continue;
+    }
+
+    if (master.registration().broadcast_addresses_size() > 0) {
+      addrs.push_back(FormatFirstHostPort(master.registration().broadcast_addresses()));
+    } else if (master.registration().private_rpc_addresses_size() > 0) {
+      addrs.push_back(FormatFirstHostPort(master.registration().private_rpc_addresses()));
+    } else {
+      LOG(WARNING) << master.instance_id().permanent_uuid() << " has no rpc/broadcast address.";
+      continue;
+    }
+  }
+
+  if (addrs.empty()) {
+    return STATUS(NotFound, "no masters found");
+  }
+
+  JoinStrings(addrs, ",", all_master_addrs);
+  VLOG(0) << "Discovered full master list: " << *all_master_addrs;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
   // Check if caller will initialize the client and related parts.
-  if (client_init_) {
-    messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-    yb_client_ = VERIFY_RESULT(YBClientBuilder()
-        .add_master_server_addr(master_addr_list_)
-        .default_admin_operation_timeout(timeout_)
-        .Build(messenger_.get()));
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
-
-    // Find the leader master's socket info to set up the master proxy.
-    leader_addr_ = yb_client_->GetMasterLeaderAddress();
-    master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
+  rpc::MessengerBuilder messenger_builder("yb-admin");
+  if (!FLAGS_certs_dir_name.empty()) {
+    LOG(INFO) << "Built secure client using certs dir " << FLAGS_certs_dir_name;
+    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(FLAGS_certs_dir_name));
+    server::ApplySecureContext(secure_context_.get(), &messenger_builder);
   }
+
+  messenger_ = VERIFY_RESULT(messenger_builder.Build());
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+
+  if (!init_master_addr_.host().empty()) {
+    RETURN_NOT_OK(DiscoverAllMasters(init_master_addr_, &master_addr_list_));
+  }
+
+  yb_client_ = VERIFY_RESULT(YBClientBuilder()
+      .add_master_server_addr(master_addr_list_)
+      .default_admin_operation_timeout(timeout_)
+      .wait_for_leader_election_on_init(FLAGS_wait_if_no_leader_master)
+      .Build(messenger_.get()));
+
+  // Find the leader master's socket info to set up the master proxy.
+  leader_addr_ = yb_client_->GetMasterLeaderAddress();
+  master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
+
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  master_backup_proxy_.reset(new master::MasterBackupServiceProxy(&proxy_cache, leader_addr_));
 
   initted_ = true;
   return Status::OK();
@@ -404,11 +736,9 @@ Status ClusterAdminClient::GetLeaderBlacklistCompletion() {
 
 Status ClusterAdminClient::GetIsLoadBalancerIdle() {
   CHECK(initted_);
-  const auto resp = VERIFY_RESULT(InvokeRpc(
-      &MasterServiceProxy::IsLoadBalancerIdle, master_proxy_.get(),
-      master::IsLoadBalancerIdleRequestPB()));
 
-  cout << "Idle = " << !resp.has_error() << endl;
+  const bool is_idle = VERIFY_RESULT(yb_client_->IsLoadBalancerIdle());
+  cout << "Idle = " << is_idle << endl;
   return Status::OK();
 }
 
@@ -526,12 +856,15 @@ Status ClusterAdminClient::ChangeMasterConfig(
     bool use_hostport) {
   CHECK(initted_);
 
+  VLOG(1) << "ChangeMasterConfig: " << change_type << " | " << peer_host << ":" << peer_port;
   consensus::ChangeConfigType cc_type;
   RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
 
   string peer_uuid;
   if (!use_hostport) {
-    RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
+      VLOG(1) << "ChangeMasterConfig: attempt to get UUID for changed host: "
+              << peer_host << ":" << peer_port;
+      RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
   }
 
   string leader_uuid;
@@ -544,6 +877,8 @@ Status ClusterAdminClient::ChangeMasterConfig(
   // starts an election and gets a new leader master.
   auto changed_leader_addr = leader_addr_;
   if (cc_type == consensus::REMOVE_SERVER && leader_uuid == peer_uuid) {
+    VLOG(1) << "ChangeMasterConfig: request leader " << leader_addr_
+            << " to step down before removal.";
     string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
     sleep(5);  // TODO - wait for exactly the time needed for new leader to get elected.
@@ -562,8 +897,8 @@ Status ClusterAdminClient::ChangeMasterConfig(
     // Go ahead below and send the actual config change message to the new master
   }
 
-  consensus::ConsensusServiceProxy *leader_proxy =
-    new consensus::ConsensusServiceProxy(proxy_cache_.get(), leader_addr_);
+  std::unique_ptr<consensus::ConsensusServiceProxy> leader_proxy(
+    new consensus::ConsensusServiceProxy(proxy_cache_.get(), leader_addr_));
   consensus::ChangeConfigRequestPB req;
 
   RaftPeerPB peer_pb;
@@ -579,8 +914,14 @@ Status ClusterAdminClient::ChangeMasterConfig(
   req.set_use_host(use_hostport);
   *req.mutable_server() = peer_pb;
 
-  RETURN_NOT_OK(InvokeRpc(&consensus::ConsensusServiceProxy::ChangeConfig, leader_proxy, req));
+  VLOG(1) << "ChangeMasterConfig: ChangeConfig for tablet id " << yb::master::kSysCatalogTabletId
+          << " to host " << leader_addr_;
+  RETURN_NOT_OK(InvokeRpc(
+    &consensus::ConsensusServiceProxy::ChangeConfig,
+    leader_proxy.get(),
+    req));
 
+  VLOG(1) << "ChangeMasterConfig: update yb client to reflect config change.";
   if (cc_type == consensus::ADD_SERVER) {
     RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_addr));
   } else {
@@ -663,17 +1004,50 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
       NotFound, "Server with UUID $0 has no RPC address registered with the Master", uuid);
 }
 
-Status ClusterAdminClient::ListAllTabletServers() {
+Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  char kSpaceSep = ' ';
 
-  if (!servers.empty()) {
-    cout << RightPadToUuidWidth("Tablet Server UUID") << kColumnSep
-         << kRpcHostPortHeading << endl;
-  }
+  cout << RightPadToUuidWidth("Tablet Server UUID") << kSpaceSep
+        << kRpcHostPortHeading << kSpaceSep
+        << RightPadToWidth("Heartbeat delay", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("Status", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Reads/s", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Writes/s", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("Uptime", kSmallColWidth) << kSpaceSep
+        << RightPadToWidth("SST total size", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("SST uncomp size", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("SST #files", kLongColWidth) << kSpaceSep
+        << RightPadToWidth("Memory", kSmallColWidth) << kSpaceSep
+        << endl;
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    cout << server.instance_id().permanent_uuid() << kColumnSep
+    if (exclude_dead && server.has_alive() && !server.alive()) {
+      continue;
+    }
+    std::stringstream time_str;
+    auto heartbeat_delay_ms = server.has_millis_since_heartbeat() ?
+                               server.millis_since_heartbeat() : 0;
+    time_str << std::fixed << std::setprecision(2) << (heartbeat_delay_ms/1000.0) << "s";
+    auto status_str = server.has_alive() ? (server.alive() ? "ALIVE" : "DEAD") : "UNKNOWN";
+    cout << server.instance_id().permanent_uuid() << kSpaceSep
          << FormatFirstHostPort(server.registration().common().private_rpc_addresses())
+         << kSpaceSep
+         << RightPadToWidth(time_str.str(), kLongColWidth) << kSpaceSep
+         << RightPadToWidth(status_str, kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(FormatDouble(server.metrics().read_ops_per_sec()), kSmallColWidth)
+         << kSpaceSep
+         << RightPadToWidth(FormatDouble(server.metrics().write_ops_per_sec()), kSmallColWidth)
+         << kSpaceSep
+         << RightPadToWidth(server.metrics().uptime_seconds(), kSmallColWidth) << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().total_sst_file_size()), kLongColWidth)
+         << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().uncompressed_sst_file_size()),
+                            kLongColWidth)
+         << kSpaceSep
+         << RightPadToWidth(server.metrics().num_sst_files(), kLongColWidth) << kSpaceSep
+         << RightPadToWidth(HumanizeBytes(server.metrics().total_ram_usage()), kSmallColWidth)
+         << kSpaceSep
          << endl;
   }
 
@@ -683,50 +1057,31 @@ Status ClusterAdminClient::ListAllTabletServers() {
 Status ClusterAdminClient::ListAllMasters() {
   const auto lresp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
       master_proxy_.get(), ListMastersRequestPB()));
-  if (!lresp.masters().empty()) {
-    cout << RightPadToUuidWidth("Master UUID") << kColumnSep
-         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth)<< kColumnSep
-         << "State" << kColumnSep
-         << "Role" << endl;
+
+  if (lresp.has_error()) {
+    LOG(ERROR) << "Error: querying leader master for live master info : "
+               << lresp.error().DebugString() << endl;
+    return STATUS(RemoteError, lresp.error().DebugString());
   }
-  int i = 0;
+
+  cout << RightPadToUuidWidth("Master UUID") << kColumnSep
+        << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
+        << "State" << kColumnSep
+        << "Role" << endl;
+
   for (const auto& master : lresp.masters()) {
-    if (master.role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
       const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
-      cout << (master_reg ? master.instance_id().permanent_uuid()
+      cout << (master.has_instance_id() ? master.instance_id().permanent_uuid()
                           : RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep;
-      cout << RightPadToWidth(master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
-                                         : "UNKNOWN", kHostPortColWidth) << kColumnSep;
-      cout << (master.has_error() ? PBEnumToString(master.error().code()) : "ALIVE") << kColumnSep;
-      cout << PBEnumToString(master.role()) << endl;
-    } else {
-      cout << "UNREACHABLE MASTER at index " << i << "." << endl;
-    }
-    ++i;
-  }
-
-  const auto r_resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
-      &MasterServiceProxy::ListMasterRaftPeers, master_proxy_.get(),
-      ListMasterRaftPeersRequestPB()));
-  if (r_resp.has_error()) {
-    return STATUS_FORMAT(RuntimeError, "List Raft Masters RPC response hit error: $0",
-        r_resp.error().ShortDebugString());
-  }
-
-  if (r_resp.masters_size() != lresp.masters_size()) {
-    cout << "WARNING: Mismatch in in-memory masters and raft peers info."
-         << "Raft peer info from master leader dumped below." << endl;
-    int i = 0;
-    for (const auto& master : r_resp.masters()) {
-      if (master.member_type() != consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE) {
-        cout << master.permanent_uuid() << "  "
-             << master.last_known_private_addr(0).host() << "/"
-             << master.last_known_private_addr(0).port() << endl;
-      } else {
-        cout << "UNREACHABLE MASTER at index " << i << "." << endl;
-      }
-      ++i;
-    }
+      cout << RightPadToWidth(
+                master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
+                            : "UNKNOWN", kHostPortColWidth)
+            << kColumnSep;
+      cout << RightPadToWidth((master.has_error() ?
+                                PBEnumToString(master.error().code()) : "ALIVE"),
+                              kSmallColWidth)
+            << kColumnSep;
+      cout << (master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN") << endl;
   }
 
   return Status::OK();
@@ -760,42 +1115,29 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   return Status::OK();
 }
 
-const char* DatabasePrefix(YQLDatabase db) {
-  switch(db) {
-    case YQL_DATABASE_UNKNOWN: break;
-    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
-    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
-    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
-  }
-  CHECK(false) << "Unexpected db type " << db;
-  return kDBTypePrefixUnknown;
-}
-
-Status ClusterAdminClient::ListTables(bool include_db_type) {
-  vector<YBTableName> tables;
-  RETURN_NOT_OK(yb_client_->ListTables(&tables));
-  if (include_db_type) {
-    vector<string> full_names;
-    const auto& namespace_metadata = VERIFY_RESULT_REF(GetNamespaceMap());
-    for (const auto& table : tables) {
+Status ClusterAdminClient::ListTables(bool include_db_type, bool include_table_id) {
+  const auto tables = VERIFY_RESULT(yb_client_->ListTables());
+  const auto& namespace_metadata = VERIFY_RESULT_REF(GetNamespaceMap());
+  vector<string> names;
+  for (const auto& table : tables) {
+    std::stringstream str;
+    if (include_db_type) {
       const auto db_type_iter = namespace_metadata.find(table.namespace_id());
       if (db_type_iter != namespace_metadata.end()) {
-        full_names.push_back(Format("$0.$1",
-                               DatabasePrefix(db_type_iter->second.database_type()),
-                               table));
+        str << DatabasePrefix(db_type_iter->second.database_type()) << '.';
       } else {
-        LOG(WARNING) << "Table in unknown namespace found "
-                     << table.ToString()
-                     << ", probably it has been just created";
+        LOG(WARNING) << "Table in unknown namespace found " << table.ToString();
+        continue;
       }
     }
-    sort(full_names.begin(), full_names.end());
-    copy(full_names.begin(), full_names.end(), std::ostream_iterator<string>(cout, "\n"));
-  } else {
-    for (const auto& table : tables) {
-      cout << table.ToString() << endl;
+    str << table.ToString();
+    if (include_table_id) {
+      str << ' ' << table.table_id();
     }
+    names.push_back(str.str());
   }
+  sort(names.begin(), names.end());
+  copy(names.begin(), names.end(), std::ostream_iterator<string>(cout, "\n"));
   return Status::OK();
 }
 
@@ -1230,23 +1572,31 @@ Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers,
 
 Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInfo(
     YQLDatabase db_type, const std::string& namespace_name) {
-  LOG(INFO) << Format("Resolving namespace id for '$0' of type '$1'",
-                      namespace_name, DatabasePrefix(db_type));
+  LOG(INFO) << Format(
+      "Resolving namespace id for '$0' of type '$1'", namespace_name, DatabasePrefix(db_type));
   for (const auto& item : VERIFY_RESULT_REF(GetNamespaceMap())) {
     const auto& namespace_info = item.second;
     if (namespace_info.database_type() == db_type && namespace_name == namespace_info.name()) {
       return namespace_info;
     }
   }
-  return STATUS(NotFound,
-                Format("Namespace '$0' of type '$1' not found",
-                       namespace_name, DatabasePrefix(db_type)));
+  return STATUS_FORMAT(
+      NotFound, "Namespace '$0' of type '$1' not found", namespace_name, DatabasePrefix(db_type));
 }
 
 Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterClusterConfig() {
   return InvokeRpc(&MasterServiceProxy::GetMasterClusterConfig, master_proxy_.get(),
                    master::GetMasterClusterConfigRequestPB(),
                    "MasterServiceImpl::GetMasterClusterConfig call failed.");
+}
+
+CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+  const auto resp = VERIFY_RESULT(
+      InvokeRpc(&MasterServiceProxy::SplitTablet, master_proxy_.get(), req));
+  std::cout << "Response: " << AsString(resp) << std::endl;
+  return Status::OK();
 }
 
 template<class Response, class Request, class Object>
@@ -1276,10 +1626,16 @@ Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespace
   if (namespace_map_.empty()) {
     auto v = VERIFY_RESULT(yb_client_->ListNamespaces());
     for (auto& ns : v) {
-      namespace_map_.emplace(string(ns.id()), std::move(ns));
+      auto ns_id = ns.id();
+      namespace_map_.emplace(std::move(ns_id), std::move(ns));
     }
   }
   return const_cast<const ClusterAdminClient::NamespaceMap&>(namespace_map_);
+}
+
+Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver() {
+  return TableNameResolver(VERIFY_RESULT(yb_client_->ListTables()),
+                           VERIFY_RESULT(yb_client_->ListNamespaces()));
 }
 
 string RightPadToUuidWidth(const string &s) {
@@ -1287,33 +1643,8 @@ string RightPadToUuidWidth(const string &s) {
 }
 
 Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_name) {
-  YQLDatabase db_type = YQL_DATABASE_UNKNOWN;
-  const size_t dot_pos = full_namespace_name.find('.');
-  if (dot_pos != string::npos) {
-    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
-        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
-        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
-        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
-    const Slice namespace_type(full_namespace_name.data(), dot_pos);
-    for (const auto& prefix : type_prefixes) {
-      if (namespace_type == prefix.first) {
-        db_type = prefix.second;
-        break;
-      }
-    }
-    if (db_type == YQL_DATABASE_UNKNOWN) {
-      return STATUS(InvalidArgument, Format("Invalid db type name '$0'", namespace_type));
-    }
-  } else {
-    db_type = (full_namespace_name == common::kRedisKeyspaceName ? YQL_DATABASE_REDIS
-        : YQL_DATABASE_CQL);
-  }
-
-  const size_t name_start = (dot_pos == string::npos ? 0 : (dot_pos + 1));
-  return TypedNamespaceName{
-      db_type,
-      std::string(full_namespace_name.data() + name_start,
-                  full_namespace_name.length() - name_start)};
+  const auto parts = SplitByDot(full_namespace_name);
+  return ResolveNamespaceName(parts.prefix, parts.value);
 }
 
 }  // namespace tools

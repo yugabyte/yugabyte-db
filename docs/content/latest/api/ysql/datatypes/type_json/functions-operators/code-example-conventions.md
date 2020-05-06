@@ -2,7 +2,7 @@
 title: Code example conventions
 linkTitle: Code example conventions
 summary: Code example conventions
-description: JSON code example conventions
+description: Code example conventions for JSON functions and operators.
 menu:
   latest:
     identifier: code-example-conventions
@@ -41,7 +41,7 @@ is insufficient for four reasons:
 - It's hard to establish and advertise data type information without inserting into appropriately defined table columns. This brings distracting verbosity.
 - The only way to build an expression from subexpressions, in pursuit of clarity, is to use scalar subqueries, named in a `with` clause. This, again, is so verbose that it obscures, rather than helps, clarity.
 - This insufficiency is especially bothersome when the aim is to show how the output of a particular function depends upon the choice of value for an optional `boolean` parameter that conditions is behavior using, therefore, the same input JSON value in two function invocations.
-- The result is non-negotiably typecast to text to print to the screen, with distracting conventions like inserting a space at the start of each printed line, showing the `boolean` value `true` as the `text` value `t`, showing `null` as just an absence, and showing a newline as the `text` value `+`.
+- The result is a non-negotiable typecast to text to print to the screen, with distracting conventions like inserting a space at the start of each printed line, showing the `boolean` value `true` as the `text` value `t`, showing `null` as just an absence, and showing a newline as the `text` value `+`.
 
 For these reasons, each code example is presented as a `DO` block with this pattern:
 

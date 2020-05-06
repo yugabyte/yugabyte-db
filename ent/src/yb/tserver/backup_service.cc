@@ -14,11 +14,13 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/tserver/tablet_server.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/tserver/service_util.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 namespace yb {
@@ -46,8 +48,7 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     auto status = STATUS_FORMAT(
         InvalidArgument, "Wrong number of tablets: expected one, but found $0",
         req->tablet_id_size());
-    SetupErrorAndRespond(
-        resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;
   }
 
@@ -67,13 +68,29 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   }
 
   auto snapshot_hybrid_time = HybridTime::FromPB(req->snapshot_hybrid_time());
+  tablet::ScopedReadOperation read_operation;
   // Transaction aware snapshot
   if (snapshot_hybrid_time) {
-    auto status = tablet.peer->tablet()->transaction_participant()->ResolveIntents(
-        snapshot_hybrid_time, context.GetClientDeadline());
+    // We need to ensure that the state of the tablet's data at the snapshot hybrid time is not
+    // garbage-collected away only while performing submit.
+    // Since history cutoff is propagated using Raft, it will use the same queue as the
+    // "create snapshot" operation.
+    // So history cutoff could be updated only after the "create snapshot" operation is applied.
+    auto temp_read_operation_result = tablet::ScopedReadOperation::Create(
+        tablet.peer->tablet(), tablet::RequireLease::kTrue,
+        ReadHybridTime::SingleTime(snapshot_hybrid_time));
+    Status status;
+    if (temp_read_operation_result.ok()) {
+      read_operation = std::move(*temp_read_operation_result);
+      if (tablet.peer->tablet()->transaction_participant()) {
+        status = tablet.peer->tablet()->transaction_participant()->ResolveIntents(
+            snapshot_hybrid_time, context.GetClientDeadline());
+      }
+    } else {
+      status = temp_read_operation_result.status();
+    }
     if (!status.ok()) {
-      SetupErrorAndRespond(
-          resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      return SetupErrorAndRespond(resp->mutable_error(), status, &context);
     }
   }
 

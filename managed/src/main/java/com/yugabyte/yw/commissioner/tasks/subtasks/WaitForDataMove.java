@@ -59,13 +59,13 @@ public class WaitForDataMove extends AbstractTaskBase {
     double percent = 0;
     int numIters = 0;
     // Get the master addresses and certificate info.
-    Universe universe = Universe.get(taskParams().universeUUID); 
+    Universe universe = Universe.get(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificate();
     LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
     try {
-      
+
       client = ybService.getClient(masterAddresses, certificate);
       LOG.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
 
@@ -76,7 +76,7 @@ public class WaitForDataMove extends AbstractTaskBase {
         if (response.hasError()) {
           LOG.warn("{} response has error {}.", getName(), response.errorMessage());
           numErrors++;
-          // If there are more than the threshold of response errors, bail out. 
+          // If there are more than the threshold of response errors, bail out.
           if (numErrors >= MAX_ERRORS_TO_IGNORE) {
             errorMsg = getName() + ": hit too many errors during data move completion wait.";
             break;

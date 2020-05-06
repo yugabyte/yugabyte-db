@@ -114,6 +114,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS ConnectDatabase(const std::string& database_name);
 
+  CHECKED_STATUS IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+
   //------------------------------------------------------------------------------------------------
   // Operations on Database Objects.
   //------------------------------------------------------------------------------------------------
@@ -316,7 +318,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //                non-read-only operations we make sure to start a YB transaction.
   // We are returning a raw pointer here because the returned session is owned either by the
   // PgTxnManager or by this object.
-  Result<client::YBSession*> GetSession(bool transactional, bool read_only_op);
+  Result<client::YBSession*> GetSession(bool transactional,
+                                        bool read_only_op,
+                                        bool needs_pessimistic_locking = false);
 
   // Flush buffered write operations from the given buffer.
   Status FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool transactional);

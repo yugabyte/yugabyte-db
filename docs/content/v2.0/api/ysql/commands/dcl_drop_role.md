@@ -3,6 +3,7 @@ title: DROP ROLE
 linkTitle: DROP ROLE
 description: DROP ROLE
 summary: Roles (users and groups)
+block_indexing: true
 menu:
   v2.0:
     identifier: api-ysql-commands-drop-role

@@ -346,6 +346,22 @@ EOT
   fi
 }
 
+create_build_root_file() {
+  if [[ -n ${BUILD_ROOT:-} ]]; then
+    local latest_build_root_path=$YB_SRC_ROOT/build/latest_build_root
+    echo "Saving BUILD_ROOT to $latest_build_root_path"
+    echo "$BUILD_ROOT" > "$latest_build_root_path"
+  fi
+}
+
+create_mvn_repo_path_file() {
+  if [[ -n ${YB_MVN_LOCAL_REPO:-} ]]; then
+    local mvn_repo_path=$BUILD_ROOT/mvn_repo
+    echo "Saving YB_MVN_LOCAL_REPO to $mvn_repo_path"
+    echo "$YB_MVN_LOCAL_REPO" > "$mvn_repo_path"
+  fi
+}
+
 capture_sec_timestamp() {
   expect_num_args 1 "$@"
   local current_timestamp=$(date +%s)
@@ -1035,7 +1051,7 @@ if [[ -n $YB_GTEST_FILTER && -z $cxx_test_name ]]; then
   set_cxx_test_name "GTEST_${test_name,,}"
 fi
 
-set_use_ninja
+decide_whether_to_use_ninja
 handle_predefined_build_root
 
 unset cmake_opts
@@ -1178,7 +1194,6 @@ if "$verbose"; then
 fi
 
 set_build_root
-
 find_or_download_thirdparty
 detect_brew
 find_make_or_ninja_and_update_cmake_opts
@@ -1295,6 +1310,8 @@ add_brew_bin_to_path
 
 create_build_descriptor_file
 
+create_build_root_file
+
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Only build yb-master / yb-tserver / postgres when we're only trying to run a Java test.
   make_targets+=( yb-master yb-tserver postgres )
@@ -1346,6 +1363,7 @@ if "$build_java"; then
       build_yb_java_code $user_mvn_opts "${java_build_opts[@]}"
     )
   done
+  create_mvn_repo_path_file
   unset java_project_dir
 
   if "$run_java_tests" && should_run_java_test_methods_separately; then

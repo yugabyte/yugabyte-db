@@ -322,6 +322,9 @@ message PgsqlReadRequestPB {
 
   // Row mark as used by postgres for row locking.
   optional RowMarkType row_mark_type = 23;
+
+  // Upper limit for partition key for range tables when paging.
+  optional bytes max_partition_key = 25;
 }
 
 //--------------------------------------------------------------------------------------------------

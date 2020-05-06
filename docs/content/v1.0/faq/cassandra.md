@@ -2,6 +2,7 @@
 title: Cassandra Compatibility
 linkTitle: Cassandra Compatibility
 description: Apache Cassandra Compatibility in YCQL
+block_indexing: true
 menu:
   v1.0:
     identifier: cassandra-api
