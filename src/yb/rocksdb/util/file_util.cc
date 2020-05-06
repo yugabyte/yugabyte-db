@@ -31,6 +31,7 @@
 namespace rocksdb {
 
 using std::string;
+using std::vector;
 using strings::Substitute;
 
 // Utility function to copy a file up to a specified length
@@ -82,6 +83,38 @@ Status CopyFile(Env* env, const string& source,
     size -= slice.size();
   }
   return Status::OK();
+}
+
+Status CheckIfDeleted(Env* env, const string& fname, const Status& s_del) {
+  if (!s_del.ok()) {
+    // NotFound is ok, the file was concurrently deleted.
+    if (env->FileExists(fname).IsNotFound()) {
+      return Status::OK(); // Already deleted.
+    }
+  }
+  return s_del; // Successfully deleted or IO error.
+}
+
+Status DeleteRecursively(Env* env, const string& dirname) {
+  // Some sanity checks.
+  SCHECK(
+      dirname != "/" && dirname != "./" && dirname != "." && dirname != "",
+      InvalidArgument, yb::Format("Invalid folder to delete: $0", dirname));
+
+  if (!env->DirExists(dirname)) {
+    // Try to delete as usual file.
+    return CheckIfDeleted(env, dirname, env->DeleteFile(dirname));
+  }
+
+  vector<string> subchildren;
+  RETURN_NOT_OK(env->GetChildren(dirname, &subchildren));
+  for (const string& subchild : subchildren) {
+    if (subchild != "." && subchild != "..") {
+      RETURN_NOT_OK(DeleteRecursively(env, yb::JoinPathSegments(dirname, subchild)));
+    }
+  }
+
+  return CheckIfDeleted(env, dirname, env->DeleteDir(dirname));
 }
 
 Status DeleteSSTFile(const DBOptions* db_options, const string& fname,

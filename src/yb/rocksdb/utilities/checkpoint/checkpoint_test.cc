@@ -251,6 +251,8 @@ TEST_F(DBTest, GetSnapshotLink) {
     ASSERT_OK(Put(key, "v1"));
     // Take a snapshot
     ASSERT_OK(checkpoint::CreateCheckpoint(db_, snapshot_name));
+    // Overwrite the snapshot.
+    ASSERT_OK(checkpoint::CreateCheckpoint(db_, snapshot_name));
     ASSERT_OK(Put(key, "v2"));
     ASSERT_EQ("v2", Get(key));
     ASSERT_OK(Flush());
