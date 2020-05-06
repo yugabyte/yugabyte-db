@@ -83,7 +83,7 @@ CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
   return Status::OK();
 }
 
-CHECKED_STATUD MasterLeaderStepDown(
+CHECKED_STATUS MasterLeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args){
   if(args.size()<3){
