@@ -87,7 +87,7 @@ CHECKED_STATUS MasterLeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args){
   if(args.size()<3){
-    return ClusterAdminCLi::kInvalidArguments;
+    return ClusterAdminCli::kInvalidArguments;
   }
   RETURN_NOT_OK_PREPEND(client->MasterLeaderStepDownWithNewLeader(
           args[2]), "Unable to step down master leader");
