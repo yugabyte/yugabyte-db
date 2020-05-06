@@ -52,7 +52,7 @@ Update packages on your system, install development tools and additional package
 
 ```sh
 sudo apt-get update
-sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build
+sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build libssl1.0
 ```
 
 ## Getting build tools ready
