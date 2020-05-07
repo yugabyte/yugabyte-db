@@ -2104,7 +2104,7 @@ Datum agtype_string_match_contains(PG_FUNCTION_ARGS)
 
 PG_FUNCTION_INFO_V1(agtype_typecast_numeric);
 /*
- * Execute function for :: operator
+ * Execute function to typecast an agtype to an agtype numeric
  */
 Datum agtype_typecast_numeric(PG_FUNCTION_ARGS)
 {
@@ -2112,11 +2112,13 @@ Datum agtype_typecast_numeric(PG_FUNCTION_ARGS)
     agtype_value *arg_value;
     agtype_value result_value;
     Datum numd;
+    char *string = NULL;
 
     /* return null if arg is null */
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
+    /* check that we have a scalar value */
     arg_agt = AG_GET_ARG_AGTYPE_P(0);
     if (!AGT_ROOT_IS_SCALAR(arg_agt))
         ereport(ERROR,
@@ -2129,6 +2131,7 @@ Datum agtype_typecast_numeric(PG_FUNCTION_ARGS)
     if (arg_value->type == AGTV_NULL)
         PG_RETURN_NULL();
 
+    /* the input type drives the casting */
     switch(arg_value->type)
     {
     case AGTV_INTEGER:
@@ -2143,10 +2146,27 @@ Datum agtype_typecast_numeric(PG_FUNCTION_ARGS)
         /* it is already a numeric so just return it */
         PG_RETURN_POINTER(agtype_value_to_agtype(arg_value));
         break;
+    /* this allows string numbers and NaN */
+    case AGTV_STRING:
+        /* we need a null terminated string */
+        string = (char *) palloc(sizeof(char)*arg_value->val.string.len + 1);
+        string = strncpy(string, arg_value->val.string.val,
+                         arg_value->val.string.len);
+        string[arg_value->val.string.len] = '\0';
+        /* pass the string to the numeric in function for conversion */
+        numd = DirectFunctionCall3(numeric_in,
+                                   CStringGetDatum(string),
+                                   ObjectIdGetDatum(InvalidOid),
+                                   Int32GetDatum(-1));
+        /* free the string */
+        pfree(string);
+        string = NULL;
+        break;
+    /* what was given doesn't cast to a numeric */
     default:
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("expression to typecast must resolve to a number")));
+                 errmsg("typecast expression must be a number or a string")));
         break;
     }
 

@@ -691,6 +691,22 @@ $$) AS r(result agtype);
 (1 row)
 
 SELECT * FROM cypher('expr', $$
+RETURN ('2.71'::numeric)::numeric
+$$) AS r(result agtype);
+    result     
+---------------
+ 2.71::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN ('NaN'::numeric)::numeric
+$$) AS r(result agtype);
+    result    
+--------------
+ NaN::numeric
+(1 row)
+
+SELECT * FROM cypher('expr', $$
 RETURN ((1 + 2.71) * 3)::numeric
 $$) AS r(result agtype);
      result     
@@ -742,6 +758,19 @@ SELECT agtype_typecast_numeric(null);
  
 (1 row)
 
+-- these should fail
+SELECT * FROM cypher('expr', $$
+RETURN ('2:71'::numeric)::numeric
+$$) AS r(result agtype);
+ERROR:  invalid input syntax for type numeric: "2:71"
+SELECT * FROM cypher('expr', $$
+RETURN ('inf'::numeric)::numeric
+$$) AS r(result agtype);
+ERROR:  invalid input syntax for type numeric: "inf"
+SELECT * FROM cypher('expr', $$
+RETURN ('infinity'::numeric)::numeric
+$$) AS r(result agtype);
+ERROR:  invalid input syntax for type numeric: "infinity"
 --
 -- Test from an agtype value to agtype float
 --

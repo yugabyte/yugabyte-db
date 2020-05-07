@@ -368,6 +368,12 @@ SELECT * FROM cypher('expr', $$
 RETURN (2.71::numeric)::numeric
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
+RETURN ('2.71'::numeric)::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ('NaN'::numeric)::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
 RETURN ((1 + 2.71) * 3)::numeric
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
@@ -384,6 +390,16 @@ RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::numeri
 $$) AS r(result agtype);
 SELECT agtype_typecast_numeric('null'::agtype);
 SELECT agtype_typecast_numeric(null);
+-- these should fail
+SELECT * FROM cypher('expr', $$
+RETURN ('2:71'::numeric)::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ('inf'::numeric)::numeric
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ('infinity'::numeric)::numeric
+$$) AS r(result agtype);
 
 --
 -- Test from an agtype value to agtype float
