@@ -46,7 +46,12 @@ class PgsqlWriteOperation :
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
   CHECKED_STATUS Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response);
-  bool RequireReadSnapshot() const override { return request_.has_column_refs(); }
+  bool RequireReadSnapshot() const override {
+    // For YSQL the the standard operations (INSERT/UPDATE/DELETE) will read/check the primary key.
+    // We use UPSERT stmt type for specific requests when we can guarantee we can skip the read.
+    return request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPSERT;
+  }
+
   const PgsqlWriteRequestPB& request() const { return request_; }
   PgsqlResponsePB* response() const { return response_; }
 

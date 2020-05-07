@@ -493,6 +493,10 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecInsert(handle));
 }
 
+YBCStatus YBCPgInsertStmtSetUpsertMode(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->InsertStmtSetUpsertMode(handle));
+}
+
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
