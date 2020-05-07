@@ -41,7 +41,6 @@ set(TABLET_SRCS
   tablet_bootstrap.cc
   tablet_bootstrap_if.cc
   tablet_component.cc
-  tablet_error.cc
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
   tablet_peer.cc
@@ -86,6 +85,11 @@ ADD_YB_LIBRARY(tablet_proto
 add_library(tablet ${TABLET_SRCS})
 cotire(tablet)
 
+ADD_YB_LIBRARY(
+  tablet_error
+  SRCS tablet_error.cc
+  DEPS tablet_proto yb_util)
+
 target_link_libraries(tablet
   tablet_proto
   yb_common
@@ -98,7 +102,8 @@ target_link_libraries(tablet
   rocksdb
   yb_docdb
   yb_client
-  yb_pggate_util)
+  yb_pggate_util
+  tablet_error)
 
 add_library(tablet_test_util
             local_tablet_writer.cc

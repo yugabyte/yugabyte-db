@@ -13,9 +13,9 @@ export default class YBFormInput extends Component {
   };
 
   render() {
-    const { ...rest } = this.props;
+    const { infoContent, ...rest } = this.props;
     return (
-      <YBLabel {...this.props} >
+      <YBLabel {...this.props} infoContent={infoContent}>
         <FormControl
           {...this.props.field}
           {...rest}

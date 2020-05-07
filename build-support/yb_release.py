@@ -251,7 +251,8 @@ def main():
             os.path.join(managed_dir, "yb_release"),
             "--destination", yw_dir, "--unarchived"
         ]
-        logging.info("Creating YugaWare package with command: {}".format(package_yw_cmd))
+        logging.info(
+            "Creating YugaWare package with command '{}'".format(" ".join(package_yw_cmd)))
         try:
             subprocess.check_output(package_yw_cmd, cwd=managed_dir)
         except subprocess.CalledProcessError as e:

@@ -58,9 +58,9 @@ extern void YBCCreateIndex(const char *indexName,
 						   IndexInfo *indexInfo,
 						   TupleDesc indexTupleDesc,
 						   int16 *coloptions,
+						   Datum reloptions,
 						   Oid indexId,
-						   Relation rel,
-						   List *index_options);
+						   Relation rel);
 
 extern void YBCDropIndex(Oid relationId);
 

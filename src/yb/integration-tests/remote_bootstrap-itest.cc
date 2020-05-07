@@ -757,11 +757,6 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
 }
 
 TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
-  if (!AllowSlowTests()) {
-    LOG(INFO) << "Skipping test in fast-test mode.";
-    return;
-  }
-
   constexpr int kMaxConcurrentTabletRemoteBootstrapSessions = 2;
 
   vector<string> ts_flags, master_flags;
@@ -775,6 +770,7 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   master_flags.push_back("--load_balancer_max_concurrent_tablet_remote_bootstraps=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions));
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
 
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
@@ -1215,7 +1211,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
       "--follower_unavailable_considered_failed_sec=30",
       "--raft_heartbeat_interval_ms=50",
       "--consensus_rpc_timeout_ms=300",
-      "--TEST_delay_removing_peer_with_failed_tablet_secs=5",
+      "--TEST_delay_removing_peer_with_failed_tablet_secs=10",
       "--memstore_size_mb=1",
       // Increase the number of missed heartbeats used to detect leader failure since in slow
       // testing instances it is very easy to miss the default (6) heartbeats since they are being
@@ -1234,8 +1230,9 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
   LOG(INFO) << "Starting workload";
   TestWorkload workload(cluster_.get());
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.set_payload_bytes(1024);
   workload.Start();
-  workload.WaitInserted(10000);
+  workload.WaitInserted(5000);
   LOG(INFO) << "Stopping workload";
   workload.StopAndJoin();
 
@@ -1287,7 +1284,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
   cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->Shutdown();
   ASSERT_OK(cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->Restart());
 
-  ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::FAILED, kTimeout));
+  ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::FAILED, kTimeout, 500ms));
   LOG(INFO) << "Tablet " << tablet_id << " in state FAILED in tablet server "
             << non_leader_ts->uuid();
 

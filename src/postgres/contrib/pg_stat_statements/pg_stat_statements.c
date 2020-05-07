@@ -455,6 +455,12 @@ _PG_fini(void)
 }
 
 static void 
+resetYsqlStatementStats()
+{
+  pg_stat_statements_reset(NULL);
+}
+
+static void 
 getYsqlStatementStats(void *cb_arg)
 {
 	HASH_SEQ_STATUS hash_seq;
@@ -523,6 +529,7 @@ pgss_shmem_startup(void)
 		prev_shmem_startup_hook();
 
   RegisterGetYsqlStatStatements(&getYsqlStatementStats);
+  RegisterResetYsqlStatStatements(&resetYsqlStatementStats);
 
 	/* reset in case this is a restart within the postmaster */
 	pgss = NULL;

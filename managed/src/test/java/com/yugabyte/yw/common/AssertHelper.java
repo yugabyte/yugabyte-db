@@ -58,6 +58,18 @@ public class AssertHelper {
     }
   }
 
+  // Allows specifying a JsonPath to the expected node.
+  // For example "/foo/bar" locates node bar within node foo in json.
+  public static void assertValueAtPath(JsonNode json, String key, String value) {
+    JsonNode targetNode = json.at(key);
+    assertFalse(targetNode.isMissingNode());
+    if (targetNode.isObject()) {
+      assertEquals(value, targetNode.toString());
+    } else {
+      assertEquals(value, targetNode.asText());
+    }
+  }
+
   public static void assertValues(JsonNode json, String key, List<String> values) {
     json.findValues(key).forEach((node) -> assertTrue(values.contains(node.asText())));
   }

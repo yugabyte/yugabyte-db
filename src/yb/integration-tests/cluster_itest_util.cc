@@ -1023,7 +1023,8 @@ Status WaitForNumTabletsOnTS(TServerDetails* ts,
 Status WaitUntilTabletInState(TServerDetails* ts,
                               const std::string& tablet_id,
                               tablet::RaftGroupStatePB state,
-                              const MonoDelta& timeout) {
+                              const MonoDelta& timeout,
+                              const MonoDelta& list_tablets_timeout) {
   MonoTime start = MonoTime::Now();
   MonoTime deadline = start;
   deadline.AddDelta(timeout);
@@ -1031,7 +1032,7 @@ Status WaitUntilTabletInState(TServerDetails* ts,
   Status s;
   tablet::RaftGroupStatePB last_state = tablet::UNKNOWN;
   while (true) {
-    s = ListTablets(ts, MonoDelta::FromSeconds(10), &tablets);
+    s = ListTablets(ts, list_tablets_timeout, &tablets);
     if (s.ok()) {
       bool seen = false;
       for (const ListTabletsResponsePB::StatusAndSchemaPB& t : tablets) {

@@ -168,6 +168,13 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
 
 Status KvStoreInfo::LoadTablesFromPB(
     google::protobuf::RepeatedPtrField<TableInfoPB> pbs, TableId primary_table_id) {
+
+  // To avoid race conditions, send all the tables to live in the old tables farm forever.
+  // TODO(hector): Fix the race condition by converting unique_ptr of TableInfo to shared_ptr
+  for (auto& iter : tables) {
+    old_tables.push_back(std::move(iter.second));
+  }
+
   tables.clear();
   for (const auto& table_pb : pbs) {
     auto table_info = std::make_unique<TableInfo>();
@@ -481,7 +488,7 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
                                const bool colocated)
     : state_(kNotWrittenYet),
       raft_group_id_(std::move(raft_group_id)),
-      partition_(std::move(partition)),
+      partition_(std::make_shared<Partition>(std::move(partition))),
       primary_table_id_(table_id),
       kv_store_(KvStoreId(raft_group_id), rocksdb_dir),
       fs_manager_(fs_manager),
@@ -549,7 +556,9 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
                                 " found " + superblock.raft_group_id(),
                                 superblock.DebugString());
     }
-    Partition::FromPB(superblock.partition(), &partition_);
+    Partition partition;
+    Partition::FromPB(superblock.partition(), &partition);
+    partition_ = std::make_shared<Partition>(partition);
     primary_table_id_ = superblock.primary_table_id();
     colocated_ = superblock.colocated();
 
@@ -634,7 +643,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   // Convert to protobuf.
   RaftGroupReplicaSuperBlockPB pb;
   pb.set_raft_group_id(raft_group_id_);
-  partition_.ToPB(pb.mutable_partition());
+  partition_->ToPB(pb.mutable_partition());
 
   kv_store_.ToPB(primary_table_id_, pb.mutable_kv_store());
 
@@ -833,7 +842,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
-  metadata->partition_ = partition;
+  *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_UNKNOWN;
   RETURN_NOT_OK(metadata->Flush());

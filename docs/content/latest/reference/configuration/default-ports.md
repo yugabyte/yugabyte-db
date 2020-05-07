@@ -11,7 +11,7 @@ menu:
     weight: 2740
 aliases:
   - /latest/reference/default-ports
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 

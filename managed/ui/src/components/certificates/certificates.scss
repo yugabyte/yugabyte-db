@@ -65,3 +65,31 @@
     transform: translate3d(4px, 0, 0);
   }
 }
+
+.loading-text {
+  position: fixed;
+  bottom: 5%;
+  left: 100px;
+  z-index: 200000;
+  color: white;
+  background: rgb(60, 64, 67);
+  padding: 15px 20px;
+  border-radius: 2px;
+
+  i {
+    margin-left: 15px;
+    font-size: 24px;
+    color: #bbb;
+    cursor: pointer;
+  }
+  span {
+    font-size: 14px;
+    vertical-align: text-bottom;
+  }
+}
+
+.modal-content {
+  .info-text {
+    margin-bottom: 15px;
+  }
+}

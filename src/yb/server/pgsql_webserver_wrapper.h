@@ -41,8 +41,11 @@ typedef struct rpczEntry {
     unsigned int db_oid;
     char *db_name;
     char *process_start_timestamp;
+    int64 process_running_for_ms;
     char *transaction_start_timestamp;
+    int64 transaction_running_for_ms;
     char *query_start_timestamp;
+    int64 query_running_for_ms;
     char *backend_type;
     char *backend_status;
     char *host;
@@ -69,6 +72,7 @@ void RegisterRpczEntries(void (*rpczFunction)(), void (*freerpczFunction)(), int
                          rpczEntry **rpczEntriesPointer);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
+void RegisterResetYsqlStatStatements(void (*fn)());
 void WriteStatArrayElemToJson(void* p1, void* p2);
 
 #ifdef __cplusplus

@@ -38,7 +38,7 @@ YB_NETWORK_NAME = "yb-gcp-network"
 YB_SUBNET_FORMAT = "yb-subnet-{}"
 YB_PEERING_CONNECTION_FORMAT = "yb-peering-{}-with-{}"
 YB_FIREWALL_NAME = "yb-internal-firewall"
-YB_FIREWALL_TARGET_TAGS = ["cluster-server"]
+YB_FIREWALL_TARGET_TAGS = "cluster-server"
 
 
 GCP_SCRATCH = "scratch"
@@ -94,7 +94,7 @@ def gcp_request_limit_retry(fn):
 
 
 def get_firewall_tags():
-    return os.environ.get('YB_FIREWALL_TAGS', '').split(',') or YB_FIREWALL_TARGET_TAGS
+    return os.environ.get('YB_FIREWALL_TAGS', YB_FIREWALL_TARGET_TAGS).split(',')
 
 
 class GcpMetadata():
@@ -118,7 +118,7 @@ class GcpMetadata():
         try:
             # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
             project = network_data.split('/')[1]
-        except IndexError:
+        except (IndexError, AttributeError):
             return None
 
         compute = discovery.build('compute', 'beta')
@@ -407,9 +407,19 @@ class NetworkManager():
             # Only update if any of these CIDRs are not already there or if targetFlags should
             # be updated.
             firewall = firewalls[0]
-            if set(firewall.get("sourceRanges")) != set(ip_cidr_list) or \
-                    set(firewall.get("targetTags")) != set(get_firewall_tags()):
-                return fw_object.patch(
+            source_cidrs = set(firewall.get("sourceRanges"))
+            new_cidrs = set(ip_cidr_list)
+            union_cidrs = source_cidrs | new_cidrs
+
+            current_tags = set(firewall.get("targetTags"))
+            new_tags = set(get_firewall_tags())
+            union_tags = current_tags | new_tags
+            if source_cidrs != union_cidrs or current_tags != union_tags:
+                body["sourceRanges"] = list(union_cidrs)
+                body["targetTags"] = list(union_tags)
+                # Use 'fw_object.update' and not 'fw_object.patch' to update firewall metadata
+                # without removing pre-existing info.
+                return fw_object.update(
                     project=self.project,
                     firewall=firewall_name,
                     body=body).execute()
@@ -552,7 +562,7 @@ class GoogleCloudAdmin():
         body = {
             "sizeGb": args.volume_size
         }
-        print ("Got instance info: " + str(instance_info))
+        print("Got instance info: " + str(instance_info))
         for disk in instance_info['disks']:
             # Bootdisk should be ignored.
             if disk['index'] != 0:

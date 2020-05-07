@@ -45,7 +45,8 @@ set(PGGATE_LIBS
     yb_client
     tserver_util
     yb_pggate_util
-    yb_pggate_flags)
+    yb_pggate_flags
+    tablet_error)
 
 ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}
