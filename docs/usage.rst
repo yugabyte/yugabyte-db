@@ -63,7 +63,7 @@ For clarity, let's see how it works with a very simple test case:
 
 .. code-block:: psql
 
-  CREATE TABLE hypo (id integer, line text) ;
+  CREATE TABLE hypo (id integer, val text) ;
   INSERT INTO hypo SELECT i, 'line ' || i FROM generate_series(1, 100000) i ;
   VACUUM ANALYZE hypo ;
 
