@@ -1,8 +1,8 @@
 ---
-title: Health checking and alerts using YugaWare
+title: Health checking and alerts using using Yugabyte Platform
 headerTitle: Health checking and alerts
 linkTitle: Health checking and alerts
-description: Use YugaWare for health checking and alerts
+description: Use Yugabyte Platform for health checking and alerts
 aliases:
   - /manage/enterprise-edition/cluster-health/
   - /manage/cluster-health/

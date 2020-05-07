@@ -1,8 +1,8 @@
 ---
-title: Configure Microsoft Azure for YugabyteDB using YugaWare
+title: Configure Microsoft Azure for YugabyteDB deployments
 headerTitle: Configure cloud providers
 linkTitle: 4. Configure cloud providers
-description: Configure Microsoft Azure for YugabyteDB clusters using YugaWare
+description: Configure Microsoft Azure for YugabyteDB deployments using the YugabyteDB Admin Console
 menu:
   latest:
     identifier: configure-cloud-providers-3-azure
