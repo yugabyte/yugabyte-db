@@ -1001,15 +1001,27 @@ CHECKED_STATUS BuildSubDocument(
   return Status::OK();
 }
 
-}  // namespace
-
-yb::Status FindLastWriteTime(
+// If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
+// max_overwrite_time, we update max_overwrite_time, and result_value (unless it is nullptr).
+// If there is a TTL with write time later than the write time in expiration, it is updated with
+// the new write time and TTL, unless its value is kMaxTTL.
+// When the TTL found is kMaxTTL and it is not a merge record, then it is assumed not to be
+// explicitly set. Because it does not override the default table ttl, exp, which was initialized
+// to the table ttl, is not updated.
+// Observe that exp updates based on the first record found, while max_overwrite_time updates
+// based on the first non-merge record found.
+// This should not be used for leaf nodes. - Why? Looks like it is already used for leaf nodes
+// also.
+// Note: it is responsibility of caller to make sure key_bytes_without_ht doesn't have hybrid
+// time.
+// TODO: We could also check that the value is kTombStone or kObject type for sanity checking - ?
+// It could be a simple value as well, not necessarily kTombstone or kObject.
+Status FindLastWriteTime(
     IntentAwareIterator* iter,
     const Slice& key_without_ht,
     DocHybridTime* max_overwrite_time,
     Expiration* exp,
-    Value* result_value) {
-
+    Value* result_value = nullptr) {
   Slice value;
   DocHybridTime doc_ht = *max_overwrite_time;
   RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &doc_ht, &value));
@@ -1077,6 +1089,8 @@ yb::Status FindLastWriteTime(
 
   return Status::OK();
 }
+
+}  // namespace
 
 yb::Status GetSubDocument(
     const DocDB& doc_db,
@@ -1252,8 +1266,7 @@ yb::Status GetSubDocument(
   }
   // Make sure the iterator is placed outside the whole document in the end.
   key_bytes.Truncate(dockey_size);
-  key_bytes.AppendValueType(ValueType::kMaxByte);
-  db_iter->SeekForward(&key_bytes);
+  db_iter->SeekOutOfSubDoc(&key_bytes);
   return Status::OK();
 }
 
@@ -1400,6 +1413,15 @@ void DocDBDebugDumpToContainer(
 template
 void DocDBDebugDumpToContainer(
     DocDB docdb, std::vector<std::string>* out, IncludeBinary include_binary);
+
+void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type) {
+  std::vector<std::string> lines;
+  DocDBDebugDumpToContainer(rocksdb, &lines, db_type);
+  LOG(INFO) << AsString(db_type) << " DB dump:";
+  for (const auto& line : lines) {
+    LOG(INFO) << "  " << line;
+  }
+}
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* out) {
   out->AppendValueType(ValueType::kTransactionId);

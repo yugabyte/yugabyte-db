@@ -118,6 +118,16 @@ class Slice {
   // Return true iff the length of the referenced data is zero
   bool empty() const { return begin_ == end_; }
 
+  template <class... Args>
+  bool GreaterOrEqual(const Slice& arg0, Args&&... args) const {
+    return !Less(arg0, std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  bool Less(const Slice& arg0, Args&&... args) const {
+    return DoLess(arg0, std::forward<Args>(args)...);
+  }
+
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
   uint8_t operator[](size_t n) const {
@@ -237,6 +247,25 @@ class Slice {
 
  private:
   friend bool operator==(const Slice& x, const Slice& y);
+
+  bool DoLess() const {
+    return !empty();
+  }
+
+  template <class... Args>
+  bool DoLess(const Slice& arg0, Args&&... args) const {
+    auto arg0_size = arg0.size();
+    if (size() < arg0_size) {
+      return compare(arg0) < 0;
+    }
+
+    int cmp = Slice(begin_, arg0_size).compare(arg0);
+    if (cmp != 0) {
+      return cmp < 0;
+    }
+
+    return Slice(begin_ + arg0_size, end_).DoLess(std::forward<Args>(args)...);
+  }
 
   static bool MemEqual(const void* a, const void* b, size_t n) {
     return strings::memeq(a, b, n);

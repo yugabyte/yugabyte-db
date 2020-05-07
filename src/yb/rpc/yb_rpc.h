@@ -166,6 +166,10 @@ class YBInboundCall : public InboundCall {
 
   CoarseTimePoint GetClientDeadline() const override;
 
+  MonoTime ReceiveTime() const {
+    return timing_.time_received;
+  }
+
   const std::string& method_name() const override {
     return remote_method_.method_name();
   }
