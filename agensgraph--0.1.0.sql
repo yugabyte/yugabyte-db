@@ -713,7 +713,6 @@ AS 'MODULE_PATHNAME';
 --
 -- query functions
 --
-
 CREATE FUNCTION cypher(graph_name name, query_string cstring,
                        params agtype = NULL)
 RETURNS SETOF record
@@ -731,9 +730,24 @@ COST 10
 ROWS 60
 AS 'MODULE_PATHNAME';
 
+--
+-- function for typecasting an agtype value to another agtype value
+--
+
 CREATE FUNCTION agtype_typecast_numeric(agtype)
 RETURNS agtype
 LANGUAGE c
 STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION agtype_typecast_float(agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
+-- End
+--

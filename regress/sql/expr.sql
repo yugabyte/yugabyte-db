@@ -353,7 +353,10 @@ RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS "klmo"
 $$) AS r(result agtype);
 
 --
--- Test typecast "::" for numeric transform and execution
+-- Test typecasting '::' transform and execution logic
+--
+
+-- Test from an agtype value to an agtype numeric
 --
 SELECT * FROM cypher('expr', $$
 RETURN 0::numeric
@@ -381,6 +384,56 @@ RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::numeri
 $$) AS r(result agtype);
 SELECT agtype_typecast_numeric('null'::agtype);
 SELECT agtype_typecast_numeric(null);
+
+--
+-- Test from an agtype value to agtype float
+--
+SELECT * FROM cypher('expr', $$
+RETURN 0::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '2.71'::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 2.71::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2::numeric}, 2, null][1].one)::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1::float, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].one)
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1::float, pie: 3.1415927, e: 2.718281::numeric}, 2, null][1].one)::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN ([0, {one: 1, pie: 3.1415927, e: 2.718281::numeric}, 2, null][3])::float
+$$) AS r(result agtype);
+-- test NaN, infinity, and -infinity
+SELECT * FROM cypher('expr', $$
+RETURN 'NaN'::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'inf'::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '-inf'::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'infinity'::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN '-infinity'::float
+$$) AS r(result agtype);
+SELECT agtype_typecast_float('null'::agtype);
+SELECT agtype_typecast_float(null);
+-- these should fail
+SELECT * FROM cypher('expr', $$
+RETURN '2:71'::float
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN 'infi'::float
+$$) AS r(result agtype);
 
 --
 -- Cleanup

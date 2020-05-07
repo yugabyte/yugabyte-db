@@ -577,6 +577,9 @@ static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
     return (Node *)func_expr;
 }
 
+/*
+ * Function to create a typecasting node
+ */
 static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
                                        cypher_typecast *ctypecast)
 {
@@ -586,15 +589,23 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     Oid func_agtype_typecast_operator_oid = InvalidOid;
     int len;
 
+    /* verify input parameter */
     Assert (cpstate != NULL);
     Assert (ctypecast != NULL);
 
+    /* get the oid of the requested typecast function */
     len = strlen(ctypecast->typecast);
     if (len == 7 && pg_strncasecmp(ctypecast->typecast, "numeric", 7) == 0)
     {
-        func_agtype_typecast_operator_oid = get_ag_func_oid("agtype_typecast_numeric",
-                                                        1, AGTYPEOID);
+        func_agtype_typecast_operator_oid =
+            get_ag_func_oid("agtype_typecast_numeric", 1, AGTYPEOID);
     }
+    else if (len == 5 && pg_strncasecmp(ctypecast->typecast, "float", 5) == 0)
+    {
+        func_agtype_typecast_operator_oid =
+            get_ag_func_oid("agtype_typecast_float", 1, AGTYPEOID);
+    }
+    /* if none was found, error out */
     else
     {
         ereport(ERROR,
@@ -602,8 +613,10 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
                                  ctypecast->typecast)));
     }
 
+    /* transform the expression to be typecast */
     expr = transform_cypher_expr_recurse(cpstate, ctypecast->expr);
 
+    /* append the expression and build the function node */
     func_args = lappend(func_args, expr);
     func_expr = makeFuncExpr(func_agtype_typecast_operator_oid, AGTYPEOID,
                              func_args, InvalidOid, InvalidOid,
