@@ -329,6 +329,8 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecInsert(PgStatement *handle);
 
+  CHECKED_STATUS InsertStmtSetUpsertMode(PgStatement *handle);
+
   //------------------------------------------------------------------------------------------------
   // Update.
   CHECKED_STATUS NewUpdate(const PgObjectId& table_id,

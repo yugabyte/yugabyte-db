@@ -39,6 +39,10 @@ class PgInsert : public PgDmlWrite {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
 
+  void SetUpsertMode() {
+    write_req_->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
+  }
+
  private:
   std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
     return target_desc_->NewPgsqlInsert();

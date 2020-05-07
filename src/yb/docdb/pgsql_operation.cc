@@ -116,8 +116,13 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
     case PgsqlWriteRequestPB::PGSQL_DELETE:
       return ApplyDelete(data);
 
-    case PgsqlWriteRequestPB::PGSQL_UPSERT:
+    case PgsqlWriteRequestPB::PGSQL_UPSERT: {
+      // Upserts should not have column refs (i.e. require read).
+      DSCHECK(!request_.has_column_refs() || request_.column_refs().ids().empty(),
+              IllegalState,
+              "Upsert operation should not have column references");
       return ApplyInsert(data, IsUpsert::kTrue);
+    }
 
     case PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED:
       return ApplyTruncateColocated(data);
