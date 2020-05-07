@@ -21,6 +21,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef YB_ROCKSDB_DB_DB_ITER_H
+#define YB_ROCKSDB_DB_DB_ITER_H
+
 #pragma once
 #include <stdint.h>
 #include <string>
@@ -81,6 +84,8 @@ class ArenaWrappedDBIter : public Iterator {
   virtual Status ReleasePinnedData();
   virtual Status GetProperty(std::string prop_name, std::string* prop) override;
 
+  void RevalidateAfterUpperBoundChange() override;
+
  private:
   DBIter* db_iter_;
   Arena arena_;
@@ -95,3 +100,5 @@ extern ArenaWrappedDBIter* NewArenaWrappedDbIterator(
     bool prefix_same_as_start = false, bool pin_data = false);
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_DB_DB_ITER_H

@@ -250,9 +250,9 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
       const int expected_num_iterators_increment, int *total_iterators) {
     if (FLAGS_use_docdb_aware_bloom_filter) {
       const auto total_useful_updated =
-          options().statistics->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL);
+          regular_db_options().statistics->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL);
       const auto total_iterators_updated =
-          options().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
+          regular_db_options().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
       if (expected_max_increment > 0) {
         ASSERT_GT(total_useful_updated, *total_useful);
         ASSERT_LE(total_useful_updated, *total_useful + expected_max_increment);
@@ -2569,7 +2569,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
   auto flush_rocksdb = [this, &total_table_iterators]() {
     ASSERT_OK(FlushRocksDbAndWait());
     total_table_iterators =
-        options().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
+        regular_db_options().statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
   };
 
   // The following code will set 2/3 keys at a time and flush those 2 writes in a new file. That
@@ -3349,16 +3349,16 @@ TEST_F(DocDBTest, ForceFlushedFrontier) {
 
   LOG(INFO) << "Attempting to change flushed frontier from " << consensus_frontier
             << " to " << new_consensus_frontier;
-  ASSERT_OK(rocksdb_->ModifyFlushedFrontier(
+  ASSERT_OK(regular_db_->ModifyFlushedFrontier(
       new_user_frontier_ptr, rocksdb::FrontierModificationMode::kForce));
   LOG(INFO) << "Checking that flushed froniter was set to " << new_consensus_frontier;
-  ASSERT_EQ(*new_user_frontier_ptr, *rocksdb_->GetFlushedFrontier());
+  ASSERT_EQ(*new_user_frontier_ptr, *regular_db_->GetFlushedFrontier());
 
   LOG(INFO) << "Reopening RocksDB";
   ASSERT_OK(ReopenRocksDB());
   LOG(INFO) << "Checking that flushed frontier is still set to "
-            << rocksdb_->GetFlushedFrontier()->ToString();
-  ASSERT_EQ(*new_user_frontier_ptr, *rocksdb_->GetFlushedFrontier());
+            << regular_db_->GetFlushedFrontier()->ToString();
+  ASSERT_EQ(*new_user_frontier_ptr, *regular_db_->GetFlushedFrontier());
 }
 
 // Handy code to analyze some DB.
@@ -3407,7 +3407,7 @@ TEST_F(DocDBTest, SetHybridTimeFilter) {
 
   CloseRocksDB();
 
-  RocksDBPatcher patcher(rocksdb_dir_, rocksdb_options_);
+  RocksDBPatcher patcher(rocksdb_dir_, regular_db_options_);
 
   ASSERT_OK(patcher.Load());
   ASSERT_OK(patcher.SetHybridTimeFilter(HybridTime::FromMicros(2000)));

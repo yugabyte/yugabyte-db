@@ -119,6 +119,8 @@ class DocHybridTime {
 
   bool is_valid() const { return hybrid_time_.is_valid(); }
 
+  static std::string DebugSliceToString(Slice input);
+
  private:
   HybridTime hybrid_time_;
 

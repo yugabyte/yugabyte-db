@@ -35,6 +35,9 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/status.h"
 
+DEFINE_int32(non_graph_characters_percentage_to_use_hexadecimal_rendering, 10,
+             "Non graph charaters percentage to use hexadecimal rendering");
+
 namespace yb {
 
 Status Slice::check_size(size_t expected_size) const {
@@ -76,17 +79,18 @@ std::string Slice::ToDebugString(size_t max_len) const {
     abbreviated = true;
   }
 
-  int size = 0;
-  for (int i = 0; i < bytes_to_print; i++) {
+  int num_not_graph = 0;
+  for (size_t i = 0; i < bytes_to_print; i++) {
     if (!isgraph(begin_[i])) {
-      size += 4;
-    } else {
-      size++;
+      ++num_not_graph;
     }
   }
-  if (abbreviated) {
-    size += 20;  // extra padding
+
+  if (num_not_graph * 100 >
+      bytes_to_print * FLAGS_non_graph_characters_percentage_to_use_hexadecimal_rendering) {
+    return ToDebugHexString();
   }
+  size_t size = bytes_to_print + 3 * num_not_graph + (abbreviated ? 20 : 0);
 
   std::string ret;
   ret.reserve(size);

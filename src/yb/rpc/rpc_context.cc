@@ -197,6 +197,10 @@ CoarseTimePoint RpcContext::GetClientDeadline() const {
   return call_->GetClientDeadline();
 }
 
+MonoTime RpcContext::ReceiveTime() const {
+  return call_->ReceiveTime();
+}
+
 Trace* RpcContext::trace() {
   return call_->trace();
 }

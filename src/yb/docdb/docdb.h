@@ -395,35 +395,13 @@ struct GetSubDocumentData {
     return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 return_type_only: $3 "
                       "low_subkey: $4 high_subkey: $5 table_tombstone_time: $6 }",
                   SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
-                  exp.write_ht, return_type_only, *low_subkey, *high_subkey, *table_tombstone_time);
+                  exp.write_ht, return_type_only, low_subkey, high_subkey, table_tombstone_time);
   }
 };
 
 inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& data) {
   return out << data.ToString();
 }
-
-// If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
-// max_overwrite_time, we update max_overwrite_time, and result_value (unless it is nullptr).
-// If there is a TTL with write time later than the write time in expiration, it is updated with
-// the new write time and TTL, unless its value is kMaxTTL.
-// When the TTL found is kMaxTTL and it is not a merge record, then it is assumed not to be
-// explicitly set. Because it does not override the default table ttl, exp, which was initialized
-// to the table ttl, is not updated.
-// Observe that exp updates based on the first record found, while max_overwrite_time updates
-// based on the first non-merge record found.
-// This should not be used for leaf nodes. - Why? Looks like it is already used for leaf nodes
-// also.
-// Note: it is responsibility of caller to make sure key_bytes_without_ht doesn't have hybrid
-// time.
-// TODO: We could also check that the value is kTombStone or kObject type for sanity checking - ?
-// It could be a simple value as well, not necessarily kTombstone or kObject.
-yb::Status FindLastWriteTime(
-    IntentAwareIterator* iter,
-    const Slice& key_without_ht,
-    DocHybridTime* max_overwrite_time,
-    Expiration* exp,
-    Value* result_value = nullptr);
 
 // Indicates if we can get away by only seeking forward, or if we must do a regular seek.
 YB_STRONGLY_TYPED_BOOL(SeekFwdSuffices);
@@ -496,6 +474,8 @@ void DocDBDebugDumpToContainer(
 template <class T>
 void DocDBDebugDumpToContainer(
     DocDB docdb, T* out, IncludeBinary include_binary = IncludeBinary::kFalse);
+
+void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular);
 
 void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
 

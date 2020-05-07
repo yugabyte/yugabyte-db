@@ -38,7 +38,9 @@ using namespace std::literals;
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_double(respond_write_failed_probability);
+DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
@@ -46,7 +48,6 @@ DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 
 namespace yb {
 namespace pgwrapper {
@@ -58,13 +59,15 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void SetUp() override {
+    HybridTime::TEST_SetPrettyToString(true);
+
     constexpr int kNumMasters = 1;
 
     FLAGS_client_read_write_timeout_ms = 120000;
     FLAGS_enable_ysql = true;
     FLAGS_hide_pg_catalog_table_creation_logs = true;
     FLAGS_master_auto_run_initdb = true;
-    FLAGS_retryable_rpc_single_call_timeout_ms = NonTsanVsTsan(10000, 30000);
+    FLAGS_retryable_rpc_single_call_timeout_ms = 30000;
     FLAGS_yb_client_admin_operation_timeout_sec = 120;
     FLAGS_pggate_rpc_timeout_secs = 120;
     FLAGS_ysql_num_shards_per_tserver = 1;
@@ -987,6 +990,67 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
     WARN_NOT_OK(status, "Failed to create table");
     return status.ok();
   }, 15s, "Create table"));
+}
+
+class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
+ protected:
+  void SetUp() override {
+    FLAGS_ysql_prefetch_limit = 20000000;
+    PgMiniTest::SetUp();
+  }
+
+  void Run(int rows, int block_size, int reads) {
+    auto conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+    auto last_row = 0;
+    while (last_row < rows) {
+      auto first_row = last_row + 1;
+      last_row = std::min(rows, last_row + block_size);
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO t SELECT generate_series($0, $1)", first_row, last_row));
+    }
+
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      auto tp = peer->tablet()->transaction_participant();
+      if (tp) {
+        LOG(INFO) << peer->LogPrefix() << "Intents: " << tp->TEST_CountIntents().first;
+      }
+    }
+
+    LOG(INFO) << "Perform read";
+
+    if (VLOG_IS_ON(4)) {
+      google::SetVLOGLevel("intent_aware_iterator", 4);
+      google::SetVLOGLevel("docdb_rocksdb_util", 4);
+      google::SetVLOGLevel("docdb", 4);
+    }
+
+    for (int i = 0; i != reads; ++i) {
+      auto start = MonoTime::Now();
+      auto fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT count(*) FROM t"));
+      auto finish = MonoTime::Now();
+      ASSERT_EQ(rows, fetched_rows);
+      LOG(INFO) << i << ") Full Time: " << finish - start;
+    }
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefetchTest) {
+  constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
+  constexpr int kBlockSize = 1000;
+  constexpr int kReads = 1;
+
+  Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest) {
+  constexpr int kRows = 10;
+  constexpr int kBlockSize = kRows;
+  constexpr int kReads = 1;
+
+  Run(kRows, kBlockSize, kReads);
 }
 
 } // namespace pgwrapper

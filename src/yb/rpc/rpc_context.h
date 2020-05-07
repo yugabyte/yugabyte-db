@@ -198,6 +198,8 @@ class RpcContext {
   // If the client did not specify a deadline, returns MonoTime::Max().
   CoarseTimePoint GetClientDeadline() const;
 
+  MonoTime ReceiveTime() const;
+
   // Panic the server. This logs a fatal error with the given message, and
   // also includes the current RPC request, requestor, trace information, etc,
   // to make it easier to debug.

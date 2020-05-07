@@ -210,11 +210,12 @@ class IntentAwareIterator {
   // Strong write intents which are either committed or written by the current
   // transaction (stored in txn_op_context) by considered time are considered as suitable.
 
-  // Seek intent sub-iterator to latest suitable intent starting with intent_key_prefix.
+  // Seek intent sub-iterator to latest suitable intent starting with seek_key_buffer_.
   // intent_iter_ will be positioned to first intent for the smallest key greater than
   // resolved_intent_sub_doc_key_encoded_.
   // If iterator already positioned far enough - does not perform seek.
-  void SeekForwardToSuitableIntent(const KeyBytes &intent_key_prefix);
+  // If we already resolved intent after seek_key_prefix_, then it will be used.
+  void SeekForwardToSuitableIntent();
 
   // Seek intent sub-iterator forward (backward) to latest suitable intent for first available
   // key. Updates resolved_intent_XXX fields.
@@ -244,8 +245,8 @@ class IntentAwareIterator {
 
   // Seeks to the appropriate intent-prefix and returns the associated
   // DocHybridTime.
-  Result<DocHybridTime> FindMatchingIntentRecordDocHybridTime(
-      const Slice& key_without_ht);
+  Result<DocHybridTime> FindMatchingIntentRecordDocHybridTime(const Slice& key_without_ht);
+
   // Returns the DocHybridTime associated with the current regular record
   // pointed to, if it matches the key that is passed as the argument.
   // If the current record does not match the passed key, invalid hybrid time
@@ -284,6 +285,12 @@ class IntentAwareIterator {
 
   // Returns true if iterator currently points to some record.
   bool HasCurrentEntry();
+
+  // Update seek_intent_iter_needed_, seek_key_prefix_ and seek_key_buffer_ to seek forward
+  // for key + suffix.
+  // If use_suffix_for_prefix then suffix is used in seek_key_prefix_, otherwise it will match key.
+  void UpdatePlannedIntentSeekForward(
+      const Slice& key, const Slice& suffix, bool use_suffix_for_prefix = true);
 
   const ReadHybridTime read_time_;
   const string encoded_read_time_local_limit_;
@@ -324,6 +331,7 @@ class IntentAwareIterator {
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
   KeyBytes seek_key_buffer_;
+  Slice seek_key_prefix_;
 };
 
 // Utility class that controls stack of prefixes in IntentAwareIterator.

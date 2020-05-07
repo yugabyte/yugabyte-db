@@ -81,7 +81,7 @@ TEST_F(PartialRowTest, UnitTest) {
 
   // Test key encoding.
   EXPECT_EQ("OK", row.EncodeRowKey(&enc_key).ToString());
-  EXPECT_EQ("\\x80\\x0009", Slice(enc_key).ToDebugString());
+  EXPECT_EQ("80003039", Slice(enc_key).ToDebugString());
 
   // Fill in the other columns.
   EXPECT_OK(row.SetInt32("int_val", 54321));

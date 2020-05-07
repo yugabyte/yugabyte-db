@@ -1606,8 +1606,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // serialization anomaly tested by TestOneOrTwoAdmins
   // (https://github.com/YugaByte/yugabyte-db/issues/1572).
 
-  LongOperationTracker long_operation_tracker("Read", 1s);
-
   bool serializable_isolation = false;
   TabletPeerPtr tablet_peer;
   if (req->has_transaction()) {
