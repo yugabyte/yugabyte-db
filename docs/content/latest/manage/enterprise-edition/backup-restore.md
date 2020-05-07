@@ -1,5 +1,5 @@
 ---
-title: Back up and restore Yugabyte Platform clusters
+title: Back up and restore clusters using Yugabyte Platform
 headerTitle: Back up and restore
 linkTitle: Back up and restore
 description: Use the YugabyteDB Admin Console to back up and restore clusters.

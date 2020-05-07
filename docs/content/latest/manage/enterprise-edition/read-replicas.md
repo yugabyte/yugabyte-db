@@ -2,7 +2,7 @@
 title: Create read replica clusters
 headerTitle: Create read replica clusters
 linkTitle: Read replica clusters
-description: Create a read replica cluster in a hybrid cloud deployment using YugaWare.
+description: Create a read replica cluster using Yugabyte Platform.
 menu:
   latest:
     identifier: manage-read-replicas

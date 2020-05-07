@@ -2,7 +2,7 @@
 title: Yugabyte Cloud Query Language (YCQL)
 headerTitle: Yugabyte Cloud Query Language (YCQL)
 linkTitle: YCQL
-description: YCQL is a SQL-based, flexible-schema API that is best fit for internet-scale OLTP application needing a semi-relational API.
+description: YCQL is a SQL-based, semi-relational API that is best fit for internet-scale OLTP applications.
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent:
@@ -20,9 +20,9 @@ showAsideToc: true
 
 ## Introduction
 
-YCQL is a SQL-based, flexible-schema API that is best fit for internet-scale OLTP application needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes, and a native JSON column type. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). 
+Yugabyte Cloud Query Language (YCQL) is a SQL-based, semi-relational API that is best fit for internet-scale OLTP applications needing massive data ingestion and blazing-fast queries. It supports strongly consistent secondary indexes, a native JSON column type, and distributed transactions. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). 
 
-YCQL supports the following features.
+This page covers the following YCQL features.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.

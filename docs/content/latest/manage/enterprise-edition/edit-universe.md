@@ -1,8 +1,8 @@
 ---
-title: Edit universe using YugaWare
+title: Edit universe using Yugabyte Platform
 headerTitle: Edit universe
 linkTitle: Edit universe
-description: Use the YugaWare Admin Console to edit a universe.
+description: Use the YugabyteDB Admin Console to edit a universe.
 aliases:
   - /manage/enterprise-edition/edit-universe/
 menu:
