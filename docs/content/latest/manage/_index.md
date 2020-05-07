@@ -2,7 +2,7 @@
 title: Manage YugabyteDB
 headerTitle: Manage
 linkTitle: Manage
-description: Manage YugabyteDB
+description: Manage YugabyteDB clusters.
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 aliases:
