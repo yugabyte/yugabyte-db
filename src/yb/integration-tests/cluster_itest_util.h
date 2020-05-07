@@ -182,7 +182,8 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
 Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
                                   const TabletId& tablet_id,
                                   const std::vector<TServerDetails*>& replicas,
-                                  const MonoDelta& timeout);
+                                  const MonoDelta& timeout,
+                                  int64_t* actual_minimum_index = nullptr);
 
 // Wait until the number of alive tservers is equal to n_tservers. An alive tserver is a tserver
 // that has heartbeated the master at least once in the last FLAGS_raft_heartbeat_interval_ms
