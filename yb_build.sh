@@ -464,8 +464,8 @@ run_repeat_unit_test() {
     --build-type "$build_type"
     --num-iter "$num_test_repetitions"
   )
-  if [[ -n ${test_parallelism:-} ]]; then
-    repeat_unit_test_args+=( --parallelism "$test_parallelism" )
+  if [[ -n ${YB_TEST_PARALLELISM:-} ]]; then
+    repeat_unit_test_args+=( --parallelism "$YB_TEST_PARALLELISM" )
   fi
   if "$verbose"; then
     repeat_unit_test_args+=( --verbose )
@@ -955,8 +955,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --tp|--test-parallelism)
       ensure_option_has_arg "$@"
-      test_parallelism=$2
-      validate_numeric_arg_range "test-parallelism" "$test_parallelism" \
+      YB_TEST_PARALLELISM=$2
+      validate_numeric_arg_range "test-parallelism" "$YB_TEST_PARALLELISM" \
         "$MIN_REPEATED_TEST_PARALLELISM" "$MAX_REPEATED_TEST_PARALLELISM"
       shift
     ;;
