@@ -491,10 +491,13 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
 
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
   vector<TabletId> tablet_ids;
-  for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
-    auto tablet = elem.second;
-    if (tablet->table()->name() == kTableName) {
-      tablet_ids.push_back(elem.first);
+  {
+    SharedLock<CatalogManager::LockType> l(mini_master_->master()->catalog_manager()->lock_);
+    for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
+      auto tablet = elem.second;
+      if (tablet->table()->name() == kTableName) {
+        tablet_ids.push_back(elem.first);
+      }
     }
   }
 
@@ -507,11 +510,14 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   // Verify that the test table's tablets are in the DELETED state.
-  for (const auto& tablet_id : tablet_ids) {
-    auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
-    ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
-    auto l = iter->second->LockForRead();
-    ASSERT_EQ(l->data().pb.state(), SysTabletsEntryPB::DELETED);
+  {
+    SharedLock<CatalogManager::LockType> l(mini_master_->master()->catalog_manager()->lock_);
+    for (const auto& tablet_id : tablet_ids) {
+      auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
+      ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
+      auto l = iter->second->LockForRead();
+      ASSERT_EQ(l->data().pb.state(), SysTabletsEntryPB::DELETED);
+    }
   }
 }
 
