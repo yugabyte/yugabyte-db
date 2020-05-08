@@ -43,6 +43,19 @@ menu:
 docker pull yugabytedb/yugabyte:2.1.6.0-b17
 ```
 
+## YSQL
+
+- Wait for `tserver` to finish creating the `transaction` table during the initial cluster startup (when the transaction table is first created) before before issuing requests that require it to exist. This was more likely an issue for CI/CD, where requests can be issued immediately. Most users would not encounter this issue. [#4056](https://github.com/yugabyte/yugabyte-db/issues/4056)
+
+- Avoid redundant read for non-unique index inserts. For non-unique indexes, the primary key of the main table is implicitly added to the DocDB key, guaranteeing uniqueness of the full DocDB key (indexed columns plus encoded base table primary key). This fix executes such inserts as upserts and avoid the read and uniqueness check. [#4363](https://github.com/yugabyte/yugabyte-db/issues/4363)
+
+## YCQL
+
+- Allow `system.peers_v2` table to be readable for `cassandra-driver-core:3.8.0-yb-2-RC1` so that expected errors are returned to the driver. [#4309](https://github.com/yugabyte/yugabyte-db/issues/4309)
+
+## System improvements
+
+
 ## Yugabyte Platform
 
 - When performing a full move or add node on a universe that has a yb-master, the `server.conf` file is now being updated with the new `master_addresses`. [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242)
