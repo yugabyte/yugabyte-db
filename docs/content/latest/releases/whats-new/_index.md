@@ -43,15 +43,9 @@ menu:
 docker pull yugabytedb/yugabyte:2.1.6.0-b17
 ```
 
-## YSQL
-
-- Display runtime (in ms) in output of `<tserver_ip>:13000/rpcz` corresponding to entries with start times
-
-## System improvements
-
 ## Yugabyte Platform
 
-- When performing a full move or add node on a universe which has a yb-master, the `server.conf` file is now being updated with the new `master_addresses`. [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242)
+- When performing a full move or add node on a universe that has a yb-master, the `server.conf` file is now being updated with the new `master_addresses`. [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242)
 
 ### YugabyteDB Admin Console
 
