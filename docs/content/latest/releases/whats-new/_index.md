@@ -49,7 +49,7 @@ docker pull yugabytedb/yugabyte:2.1.6.0-b17
 
 ### YugabyteDB Admin Console
 
-- In the **Backups** tab, individual YSQL tables can no longer be selected. [#3848](https://github.com/yugabyte/yugabyte-db/issues/3848)
+- In the **Backups** tab, individual YSQL tables can no longer be selected. Previously, attempting to back up a YSQL table would create a failed task. [#3848](https://github.com/yugabyte/yugabyte-db/issues/3848)
 - In the **Metrics** view, transactions have been added to the YSQL and YCQL operations charts. [#3827](https://github.com/yugabyte/yugabyte-db/issues/3827)
 - **Create Read Replica** and **Edit Read Replica** pages are no longer in beta. [#4313](https://github.com/yugabyte/yugabyte-db/issues/4313)
 - In the **Certificates** page, you can now download certificates. [#3985](https://github.com/yugabyte/yugabyte-db/issues/3985)
