@@ -412,6 +412,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   const RaftGroupMetadata *metadata() const { return metadata_.get(); }
   RaftGroupMetadata *metadata() { return metadata_.get(); }
 
+  rocksdb::Env& rocksdb_env() const;
+
   const std::string& tablet_id() const override { return metadata_->raft_group_id(); }
 
   // Return the metrics for this tablet.

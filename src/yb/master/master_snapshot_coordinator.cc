@@ -35,6 +35,8 @@
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/pb_util.h"
 
 using namespace std::literals;
@@ -47,6 +49,9 @@ DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
 
 namespace yb {
 namespace master {
+
+using yb::tserver::TabletServerError;
+using yb::tserver::TabletServerErrorPB;
 
 namespace {
 
@@ -457,7 +462,8 @@ class RestorationState : public StateWithTablets {
 
  private:
   bool IsTerminalFailure(const Status& status) override {
-    return false;
+    return status.IsAborted() ||
+           TabletServerError(status) == TabletServerErrorPB::INVALID_SNAPSHOT;
   }
 
   TxnSnapshotRestorationId restoration_id_;
