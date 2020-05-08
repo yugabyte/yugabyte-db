@@ -100,6 +100,10 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   tx_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
 
+  if (!tx_state->CheckOperationRequirements()) {
+    return;
+  }
+
   // TODO(txn_snapshot) Avoid duplicate snapshots.
   // Submit the create snapshot op. The RPC will be responded to asynchronously.
   tablet.peer->Submit(

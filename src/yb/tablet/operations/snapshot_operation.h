@@ -63,6 +63,8 @@ class SnapshotOperationState : public OperationState {
   // overrides for the snapshot directory this operation might have.
   std::string GetSnapshotDir(const std::string& top_snapshots_dir) const;
 
+  bool CheckOperationRequirements();
+
  private:
   std::unique_ptr<tserver::TabletSnapshotOpRequestPB> request_holder_;
   // The original RPC request and response.

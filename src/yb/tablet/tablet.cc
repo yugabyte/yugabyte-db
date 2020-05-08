@@ -2983,6 +2983,10 @@ void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& lo
   docdb::InitRocksDBOptions(options, log_prefix, rocksdb_statistics_, tablet_options_);
 }
 
+rocksdb::Env& Tablet::rocksdb_env() const {
+  return *tablet_options_.rocksdb_env;
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Result<ScopedReadOperation> ScopedReadOperation::Create(

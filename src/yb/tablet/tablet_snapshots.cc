@@ -178,6 +178,10 @@ Status TabletSnapshots::Restore(SnapshotOperationState* tx_state) {
   const std::string top_snapshots_dir = SnapshotsDirName(metadata().rocksdb_dir());
   const std::string snapshot_dir = tx_state->GetSnapshotDir(top_snapshots_dir);
 
+  RETURN_NOT_OK_PREPEND(
+      FileExists(&rocksdb_env(), snapshot_dir),
+      Format("Snapshot directory does not exist: $0", snapshot_dir));
+
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(tx_state->op_id());
   frontier.set_hybrid_time(tx_state->hybrid_time());

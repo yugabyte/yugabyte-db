@@ -15,6 +15,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tserver/backup.pb.h"
+#include "yb/tserver/tserver_error.h"
 #include "yb/util/trace.h"
 
 namespace yb {
@@ -26,9 +27,9 @@ using consensus::ReplicateMsg;
 using consensus::SNAPSHOT_OP;
 using consensus::DriverType;
 using strings::Substitute;
+using yb::tserver::TabletServerError;
 using yb::tserver::TabletServerErrorPB;
 using yb::tserver::TabletSnapshotOpRequestPB;
-using yb::tserver::TabletSnapshotOpResponsePB;
 
 // ------------------------------------------------------------------------------------------------
 // SnapshotOperationState
@@ -54,6 +55,30 @@ std::string SnapshotOperationState::GetSnapshotDir(const string& top_snapshots_d
   }
 
   return JoinPathSegments(top_snapshots_dir, snapshot_id_str);
+}
+
+bool SnapshotOperationState::CheckOperationRequirements() {
+  if (operation() == TabletSnapshotOpRequestPB::RESTORE) {
+    const string top_snapshots_dir =
+        TabletSnapshots::SnapshotsDirName(tablet()->metadata()->rocksdb_dir());
+    const string snapshot_dir = GetSnapshotDir(top_snapshots_dir);
+    Status s = tablet()->rocksdb_env().FileExists(snapshot_dir);
+
+    if (!s.ok()) {
+      s = s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::INVALID_SNAPSHOT));
+      // LogPrefix() calls ToString() which needs correct hybrid_time.
+      TrySetHybridTimeFromClock();
+      LOG_WITH_PREFIX(WARNING)
+          << Format("Snapshot directory does not exist: $0 $1", s, snapshot_dir);
+      TRACE("Requirements was not satisfied for snapshot operation: $0", operation());
+      // Run the callback, finish RPC and return the error to the sender.
+      CompleteWithStatus(s);
+      Finish();
+      return false;
+    }
+  }
+
+  return true;
 }
 
 tserver::TabletSnapshotOpRequestPB* SnapshotOperationState::AllocateRequest() {

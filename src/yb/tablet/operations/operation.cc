@@ -37,12 +37,16 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/size_literals.h"
 
 namespace yb {
 namespace tablet {
 
 using consensus::DriverType;
+using tserver::TabletServerError;
+using tserver::TabletServerErrorPB;
 
 Operation::Operation(std::unique_ptr<OperationState> state,
                      OperationType operation_type)
@@ -130,7 +134,13 @@ void OperationCompletionCallback::set_error(const Status& status,
 void OperationCompletionCallback::set_error(const Status& status) {
   LOG_IF(DFATAL, !status_.ok()) << "OperationCompletionCallback changing from failure status: "
                                 << status_ << " => " << status;
-  status_ = status;
+  TabletServerError ts_error(status);
+
+  if (ts_error.value() == TabletServerErrorPB::Code()) {
+    status_ = status;
+  } else {
+    set_error(status, ts_error.value());
+  }
 }
 
 bool OperationCompletionCallback::has_error() const {
