@@ -85,8 +85,10 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   FLAGS_cluster_uuid = "invalid_uuid";
 
   CatalogManager catalog_manager(nullptr);
-
-  ASSERT_NOK(catalog_manager.PrepareDefaultClusterConfig(0));
+  {
+    std::lock_guard<CatalogManager::LockType> l(catalog_manager.lock_);
+    ASSERT_NOK(catalog_manager.PrepareDefaultClusterConfig(0));
+  }
 
   auto dir = GetTestPath("Master") + "valid_cluster_uuid_test";
   ASSERT_OK(Env::Default()->CreateDir(dir));

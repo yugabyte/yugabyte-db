@@ -229,7 +229,7 @@ Status MultiStageAlterTable::UpdateIndexPermission(
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
     RETURN_NOT_OK(catalog_manager->sys_catalog_->UpdateItem(
-        indexed_table.get(), catalog_manager->leader_ready_term_));
+        indexed_table.get(), catalog_manager->leader_ready_term()));
 
     // Update the in-memory state.
     TRACE("Committing in-memory state");
@@ -279,7 +279,7 @@ Status MultiStageAlterTable::StartBackfillingData(
     TRACE("Updating indexed table metadata on disk");
     RETURN_NOT_OK_PREPEND(
         catalog_manager->sys_catalog_->UpdateItem(
-            indexed_table.get(), catalog_manager->leader_ready_term_),
+            indexed_table.get(), catalog_manager->leader_ready_term()),
         "Updating indexed table metadata on disk. Abandoning.");
 
     // Update the in-memory state.

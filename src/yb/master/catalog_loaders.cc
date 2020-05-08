@@ -104,7 +104,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   if (metadata.table_ids_size() == 0) {
     l->mutable_data()->pb.add_table_ids(metadata.table_id());
     Status s = catalog_manager_->sys_catalog_->UpdateItem(
-        tablet, catalog_manager_->leader_ready_term_);
+        tablet, catalog_manager_->leader_ready_term());
     if (PREDICT_FALSE(!s.ok())) {
       return STATUS_FORMAT(
           IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
@@ -301,14 +301,18 @@ Status ClusterConfigLoader::Visit(
   auto l = config->LockForWrite();
   l->mutable_data()->pb.CopyFrom(metadata);
 
-  if (metadata.has_server_blacklist()) {
-    // Rebuild the blacklist state for load movement completion tracking.
-    RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist()));
-  }
+  {
+    std::lock_guard <CatalogManager::LockType> blacklist_lock(catalog_manager_->blacklist_lock_);
 
-  if (metadata.has_leader_blacklist()) {
-    // Rebuild the blacklist state for load movement completion tracking.
-    RETURN_NOT_OK(catalog_manager_->SetLeaderBlacklist(metadata.leader_blacklist()));
+    if (metadata.has_server_blacklist()) {
+      // Rebuild the blacklist state for load movement completion tracking.
+      RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist()));
+    }
+
+    if (metadata.has_leader_blacklist()) {
+      // Rebuild the blacklist state for load movement completion tracking.
+      RETURN_NOT_OK(catalog_manager_->SetLeaderBlacklist(metadata.leader_blacklist()));
+    }
   }
 
   // Update in memory state.

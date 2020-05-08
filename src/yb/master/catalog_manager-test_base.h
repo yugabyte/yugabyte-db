@@ -187,8 +187,8 @@ class TestLoadBalancerBase {
   }
 
  protected:
-  Status AnalyzeTablets() {
-    return cb_->AnalyzeTablets(cur_table_uuid_);
+  Status AnalyzeTablets() NO_THREAD_SAFETY_ANALYSIS /* don't need locks for mock class  */ {
+    return cb_->AnalyzeTabletsUnlocked(cur_table_uuid_);
   }
 
   void ResetState() {
@@ -197,7 +197,8 @@ class TestLoadBalancerBase {
   }
 
   Result<bool> HandleLeaderMoves(
-      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
+      NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     return cb_->HandleLeaderMoves(out_tablet_id, out_from_ts, out_to_ts);
   }
 
@@ -311,7 +312,7 @@ class TestLoadBalancerBase {
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
   }
 
-  void TestOverReplication() {
+  void TestOverReplication() NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     LOG(INFO) << "Testing with tablet servers with over-replication";
     // Setup cluster config.
     SetupClusterConfig({"a"}, &replication_info_);
@@ -367,7 +368,7 @@ class TestLoadBalancerBase {
     }
     int count = 0;
     int pending_add_count = 0;
-    cb_->CountPendingTasks(cur_table_uuid_, &pending_add_count, &count, &count);
+    cb_->CountPendingTasksUnlocked(cur_table_uuid_, &pending_add_count, &count, &count);
     ASSERT_EQ(pending_add_count, pending_add_replica_tasks_.size());
     ASSERT_OK(AnalyzeTablets());
     string placeholder, tablet_id;
@@ -392,7 +393,7 @@ class TestLoadBalancerBase {
       pending_remove_replica_tasks_.push_back(tablet->id());
     }
     int pending_remove_count = 0;
-    cb_->CountPendingTasks(cur_table_uuid_, &count, &pending_remove_count, &count);
+    cb_->CountPendingTasksUnlocked(cur_table_uuid_, &count, &pending_remove_count, &count);
     ASSERT_EQ(pending_remove_count, pending_remove_replica_tasks_.size());
     ASSERT_OK(AnalyzeTablets());
     ASSERT_FALSE(ASSERT_RESULT(cb_->HandleRemoveReplicas(&tablet_id, &placeholder)));
@@ -437,7 +438,7 @@ class TestLoadBalancerBase {
     TestRemoveLoad(tablets_[0]->tablet_id(), "");
   }
 
-  void TestWithMissingPlacement() {
+  void TestWithMissingPlacement() NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     LOG(INFO) << "Testing with tablet servers missing placement information";
     // Setup cluster level placement to multiple AZs.
     SetupClusterConfig({"a", "b", "c"}, &replication_info_);
@@ -651,7 +652,7 @@ class TestLoadBalancerBase {
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
   }
 
-  void TestBalancingLeaders() {
+  void TestBalancingLeaders() NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     LOG(INFO) << "Testing moving overloaded leaders";
     // Move all leaders to ts0.
     for (const auto tablet : tablets_) {
@@ -876,7 +877,8 @@ class TestLoadBalancerBase {
   }
 
   // Tester methods that actually do the calls and asserts.
-  void TestRemoveLoad(const string& expected_tablet_id, const string& expected_from_ts) {
+  void TestRemoveLoad(const string& expected_tablet_id, const string& expected_from_ts)
+    NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     string tablet_id, from_ts;
     ASSERT_TRUE(ASSERT_RESULT(cb_->HandleRemoveReplicas(&tablet_id, &from_ts)));
     if (!expected_tablet_id.empty()) {
@@ -956,7 +958,8 @@ class TestLoadBalancerBase {
   }
 
   Result<bool> HandleAddReplicas(
-      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
+      NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     return cb_->HandleAddReplicas(out_tablet_id, out_from_ts, out_to_ts);
   }
 
