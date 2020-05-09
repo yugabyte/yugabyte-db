@@ -64,9 +64,6 @@ docker pull yugabytedb/yugabyte:2.1.6.0-b17
 ## Yugabyte Platform
 
 - When performing a full move or add node on a universe that has a yb-master, the `server.conf` file is now being updated with the new `master_addresses`. [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242)
-
-### YugabyteDB Admin Console
-
 - In the **Backups** tab, individual YSQL tables can no longer be selected. Previously, attempting to back up a YSQL table would create a failed task. [#3848](https://github.com/yugabyte/yugabyte-db/issues/3848)
 - In the **Metrics** view, transactions have been added to the YSQL and YCQL operations charts. [#3827](https://github.com/yugabyte/yugabyte-db/issues/3827)
 - **Create Read Replica** and **Edit Read Replica** pages are no longer in beta. [#4313](https://github.com/yugabyte/yugabyte-db/issues/4313)
