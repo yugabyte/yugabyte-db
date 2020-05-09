@@ -55,6 +55,8 @@ docker pull yugabytedb/yugabyte:2.1.6.0-b17
 
 ## System improvements
 
+- [DocDB] Improve fault tolerance by enabling exponential backoff mechanics for the leader attempting to catch up the follower. If this causes any issues, you set the `--enable_consensus_exponential_backoff` flag (enabled by default) to `false`. [#4042](https://github.com/yugabyte/yugabyte-db/issues/4042)
+- [DocDB] Use   [#4277](https://github.com/yugabyte/yugabyte-db/issues/4277)
 
 ## Yugabyte Platform
 
