@@ -619,7 +619,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   std::string GenerateId(boost::optional<const SysRowEntry::Type> entity_type = boost::none);
 
-  ThreadPool* WorkerPool() { return worker_pool_.get(); }
+  ThreadPool* AsyncTaskPool() { return worker_pool_.get(); }
 
   PermissionsManager* permissions_manager() {
     return permissions_manager_.get();
@@ -644,6 +644,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
+
+  // For now just indirect to running the task.
+  // TODO(bogdan): Eventually schedule on a threadpool in a followup refactor.
+  CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

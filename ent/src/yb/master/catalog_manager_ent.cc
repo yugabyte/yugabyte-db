@@ -1127,12 +1127,12 @@ void CatalogManager::SendCreateTabletSnapshotRequest(
     const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
     HybridTime snapshot_hybrid_time, TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
-      master_, worker_pool_.get(), tablet, snapshot_id,
+      master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
   call->SetSnapshotHybridTime(snapshot_hybrid_time);
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
-  WARN_NOT_OK(call->Run(), "Failed to send create snapshot request");
+  WARN_NOT_OK(ScheduleTask(call), "Failed to send create snapshot request");
 }
 
 void CatalogManager::SendRestoreTabletSnapshotRequest(
@@ -1140,22 +1140,22 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(
     const string& snapshot_id,
     TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
-      master_, worker_pool_.get(), tablet, snapshot_id,
+      master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::RESTORE);
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
-  WARN_NOT_OK(call->Run(), "Failed to send restore snapshot request");
+  WARN_NOT_OK(ScheduleTask(call), "Failed to send restore snapshot request");
 }
 
 void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                                      const string& snapshot_id,
                                                      TabletSnapshotOperationCallback callback) {
   auto call = std::make_shared<AsyncTabletSnapshotOp>(
-      master_, worker_pool_.get(), tablet, snapshot_id,
+      master_, AsyncTaskPool(), tablet, snapshot_id,
       tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET);
   call->SetCallback(std::move(callback));
   tablet->table()->AddTask(call);
-  WARN_NOT_OK(call->Run(), "Failed to send delete snapshot request");
+  WARN_NOT_OK(ScheduleTask(call), "Failed to send delete snapshot request");
 }
 
 rpc::Scheduler& CatalogManager::Scheduler() {
