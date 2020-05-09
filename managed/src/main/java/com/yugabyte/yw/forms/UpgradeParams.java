@@ -4,16 +4,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
 
-public class RollingRestartParams extends UniverseDefinitionTaskParams {
-
-  // The universe that we want to perform a rolling restart on.
-  @Constraints.Required()
-  public UUID universeUUID;
-
+public class UpgradeParams extends UniverseDefinitionTaskParams {
   // Rolling Restart task type
   @Constraints.Required()
   public UpgradeUniverse.UpgradeTaskType taskType;
@@ -34,5 +30,15 @@ public class RollingRestartParams extends UniverseDefinitionTaskParams {
   public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
   public Integer sleepAfterTServerRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
 
-  public Boolean rollingUpgrade = true;
+  public enum UpgradeOption {
+    @JsonProperty("Rolling")
+    ROLLING_UPGRADE,
+    @JsonProperty("Non-Rolling")
+    NON_ROLLING_UPGRADE,
+    @JsonProperty("Non-Restart")
+    NON_RESTART_UPGRADE
+  }
+
+  public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
 }
