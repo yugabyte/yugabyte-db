@@ -1852,3 +1852,67 @@ response_sizes:
     yaxis:
       alias:
         "ResponseSize": "Response Size"
+
+tserver_rpc_queue_size_master:
+  metric: "rpcs_in_queue_yb_master_MasterService"
+  function: "max"
+  layout:
+    title: "RPC queue sizes (Master)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_master_MasterService": "Master RPC"
+
+# Note that the aliases here encode all the possible services, because we're using a simple regex
+# for the saved_name filter.
+tserver_rpc_queue_size_tserver:
+  metric: ""
+  function: "max"
+  filters:
+    saved_name: "rpcs_in_queue_.*"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  layout:
+    title: "RPC queue sizes (Tserver)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_consensus_ConsensusService": "Consensus"
+        "rpcs_in_queue_yb_server_GenericService": "Generic"
+        "rpcs_in_queue_yb_tserver_RemoteBootstrapService": "RemoteBootstrap"
+        "rpcs_in_queue_yb_tserver_TabletServerService": "TS RPC"
+        "rpcs_in_queue_yb_tserver_TabletServerBackupService": "Backups"
+        "rpcs_in_queue_yb_tserver_TabletServerAdminService": "Admin"
+        "rpcs_in_queue_yb_cdc_CDCService": "CDC"
+
+tserver_rpc_queue_size_cql:
+  metric: ""
+  function: "max"
+  filters:
+    saved_name: "rpcs_in_queue_yb_cqlserver_CQLServerService"
+    export_type: "cql_export"
+  group_by: "saved_name"
+  layout:
+    title: "RPC queue sizes (YCQL)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_cqlserver_CQLServerService": "YCQL RPC"
+
+tserver_rpc_queue_size_redis:
+  metric: ""
+  function: "max"
+  filters:
+    saved_name: "rpcs_in_queue_yb_redisserver_RedisServerService"
+    export_type: "redis_export"
+  group_by: "saved_name"
+  layout:
+    title: "RPC queue sizes (YEDIS)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_redisserver_RedisServerService": "YEDIS RPC"

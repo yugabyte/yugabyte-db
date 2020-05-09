@@ -42,7 +42,12 @@ const panelTypes = {
       "tserver_tc_malloc_stats",
       "tserver_log_stats",
       "tserver_cache_reader_num_ops",
-      "tserver_glog_info_messages"]},
+      "tserver_glog_info_messages",
+      "tserver_rpc_queue_size_master",
+      "tserver_rpc_queue_size_tserver",
+      "tserver_rpc_queue_size_cql",
+      "tserver_rpc_queue_size_redis"
+    ]},
   lsmdb: {title: "DocDB",
     metrics: ["lsm_rocksdb_num_seek_or_next",
       "lsm_rocksdb_num_seeks_per_node",
