@@ -20,7 +20,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.forms.RollingRestartParams;
+import com.yugabyte.yw.forms.UpgradeParams;
 
 import play.api.Play;
 
@@ -69,8 +69,8 @@ public class WaitForServerReady extends ServerSubTaskBase {
     checkParams();
 
     int numIters = 0;
-    int userWaitTimeMs = taskParams().waitTimeMs != 0 ? taskParams().waitTimeMs :
-                             RollingRestartParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
+    int userWaitTimeMs = taskParams().waitTimeMs != 0 ?
+            taskParams().waitTimeMs : UpgradeParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
 
     YBClient client = getClient();
     HostAndPort hp = getHostPort();
