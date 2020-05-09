@@ -1037,8 +1037,8 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   // Add tasks to the table (more than can fit in the cbuf).
   for (int task_id = 0; task_id < FLAGS_tasks_tracker_num_tasks + 10; ++task_id) {
     scoped_refptr<TabletInfo> tablet(new TabletInfo(table, kSysCatalogTableId));
-    auto task = std::make_shared<AsyncTruncate>(master_, master_->catalog_manager()->WorkerPool(),
-                                                tablet);
+    auto task = std::make_shared<AsyncTruncate>(
+        master_, master_->catalog_manager()->AsyncTaskPool(), tablet);
     table->AddTask(task);
   }
 

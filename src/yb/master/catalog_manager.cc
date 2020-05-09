@@ -2326,9 +2326,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   if (colocated && tablets_exist) {
     auto call =
-        std::make_shared<AsyncAddTableToTablet>(master_, worker_pool_.get(), tablets[0], table);
+        std::make_shared<AsyncAddTableToTablet>(master_, AsyncTaskPool(), tablets[0], table);
     table->AddTask(call);
-    WARN_NOT_OK(call->Run(), "Failed to send AddTableToTablet request");
+    WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
   }
 
   if (req.has_creator_role_name()) {
@@ -3014,9 +3014,9 @@ void CatalogManager::SendTruncateTableRequest(const scoped_refptr<TableInfo>& ta
 
 void CatalogManager::SendTruncateTabletRequest(const scoped_refptr<TabletInfo>& tablet) {
   LOG_WITH_PREFIX(INFO) << "Truncating tablet " << tablet->id();
-  auto call = std::make_shared<AsyncTruncate>(master_, worker_pool_.get(), tablet);
+  auto call = std::make_shared<AsyncTruncate>(master_, AsyncTaskPool(), tablet);
   tablet->table()->AddTask(call);
-  auto status = call->Run();
+  auto status = ScheduleTask(call);
   WARN_NOT_OK(status, Substitute("Failed to send truncate request for tablet $0", tablet->id()));
 }
 
@@ -3159,9 +3159,9 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
     if (IsColocatedUserTable(*table)) {
       auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-          master_, worker_pool_.get(), table->GetColocatedTablet(), table);
+          master_, AsyncTaskPool(), table->GetColocatedTablet(), table);
       table->AddTask(call);
-      WARN_NOT_OK(call->Run(), "Failed to send RemoveTableFromTablet request");
+      WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
     }
   }
 
@@ -4252,7 +4252,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         // TODO(unknown): Cancel tablet creation, instead of deleting, in cases
         // where that might be possible (tablet creation timeout & replacement).
         rpcs.emplace_back(std::make_shared<AsyncDeleteReplica>(
-            master_, worker_pool_.get(), ts_desc->permanent_uuid(), table, tablet_id,
+            master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
             TABLET_DATA_DELETED, boost::none, msg));
         continue;
       }
@@ -4287,7 +4287,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
             "Replica has no consensus available" :
             Substitute("Replica with old config index $0", report_opid_index);
         rpcs.emplace_back(std::make_shared<AsyncDeleteReplica>(
-            master_, worker_pool_.get(), ts_desc->permanent_uuid(), table, tablet_id,
+            master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
             TABLET_DATA_TOMBSTONED, prev_opid_index,
             Substitute("$0 (current committed config index is $1)",
                 delete_msg, prev_opid_index)));
@@ -4401,7 +4401,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
                 }
                 // Otherwise, the TabletServer needs to remove this peer.
                 rpcs.emplace_back(std::make_shared<AsyncDeleteReplica>(
-                    master_, worker_pool_.get(), peer_uuid, table, tablet_id,
+                    master_, AsyncTaskPool(), peer_uuid, table, tablet_id,
                     TABLET_DATA_TOMBSTONED, prev_cstate.config().opid_index(),
                     Substitute("TS $0 not found in new config with opid_index $1",
                         peer_uuid, cstate.config().opid_index())));
@@ -4458,7 +4458,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
           // It's possible that the tablet being reported is a laggy replica, and in fact
           // the leader has already received an AlterTable RPC. That's OK, though --
           // it'll safely ignore it if we send another.
-          rpcs.emplace_back(std::make_shared<AsyncAlterTable>(master_, worker_pool_.get(), tablet));
+          rpcs.emplace_back(std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet));
         }
 
         // 8. If the tablet was mutated, add it to the tablets to be re-persisted.
@@ -5900,17 +5900,17 @@ void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table
   table->GetAllTablets(&tablets);
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto call = std::make_shared<AsyncAlterTable>(master_, worker_pool_.get(), tablet);
+    auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet);
     tablet->table()->AddTask(call);
-    WARN_NOT_OK(call->Run(), "Failed to send alter table request");
+    WARN_NOT_OK(ScheduleTask(call), "Failed to send alter table request");
   }
 }
 
 void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
                                                   const scoped_refptr<TableInfo>& table) {
-  auto call = std::make_shared<AsyncCopartitionTable>(master_, worker_pool_.get(), tablet, table);
+  auto call = std::make_shared<AsyncCopartitionTable>(master_, AsyncTaskPool(), tablet, table);
   table->AddTask(call);
-  WARN_NOT_OK(call->Run(), "Failed to send copartition table request");
+  WARN_NOT_OK(ScheduleTask(call), "Failed to send copartition table request");
 }
 
 void CatalogManager::SendSplitTabletRequest(
@@ -5919,10 +5919,10 @@ void CatalogManager::SendSplitTabletRequest(
   VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
           << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
   auto call = std::make_shared<AsyncSplitTablet>(
-      master_, worker_pool_.get(), tablet, new_tablet_ids, split_encoded_key, split_partition_key);
+      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key);
   tablet->table()->AddTask(call);
   WARN_NOT_OK(
-      call->Run(),
+      ScheduleTask(call),
       Format("Failed to send split tablet request for tablet $0", tablet->tablet_id()));
 }
 
@@ -5981,14 +5981,14 @@ void CatalogManager::SendDeleteTabletRequest(
   LOG_WITH_PREFIX(INFO) << "Deleting tablet " << tablet_id << " on peer "
                         << ts_desc->permanent_uuid() << " with delete type "
                         << TabletDataState_Name(delete_type) << " (" << reason << ")";
-  auto call = std::make_shared<AsyncDeleteReplica>(master_, worker_pool_.get(),
+  auto call = std::make_shared<AsyncDeleteReplica>(master_, AsyncTaskPool(),
       ts_desc->permanent_uuid(), table, tablet_id, delete_type,
       cas_config_opid_index_less_or_equal, reason);
   if (table != nullptr) {
     table->AddTask(call);
   }
 
-  auto status = call->Run();
+  auto status = ScheduleTask(call);
   WARN_NOT_OK(status, Substitute("Failed to send delete request for tablet $0", tablet_id));
   if (status.ok()) {
     ts_desc->AddPendingTabletDelete(tablet_id);
@@ -5999,7 +5999,7 @@ void CatalogManager::SendLeaderStepDownRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
     const string& change_config_ts_uuid, bool should_remove, const string& new_leader_uuid) {
   auto task = std::make_shared<AsyncTryStepDown>(
-      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid, should_remove,
+      master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, should_remove,
       new_leader_uuid);
 
   tablet->table()->AddTask(task);
@@ -6013,7 +6013,7 @@ void CatalogManager::SendRemoveServerRequest(
     const string& change_config_ts_uuid) {
   // Check if the user wants the leader to be stepped down.
   auto task = std::make_shared<AsyncRemoveServerTask>(
-      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
+      master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid);
 
   tablet->table()->AddTask(task);
   Status status = task->Run();
@@ -6023,7 +6023,7 @@ void CatalogManager::SendRemoveServerRequest(
 void CatalogManager::SendAddServerRequest(
     const scoped_refptr<TabletInfo>& tablet, RaftPeerPB::MemberType member_type,
     const ConsensusStatePB& cstate, const string& change_config_ts_uuid) {
-  auto task = std::make_shared<AsyncAddServerTask>(master_, worker_pool_.get(), tablet, member_type,
+  auto task = std::make_shared<AsyncAddServerTask>(master_, AsyncTaskPool(), tablet, member_type,
       cstate, change_config_ts_uuid);
   tablet->table()->AddTask(task);
   Status status = task->Run();
@@ -6548,7 +6548,7 @@ void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets
         tablet->metadata().dirty().pb.committed_consensus_state().config();
     tablet->set_last_update_time(MonoTime::Now());
     for (const RaftPeerPB& peer : config.peers()) {
-      auto task = std::make_shared<AsyncCreateReplica>(master_, worker_pool_.get(),
+      auto task = std::make_shared<AsyncCreateReplica>(master_, AsyncTaskPool(),
           peer.permanent_uuid(), tablet);
       tablet->table()->AddTask(task);
       WARN_NOT_OK(task->Run(), "Failed to send new tablet request");
@@ -7384,6 +7384,10 @@ void CatalogManager::RemoveFromNamespaceMaps(const NamespaceInfo& ns, rpc::RpcCo
     PANIC_RPC(rpc,
               Format("Could not remove namespace from maps, name=$0, id=$1", ns.name(), ns.id()));
   }
+}
+
+Status CatalogManager::ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) {
+  return task->Run();
 }
 
 }  // namespace master
