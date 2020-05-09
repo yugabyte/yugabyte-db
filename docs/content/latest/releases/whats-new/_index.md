@@ -46,8 +46,9 @@ docker pull yugabytedb/yugabyte:2.1.6.0-b17
 ## YSQL
 
 - Wait for `tserver` to finish creating the `transaction` table during the initial cluster startup (when the transaction table is first created) before before issuing requests that require it to exist. This was more likely an issue for CI/CD, where requests can be issued immediately. Most users would not encounter this issue. [#4056](https://github.com/yugabyte/yugabyte-db/issues/4056)
-
 - Avoid redundant read for non-unique index inserts. For non-unique indexes, the primary key of the main table is implicitly added to the DocDB key, guaranteeing uniqueness of the full DocDB key (indexed columns plus encoded base table primary key). This fix executes such inserts as upserts and avoid the read and uniqueness check. [#4363](https://github.com/yugabyte/yugabyte-db/issues/4363)
+- Enhance automatic query read restart to avoid recreating portal. Instead of recreating a portal, reset an existing one to the state which allows it to be re-executed. Eliminate memory overhead for storing potential big bind variable values (for example, long strings). [#4254](https://github.com/yugabyte/yugabyte-db/issues/4254)
+- For `CREATE DATABASE` statements, improves fault tolerance by making CREATE API requests asynchronously and adds a state machine on namespaces to be the authority for processing these modifications. [#3097](https://github.com/yugabyte/yugabyte-db/issues/3097)
 
 ## YCQL
 
@@ -56,7 +57,9 @@ docker pull yugabytedb/yugabyte:2.1.6.0-b17
 ## System improvements
 
 - [DocDB] Improve fault tolerance by enabling exponential backoff mechanics for the leader attempting to catch up the follower. If this causes any issues, you set the `--enable_consensus_exponential_backoff` flag (enabled by default) to `false`. [#4042](https://github.com/yugabyte/yugabyte-db/issues/4042)
-- [DocDB] Use   [#4277](https://github.com/yugabyte/yugabyte-db/issues/4277)
+- [DocDB] Improve row scanning by using SeekForward for intents. In testing, performance of `SELECT COUNT(*)` has improved by 66%. [#4277](https://github.com/yugabyte/yugabyte-db/issues/4277)
+- [DocDB] Add asynchronous transaction status resolution to conflict detection. [#4058](https://github.com/yugabyte/yugabyte-db/issues/4058)
+
 
 ## Yugabyte Platform
 
