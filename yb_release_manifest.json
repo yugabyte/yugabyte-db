@@ -24,8 +24,6 @@
       "bin/configure",
       "bin/log_cleanup.sh",
       "bin/yb-check-consistency.py",
-      "bin/yb-check-failed-tablets.sh",
-      "bin/yb-prof.py",
       "bin/yugabyted",
       "build-support/post_install.sh",
       "submodules/yugabyte-installation/bin/yb-ctl",
@@ -40,6 +38,11 @@
     "share": [
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
       "sample/*.sql"
+    ],
+    "tools": [
+      "bin/yb-prof.py",
+      "bin/print_stacks.sh",
+      "bin/yb-check-failed-tablets.sh"
     ],
     "www": ["www/*"]
   },
