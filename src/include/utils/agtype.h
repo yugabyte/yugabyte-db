@@ -252,6 +252,13 @@ typedef struct
 #define AGT_ROOT_IS_ARRAY(agtp_) \
     ((*(uint32 *)VARDATA(agtp_) & AGT_FARRAY) != 0)
 
+/* values for the AGTYPE header field to denote the stored data type */
+#define AGT_HEADER_INTEGER 0x00000000
+#define AGT_HEADER_FLOAT 0x00000001
+#define AGT_HEADER_VERTEX 0x00000002
+#define AGT_HEADER_EDGE 0x00000003
+#define AGT_HEADER_PATH 0x00000004
+
 /*
  * IMPORTANT NOTE: For agtype_value_type, IS_A_AGTYPE_SCALAR() checks that the
  * type is between AGTV_NULL and AGTV_BOOL, inclusive. So, new scalars need to
@@ -268,6 +275,7 @@ enum agtype_value_type
     AGTV_BOOL,
     AGTV_VERTEX,
     AGTV_EDGE,
+    AGTV_PATH,
     /* Composite types */
     AGTV_ARRAY = 0x10,
     AGTV_OBJECT,
@@ -425,6 +433,8 @@ bool agtype_deep_contains(agtype_iterator **val,
 void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash);
 void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
                                        uint64 *hash, uint64 seed);
+void convert_extended_array(StringInfo buffer, agtentry *pheader,
+                            agtype_value *val);
 void convert_extended_object(StringInfo buffer, agtentry *pheader,
                              agtype_value *val);
 Datum get_numeric_datum_from_agtype_value(agtype_value *agtv);

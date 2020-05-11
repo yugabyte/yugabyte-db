@@ -670,11 +670,14 @@ path:
     anonymous_path
     | var_name '=' anonymous_path /* named path */
         {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("named path not implemented"),
-                            ag_scanner_errposition(@1, scanner)));
-            $$ = NULL;
+            cypher_path *p;
+
+            p = (cypher_path *)$3;
+            p->var_name = $1;
+
+            $$ = (Node *)p;
         }
+
     ;
 
 anonymous_path:
@@ -684,6 +687,7 @@ anonymous_path:
 
             n = make_ag_node(cypher_path);
             n->path = $1;
+            n->var_name = NULL;
             n->location = @1;
 
             $$ = (Node *)n;

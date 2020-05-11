@@ -22,12 +22,6 @@
 #define AGT_HEADER_TYPE uint32
 #define AGT_HEADER_SIZE sizeof(AGT_HEADER_TYPE)
 
-/* values for the AGTYPE header field to denote the stored data type */
-#define AGT_HEADER_INTEGER 0x00000000
-#define AGT_HEADER_FLOAT 0x00000001
-#define AGT_HEADER_VERTEX 0x00000002
-#define AGT_HEADER_EDGE 0x00000003
-
 static void ag_deserialize_composite(char *base, enum agtype_value_type type,
                                      agtype_value *result);
 
@@ -100,6 +94,17 @@ bool ag_serialize_extended_type(StringInfo buffer, agtentry *agtentry,
         break;
     }
 
+    case AGTV_PATH:
+    {
+        uint32 object_ae = 0;
+        padlen = ag_serialize_header(buffer, AGT_HEADER_PATH);
+        convert_extended_array(buffer, &object_ae, scalar_val);
+
+        *agtentry = AGTENTRY_IS_AGTYPE |
+                    ((AGTENTRY_OFFLENMASK & (int)object_ae) + AGT_HEADER_SIZE);
+        break;
+    }
+
     default:
         return false;
     }
@@ -132,9 +137,15 @@ void ag_deserialize_extended_type(char *base_addr, uint32 offset,
     case AGT_HEADER_VERTEX:
         ag_deserialize_composite(base, AGTV_VERTEX, result);
         break;
+
     case AGT_HEADER_EDGE:
         ag_deserialize_composite(base, AGTV_EDGE, result);
         break;
+
+    case AGT_HEADER_PATH:
+        ag_deserialize_composite(base, AGTV_PATH, result);
+        break;
+
     default:
         elog(ERROR, "Invalid AGT header value.");
     }

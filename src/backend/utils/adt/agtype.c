@@ -505,6 +505,16 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
         appendBinaryStringInfo(out, "::edge", 6);
         break;
     }
+    case AGTV_PATH:
+    {
+        agtype *prop;
+        scalar_val->type = AGTV_ARRAY;
+        prop = agtype_value_to_agtype(scalar_val);
+        agtype_to_cstring_worker(out, &prop->root, prop->vl_len_, false);
+        appendBinaryStringInfo(out, "::path", 6);
+        break;
+    }
+
     default:
         elog(ERROR, "unknown agtype scalar type");
     }
@@ -1498,6 +1508,83 @@ agtype_value *string_to_agtype_value(char *s)
     agtv->val.string.val = s;
 
     return agtv;
+}
+
+PG_FUNCTION_INFO_V1(_agtype_build_path);
+
+/*
+ * SQL function agtype_build_path(VARIADIC agtype)
+ */
+Datum _agtype_build_path(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    int i;
+    agtype_in_state result;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+
+    /* build argument values to build the object */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    if (nargs < 0)
+        PG_RETURN_NULL();
+
+    if (nargs % 2 == 0)
+    {
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("argument list must have an odd number of elements"),
+             errhint(
+                 "The arguments of _agtype_build_path() must consist of alternating vertices and edges.")));
+    }
+
+    memset(&result, 0, sizeof(agtype_in_state));
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY, NULL);
+
+    for (i = 0; i < nargs; i++)
+    {
+        agtype *agt= (agtype *)args[i];
+
+        if (nulls[i])
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("argument %d must not be null", i + 1)));
+        }
+        else if (i % 2 == 1 && (types[i] != AGTYPEOID ||
+                                !AGTE_IS_AGTYPE(agt->root.children[0]) ||
+                                agt->root.children[1] != AGT_HEADER_EDGE))
+        {
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("argument %d must be an edge", i + 1),
+                 errhint(
+                     "The arguments of _agtype_build_path() must consist of alternating vertices and edges.")));
+        }
+        else if (i % 2 == 0 && (types[i] != AGTYPEOID ||
+                                !AGTE_IS_AGTYPE(agt->root.children[0]) ||
+                                agt->root.children[1] != AGT_HEADER_VERTEX))
+        {
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("argument %d must be an vertex", i + 1),
+                 errhint(
+                     "The arguments of _agtype_build_path() must consist of alternating vertices and edges.")));
+        }
+
+        add_agtype((Datum)agt, false, &result, types[i], false);
+    }
+
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
+
+    result.res->type = AGTV_PATH;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
 }
 
 PG_FUNCTION_INFO_V1(_agtype_build_vertex);
@@ -2666,3 +2753,123 @@ Datum agtype_typecast_path(PG_FUNCTION_ARGS)
     elog(ERROR, "typecasting to path is not yet supported");
     PG_RETURN_NULL();
 }
+
+PG_FUNCTION_INFO_V1(_ag_enforce_edge_uniqueness);
+
+Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    bool *nulls;
+    Oid *types;
+    int i, j;
+
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    for (i = 0; i < nargs; i++)
+    {
+        graphid id_1 = (graphid)args[i];
+
+        for (j = i + 1; j < nargs; j++)
+        {
+            graphid id_2;
+
+            if (types[i] != GRAPHIDOID || types[j] != GRAPHIDOID)
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("all parameters for _ag_enforce_edge_uniqueness must be graphids")));
+
+            if (nulls[i] || nulls[j])
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("all parameters for _ag_enforce_edge_uniqueness must not be null")));
+
+            id_2 = (graphid)args[j];
+
+            if (id_1 == id_2)
+                return false;
+        }
+    }
+
+    return true;
+}
+
+PG_FUNCTION_INFO_V1(id);
+
+Datum id(PG_FUNCTION_ARGS)
+{
+    agtype *object = AG_GET_ARG_AGTYPE_P(0);
+
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    if (AGT_ROOT_IS_SCALAR(object))
+    {
+        agtype_value *v;
+        v = get_ith_agtype_value_from_container(&object->root, 0);
+
+        if (v->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        else if (v->type == AGTV_VERTEX || v->type == AGTV_EDGE)
+            AG_RETURN_GRAPHID(v->val.object.pairs[0].value.val.int_value);
+    }
+
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("id only allows edge and vertex agtypes")));
+
+    // keeps compiler silent
+    PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(start_id);
+
+Datum start_id(PG_FUNCTION_ARGS)
+{
+    agtype *object;
+
+    if (PG_ARGISNULL(0))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("start_id arguement cannot be NULL")));
+
+    object = AG_GET_ARG_AGTYPE_P(0);
+    if (AGT_ROOT_IS_SCALAR(object))
+    {
+        agtype_value *v;
+        v = get_ith_agtype_value_from_container(&object->root, 0);
+
+        if (v->type == AGTV_EDGE)
+            AG_RETURN_GRAPHID(v->val.object.pairs[2].value.val.int_value);
+    }
+
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("start_id only allows edge agtypes")));
+
+    // keeps compiler silent
+    PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(end_id);
+
+Datum end_id(PG_FUNCTION_ARGS)
+{
+    agtype *object;
+
+    if (PG_ARGISNULL(0))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("end_id arguement cannot be NULL")));
+
+    object = AG_GET_ARG_AGTYPE_P(0);
+    if (AGT_ROOT_IS_SCALAR(object))
+    {
+        agtype_value *v;
+        v = get_ith_agtype_value_from_container(&object->root, 0);
+
+        if (v->type == AGTV_EDGE)
+            AG_RETURN_GRAPHID(v->val.object.pairs[3].value.val.int_value);
+    }
+
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("end_id only allows edge agtypes")));
+
+    // keeps compiler silent
+    PG_RETURN_NULL();
+}
+

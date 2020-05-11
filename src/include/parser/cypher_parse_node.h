@@ -20,12 +20,16 @@
 #include "nodes/primnodes.h"
 #include "parser/parse_node.h"
 
+#define AG_DEFAULT_ALIAS_BASE "_ag_default_alias_"
+
 typedef struct cypher_parsestate
 {
     ParseState pstate;
     char *graph_name;
     Oid graph_oid;
     Param *params;
+    int default_alias_num;
+    List *entities;
 } cypher_parsestate;
 
 typedef struct errpos_ecb_state

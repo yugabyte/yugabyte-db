@@ -225,21 +225,23 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
     ColumnDef *props;
 
     // "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...)
-    id = makeColumnDef("id", GRAPHIDOID, -1, InvalidOid);
+    id = makeColumnDef(AG_EDGE_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
     id->constraints = list_make2(build_pk_constraint(),
                                  build_id_default(graph_name, label_name,
                                                   schema_name, seq_name));
 
     // "start_id" graphid NOT NULL
-    start_id = makeColumnDef("start_id", GRAPHIDOID, -1, InvalidOid);
+    start_id = makeColumnDef(AG_EDGE_COLNAME_START_ID, GRAPHIDOID, -1,
+                             InvalidOid);
     start_id->constraints = list_make1(build_not_null_constraint());
 
     // "end_id" graphid NOT NULL
-    end_id = makeColumnDef("end_id", GRAPHIDOID, -1, InvalidOid);
+    end_id = makeColumnDef(AG_EDGE_COLNAME_END_ID, GRAPHIDOID, -1, InvalidOid);
     end_id->constraints = list_make1(build_not_null_constraint());
 
     // "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
-    props = makeColumnDef("properties", AGTYPEOID, -1, InvalidOid);
+    props = makeColumnDef(AG_EDGE_COLNAME_PROPERTIES, AGTYPEOID, -1,
+                          InvalidOid);
     props->constraints = list_make2(build_not_null_constraint(),
                                     build_properties_default());
 
@@ -258,13 +260,14 @@ static List *create_vertex_table_elements(char *graph_name, char *label_name,
     ColumnDef *props;
 
     // "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...)
-    id = makeColumnDef("id", GRAPHIDOID, -1, InvalidOid);
+    id = makeColumnDef(AG_VERTEX_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
     id->constraints = list_make2(build_pk_constraint(),
                                  build_id_default(graph_name, label_name,
                                                   schema_name, seq_name));
 
     // "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
-    props = makeColumnDef("properties", AGTYPEOID, -1, InvalidOid);
+    props = makeColumnDef(AG_VERTEX_COLNAME_PROPERTIES, AGTYPEOID, -1,
+                          InvalidOid);
     props->constraints = list_make2(build_not_null_constraint(),
                                     build_properties_default());
 

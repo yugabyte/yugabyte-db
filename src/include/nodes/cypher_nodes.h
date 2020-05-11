@@ -93,6 +93,7 @@ typedef struct cypher_path
 {
     ExtensibleNode extensible;
     List *path; // [ node ( , relationship , node , ... ) ]
+    char *var_name;
     int location;
 } cypher_path;
 
@@ -182,7 +183,6 @@ typedef struct cypher_target_node
     List *expr_states;
     cypher_rel_dir dir;
 } cypher_target_node;
-
 
 typedef struct cypher_typecast
 {

@@ -1251,6 +1251,50 @@ SELECT agtype_access_operator(
  {"id": 1, "label": "label_name", "end_id": 3, "start_id": 2, "properties": {"id": 3}}::edge
 (1 row)
 
+-- Path
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	_agtype_build_vertex('3'::graphid, $$label_name$$, agtype_build_map())
+);
+                                                                                                   _agtype_build_path                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 2, "label": "label_name", "properties": {}}::vertex, {"id": 1, "label": "label", "end_id": 3, "start_id": 2, "properties": {"id": 2}}::edge, {"id": 3, "label": "label_name", "properties": {}}::vertex]::path
+(1 row)
+
+--All these paths should produce Errors
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2))
+);
+ERROR:  argument list must have an odd number of elements
+HINT:  The arguments of _agtype_build_path() must consist of alternating vertices and edges.
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	NULL
+);
+ERROR:  argument 3 must not be null
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	1
+);
+ERROR:  argument 3 must be an vertex
+HINT:  The arguments of _agtype_build_path() must consist of alternating vertices and edges.
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2))
+);
+ERROR:  argument 3 must be an vertex
+HINT:  The arguments of _agtype_build_path() must consist of alternating vertices and edges.
 --
 -- Test STARTS WITH, ENDS WITH, and CONTAINS
 --

@@ -304,6 +304,8 @@ int compare_agtype_containers_orderability(agtype_container *a,
                         }
                     }
                     break;
+                case AGTV_PATH:
+                    break;
                 case AGTV_OBJECT:
                     break;
                 case AGTV_BINARY:
@@ -1836,6 +1838,12 @@ static void convert_agtype_array(StringInfo buffer, agtentry *pheader,
 
     /* Initialize the header of this node in the container's agtentry array */
     *pheader = AGTENTRY_IS_CONTAINER | totallen;
+}
+
+void convert_extended_array(StringInfo buffer, agtentry *pheader,
+                            agtype_value *val)
+{
+    convert_agtype_array(buffer, pheader, val, 0);
 }
 
 void convert_extended_object(StringInfo buffer, agtentry *pheader,

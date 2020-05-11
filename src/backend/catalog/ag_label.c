@@ -213,6 +213,22 @@ Datum _label_id(PG_FUNCTION_ARGS)
     PG_RETURN_INT32(id);
 }
 
+PG_FUNCTION_INFO_V1(_extract_label_id);
+
+Datum _extract_label_id(PG_FUNCTION_ARGS)
+{
+    graphid graph_id;
+
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+                        errmsg("graph_id must not be null")));
+    }
+    graph_id = AG_GETARG_GRAPHID(0);
+
+    PG_RETURN_INT32(get_graphid_label_id(graph_id));
+}
+
 bool label_id_exists(Oid label_graph, int32 label_id)
 {
     label_cache_data *cache_data;
@@ -227,7 +243,8 @@ bool label_id_exists(Oid label_graph, int32 label_id)
 /*
  * Creates A RangeVar for the given label.
  */
-RangeVar *get_label_range_var(char *graph_name, Oid graph_oid, char *label_name)
+RangeVar *get_label_range_var(char *graph_name, Oid graph_oid,
+                              char *label_name)
 {
     char *relname;
     label_cache_data *label_cache;

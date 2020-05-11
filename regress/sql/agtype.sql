@@ -424,6 +424,43 @@ SELECT agtype_access_operator(
 		_agtype_build_edge('2'::graphid, '2'::graphid, '3'::graphid, $$label_name$$,
                                      agtype_build_map('id', 4))), '0');
 
+-- Path
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	_agtype_build_vertex('3'::graphid, $$label_name$$, agtype_build_map())
+);
+
+--All these paths should produce Errors
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2))
+);
+
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	NULL
+);
+
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	1
+);
+
+SELECT _agtype_build_path(
+	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2)),
+	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
+			  $$label$$, agtype_build_map('id', 2))
+);
+
 --
 -- Test STARTS WITH, ENDS WITH, and CONTAINS
 --

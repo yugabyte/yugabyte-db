@@ -25,8 +25,29 @@
 #define AG_DEFAULT_LABEL_EDGE "_ag_label_edge"
 #define AG_DEFAULT_LABEL_VERTEX "_ag_label_vertex"
 
+#define AG_VERTEX_COLNAME_ID "id"
+#define AG_VERTEX_COLNAME_PROPERTIES "properties"
+
+#define AG_VERTEX_ACCESS_FUNCTION_ID "id"
+#define AG_VERTEX_ACCESS_FUNCTION_PROPERTIES "properties"
+
+#define AG_EDGE_COLNAME_ID "id"
+#define AG_EDGE_COLNAME_START_ID "start_id"
+#define AG_EDGE_COLNAME_END_ID "end_id"
+#define AG_EDGE_COLNAME_PROPERTIES "properties"
+
+#define AG_EDGE_ACCESS_FUNCTION_ID "id"
+#define AG_EDGE_ACCESS_FUNCTION_START_ID "start_id"
+#define AG_EDGE_ACCESS_FUNCTION_END_ID "end_id"
+#define AG_EDGE_ACCESS_FUNCTION_PROPERTIES "properties"
+
+#define IS_DEFAULT_LABEL_EDGE(str) \
+    (str != NULL && strcmp(AG_DEFAULT_LABEL_EDGE, str) == 0)
+#define IS_DEFAULT_LABEL_VERTEX(str) \
+    (str != NULL && strcmp(AG_DEFAULT_LABEL_VERTEX, str) == 0)
+
 #define IS_AG_DEFAULT_LABEL(x) \
-    (!strcmp(x, AG_DEFAULT_LABEL_EDGE) || !strcmp(x, AG_DEFAULT_LABEL_VERTEX))
+    (IS_DEFAULT_LABEL_EDGE(x) || IS_DEFAULT_LABEL_VERTEX(x))
 
 Oid create_label(char *graph_name, char *label_name, char label_type,
                  List *parents);

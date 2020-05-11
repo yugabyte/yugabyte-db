@@ -306,6 +306,13 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION _extract_label_id(graphid)
+RETURNS label_id
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 --
 -- agtype type and its support functions
 --
@@ -551,6 +558,17 @@ CREATE OPERATOR >= (
 );
 
 --
+-- agtype - path
+--
+CREATE FUNCTION _agtype_build_path(VARIADIC "any")
+RETURNS agtype
+LANGUAGE c
+STABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
 -- agtype - vertex
 --
 CREATE FUNCTION _agtype_build_vertex(graphid, cstring, agtype)
@@ -572,6 +590,12 @@ CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION _ag_enforce_edge_uniqueness(VARIADIC "any")
+RETURNS bool
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+as 'MODULE_PATHNAME';
 
 --
 -- agtype - map literal (`{key: expr, ...}`)
@@ -729,6 +753,35 @@ PARALLEL SAFE
 COST 10
 ROWS 60
 AS 'MODULE_PATHNAME';
+
+--
+-- Scalar Functions
+--
+CREATE FUNCTION id(agtype)
+RETURNS graphid
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION start_id(agtype)
+RETURNS graphid
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+
+CREATE FUNCTION end_id(agtype)
+RETURNS graphid
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 
 --
 -- function for typecasting an agtype value to another agtype value
