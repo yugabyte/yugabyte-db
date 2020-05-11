@@ -2,7 +2,7 @@
 title: YB-Master Service
 headerTitle: YB-Master Service
 linkTitle: YB-Master Service
-description: Learn about how the YB-Master Service and nodes manage tablet (shard) metadata and coordinate configuration changes.
+description: Learn how the YB-Master service manages tablet (aka shard) metadata and coordinates cluster configuration changes.
 aliases:
   - /latest/architecture/concepts/yb-master/
 menu:
