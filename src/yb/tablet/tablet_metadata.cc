@@ -168,16 +168,9 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
 
 Status KvStoreInfo::LoadTablesFromPB(
     google::protobuf::RepeatedPtrField<TableInfoPB> pbs, TableId primary_table_id) {
-
-  // To avoid race conditions, send all the tables to live in the old tables farm forever.
-  // TODO(hector): Fix the race condition by converting unique_ptr of TableInfo to shared_ptr
-  for (auto& iter : tables) {
-    old_tables.push_back(std::move(iter.second));
-  }
-
   tables.clear();
   for (const auto& table_pb : pbs) {
-    auto table_info = std::make_unique<TableInfo>();
+    auto table_info = std::make_shared<TableInfo>();
     RETURN_NOT_OK(table_info->LoadFromPB(table_pb));
     if (table_info->table_id != primary_table_id) {
       if (table_pb.schema().table_properties().is_ysql_catalog_table()) {
@@ -326,9 +319,9 @@ Status RaftGroupMetadata::LoadOrCreate(FsManager* fs_manager,
                                     RaftGroupMetadataPtr* metadata) {
   Status s = Load(fs_manager, raft_group_id, metadata);
   if (s.ok()) {
-    if (!(*metadata)->schema().Equals(schema)) {
+    if (!(**metadata).schema()->Equals(schema)) {
       return STATUS(Corruption, Substitute("Schema on disk ($0) does not "
-        "match expected schema ($1)", (*metadata)->schema().ToString(),
+        "match expected schema ($1)", (*metadata)->schema()->ToString(),
         schema.ToString()));
     }
     return Status::OK();
@@ -352,7 +345,7 @@ CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raf
   return STATUS_FORMAT(NotFound, "Table $0 not found in Raft group $1", table_id, raft_group_id);
 }
 
-Result<const TableInfo*> RaftGroupMetadata::GetTableInfo(const std::string& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const std::string& table_id) const {
   std::lock_guard<MutexType> lock(data_mutex_);
   const auto& tables = kv_store_.tables;
   const auto id = !table_id.empty() ? table_id : primary_table_id_;
@@ -360,18 +353,7 @@ Result<const TableInfo*> RaftGroupMetadata::GetTableInfo(const std::string& tabl
   if (iter == tables.end()) {
     return MakeTableNotFound(table_id, raft_group_id_, tables);
   }
-  return iter->second.get();
-}
-
-Result<TableInfo*> RaftGroupMetadata::GetTableInfo(const std::string& table_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
-  const auto& tables = kv_store_.tables;
-  const auto id = !table_id.empty() ? table_id : primary_table_id_;
-  const auto iter = tables.find(id);
-  if (iter == tables.end()) {
-    return MakeTableNotFound(table_id, raft_group_id_, tables);
-  }
-  return iter->second.get();
+  return iter->second;
 }
 
 Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
@@ -500,7 +482,7 @@ RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager,
   CHECK_GT(schema.num_key_columns(), 0);
   kv_store_.tables.emplace(
       primary_table_id_,
-      std::make_unique<TableInfo>(
+      std::make_shared<TableInfo>(
           std::move(table_id),
           std::move(table_name),
           table_type,
@@ -666,18 +648,15 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const uint32_t version) {
   DCHECK(schema.has_column_ids());
   std::lock_guard<MutexType> lock(data_mutex_);
-  std::unique_ptr<TableInfo> new_table_info(new TableInfo(*primary_table_info_unlocked(),
-                                                          schema,
-                                                          index_map,
-                                                          deleted_cols,
-                                                          version));
+  TableInfoPtr new_table_info = std::make_shared<TableInfo>(*primary_table_info_unlocked(),
+                                                           schema,
+                                                           index_map,
+                                                           deleted_cols,
+                                                           version);
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating to Schema version " << version
                       << " from \n" << yb::ToString(kv_store_.tables[primary_table_id_])
                       << " to \n" << yb::ToString(new_table_info);
   kv_store_.tables[primary_table_id_].swap(new_table_info);
-  if (new_table_info) {
-    kv_store_.old_tables.push_back(std::move(new_table_info));
-  }
 }
 
 void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_schema) {
@@ -703,14 +682,14 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
                               const boost::optional<IndexInfo>& index_info,
                               const uint32_t schema_version) {
   DCHECK(schema.has_column_ids());
-  std::unique_ptr<TableInfo> new_table_info(new TableInfo(table_id,
-                                                          table_name,
-                                                          table_type,
-                                                          schema,
-                                                          index_map,
-                                                          index_info,
-                                                          schema_version,
-                                                          partition_schema));
+  TableInfoPtr new_table_info = std::make_shared<TableInfo>(table_id,
+                                                            table_name,
+                                                            table_type,
+                                                            schema,
+                                                            index_map,
+                                                            index_info,
+                                                            schema_version,
+                                                            partition_schema);
   if (table_id != primary_table_id_) {
     if (schema.table_properties().is_ysql_catalog_table()) {
       Uuid cotable_id;

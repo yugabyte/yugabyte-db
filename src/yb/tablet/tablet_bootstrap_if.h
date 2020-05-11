@@ -96,7 +96,7 @@ class TabletStatusListener {
 
   std::shared_ptr<Partition> partition() const;
 
-  const Schema& schema() const;
+  SchemaPtr schema() const;
 
   std::string last_status() const {
     SharedLock<boost::shared_mutex> l(lock_);
