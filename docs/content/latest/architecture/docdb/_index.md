@@ -2,7 +2,7 @@
 title: DocDB storage layer
 headerTitle: DocDB storage layer
 linkTitle: DocDB storage layer
-description: Learn about the persistent storage layer of YugabyteDB distributed document store.
+description: Learn about the persistent storage layer of DocDB.
 image: /images/section_icons/architecture/concepts.png
 aliases:
   - /architecture/concepts/docdb/
