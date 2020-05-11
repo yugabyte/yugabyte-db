@@ -695,12 +695,12 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  const IndexMap& index_map = tablet.peer->tablet_metadata()->index_map();
+  const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map();
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
-    indexes_to_backfill.push_back(index_map.at(idx.table_id()));
-    index_ids.push_back(index_map.at(idx.table_id()).table_id());
+    indexes_to_backfill.push_back(index_map->at(idx.table_id()));
+    index_ids.push_back(index_map->at(idx.table_id()).table_id());
   }
 
   Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(
@@ -738,7 +738,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     return;
   }
 
-  Schema tablet_schema = tablet.peer->tablet_metadata()->schema();
+  const SchemaPtr tablet_schema = tablet.peer->tablet_metadata()->schema();
   uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
   // Sanity check, to verify that the tablet should have the same schema
   // specified in the request.
@@ -752,7 +752,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   // If the schema was already applied, respond as succeeded.
   if (!req->has_wal_retention_secs() && schema_version == req->schema_version()) {
 
-    if (req_schema.Equals(tablet_schema)) {
+    if (req_schema.Equals(*tablet_schema)) {
       context.RespondSuccess();
       return;
     }
@@ -761,7 +761,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     if (schema_version == req->schema_version()) {
       LOG(ERROR) << "The current schema does not match the request schema."
                  << " version=" << schema_version
-                 << " current-schema=" << tablet_schema.ToString()
+                 << " current-schema=" << tablet_schema->ToString()
                  << " request-schema=" << req_schema.ToString()
                  << " (corruption)";
       SetupErrorAndRespond(resp->mutable_error(),
@@ -776,7 +776,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     LOG(ERROR) << "Tablet " << req->tablet_id() << " has a newer schema "
                << " version=" << schema_version
                << " req->schema_version()=" << req->schema_version()
-               << "\n current-schema=" << tablet_schema.ToString()
+               << "\n current-schema=" << tablet_schema->ToString()
                << "\n request-schema=" << req_schema.ToString() << " (wtf?)";
     SetupErrorAndRespond(
         resp->mutable_error(),
@@ -788,7 +788,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   }
 
   VLOG(1) << "Tablet updating schema from "
-          << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
+          << " version=" << schema_version << " current-schema=" << tablet_schema->ToString()
           << " to request-schema=" << req_schema.ToString();
   auto operation_state = std::make_unique<ChangeMetadataOperationState>(
       tablet.peer->tablet(), tablet.peer->log(), req);
@@ -2290,8 +2290,8 @@ void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();
     peer->GetTabletStatusPB(status->mutable_tablet_status());
-    SchemaToPB(peer->status_listener()->schema(), status->mutable_schema());
-    peer->tablet_metadata()->partition_schema().ToPB(status->mutable_partition_schema());
+    SchemaToPB(*peer->status_listener()->schema(), status->mutable_schema());
+    peer->tablet_metadata()->partition_schema()->ToPB(status->mutable_partition_schema());
   }
   context.RespondSuccess();
 }
@@ -2348,8 +2348,8 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 namespace {
 
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
-  const Schema& schema = tablet->metadata()->schema();
-  auto client_schema = schema.CopyWithoutColumnIds();
+  const shared_ptr<Schema> schema = tablet->metadata()->schema();
+  auto client_schema = schema->CopyWithoutColumnIds();
   auto iter = tablet->NewRowIterator(client_schema, boost::none, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
@@ -2358,7 +2358,7 @@ Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) 
 
   while (VERIFY_RESULT((**iter).HasNext())) {
     RETURN_NOT_OK((**iter).NextRow(&value_map));
-    collector.HandleRow(schema, value_map);
+    collector.HandleRow(*schema, value_map);
   }
 
   return collector.agg_checksum();

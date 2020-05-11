@@ -368,7 +368,7 @@ std::string MakeTabletLogPrefix(
 } // namespace
 
 Tablet::Tablet(const TabletInitData& data)
-    : key_schema_(data.metadata->schema().CreateKeyProjection()),
+    : key_schema_(data.metadata->schema()->CreateKeyProjection()),
       metadata_(data.metadata),
       table_type_(data.metadata->table_type()),
       log_anchor_registry_(data.log_anchor_registry),
@@ -395,8 +395,8 @@ Tablet::Tablet(const TabletInitData& data)
     // TODO(KUDU-745): table_id is apparently not set in the metadata.
     attrs["table_id"] = metadata_->table_id();
     attrs["table_name"] = metadata_->table_name();
-    attrs["partition"] = metadata_->partition_schema().PartitionDebugString(*metadata_->partition(),
-                                                                            *schema());
+    attrs["partition"] = metadata_->partition_schema()->PartitionDebugString(
+        *metadata_->partition(), *schema());
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(data.metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
     rocksdb_statistics_ = rocksdb::CreateDBStatistics();
@@ -419,13 +419,14 @@ Tablet::Tablet(const TabletInitData& data)
     mem_tracker_->SetMetricEntity(metric_entity_);
   }
 
+  bool has_index = !metadata_->index_map()->empty();
   if (txns_enabled_ &&
       data.transaction_participant_context &&
-      (is_sys_catalog_ || data.metadata->schema().table_properties().is_transactional())) {
+      (is_sys_catalog_ || data.metadata->schema()->table_properties().is_transactional())) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
         data.transaction_participant_context, this, metric_entity_);
     // Create transaction manager for secondary index update.
-    if (!metadata_->index_map().empty()) {
+    if (has_index) {
       transaction_manager_.emplace(client_future_.get(),
                                    scoped_refptr<server::Clock>(clock_),
                                    local_tablet_filter_);
@@ -433,7 +434,7 @@ Tablet::Tablet(const TabletInitData& data)
   }
 
   // Create index table metadata cache for secondary index update.
-  if (!metadata_->index_map().empty()) {
+  if (has_index) {
     metadata_cache_.emplace(client_future_.get(), false /* Update roles' permissions cache */);
   }
 
@@ -441,8 +442,8 @@ Tablet::Tablet(const TabletInitData& data)
   if (metadata_->is_unique_index()) {
     unique_index_key_schema_.emplace();
     const auto ids = metadata_->index_key_column_ids();
-    CHECK_OK(metadata_->schema().CreateProjectionByIdsIgnoreMissing(ids,
-                                                                    &*unique_index_key_schema_));
+    CHECK_OK(metadata_->schema()->CreateProjectionByIdsIgnoreMissing(ids,
+                                                                     &*unique_index_key_schema_));
   }
 
   if (data.transaction_coordinator_context &&
@@ -931,7 +932,8 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   VLOG_WITH_PREFIX(2) << "Created new Iterator reading at " << read_hybrid_time.ToString();
 
-  const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
+  const std::shared_ptr<tablet::TableInfo> table_info =
+      VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   const Schema& schema = table_info->schema;
   auto mapped_projection = std::make_unique<Schema>();
   RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
@@ -950,7 +952,8 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
-  const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
+  const std::shared_ptr<tablet::TableInfo> table_info =
+      VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   return NewRowIterator(table_info->schema, boost::none, {}, table_id);
 }
 
@@ -1284,7 +1287,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
       DVLOG(3) << "Version matches : " << metadata_->schema_version() << " for "
                << yb::ToString(req);
       auto write_op = std::make_unique<QLWriteOperation>(
-          metadata_->schema(), metadata_->index_map(), unique_index_key_schema_.get_ptr(),
+          *metadata_->schema(), *metadata_->index_map(), unique_index_key_schema_.get_ptr(),
           *txn_op_ctx);
       auto status = write_op->Init(req, resp);
       if (!status.ok()) {
@@ -1489,7 +1492,7 @@ Status Tablet::HandlePgsqlReadRequest(
   // TODO(neil) Work on metrics for PGSQL.
   // ScopedTabletMetricsTracker metrics_tracker(metrics_->pgsql_read_latency);
 
-  const tablet::TableInfo* table_info =
+  const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
@@ -1518,24 +1521,23 @@ Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_r
     return true;
   }
 
-  const Schema schema = metadata_->schema();
-  if (schema.has_pgtable_id() || schema.has_cotable_id())  {
+  std::shared_ptr<const Schema> schema = metadata_->schema();
+  if (schema->has_pgtable_id() || schema->has_cotable_id())  {
     // This is a colocated table.
     return true;
   }
 
-  if (schema.num_hash_key_columns() == 0) {
-    if (schema.num_range_key_columns() == pgsql_read_request.range_column_values_size()) {
-      // PK is contained within this tablet.
-      return true;
-    }
+  if (schema->num_hash_key_columns() == 0 &&
+      schema->num_range_key_columns() == pgsql_read_request.range_column_values_size()) {
+    // PK is contained within this tablet.
+    return true;
   }
   return false;
 }
 
 Result<bool> Tablet::HasScanReachedMaxPartitionKey(
     const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const {
-  if (metadata_->schema().num_hash_key_columns() > 0) {
+  if (metadata_->schema()->num_hash_key_columns() > 0) {
     uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     if (pgsql_read_request.has_max_hash_code() &&
         next_hash_code > pgsql_read_request.max_hash_code()) {
@@ -1544,10 +1546,10 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
   } else if (pgsql_read_request.has_max_partition_key() &&
              !pgsql_read_request.max_partition_key().empty()) {
 
-    docdb::DocKey partition_doc_key(metadata_->schema());
+    docdb::DocKey partition_doc_key(*metadata_->schema());
     VERIFY_RESULT(partition_doc_key.DecodeFrom(
         partition_key, docdb::DocKeyPart::WHOLE_DOC_KEY, docdb::AllowSpecial::kTrue));
-    docdb::DocKey max_partition_doc_key(metadata_->schema());
+    docdb::DocKey max_partition_doc_key(*metadata_->schema());
     VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
         pgsql_read_request.max_partition_key(), docdb::DocKeyPart::WHOLE_DOC_KEY,
         docdb::AllowSpecial::kTrue));
@@ -1613,7 +1615,8 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
       resp->set_skipped(true);
       continue;
     }
-    const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(req->table_id()));
+    const std::shared_ptr<tablet::TableInfo> table_info =
+        VERIFY_RESULT(metadata_->GetTableInfo(req->table_id()));
     if (table_info->schema_version != req->schema_version()) {
       resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
@@ -1869,12 +1872,12 @@ Status Tablet::RemoveTable(const std::string& table_id) {
 
 Status Tablet::MarkBackfillDone() {
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
-                        << metadata_->schema().ToString();
+                        << metadata_->schema()->ToString();
   const vector<DeletedColumn> empty_deleted_cols;
-  Schema new_schema = metadata_->schema();
+  Schema new_schema = Schema(*metadata_->schema());
   new_schema.SetIsBackfilling(false);
   metadata_->SetSchema(
-      new_schema, metadata_->index_map(), empty_deleted_cols, metadata_->schema_version());
+      new_schema, *(metadata_->index_map()), empty_deleted_cols, metadata_->schema_version());
   return metadata_->Flush();
 }
 
@@ -1921,8 +1924,8 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   metadata_cache_ = boost::none;
 
   // Create transaction manager and index table metadata cache for secondary index update.
-  if (!metadata_->index_map().empty()) {
-    if (metadata_->schema().table_properties().is_transactional() && !transaction_manager_) {
+  if (!metadata_->index_map()->empty()) {
+    if (metadata_->schema()->table_properties().is_transactional() && !transaction_manager_) {
       transaction_manager_.emplace(client_future_.get(),
                                    scoped_refptr<server::Clock>(clock_),
                                    local_tablet_filter_);
@@ -2377,7 +2380,7 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
 bool Tablet::IsTransactionalRequest(bool is_ysql_request) const {
   // We consider all YSQL tables within the sys catalog transactional.
   return txns_enabled_ && (
-      SchemaRef().table_properties().is_transactional() ||
+      schema()->table_properties().is_transactional() ||
           (is_sys_catalog_ && is_ysql_request));
 }
 
@@ -2488,7 +2491,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
     const RowMarkType row_mark_type = GetRowMarkTypeFromPB(*write_batch);
     const auto& metadata = *tablet_.metadata();
 
-    const bool transactional_table = metadata.schema().table_properties().is_transactional() ||
+    const bool transactional_table = metadata.schema()->table_properties().is_transactional() ||
                                      operation_->force_txn_path();
 
     if (!transactional_table && isolation_level_ != IsolationLevel::NON_TRANSACTIONAL) {
@@ -2846,7 +2849,7 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
 
   if (transaction_id.is_initialized()) {
     return TransactionOperationContext(transaction_id.get(), transaction_participant());
-  } else if (metadata_->schema().table_properties().is_transactional() || is_ysql_catalog_table) {
+  } else if (metadata_->schema()->table_properties().is_transactional() || is_ysql_catalog_table) {
     // We still need context with transaction participant in order to resolve intents during
     // possible reads.
     return TransactionOperationContext(
@@ -2867,12 +2870,12 @@ Status Tablet::CreateReadIntents(
 
   for (const auto& ql_read : ql_batch) {
     docdb::QLReadOperation doc_op(ql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(SchemaRef(), write_batch));
+    RETURN_NOT_OK(doc_op.GetIntents(*GetSchema(), write_batch));
   }
 
   for (const auto& pgsql_read : pgsql_batch) {
     docdb::PgsqlReadOperation doc_op(pgsql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(SchemaRef(pgsql_read.table_id()), write_batch));
+    RETURN_NOT_OK(doc_op.GetIntents(*GetSchema(pgsql_read.table_id()), write_batch));
   }
 
   return Status::OK();

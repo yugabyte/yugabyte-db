@@ -225,8 +225,8 @@ void TabletSplitITest::CheckPostSplitTabletReplicasData(size_t num_rows) {
       continue;
     }
 
-    const Schema& schema = tablet->metadata()->schema();
-    auto client_schema = schema.CopyWithoutColumnIds();
+    const SchemaPtr schema = tablet->metadata()->schema();
+    auto client_schema = schema->CopyWithoutColumnIds();
     auto iter = ASSERT_RESULT(tablet->NewRowIterator(client_schema, boost::none));
     QLTableRow row;
     std::unordered_set<size_t> tablet_keys;
