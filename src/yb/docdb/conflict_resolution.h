@@ -75,6 +75,7 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
                                const DocDB& doc_db,
                                PartialRangeKeyIntents partial_range_key_intents,
                                TransactionStatusManager* status_manager,
+                               Counter* conflicts_metric,
                                ResolutionCallback callback);
 
 struct ParsedIntent {
