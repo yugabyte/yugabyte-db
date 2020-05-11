@@ -99,6 +99,8 @@ Background Worker
 -----------------
 With PostgreSQL 9.4, the ability to create custom background workers and dynamically load them during runtime was introduced. `pg_partman`'s BGW is basically just a scheduler that runs the `run_maintenance()` function for you so that you don't have to use an external scheduler (cron, etc). Right now it doesn't do anything differently than calling `run_maintenance()` directly, but that may change in the future. See the README.md file for installation instructions. If you need to call `run_maintenance()` directly on any specific partition sets, you will still need to do so manually using an outside scheduler. This only maintains partition sets that have `automatic_maintenance` in `**part_config**` set to true. LOG messages are output to the normal PostgreSQL log file to indicate when the BGW runs. Additional logging messages are available if *log_min_messages* is set to "DEBUG1".
 
+**REMEMBER:** You must have `pg_partman_bgw` in your `shared_preload_libraries` (requires a restart).
+
 The following configuration options are available to add into postgresql.conf to control the BGW process:
 
  - `pg_partman_bgw.dbname`
