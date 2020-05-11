@@ -26,6 +26,7 @@ CREATE TABLE @extschema@.part_config (
     , publications text[]
     , inherit_privileges boolean DEFAULT false
     , constraint_valid boolean DEFAULT true NOT NULL
+    , subscription_refresh text
     , CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
     , CONSTRAINT positive_premake_check CHECK (premake > 0)
     , CONSTRAINT publications_no_empty_set_chk CHECK (publications <> '{}')
@@ -59,6 +60,7 @@ CREATE TABLE @extschema@.part_config_sub (
     , sub_template_table text
     , sub_inherit_privileges boolean DEFAULT false
     , sub_constraint_valid boolean DEFAULT true NOT NULL
+    , sub_subscription_refresh text
     , CONSTRAINT part_config_sub_pkey PRIMARY KEY (sub_parent)
     , CONSTRAINT part_config_sub_sub_parent_fkey FOREIGN KEY (sub_parent) REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED
     , CONSTRAINT positive_premake_check CHECK (sub_premake > 0)
@@ -84,7 +86,7 @@ SELECT pg_catalog.pg_extension_config_dump('custom_time_partitions', '');
  * Custom view to help improve privilege lookups for pg_partman. 
  * information_schema is a performance bottleneck since indexes aren't being used properly.
  */
-CREATE OR REPLACE VIEW @extschema@.table_privs AS
+CREATE VIEW @extschema@.table_privs AS
     SELECT u_grantor.rolname AS grantor,
            grantee.rolname AS grantee,
            nc.nspname AS table_schema,
@@ -94,9 +96,9 @@ CREATE OR REPLACE VIEW @extschema@.table_privs AS
             SELECT oid, relname, relnamespace, relkind, relowner, (aclexplode(coalesce(relacl, acldefault('r', relowner)))).* FROM pg_class
          ) AS c (oid, relname, relnamespace, relkind, relowner, grantor, grantee, prtype, grantable),
          pg_namespace nc,
-         pg_authid u_grantor,
+         pg_roles u_grantor,
          (
-           SELECT oid, rolname FROM pg_authid
+           SELECT oid, rolname FROM pg_roles
            UNION ALL
            SELECT 0::oid, 'PUBLIC'
          ) AS grantee (oid, rolname)
@@ -109,7 +111,6 @@ CREATE OR REPLACE VIEW @extschema@.table_privs AS
                OR pg_has_role(grantee.oid, 'USAGE')
                OR grantee.rolname = 'PUBLIC' );
 
-
 -- Put constraint functions & definitions here because having them in a separate file makes the ordering of their creation harder to control. Some require the above tables to exist first.
 
 /* 
@@ -117,7 +118,7 @@ CREATE OR REPLACE VIEW @extschema@.table_privs AS
  * (not boolean to allow future values)
  */
 CREATE FUNCTION @extschema@.check_automatic_maintenance_value (p_automatic_maintenance text) RETURNS boolean
-    LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
+    LANGUAGE plpgsql IMMUTABLE 
     AS $$
 DECLARE
 v_result    boolean;

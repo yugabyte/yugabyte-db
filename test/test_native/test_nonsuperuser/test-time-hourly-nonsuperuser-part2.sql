@@ -20,6 +20,9 @@ SELECT has_table('partman_test', 'time_taptest_table', 'Check that parent was cr
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', 'hourly');
 ALTER TABLE partman.template_partman_test_time_taptest_table ADD PRIMARY KEY (col1);
 
+UPDATE part_config SET inherit_privileges = TRUE;
+SELECT reapply_privileges('partman_test.time_taptest_table');
+
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI'), 'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI')||' exists');

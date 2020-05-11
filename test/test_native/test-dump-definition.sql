@@ -41,7 +41,8 @@ SELECT bag_eq(
     'template_table',
     'publications',
     'inherit_privileges',
-    'constraint_valid'
+    'constraint_valid',
+    'subscription_refresh'
   ]::TEXT[],
   'When adding a new column to part_config please ensure it is also added to the dump_partitioned_table_definition function'
 );
@@ -55,6 +56,7 @@ SET retention='5 weeks', retention_keep_table = 'f', infinite_time_partitions = 
 WHERE parent_table = 'public.objects';
 
 -- Test output "visually".
+-- Note that spaces before each line are literal tabs (\t), not spaces
 SELECT is(
   (SELECT partman.dump_partitioned_table_definition('public.objects')),
 E'SELECT partman.create_parent(
@@ -87,7 +89,8 @@ UPDATE partman.part_config SET
 	sub_partition_set_full = ''f'',
 	trigger_exception_handling = ''f'',
 	inherit_privileges = ''t'',
-	constraint_valid = ''t''
+	constraint_valid = ''t'',
+	subscription_refresh = NULL
 WHERE parent_table = ''public.objects'';'
 );
 
@@ -128,6 +131,7 @@ WHERE parent_table = 'public.declarative_objects';
 SELECT partman.dump_partitioned_table_definition('public.declarative_objects', p_ignore_template_table := true);
 --
 -- -- Test output "visually" (with default p_ignore_template_table = false).
+-- -- Note that spaces before each line are literal tabs (\t), not spaces
 SELECT is(
   (SELECT partman.dump_partitioned_table_definition('public.declarative_objects')),
 E'SELECT partman.create_parent(
@@ -160,7 +164,8 @@ UPDATE partman.part_config SET
 	sub_partition_set_full = ''f'',
 	trigger_exception_handling = ''f'',
 	inherit_privileges = ''t'',
-	constraint_valid = ''f''
+	constraint_valid = ''f'',
+	subscription_refresh = NULL
 WHERE parent_table = ''public.declarative_objects'';'
 );
 

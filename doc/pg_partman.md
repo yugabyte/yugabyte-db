@@ -30,7 +30,7 @@ For this extension, most of the attributes of the child partitions are all obtai
 | constraints                                       | All                   |                       |
 | defaults                                          | All                   |                       |
 
-Privileges & ownership are inherited by default for non-native partitioning, but NOT for native partitioning. Also note that this inheritance is only at child table creation and isn't automatically retroactive when changed (see `reapply_privileges()`). Unless you need direct access to the child tables, this should not be needed. You can set the `inherit_privileges` option if this is needed (see config table information below). Note that inheriting privileges to the children requires running a superuser owned function that uses SECURITY DEFINER. 
+Privileges & ownership are inherited by default for non-native partitioning, but NOT for native partitioning. Also note that this inheritance is only at child table creation and isn't automatically retroactive when changed (see `reapply_privileges()`). Unless you need direct access to the child tables, this should not be needed. You can set the `inherit_privileges` option if this is needed (see config table information below).  
 
 If a property is managed via the template table, it likely will not be retroactively applied to all existing child tables if that property is changed. It will apply to any newly created children, but will have to be manually applied to any existing children.
 
@@ -119,7 +119,7 @@ As of version 4.0.0, the background worker still uses the normal run_maintenance
 
 Extension Objects
 -----------------
-As of 4.0.0, SECURITY DEFINER has been removed from a larger majority of functions in pg_partman. As of version 4.1.0, requiring a superuser to use pg_partman is now completely optional for native partitioning. It is still required for extension installation and non-native partitioning. From now on, the roles that run pg_partman functions and maintenance must have ownership of all partition sets they manage and permissions to create objects in any schema that will contain partition sets that it manages. For ease of use and privilege management, it is recommended to create a role dedicated to partition management. Please see the main README.md file for role & privileges setup instructions.
+As of 4.4.0, SECURITY DEFINER has been removed from all functions in pg_partman. Requiring a superuser to use pg_partman is now completely optional for native partitioning. To run as nonsuperuser, the role(s) that run pg_partman functions and maintenance must have ownership of all partition sets they manage and permissions to create objects in any schema that will contain partition sets that it manages. For ease of use and privilege management, it is recommended to create a role dedicated to partition management. Please see the main README.md file for role & privileges setup instructions.
 
 As a note for people that were not aware, you can name arguments in function calls to make calling them easier and avoid confusion when there are many possible arguments. If a value has a default listed, it is not required to pass a value to that argument. As an example: `SELECT create_parent('schema.table', 'col1', 'partman', 'daily', p_start_partition := '2015-10-20');`
 
@@ -170,7 +170,7 @@ As a note for people that were not aware, you can name arguments in function cal
 	+ Ex: to update a conflicting row on a table with columns (id(pk), val) set p_upsert to `'ON CONFLICT (id) DO UPDATE SET val=EXCLUDED.val'`
 	+ Requires postgresql 9.5
 	+ See *About* section above for more info.
- * `p_publications` - Option to add child tables to publications for use with logical replication. Value is an array list of publication names, so multiple publications can be added to each child. Currently does not support sub-partitioning for native partition sets since a publication cannot be added to the parent of a natively partitioned table.
+ * `p_publications` - Option to add child tables to publications for use with logical replication. Value is an array list of publication names, so multiple publications can be added to each child. Note that if you are replicating to a partition set on the subscriber side, you will have to set the `subscription_refresh` option in the `part_config` table on the subscriber side to pick up new tables from the source publication. Currently does not support sub-partitioning for native partition sets since a publication cannot be added to the parent of a natively partitioned table.
  * `p_trigger_return_null` - Only applies to non-native, trigger-based partitioning. Boolean value that allows controlling the behavior of the partition trigger RETURN. By default this is true and the trigger returns NULL to prevent data going into the parent table as well as the children. However, if you have multiple triggers and are relying on the return to be the NEW column value, this can cause a problem. Setting this config value to false will cause the partition trigger to RETURN NEW. You are then responsible for handling the return value in another trigger appropriately. Otherwise, this will cause new data to go into both the child and parent table of the partition set.
  * `p_template_table` - For native partitioning in PG10, indexes, foreign keys & tablespaces cannot be set on the parent table. For PG11, only unique indexes that don't include the partition key cannot be created on the parent. Therefore, if you want them to be automatically created on child tables, they must be managed elsewhere. If you do not pass a value here, a template table will automatically be made for you in same schema that pg_partman was installed to. Note that until indexes, foreign keys or tablespaces are made on the template, no child tables will have any. Use the python scripts to reapply the indexes and foreign keys to the partition set when the template table is ready. For tablespaces, you will have to manually move any previously existing child tables. If you pre-create a template table and pass its name here, then the initial child tables will obtain these properties immediately.
  * `p_jobmon` - allow `pg_partman` to use the `pg_jobmon` extension to monitor that partitioning is working correctly. Defaults to TRUE.
@@ -475,13 +475,7 @@ As a note for people that were not aware, you can name arguments in function cal
 
 **`part_config`**
 
-Stores all configuration data for partition sets mananged by the extension. The only columns in this table that should ever need to be manually changed are:
-
- 1. **`retention`**, **`retention_schema`**, **`retention_keep_table`** & **`retention_keep_index`** to configure the partition set's retention policy
- 2. **`constraint_cols`** to have partman manage additional constraints & **`optimize_constraint`** to control when they're added
- 3. **`premake`**, **`optimize_trigger`**, **`inherit_fk`**, **`automatic_maintenance`**, **`template_table`**, **`inherit_privileges`** & **`jobmon`** to change the default behavior.
-
-The rest are managed by the extension itself and should not be changed unless absolutely necessary.
+Stores all configuration data for partition sets mananged by the extension. 
 
  - `parent_table`
     - Parent table of the partition set
@@ -539,7 +533,7 @@ The rest are managed by the extension itself and should not be changed unless ab
 - `trigger_exception_handling`
     - This option is ignored for native partitioning.
     - Boolean value that can be set to allow the partitioning trigger function to handle any exceptions encountered while writing to this table. Handling it in this case means putting the data into the parent table to try and ensure no data loss in case of errors. Be aware that catching the exception here will override any other exception handling that may be done when writing to this partitioned set (Ex. handling a unique constraint violation to ignore it). Just the existence of this exception block will also increase xid consumption since every row inserted will increment the global xid value. If this is table has a high insert rate, you can quickly reach xid wraparound, so use this carefully. This option is set to false by default to avoid causing unexpected behavior in other exception handling situations.
-- `p_upsert`
+- `upsert`
     - Please note this option will be going away in the near future once PG11 has been out for a while.
     - text value of the ON CONFLICT clause to include in the partition trigger  Defaults to '' (empty string) which means it's inactive. See *create_parent()* function definition & *About* section for more info.
     - This option is currently ignored for native partitioning since there is no trigger, but upsert is still able to work in a limited fashion.
@@ -549,9 +543,10 @@ The rest are managed by the extension itself and should not be changed unless ab
 - `template_table`
     - The schema-qualified name of the table used as a template for applying any inheritance options not handled by the native partitioning options in PG.
 - `inherit_privileges`
-    - Sets whether to inherit the ownership/privileges of the parent table to all child tables. Defaults to true for non-native & PG10. Defaults to false for native PG11+ and should only be necessary if you need direct access to child tables, by-passing the parent table. If true, requires that a superuser either manages partition maintenance or that a superuser at least ownes all pg_partman functions to take advantage of SECURITY DEFINER. If false, it means a superuser is not necessary for any pg_partman operations.
+    - Sets whether to inherit the ownership/privileges of the parent table to all child tables. Defaults to true for non-native & PG10. Defaults to false for native PG11+ and should only be necessary if you need direct access to child tables, by-passing the parent table. 
 - `constraint_valid`
     - Boolean value that allows the additional constraints that pg_partman can manage for you to be created as NOT VALID. See "Constraint Exclusion" section at the beginning for more details on these constraints. This can allow maintenance to run much quicker on large partition sets since the existing data is not validated before additing the constraint. Newly inserted data is validated, so this is a perfectly safe option to set for data integrity. Note that constraint exclusion WILL NOT work until the constraints are validated. Defaults to true so that constraints are created as VALID. Set to false to set new constraints as NOT VALID.
+- `subscription_refresh` - Name of a logical replication subscription to refresh when maintenance runs. If the partition set is subscribed to a publication that will be adding/removing tables and you need your partition set to be aware of these changes, you must name that subscription with this option. Otherwise the subscription will never become aware of the new tables added to the publisher unless you are refreshing the subscription via some other means. See the PG documentation for ALTER SUBSCRIPTION for more info on refreshing subscriptions - https://www.postgresql.org/docs/current/sql-altersubscription.html
 
 **`part_config_sub`**
 

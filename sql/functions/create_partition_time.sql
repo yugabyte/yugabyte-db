@@ -346,6 +346,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
 
     -- Will only loop once and only if sub_partitioning is actually configured
     -- This seemed easier than assigning a bunch of variables then doing an IF condition
+    -- This column list must be kept consistent between: 
+    --   create_parent, check_subpart_sameconfig, create_partition_id, create_partition_time, dump_partitioned_table_definition, and table definition
     FOR v_row IN 
         SELECT sub_parent
             , sub_partition_type
@@ -361,13 +363,16 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , sub_retention_schema
             , sub_retention_keep_table
             , sub_retention_keep_index
-            , sub_automatic_maintenance
             , sub_infinite_time_partitions
+            , sub_automatic_maintenance
             , sub_jobmon
             , sub_trigger_exception_handling
+            , sub_upsert
+            , sub_trigger_return_null
             , sub_template_table
             , sub_inherit_privileges
             , sub_constraint_valid
+            , sub_subscription_refresh
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
     LOOP
@@ -410,8 +415,11 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , optimize_constraint = v_row.sub_optimize_constraint
             , infinite_time_partitions = v_row.sub_infinite_time_partitions
             , trigger_exception_handling = v_row.sub_trigger_exception_handling
+            , upsert = v_row.sub_upsert
             , inherit_privileges = v_row.sub_inherit_privileges
+            , trigger_return_null = v_row.sub_trigger_return_null
             , constraint_valid = v_row.sub_constraint_valid
+            , subscription_refresh = v_row.sub_subscription_refresh
         WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
     END LOOP; -- end sub partitioning LOOP
@@ -480,4 +488,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

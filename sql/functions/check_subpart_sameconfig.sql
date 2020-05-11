@@ -4,20 +4,24 @@ CREATE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table text)
         , sub_partition_interval text
         , sub_constraint_cols text[]
         , sub_premake int
+        , sub_optimize_trigger int
+        , sub_optimize_constraint int
+        , sub_epoch text
         , sub_inherit_fk boolean
         , sub_retention text
         , sub_retention_schema text
         , sub_retention_keep_table boolean
         , sub_retention_keep_index boolean
-        , sub_automatic_maintenance text
-        , sub_epoch text 
-        , sub_optimize_trigger int
-        , sub_optimize_constraint int
         , sub_infinite_time_partitions boolean
+        , sub_automatic_maintenance text
         , sub_jobmon boolean
         , sub_trigger_exception_handling boolean
         , sub_upsert text
-        , sub_trigger_return_null boolean)
+        , sub_trigger_return_null boolean
+        , sub_template_table text
+        , sub_inherit_privileges boolean
+        , sub_constraint_valid boolean
+        , sub_subscription_refresh text)
     LANGUAGE sql STABLE
     SET search_path = @extschema@,pg_temp
 AS $$
@@ -43,25 +47,31 @@ AS $$
         JOIN parent_info pi ON h.inhparent = pi.oid
     )
     -- Column order here must match the RETURNS TABLE definition
+    -- This column list must be kept consistent between: 
+    --   create_parent, check_subpart_sameconfig, create_partition_id, create_partition_time, dump_partitioned_table_definition, and table definition
     SELECT DISTINCT a.sub_partition_type
         , a.sub_control
         , a.sub_partition_interval
         , a.sub_constraint_cols
         , a.sub_premake
+        , a.sub_optimize_trigger
+        , a.sub_optimize_constraint
+        , a.sub_epoch
         , a.sub_inherit_fk
         , a.sub_retention
         , a.sub_retention_schema
         , a.sub_retention_keep_table
         , a.sub_retention_keep_index
-        , a.sub_automatic_maintenance
-        , a.sub_epoch
-        , a.sub_optimize_trigger
-        , a.sub_optimize_constraint
         , a.sub_infinite_time_partitions
+        , a.sub_automatic_maintenance
         , a.sub_jobmon
         , a.sub_trigger_exception_handling
         , a.sub_upsert
         , a.sub_trigger_return_null
+        , a.sub_template_table
+        , a.sub_inherit_privileges
+        , a.sub_constraint_valid
+        , a.sub_subscription_refresh
     FROM @extschema@.part_config_sub a
     JOIN child_tables b on a.sub_parent = b.tablename;
 $$;

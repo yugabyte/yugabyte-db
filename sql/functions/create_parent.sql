@@ -271,6 +271,8 @@ FOR v_row IN
         FROM pg_inherits i
         JOIN parent_table p ON i.inhparent = p.parent_oid
     )
+    -- This column list must be kept consistent between: 
+    --   create_parent, check_subpart_sameconfig, create_partition_id, create_partition_time, dump_partitioned_table_definition and table definition
     SELECT DISTINCT sub_partition_type
         , sub_control
         , sub_partition_interval
@@ -293,6 +295,7 @@ FOR v_row IN
         , sub_template_table
         , sub_inherit_privileges
         , sub_constraint_valid
+        , sub_subscription_refresh
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
 LOOP
@@ -319,7 +322,8 @@ LOOP
         , sub_trigger_return_null
         , sub_template_table
         , sub_inherit_privileges
-        , sub_constraint_valid)
+        , sub_constraint_valid
+        , sub_subscription_refresh)
     VALUES (
         p_parent_table
         , v_row.sub_partition_type
@@ -343,7 +347,8 @@ LOOP
         , v_row.sub_trigger_return_null
         , v_row.sub_template_table
         , v_row.sub_inherit_privileges
-        , v_row.sub_constraint_valid);
+        , v_row.sub_constraint_valid
+        , v_row.sub_subscription_refresh);
 
     -- Set this equal to sibling configs so that newly created child table 
     -- privileges are set properly below during initial setup.

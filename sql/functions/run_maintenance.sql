@@ -32,6 +32,7 @@ v_next_partition_id             bigint;
 v_next_partition_timestamp      timestamptz;
 v_old_search_path               text;
 v_parent_exists                 text;
+v_parent_oid                    oid;
 v_parent_schema                 text;
 v_parent_tablename              text;
 v_partition_expression          text;
@@ -44,12 +45,14 @@ v_row                           record;
 v_row_max_id                    record;
 v_row_max_time                  record;
 v_row_sub                       record;
+v_sql                           text;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_sub_id_max                    bigint;
 v_sub_id_max_suffix             bigint;
 v_sub_id_min                    bigint;
 v_sub_parent                    text;
+v_sub_refresh_done              text[];
 v_sub_timestamp_max             timestamptz;
 v_sub_timestamp_max_suffix      timestamptz;
 v_sub_timestamp_min             timestamptz;
@@ -86,8 +89,6 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Running maintenance loop');
 END IF;
 
-v_row := NULL; -- Ensure it's reset
-
 v_tables_list_sql := 'SELECT parent_table
                 , partition_type
                 , partition_interval
@@ -98,6 +99,7 @@ v_tables_list_sql := 'SELECT parent_table
                 , epoch
                 , infinite_time_partitions
                 , retention
+                , subscription_refresh
             FROM @extschema@.part_config
             WHERE undo_in_progress = false';
 
@@ -128,7 +130,9 @@ LOOP
         IF v_check_subpart > 1 THEN
             RAISE EXCEPTION 'Inconsistent data in part_config_sub table. Sub-partition tables that are themselves sub-partitions cannot have differing configuration values among their siblings. 
             Run this query: "SELECT * FROM @extschema@.check_subpart_sameconfig(''%'');" This should only return a single row or nothing. 
-            If multiple rows are returned, results are all children of the given parent. Update the differing values to be consistent for your desired values.', v_row.sub_parent;
+            If multiple rows are returned, the results are differing configurations in the part_config_sub table for children of the given parent. 
+            Determine the child tables of the given parent and look up their entries based on the "part_config_sub.sub_parent" column. 
+            Update the differing values to be consistent for your desired values.', v_row.parent_table;
         END IF;
     END IF;
 
@@ -141,8 +145,8 @@ LOOP
         END IF;
     END IF;
 
-    SELECT n.nspname, c.relname
-    INTO v_parent_schema, v_parent_tablename 
+    SELECT n.nspname, c.relname, c.oid
+    INTO v_parent_schema, v_parent_tablename, v_parent_oid
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
     WHERE n.nspname = split_part(v_row.parent_table, '.', 1)::name
@@ -154,7 +158,7 @@ LOOP
         SELECT partition_tablename INTO v_default_tablename 
         FROM @extschema@.show_partitions(v_row.parent_table, p_include_default := true) LIMIT 1;
 
-        SELECT pg_get_expr(relpartbound, v_row.parent_table::regclass) INTO v_is_default 
+        SELECT pg_get_expr(relpartbound, v_parent_oid) INTO v_is_default 
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n on c.relnamespace = n.oid
         WHERE n.nspname = v_parent_schema
@@ -367,7 +371,21 @@ LOOP
 
     END IF; -- end main IF check for time or id
 
-END LOOP; -- end of creation loop
+    -- Refresh subscriptions in order to catch new tables that may have been created in the publication
+    -- Keep track of which ones have been refreshed so it doesn't needlessly run more than once
+    -- in a single maintenance run
+    IF v_row.subscription_refresh IS NOT NULL THEN
+        IF v_sub_refresh_done @> ARRAY[v_row.subscription_refresh] THEN
+            CONTINUE;
+        ELSE
+            v_sql = format('ALTER SUBSCRIPTION %I REFRESH PUBLICATION', v_row.subscription_refresh);
+            RAISE DEBUG '%', v_sql;
+            EXECUTE v_sql;
+            PERFORM array_append(v_sub_refresh_done, v_row.subscription_refresh);
+        END IF;
+    END IF;
+
+END LOOP; -- end of main loop through part_config
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM update_step(v_step_id, 'OK', format('Partition maintenance finished. %s partitons made. %s partitions dropped.', v_create_count, v_drop_count));
@@ -402,3 +420,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
+

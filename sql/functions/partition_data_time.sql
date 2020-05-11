@@ -257,11 +257,11 @@ FOR i IN 1..p_batch_count LOOP
 
         -- Temp table created above to avoid excessive temp creation in loop
         EXECUTE format('WITH partition_data AS (
-                DELETE FROM %1$I.%2$I WHERE %3$I >= %4$L AND %3$I < %5$L RETURNING *)
+                DELETE FROM %1$I.%2$I WHERE %3$s >= %4$L AND %3$s < %5$L RETURNING *)
             INSERT INTO partman_temp_data_storage SELECT * FROM partition_data'
             , v_source_schemaname
             , v_source_tablename
-            , v_control
+            , v_partition_expression
             , v_min_partition_timestamp
             , v_max_partition_timestamp);
 

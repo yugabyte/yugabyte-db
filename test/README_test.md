@@ -30,10 +30,11 @@ Tests for the Background Worker can be found in the test/test_bgw folder. Please
 
 Tests for procedures are in their own folders. Like the reindexing tests, these must be run in stages with manual commands between them since pgtap cannot handle distinct commits within a single test run.
 
-As of version 4.0.0, SECURITY DEFINER is no longer in use by the majority of functions. The following tests can be used to ensure this is working by passing the -U option to pg_prove
+As of version 4.4.0, SECURITY DEFINER is no longer in use. The following tests can be used for non-native partitioning to ensure this is working by passing the -U option to pg_prove with a role that has the necessary privileges:
 
     pg_prove -ovf -U partman -d mydatabase test/test-time-nonsuperuser.sql
     pg_prove -ovf -U partman -d mydatabase test/test-id-nonsuperuser.sql
-    pg_prove -ovf -U partman -d mydatabase test/test_native/test-id-time-subpart-native.sql
+
+For native partitioning, use the test/test_native/test_nonsuperuser tests and read the instructions contained in them
 
 

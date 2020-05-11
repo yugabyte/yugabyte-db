@@ -34,6 +34,7 @@ DECLARE
   v_publications TEXT[];
   v_inherit_privileges BOOLEAN; -- DEFAULT false
   v_constraint_valid BOOLEAN; -- DEFAULT true NOT NULL
+  v_subscription_refresh text;
 BEGIN
   SELECT
     pc.parent_table,
@@ -61,7 +62,8 @@ BEGIN
     pc.template_table,
     pc.publications,
     pc.inherit_privileges,
-    pc.constraint_valid
+    pc.constraint_valid, 
+    pc.subscription_refresh
   INTO
     v_parent_table,
     v_control,
@@ -88,7 +90,8 @@ BEGIN
     v_template_table,
     v_publications,
     v_inherit_privileges,
-    v_constraint_valid
+    v_constraint_valid,
+    v_subscription_refresh
   FROM @extschema@.part_config pc
   WHERE pc.parent_table = p_parent_table;
 
@@ -167,7 +170,8 @@ E'UPDATE @extschema@.part_config SET
 \tsub_partition_set_full = %L,
 \ttrigger_exception_handling = %L,
 \tinherit_privileges = %L,
-\tconstraint_valid = %L
+\tconstraint_valid = %L,
+\tsubscription_refresh = %L
 WHERE parent_table = %L;',
     v_optimize_trigger,
     v_optimize_constraint,
@@ -181,6 +185,7 @@ WHERE parent_table = %L;',
     v_trigger_exception_handling,
     v_inherit_privileges,
     v_constraint_valid,
+    v_subscription_refresh,
     v_parent_table
   );
 

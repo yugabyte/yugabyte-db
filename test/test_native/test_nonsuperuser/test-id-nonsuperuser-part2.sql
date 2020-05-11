@@ -5,7 +5,7 @@
 
 -- NOTE: THIS TEST ONLY WORKS FOR PG11+ due to requiring tests for default partition.
 -- NOTE: THIS FILE MUST BE RUN AS partman_owner AND CONNECT TO THE DATABASE THAT RAN PART 1 TO EFFECTIVLELY TEST AS NONSUPERUSER
---      Ex  pg_prove -ovf -U partman_owner -d mydb test/test_native/test_nonsuperuser/test-time-hourly-nonsuperuser-part2.sql
+--      Ex  pg_prove -ovf -U partman_owner -d mydb test/test_native/test_nonsuperuser/test-id-nonsuperuser-part2.sql
 
 
 \set ON_ERROR_ROLLBACK 1
@@ -48,6 +48,8 @@ CREATE INDEX ON partman_test.id_taptest_table (col3);
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', p_jobmon := false, p_template_table := 'partman_test.template_id_taptest_table');
 UPDATE part_config SET inherit_privileges = TRUE;
+
+SELECT reapply_privileges('partman_test.id_taptest_table');
 
 INSERT INTO partman_test.id_taptest_table (col1, col4) VALUES (generate_series(1,9), 'stuff'||generate_series(1,9));
 
