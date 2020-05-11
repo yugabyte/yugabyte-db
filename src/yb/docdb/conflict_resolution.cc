@@ -20,6 +20,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
+#include "yb/common/transaction_priority.h"
 
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -405,6 +406,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   std::atomic<int> pending_requests_{0};
 };
 
+
 Result<boost::optional<DocKeyHash>> FetchDocKeyHash(const Slice& encoded_key) {
   DocKey key;
   RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::kUpToHash));
@@ -504,20 +506,85 @@ class StrongConflictChecker {
 
 };
 
+class ConflictResolverContextBase : public ConflictResolverContext {
+ public:
+  ConflictResolverContextBase(const DocOperations& doc_ops,
+                              HybridTime resolution_ht,
+                              Counter* conflicts_metric)
+      : doc_ops_(doc_ops),
+        resolution_ht_(resolution_ht),
+        conflicts_metric_(conflicts_metric) {
+  }
+
+  const DocOperations& doc_ops() {
+    return doc_ops_;
+  }
+
+  HybridTime GetResolutionHt() override {
+    return resolution_ht_;
+  }
+
+  void MakeResolutionAtLeast(const HybridTime& resolution_ht) {
+    resolution_ht_.MakeAtLeast(resolution_ht);
+  }
+
+  Counter* GetConflictsMetric() {
+    return conflicts_metric_;
+  }
+
+ protected:
+  CHECKED_STATUS CheckPriorityInternal(
+      ConflictResolver* resolver,
+      std::vector<TransactionData>* transactions,
+      const TransactionId& our_transaction_id,
+      uint64_t our_priority) {
+
+    if (!fetched_metadata_for_transactions_) {
+      boost::container::small_vector<std::pair<TransactionId, uint64_t>, 8> ids_and_priorities;
+      ids_and_priorities.reserve(transactions->size());
+      for (const auto& transaction : *transactions) {
+        ids_and_priorities.emplace_back(transaction.id, 0);
+      }
+      resolver->FillPriorities(&ids_and_priorities);
+      for (size_t i = 0; i != transactions->size(); ++i) {
+        (*transactions)[i].priority = ids_and_priorities[i].second;
+      }
+    }
+    for (const auto& transaction : *transactions) {
+      auto their_priority = transaction.priority;
+      if (our_priority < their_priority) {
+        return MakeConflictStatus(
+            our_transaction_id, transaction.id, "higher priority", GetConflictsMetric());
+      }
+    }
+    fetched_metadata_for_transactions_ = true;
+
+    return Status::OK();
+  }
+
+ private:
+  const DocOperations& doc_ops_;
+
+  // Hybrid time of conflict resolution, used to request transaction status from status tablet.
+  HybridTime resolution_ht_;
+
+  bool fetched_metadata_for_transactions_ = false;
+
+  Counter* conflicts_metric_ = nullptr;
+};
+
 // Utility class for ResolveTransactionConflicts implementation.
-class TransactionConflictResolverContext : public ConflictResolverContext {
+class TransactionConflictResolverContext : public ConflictResolverContextBase {
  public:
   TransactionConflictResolverContext(const DocOperations& doc_ops,
                                      const KeyValueWriteBatchPB& write_batch,
                                      HybridTime resolution_ht,
                                      HybridTime read_time,
                                      Counter* conflicts_metric)
-      : doc_ops_(doc_ops),
+      : ConflictResolverContextBase(doc_ops, resolution_ht, conflicts_metric),
         write_batch_(write_batch),
-        resolution_ht_(resolution_ht),
         read_time_(read_time),
-        transaction_id_(FullyDecodeTransactionId(write_batch.transaction().transaction_id())),
-        conflicts_metric_(conflicts_metric)
+        transaction_id_(FullyDecodeTransactionId(write_batch.transaction().transaction_id()))
   {}
 
   virtual ~TransactionConflictResolverContext() {}
@@ -540,7 +607,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     IntentProcessor write_processor(
         &container,
         GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite, row_mark));
-    for (const auto& doc_op : doc_ops_) {
+    for (const auto& doc_op : doc_ops()) {
       paths.clear();
       IsolationLevel ignored_isolation_level;
       RETURN_NOT_OK(doc_op->GetDocPaths(
@@ -577,7 +644,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     }
 
     StrongConflictChecker checker(
-        *transaction_id_, read_time_, resolver, conflicts_metric_, &buffer);
+        *transaction_id_, read_time_, resolver, GetConflictsMetric(), &buffer);
     // Iterator on intents DB should be created before iterator on regular DB.
     // This is to prevent the case when we create an iterator on the regular DB where a
     // provisional record has not yet been applied, and then create an iterator the intents
@@ -597,28 +664,8 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 
   CHECKED_STATUS CheckPriority(ConflictResolver* resolver,
                                std::vector<TransactionData>* transactions) override {
-    auto our_priority = metadata_.priority;
-    if (!fetched_metadata_for_transactions_) {
-      boost::container::small_vector<std::pair<TransactionId, uint64_t>, 8> ids_and_priorities;
-      ids_and_priorities.reserve(transactions->size());
-      for (auto& transaction : *transactions) {
-        ids_and_priorities.emplace_back(transaction.id, 0);
-      }
-      resolver->FillPriorities(&ids_and_priorities);
-      for (size_t i = 0; i != transactions->size(); ++i) {
-        (*transactions)[i].priority = ids_and_priorities[i].second;
-      }
-    }
-    for (auto& transaction : *transactions) {
-      auto their_priority = transaction.priority;
-      if (our_priority < their_priority) {
-        return MakeConflictStatus(
-            metadata_.transaction_id, transaction.id, "higher priority", conflicts_metric_);
-      }
-    }
-    fetched_metadata_for_transactions_ = true;
-
-    return Status::OK();
+    return CheckPriorityInternal(resolver, transactions, metadata_.transaction_id,
+                                 metadata_.priority);
   }
 
   CHECKED_STATUS CheckConflictWithCommitted(
@@ -640,14 +687,10 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     // In all other cases we have concrete read time and should conflict with transactions
     // that were committed after this point.
     if (commit_time >= read_time_) {
-      return MakeConflictStatus(*transaction_id_, id, "committed", conflicts_metric_);
+      return MakeConflictStatus(*transaction_id_, id, "committed", GetConflictsMetric());
     }
 
     return Status::OK();
-  }
-
-  HybridTime GetResolutionHt() override {
-    return resolution_ht_;
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
@@ -658,11 +701,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     return yb::ToString(transaction_id_);
   }
 
-  const DocOperations& doc_ops_;
   const KeyValueWriteBatchPB& write_batch_;
-
-  // Hybrid time of conflict resolution, used to request transaction status from status tablet.
-  const HybridTime resolution_ht_;
 
   // Read time of the transaction identified by transaction_id_, could be HybridTime::kMax in case
   // of serializable isolation or when read time not yet picked for snapshot isolation.
@@ -672,16 +711,16 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   Result<TransactionId> transaction_id_;
 
   TransactionMetadata metadata_;
+
   Status result_ = Status::OK();
-  bool fetched_metadata_for_transactions_ = false;
-  Counter* conflicts_metric_ = nullptr;
 };
 
-class OperationConflictResolverContext : public ConflictResolverContext {
+class OperationConflictResolverContext : public ConflictResolverContextBase {
  public:
   OperationConflictResolverContext(const DocOperations* doc_ops,
-                                   HybridTime resolution_ht)
-      : doc_ops_(*doc_ops), resolution_ht_(resolution_ht) {
+                                   HybridTime resolution_ht,
+                                   Counter* conflicts_metric)
+      : ConflictResolverContextBase(*doc_ops, resolution_ht, conflicts_metric) {
   }
 
   virtual ~OperationConflictResolverContext() {}
@@ -702,7 +741,7 @@ class OperationConflictResolverContext : public ConflictResolverContext {
           encoded_key_buffer);
     };
 
-    for (const auto& doc_op : doc_ops_) {
+    for (const auto& doc_op : doc_ops()) {
       doc_paths.clear();
       IsolationLevel isolation;
       RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &isolation));
@@ -721,12 +760,12 @@ class OperationConflictResolverContext : public ConflictResolverContext {
     return Status::OK();
   }
 
-  CHECKED_STATUS CheckPriority(ConflictResolver*, std::vector<TransactionData>*) override {
-    return Status::OK();
-  }
-
-  HybridTime GetResolutionHt() override {
-    return resolution_ht_;
+  CHECKED_STATUS CheckPriority(ConflictResolver* resolver,
+                               std::vector<TransactionData>* transactions) override {
+    return CheckPriorityInternal(resolver,
+                                 transactions,
+                                 TransactionId::Nil(),
+                                 kHighPriTxnLowerBound - 1 /* our_priority */);
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
@@ -740,14 +779,10 @@ class OperationConflictResolverContext : public ConflictResolverContext {
   CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) override {
     if (commit_time != HybridTime::kMax) {
-      resolution_ht_.MakeAtLeast(commit_time);
+      MakeResolutionAtLeast(commit_time);
     }
     return Status::OK();
   }
-
- private:
-  const DocOperations& doc_ops_;
-  HybridTime resolution_ht_;
 };
 
 } // namespace
@@ -775,8 +810,10 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
                                const DocDB& doc_db,
                                PartialRangeKeyIntents partial_range_key_intents,
                                TransactionStatusManager* status_manager,
+                               Counter* conflicts_metric,
                                ResolutionCallback callback) {
-  auto context = std::make_unique<OperationConflictResolverContext>(&doc_ops, resolution_ht);
+  auto context = std::make_unique<OperationConflictResolverContext>(&doc_ops, resolution_ht,
+                                                                    conflicts_metric);
   auto resolver = std::make_shared<ConflictResolver>(
       doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
   // Resolve takes a self reference to extend lifetime.

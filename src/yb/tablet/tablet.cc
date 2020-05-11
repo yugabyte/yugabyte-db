@@ -2549,7 +2549,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
       auto now = tablet_.clock()->Now();
       docdb::ResolveOperationConflicts(
           operation_->doc_ops(), now, tablet_.doc_db(), partial_range_key_intents,
-          transaction_participant,
+          transaction_participant, tablet_.metrics()->transaction_conflicts.get(),
           [self = shared_from_this(), now](const Result<HybridTime>& result) {
             if (!result.ok()) {
               self->InvokeCallback(result.status());
