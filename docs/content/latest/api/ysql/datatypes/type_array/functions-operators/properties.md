@@ -23,7 +23,7 @@ There are functions for returning two other properties: the length along each di
 
 The behavior of each of the functions for reporting the geometric properties of an array is illustrated by supplying the same two arrays as the first actual argument to two invocations of the function. The return value, in all cases, is insensitive to the array's data type and the values within the array.
 
-Create and populate `table t` thus:
+Create and populate _"table t"_ thus:
 
 ```postgresql
 create table t(k int primary key, arr_1 text[], arr_2 text[]);
@@ -183,7 +183,7 @@ It produces this result:
 
 ## Joint semantics
 
-Create the procedure `assert_semantics_and_traverse_values()` and then invoke it for each of the three provided data sets. You supply it with a one-dimensional array and a two dimensional array and, for each, your humanly determined estimates of these values:
+Create the procedure _"assert&#95;semantics&#95;and&#95;traverse&#95;values()"_ and then invoke it for each of the three provided data sets. You supply it with a one-dimensional array and a two dimensional array and, for each, your humanly determined estimates of these values:
 
 - what `array_ndims()` returns
 - what `array_lower()` returns for each dimension
@@ -200,9 +200,11 @@ The procedure has some particular requirements:
 - The cardinality of each of the two supplied arrays must be the same.
 - The actual array values, in row-major order, must be the same, pairwise.
 
+Briefly, _"row-major"_ order is the order in which the last subscript varies most rapidly.
+
 These requirements might seem to be arbitrary. They are implemented so that the procedure can deliver two bonus benefits. It demonstrates how to traverse array values in row-major order using the values returned by the functions that this section describes. In this way, it shows you what the term "row-major order" means. And it compares the values, pairwise, for equality. This comparison rule is the basis of the semantics of the comparison operations described in [Operators for comparing two arrays](../comparison).
 
-**Note:** There are no built-in functions for computing, for example, the product of two matrixes or the product of a vector and a matrix. (A vector is a one-dimensional array, and a matrix is a two-dimensional array.) But, as long as you know how to traverse the values in a matrix in row-major order, it's easy to implement the missing vector and matrix multiplication functionality for yourself.
+**Note:** There are no built-in functions for computing, for example, the product of two matrices or the product of a vector and a matrix. (A vector is a one-dimensional array, and a matrix is a two-dimensional array.) But, as long as you know how to traverse the values in a matrix in row-major order, it's easy to implement the missing vector and matrix multiplication functionality for yourself.
 
 ```postgresql
 create procedure assert_semantics_and_traverse_values(
@@ -321,7 +323,7 @@ begin
 end;
 $body$;
 ```
-It produces this result (after manually stripping the _"INFO:"_ prompts):
+It produces this result (after manually removing the _"INFO:"_ prompts):
 ```
 a[ 1] = b[ 1][ 1] =  1
 a[ 2] = b[ 1][ 2] =  2
