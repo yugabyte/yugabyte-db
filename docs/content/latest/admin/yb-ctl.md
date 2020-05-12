@@ -176,6 +176,12 @@ Specifies whether YugabyteDB requires clock synchronization between the nodes in
 
 Default: `false`
 
+##### --listen_ip
+
+Allows a 1-node RF1 cluster to listen on an address different than the default of `127.0.0.1`. For example, setting this to `0.0.0.0` enables the external access of the database APIs and admin UIs. This flag is not applicable to multi-node clusters.
+
+Default: `127.0.0.1`
+
 ##### --num_shards_per_tserver
 
 Number of shards (tablets) to start per tablet server for each table.
