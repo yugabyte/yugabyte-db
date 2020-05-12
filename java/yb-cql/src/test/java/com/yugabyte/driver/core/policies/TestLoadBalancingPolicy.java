@@ -443,10 +443,11 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
                totalMetrics.localWriteCount >= NUM_KEYS * 0.7);
 
     // Should use percentage to check? Remove the following check if it fails.
-    // Use 60% as limit (Assuming 100% local write for UserTable and 50% for each IndexTable).
+    // Use 40% as limit (Assuming 100% local write for UserTable, 50% for each IndexTable,
+    // and 50% for TServer initiated index updates).
     double fraction = (1.0 * totalMetrics.localWriteCount) /
                       (totalMetrics.localWriteCount + totalMetrics.remoteWriteCount);
-    assertTrue("Local/total write: " + fraction, fraction > 0.60);
+    assertTrue("Local/total write: " + fraction, fraction > 0.40);
   }
 
   // Test load-balancing policy with BatchStatement

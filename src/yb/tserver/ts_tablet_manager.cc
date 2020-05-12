@@ -496,9 +496,16 @@ Status TSTabletManager::Init() {
 
   async_client_init_.emplace(
       "tserver_client", 0 /* num_reactors */,
-      FLAGS_tserver_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
+      FLAGS_tserver_yb_client_default_timeout_ms / 1000, server_->permanent_uuid(),
       &server_->options(), server_->metric_entity(), server_->mem_tracker(),
       server_->messenger());
+
+  async_client_init_->AddPostCreateHook([this](client::YBClient* client) {
+    auto* tserver = server();
+    if (tserver != nullptr && tserver->proxy() != nullptr) {
+      client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
+    }
+  });
 
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
