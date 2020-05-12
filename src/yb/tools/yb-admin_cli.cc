@@ -89,6 +89,11 @@ CHECKED_STATUS MasterLeaderStepDown(
   if (args.size() < 3) {
     return ClusterAdminCli::kInvalidArguments;
   }
+  string leader_uuid;
+  RETURN_NOT_OK_PREPEND(client->GetMasterLeaderInfo(&leader_uuid), "Could not locate master leader!");
+  if (leader_uuid.empty()) {
+    return STATUS(ConfigurationError, "Could not locate master leader!");
+  }
   return client->MasterLeaderStepDown(
         std::string(), args[2]);
 }
