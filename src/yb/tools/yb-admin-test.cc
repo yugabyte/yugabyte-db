@@ -437,5 +437,63 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
 }
 
+TEST_F(AdminCliTest, TestLeaderStepdown) {
+  BuildAndStart();
+  std::string out;
+  auto call_admin = [
+      &out,
+      admin_path = GetAdminToolPath(),
+      aster_address = ToString(cluster_->master()->bound_rpc_addr())] (
+      const std::initializer_list<std::string>& args) mutable {
+    auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
+    std::copy(args.begin(), args.end(), std::back_inserter(cmds));
+    return Subprocess::Call(cmds, &out);
+  };
+  auto regex_fetch_first = [&out](const std::string& exp) -> Result<std::string> {
+    std::smatch match;
+    if (!std::regex_search(out.cbegin(), out.cend(), match, std::regex(exp)) || match.size() != 2) {
+      return STATUS_FORMAT(NotFound, "No pattern in '$0'", out);
+    }
+    return match[1];
+  };
+
+  ASSERT_OK(call_admin({"list_tablets", kTableName.namespace_name(), kTableName.table_name()}));
+  const auto tablet_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+)"));
+  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
+  const auto tserver_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+FOLLOWER)"));
+  ASSERT_OK(call_admin({"leader_stepdown", tablet_id, tserver_id}));
+  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
+  ASSERT_EQ(tserver_id, ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+LEADER)")));
+}
+
+TEST_F(AdminCliTest, TestMasterLeaderStepdown) {
+  BuildAndStart();
+  std::string out;
+  auto call_admin = [
+      &out,
+      admin_path = GetAdminToolPath(),
+      master_address = ToString(cluster_->master()->bound_rpc_addr())] (
+      const std::initializer_list<std::string>& args) mutable {
+    auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
+    std::copy(args.begin(), args.end(), std::back_inserter(cmds));
+    return Subprocess::Call(cmds, &out);
+  };
+  auto regex_fetch_first = [&out](const std::string& exp) -> Result<std::string> {
+    std::smatch match;
+    if (!std::regex_search(out.cbegin(), out.cend(), match, std::regex(exp)) || match.size() != 2) {
+      return STATUS_FORMAT(NotFound, "No pattern in '$0'", out);
+    }
+    return match[1];
+  };
+
+  ASSERT_OK(call_admin({"list_all_masters"}));
+  const auto new_leader_id = ASSERT_RESULT(
+      regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+FOLLOWER)"));
+  ASSERT_OK(call_admin({"master_leader_stepdown", new_leader_id}));
+  ASSERT_OK(call_admin({"list_all_masters"}));
+  ASSERT_EQ(new_leader_id, ASSERT_RESULT(
+      regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+LEADER)")));
+  }
+
 }  // namespace tools
 }  // namespace yb

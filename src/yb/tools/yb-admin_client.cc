@@ -517,10 +517,11 @@ Status ClusterAdminClient::Init() {
 
 Status ClusterAdminClient::MasterLeaderStepDown(
     const string& leader_uuid,
-    const string& new_leader_uuid = std::string()) {
+    const string& new_leader_uuid) {
   auto master_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr_);
 
-  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, new_leader_uuid, &master_proxy);
+  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId,
+      new_leader_uuid, &master_proxy);
 }
 
 CHECKED_STATUS ClusterAdminClient::LeaderStepDownWithNewLeader(

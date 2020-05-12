@@ -213,7 +213,7 @@ class ClusterAdminClient {
 
   CHECKED_STATUS MasterLeaderStepDown(
       const std::string& leader_uuid,
-      const std::string& new_leader_uuid);
+      const std::string& new_leader_uuid = std::string());
 
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
@@ -255,7 +255,6 @@ class ClusterAdminClient {
       const TabletId& tablet_id,
       const PeerId& new_leader_uuid,
       std::unique_ptr<consensus::ConsensusServiceProxy>* leader_proxy);
-
 
   CHECKED_STATUS StartElection(const std::string& tablet_id);
 
