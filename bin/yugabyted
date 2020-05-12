@@ -425,6 +425,7 @@ class ControlScript(object):
                 "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
                 "--default_memory_limit_to_ram_ratio=0.6",
                 "--instance_uuid_override={}".format(self.configs.saved_data.get("tserver_uuid")),
+                "--start_redis_proxy=false",
             ]
 
         if self.configs.saved_data.get("tserver_flags"):
@@ -748,7 +749,7 @@ class ControlScript(object):
 
     # Returns if yb-master and yb-tserver were properly initialized before.
     def is_yb_initialized(self):
-        for info_file in ("master-info", "tserver-info", "tserver-info-redis", "tserver-info-cql"):
+        for info_file in ("master-info", "tserver-info", "tserver-info-cql"):
             if not os.path.exists(os.path.join(self.configs.saved_data.get("data_dir"), info_file)):
                 return False
         return True
