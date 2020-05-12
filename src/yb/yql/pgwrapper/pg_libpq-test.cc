@@ -872,6 +872,50 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
 }
 
 namespace {
+Result<master::TabletLocationsPB> GetColocatedTabletLocations(
+    client::YBClient* client,
+    std::string database_name,
+    MonoDelta timeout) {
+  std::string ns_id;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+
+  bool exists = VERIFY_RESULT(client->NamespaceExists(database_name, YQL_DATABASE_PGSQL));
+  if (!exists) {
+    return STATUS(NotFound, "namespace does not exist");
+  }
+
+  // Get namespace id.
+  for (const auto& ns : VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
+    if (ns.name() == database_name) {
+      ns_id = ns.id();
+      break;
+    }
+  }
+  if (ns_id.empty()) {
+    return STATUS(NotFound, "namespace not found");
+  }
+
+  // Get TabletLocations for the colocated tablet.
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        Status s = client->GetTabletsFromTableId(
+            ns_id + master::kColocatedParentTableIdSuffix,
+            0 /* max_tablets */,
+            &tablets);
+        if (s.ok()) {
+          return tablets.size() == 1;
+        } else if (s.IsNotFound()) {
+          return false;
+        } else {
+          return s;
+        }
+      },
+      timeout,
+      "wait for colocated parent tablet"));
+
+  return tablets[0];
+}
+
 Result<string> GetTableIdByTableName(
     client::YBClient* client, const string& namespace_name, const string& table_name) {
   const auto tables = VERIFY_RESULT(client->ListTables());
@@ -887,32 +931,20 @@ Result<string> GetTableIdByTableName(
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_bar_index;
   string ns_id;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kDatabaseName));
-  ASSERT_TRUE(ASSERT_RESULT(client->NamespaceExists(kDatabaseName, YQL_DATABASE_PGSQL)));
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
-  for (const auto& ns : ASSERT_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
-    if (ns.name() == kDatabaseName) {
-      ns_id = ns.id();
-      break;
-    }
-  }
-  ASSERT_FALSE(ns_id.empty());
-
   // A parent table with one tablet should be created when the database is created.
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(WaitFor(
-      [&] {
-        EXPECT_OK(client->GetTabletsFromTableId(
-            ns_id + master::kColocatedParentTableIdSuffix, 0, &tablets));
-        return tablets.size() == 1;
-      },
-      30s, "Create colocated database"));
-  auto colocated_tablet_id = tablets[0].tablet_id();
+  auto colocated_tablet_id = ASSERT_RESULT(GetColocatedTabletLocations(
+      client.get(),
+      kDatabaseName,
+      30s))
+    .tablet_id();
 
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
@@ -1119,6 +1151,185 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
   // Validate that number of tablets created is 3.
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   ASSERT_EQ(tablets.size(), 3);
+}
+
+// Override the base test to start a cluster that kicks out unresponsive tservers faster.
+class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
+ public:
+  PgLibPqTestSmallTSTimeout() {
+    more_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
+    more_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
+    more_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.insert(
+        std::end(options->extra_master_flags),
+        std::begin(more_master_flags),
+        std::end(more_master_flags));
+    options->extra_tserver_flags.insert(
+        std::end(options->extra_tserver_flags),
+        std::begin(more_tserver_flags),
+        std::end(more_tserver_flags));
+  }
+
+ protected:
+  std::vector<std::string> more_master_flags;
+  std::vector<std::string> more_tserver_flags;
+};
+
+// Test that adding a tserver and removing a tserver causes the colocation tablet to adjust raft
+// configuration off the old tserver and onto the new tserver.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleColocatedDB),
+          PgLibPqTestSmallTSTimeout) {
+  const std::string kDatabaseName = "co";
+  const auto kTimeout = 60s;
+  const int starting_num_tablet_servers = cluster_->num_tablet_servers();
+  std::string ns_id;
+  std::map<std::string, int> ts_loads;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kDatabaseName));
+
+  // Collect colocation tablet replica locations.
+  {
+    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+        client.get(),
+        kDatabaseName,
+        kTimeout));
+    for (const auto& replica : tablet_locations.replicas()) {
+      ts_loads[replica.ts_info().permanent_uuid()]++;
+    }
+  }
+
+  // Ensure each tserver has exactly one colocation tablet replica.
+  ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
+  for (const auto& entry : ts_loads) {
+    ASSERT_NOTNULL(cluster_->tablet_server_by_uuid(entry.first));
+    ASSERT_EQ(entry.second, 1);
+    LOG(INFO) << "found ts " << entry.first << " has " << entry.second << " replicas";
+  }
+
+  // Add a tablet server.
+  ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+                                      more_tserver_flags));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, kTimeout));
+
+  // Wait for load balancing.  This should move some tablet-peers (e.g. of the colocation tablet,
+  // system.transactions tablets) to the new tserver.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
+        return !is_idle;
+      },
+      kTimeout,
+      "wait for load balancer to be active"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return client->IsLoadBalancerIdle();
+      },
+      kTimeout,
+      "wait for load balancer to be idle"));
+
+  // Remove a tablet server.
+  cluster_->tablet_server(0)->Shutdown();
+
+  // Wait for load balancing.  This should move the remaining tablet-peers off the dead tserver.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
+        return !is_idle;
+      },
+      kTimeout,
+      "wait for load balancer to be active"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return client->IsLoadBalancerIdle();
+      },
+      kTimeout,
+      "wait for load balancer to be idle"));
+
+  // Collect colocation tablet replica locations.
+  {
+    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+        client.get(),
+        kDatabaseName,
+        kTimeout));
+    ts_loads.clear();
+    for (const auto& replica : tablet_locations.replicas()) {
+      ts_loads[replica.ts_info().permanent_uuid()]++;
+    }
+  }
+
+  // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
+  // which is shut down.
+  ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
+  for (const auto& entry : ts_loads) {
+    ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
+    ASSERT_NOTNULL(ts);
+    ASSERT_NE(ts, cluster_->tablet_server(0));
+    ASSERT_EQ(entry.second, 1);
+    LOG(INFO) << "found ts " << entry.first << " has " << entry.second << " replicas";
+  }
+}
+
+// Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.
+// For now, the load should **not** move because of issue #4407.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
+  constexpr int kNumDatabases = 3;
+  const auto kTimeout = 60s;
+  const int starting_num_tablet_servers = cluster_->num_tablet_servers();
+  const std::string kDatabasePrefix = "co";
+  std::map<std::string, int> ts_loads;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+
+  for (int i = 0; i < kNumDatabases; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1 WITH colocated = true", kDatabasePrefix, i));
+  }
+
+  // Add a tablet server.
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, kTimeout));
+
+  // Wait for load balancing.  This should move some tablet-peers (e.g. of the colocation tablets,
+  // system.transactions tablets) to the new tserver.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
+        return !is_idle;
+      },
+      kTimeout,
+      "wait for load balancer to be active"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return client->IsLoadBalancerIdle();
+      },
+      kTimeout,
+      "wait for load balancer to be idle"));
+
+  // Collect colocation tablets' replica locations.
+  for (int i = 0; i < kNumDatabases; ++i) {
+    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+        client.get(),
+        Format("$0$1", kDatabasePrefix, i),
+        kTimeout));
+    for (const auto& replica : tablet_locations.replicas()) {
+      ts_loads[replica.ts_info().permanent_uuid()]++;
+    }
+  }
+
+  // TODO(jason): make sure that the load of colocation tablets is balanced properly after closing
+  // issue #4407.  For now, expect none of the colocation tablets replicas to have moved (indicating
+  // no balancing was done).
+  for (const auto& entry : ts_loads) {
+    ASSERT_EQ(entry.second, kNumDatabases);
+  }
+  ASSERT_EQ(ts_loads.size(), 3);
 }
 
 } // namespace pgwrapper
