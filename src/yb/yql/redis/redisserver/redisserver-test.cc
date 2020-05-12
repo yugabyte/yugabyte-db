@@ -459,7 +459,8 @@ class TestRedisService : public RedisTableTestBase {
   RedisClient& client() {
     if (!test_client_) {
       io_thread_pool_.emplace("test", 1);
-      test_client_ = std::make_shared<RedisClient>("127.0.0.1", server_port());
+      auto endpoint = RedisProxyEndpoint();
+      test_client_ = std::make_shared<RedisClient>(endpoint.address().to_string(), endpoint.port());
     }
     return *test_client_;
   }
@@ -770,6 +771,11 @@ void TestRedisService::SetUp() {
 }
 
 void TestRedisService::StartServer() {
+  if (use_external_mini_cluster()) {
+    redis_server_port_ = external_mini_cluster()->tablet_server(0)->redis_rpc_port();
+    return;
+  }
+
   redis_server_port_ = GetFreePort(&redis_port_lock_);
   RedisServerOptions opts;
   opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", redis_server_port_);
@@ -782,13 +788,16 @@ void TestRedisService::StartServer() {
   auto master_rpc_addrs = master_rpc_addresses_as_strings();
   opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
 
-  server_.reset(new RedisServer(opts, nullptr /* tserver */));
+  server_ = std::make_unique<RedisServer>(opts, mini_cluster()->mini_tablet_server(0)->server());
   LOG(INFO) << "Starting redis server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "Redis server successfully started.";
 }
 
 void TestRedisService::StopServer() {
+  if (!server_) {
+    return;
+  }
   LOG(INFO) << "Shut down redis server...";
   server_->Shutdown();
   server_.reset();
@@ -827,13 +836,15 @@ void TestRedisService::CloseRedisClient() {
 }
 
 void TestRedisService::TearDown() {
-  size_t allocated_sessions = CountSessions(METRIC_redis_allocated_sessions);
-  if (!expected_no_sessions_) {
-    EXPECT_GT(allocated_sessions, 0); // Check that metric is sane.
-  } else {
-    EXPECT_EQ(0, allocated_sessions);
+  if (!use_external_mini_cluster()) {
+    size_t allocated_sessions = CountSessions(METRIC_redis_allocated_sessions);
+    if (!expected_no_sessions_) {
+      EXPECT_GT(allocated_sessions, 0); // Check that metric is sane.
+    } else {
+      EXPECT_EQ(0, allocated_sessions);
+    }
+    EXPECT_EQ(allocated_sessions, CountSessions(METRIC_redis_available_sessions));
   }
-  EXPECT_EQ(allocated_sessions, CountSessions(METRIC_redis_available_sessions));
 
   CloseRedisClient();
   StopServer();

@@ -135,7 +135,7 @@ CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListP
     : QLProcessor(service_impl->client(), service_impl->metadata_cache(),
                   service_impl->cql_metrics().get(),
                   service_impl->clock(),
-                  service_impl->transaction_pool_provider()),
+                  std::bind(&CQLServiceImpl::TransactionPool, service_impl)),
       service_impl_(service_impl),
       cql_metrics_(service_impl->cql_metrics()),
       pos_(pos),

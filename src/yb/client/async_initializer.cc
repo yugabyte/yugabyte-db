@@ -77,6 +77,9 @@ void AsyncClientInitialiser::InitClient() {
     if (result.ok()) {
       LOG(INFO) << "Successfully built ybclient";
       client_holder_.reset(result->release());
+      for (const auto& functor : post_create_hooks_) {
+        functor(client_holder_.get());
+      }
       client_promise_.set_value(client_holder_.get());
       return;
     }

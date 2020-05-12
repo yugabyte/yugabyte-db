@@ -2009,6 +2009,7 @@ Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
     msg = Substitute("Could not find metric $0.$1",
                      entity_proto_name, metric_proto_name);
   }
+  LOG(INFO) << "All metrics: " << dst.c_str();
   return STATUS(NotFound, msg);
 }
 
