@@ -85,12 +85,12 @@ CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
 
 CHECKED_STATUS MasterLeaderStepDown(
     ClusterAdminClientClass* client,
-    const ClusterAdminCli::CLIArguments& args){
-  if(args.size()<3){
+    const ClusterAdminCli::CLIArguments& args) {
+  if (args.size() < 3) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  RETURN_NOT_OK_PREPEND(client->MasterLeaderStepDownWithNewLeader(
-          args[2]), "Unable to step down master leader");
+  RETURN_NOT_OK_PREPEND(client->MasterLeaderStepDown(
+        std::string(), args[2]), "Unable to step down master leader");
   return Status::OK();
 }
 

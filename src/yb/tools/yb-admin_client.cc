@@ -515,22 +515,18 @@ Status ClusterAdminClient::Init() {
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::MasterLeaderStepDownWithNewLeader(const std::string& dest_uuid) {
-  string leader_uuid;
-  RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate master leader");
-  if (leader_uuid.empty()) {
-    return STATUS(ConfigurationError, "Could not locate master leader!");
-  }
-  return MasterLeaderStepDown(leader_uuid,dest_uuid);
-}
-
 Status ClusterAdminClient::MasterLeaderStepDown(
     const string& leader_uuid,
-    const std::string& dest_uuid) {
-
+    const string& new_leader_uuid = std::string()) {
+  if (leader_uuid.empty()){
+    RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate master leader");
+    if (leader_uuid.empty()) {
+      return STATUS(ConfigurationError, "Could not locate master leader!");
+    }
+  }
   auto master_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr_);
 
-  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, dest_uuid, &master_proxy);
+  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, new_leader_uuid, &master_proxy);
 }
 
 CHECKED_STATUS ClusterAdminClient::LeaderStepDownWithNewLeader(
@@ -900,7 +896,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
     VLOG(1) << "ChangeMasterConfig: request leader " << leader_addr_
             << " to step down before removal.";
     string old_leader_uuid = leader_uuid;
-    RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid,std::string()));
+    RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
     sleep(5);  // TODO - wait for exactly the time needed for new leader to get elected.
     // Reget the leader master's socket info to set up the proxy
     leader_addr_ = VERIFY_RESULT(yb_client_->RefreshMasterLeaderAddress());
