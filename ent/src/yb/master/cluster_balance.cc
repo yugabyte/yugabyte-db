@@ -30,7 +30,7 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
 }
 
 Status ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
-  ClusterLoadState* ent_state = GetEntState();
+  PerTableLoadState* ent_state = GetEntState();
   GetAllAffinitizedZones(&ent_state->affinitized_zones_);
   return super::AnalyzeTablets(table_uuid);
 }
@@ -46,8 +46,8 @@ void ClusterLoadBalancer::GetAllAffinitizedZones(AffinitizedZonesSet* affinitize
 }
 
 Result<bool> ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* moving_tablet_id,
-                                                           TabletServerId* from_ts,
-                                                           TabletServerId* to_ts) {
+                                                                   TabletServerId* from_ts,
+                                                                   TabletServerId* to_ts) {
   // Similar to normal leader balancing, we double iterate from most loaded to least loaded
   // non-affinitized nodes and least to most affinitized nodes. For each pair, we check whether
   // there is any tablet intersection and if so, there is a match and we return true.
@@ -55,7 +55,7 @@ Result<bool> ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* mov
   // If we go through all the node pairs or we see that the current non-affinitized
   // leader load is 0, we know that there is no match from non-affinitized to affinitized nodes
   // and we return false.
-  ClusterLoadState* ent_state = GetEntState();
+  PerTableLoadState* ent_state = GetEntState();
   const int non_affinitized_last_pos = ent_state->sorted_non_affinitized_leader_load_.size() - 1;
 
   for (int non_affinitized_idx = non_affinitized_last_pos;
@@ -182,8 +182,8 @@ consensus::RaftPeerPB::MemberType ClusterLoadBalancer::GetDefaultMemberType() {
   }
 }
 
-ClusterLoadState* ClusterLoadBalancer::GetEntState() const {
-  return down_cast<ClusterLoadState*>(state_.get());
+PerTableLoadState* ClusterLoadBalancer::GetEntState() const {
+  return down_cast<enterprise::PerTableLoadState*>(state_);
 }
 
 } // namespace enterprise

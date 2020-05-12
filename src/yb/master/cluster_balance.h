@@ -78,7 +78,7 @@ class ClusterLoadBalancer {
 
   // Executes one run of the load balancing algorithm. This currently does not persist any state,
   // so it needs to scan the in-memory tablet and TS data in the CatalogManager on every run and
-  // create a new ClusterLoadState object.
+  // create a new PerTableLoadState object.
   virtual void RunLoadBalancer(Options* options = nullptr);
 
   // Sets whether to enable or disable the load balancer, on demand.
@@ -149,8 +149,12 @@ class ClusterLoadBalancer {
   // Higher level methods and members.
   //
 
-  // Recreates the ClusterLoadState object.
-  virtual void ResetState();
+  // Resets the global_state_ object, and the map of per-table states.
+  virtual void ResetGlobalState();
+
+
+  // Resets the pointer state_ to point to the correct table's state.
+  virtual void ResetTableStatePtr(const TableId& table_id, Options* options = nullptr);
 
   // Goes over the tablet_map_ and the set of live TSDescriptors to compute the load distribution
   // across the tablets for the given table. Returns an OK status if the method succeeded or an
@@ -273,8 +277,12 @@ class ClusterLoadBalancer {
   int get_total_blacklisted_servers() const;
   int get_total_leader_blacklisted_servers() const;
 
-  // The state of the load in the cluster, as far as this run of the algorithm is concerned.
-  std::unique_ptr<ClusterLoadState> state_;
+  std::unordered_map<TableId, std::unique_ptr<PerTableLoadState>> per_table_states_;
+  // The state of the table load in the cluster, as far as this run of the algorithm is concerned.
+  // It points to the appropriate object in per_table_states_.
+  PerTableLoadState* state_ = nullptr;
+
+  std::unique_ptr<GlobalLoadState> global_state_;
 
   // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
   // managed by this class, but by the Master's unique_ptr.
