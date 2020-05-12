@@ -67,21 +67,22 @@ EasyCurl::~EasyCurl() {
   curl_easy_cleanup(curl_);
 }
 
-Status EasyCurl::FetchURL(const string& url, faststring* buf) {
-  return DoRequest(url, boost::none, boost::none, buf);
+Status EasyCurl::FetchURL(const string& url, faststring* buf, int64_t timeout_sec) {
+  return DoRequest(url, boost::none, boost::none, timeout_sec, buf);
 }
 
-Status EasyCurl::PostToURL(const string& url,
-                           const string& post_data,
-                           faststring* dst) {
-  return DoRequest(url, post_data, string("application/x-www-form-urlencoded"), dst);
+Status EasyCurl::PostToURL(
+    const string& url, const string& post_data, faststring* dst, int64_t timeout_sec) {
+  return DoRequest(url, post_data, string("application/x-www-form-urlencoded"), timeout_sec, dst);
 }
 
-Status EasyCurl::PostToURL(const string& url,
-                           const string& post_data,
-                           const string& content_type,
-                           faststring* dst) {
-  return DoRequest(url, post_data, content_type, dst);
+Status EasyCurl::PostToURL(
+    const string& url,
+    const string& post_data,
+    const string& content_type,
+    faststring* dst,
+    int64_t timeout_sec) {
+  return DoRequest(url, post_data, content_type, timeout_sec, dst);
 }
 
 string EasyCurl::EscapeString(const string& data) {
@@ -94,10 +95,12 @@ string EasyCurl::EscapeString(const string& data) {
   return escaped_str;
 }
 
-Status EasyCurl::DoRequest(const string& url,
-                           const boost::optional<const string>& post_data,
-                           const boost::optional<const string>& content_type,
-                           faststring* dst) {
+Status EasyCurl::DoRequest(
+    const string& url,
+    const boost::optional<const string>& post_data,
+    const boost::optional<const string>& content_type,
+    int64_t timeout_sec,
+    faststring* dst) {
   CHECK_NOTNULL(dst)->clear();
 
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_URL, url.c_str())));
@@ -123,6 +126,10 @@ Status EasyCurl::DoRequest(const string& url,
 
     RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_HTTPHEADER,
                                                   http_header_list.get())));
+  }
+
+  if (timeout_sec > 0) {
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_TIMEOUT, timeout_sec)));
   }
 
   if (post_data) {
