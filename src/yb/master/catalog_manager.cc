@@ -6031,7 +6031,8 @@ void CatalogManager::SendAddServerRequest(
                                  change_config_ts_uuid, tablet.get()->ToString()));
 }
 
-void CatalogManager::GetPendingServerTasksUnlocked(const TableId &table_uuid,
+void CatalogManager::GetPendingServerTasksUnlocked(
+    const TableId &table_uuid,
     TabletToTabletServerMap *add_replica_tasks_map,
     TabletToTabletServerMap *remove_replica_tasks_map,
     TabletToTabletServerMap *stepdown_leader_tasks) {
