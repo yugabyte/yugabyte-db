@@ -183,12 +183,22 @@ struct Options {
   // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.
 };
 
-class ClusterLoadState {
+// Cluster-wide state and metrics.
+// For now it's only used to determine how many tablets are being remote bootstrapped across the
+// cluster.
+class GlobalLoadState {
  public:
-  ClusterLoadState()
+  int total_starting_tablets_ = 0;
+};
+
+class PerTableLoadState {
+ public:
+  TableId table_id_;
+  explicit PerTableLoadState(GlobalLoadState* global_state)
       : leader_balance_threshold_(FLAGS_leader_balance_threshold),
-        current_time_(MonoTime::Now()) {}
-  virtual ~ClusterLoadState() {}
+        current_time_(MonoTime::Now()),
+        global_state_(global_state) {}
+  virtual ~PerTableLoadState() {}
 
   // Comparators used for sorting by load.
   bool CompareByUuid(const TabletServerId& a, const TabletServerId& b) {
@@ -208,7 +218,7 @@ class ClusterLoadState {
   // Comparator functor to be able to wrap around the public but non-static compare methods that
   // end up using internal state of the class.
   struct Comparator {
-    explicit Comparator(ClusterLoadState* state) : state_(state) {}
+    explicit Comparator(PerTableLoadState* state) : state_(state) {}
     bool operator()(const TabletServerId& a, const TabletServerId& b) {
       return state_->CompareByUuid(a, b);
     }
@@ -217,12 +227,12 @@ class ClusterLoadState {
       return state_->CompareByReplica(a, b);
     }
 
-    ClusterLoadState* state_;
+    PerTableLoadState* state_;
   };
 
   // Comparator to sort tablet servers' leader load.
   struct LeaderLoadComparator {
-    explicit LeaderLoadComparator(ClusterLoadState* state) : state_(state) {}
+    explicit LeaderLoadComparator(PerTableLoadState* state) : state_(state) {}
     bool operator()(const TabletServerId& a, const TabletServerId& b) {
       // Primary criteria: whether tserver is leader blacklisted.
       auto a_leader_blacklisted =
@@ -236,7 +246,7 @@ class ClusterLoadState {
       // Secondary criteria: tserver leader load.
       return state_->GetLeaderLoad(a) < state_->GetLeaderLoad(b);
     }
-    ClusterLoadState* state_;
+    PerTableLoadState* state_;
   };
 
   // Get the load for a certain TS.
@@ -304,6 +314,9 @@ class ClusterLoadState {
         ts_meta_it->second.starting_tablets.insert(tablet_id);
         ++tablet_meta.starting;
         ++total_starting_;
+        ++global_state_->total_starting_tablets_;
+      } else if (replica_is_stale) {
+        VLOG(1) << "Replica is stale: " << replica.second.ToString();
       }
 
       // If this replica is blacklisted, we want to keep track of these specially, so we can
@@ -553,6 +566,7 @@ class ClusterLoadState {
     per_ts_meta_[to_ts].starting_tablets.insert(tablet_id);
     ++per_tablet_meta_[tablet_id].starting;
     ++total_starting_;
+    ++global_state_->total_starting_tablets_;
     tablets_added_.insert(tablet_id);
     SortLoad();
     return Status::OK();
@@ -657,7 +671,7 @@ class ClusterLoadState {
     tablet->GetReplicaLocations(replica_locations);
   }
 
-  // ClusterLoadState member fields
+  // PerTableLoadState member fields
 
   // Map from tablet ids to the metadata we store for each.
   unordered_map<TabletId, CBTabletMetadata> per_tablet_meta_;
@@ -725,9 +739,13 @@ class ClusterLoadState {
   // The knobs we use for tweaking the flow of the algorithm.
   Options* options_;
 
+  // Pointer to the cluster global state so that it can be updated when operations like add or
+  // remove are executed.
+  GlobalLoadState* global_state_;
+
  private:
-  DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);
-}; // ClusterLoadState
+  DISALLOW_COPY_AND_ASSIGN(PerTableLoadState);
+}; // PerTableLoadState
 
 } // namespace master
 } // namespace yb
