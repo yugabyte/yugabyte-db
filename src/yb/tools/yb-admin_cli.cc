@@ -89,9 +89,8 @@ CHECKED_STATUS MasterLeaderStepDown(
   if (args.size() < 3) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  RETURN_NOT_OK_PREPEND(client->MasterLeaderStepDown(
-        std::string(), args[2]), "Unable to step down master leader");
-  return Status::OK();
+  return client->MasterLeaderStepDown(
+        std::string(), args[2]);
 }
 
 CHECKED_STATUS LeaderStepDown(

@@ -213,7 +213,7 @@ class ClusterAdminClient {
 
   CHECKED_STATUS MasterLeaderStepDown(
       const std::string& leader_uuid,
-      const std::string& dest_uuid);
+      const std::string& new_leader_uuid);
 
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
