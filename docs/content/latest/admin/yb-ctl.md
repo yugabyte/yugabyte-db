@@ -298,13 +298,13 @@ yugabyte-data/node-#/disk-#/yb-data/tserver/logs
 
 There are essentially two modes with yb-ctl.
 
-- Single-node RF1 cluster where the bind IP address for all ports can be bound to `0.0.0.0` using the `listen_ip` flag. This is the mode you use if you want to have external access for the database APIs and admin UIs.
+- 1-node RF1 cluster where the bind IP address for all ports can be bound to `0.0.0.0` using the `listen_ip` flag. This is the mode you use if you want to have external access for the database APIs and admin UIs.
 
 ```sh
 $ ./bin/yb-ctl create --listen_ip=0.0.0.0
 ```
 
-- Multi-node (say 3-node RF3) cluster where the bind IP addresses are a bunch of loopback IP addresses since binding to `0.0.0.0` by even one set of servers will immediately lead to all addresses getting occupied. Hence, this mode is only meant for internal access.
+- Multi-node (say 3-node RF3) cluster where the bind IP addresses are the loopback IP addresses since binding to `0.0.0.0` is no longer possible. Hence, this mode is only meant for internal access.
 
 ## Check cluster status
 

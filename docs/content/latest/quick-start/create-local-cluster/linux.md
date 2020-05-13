@@ -69,13 +69,13 @@ $ ./bin/yb-ctl create --listen_ip=0.0.0.0
 
 ### Create a 3-node cluster with RF of 3
 
-To run a distributed SQL cluster locally for testing and development, you can quickly create a 3-node cluster with RF of 3 by running the following command.
+To run a distributed SQL cluster locally for development and testing, you can create a 3-node cluster with RF of 3 by executing the following command.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback addresses (that you setup in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound. Binding to `0.0.0.0` by even one set of servers would disallow the usage of any other address.
+Note that in this 3-node mode, the bind IP address by default for all ports is the individual loopback address (that you setup in the previous step). In this mode you will not be able to externally access the database APIs and admin UIs because `0.0.0.0` remains unbound. 
 
 You can now check `$HOME/yugabyte-data` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be two disks, `disk1` and `disk2`, to highlight the fact that YugabyteDB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
 
