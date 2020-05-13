@@ -468,7 +468,7 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
 
 TEST_F(AdminCliTest, TestMasterLeaderStepdown) {
   vector<string> ts_flags, master_flags;
-  master_flags.push_back("--replication_factor=2");
+  master_flags.push_back("--replication_factor=3");
   BuildAndStart(ts_flags, master_flags);
   std::string out;
   auto call_admin = [
