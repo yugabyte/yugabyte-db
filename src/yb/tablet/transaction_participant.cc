@@ -140,6 +140,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       return false;
     }
 
+    if (start_latch_.count()) {
+      start_latch_.CountDown();
+    }
+
     LOG_WITH_PREFIX(INFO) << "Shutdown";
     return true;
   }
@@ -164,7 +168,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   void Start() {
     LOG_WITH_PREFIX(INFO) << "Start";
-    TryStartCheckLoadedTransactionsStatus(&all_loaded_, &started_);
+    start_latch_.CountDown();
   }
 
   // Adds new running transaction.
@@ -957,43 +961,48 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       docdb::BoundedRocksDbIterator* iterator, ScopedRWOperation* scoped_pending_operation) {
     LOG_WITH_PREFIX(INFO) << __func__ << " start";
 
-    std::unique_ptr<ScopedRWOperation> scoped_pending_operation_holder(
-        scoped_pending_operation);
-    std::unique_ptr<docdb::BoundedRocksDbIterator> iterator_holder(iterator);
-    docdb::KeyBytes key_bytes;
-    TransactionId id = TransactionId::Nil();
-    AppendTransactionKeyPrefix(id, &key_bytes);
-    iterator->Seek(key_bytes.AsSlice());
     size_t loaded_transactions = 0;
-    while (iterator->Valid()) {
-      auto key = iterator->key();
-      if (key[0] != docdb::ValueTypeAsChar::kTransactionId) {
-        break;
-      }
-      key.remove_prefix(1);
-      auto decode_id_result = DecodeTransactionId(&key);
-      if (!decode_id_result.ok()) {
-        LOG_WITH_PREFIX(DFATAL)
-            << "Failed to decode transaction id from: " << key.ToDebugHexString();
-        break;
-      }
-      id = *decode_id_result;
-      key_bytes.Clear();
+    {
+      std::unique_ptr<ScopedRWOperation> scoped_pending_operation_holder(
+          scoped_pending_operation);
+      std::unique_ptr<docdb::BoundedRocksDbIterator> iterator_holder(iterator);
+      docdb::KeyBytes key_bytes;
+      TransactionId id = TransactionId::Nil();
       AppendTransactionKeyPrefix(id, &key_bytes);
-      if (key.empty()) { // Key fully consists of transaction id - it is metadata record.
-        if (FLAGS_inject_load_transaction_delay_ms > 0) {
-          std::this_thread::sleep_for(FLAGS_inject_load_transaction_delay_ms * 1ms);
-        }
-        LoadTransaction(iterator, id, iterator->value(), &key_bytes);
-        ++loaded_transactions;
-      }
-      key_bytes.AppendValueType(docdb::ValueType::kMaxByte);
       iterator->Seek(key_bytes.AsSlice());
+      while (iterator->Valid()) {
+        auto key = iterator->key();
+        if (key[0] != docdb::ValueTypeAsChar::kTransactionId) {
+          break;
+        }
+        key.remove_prefix(1);
+        auto decode_id_result = DecodeTransactionId(&key);
+        if (!decode_id_result.ok()) {
+          LOG_WITH_PREFIX(DFATAL)
+              << "Failed to decode transaction id from: " << key.ToDebugHexString();
+          break;
+        }
+        id = *decode_id_result;
+        key_bytes.Clear();
+        AppendTransactionKeyPrefix(id, &key_bytes);
+        if (key.empty()) { // Key fully consists of transaction id - it is metadata record.
+          if (FLAGS_inject_load_transaction_delay_ms > 0) {
+            std::this_thread::sleep_for(FLAGS_inject_load_transaction_delay_ms * 1ms);
+          }
+          LoadTransaction(iterator, id, iterator->value(), &key_bytes);
+          ++loaded_transactions;
+        }
+        key_bytes.AppendValueType(docdb::ValueType::kMaxByte);
+        iterator->Seek(key_bytes.AsSlice());
+      }
     }
 
-    TryStartCheckLoadedTransactionsStatus(&started_, &all_loaded_);
+    all_loaded_.store(true, std::memory_order_release);
     load_cond_.notify_all();
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
+
+    start_latch_.Wait();
+    status_resolver_.Start(CoarseTimePoint::max());
   }
 
   // iterator - rocks db iterator, that should be used for write id resolution.
@@ -1147,19 +1156,6 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     min_running_notifier->Satisfied();
   }
 
-  template <class F1, class F2>
-  void TryStartCheckLoadedTransactionsStatus(const F1* flag_to_check, F2* flag_to_set) {
-    bool check_loaded_transactions_status;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      *flag_to_set = true;
-      check_loaded_transactions_status = *flag_to_check;
-    }
-    if (check_loaded_transactions_status) {
-      status_resolver_.Start(CoarseTimePoint::max());
-    }
-  }
-
   void TransactionsStatus(const std::vector<TransactionStatusInfo>& status_infos) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
@@ -1304,7 +1300,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   TransactionId last_loaded_;
   std::atomic<bool> all_loaded_{false};
   std::atomic<bool> closing_{false};
-  bool started_ = false;
+  CountDownLatch start_latch_{1};
 
   std::atomic<HybridTime> min_running_ht_{HybridTime::kMax};
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};

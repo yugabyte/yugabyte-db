@@ -106,11 +106,12 @@ class TransactionStatusResolver::Impl {
       std::this_thread::sleep_for(1ms * injected_delay);
     }
 
-    if (!rpcs_.RegisterAndStart(
+    auto client = participant_context_.client_future().get();
+    if (!client || !rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
             std::min(deadline_, TransactionRpcDeadline()),
             nullptr /* tablet */,
-            participant_context_.client_future().get(),
+            client,
             &req,
             std::bind(&Impl::StatusReceived, this, _1, _2, request_size)),
         &handle_)) {

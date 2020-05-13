@@ -16,7 +16,12 @@
 
 #include "yb/gutil/strings/join.h"
 
+#include "yb/util/flag_tags.h"
+
 using namespace std::literals;
+
+DEFINE_test_flag(bool, TEST_force_master_leader_resolution, false,
+                 "Force master leader resolution even only one master is set.");
 
 namespace yb {
 namespace client {
@@ -40,7 +45,8 @@ AsyncClientInitialiser::AsyncClientInitialiser(
   }
   VLOG(4) << "Master addresses for " << client_name << ": " << AsString(master_addresses);
   client_builder_.add_master_server_addr(JoinStrings(master_addresses, ","));
-  client_builder_.set_skip_master_leader_resolution(master_addresses.size() == 1);
+  client_builder_.set_skip_master_leader_resolution(
+      master_addresses.size() == 1 && !FLAGS_TEST_force_master_leader_resolution);
   client_builder_.set_metric_entity(metric_entity);
   if (num_reactors > 0) {
     client_builder_.set_num_reactors(num_reactors);
@@ -85,6 +91,9 @@ void AsyncClientInitialiser::InitClient() {
     }
 
     LOG(ERROR) << "Failed to initialize client: " << result.status();
+    if (result.status().IsAborted()) {
+      break;
+    }
     std::this_thread::sleep_for(1s);
   }
 

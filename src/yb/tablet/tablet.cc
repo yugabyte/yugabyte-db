@@ -463,8 +463,9 @@ Tablet::~Tablet() {
   if (StartShutdown()) {
     CompleteShutdown();
   } else {
-    LOG_IF_WITH_PREFIX(DFATAL, state_ != kShutdown)
-        << "Destroying Tablet that did not complete shutdown";
+    auto state = state_;
+    LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
+        << "Destroying Tablet that did not complete shutdown: " << state;
   }
   mem_tracker_->UnregisterFromParent();
 }
@@ -823,6 +824,8 @@ void Tablet::MarkFinishedBootstrapping() {
 }
 
 bool Tablet::StartShutdown() {
+  LOG_WITH_PREFIX(INFO) << __func__;
+
   bool expected = false;
   if (!shutdown_requested_.compare_exchange_strong(expected, true)) {
     return false;
