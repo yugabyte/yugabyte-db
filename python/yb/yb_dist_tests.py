@@ -287,6 +287,7 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
     'yb_build.sh',
     'build/python_virtual_env',
     'python_requirements_frozen.txt',
+    'thirdparty/homebrew_version_for_jenkins.txt',
 ]
 
 

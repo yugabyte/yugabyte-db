@@ -398,25 +398,31 @@ def parallel_run_test(test_descriptor_str):
             else:
                 logging.warning("Artifact list does not exist: '%s'", artifact_list_path)
 
-            num_artifacts_copied = 0
-            for artifact_path in artifact_paths:
-                if not os.path.exists(artifact_path):
-                    logging.warning("Build artifact file does not exist: '%s'", artifact_path)
-                    continue
-                dest_path = yb_dist_tests.to_real_nfs_path(artifact_path)
-                dest_dir = os.path.dirname(dest_path)
-                if not os.path.exists(dest_dir):
-                    logging.info("Creating directory %s", dest_dir)
-                    subprocess.check_call(['mkdir', '-p', dest_dir])
-                logging.info("Copying %s to %s", artifact_path, dest_path)
-                try:
-                    subprocess.check_call(['cp', '-f', artifact_path, dest_path])
-                except CalledProcessError as ex:
-                    logging.error("Error copying %s to %s: %s", artifact_path, dest_path, ex)
-                    num_errors_copying_artifacts = 1
+            if is_macos() and socket.gethostname() == os.environ.get('YB_BUILD_HOST'):
+                logging.info("Files already local to build host. Skipping artifact copy.")
+            else:
+                num_artifacts_copied = 0
+                for artifact_path in artifact_paths:
+                    if not os.path.exists(artifact_path):
+                        logging.warning("Build artifact file does not exist: '%s'", artifact_path)
+                        continue
+                    if is_macos():
+                        dest_path = get_mac_shared_nfs(artifact_path)
+                    else:
+                        dest_path = yb_dist_tests.to_real_nfs_path(artifact_path)
+                    dest_dir = os.path.dirname(dest_path)
+                    if not os.path.exists(dest_dir):
+                        logging.info("Creating directory %s", dest_dir)
+                        subprocess.check_call(['mkdir', '-p', dest_dir])
+                    logging.info("Copying %s to %s", artifact_path, dest_path)
+                    try:
+                        subprocess.check_call(['cp', '-f', artifact_path, dest_path])
+                    except CalledProcessError as ex:
+                        logging.error("Error copying %s to %s: %s", artifact_path, dest_path, ex)
+                        num_errors_copying_artifacts = 1
 
-                num_artifacts_copied += 1
-            logging.info("Number of build artifact files copied: %d", num_artifacts_copied)
+                    num_artifacts_copied += 1
+                logging.info("Number of build artifact files copied: %d", num_artifacts_copied)
 
             rel_artifact_paths = [
                     os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
@@ -473,6 +479,7 @@ def initialize_remote_task():
             untar_script_file.write("""#!/usr/bin/env bash
 set -euo pipefail
 (
+    PATH=/usr/local/bin:$PATH
     flock -w 60 200
     if [[ -d '{remote_yb_src_root}' ]]; then
         previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
@@ -499,7 +506,7 @@ set -euo pipefail
         fi
         actual_archive_sha256sum=$( (
             [[ $OSTYPE == linux* ]] && sha256sum '{archive_path}' ||
-            shasum --portable --algorithm 256
+            shasum --portable --algorithm 256 '{archive_path}'
         ) | awk '{{ print $1 }}' )
         if [[ $actual_archive_sha256sum != '{expected_archive_sha256sum}' ]]; then
           echo "Archive SHA256 sum of '{archive_path}' is $actual_archive_sha256sum, which" \
@@ -609,6 +616,15 @@ def get_username():
                 "Could not get user name from the environment, and could not parse 'id' output: %s",
                 id_output)
             raise ex
+
+
+def get_mac_shared_nfs(path):
+    LOCAL_PATH = "/Volumes/share"
+    if not path.startswith(LOCAL_PATH):
+        raise ValueError("Local path %s does not start with expected prefix '%s'.\n" %
+                         (path, LOCAL_PATH))
+    relpath = path[len(LOCAL_PATH):]
+    return "/Volumes/net/v1/" + os.environ.get('YB_BUILD_HOST') + relpath
 
 
 def get_jenkins_job_name():
@@ -1077,11 +1093,13 @@ def main():
             args.run_java_tests and
             args.send_archive_to_workers):
         os.environ['YB_MVN_LOCAL_REPO'] = os.path.join(
-                yb_dist_tests.global_conf.yb_src_root, 'build', 'm2_repository')
+                yb_dist_tests.global_conf.build_root, 'm2_repository')
         logging.info("Automatically setting YB_MVN_LOCAL_REPO to %s",
                      os.environ['YB_MVN_LOCAL_REPO'])
 
     # End of argument validation.
+
+    os.environ['YB_BUILD_HOST'] = socket.gethostname()
 
     # ---------------------------------------------------------------------------------------------
     # Start the timer.
@@ -1092,8 +1110,18 @@ def main():
     if args.send_archive_to_workers:
         if (args.recreate_archive_for_workers or
                 not os.path.exists(yb_dist_tests.global_conf.archive_for_workers)):
+            archive_sha_path = os.path.join(yb_dist_tests.global_conf.yb_src_root,
+                                            'extracted_from_archive.sha256')
+            if os.path.exists(archive_sha_path):
+                os.remove(archive_sha_path)
+
             yb_dist_tests.create_archive_for_workers()
-        yb_dist_tests.compute_archive_sha256sum()
+
+            yb_dist_tests.compute_archive_sha256sum()
+
+            # Local host may also be worker, so leave expected checksum here after archive created.
+            with open(archive_sha_path, 'w') as archive_sha:
+                archive_sha.write(yb_dist_tests.global_conf.archive_sha256sum)
 
     if test_list_path:
         test_descriptors = load_test_list(test_list_path)

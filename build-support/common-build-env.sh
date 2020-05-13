@@ -79,6 +79,9 @@ readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
 # In our NFS environment, we keep Linuxbrew builds in this directory.
 readonly SHARED_LINUXBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/linuxbrew"
 readonly SHARED_CUSTOM_HOMEBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/homebrew"
+# Locally cached copies
+readonly LOCAL_THIRDPARTY_DIRS="/opt/yb-build/thirdparty"
+readonly LOCAL_LINUXBREW_DIRS="/opt/yb-build/brew"
 
 # We look for the list of distributed build worker nodes in this file. This gets populated by
 # a cronjob on buildmaster running under the jenkins user (as of 06/20/2017).
@@ -187,6 +190,11 @@ readonly MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
   dependency:go-offline
 )
 
+if is_mac; then
+  readonly FLOCK="/usr/local/bin/flock"
+else
+  readonly FLOCK="/usr/bin/flock"
+fi
 # -------------------------------------------------------------------------------------------------
 # Global variables
 # -------------------------------------------------------------------------------------------------
@@ -593,8 +601,13 @@ set_mvn_parameters() {
   fi
   local should_use_shared_dirs=false
   should_copy_artifacts_to_non_shared_repo=false
-  if is_jenkins && is_src_root_on_nfs; then
-    if is_mac && "$is_run_test_script" && [[ -n ${YB_TMP_GROUP_ID:-} ]]; then
+  if is_jenkins ; then
+    if is_mac && "$is_run_test_script" && [[ -d $BUILD_ROOT/m2_repository ]]; then
+      should_use_shared_dirs=false
+      should_copy_artifacts_to_non_shared_repo=false
+      YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
+      log "Will use Maven repository from build root ($YB_MVN_LOCAL_REPO)"
+    elif is_mac && "$is_run_test_script" && [[ -n ${YB_TMP_GROUP_ID:-} ]]; then
       should_use_shared_dirs=false
       should_copy_artifacts_to_non_shared_repo=true
       log "Will not use shared Maven repository ($YB_SHARED_MVN_LOCAL_REPO), but will copy" \
@@ -1062,7 +1075,7 @@ download_and_extract_archive() {
       umask 0
       lock_path=$YB_DOWNLOAD_LOCKS_DIR/$install_dir_name
       (
-        flock -w "$YB_DOWNLOAD_LOCK_TIMEOUT_SEC" 200
+        "$FLOCK" -w "$YB_DOWNLOAD_LOCK_TIMEOUT_SEC" 200
         if [[ ! -d $dest_dir && ! -L $dest_dir ]]; then
           log "[Host $(hostname)] Acquired lock $lock_path, proceeding with archive installation."
           (
@@ -1081,8 +1094,9 @@ download_and_extract_archive() {
 }
 
 download_thirdparty() {
-  download_and_extract_archive "$YB_THIRDPARTY_URL" /opt/yb-build/thirdparty
-  if [[ -n ${YB_THIRDPARTY_DIR:-} && $YB_THIRDPARTY_DIR != $extracted_dir ]]; then
+  download_and_extract_archive "$YB_THIRDPARTY_URL" "$LOCAL_THIRDPARTY_DIRS"
+  if [[ -n ${YB_THIRDPARTY_DIR:-} &&
+        $YB_THIRDPARTY_DIR != "$extracted_dir" ]]; then
     log_thirdparty_and_toolchain_details
     fatal "YB_THIRDPARTY_DIR is already set to '$YB_THIRDPARTY_DIR', cannot set it to" \
           "'$extracted_dir'"
@@ -1095,9 +1109,11 @@ download_thirdparty() {
   # link to download and install the appropriate Linuxbrew package.
   local linuxbrew_url_path=$YB_THIRDPARTY_DIR/linuxbrew_url.txt
   if [[ -f $linuxbrew_url_path ]]; then
-    local linuxbrew_url=$(<"$linuxbrew_url_path")
-    download_and_extract_archive "$linuxbrew_url" /opt/yb-build/brew
-    if [[ -n ${YB_LINUXBREW_DIR:-} && $YB_LINUXBREW_DIR != $extracted_dir ]]; then
+    local linuxbrew_url
+    linuxbrew_url=$(<"$linuxbrew_url_path")
+    download_and_extract_archive "$linuxbrew_url" "$LOCAL_LINUXBREW_DIRS"
+    if [[ -n ${YB_LINUXBREW_DIR:-} &&
+          $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
       log_thirdparty_and_toolchain_details
       fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
             "'$extracted_dir'"
@@ -1799,7 +1815,7 @@ find_or_download_thirdparty() {
     fi
   elif ( [[ -f $YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use ]] ||
          "$use_nfs_shared_thirdparty" ||
-         ( is_jenkins && is_src_root_on_nfs ) ||
+         is_jenkins_user  ||
          using_remote_compilation ) &&
        ! "$no_nfs_shared_thirdparty"
   then

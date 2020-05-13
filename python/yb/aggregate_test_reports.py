@@ -79,6 +79,12 @@ import os
 import sys
 import yugabyte_pycommon
 
+# for python2/3 compatibility
+try:
+    from json.decoder import JSONDecodeError
+except ImportError:
+    JSONDecodeError = ValueError
+
 
 def is_test_failure(report):
     for key in ['num_errors', 'num_failures']:
@@ -146,6 +152,9 @@ def aggregate_test_reports(args):
                 report = json.load(input_file)
         except IOError, ex:
             errors.append("Failed reading file %s: %s" % (file_path, ex))
+        # Catch other cases such as a readable, but empty file.
+        except JSONDecodeError:
+            errors.append("Failed to parse file %s" % (file_path))
 
         if isinstance(report, list):
             all_test_reports.extend(report)
