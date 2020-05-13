@@ -63,7 +63,7 @@ showAsideToc: true
     ```
 
     ```
-    Python 2.7.10
+    Python 3.7.3
     ```
 
 3. `wget` or `curl` is available.
@@ -80,9 +80,7 @@ showAsideToc: true
     - CentOS: `yum install curl`
     - Ubuntu: `apt install curl`
 
-4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, 
-you can soon end up creating a large number of files in the current shell. 
-Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
+4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
 
 ## Download YugabyteDB
 
@@ -92,7 +90,7 @@ Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-
     $ wget https://downloads.yugabyte.com/yugabyte-2.1.6.0-linux.tar.gz
     ```
 
-2. Extract the YugabyteDB package and then change directories to the YugabyteDB home.
+2. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
     $ tar xvfz yugabyte-2.1.6.0-linux.tar.gz && cd yugabyte-2.1.6.0/
