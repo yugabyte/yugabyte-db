@@ -166,7 +166,7 @@ ASSERT_NO_FATALS(StartCluster({}, {}, 1/*num tservers*/, kNumInitMasters));
 std::string out;
 auto call_admin = [
         &out,
-        admin_path = GetAdminToolPath(kAdminToolName),
+        admin_path = GetToolPath(kAdminToolName),
         master_address = ToString(cluster_->GetMasterAddresses())] (
         const std::initializer_list<std::string>& args) mutable {
     auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
