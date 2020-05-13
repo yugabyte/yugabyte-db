@@ -38,6 +38,7 @@ using namespace std::literals;
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_double(respond_write_failed_probability);
 DECLARE_double(transaction_ignore_applying_probability_in_tests);
@@ -1051,6 +1052,25 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest)
   constexpr int kReads = 1;
 
   Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
+  SetAtomicFlag(1.0, &FLAGS_transaction_ignore_applying_probability_in_tests);
+  FLAGS_TEST_force_master_leader_resolution = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY)"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ShutdownAllMasters(cluster_.get());
+
+  LOG(INFO) << "Start masters";
+  ASSERT_OK(StartAllMasters(cluster_.get()));
+
+  auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, 0);
 }
 
 } // namespace pgwrapper
