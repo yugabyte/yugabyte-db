@@ -30,7 +30,7 @@ This section uses the same approach as the [The literal for an array of primitiv
 
 Just as in the [Statement of the rules](../array-of-primitive-values/#statement-of-the-rules) subsection in the _"The literal for an array of primitive values"_ section, the statement of these rules depends on understanding the notion of the canonical form of a literal.
 
-If you follow the rules that are stated here, and illustrated in the demonstrations below, then you will always produce a syntactically valid literal which expresses the semantics that you intend. It turns out that very many other variants, especially for `text[]` values, are legal and can produce the result that you intend. However, the rules that govern these exotic uses will not be documented because it is always sufficient to create your literals in canonical form.
+If you follow the rules that are stated here, and illustrated in the demonstrations below, then you will always produce a syntactically valid literal which expresses the semantics that you intend. It turns out that many other variants, especially for `text[]` values, are legal and can produce the result that you intend. However, the rules that govern these exotic uses will not be documented because it is always sufficient to create your literals in canonical form.
 
 Here is the sufficient set of rules.
 
@@ -43,7 +43,8 @@ Here is the sufficient set of rules.
    <space>   (   )   ,   "   \
 ```
 
-- It's sufficient then simply to write all special characters ordinarily within the enclosing double quotes except for each of the double quote character itself and the backslash character. These must be escaped. The double quote character is escaped by doubling it up. And the backslash character is escaped with an immediately preceding single backslash.
+- It's sufficient then to write all special characters ordinarily within the enclosing double quotes except for each of the double quote character itself and the backslash character. These must be escaped. The double quote character is escaped by doubling it up. And the backslash character is escaped with an immediately preceding single backslash.
+
 - To specify that the value for a field is `NULL` , you must leave no whitespace between the pair of delimiters (Left parenthesis, comma, or right parenthesis) that surround its position. (This is the only choice.)
 
 ## Always write array literals in canonical form
@@ -151,7 +152,7 @@ In addition to the first two rules, you notice the following.
 - The single quote is _not_ surrounded with double quotes. Though it has syntactic significance in other parsing contexts, it is insignificant within the parentheses of a _"row"_ type literal. This holds, also, for all sorts of other punctuation characters like `;` and `:` and `[` and `]` and so on.
 - The double quote has been escaped by doubling it up and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the (one and only) quoting mechanism, within the parentheses of a _"row"_ type literal.
 - The backslash has also been escaped with another single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the escape character, within the parentheses of a _"row"_ type literal.
-- `NULL` is represented in a _"row"_ type literal simply by the absence of any characters between two successive delimiters: between the left parenthesis and the first comma, between two successive commas, or between the last comma and the right parenthesis.
+- `NULL` is represented in a _"row"_ type literal by the _absence_ of any characters between two successive delimiters: between the left parenthesis and the first comma, between two successive commas, or between the last comma and the right parenthesis.
 
 There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this easily with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the parentheses of a _"row"_ type literal with double quotes.
 
@@ -190,7 +191,7 @@ You understand this by realizing that the entire run of characters between a pai
 
 This rule is different from the rule for an array literal. It's also different from the rules for JSON documents. In these cases, the value is entirely _within_ the double quotes, and whitespace around punctuation characters outside of the double-quoted values is insignificant.
 
-**Note:** There is absolutely no need to take advantage of this understanding. Yugabyte recommends that you simply always use the "almost-canonical" form of the literal—in other words, you surround every single `text` value with double quotes, even when these are not needed, and you allow no whitespace between these double-quoted values and the delimiter at the start an end of each such value.
+**Note:** There is absolutely no need to take advantage of this understanding. Yugabyte recommends that you always use the "almost-canonical" form of the literal—in other words, you surround every single `text` value with double quotes, even when these are not needed, and you allow no whitespace between these double-quoted values and the delimiter at the start an end of each such value.
 
 ### "Row" type with timestamp fields
 

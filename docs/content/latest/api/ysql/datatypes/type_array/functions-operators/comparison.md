@@ -23,7 +23,7 @@ These operators all have the same signature, thus:
 input value:       anyarray, anyarray
 return value:      boolean
 ```
-**Note:** These operators require that the LHS and RHS arrays have the same data type. (It's the same rule for the comparison of scalars.) However, they do _not_ require that the arrays have identical geometric properties. Rules are defined so that a difference between one or more of these properties does not mean that they are necessarily simply unequal. Rather, the LHS array might be deemed to be less than, or greater than, the RHS array. It's essential, therefore, to understand the comparison algorithm.
+**Note:** These operators require that the LHS and RHS arrays have the same data type. (It's the same rule for the comparison of scalars.) However, they do _not_ require that the arrays have identical geometric properties. Rules are defined so that a difference between one or more of these properties does not mean that comparison is disallowed. Rather, the LHS array might be deemed to be less than, or greater than, the RHS array. It's essential, therefore, to understand the comparison algorithm.
 
 ### Comparison criteria
 
@@ -120,7 +120,7 @@ These four operators implement the familiar inequality comparisons.
 - The `<=` operator returns `TRUE` if the LHS array is less than or equal to the RHS array.
 - The `<` operator returns `TRUE` if the LHS array is less than the RHS array.
 
-It's sufficient, therefore, to provide a simple example for just the `<` operator.
+It's sufficient, therefore, to provide an example for just the `<` operator.
 ```postgresql
 with
   v as (

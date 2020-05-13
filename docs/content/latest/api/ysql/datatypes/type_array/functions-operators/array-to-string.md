@@ -56,7 +56,7 @@ It shows this:
 ----------------------
  (1,a) | (2,) | (3,c)
 ```
-Notice that the third, `NULL`, array value is simply not represented.
+Notice that the third, `NULL`, array value is not represented. Rather, this implied by the _absence_ of any characters between the comma and the right parenthesis delimiters.
 
 Now do this;
 ```postgresql

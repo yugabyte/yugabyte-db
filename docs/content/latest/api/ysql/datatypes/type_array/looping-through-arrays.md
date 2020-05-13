@@ -122,7 +122,7 @@ The next loop shows these things of note:
 - The array type is _"rt[]"_ where _rt_ is a user-defined _"row"_ type.
 - The syntax spot where _"var"_ is used above need not be occupied by a single variable. Rather, _"f1"_ and _"f2"_ are used, to correspond to the fields in _"rt"_.
 - The `FOREACH` loop is followed by a _"cursor"_ loop whose `SELECT` statement uses `unnest()`.
-- The `FOREACH` loop is very much more terse than the _"cursor"_ loop. In particular, you can use the pair of declared variables _"f1"_ and _"f2"_ without any fuss (just as you could have used a single variable _"r"_ of type _"rt"_ without any fuss) as the iterator. YSQL looks after the proper assignment in both cases. But when you use `unnest()`, you have to look after this yourself.
+- The `FOREACH` loop is more terse than the _"cursor"_ loop. In particular, you can use the pair of declared variables _"f1"_ and _"f2"_ without any fuss (just as you could have used a single variable _"r"_ of type _"rt"_ without any fuss) as the iterator. YSQL looks after the proper assignment in both cases. But when you use `unnest()`, you have to look after this yourself.
 ```postgresql
 create type rt as (f1 int, f2 text);
 
@@ -369,7 +369,7 @@ The fact that the `SLICE` operand must be a literal means that there are only tw
 - The first approach is to encapsulate some particular range of `SLICE` operand values in an ordinary statically defined function that uses a `CASE` statement to select the `FOREACH` loop that has the required `SLICE` operand literal. This is unsatisfactory because you have to decide the range of `SLICE` operand values that you'll support up front. 
 - The second approach overcomes the limitation of the up front determination of the supported range of `SLICE` operand values by encapsulating code in, a statically defined function, that in turn dynamically generates a function with the required`FOREACH` loop and `SLICE` operand value and that then invokes it dynamically. This is unsatisfactory because it's some effort to implement and test such an approach. But it's unsatisfactory mainly because of the performance cost that dynamic generation and execution brings.
 
-However, the requirements specification for real application code is very unlikely to need more than one, or possibly just a few, specific values for the `SLICE` operand—in other words, simply writing the code you need where you need it will be sufficient for the overwhelming majority of practically important use cases.
+However, the requirements specification for real application code is unlikely to need more than one, or possibly just a few, specific values for the `SLICE` operand. Therefore, in overwhelming majority of practically important use cases, you can write exactly the code you need where you need it.
 
 The code that follows uses the first approach. It's included here because it demonstrates a generically valuable PL/pgSQL programming technique: user-defined functions and procedures with polymorphic formal parameters (in this case `anyarray` and `anyelement`). The examples also use `assert` statements to confirm that the expected relationships hold between these quantities:
 
@@ -491,7 +491,7 @@ begin
 end;
 $body$;
 ```
-You can see that each leg of the `CASE` is "generated" formulaically—albeit manually—by following a simple parameterized pattern. You can use these encapsulations for iterand arrays of any dimensionality. But you must take responsibility for following the rule that the value of the `SLICE` operand must fall within the acceptable range. Otherwise, you'll get the error that was demonstrated above:
+You can see that each leg of the `CASE` is "generated" formulaically—albeit manually—by following a pattern that could be parameterized. You can use these encapsulations for iterand arrays of any dimensionality. But you must take responsibility for following the rule that the value of the `SLICE` operand must fall within the acceptable range. Otherwise, you'll get the error that was demonstrated above:
 ```
 2202E: slice dimension % is out of the valid range 0..%
 ```

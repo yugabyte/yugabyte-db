@@ -28,7 +28,7 @@ There are use cases for which a ragged structure is essential. Most programming 
 Look at the section [Example use case: GPS trip data](../../type_array/#example-use-case-gps-trip-data). It considers the representation of the GPS trips whose recording is broken up into laps, thus:
 
 - Each trip is made up of one or many laps.
-- Each lap is made up of very many GPS data points.
+- Each lap is typically made up of a large number GPS data points.
 
 The representation that was explained in that section met a modest ambition level:
 
@@ -274,7 +274,7 @@ Next, define the block matrix as a matrix of _"matrix_t"_. Assume that similar f
 - The lower bound along each dimension must be `1`.
 - Each of the matrix's values must be `NOT NULL`.
 
-The `CREATE DOMAIN` statement for _"block_matrix_t"_ is therefore very similar to that for _"matrix_t"_:
+The `CREATE DOMAIN` statement for _"block_matrix_t"_ is therefore similar to that for _"matrix_t"_:
 ```postgresql
 create domain block_matrix_t as matrix_t[]
 check (
@@ -290,7 +290,7 @@ check (
   (value[2][2] is not null  )
 );
 ```
-These two `CREATE DOMAIN` statements are uncomfortably verbose and repetitive. But they are sufficient to illustrate the basis of the approach. It would be better, for use in a real application, to encapsulate all the `CHECK` rules in a PL/pgSQL function that takes the `DOMAIN` value as input and that returns a `boolean`, and to use this as a single `CHECK` predicate. The function could simply use the `array_lower()` and  `array_length()` functions to compute the ranges of two nested `FOR` loops to check that the array's individual values all satisfy the `NOT NULL` rule.
+These two `CREATE DOMAIN` statements are uncomfortably verbose and repetitive. But they are sufficient to illustrate the basis of the approach. It would be better, for use in a real application, to encapsulate all the `CHECK` rules in a PL/pgSQL function that takes the `DOMAIN` value as input and that returns a `boolean`, and to use this as a single `CHECK` predicate. The function could use the `array_lower()` and  `array_length()` functions to compute the ranges of two nested `FOR` loops to check that the array's individual values all satisfy the `NOT NULL` rule.
 
 ### Using the "block_matrix_t" DOMAIN
 
@@ -367,7 +367,7 @@ This is the result (after manual whitespace formatting):
   }
 }
 ```
-**Note:** The annotations _"block_matrix"_, and so on, are just that. Because they are _within_ the `text` value, they are simply part of that value and therefore render it illegal. They were added manually just to highlight the meaning of the overall `text` value.
+**Note:** The annotations _"block_matrix"_, and so on, are just that. Because they are _within_ the `text` value, they are part of that value and therefore render it illegal. They were added manually just to highlight the meaning of the overall `text` value.
 
 Finally, check that even this exotic structure conforms to the universal rule, copied from the section [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
 

@@ -156,7 +156,7 @@ from tab
 \set unnest_arg '\'':result_arr'\'::int[]'
 \echo :unnest_arg
 ```
-Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This simply makes the `ysqlsh` output less noisy. This is the result:
+Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This makes the `ysqlsh` output less noisy. This is the result:
 
 ```
 '{{1,2,3},{4,5,6},{7,8,9}}'::int[]
@@ -290,7 +290,7 @@ create table masters_with_details (
   master_name text not null,
   details details_t[] not null);
 ```
-Notice that you made the _"details"_ column `not null`. This was a choice. It adds semantics that are very hard to capture in the original two table design without tricky, and therefore error-prone, programming of triggers and the like. You have implemented the so-called _"mandatory one-to-many"_ rule. In the present example, the rule says (in the context of the entity-relationship model that specifies the requirements) that an occurrence of a _"Master"_ entity type cannot exist unless it has at least one, but possibly many, child occurrences of a _"Detail"_ entity type.
+Notice that you made the _"details"_ column `not null`. This was a choice. It adds semantics that are notoriously difficult to capture in the original two table design without tricky, and therefore error-prone, programming of triggers and the like. You have implemented the so-called _"mandatory one-to-many"_ rule. In the present example, the rule says (in the context of the entity-relationship model that specifies the requirements) that an occurrence of a _"Master"_ entity type cannot exist unless it has at least one, but possibly many, child occurrences of a _"Detail"_ entity type.
 
 Next, populate the new table and inspect its contents:
 ```postgresql
@@ -518,4 +518,4 @@ The more complex, but semantically equivalent, locution is used as a workaround 
 ```postgresql
 create unique index on details(master_pk, detail_name);
 ```
-To achieve the effect in the new regime, you'd need to write a PL/pgSQL function, with return type `boolean` that scans the values in the _"details"_ array and returns `TRUE` when there are no duplicates among the values of the _"detail&#95;name"_ field and that otherwise returns `FALSE`. Then you'd use this function as the basis for a check constraint in the definition of the _"details&#95;with&#95;masters"_ table. This is a straightforward programming task, but it does take more effort than the simple declarative implementation of the business rule that the two-table regime allows.
+To achieve the effect in the new regime, you'd need to write a PL/pgSQL function, with return type `boolean` that scans the values in the _"details"_ array and returns `TRUE` when there are no duplicates among the values of the _"detail&#95;name"_ field and that otherwise returns `FALSE`. Then you'd use this function as the basis for a check constraint in the definition of the _"details&#95;with&#95;masters"_ table. This is a straightforward programming task, but it does take more effort than the declarative implementation of the business rule that the two-table regime allows.

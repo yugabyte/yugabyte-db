@@ -32,7 +32,7 @@ select pg_typeof(array_fill(null::text, '{1}')) as "type of the new array";
 
 The shape of the new array is, therefore, fully specified by the second and third parameters.
 
-**Note:** Why does `array_fill()` exist? In other words, why not simply set the values that you want by directly indexing each cell and assigning the value you want to it? Recall that, as described in [Synopsis](../../#synopsis), an array value is rectilinear. This means that its shape, when its number of dimensions exceeds one, is non-negotiably fixed at creation time. This `DO` block emphasizes the point.
+**Note:** Why does `array_fill()` exist? In other words, why not just set the values that you want by directly indexing each cell and assigning the value you want to it? Recall that, as described in [Synopsis](../../#synopsis), an array value is rectilinear. This means that its shape, when its number of dimensions exceeds one, is non-negotiably fixed at creation time. This `DO` block emphasizes the point.
 
 ```postgresql
 do $body$
@@ -59,7 +59,7 @@ It shows this (after manually stripping the _"INFO:"_ prompt):
 cardinality(a), cardinality(b): 1, 12
 ```
 
-So the array _"a"_ is stuck as a possibly not very useful singleton cell.
+So the array _"a"_ is stuck as one dimensional, one-by-one value.
 
 **Example:**
 

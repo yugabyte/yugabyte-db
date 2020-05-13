@@ -22,7 +22,7 @@ The statement of these rules depends on understanding the notion of the canonica
 
 In fact, this definition, and the property that the canonical form of the literal is sufficient to recreate the value, hold for values of _all_ data types.
 
-Recall that every value within an array necessarily has the same data type. If you follow the rules that are stated here, and illustrated in the demonstrations below, you will always produce a syntactically valid literal which expresses the semantics that you intend. It turns out that very many other variants, especially for `text[]` arrays, are legal and can produce the values that you intend. However, the rules that govern these exotic uses will not documented because it is always sufficient to create your literals in canonical form.
+Recall that every value within an array necessarily has the same data type. If you follow the rules that are stated here, and illustrated in the demonstrations below, you will always produce a syntactically valid literal which expresses the semantics that you intend. It turns out that many other variants, especially for `text[]` arrays, are legal and can produce the values that you intend. However, the rules that govern these exotic uses will not documented because it is always sufficient to create your literals in canonical form.
 
 Here is the sufficient set of rules.
 
@@ -33,12 +33,12 @@ Here is the sufficient set of rules.
 ```
    <space>   {   }   ,   "   \
 ```
-- It's sufficient simply to write the curly braces and the comma ordinarily within the enclosing double quotes. But each of the double quote character and the backslash character must be escaped with an immediately preceding single backslash.
+- It's sufficient to write the curly braces and the comma ordinarily within the enclosing double quotes. But each of the double quote character and the backslash character must be escaped with an immediately preceding single backslash.
 
 
 ## Always write array literals in canonical form
 
-Bear in mind that you will very rarely manually type literals in the way that this section does to demonstrate the rules. You'll do this only when teaching yourself, when prototyping new code, or when debugging. Rather, you'll typically create the literals programmatically—often in a client-side program that parses out the data values from, for example, an XML text file or, these days, probably a JSON text file. In these scenarios, the target array is likely to have the data type _"some_user_defined_row_type[]"_. And when you create literals programmatically, you want to use the simplest rules that work and you have no need at all to omit arguably unnecessary double quote characters.
+Bear in mind that you will rarely manually type literals in the way that this section does to demonstrate the rules. You'll do this only when teaching yourself, when prototyping new code, or when debugging. Rather, you'll typically create the literals programmatically—often in a client-side program that parses out the data values from, for example, an XML text file or, these days, probably a JSON text file. In these scenarios, the target array is likely to have the data type _"some_user_defined_row_type[]"_. And when you create literals programmatically, you want to use the simplest rules that work and you have no need at all to omit arguably unnecessary double quote characters.
 
 **Yugabyte recommends that the array literals that you generate programmatically are always spelled using the canonical representations**
 
@@ -159,7 +159,7 @@ It silently produces this presumably unintended result (an array of _four_ numer
 ```
  {9,123.456,-8,456.789}
 ```
-In an array literal (or in a _"row"_ type value literal), there is simply no way to accommodate forms that cannot be directly typecast. (The same holds for `timestamp` values as for `numeric` values.) YSQL inherits this limitation from PostgreSQL. It is the user's responsibility to work around this when preparing the literal because, of course, functions like _"to_number()"_ cannot be used within literals. Functions can, however, be used in a value constructor as the [`array[]` value constructor](../../array-constructor/) section shows.
+In an array literal (or in a _"row"_ type value literal), there is no way to accommodate forms that cannot be directly typecast. (The same holds for `timestamp` values as for `numeric` values.) YSQL inherits this limitation from PostgreSQL. It is the user's responsibility to work around this when preparing the literal because, of course, functions like _"to_number()"_ cannot be used within literals. Functions can, however, be used in a value constructor as the [`array[]` value constructor](../../array-constructor/) section shows.
 
 ### One-dimensional array of text values
 
