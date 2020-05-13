@@ -182,10 +182,14 @@ auto regex_fetch_first = [&out](const std::string& exp) -> Result<std::string> {
 };
 
 ASSERT_OK(call_admin({"list_all_masters"}));
+const auto lines1 = StringSplit(out, '\n');
+ASSERT_EQ(lines1.size(), kNumInitMasters + 1);
 const auto new_leader_id = ASSERT_RESULT(
         regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+FOLLOWER)"));
 ASSERT_OK(call_admin({"master_leader_stepdown", new_leader_id}));
 ASSERT_OK(call_admin({"list_all_masters"}));
+const auto lines2 = StringSplit(out, '\n');
+ASSERT_EQ(lines2.size(), kNumInitMasters + 1);
 ASSERT_EQ(new_leader_id, ASSERT_RESULT(
         regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+\S+\s+LEADER)")));
 }
