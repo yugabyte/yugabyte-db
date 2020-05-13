@@ -443,7 +443,7 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
   auto call_admin = [
       &out,
       admin_path = GetAdminToolPath(),
-      aster_address = ToString(cluster_->master()->bound_rpc_addr())] (
+      master_address = ToString(cluster_->master()->bound_rpc_addr())] (
       const std::initializer_list<std::string>& args) mutable {
     auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
     std::copy(args.begin(), args.end(), std::back_inserter(cmds));
