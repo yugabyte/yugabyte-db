@@ -60,7 +60,7 @@ showAsideToc: true
     ```
 
     ```
-    Python 2.7.10
+    Python 3.7.3
     ```
 
 3. `wget` or `curl` is available.
