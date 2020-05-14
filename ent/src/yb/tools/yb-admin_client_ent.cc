@@ -82,7 +82,7 @@ using master::SysTablesEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
-Status ClusterAdminClient::ListSnapshots(bool show_details) {
+Status ClusterAdminClient::ListSnapshots(bool show_details, bool not_show_restored) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
   ListSnapshotsRequestPB req;
@@ -149,8 +149,14 @@ Status ClusterAdminClient::ListSnapshots(bool show_details) {
     cout << "No snapshot restorations" << endl;
   }
 
+  if (not_show_restored) {
+    cout<< "Not show fully RESTORED entries." << endl;
+  }
+
   for (const SnapshotInfoPB& snapshot : rest_resp.restorations()) {
-    cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
+    if (!not_show_restored || snapshot.entry().state != "RESTORED") {
+      cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
+    }
   }
 
   return Status::OK();

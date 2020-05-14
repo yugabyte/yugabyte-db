@@ -40,7 +40,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "list_snapshots", " [SHOW_DETAILS] [NOT_SHOW_RESTORED]",
       [client](const CLIArguments& args) -> Status {
         bool show_details = false;
-        bool not_show_restored=false;
+        bool not_show_restored = false;
         if (args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
@@ -57,7 +57,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           }
         }
 
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details,not_show_restored),
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details, not_show_restored),
                               "Unable to list snapshots");
         return Status::OK();
       });
