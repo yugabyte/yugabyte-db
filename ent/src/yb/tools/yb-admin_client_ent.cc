@@ -154,7 +154,8 @@ Status ClusterAdminClient::ListSnapshots(bool show_details, bool not_show_restor
   }
 
   for (const SnapshotInfoPB& snapshot : rest_resp.restorations()) {
-    if (!not_show_restored || snapshot.entry().state() != "RESTORED") {
+    if (!not_show_restored ||
+        snapshot.entry().state() != master::SysSnapshotEntryPB_State_RESTORED) {
       cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
     }
   }
