@@ -143,14 +143,14 @@ Status ClusterAdminClient::ListSnapshots(bool show_details, bool not_show_restor
   ListSnapshotRestorationsResponsePB rest_resp;
   RETURN_NOT_OK(master_backup_proxy_->ListSnapshotRestorations(rest_req, &rest_resp, &rpc));
 
+  if (not_show_restored) {
+    cout<< "Not show fully RESTORED entries." << endl;
+  }
+
   if (rest_resp.restorations_size()) {
     cout << RightPadToUuidWidth("Restoration UUID") << kColumnSep << "State" << endl;
   } else {
     cout << "No snapshot restorations" << endl;
-  }
-
-  if (not_show_restored) {
-    cout<< "Not show fully RESTORED entries." << endl;
   }
 
   for (const SnapshotInfoPB& snapshot : rest_resp.restorations()) {
