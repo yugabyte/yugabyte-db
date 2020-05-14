@@ -88,7 +88,7 @@ cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
-The command above builds the release configuration, puts the C++ binaries in `build/release-gcc-dynamic-community`, and creates the `build/latest` symlink to that directory.
+The command above builds the release configuration, puts the C++ binaries in `build/release-clang-dynamic-ninja`, and creates the `build/latest` symlink to that directory.
 
 {{< tip title="Tip" >}}
 
