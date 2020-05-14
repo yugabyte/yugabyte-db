@@ -100,6 +100,15 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
                                 String optPass,
                                 ProtocolOptions.Compression compression,
                                 boolean expectFailure) {
+    checkConnectivityWithMessage(usingAuth, optUser, optPass, compression, expectFailure, "");
+  }
+
+  public void checkConnectivityWithMessage(boolean usingAuth,
+                                           String optUser,
+                                           String optPass,
+                                           ProtocolOptions.Compression compression,
+                                           boolean expectFailure,
+                                           String expectedMessage) {
     // Use superclass definition to not have a default set of credentials.
     Cluster.Builder cb = super.getDefaultClusterBuilder();
     Cluster c = null;
@@ -118,6 +127,7 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     } catch (com.datastax.driver.core.exceptions.AuthenticationException e) {
       // If we're expecting a failure, we should be in here.
       assertTrue(expectFailure);
+      assertTrue(e.getMessage().contains(expectedMessage));
     }
     c.close();
   }

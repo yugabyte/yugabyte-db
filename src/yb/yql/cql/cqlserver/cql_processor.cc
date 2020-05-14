@@ -493,20 +493,27 @@ CQLResponse* CQLProcessor::ProcessResult(const ExecutedResult::SharedPtr& result
           } else {
             const auto& row = row_block->row(0);
             const auto& schema = row_block->schema();
-            const auto& saved_hash =
-                row.column(schema.find_column(kRoleColumnNameSaltedHash)).string_value();
+
+            const QLValue& salted_hash_value =
+                row.column(schema.find_column(kRoleColumnNameSaltedHash));
             const auto& can_login =
                 row.column(schema.find_column(kRoleColumnNameCanLogin)).bool_value();
-            if (!can_login) {
-              return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
-                  params.username + " is not permitted to log in");
-            } else if (bcrypt_checkpw(params.password.c_str(), saved_hash.c_str())) {
+            // Username doesn't have a password, but one is required for authentication. Return
+            // an error.
+            if (salted_hash_value.IsNull()) {
               return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
                   "Provided username " + params.username + " and/or password are incorrect");
-            } else {
-              call_->ql_session()->set_current_role_name(params.username);
-              return new AuthSuccessResponse(*request_, "" /* this does not matter */);
             }
+            const auto& saved_hash = salted_hash_value.string_value();
+            if (bcrypt_checkpw(params.password.c_str(), saved_hash.c_str())) {
+              return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
+                  "Provided username " + params.username + " and/or password are incorrect");
+            } else if (!can_login) {
+              return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
+                                       params.username + " is not permitted to log in");
+            }
+            call_->ql_session()->set_current_role_name(params.username);
+            return new AuthSuccessResponse(*request_, "" /* this does not matter */);
           }
           break;
         }
