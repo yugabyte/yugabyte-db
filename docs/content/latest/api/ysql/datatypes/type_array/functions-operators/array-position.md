@@ -12,7 +12,7 @@ showAsideToc: false
 ---
 These functions require that the to-be-searched array is one-dimensional. They return the index values of the specified to-be-searched-for value in the specified to-be-searched array.
 
-Create `view v` now. The examples below use it.
+Create _"view v"_ now. The examples below use it.
 ```postgresql
 create view v as
 select array[
@@ -27,6 +27,7 @@ select array[
   ]::text
 as arr;
 ```
+
 ## array_position()
 
 **Purpose:** Return the index, in the supplied array, of the specified value. Optionally, starts searching at the specified index.

@@ -16,13 +16,13 @@ For one-dimensional arrays, but _only for these_ (see [Multidimensional `array_a
 array_agg of "SETOF tuples #1" => "result array"
 unnest of "result array" => "SETOF tuples #3"
 ```
-The `SETOF tuples #3` has identical shape and content to that of `SETOF tuples #1`. And the data type of `result array` is an array of the data type of the tuples.
+The _"SETOF tuples #3"_ has identical shape and content to that of "_SETOF tuples #1"_. And the data type of _"result array"_ is an array of the data type of the tuples.
 
 For this reason, the two functions, `array_agg()` and `unnest()`, are described in the same section.
 
 ## array_agg()
 
-In normal use, `array_agg()` is applied to the _select list_ from a physical table, or maybe from a view that encapsulates the query. This is shown in the _"[Realistic use case](./#realistic-use-case)"_ example below. But first, you can demonstrate the functionality without creating and populating a table by using, instead, the `values` statement. Try this:
+In normal use, `array_agg()` is applied to the `SELECT` list from a physical table, or maybe from a view that encapsulates the query. This is shown in the _"[Realistic use case](./#realistic-use-case)"_ example below. But first, you can demonstrate the functionality without creating and populating a table by using, instead, the `VALUES` statement. Try this:
 
 ```postgresql
 values
@@ -39,77 +39,77 @@ It produces this result:
        2 | cat
        3 | ant
 ```
-Notice that YSQL has named the _select list_ items `column1` and `column2`. The result is a so-called `SETOF`. It means a set of rows, just as is produced by a `SELECT` statement. (You'll see this word if you describe the `generate_series()` built-in table function with the `\df` metacommand.) To use the rows that the `values` statement produces as the input for `array_agg()`, you need to use a named `type`, thus:
+Notice that YSQL has named the `SELECT` list items _"column1"_ and _"column2_". The result is a so-called `SETOF`. It means a set of rows, just as is produced by a `SELECT` statement. (You'll term if you describe the `generate_series()` built-in table function with the `\df` metacommand.) To use the rows that the `VALUES` statement produces as the input for `array_agg()`, you need to use a named `type`, thus:
 ```postgresql
-create type rt as (k int, v text);
+create type rt as (f1 int, f2 text);
 
 with tab as (
   values
     (1::int, 'dog'::text),
     (2::int, 'cat'::text),
     (3::int, 'ant'::text))
-select array_agg((column1, column2)::rt order by column1) as array_literal
+select array_agg((column1, column2)::rt order by column1) as arr
 from tab;
 ```
 It produces this result:
 ```
-          array_literal          
+               arr               
 ---------------------------------
  {"(1,dog)","(2,cat)","(3,ant)"}
 ```
-You recognize this as the text of the literal that represents an array of tuples that are shape-compatible with type rt. Recall from the [`array[]` constructor](../../array-constructor/) section that this value doesn't encode the type name. In fact, you could typecast it to any shape compatible type.
+You recognize this as the text of the literal that represents an array of tuples that are shape-compatible with _"type rt"_. The underlying notions that explain what is seen here are explained in the section [The non-lossy round trip: value to `text` typecast and back to value](../../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value).
+
+Recall from the [`array[]` constructor](../../array-constructor/) section that this value doesn't encode the type name. In fact, you could typecast it to any shape compatible type.
 
 You can understand the effect of `array_agg()` thus:
 
-- Treat each row as a `rt[]` array with a single-value.
-- Concatenate (see the [`||` operator](../concatenation/#the-operator)) the values from all the rows in the specified order into a new `rt[]` array.
+./functions-operators/concatenation/#the-160-160-160-160-160-160-operator
+
+- Treat each row as a _"rt[]"_ array with a single-value.
+- Concatenate (see the [`||` operator](../concatenation/#the-160-160-160-160-160-160-operator)) the values from all the rows in the specified order into a new _"rt[]"_ array.
 
 This code illustrates this point:
 ```postgresql
--- Eqivalent to this:
+-- Consider this SELECT:
 with tab as (
   values
     ((1, 'dog')::rt),
     ((2, 'cat')::rt),
-    ((3, 'ant')::rt)
-  )
-select array_agg(column1 order by column1) as array_literal
+    ((3, 'ant')::rt))
+select array_agg(column1 order by column1) as arr
 from tab;
 
--- Can be seen as this:
-with tab as (
-  values
-    ((1, 'dog')::rt),
-    ((2, 'cat')::rt),
-    ((3, 'ant')::rt)
-  )
+-- It can be seen as equivalent this SELECT:
 select
   array[(1, 'dog')::rt] ||
   array[(2, 'cat')::rt] ||
   array[(3, 'ant')::rt]
 as arr;
 ```
-To prepare for the demonstration of `unnest()`, save this single-valued result into a `ysqlsh` variable by using the `\gset` metacommand. This takes a single argument, conventionally spelled with a trailing underscore (for example, `result_`) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the _select list_ has _N_ members, called `c1` through `cN`, each of these values is stored in automatically-created variables called `result_c1` through `result_cN`.
+Each of the three _"select... as arr"_ queries above produces the same result, as was shown after the first of them. This demonstrates their semantic equivalence.
+
+To prepare for the demonstration of `unnest()`, save the single-valued result from the most recent of the three queries (but any one of them would do) into a `ysqlsh` variable by using the `\gset` metacommand. This takes a single argument, conventionally spelled with a trailing underscore (for example, _"result&#95;"_) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the `SELECT` list has _N_ members, called _"c1"_ through _"cN"_, each of these values is stored in automatically-created variables called _"result&#95;c1"_ through _"result&#95;cN"_.
 
 if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how it works in the section [Meta-commands](../../../../../../admin/ysqlsh/#meta-commands) within the major section on `ysqlsh`.
 
-Immediately after running the `with... select array_agg(...) as array_literal...` query above, do this:
+Immediately after running the _"with... select array_agg(...) as arr..."_ query above, do this:
 
 ```postgresql
 \gset result_
-\echo :result_array_literal
+\echo :result_arr
 ```
 The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 ```
 {"(1,dog)","(2,cat)","(3,ant)"}
 ```
 The text of the literal is now available for re-use, as was intended.
+
 ## unnest()
 
-As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of `array_agg()` set in the `ysqlsh` variable `result_array_literal` in a SQL statement, you must quote it and typecast it to `rt[]`. This is easily done with the `\set` metacommand, thus:
+As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of array_agg() set in the `ysqlsh` variable _"result&#95;arr"_ in a SQL statement, you must quote it and typecast it to _"rt[]"_. This is easily done with the \set metacommand, thus:
 
 ```postgresql
-\set unnest_arg '\'':result_array_literal'\'::rt[]'
+\set unnest_arg '\'':result_arr'\'::rt[]'
 \echo :unnest_arg
 ```
 
@@ -123,15 +123,15 @@ with
   rows as (
     select unnest(:unnest_arg) as rec)
 select
-  (rec).k,
-  (rec).v
+  (rec).f1,
+  (rec).f2
 from rows
 order by 1;
 ```
-The parentheses around the column alias `rec` are required to remove what the SQL compiler would otherwise see as an ambiguity, and would report as a _"42P01 undefined_table"_ error. This is the result:
+The parentheses around the column alias _"rec"_ are required to remove what the SQL compiler would otherwise see as an ambiguity, and would report as a _"42P01 undefined_table"_ error. This is the result:
 
 ```
- k |  v  
+ f1 |  f2  
 ---+-----
  1 | dog
  2 | cat
@@ -149,14 +149,14 @@ with tab as (
     ('{1, 2, 3}'::int[]),
     ('{4, 5, 6}'::int[]),
     ('{7, 8, 9}'::int[]))
-select array_agg(column1 order by column1) as array_literal
+select array_agg(column1 order by column1) as arr
 from tab
 
 \gset result_
-\set unnest_arg '\'':result_array_literal'\'::int[]'
+\set unnest_arg '\'':result_arr'\'::int[]'
 \echo :unnest_arg
 ```
-Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This simply makes the `ysqlsh` output less noisy. This is the result:
+Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This makes the `ysqlsh` output less noisy. This is the result:
 
 ```
 '{{1,2,3},{4,5,6},{7,8,9}}'::int[]
@@ -185,9 +185,9 @@ This `SETOF` result lists all of the input array's "leaf" values in row-major or
 Notice that, for the multidimensional case, the original input to `array_agg()` was _not_, therefore, regained. This point is emphasized by aggregating the result:
 
 ```postgresql
-with v as
+with a as
   (select unnest(:unnest_arg) as val)
-select array_agg(val order by val) from v;
+select array_agg(val order by val) from a;
 ```
 It produces this result:
 ```
@@ -208,12 +208,13 @@ It produces this result:
 -------------------
  1,2,3,4,5,6,7,8,9
 ```
+See the section [Looping through arrays in PL/pgSQL](../../looping-through-arrays/). This shows how you can use the `FOREACH` loop in procedural code, with an appropriate value for the `SLICE` operand, to unnest an array into a set of subarrays whose dimensionality you can choose. At one end of the range, you can mimmic `unnest()` and produce scalar values. At the other end of the range, you can produce a set of arrays with dimensionality `n - 1` where `n` is the dimensionality of the input array.
 
 ## Realistic use case
 
 The basic illustration of the functionality of `array_agg()` showed how it can convert the entire contents of a table (or, by extension, the `SETOF` rows defined by a `SELECT` execution) into a single array value. This can be useful to return a large `SELECT` result in its entirety (in other words, in a single round trip) to a client program.
 
-Another use is to populate a single newly-created _"masters_with_details"_ table from the fully projected and unrestricted _inner join_ of a classic _"masters"_ and _"details"_ pair of tables. The new table has all the columns that the source _"masters"_ table has and all of its rows. And it has an additional _"details"_ column that holds, for each _"masters"_ row, a _"details_t[]"_ array that represents all of the child rows that it has in the source _"details"_ table. The type _"details_t"_ has all of the columns of the _"details"_ table except the _"details.masters_pk"_ foreign key column. This column vanishes because, as the _join_ column, it vanishes in the _"inner join"_. The _"details"_ table's "payload" is now held in place in a single multivalued field in the new _"masters_with_details"_ table.
+Another use is to populate a single newly-created _"masters_with_details"_ table from the fully projected and unrestricted `INNER JOIN` of a classic _"masters"_ and _"details"_ pair of tables. The new table has all the columns that the source _"masters"_ table has and all of its rows. And it has an additional _"details"_ column that holds, for each _"masters"_ row, a _"details_t[]"_ array that represents all of the child rows that it has in the source _"details"_ table. The type _"details&#95;t"_ has all of the columns of the _"details"_ table except the _"details.masters_pk"_ foreign key column. This column vanishes because, as the _join_ column, it vanishes in the `INNER JOIN`. The _"details"_ table's "payload" is now held in place in a single multivalued field in the new _"masters&#95;with&#95;details"_ table.
 
 Start by creating and populating the _"masters"_ and _"details"_ tables:
 ```postgresql
@@ -279,7 +280,7 @@ This is the result:
          3 | Joze        |   2 | duck
          3 | Joze        |   3 | turkey
 ```
-Next, create the type `details_t` and the new table:
+Next, create the type _"details&#95;t"_ and the new table:
 
 ```postgresql
 create type details_t as (seq int, detail_name text);
@@ -289,7 +290,7 @@ create table masters_with_details (
   master_name text not null,
   details details_t[] not null);
 ```
-Notice that you made the _"details"_ column `not null`. This was a choice. It adds semantics that are very hard to capture in the original two table design without tricky, and therefore error-prone, programming of triggers and the like. You have implemented the so-called _"mandatory one-to-many"_ rule. In the present example, the rule says (in the domain of the entity-relationship model that specifies the requirements) that an occurrence of a _"Master"_ entity type cannot exist unless it has at least one, but possibly many, child occurrences of a _"Detail"_ entity type.
+Notice that you made the _"details"_ column `not null`. This was a choice. It adds semantics that are notoriously difficult to capture in the original two table design without tricky, and therefore error-prone, programming of triggers and the like. You have implemented the so-called _"mandatory one-to-many"_ rule. In the present example, the rule says (in the context of the entity-relationship model that specifies the requirements) that an occurrence of a _"Master"_ entity type cannot exist unless it has at least one, but possibly many, child occurrences of a _"Detail"_ entity type.
 
 Next, populate the new table and inspect its contents:
 ```postgresql
@@ -313,7 +314,7 @@ This is the result:
          2 | Mary        | {"(1,rabbit)","(2,hare)","(3,squirrel)","(4,horse)"}
          3 | Joze        | {"(1,swan)","(2,duck)","(3,turkey)"}
 ```
-Here's a helper function to show the primitive values that the `details_t[]` array encodes without the clutter of the array literal syntax:
+Here's a helper function to show the primitive values that the _"details&#95;t[]"_ array encodes without the clutter of the array literal syntax:
 
 ```postgresql
 create function pretty_details(arr in details_t[])
@@ -344,7 +345,7 @@ begin
 end;
 $body$;
 ```
-Notice that this is not a general purpose function. Rather, it expects that the input is a `details_t` array. So it first checks that this pre-condition is met. It then discovers the lower and upper bounds of the array so that it can loop over its values. It uses these functions for reporting the geometric properties of the input array: [`array_ndims()`](../../functions-operators/properties/#array-ndims); [`array_lower()`](../../functions-operators/properties/#array-lower); and [`array_upper()`](../../functions-operators/properties/#array-upper).
+Notice that this is not a general purpose function. Rather, it expects that the input is a _"details&#95;t[]"_ array. So it first checks that this pre-condition is met. It then discovers the lower and upper bounds of the array so that it can loop over its values. It uses these functions for reporting the geometric properties of the input array: [`array_ndims()`](../../functions-operators/properties/#array-ndims); [`array_lower()`](../../functions-operators/properties/#array-lower); and [`array_upper()`](../../functions-operators/properties/#array-upper).
 
 Invoke it like this:
 
@@ -386,7 +387,7 @@ from new_data
 order by
 master_pk, seq;
 ```
-The result is identical to what the _"original_data"_ view represents. But rather than relying on visual inspection, can check that the _"new_data"_ view and the the _"original_data"_ view represent the identical result by using SQL thus:
+The result is identical to what the _"original&#95;data"_ view represents. But rather than relying on visual inspection, can check that the _"new&#95;data"_ view and the the _"original&#95;data"_ view represent the identical result by using SQL thus:
 ```postgresql
 with
   original_except_new as (
@@ -423,17 +424,17 @@ This is the result:
 ---------------------------------------------
  "new_data" is identical to "original_data."
 ```
-Notice that if you choose the _"masters_with_details"_ approach (either as a migration from a two-table approach in an extant application, or as an initial choice in a new application) you must appreciate the trade-offs.
+Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either as a migration from a two-table approach in an extant application, or as an initial choice in a new application) you must appreciate the trade-offs.
 
 **Prerequisite:**
 
-- You must be confident that the _"details"_ rows are genuinely private each to its own master and do not implement a many-to-many relationship in the way that the _"order_items"_ table does between the _"customers"_ table and the _"items"_ table in the classic sales order entry model that is frequently used to teach table design according to the relational model.
+- You must be confident that the _"details"_ rows are genuinely private each to its own master and do not implement a many-to-many relationship in the way that the _"order&#95;items"_ table does between the _"customers"_ table and the _"items"_ table in the classic sales order entry model that is frequently used to teach table design according to the relational model.
 
 **Pros:**
 
 - You can enforce the mandatory one-to-many requirement declaratively and effortlessly.
 - Changing and querying the data will be faster because you use single table, single-row access rather than two-table, multi-row access.
-- You can trivially recapture the query functionality of the two-table approach by implementing a _"new_data"_ unnesting view as has been shown. So you can still find, for example, rows in the _"masters_with_details"_ table where the "details" array has the specified values like this:
+- You can trivially recapture the query functionality of the two-table approach by implementing a _"new&#95;data"_ unnesting view as has been shown. So you can still find, for example, rows in the _"masters&#95;with&#95;details"_ table where the _"details"_ array has the specified values like this:
 ```postgresql
 with v as (
   select master_pk, master_name, seq, detail_name
@@ -455,7 +456,7 @@ order by 1;
          3 | Joze        | {"(2,duck)","(3,turkey)"}
 ```
 **Cons:**
-- Changing the data in the "details" array is rather difficult. Try this (in the two-table regime):
+- Changing the data in the _"details"_ array is rather difficult. Try this (in the two-table regime):
 ```postgresql
 update details
 set detail_name = 'bobcat'
@@ -481,7 +482,7 @@ master_pk, seq;
          2 | Mary        |   3 | bobcat
          2 | Mary        |   4 | horse
 ```
-- Here's how you achieve the same effect, and check that it worked as intended, in the new regime. Notice that you need to know the value of _"seq"_ for the _"rt"_ object that has the _"detail_name"_ value of interest. This is easy to do by implementing a dedicated PL/pgSQL function that encapsulates `array_replace()` or that replaces a value directly by addressing it using its index. But it's hard to do without that. (These methods are described in [`array_replace()` and setting an array value explicitly](../../functions-operators/replace-a-value/).)
+- Here's how you achieve the same effect, and check that it worked as intended, in the new regime. Notice that you need to know the value of _"seq"_ for the _"rt"_ object that has the _"detail&#95;name"_ value of interest. This is easy to do by implementing a dedicated PL/pgSQL function that encapsulates `array_replace()` or that replaces a value directly by addressing it using its index. But it's hard to do without that. (These methods are described in [`array_replace()` and setting an array value explicitly](../../functions-operators/replace-a-value/).)
 
 ```postgresql
 with v as (
@@ -501,7 +502,7 @@ where master_pk = 2
 order by
 master_pk, seq;
 ```
-&#160;&#160;&#160;&#160;The result is identical to the result shown for querying _"original_data"_ above.
+&#160;&#160;&#160;&#160;The result is identical to the result shown for querying _"original&#95;data"_ above.
 
 **Note:** The `UPDATE` statement, using as it does a subquery from a view defined in a `WITH` clause as the actual argument for `array_replace()`, seems to be unnecessarily complex. You might expect to use this:
 
@@ -513,8 +514,8 @@ where master_pk = 2;
 
 The more complex, but semantically equivalent, locution is used as a workaround for [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296). For more information, see [`array_replace()`](../replace-a-value/#array-replace). The code above will be updated when that issue is fixed.
 
-- Implementing the requirement that the values of _"detail_name"_ must be unique for a given _"masters"_ row is trivial in the old regime:
+- Implementing the requirement that the values of _"detail&#95;name"_ must be unique for a given _"masters"_ row is trivial in the old regime:
 ```postgresql
 create unique index on details(master_pk, detail_name);
 ```
-To achieve the effect in the new regime, you'd need to write a PL/pgSQL function, with return type `boolean` that scans the values in the _"details"_ array and returns `true` when there are no duplicates among the values of the _"detail_name"_ field and that otherwise returns `false`. Then you'd use this function as the basis for a check constraint in the definition of the _"details_with_masters"_ table. This is a straightforward programming task, but it does take more effort than the simple declarative implementation of the business rule that the two-table regime allows.
+To achieve the effect in the new regime, you'd need to write a PL/pgSQL function, with return type `boolean` that scans the values in the _"details"_ array and returns `TRUE` when there are no duplicates among the values of the _"detail&#95;name"_ field and that otherwise returns `FALSE`. Then you'd use this function as the basis for a check constraint in the definition of the _"details&#95;with&#95;masters"_ table. This is a straightforward programming task, but it does take more effort than the declarative implementation of the business rule that the two-table regime allows.

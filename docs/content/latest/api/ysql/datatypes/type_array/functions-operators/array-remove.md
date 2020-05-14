@@ -47,7 +47,7 @@ This is the result of the two queries:
 
 The example suffers from the problem that [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296) tracks. (This same issue also affects the concatenation operator and the `array_replace()` function.) If you run this example as presented, then the `UPDATE` statement causes an error that causes the client session to terminate. But, when you restart it, an attempt to execute the _"new value of arr"_ query causes an error.
 
-This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, simply by creating `table t` without a primary key constraint. But this violates proper practice. Here is a viable workaround. Simply use this `UPDATE` statement instead of the one shown above:
+This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, by creating _"table t"_ without a primary key constraint. But this violates proper practice. Here is a viable workaround. Use this `UPDATE` statement instead of the one shown above:
 
 ```postgresql
 with v as (

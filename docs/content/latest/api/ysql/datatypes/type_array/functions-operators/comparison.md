@@ -13,7 +13,7 @@ showAsideToc: false
 
 ## Comparison operators overview
 
-**Purpose:** Each of the comparison operators returns `true` or `false` according to the outcome of the particular comparison test between the input [LHS and RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) arrays.
+**Purpose:** Each of the comparison operators returns `TRUE` or `FALSE` according to the outcome of the particular comparison test between the input [LHS and RHS](https://en.wikipedia.org/wiki/Sides_of_an_equation) arrays.
 
 **Signature**
 
@@ -23,7 +23,7 @@ These operators all have the same signature, thus:
 input value:       anyarray, anyarray
 return value:      boolean
 ```
-**Note:** These operators require that the LHS and RHS arrays have the same data type. (It's the same rule for the comparison of scalars.) However, they do _not_ require that the arrays have identical geometric properties. Rules are defined so that a difference between one or more of these properties does not mean that they are necessarily simply unequal. Rather, the LHS array might be deemed to be less than, or greater than, the RHS array. It's essential, therefore, to understand the comparison algorithm.
+**Note:** These operators require that the LHS and RHS arrays have the same data type. (It's the same rule for the comparison of scalars.) However, they do _not_ require that the arrays have identical geometric properties. Rules are defined so that a difference between one or more of these properties does not mean that comparison is disallowed. Rather, the LHS array might be deemed to be less than, or greater than, the RHS array. It's essential, therefore, to understand the comparison algorithm.
 
 ### Comparison criteria
 
@@ -34,7 +34,7 @@ These are the unique characteristics of an array with respect to the algorithm t
 - the number of dimensions
 - the lower bound on each dimension.
 
-The term "row-major order"_ is explained in the [Joint semantics](./functions-operators/properties/#joint-semantics)) section within the _"Functions for reporting the geometric properties of an array"_ section.
+The term _"row-major order"_ is explained in the section [Joint semantics](../properties/#joint-semantics) within the section _"Functions for reporting the geometric properties of an array"_.
 
 The other geometric properties (the length and upper bound along each dimension) can be derived from the properties that the bullets list..
 
@@ -43,9 +43,9 @@ There is, of course, a well-defined priority among the comparisons. Briefly, val
 
 ### Pairwise comparison of values
 
-The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [Joint semantics](../functions-operators/properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `is not distinct from` semantics. Moreover, when a `not null` array value is pairwise compared with a `null` value, the `not null` value is deemed to be _less than_ the `null` value.
+The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [Joint semantics](../functions-operators/properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `IS NOT DISTINCT FROM` semantics. Moreover, when a `not null` array value is pairwise compared with a `NULL` value, the `not null` value is deemed to be _less than_ the `NULL` value.
 
-Notice the contrast with the `=` operator comparison rule for free-standing scalar values. This comparison uses `null` semantics but, of course, lets you use `is not distinct from` comparison if this better suits your purpose. 
+Notice the contrast with the `=` operator comparison rule for free-standing scalar values. This comparison uses `NULL` semantics but, of course, lets you use `IS NOT DISTINCT FROM` comparison if this better suits your purpose. 
 
 Otherwise, the comparison rules are the same as those for scalar values and, by extension, with those for, for example, _"row"_ type values.
 
@@ -73,10 +73,10 @@ The [Containment and overlap operators semantics](./#containment-and-overlap-ope
 
 ## Examples for each operator
 
-### The `=` and `<>` operator
+### The&#160;&#160;&#160;=&#160;&#160;&#160;and&#160;&#160;&#160;<>&#160;&#160;&#160;operators
 
-- The `=` operator returns `true` if the LHS and RHS arrays are equal.
-- The `<>` operator is the natural complement: it returns `true` if the LHS and RHS arrays are not equal.
+- The `=` operator returns `TRUE` if the LHS and RHS arrays are equal.
+- The `<>` operator is the natural complement: it returns `TRUE` if the LHS and RHS arrays are not equal.
 
 ```postgresql
 with
@@ -112,15 +112,15 @@ This is the result:
  true
 ```
 
-### The `>` and `>=` and `<=` and `<` and `<>` operators
+### The&#160;&#160;&#160;>&#160;&#160;&#160;and&#160;&#160;&#160;>=&#160;&#160;&#160;and&#160;&#160;&#160;<=&#160;&#160;&#160;and&#160;&#160;&#160;<&#160;&#160;&#160;and&#160;&#160;&#160;<>&#160;&#160;&#160;operators
 
 These four operators implement the familiar inequality comparisons.
-- The `>` operator returns `true` if the LHS array is greater than the RHS array.
-- The `>=` operator returns `true` if the LHS array is greater than or equal to the RHS array.
-- The `<=` operator returns `true` if the LHS array is less than or equal to the RHS array.
-- The `<` operator returns `true` if the LHS array is less than the RHS array.
+- The `>` operator returns `TRUE` if the LHS array is greater than the RHS array.
+- The `>=` operator returns `TRUE` if the LHS array is greater than or equal to the RHS array.
+- The `<=` operator returns `TRUE` if the LHS array is less than or equal to the RHS array.
+- The `<` operator returns `TRUE` if the LHS array is less than the RHS array.
 
-It's sufficient, therefore, to provide a simple example for just the `<` operator.
+It's sufficient, therefore, to provide an example for just the `<` operator.
 ```postgresql
 with
   v as (
@@ -141,10 +141,10 @@ This is the result:
  true                            | true
 ```
 
-### The `@>` and `<@` operators
+### The&#160;&#160;&#160;@>&#160;&#160;&#160;and&#160;&#160;&#160;<@&#160;&#160;&#160;operators
 
-- The `@>` operator returns `true` if the LHS array contains the RHS array—that is, if every distinct value in the RHS array is found among the LHS array's distinct values.
-- The `<@` operator is the natural complement: it returns `true` if every distinct value in the LHS array is found among the RHS array's distinct values.
+- The `@>` operator returns `TRUE` if the LHS array contains the RHS array—that is, if every distinct value in the RHS array is found among the LHS array's distinct values.
+- The `<@` operator is the natural complement: it returns `TRUE` if every distinct value in the LHS array is found among the RHS array's distinct values.
 
 ```postgresql
 with
@@ -165,9 +165,9 @@ This is the result:
  true                       | true
 ```
 
-### The `&&` operator
+### The&#160;&#160;&#160;&&&#160;&#160;&#160;operator
 
-The `&&` operator returns `true` if the LHS and RHS arrays overlap—that is, if they have at least one value in common. The definition of this operator makes it insensitive to which of the two to-be-compared is used on the LHS and which is used on the RHS.
+The `&&` operator returns `TRUE` if the LHS and RHS arrays overlap—that is, if they have at least one value in common. The definition of this operator makes it insensitive to which of the two to-be-compared is used on the LHS and which is used on the RHS.
 
 ```postgresql
 with
@@ -216,7 +216,7 @@ begin
   ------------------------------------------------------------------------------
   -- Basic demonstration of equaliy when the geom. properties of
   -- the two arrays are identical.
-  -- Shows that pairwise comparison uses ""IS NOT DISTINCT FROM" semantics and NOT
+  -- Shows that pairwise comparison uses "IS NOT DISTINCT FROM" semantics and NOT
   -- the conventional NULL semantics used when scalars are compared.
   declare
     a constant int[] := '{10, null, 30}';
@@ -419,8 +419,6 @@ begin
 end;
 $body$;
 ```
-
-
 
 ## Containment and overlap operators semantics
 

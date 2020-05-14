@@ -54,7 +54,7 @@ This is the result of the two queries:
 ```
 The example suffers from the problem that [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296) tracks. (This same issue also affects the concatenation operator and the `array_remove()` function.) If you run this example as presented, then the `UPDATE` statement causes a timeout error of a severity that means that, to continue, you must restart the crashed tserver..
 
-This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, simply by creating `table t` without a primary key constraint. But this violates proper practice. Here is a viable workaround. Simply use this `UPDATE` statement instead of the one shown above:
+This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, by creating _"table t"_ without a primary key constraint. But this violates proper practice. Here is a viable workaround. Use this `UPDATE` statement instead of the one shown above:
 
 ```postgresql
 with v as (
@@ -90,7 +90,7 @@ $body$;
 
 _One-dimensional array of _"row"_ type values_.
 
-The definition of `rt` used here is the same as the example above used. Don't create again if it already exists.
+The definition of _"rt"_ used here is the same as the example above used. Don't create again if it already exists.
 
 ```postgresql
 create type rt as (f1 int, f2 text);
@@ -216,7 +216,7 @@ This is the result:
 ```
 **Semantics:**
 
-_Array of primitive scalar values_. Notice that the starting value is "snapshotted" as `old_arr` and that this is marked `constant`. Notice too that `expected_modified_arr` is marked `constant`. This proves that the modification was done in place within the only array value that is _not_ marked `constant`.
+_Array of primitive scalar values_. Notice that the starting value is "snapshotted" as `old_arr` and that this is marked `constant`. Notice too that _"expected_modified_arr"_ is marked `constant`. This proves that the modification was done in place within the only array value that is _not_ marked `constant`.
 
 ```postgresql
 do $body$
@@ -239,7 +239,7 @@ $body$;
 ```
 _Array of "record" type values_.
 
-The definition of `rt` used here is the same as the example above used. Don't create again if it already exists.
+The definition of _"rt"_ used here is the same as the example above used. Don't create again if it already exists.
 ```postgresql
 create type rt as (f1 int, f2 text);
 

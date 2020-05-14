@@ -34,8 +34,9 @@ The sufficient set of rules can be stated tersely:
 
 - Therefore, to avoid wrongly escaping the double quotes that will surround the parentheses,
 
-  -  *first*, do the inner escaping
-  - and only then, surround the complete representation for the _"row"_ type value with unescaped double quotes.
+  - _first_, do the inner escaping
+
+  - _and only then_, surround the complete representation for the _"row"_ type value with unescaped double quotes.
 
 - Finish off with the closing right curly brace.
 
@@ -51,7 +52,7 @@ First, create the _"row"_ type:
 ```postgresql
 create type rt as (n int, s text, t timestamp, b boolean);
 ```
-Next, you create a table with a column with data type `rt` so that you can populate it with six rows that jointly, in their `text` fields, use all of the "challenging" characters listed above:
+Next, you create a table with a column with data type _"rt"_ so that you can populate it with six rows that jointly, in their `text` fields, use all of the "challenging" characters listed above:
 ```postgresql
 create table t1(k int primary key, v rt);
 ```
@@ -114,7 +115,7 @@ This is the result:
  (6,"\\","2006-01-20 12:10:05",)
 ```
 
-The `int` field and the `timestamp` field are unremarkable given only that you understand that the representation of the `timestamp` values, in order to meet the canonical form requirement, must be double-quoted. The `boolean` fields are unremarkable, too, as long as you remember that `null` is represented by leaving no space between the delimiters that surround that field. This leaves just the `text` fields for consideration. Here are the field representations themselves, without the clutter of the delimiters:
+The `int` field and the `timestamp` field are unremarkable given only that you understand that the representation of the `timestamp` values, in order to meet the canonical form requirement, must be double-quoted. The `boolean` fields are unremarkable, too, as long as you remember that `NULL` is represented by leaving no space between the delimiters that surround that field. This leaves just the `text` fields for consideration. Here are the field representations themselves, without the clutter of the delimiters:
 ```
      " "     ","     "("     ")"     """"     "\\"
 ```
@@ -136,7 +137,7 @@ insert into t2(k, v1)
 select 1, array_agg(v order by k) from t1;
 ```
 
-The `\get` technique that you used in the earlier sections is not viable here because there's an upper limit on its size. So, instead insert the literal that you produce by `text` typecasting `t2.v1` into the companion `v1_text_typecast` field in the same table, like this:
+The `\get` technique that you used in the earlier sections is not viable here because there's an upper limit on its size. So, instead insert the literal that you produce by `text` typecasting _"t2.v1"_ into the companion _"v1&#95;text&#95;typecast"_ field in the same table, like this:
 
 
 ```postgresql
@@ -177,13 +178,13 @@ The result that's produced is too hard to read without some manual introduction 
 
 With some effort, you'll see that this is indeed the properly formed canonical representation for the literal for an array of _"row"_ type values that the rules set out above specify.
 
-## Multidimensional array of _"row"_ type values
+## Multidimensional array of "row" type values
 
 You can work out the rules for a multidimensional array of _"row"_ type values, should you need these, by straightforward induction from what has already been explained this enclosing [Create an array value using a literal](../../literals/) section.
 
-## Pseudocode for generating the literal for a one-dimensional array of _"row"_ type values
+## Pseudocode for generating the literal for a one-dimensional array of "row" type values
 
-This pseudocode shows how to create an array literal of _"row"_ type values that have the same shape as `type rt` in the example above. The input is a succession of an arbitrary number of `(n, s, t, b)` tuples. The text below was derived by straightforward manual massage from actual working, and tested, Python code. The code was written simply an an exercise to verify the correctness of the algorithm.
+This pseudocode shows how to create an array literal of _"row"_ type values that have the same shape as _"type rt"_ in the example above. The input is a succession of an arbitrary number of _"(n, s, t, b)"_ tuples. The text below was derived by straightforward manual massage from actual working, and tested, Python code. The code was written as an exercise to verify the correctness of the algorithm.
 
 The pseudocode does retain Python locutions, but don't be distracted by this. The meaning is clear enough to allow the algorithm r=to be described. The various special characters were all set up as manifest constants with self-describing names.
 
