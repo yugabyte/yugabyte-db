@@ -2,7 +2,7 @@
 title: EXPLAIN statement [YCQL]
 headerTitle: EXPLAIN
 linkTitle: EXPLAIN
-description: Use the EXPLAIN statement to show the execution plan for an YCQL statement.
+description: Use the EXPLAIN statement to show the execution plan for a YCQL statement.
 summary: EXPLAIN
 menu:
   latest:
