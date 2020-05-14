@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `EXPLAIN` statement to show the execution plan for an statement.
+Use the `EXPLAIN` statement to show the execution plan for a statement.
 
 ## Syntax
 
