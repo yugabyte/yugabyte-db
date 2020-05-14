@@ -12,9 +12,9 @@ isTocNested: false
 showAsideToc: false
 ---
 
-This section establishes some basic notions that have a much broader scope of applicability than just arrays. But, because using array literals very much rests on these notions, they  are summarized here.
+This section establishes some basic notions that have a much broader scope of applicability than just arrays. But, because using array literals rests on these notions, they are summarized here.
 
-## The non-lossy round trip: value to text typecast and back to value.
+## The non-lossy round trip: value to text typecast and back to value
 
 Consider this pattern:
 ```
@@ -37,8 +37,15 @@ It demonstrates a universal rule that YSQL inherits from PostgreSQL:
 - If you `::text` typecast a value of any data type and then typecast that `text` value to the original value's data type, then the value that you get is identical to the original value.
 
 The following `DO` block applies the pattern using a representative range of both primitive and composite data types. (The data type `text`, as the degenerate case, is not included.) It also displays the value of the `::text` typecast for each data type.
+
+Notice that the last test uses an array whose data type is the user-created `DOMAIN` _"int_arr_t"_. The section [Using an array of `DOMAIN` values](../../array-of-domains/) explains this notion. This is a real stress-tests of the rule.
+
 ```postgresql
+-- Needed by the '1-d array of "row" type values' test.
 create type rt as (n numeric, s text, t timestamp, b boolean);
+
+-- Needed by the 'Ragged array' test.
+create domain int_arr_t as int[];
 
 do $body$
 begin
@@ -92,9 +99,9 @@ begin
 
   -- "row" type
   declare
-    original   constant rt   not null := row(42.1763, 'dog house', now(), true);
-    text_cast  constant text not null := original::text;
-    recreated  constant rt   not null := text_cast::rt;
+    original   constant rt    not null := row(42.1763, 'dog house', now(), true);
+    text_cast  constant text  not null := original::text;
+    recreated  constant rt    not null := text_cast::rt;
   begin
     assert
       (recreated = original),
@@ -104,9 +111,9 @@ begin
 
   -- 2-d array
   declare
-    original   constant int[]   not null := array[array[1, 2], array[3, 4]];
-    text_cast  constant text not null := original::text;
-    recreated  constant int[]   not null := text_cast::int[];
+    original   constant int[]  not null := array[array[1, 2], array[3, 4]];
+    text_cast  constant text   not null := original::text;
+    recreated  constant int[]  not null := text_cast::int[];
   begin
     assert
       (recreated = original),
@@ -116,23 +123,37 @@ begin
 
   -- 1-d array of "row" type values
   declare
-    original   constant rt[]   not null :=
+    original   constant rt[]  not null :=
       array[
         row(42.1763, 'dog house', now(),                    true),
         row(19.8651, 'cat flap',  now() + interval '1' day, false)
       ];
-    text_cast  constant text   not null := original::text;
-    recreated  constant rt[]   not null := text_cast::rt[];
+    text_cast  constant text  not null := original::text;
+    recreated  constant rt[]  not null := text_cast::rt[];
   begin
     assert
       (recreated = original),
     'assert failed';
     raise info 'array of "row" type:  %', text_cast;
   end;
+
+  -- Ragged array: 1-d array of 1-da arrays of different lengths.
+  declare
+    arr_1      constant int_arr_t    not null := array[1, 2];
+    arr_2      constant int_arr_t    not null := array[3, 4, 5];
+    original   constant int_arr_t[]  not null := array[arr_1, arr_2];
+    text_cast  constant text         not null := original::text;
+    recreated  constant int_arr_t[]  not null := text_cast::int_arr_t[];
+  begin
+    assert
+      (recreated = original),
+    'assert failed';
+    raise info 'array of arrays:      %', text_cast;
+  end;
 end;
 $body$;
 ```
-It produces this result (after manually removing the `INFO:` prompt on each output line.
+It produces this result (after manually removing the _"INFO:"_ prompt on each output line.
 ```
 numeric:              42.1763
 timestamp:            2020-05-03 22:25:42.932771
@@ -141,10 +162,17 @@ boolean:              true
 "row" type:           (42.1763,"dog house","2020-05-03 22:25:42.932771",t)
 2-d array             {{1,2},{3,4}}
 array of "row" type:  {"(42.1763,\"dog house\",\"2020-05-03 22:25:42.932771\",t)","(19.8651,\"cat flap\",\"2020-05-04 22:25:42.932771\",f)"}
+array of arrays:      {"{1,2}","{3,4,5}"}
 ```
-The remaining sections in [Creating an array value using a literal](../../literals/) explain the syntax of the last three `text` values.
+The section [Multidimensional array of `int` values](../array-of-primitive-values/#multidimensional-array-of-int-values) explains the syntax of the _2-d array_ `text` value.
 
-## boolean values show special text forms in `ysqlsh`
+The section [The literal for a _"row"_ type value](../row/) explains the syntax of the _"row" type_ `text` value.
+
+And the section [The literal for an array of "row" type values](../array-of-rows/) explains the syntax of the value: array of _"row" type_ `text` value.
+
+Notice how the syntax for the _array of arrays_ `text` value compares with the syntax for the _2-d array_ `text` value. Because the _array of arrays_ is ragged, the two inner `{}` pairs contain respectively two and three values. To distinguish between this case and the ordinary rectilinear case, the inner `{}` pairs are surrounded by double quotes.
+
+## boolean values show special text forms in ysqlsh
 
 Try this:
 ```postgresql
@@ -156,11 +184,11 @@ This is the result:
 -----------+------------
  t         | true
 ```
-For all but `boolean` values, the string of characters that `ysqlsh` uses to display any value is the `::text` typecast of that value. (After all, the only feasible means of display is strings of characters.) But uniquely for the two `boolean` values `true` and `false` it uses the single characters `t` and `f` rather than their `::text` typecasts—unless you explicitly write the typecast. 
+For all but `boolean` values, the string of characters that `ysqlsh` uses to display any value is the `::text` typecast of that value. (After all, the only feasible means of display is strings of characters.) But uniquely for the two `boolean` values denoted by the keywords `TRUE` and `FALSE` it uses the single characters `t` and `f` rather than their `::text` typecasts—unless you explicitly write the typecast. 
 
 This behavior is inherited from `psql`.
 
-You saw above that even when you explicitly `::text` typecast a composite value, `true` and `false` are represented as `t` and `f`. You can't influence this outcome because it has to do with the rules for deriving the `text` of the typecast and _not_ with the convention that `ysqlsh` uses. This asymmetry was established many years ago, and it will not change.
+You saw above that even when you explicitly `::text` typecast a composite value, `TRUE` and `FALSE` are represented as `t` and `f`. You can't influence this outcome because it has to do with the rules for deriving the `text` of the typecast and _not_ with the convention that `ysqlsh` uses. This asymmetry was established many years ago, and it will not change.
 
 ## The relationship between the text typecast of a value and the literal that creates that value
 
@@ -224,7 +252,7 @@ Here is the general rule.
 - This rule is applied recursively, for the literal for a composite value, but with different actual rules at different levels of nesting. For example, the literal for an array value as a whole must be typecasted. But, because the data type of every value in the array is already determined, the bare text that specifies these values is _not_ typecasted.
 - The `::text` typecast of any value can always be used as the bare text of the literal that will recreate that value.
 
-A simple way to see examples of the bare text that specifies an array value, when used as a component in the literal, is to create the value using the constructor and then to inspect its `::text` typecast. But the safe way to create the text of a literal for an intended value is to understand the syntax and semantics that govern its composition.
+You can see examples of the text of the literal that creates an array value by creating the value using the constructor and then inspecting its `::text` typecast. But the safe way to create the text of a literal for an intended value is to understand the syntax and semantics that govern its composition.
 
 When this difference is important, the _"Array data types and functionality"_ major section distinguishes between:
 
@@ -237,6 +265,6 @@ When this difference is important, the _"Array data types and functionality"_ ma
 
 The term _"canonical form"_ applies specifically to the _text of a literal_ rather than to the _literal as a whole_. But when the text of a literal is in canonical form, the literal as a whole, too, is in canonical form.
 
-The canonical form of the text of a literal that produces a specific value, of any data type, is simply the `::text` typecast of that value.
+The canonical form of the text of a literal that produces a specific value, of any data type, is the `::text` typecast of that value.
 
 Many of the examples in this _"Array data types and functionality"_ major section show that many spellings of the text of an array literal, in addition to the canonical form, will produce a particular intended target value. The differences are due to how whitespace, punctuation, and escape characters are used.

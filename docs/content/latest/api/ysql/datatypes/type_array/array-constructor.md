@@ -42,11 +42,11 @@ This is the result:
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
-Whenever an array value is shown in `ysqlsh`, it is implicitly `::text` typecasted. And this `text` value can be used immediately, simply by enquoting it and typecasting it to the appropriate array data type, to recreate the starting value. The YSQL documentation refers to this form of the literal as its _canonical form_. It is characterized by its complete lack of whitespace except within `text` scalar values and within date-time scalar values. This term is defined formally in [Defining the canonical form of a literal](../literals/text-typecasting-and-literals/#defining-the-canonical-form-of-a-literal).
+Whenever an array value is shown in `ysqlsh`, it is implicitly `::text` typecasted. And this `text` value can be used immediately, by enquoting it and typecasting it to the appropriate array data type, to recreate the starting value. The YSQL documentation refers to this form of the literal as its _canonical form_. It is characterized by its complete lack of whitespace except within `text` scalar values and within date-time scalar values. This term is defined formally in [Defining the canonical form of a literal](../literals/text-typecasting-and-literals/#defining-the-canonical-form-of-a-literal).
 
 To learn why you see four consecutive backslashes, see [Statement of the rules](../literals/array-of-rows/#statement-of-the-rules).
 
-Users who are familiar with the rules that are described in that section often find it expedient, for example when prototyping code that builds an array literal, simply to create an example value first, _ad hoc_, using the `array[]` constructor, like the code above does, to see an example of the syntax that their code must create programmatically.
+Users who are familiar with the rules that are described in that section often find it expedient, for example when prototyping code that builds an array literal, to create an example value first, _ad hoc_, using the `array[]` constructor, like the code above does, to see an example of the syntax that their code must create programmatically.
 
 ## Using the array[] constructor in PL/pgSQL code
 
@@ -55,7 +55,7 @@ The example below attempts to make many teaching points in one piece of code.
 - The actual syntax, when the expressions that the `array[]` constructor uses are all literals, is far simpler than the syntax that governs how to construct an array literal.
 - You can use all of YSQL's array functionality in PL/pgSQL code, just as you can in SQL statements. The code creates and invokes a table function, and not just a `DO` block, to emphasize this interoperability point.
 - Array-like functionality is essential in any programming language.
-- The `array[]` constructor is most valuable when the expressions that it uses are composed using declared variables, and especially formal parameters, that are used to build whatever values are intended. In this example, the values have the user-defined data type `rt`. In other words, the `array[]` constructor is particularly valuable when you build an array programmatically from scalar values that you know first at run time.
+- The `array[]` constructor is most valuable when the expressions that it uses are composed using declared variables, and especially formal parameters, that are used to build whatever values are intended. In this example, the values have the user-defined data type _"rt"_. In other words, the `array[]` constructor is particularly valuable when you build an array programmatically from scalar values that you know first at run time.
 - It vividly demonstrates the semantic effect of the `array[]` constructor like this:
 ```
 declare
