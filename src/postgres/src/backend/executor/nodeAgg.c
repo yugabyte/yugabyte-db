@@ -1648,6 +1648,8 @@ yb_agg_pushdown(AggState *aggstate)
 		pushdown_aggs = lappend(pushdown_aggs, aggref);
 	}
 	scan_state->yb_fdw_aggs = pushdown_aggs;
+	/* Disable projection for tuples produced by pushed down aggregate operators. */
+	scan_state->ss.ps.ps_ProjInfo = NULL;
 }
 
 /*

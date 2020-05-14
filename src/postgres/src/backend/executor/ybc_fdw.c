@@ -416,7 +416,11 @@ ybcSetupScanTargets(ForeignScanState *node)
 				foreach(lc_arg, aggref->args)
 				{
 					TargetEntry *tle = lfirst_node(TargetEntry, lc_arg);
-					int attno = castNode(Var, tle->expr)->varattno;
+					/*
+					 * Use original attribute number (varoattno) instead of projected one (varattno)
+					 * as projection is disabled for tuples produced by pushed down operators.
+					 */
+					int attno = castNode(Var, tle->expr)->varoattno;
 					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
 					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
 
