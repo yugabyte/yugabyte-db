@@ -130,6 +130,16 @@ cqlsh:imdb> EXPLAIN SELECT *
  Index Scan using imdb.best_rated on imdb.movie_stats
    Key Conditions: (user_rank = '5') AND (movie_genre = 'g2')
 ```
+
+{{< note title="Note" >}}
+
+**INDEX SCAN** filters rows using the index and then fetches the columns from the main table.
+
+While **INDEX ONLY SCAN** returns results by only consulting the index.
+
+{{< /note >}}
+
+
 ### Other explain select types
 We don’t support QLName() for these expressions yet
 ```CQL
