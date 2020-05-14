@@ -738,8 +738,9 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     return;
   }
 
-  const SchemaPtr tablet_schema = tablet.peer->tablet_metadata()->schema();
-  uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
+  auto table_info = tablet.peer->tablet_metadata()->primary_table_info();
+  const Schema& tablet_schema = table_info->schema;
+  uint32_t schema_version = table_info->schema_version;
   // Sanity check, to verify that the tablet should have the same schema
   // specified in the request.
   Schema req_schema;
@@ -752,7 +753,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   // If the schema was already applied, respond as succeeded.
   if (!req->has_wal_retention_secs() && schema_version == req->schema_version()) {
 
-    if (req_schema.Equals(*tablet_schema)) {
+    if (req_schema.Equals(tablet_schema)) {
       context.RespondSuccess();
       return;
     }
@@ -761,7 +762,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     if (schema_version == req->schema_version()) {
       LOG(ERROR) << "The current schema does not match the request schema."
                  << " version=" << schema_version
-                 << " current-schema=" << tablet_schema->ToString()
+                 << " current-schema=" << tablet_schema.ToString()
                  << " request-schema=" << req_schema.ToString()
                  << " (corruption)";
       SetupErrorAndRespond(resp->mutable_error(),
@@ -776,7 +777,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     LOG(ERROR) << "Tablet " << req->tablet_id() << " has a newer schema "
                << " version=" << schema_version
                << " req->schema_version()=" << req->schema_version()
-               << "\n current-schema=" << tablet_schema->ToString()
+               << "\n current-schema=" << tablet_schema.ToString()
                << "\n request-schema=" << req_schema.ToString() << " (wtf?)";
     SetupErrorAndRespond(
         resp->mutable_error(),
@@ -788,7 +789,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   }
 
   VLOG(1) << "Tablet updating schema from "
-          << " version=" << schema_version << " current-schema=" << tablet_schema->ToString()
+          << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
           << " to request-schema=" << req_schema.ToString();
   auto operation_state = std::make_unique<ChangeMetadataOperationState>(
       tablet.peer->tablet(), tablet.peer->log(), req);

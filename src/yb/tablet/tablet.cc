@@ -419,7 +419,8 @@ Tablet::Tablet(const TabletInitData& data)
     mem_tracker_->SetMetricEntity(metric_entity_);
   }
 
-  bool has_index = !metadata_->index_map()->empty();
+  auto table_info = metadata_->primary_table_info();
+  bool has_index = !table_info->index_map.empty();
   if (txns_enabled_ &&
       data.transaction_participant_context &&
       (is_sys_catalog_ || data.metadata->schema()->table_properties().is_transactional())) {
@@ -439,15 +440,15 @@ Tablet::Tablet(const TabletInitData& data)
   }
 
   // If this is a unique index tablet, set up the index primary key schema.
-  if (metadata_->is_unique_index()) {
+  if (table_info->index_info && table_info->index_info->is_unique()) {
     unique_index_key_schema_.emplace();
-    const auto ids = metadata_->index_key_column_ids();
-    CHECK_OK(metadata_->schema()->CreateProjectionByIdsIgnoreMissing(ids,
-                                                                     &*unique_index_key_schema_));
+    const auto ids = table_info->index_info->index_key_column_ids();
+    CHECK_OK(table_info->schema.CreateProjectionByIdsIgnoreMissing(ids,
+                                                                   &*unique_index_key_schema_));
   }
 
   if (data.transaction_coordinator_context &&
-      metadata_->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      table_info->table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
         metadata_->fs_manager()->uuid(),
         data.transaction_coordinator_context,
@@ -1277,20 +1278,21 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
     WriteOperation::StartSynchronization(std::move(operation), txn_op_ctx.status());
     return;
   }
+  auto table_info = metadata_->primary_table_info();
   for (size_t i = 0; i < ql_write_batch->size(); i++) {
     QLWriteRequestPB* req = ql_write_batch->Mutable(i);
     QLResponsePB* resp = operation->response()->add_ql_response_batch();
-    if (metadata_->schema_version() != req->schema_version()) {
-      DVLOG(3) << " On " << metadata_->table_name()
+    if (table_info->schema_version != req->schema_version()) {
+      DVLOG(3) << " On " << table_info->table_name
                << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
-               << metadata_->schema_version() << " vs req's : " << req->schema_version()
+               << table_info->schema_version << " vs req's : " << req->schema_version()
                << " for " << yb::ToString(req);
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
-      DVLOG(3) << "Version matches : " << metadata_->schema_version() << " for "
+      DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
                << yb::ToString(req);
       auto write_op = std::make_unique<QLWriteOperation>(
-          *metadata_->schema(), *metadata_->index_map(), unique_index_key_schema_.get_ptr(),
+          table_info->schema, table_info->index_map, unique_index_key_schema_.get_ptr(),
           *txn_op_ctx);
       auto status = write_op->Init(req, resp);
       if (!status.ok()) {
@@ -1874,13 +1876,14 @@ Status Tablet::RemoveTable(const std::string& table_id) {
 }
 
 Status Tablet::MarkBackfillDone() {
+  auto table_info = metadata_->primary_table_info();
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
-                        << metadata_->schema()->ToString();
+                        << table_info->schema.ToString();
   const vector<DeletedColumn> empty_deleted_cols;
-  Schema new_schema = Schema(*metadata_->schema());
+  Schema new_schema = Schema(table_info->schema);
   new_schema.SetIsBackfilling(false);
   metadata_->SetSchema(
-      new_schema, *(metadata_->index_map()), empty_deleted_cols, metadata_->schema_version());
+      new_schema, table_info->index_map, empty_deleted_cols, table_info->schema_version);
   return metadata_->Flush();
 }
 
@@ -1891,16 +1894,17 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   auto op_pause = PauseReadWriteOperations();
   RETURN_NOT_OK(op_pause);
 
+  auto current_table_info = metadata_->primary_table_info();
   // If the current version >= new version, there is nothing to do.
-  if (metadata_->schema_version() >= operation_state->schema_version()) {
+  if (current_table_info->schema_version >= operation_state->schema_version()) {
     LOG_WITH_PREFIX(INFO)
-        << "Already running schema version " << metadata_->schema_version()
+        << "Already running schema version " << current_table_info->schema_version
         << " got alter request for version " << operation_state->schema_version();
     return Status::OK();
   }
 
   LOG_WITH_PREFIX(INFO) << "Alter schema from " << schema()->ToString()
-                        << " version " << metadata_->schema_version()
+                        << " version " << current_table_info->schema_version
                         << " to " << operation_state->schema()->ToString()
                         << " version " << operation_state->schema_version();
   DCHECK(schema_lock_.is_locked());
@@ -1927,8 +1931,9 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   metadata_cache_ = boost::none;
 
   // Create transaction manager and index table metadata cache for secondary index update.
-  if (!metadata_->index_map()->empty()) {
-    if (metadata_->schema()->table_properties().is_transactional() && !transaction_manager_) {
+  auto table_info = metadata_->primary_table_info();
+  if (!table_info->index_map.empty()) {
+    if (table_info->schema.table_properties().is_transactional() && !transaction_manager_) {
       transaction_manager_.emplace(client_future_.get(),
                                    scoped_refptr<server::Clock>(clock_),
                                    local_tablet_filter_);
