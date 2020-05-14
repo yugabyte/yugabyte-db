@@ -46,38 +46,16 @@ CentOS 7 is the recommended Linux development and production platform for Yugaby
 
 {{< /note >}}
 
-## Installing necessary packages
+## Install necessary packages
 
 Update packages on your system, install development tools and additional packages:
 
 ```sh
 sudo apt-get update
-sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build libssl1.0
+sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build \
+                     cmake curl rsync python-pip zip autoconf libtool \
+                     pkg-config libssl1.0-dev libicu-dev bison flex
 ```
-
-## Getting build tools ready
-
-Make sure `cmake` / `ctest` binaries are at least version 3. On Ubuntu, one way to achieve this is to symlink them into `/usr/local/bin`.
-
-```sh
-sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
-sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
-```
-
-You could also symlink them into another directory that is on your `PATH`.
-
-{{< note title="Note" >}}
-
-We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party dependencies on Ubuntu.
-
-During the build we install Linuxbrew in a separate directory, `~/.linuxbrew-yb-build/linuxbrew-<version>`, so that it does not conflict with any other Linuxbrew installation on your workstation, and does not contain any unnecessary packages that would interfere with the build.
-
-We don't need to add `~/.linuxbrew-yb-build/linuxbrew-<version>/bin` to `PATH`. The build scripts will automatically discover this Linuxbrew installation.
-
-{{< /note >}}
-
-
-## Building the code
 
 Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
 
@@ -86,7 +64,7 @@ cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
-The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-community`, and will also create the `build/latest` symlink to that directory.
+The above command will build the release configuration, put the C++ binaries in `build/release-gcc-dynamic-ninja`, and will also create the `build/latest` symlink to that directory.
 
 
 {{< note title="Note" >}}
@@ -108,8 +86,6 @@ If that doesn't work, look into your $PATH if some other openssl version path is
 You can find the binaries you just built in `build/latest` directory.
 
 {{< /tip >}}
-
-For Linux, it will first make sure our custom Linuxbrew distribution is installed into `~/.linuxbrew-yb-build/linuxbrew-<version>`.
 
 ## Build Java code
 
