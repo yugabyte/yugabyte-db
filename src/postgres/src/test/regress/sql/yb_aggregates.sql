@@ -60,3 +60,35 @@ SELECT COUNT(*), COUNT(a) FROM ybaggtest2;
 
 -- Verify MAX/MIN respect NULL values.
 SELECT MAX(a), MIN(a) FROM ybaggtest2;
+
+CREATE TABLE digit(k INT PRIMARY KEY, v TEXT NOT NULL);
+INSERT INTO digit VALUES(1, 'one'), (2, 'two'), (3, 'three'), (4, 'four'), (5, 'five'), (6, 'six');
+CREATE TABLE test(k INT PRIMARY KEY);
+ALTER TABLE test ADD v1 int DEFAULT 5;
+ALTER TABLE test ADD v2 int DEFAULT 10;
+INSERT INTO test VALUES(1), (2), (3);
+SELECT COUNT(*) FROM test;
+SELECT COUNT(k) FROM test;
+SELECT COUNT(v1) FROM test;
+SELECT COUNT(v2) FROM test;
+SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(v2) AS count FROM test) AS c ON (d.k = c.count);
+INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
+SELECT COUNT(*) FROM test;
+SELECT COUNT(k) FROM test;
+SELECT COUNT(v1) FROM test;
+SELECT COUNT(v2) FROM test;
+SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(*) AS count FROM test) AS c ON (d.k = c.count);
+SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(k) AS count FROM test) AS c ON (d.k = c.count);
+SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(v1) AS count FROM test) AS c ON (d.k = c.count);
+SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(v2) AS count FROM test) AS c ON (d.k = c.count);
+
+DROP TABLE test;
+DROP TABLE digit;
+
+CREATE TABLE test(K INT PRIMARY KEY, v1 INT NOT NULL, v2 INT NOT NULL);
+INSERT INTO test VALUES(1, 1, 1), (2, 2, 2), (3, 3, 3);
+AlTER TABLE test DROP v1;
+SELECT MIN(v2) FROM test;
+SELECT MAX(v2) FROM test;
+SELECT SUM(v2) FROM test;
+SELECT COUNT(v2) FROM test;
