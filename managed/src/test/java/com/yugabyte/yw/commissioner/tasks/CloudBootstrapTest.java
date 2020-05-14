@@ -87,6 +87,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         .thenReturn(Json.parse("{}"));
     when(mockCloudQueryHelper.getZones(any(UUID.class), anyString()))
         .thenReturn(zoneInfo);
+    when(mockCloudQueryHelper.getZones(any(UUID.class), anyString(), anyString()))
+        .thenReturn(zoneInfo);
     String defaultImage = "test_image_id";
     when(mockCloudQueryHelper.getDefaultImage(any(Region.class)))
         .thenReturn(defaultImage);

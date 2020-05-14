@@ -288,7 +288,7 @@ Status MultiStageAlterTable::StartBackfillingData(
   }
   indexed_table->SetIsBackfilling(true);
   auto backfill_table = std::make_shared<BackfillTable>(
-      catalog_manager->master_, catalog_manager->worker_pool_.get(),
+      catalog_manager->master_, catalog_manager->AsyncTaskPool(),
       indexed_table, std::vector<IndexInfoPB>{index_pb});
   backfill_table->Launch();
   return Status::OK();
@@ -731,7 +731,8 @@ Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
     const scoped_refptr<TabletInfo> &tablet) {
   auto call = std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet);
   tablet->table()->AddTask(call);
-  RETURN_NOT_OK_PREPEND(call->Run(), "Failed to send backfill done request");
+  RETURN_NOT_OK_PREPEND(
+      master_->catalog_manager()->ScheduleTask(call), "Failed to send backfill done request");
   return Status::OK();
 }
 

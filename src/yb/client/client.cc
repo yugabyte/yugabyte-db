@@ -60,6 +60,7 @@
 
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
@@ -90,6 +91,8 @@ using yb::master::GetTabletLocationsRequestPB;
 using yb::master::GetTabletLocationsResponsePB;
 using yb::master::IsLoadBalancedRequestPB;
 using yb::master::IsLoadBalancedResponsePB;
+using yb::master::IsLoadBalancerIdleRequestPB;
+using yb::master::IsLoadBalancerIdleResponsePB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::master::ListTablesRequestPB;
@@ -1125,13 +1128,31 @@ Result<bool> YBClient::IsLoadBalanced(uint32_t num_servers) {
   IsLoadBalancedResponsePB resp;
 
   req.set_expected_num_servers(num_servers);
-  // Cannot use CALL_SYNC_LEADER_MASTER_RPC directly since this is susbstituted with RETURN_NOT_OK
+  // Cannot use CALL_SYNC_LEADER_MASTER_RPC directly since this is substituted with RETURN_NOT_OK
   // and we want to capture the status to check if load is balanced.
   Status s = [&, this]() -> Status {
     CALL_SYNC_LEADER_MASTER_RPC(req, resp, IsLoadBalanced);
     return Status::OK();
   }();
   return s.ok();
+}
+
+Result<bool> YBClient::IsLoadBalancerIdle() {
+  IsLoadBalancerIdleRequestPB req;
+  IsLoadBalancerIdleResponsePB resp;
+
+  Status s = [&]() -> Status {
+    CALL_SYNC_LEADER_MASTER_RPC(req, resp, IsLoadBalancerIdle);
+    return Status::OK();
+  }();
+
+  if (s.ok()) {
+    return true;
+  } else if (master::MasterError(s) == master::MasterErrorPB::LOAD_BALANCER_RECENTLY_ACTIVE) {
+    return false;
+  } else {
+    return s;
+  }
 }
 
 Status YBClient::GetTabletsFromTableId(const string& table_id,

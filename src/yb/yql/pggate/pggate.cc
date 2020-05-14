@@ -732,6 +732,17 @@ Status PgApiImpl::ExecInsert(PgStatement *handle) {
   return down_cast<PgInsert*>(handle)->Exec();
 }
 
+Status PgApiImpl::InsertStmtSetUpsertMode(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_INSERT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgInsert*>(handle)->SetUpsertMode();
+
+  return Status::OK();
+}
+
+
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(const PgObjectId& table_id,

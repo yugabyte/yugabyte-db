@@ -55,7 +55,7 @@ class DocDBRocksDBUtil {
 
   const rocksdb::WriteOptions& write_options() const { return write_options_; }
 
-  const rocksdb::Options& options() const { return rocksdb_options_; }
+  const rocksdb::Options& regular_db_options() const { return regular_db_options_; }
 
   CHECKED_STATUS OpenRocksDB();
 
@@ -165,7 +165,8 @@ class DocDBRocksDBUtil {
   }
 
   CHECKED_STATUS DisableCompactions() {
-    rocksdb_options_.compaction_style = rocksdb::kCompactionStyleNone;
+    regular_db_options_.compaction_style = rocksdb::kCompactionStyleNone;
+    intents_db_options_.compaction_style = rocksdb::kCompactionStyleNone;
     return ReopenRocksDB();
   }
 
@@ -187,9 +188,10 @@ class DocDBRocksDBUtil {
  protected:
   std::string IntentsDBDir();
 
-  std::unique_ptr<rocksdb::DB> rocksdb_;
+  std::unique_ptr<rocksdb::DB> regular_db_;
   std::unique_ptr<rocksdb::DB> intents_db_;
-  rocksdb::Options rocksdb_options_;
+  rocksdb::Options regular_db_options_;
+  rocksdb::Options intents_db_options_;
   std::string rocksdb_dir_;
 
   // This is used for auto-assigning op ids to RocksDB write batches to emulate what a tablet would

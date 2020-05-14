@@ -94,7 +94,8 @@ DEFINE_int32(memstore_size_mb, 128,
 
 DEFINE_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
-DEFINE_int32(max_nexts_to_avoid_seek, 1,
+// Empirically 2 is a minimal value that provides best performance on sequential scan.
+DEFINE_int32(max_nexts_to_avoid_seek, 2,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
 DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
@@ -150,6 +151,28 @@ void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
   key_bytes->RemoveValueTypeSuffix(ValueType::kMaxByte);
 }
 
+void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
+                           int* next_count, int* seek_count) {
+  for (int nexts = FLAGS_max_nexts_to_avoid_seek; nexts-- > 0;) {
+    if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
+      if (FLAGS_trace_docdb_calls) {
+        TRACE("Did $0 Next(s) instead of a Seek", nexts);
+      }
+      return;
+    }
+    VLOG(4) << "Skipping: " << SubDocKey::DebugSliceToString(iter->key());
+
+    iter->Next();
+    ++*next_count;
+  }
+
+  if (FLAGS_trace_docdb_calls) {
+    TRACE("Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
+  }
+  iter->Seek(seek_key);
+  ++*seek_count;
+}
+
 void PerformRocksDBSeek(
     rocksdb::Iterator *iter,
     const rocksdb::Slice &seek_key,
@@ -164,24 +187,7 @@ void PerformRocksDBSeek(
     iter->Seek(seek_key);
     ++seek_count;
   } else {
-    for (int nexts = 0; nexts <= FLAGS_max_nexts_to_avoid_seek; nexts++) {
-      if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
-        if (FLAGS_trace_docdb_calls) {
-          TRACE("Did $0 Next(s) instead of a Seek", nexts);
-        }
-        break;
-      }
-      if (nexts < FLAGS_max_nexts_to_avoid_seek) {
-        iter->Next();
-        ++next_count;
-      } else {
-        if (FLAGS_trace_docdb_calls) {
-          TRACE("Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
-        }
-        iter->Seek(seek_key);
-        ++seek_count;
-      }
-    }
+    SeekPossiblyUsingNext(iter, seek_key, &next_count, &seek_count);
   }
   VLOG(4) << Substitute(
       "PerformRocksDBSeek at $0:$1:\n"

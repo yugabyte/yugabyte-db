@@ -129,6 +129,9 @@ class Iterator : public Cleanable {
   //   LSM version used by the iterator. The same format as DB Property
   //   kCurrentSuperVersionNumber. See its comment for more information.
   virtual Status GetProperty(std::string prop_name, std::string* prop);
+
+  // Upper bound was updated and iterator should revalidate its state, since it could change.
+  virtual void RevalidateAfterUpperBoundChange() {}
 };
 
 // Return an empty iterator (yields nothing).

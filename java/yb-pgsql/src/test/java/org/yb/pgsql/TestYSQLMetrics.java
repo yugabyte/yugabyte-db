@@ -92,6 +92,9 @@ public class TestYSQLMetrics extends BasePgSQLTest {
     stat_stmt = stmt;
     verifyStatementStat(statement, stmt, stat_stmt, 1, true);
 
+    // Select uses txn - test reset.
+    verifyStatementStatWithReset(statement, stmt, stat_stmt, 100, 200);
+
     // Non-txn insert.
     stmt      = "INSERT INTO test VALUES (1, 1)";
     stat_stmt = "INSERT INTO test VALUES ($1, $2)";

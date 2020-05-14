@@ -135,9 +135,10 @@ void FlushManager::SendFlushTabletsRequest(const TabletServerId& ts_uuid,
                                            const FlushRequestId& flush_id,
                                            const bool is_compaction) {
   auto call = std::make_shared<AsyncFlushTablets>(
-      master_, catalog_manager_->WorkerPool(), ts_uuid, table, tablet_ids, flush_id, is_compaction);
+      master_, catalog_manager_->AsyncTaskPool(), ts_uuid, table, tablet_ids, flush_id,
+      is_compaction);
   table->AddTask(call);
-  WARN_NOT_OK(call->Run(), "Failed to send flush tablets request");
+  WARN_NOT_OK(catalog_manager_->ScheduleTask(call), "Failed to send flush tablets request");
 }
 
 void FlushManager::HandleFlushTabletsResponse(const FlushRequestId& flush_id,

@@ -10,7 +10,7 @@ menu:
     weight: 2450
 aliases:
   - /latest/admin/yb-master
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 

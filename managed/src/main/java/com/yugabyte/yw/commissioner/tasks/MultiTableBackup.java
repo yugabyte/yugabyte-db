@@ -93,6 +93,7 @@ public class MultiTableBackup extends UniverseTaskBase {
             // If table is not REDIS or YCQL, ignore.
             if (tableSchema.getTableType() == TableType.PGSQL_TABLE_TYPE ||
                 tableSchema.getTableType() == TableType.TRANSACTION_STATUS_TABLE_TYPE) {
+              LOG.info("Skipping backup of table with UUID: " + tableUUID);
               continue;
             }
             BackupTableParams backupParams = populateBackupParams(tableSchema.getNamespace(),

@@ -38,7 +38,7 @@ namespace yb {
 namespace docdb {
 
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
-  return DCHECK_NOTNULL(rocksdb_.get());
+  return DCHECK_NOTNULL(regular_db_.get());
 }
 
 rocksdb::DB* DocDBRocksDBUtil::intents_db() {
@@ -56,12 +56,12 @@ Status DocDBRocksDBUtil::OpenRocksDB() {
   }
 
   rocksdb::DB* rocksdb = nullptr;
-  RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options_, rocksdb_dir_, &rocksdb));
+  RETURN_NOT_OK(rocksdb::DB::Open(regular_db_options_, rocksdb_dir_, &rocksdb));
   LOG(INFO) << "Opened RocksDB at " << rocksdb_dir_;
-  rocksdb_.reset(rocksdb);
+  regular_db_.reset(rocksdb);
 
   rocksdb = nullptr;
-  RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options_, IntentsDBDir(), &rocksdb));
+  RETURN_NOT_OK(rocksdb::DB::Open(intents_db_options_, IntentsDBDir(), &rocksdb));
   intents_db_.reset(rocksdb);
 
   return Status::OK();
@@ -69,7 +69,7 @@ Status DocDBRocksDBUtil::OpenRocksDB() {
 
 void DocDBRocksDBUtil::CloseRocksDB() {
   intents_db_.reset();
-  rocksdb_.reset();
+  regular_db_.reset();
 }
 
 Status DocDBRocksDBUtil::ReopenRocksDB() {
@@ -80,8 +80,8 @@ Status DocDBRocksDBUtil::ReopenRocksDB() {
 Status DocDBRocksDBUtil::DestroyRocksDB() {
   CloseRocksDB();
   LOG(INFO) << "Destroying RocksDB database at " << rocksdb_dir_;
-  RETURN_NOT_OK(rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_));
-  RETURN_NOT_OK(rocksdb::DestroyDB(IntentsDBDir(), rocksdb_options_));
+  RETURN_NOT_OK(rocksdb::DestroyDB(rocksdb_dir_, regular_db_options_));
+  RETURN_NOT_OK(rocksdb::DestroyDB(IntentsDBDir(), intents_db_options_));
   return Status::OK();
 }
 
@@ -168,7 +168,7 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
       doc_write_batch, &rocksdb_write_batch, hybrid_time, decode_dockey, increment_write_id,
       partial_range_key_intents));
 
-  rocksdb::DB* db = current_txn_id_ ? intents_db_.get() : rocksdb_.get();
+  rocksdb::DB* db = current_txn_id_ ? intents_db_.get() : regular_db_.get();
   rocksdb::Status rocksdb_write_status = db->Write(write_options(), &rocksdb_write_batch);
 
   if (!rocksdb_write_status.ok()) {
@@ -186,14 +186,10 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
     block_cache_ = rocksdb::NewLRUCache(cache_size);
   }
 
-  tablet::TabletOptions tablet_options;
-  tablet_options.block_cache = block_cache_;
-  docdb::InitRocksDBOptions(&rocksdb_options_, "" /* log_prefix */, rocksdb::CreateDBStatistics(),
-                            tablet_options);
+  regular_db_options_.statistics = rocksdb::CreateDBStatistics();
+  intents_db_options_.statistics = rocksdb::CreateDBStatistics();
+  RETURN_NOT_OK(ReinitDBOptions());
   InitRocksDBWriteOptions(&write_options_);
-  rocksdb_options_.compaction_filter_factory =
-      std::make_shared<docdb::DocDBCompactionFilterFactory>(
-          retention_policy_, &KeyBounds::kNoBounds);
   return Status::OK();
 }
 
@@ -308,7 +304,7 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
 }
 
 void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
-  DocDBDebugDump(rocksdb_.get(), std::cerr, StorageDbType::kRegular);
+  DocDBDebugDump(regular_db_.get(), std::cerr, StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
@@ -319,19 +315,30 @@ Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
 
 Status DocDBRocksDBUtil::ReinitDBOptions() {
   tablet::TabletOptions tablet_options;
-  docdb::InitRocksDBOptions(&rocksdb_options_, "" /* log_prefix */, rocksdb_options_.statistics,
-                            tablet_options);
+  tablet_options.block_cache = block_cache_;
+  docdb::InitRocksDBOptions(
+      &regular_db_options_, "[R] " /* log_prefix */, regular_db_options_.statistics,
+      tablet_options);
+  docdb::InitRocksDBOptions(
+      &intents_db_options_, "[I] " /* log_prefix */, intents_db_options_.statistics,
+      tablet_options);
+  regular_db_options_.compaction_filter_factory =
+      std::make_shared<docdb::DocDBCompactionFilterFactory>(
+          retention_policy_, &KeyBounds::kNoBounds);
+  if (!regular_db_) {
+    return Status::OK();
+  }
   return ReopenRocksDB();
 }
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
   return DocWriteBatch(
-      DocDB::FromRegularUnbounded(rocksdb_.get()), init_marker_behavior_, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior_, &monotonic_counter_);
 }
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
   return DocWriteBatch(
-      DocDB::FromRegularUnbounded(rocksdb_.get()), init_marker_behavior, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior, &monotonic_counter_);
 }
 
 DocWriteBatch& DocDBRocksDBUtil::DefaultDocWriteBatch() {

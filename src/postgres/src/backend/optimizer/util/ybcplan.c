@@ -26,6 +26,7 @@
 #include "optimizer/ybcplan.h"
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
@@ -224,9 +225,37 @@ void YBCExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
 	YBCExprInstantiateParamsInternal(expr, paramLI, NULL);
 }
 
+/*
+ * Check if the function/procedure can be executed by DocDB (i.e. if we can
+ * pushdown its execution).
+ * The main current limitation is that DocDB's execution layer does not have
+ * syscatalog access (cache lookup) so only specific builtins are supported.q
+ */
+static bool YBCIsSupportedDocDBFunctionId(Oid funcid, Form_pg_proc pg_proc) {
+	if (!is_builtin_func(funcid))
+	{
+		return false;
+	}
 
-static bool YBCIsSupportedDocDBFunctionId(Oid funcid) {
-	return is_builtin_func(funcid);
+	/*
+	 * Polymorhipc pseduo-types (e.g. anyarray) may require additional
+	 * processing (requiring syscatalog access) to fully resolve to a concrete
+	 * type. Therefore they are not supported by DocDB.
+	 */
+	if (IsPolymorphicType(pg_proc->prorettype))
+	{
+		return false;
+	}
+
+	for (int i = 0; i < pg_proc->pronargs; i++)
+	{
+		if (IsPolymorphicType(pg_proc->proargtypes.values[i]))
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has_vars, bool *has_docdb_unsupported_funcs) {
@@ -285,16 +314,18 @@ static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has
 			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for function %u", funcid);
-			char provolatile = ((Form_pg_proc) GETSTRUCT(tuple))->provolatile;
-			ReleaseSysCache(tuple);
-			if (provolatile != PROVOLATILE_IMMUTABLE)
+			Form_pg_proc pg_proc = ((Form_pg_proc) GETSTRUCT(tuple));
+
+			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
 			{
+				ReleaseSysCache(tuple);
 				return false;
 			}
 
-			if (!YBCIsSupportedDocDBFunctionId(funcid)) {
+			if (!YBCIsSupportedDocDBFunctionId(funcid, pg_proc)) {
 				*has_docdb_unsupported_funcs = true;
 			}
+			ReleaseSysCache(tuple);
 
 			/* Checking all arguments are valid (stable). */
 			foreach (lc, args) {

@@ -128,7 +128,7 @@ class ListTableGrid extends Component {
     };
     const actions_disabled = isDisabled(currentCustomer.data.features, "universes.tableActions");
     const formatActionButtons = function(item, row, disabled) {
-      if (!row.isIndexTable) {
+      if (!row.isIndexTable && row.tableType !== "PGSQL_TABLE_TYPE") {
         const actions = [
           <TableAction key={`${row.tableName}-backup-btn`} currentRow={row}
                       actionType="create-backup"

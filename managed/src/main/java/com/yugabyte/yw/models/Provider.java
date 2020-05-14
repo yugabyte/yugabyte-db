@@ -16,7 +16,12 @@ import com.avaje.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
+import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -191,5 +196,33 @@ public class Provider extends Model {
     currentProviderConfig.put("AWS_HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);
     this.save();
+  }
+
+  // Used for GCP providers to pass down region information. Currently maps regions to
+  // their subnets. Only user-input fields should be retrieved here (e.g. zones should
+  // not be included for GCP because they're generated from devops).
+  public CloudBootstrap.Params getCloudParams() {
+    CloudBootstrap.Params newParams = new CloudBootstrap.Params();
+    newParams.perRegionMetadata = new HashMap();
+    if (!this.code.equals(Common.CloudType.gcp.toString())) {
+      return newParams;
+    }
+
+    List<Region> regions = Region.getByProvider(this.uuid);
+    if (regions == null || regions.isEmpty()) {
+      return newParams;
+    }
+
+    for (Region r: regions) {
+      List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(r.uuid);
+      if (zones == null || zones.isEmpty()) {
+        continue;
+      }
+      PerRegionMetadata regionData = new PerRegionMetadata();
+      // For GCP, a subnet is assigned to each region, so we only need the first zone's subnet.
+      regionData.subnetId = zones.get(0).subnet;
+      newParams.perRegionMetadata.put(r.code, regionData);
+    }
+    return newParams;
   }
 }

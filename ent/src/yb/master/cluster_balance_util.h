@@ -33,11 +33,12 @@ struct Options : yb::master::Options {
   string live_placement_uuid;
 };
 
-class ClusterLoadState : public yb::master::ClusterLoadState {
-  typedef yb::master::ClusterLoadState super;
+class PerTableLoadState : public yb::master::PerTableLoadState {
+  typedef yb::master::PerTableLoadState super;
  public:
-  ClusterLoadState() : super() {}
-  virtual ~ClusterLoadState() {}
+  explicit PerTableLoadState(yb::master::GlobalLoadState* global_load_state)
+      : super(global_load_state) {}
+  virtual ~PerTableLoadState() {}
 
   bool IsTsInLivePlacement(TSDescriptor* ts_desc) {
     return ts_desc->placement_uuid() == GetEntOptions()->live_placement_uuid;

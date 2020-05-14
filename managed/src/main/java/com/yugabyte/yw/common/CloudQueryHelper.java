@@ -11,8 +11,10 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -21,8 +23,13 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Singleton;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+
+import play.libs.Json;
 
 @Singleton
 public class CloudQueryHelper extends DevopsBase {
@@ -64,11 +71,19 @@ public class CloudQueryHelper extends DevopsBase {
   }
 
   public JsonNode getZones(UUID regionUUID, String destVpcId) {
+    return getZones(regionUUID, destVpcId, null);
+  }
+
+  public JsonNode getZones(UUID regionUUID, String destVpcId, String customPayload) {
     Region region = Region.get(regionUUID);
     List<String> commandArgs = new ArrayList<String>();
     if (destVpcId != null && !destVpcId.isEmpty()) {
       commandArgs.add("--dest_vpc_id");
       commandArgs.add(destVpcId);
+    }
+    if (customPayload != null && !customPayload.isEmpty()) {
+      commandArgs.add("--custom_payload");
+      commandArgs.add(customPayload);
     }
     return execAndParseCommandRegion(region.uuid, "zones", commandArgs);
   }
@@ -99,10 +114,14 @@ public class CloudQueryHelper extends DevopsBase {
    *   ...
    * }
    */
-  public JsonNode getInstanceTypes(List<Region> regionList) {
+  public JsonNode getInstanceTypes(List<Region> regionList, String customPayload) {
     List<String> commandArgs = new ArrayList<String>();
     commandArgs.add("--regions");
     regionList.forEach(region -> commandArgs.add(region.code));
+    if (customPayload != null && !customPayload.isEmpty()) {
+      commandArgs.add("--custom_payload");
+      commandArgs.add(customPayload);
+    }
     return execAndParseCommandRegion(
         regionList.get(0).uuid, "instance_types", commandArgs);
   }
@@ -114,7 +133,10 @@ public class CloudQueryHelper extends DevopsBase {
 
   public String getDefaultImage(Region region) {
     String defaultImage = null;
+
+    ObjectNode customPayload = Json.newObject();
     JsonNode result = queryVpcs(region.uuid);
+
     JsonNode regionInfo = result.get(region.code);
     if (regionInfo != null) {
       JsonNode defaultImageJson = regionInfo.get(DEFAULT_IMAGE_KEY);

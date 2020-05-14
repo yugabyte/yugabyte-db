@@ -8,13 +8,13 @@ menu:
     identifier: yb-admin
     parent: admin
     weight: 2465
-isTocNested: 4
+isTocNested: true
 showAsideToc: true
 ---
 
 The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
 
-It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-tserver`](../../reference/configuration/yb-tserver/) binaries to perform the necessary administration.
+It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-tserver`](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
 
 ## Syntax
 

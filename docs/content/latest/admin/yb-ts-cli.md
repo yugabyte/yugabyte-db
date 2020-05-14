@@ -8,7 +8,7 @@ menu:
     identifier: yb-ts-cli
     parent: admin
     weight: 2466
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 

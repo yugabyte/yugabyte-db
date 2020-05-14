@@ -316,6 +316,8 @@ YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
+YBCStatus YBCPgInsertStmtSetUpsertMode(YBCPgStatement handle);
+
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
                          YBCPgOid table_oid,

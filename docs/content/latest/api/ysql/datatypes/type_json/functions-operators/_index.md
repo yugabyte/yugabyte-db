@@ -1,9 +1,9 @@
 ---
 title: JSON functions and operators
 headerTitle: JSON functions and operators
-linkTitle: Functions and operators
+linkTitle: Functions & operators
 summary: Functions and operators
-description: Learn about JSON functions and operators categorized by the purpose (goal) you want to accomplish.
+description: Learn about JSON functions and operators categorized by the goal you want to accomplish.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:

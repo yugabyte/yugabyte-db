@@ -141,7 +141,7 @@ class MasterPathHandlers {
 
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,
                                    const Webserver::PathHandlerCallback& callback);
-
+  void RedirectToLeader(const Webserver::WebRequest& req, std::stringstream* output);
   void RootHandler(const Webserver::WebRequest& req,
                    std::stringstream* output);
   void HandleTabletServers(const Webserver::WebRequest& req,

@@ -11,7 +11,7 @@ menu:
     weight: 2910
 aliases:
   - /latest/reference/connectors/postgresql-jdbc-driver
-isTocNested: 3
+isTocNested: true
 showAsideToc: true
 ---
 

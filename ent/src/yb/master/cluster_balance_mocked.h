@@ -28,7 +28,12 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     options->kMaxConcurrentRemovals = kHighNumber;
     options->kAllowLimitStartingTablets = false;
     options->kAllowLimitOverReplicatedTablets = false;
-    state_->options_ = options;
+
+    auto table_state = std::make_unique<enterprise::PerTableLoadState>(global_state_.get());
+    table_state->options_ = options;
+    state_ = table_state.get();
+    per_table_states_[""] = std::move(table_state);
+
     SetEntOptions(LIVE, "");
   }
 
@@ -87,13 +92,17 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     down_cast<Options*>(GetEntState()->options_)->placement_uuid = placement_uuid;
   }
 
-  void ResetState() override {
-    yb::master::Options* options = nullptr;
+  void ResetTableStatePtr(const TableId& table_id, yb::master::Options* options) override {
     if (state_) {
       options = state_->options_;
     }
-    state_ = std::make_unique<enterprise::ClusterLoadState>();
-    state_->options_ = options;
+    auto table_state = std::make_unique<enterprise::PerTableLoadState>(global_state_.get());
+    table_state->options_ = options;
+
+    state_ = table_state.get();
+
+    per_table_states_[table_id] = std::move(table_state);
+
   }
 
   TSDescriptorVector ts_descs_;

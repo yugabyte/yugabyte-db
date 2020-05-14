@@ -63,7 +63,7 @@ void ChangeMetadataOperationState::SetIndexes(const RepeatedPtrField<IndexInfoPB
 
 string ChangeMetadataOperationState::ToString() const {
   return Format("ChangeMetadataOperationState {hybrid_time: $0 schema: $1 request: $2 }",
-                hybrid_time_even_if_unset(), schema_, request_);
+                hybrid_time_even_if_unset(), schema_, request());
 }
 
 void ChangeMetadataOperationState::AcquireSchemaLock(rw_semaphore* l) {
@@ -79,7 +79,7 @@ void ChangeMetadataOperationState::ReleaseSchemaLock() {
 }
 
 void ChangeMetadataOperationState::UpdateRequestFromConsensusRound() {
-  request_ = consensus_round()->replicate_msg()->mutable_change_metadata_request();
+  UseRequest(consensus_round()->replicate_msg()->mutable_change_metadata_request());
 }
 
 ChangeMetadataOperation::ChangeMetadataOperation(

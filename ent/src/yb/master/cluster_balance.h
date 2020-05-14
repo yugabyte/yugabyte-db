@@ -53,8 +53,8 @@ class ClusterLoadBalancer : public yb::master::ClusterLoadBalancer {
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
   consensus::RaftPeerPB::MemberType GetDefaultMemberType() override;
 
-  // Returns a pointer to an enterprise ClusterLoadState from the state_ variable.
-  ClusterLoadState* GetEntState() const;
+  // Returns a pointer to an enterprise PerTableLoadState from the table_state_ variable.
+  PerTableLoadState* GetEntState() const;
 
   // Populates pb with the placement info in tablet's config at cluster placement_uuid_.
   void PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb);

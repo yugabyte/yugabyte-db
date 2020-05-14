@@ -19,7 +19,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import com.google.common.net.HostAndPort;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 import org.yb.minicluster.MiniYBCluster;
 
 import java.util.HashSet;
@@ -31,7 +31,7 @@ import java.util.Set;
  * (with injected heartbeat delays) without any significant impact to a running load test.
  */
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 20 minutes.
@@ -72,7 +72,7 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
     }
 
     // Wait for tservers to get heartbeat from new master.
-    Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS * 2);
+    Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS * 4);
 
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
       String masters = client.getMasterAddresses(hp);

@@ -89,13 +89,8 @@ class GcpQueryRegionsMethod(AbstractMethod):
     def __init__(self, base_command):
         super(GcpQueryRegionsMethod, self).__init__(base_command, "regions")
 
-    def add_extra_args(self):
-        super(GcpQueryRegionsMethod, self).add_extra_args()
-        self.parser.add_argument("--network", default=None,
-                                 help="Network to retrieve active regions for.")
-
     def callback(self, args):
-        print json.dumps(self.cloud.get_regions(args.network))
+        print json.dumps(self.cloud.get_regions(args))
 
 
 class GcpQueryVpcMethod(AbstractMethod):
@@ -104,8 +99,8 @@ class GcpQueryVpcMethod(AbstractMethod):
 
     def add_extra_args(self):
         super(GcpQueryVpcMethod, self).add_extra_args()
-        self.parser.add_argument("--network", default=None,
-                                 help="Network to retrieve active regions for.")
+        self.parser.add_argument("--custom_payload", required=False,
+                                 help="JSON payload of per-region data.")
 
     def callback(self, args):
         print json.dumps(self.cloud.query_vpc(args))
@@ -120,6 +115,8 @@ class GcpQueryZonesMethod(AbstractMethod):
         self.parser.add_argument(
             "--dest_vpc_id", default=None,
             help="Custom VPC to get zone and subnet info for.")
+        self.parser.add_argument("--custom_payload", required=False,
+                                 help="JSON payload of per-region data.")
 
     def callback(self, args):
         print json.dumps(self.cloud.get_zones(args))
@@ -132,6 +129,8 @@ class GcpQueryInstanceTypesMethod(AbstractMethod):
     def add_extra_args(self):
         super(GcpQueryInstanceTypesMethod, self).add_extra_args()
         self.parser.add_argument("--regions", nargs='+')
+        self.parser.add_argument("--custom_payload", required=False,
+                                 help="JSON payload of per-region data.")
 
     def callback(self, args):
         print json.dumps(self.cloud.get_instance_types(args))
@@ -225,6 +224,12 @@ class GcpNetworkCleanupMethod(GcpAbstractNetworkMethod):
 class GcpNetworkQueryMethod(GcpAbstractNetworkMethod):
     def __init__(self, base_command):
         super(GcpNetworkQueryMethod, self).__init__(base_command, "query")
+
+    def add_extra_args(self):
+        """Setup the CLI options network queries."""
+        super(GcpNetworkQueryMethod, self).add_extra_args()
+        self.parser.add_argument("--custom_payload", required=False,
+                                 help="JSON payload of per-region data.")
 
     def callback(self, args):
         try:

@@ -1772,6 +1772,7 @@ void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
       tablet_ids.push_back(tablet_id);
     }
     for (auto const& tablet_id : tablets_being_remote_bootstrapped_) {
+      VLOG(1) << "Tablet " << tablet_id << " being remote bootstrapped";
       tablet_ids.push_back(tablet_id);
     }
 

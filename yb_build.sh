@@ -346,6 +346,22 @@ EOT
   fi
 }
 
+create_build_root_file() {
+  if [[ -n ${BUILD_ROOT:-} ]]; then
+    local latest_build_root_path=$YB_SRC_ROOT/build/latest_build_root
+    echo "Saving BUILD_ROOT to $latest_build_root_path"
+    echo "$BUILD_ROOT" > "$latest_build_root_path"
+  fi
+}
+
+create_mvn_repo_path_file() {
+  if [[ -n ${YB_MVN_LOCAL_REPO:-} ]]; then
+    local mvn_repo_path=$BUILD_ROOT/mvn_repo
+    echo "Saving YB_MVN_LOCAL_REPO to $mvn_repo_path"
+    echo "$YB_MVN_LOCAL_REPO" > "$mvn_repo_path"
+  fi
+}
+
 capture_sec_timestamp() {
   expect_num_args 1 "$@"
   local current_timestamp=$(date +%s)
@@ -448,8 +464,8 @@ run_repeat_unit_test() {
     --build-type "$build_type"
     --num-iter "$num_test_repetitions"
   )
-  if [[ -n ${test_parallelism:-} ]]; then
-    repeat_unit_test_args+=( --parallelism "$test_parallelism" )
+  if [[ -n ${YB_TEST_PARALLELISM:-} ]]; then
+    repeat_unit_test_args+=( --parallelism "$YB_TEST_PARALLELISM" )
   fi
   if "$verbose"; then
     repeat_unit_test_args+=( --verbose )
@@ -939,8 +955,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --tp|--test-parallelism)
       ensure_option_has_arg "$@"
-      test_parallelism=$2
-      validate_numeric_arg_range "test-parallelism" "$test_parallelism" \
+      YB_TEST_PARALLELISM=$2
+      validate_numeric_arg_range "test-parallelism" "$YB_TEST_PARALLELISM" \
         "$MIN_REPEATED_TEST_PARALLELISM" "$MAX_REPEATED_TEST_PARALLELISM"
       shift
     ;;
@@ -1294,6 +1310,8 @@ add_brew_bin_to_path
 
 create_build_descriptor_file
 
+create_build_root_file
+
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Only build yb-master / yb-tserver / postgres when we're only trying to run a Java test.
   make_targets+=( yb-master yb-tserver postgres )
@@ -1345,6 +1363,7 @@ if "$build_java"; then
       build_yb_java_code $user_mvn_opts "${java_build_opts[@]}"
     )
   done
+  create_mvn_repo_path_file
   unset java_project_dir
 
   if "$run_java_tests" && should_run_java_test_methods_separately; then

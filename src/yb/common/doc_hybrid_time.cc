@@ -214,4 +214,14 @@ CHECKED_STATUS DocHybridTime::CheckAndGetEncodedSize(
   return CheckEncodedSize(*encoded_ht_size, encoded_key.size());
 }
 
+std::string DocHybridTime::DebugSliceToString(Slice input) {
+  DocHybridTime temp;
+  auto status = temp.FullyDecodeFrom(input);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to decode DocHybridTime: " << status;
+    return input.ToDebugHexString();
+  }
+  return temp.ToString();
+}
+
 }  // namespace yb

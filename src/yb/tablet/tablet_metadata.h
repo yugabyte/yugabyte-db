@@ -148,15 +148,7 @@ struct KvStoreInfo {
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
-  std::unordered_map<TableId, std::unique_ptr<TableInfo>> tables;
-
-  // Old versions of TableInfo that have since been altered. They are kept alive so that callers of
-  // schema() and index_map(), etc don't need to worry about reference counting or locking.
-  //
-  // TODO: These TableInfo's are currently kept alive forever, under the assumption that a given
-  // tablet won't have thousands of "alter table" calls. Replace the raw pointer with shared_ptr and
-  // modify the callers to hold the shared_ptr at the top of the calls (e.g. tserver rpc calls).
-  std::vector<std::unique_ptr<TableInfo>> old_tables;
+  std::unordered_map<TableId, TableInfoPtr> tables;
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -209,9 +201,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
                                      const TabletDataState& initial_tablet_data_state,
                                      RaftGroupMetadataPtr* metadata);
 
-  Result<const TableInfo*> GetTableInfo(const TableId& table_id) const;
-
-  Result<TableInfo*> GetTableInfo(const TableId& table_id);
+  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
 
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
@@ -236,27 +226,29 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Returns the name, type, schema, index map, schema, etc of the primary table.
   std::string table_name() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info_guarded().first->table_name;
+    return primary_table_info()->table_name;
   }
 
   TableType table_type() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info_guarded().first->table_type;
+    return primary_table_info()->table_type;
   }
 
-  const Schema& schema() const {
+  const yb::SchemaPtr schema() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info_guarded().first->schema;
+    const TableInfoPtr table_info = primary_table_info();
+    return yb::SchemaPtr(table_info, &table_info->schema);
   }
 
-  const IndexMap& index_map() const {
+  const std::shared_ptr<IndexMap> index_map() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info_guarded().first->index_map;
+    const TableInfoPtr table_info = primary_table_info();
+    return std::shared_ptr<IndexMap>(table_info, &table_info->index_map);
   }
 
   uint32_t schema_version() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info_guarded().first->schema_version;
+    return primary_table_info()->schema_version;
   }
 
   const std::string& indexed_tablet_id() const {
@@ -289,14 +281,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   // Returns the partition schema of the Raft group's tables.
-  const PartitionSchema& partition_schema() const {
+  const std::shared_ptr<PartitionSchema> partition_schema() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info_guarded().first->partition_schema;
+    const TableInfoPtr table_info = primary_table_info();
+    return std::shared_ptr<PartitionSchema>(table_info, &table_info->partition_schema);
   }
 
-  const std::vector<DeletedColumn>& deleted_cols() const {
+  const std::shared_ptr<std::vector<DeletedColumn>> deleted_cols() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info_guarded().first->deleted_cols;
+    const TableInfoPtr table_info = primary_table_info();
+    return std::shared_ptr<std::vector<DeletedColumn>>(table_info, &table_info->deleted_cols);
   }
 
   std::string rocksdb_dir() const { return kv_store_.rocksdb_dir; }
@@ -461,20 +455,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const;
 
-  // Return a pointer to the primary table info. This pointer will be valid until the
-  // RaftGroupMetadata is destructed, even if the schema is changed.
-  const TableInfo* primary_table_info_unlocked() const {
+  const TableInfoPtr primary_table_info_unlocked() const {
     const auto& tables = kv_store_.tables;
     const auto itr = tables.find(primary_table_id_);
-    DCHECK(itr != tables.end());
-    return itr->second.get();
+    CHECK(itr != tables.end());
+    return itr->second;
   }
 
-  // Return a pair of a pointer to the primary table info and lock guard. The pointer will be valid
-  // until the RaftGroupMetadata is destructed, even if the schema is changed.
-  std::pair<const TableInfo*, std::unique_lock<MutexType>> primary_table_info_guarded() const {
-    std::unique_lock<MutexType> lock(data_mutex_);
-    return { primary_table_info_unlocked(), std::move(lock) };
+  const TableInfoPtr primary_table_info() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return primary_table_info_unlocked();
   }
 
   enum State {

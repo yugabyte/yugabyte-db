@@ -192,7 +192,8 @@ class TestLoadBalancerBase {
   }
 
   void ResetState() {
-    cb_->ResetState();
+    cb_->global_state_ = std::make_unique<GlobalLoadState>();
+    cb_->ResetTableStatePtr(cur_table_uuid_, nullptr);
   }
 
   Result<bool> HandleLeaderMoves(
@@ -238,7 +239,6 @@ class TestLoadBalancerBase {
     cb_->state_->leader_blacklisted_servers_.clear();
     LOG(INFO) << "Leader distribution: 2 2 0. Leader Blacklist cleared.";
 
-    // ResetState();
     ASSERT_OK(AnalyzeTablets());
 
     // With ts2 no more leader blacklisted, a leader on ts0 or ts1 should be moved to ts2.

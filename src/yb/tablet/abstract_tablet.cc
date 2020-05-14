@@ -35,7 +35,7 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
   docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
-  const Schema &schema = SchemaRef();
+  const SchemaPtr schema = GetSchema();
   Schema projection;
   const QLReferencedColumnsPB& column_pbs = ql_read_request.column_refs();
   vector<ColumnId> column_refs;
@@ -45,13 +45,13 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
   for (int32_t id : column_pbs.ids()) {
     column_refs.emplace_back(id);
   }
-  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_refs, &projection));
+  RETURN_NOT_OK(schema->CreateProjectionByIdsIgnoreMissing(column_refs, &projection));
 
   const QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
   QLResultSet resultset(&rsrow_desc, &result->rows_data);
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
-      QLStorage(), deadline, read_time, schema, projection, &resultset, &result->restart_read_ht);
+      QLStorage(), deadline, read_time, *schema, projection, &resultset, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
     if (s.IsQLError()) {
@@ -80,13 +80,12 @@ Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
-  const Schema &schema = SchemaRef(pgsql_read_request.table_id());
-  const Schema *index_schema = pgsql_read_request.has_index_request()
-                               ? &SchemaRef(pgsql_read_request.index_request().table_id())
-                               : nullptr;
+  const SchemaPtr schema = GetSchema(pgsql_read_request.table_id());
+  const SchemaPtr index_schema = pgsql_read_request.has_index_request()
+      ? GetSchema(pgsql_read_request.index_request().table_id()) : nullptr;
 
   TRACE("Start Execute");
-  auto fetched_rows = doc_op.Execute(QLStorage(), deadline, read_time, schema, index_schema,
+  auto fetched_rows = doc_op.Execute(QLStorage(), deadline, read_time, *schema, index_schema.get(),
                                      &result->rows_data, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {

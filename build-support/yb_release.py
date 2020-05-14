@@ -243,20 +243,6 @@ def main():
     # ---------------------------------------------------------------------------------------------
 
     if args.yw:
-        # Clean Maven install in case any YBClient changes were made.
-        java_dir = os.path.join(YB_SRC_ROOT, "java")
-        mvn_cmd = [
-            "mvn", "clean", "install", "-DskipTests"
-        ]
-        logging.info("Building YB Java code with '{}'".format(" ".join(mvn_cmd)))
-        try:
-            subprocess.check_output(mvn_cmd, cwd=java_dir)
-        except subprocess.CalledProcessError as e:
-            logging.error(
-                "Failed to build YB Java code:\n{}\nOutput:\n{}".format(
-                    traceback.format_exc(), e.output))
-            raise
-
         managed_dir = os.path.join(YB_SRC_ROOT, "managed")
         yw_dir = os.path.join(build_target, "ui")
         if not os.path.exists(yw_dir):

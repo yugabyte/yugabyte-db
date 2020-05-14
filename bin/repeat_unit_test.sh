@@ -377,6 +377,8 @@ else
   if [[ $parallelism -eq 0 ]]; then
     parallelism=$default_parallelism
     log "Using test parallelism of $parallelism by default (build type: $build_type)"
+  else
+    log "Using test parallelism of $parallelism (build type: $build_type)"
   fi
 
   if [[ -n $yb_compiler_type_from_env ]]; then

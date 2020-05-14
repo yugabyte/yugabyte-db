@@ -59,7 +59,7 @@ SYSTEM_LIBRARY_PATHS = ['/usr/lib', '/usr/lib64', '/lib', '/lib64',
 HOME_DIR = os.path.expanduser('~')
 
 
-ADDITIONAL_LIB_NAME_GLOBS = ['libnss_*', 'libresolv*']
+ADDITIONAL_LIB_NAME_GLOBS = ['libnss_*', 'libresolv*', 'libthread_db*']
 
 YB_SCRIPT_BIN_DIR = os.path.join(YB_SRC_ROOT, 'bin')
 YB_BUILD_SUPPORT_DIR = os.path.join(YB_SRC_ROOT, 'build-support')
@@ -260,7 +260,6 @@ class LibraryPackager:
             if resolved_dep_match:
                 lib_name = resolved_dep_match.group(1)
                 lib_resolved_path = os.path.realpath(resolved_dep_match.group(2))
-
                 dependencies.add(Dependency(lib_name, lib_resolved_path, elf_file_path,
                                             self.context))
 
@@ -380,8 +379,10 @@ class LibraryPackager:
                     continue
                 if os.path.isfile(lib_path):
                     self.install_dyn_linked_binary(lib_path, linuxbrew_lib_dest_dir)
+                    logging.info("Installed additional lib: " + lib_path)
                 elif os.path.islink(lib_path):
                     link_target_basename = os.path.basename(os.readlink(lib_path))
+                    logging.info("Installed additional symlink: " + lib_path)
                     symlink(link_target_basename,
                             os.path.join(linuxbrew_lib_dest_dir, lib_basename))
                 else:

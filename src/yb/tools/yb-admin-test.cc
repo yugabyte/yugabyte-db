@@ -437,5 +437,49 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
 }
 
+TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
+  const MonoDelta kWaitTime = 20s;
+  std::string output;
+  std::vector<std::string> master_flags;
+  std::vector<std::string> ts_flags;
+  master_flags.push_back("--enable_load_balancing=true");
+  BuildAndStart(ts_flags, master_flags);
+
+  const std::string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(master_address)
+      .Build());
+
+  ASSERT_OK(client->DeleteTable(kTableName, false /* wait */));
+
+  // Because of the delete, the load balancer should become active.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(Subprocess::Call(
+            ToStringVector(
+                GetAdminToolPath(),
+                "-master_addresses", master_address,
+                "get_is_load_balancer_idle"),
+            &output));
+        return output.compare("Idle = 0\n") == 0;
+      },
+      kWaitTime,
+      "wait for load balancer to become active"));
+
+  // Eventually, the load balancer should become idle.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(Subprocess::Call(
+            ToStringVector(
+                GetAdminToolPath(),
+                "-master_addresses", master_address,
+                "get_is_load_balancer_idle"),
+            &output));
+        return output.compare("Idle = 1\n") == 0;
+      },
+      kWaitTime,
+      "wait for load balancer to become idle"));
+}
+
 }  // namespace tools
 }  // namespace yb
