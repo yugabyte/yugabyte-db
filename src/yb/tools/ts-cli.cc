@@ -380,6 +380,9 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
 
   if (!tablet_id.empty()) {
     req.add_tablet_ids(tablet_id);
+    req.set_all_tablets(false);
+  } else {
+    req.set_all_tablets(true);
   }
   req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
   req.set_is_compaction(is_compaction);
