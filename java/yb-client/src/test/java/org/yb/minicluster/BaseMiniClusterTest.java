@@ -260,14 +260,15 @@ public class BaseMiniClusterTest extends BaseYBTest {
     return initialMetrics;
   }
 
+  protected IOMetrics createIOMetrics(MiniYBDaemon ts) throws Exception {
+    return new IOMetrics(new Metrics(ts.getLocalhostIP(), ts.getWebPort(), "server"));
+  }
+
   // Get IO metrics of all tservers.
   protected Map<MiniYBDaemon, IOMetrics> getTSMetrics() throws Exception {
     Map<MiniYBDaemon, IOMetrics> initialMetrics = new HashMap<>();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-          ts.getCqlWebPort(),
-          "server"));
-      initialMetrics.put(ts, metrics);
+      initialMetrics.put(ts, createIOMetrics(ts));
     }
     return initialMetrics;
   }
@@ -277,10 +278,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
       throws Exception {
     IOMetrics totalMetrics = new IOMetrics();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      IOMetrics metrics = new IOMetrics(new Metrics(ts.getLocalhostIP(),
-          ts.getCqlWebPort(),
-          "server"))
-          .subtract(initialMetrics.get(ts));
+      IOMetrics metrics = createIOMetrics(ts).subtract(initialMetrics.get(ts));
       LOG.info("Metrics of " + ts.toString() + ": " + metrics.toString());
       totalMetrics.add(metrics);
     }

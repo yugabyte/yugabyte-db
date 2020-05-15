@@ -30,7 +30,7 @@ This section uses the same approach as the [The literal for an array of primitiv
 
 Just as in the [Statement of the rules](../array-of-primitive-values/#statement-of-the-rules) subsection in the _"The literal for an array of primitive values"_ section, the statement of these rules depends on understanding the notion of the canonical form of a literal.
 
-If you follow the rules that are stated here, and illustrated in the demonstrations below, then you will always produce a syntactically valid literal which expresses the semantics that you intend. It turns out that very many other variants, especially for `text[]` values, are legal and can produce the result that you intend. However, the rules that govern these exotic uses will not be documented because it is always sufficient to create your literals in canonical form.
+If you follow the rules that are stated here, and illustrated in the demonstrations below, then you will always produce a syntactically valid literal which expresses the semantics that you intend. It turns out that many other variants, especially for `text[]` values, are legal and can produce the result that you intend. However, the rules that govern these exotic uses will not be documented because it is always sufficient to create your literals in canonical form.
 
 Here is the sufficient set of rules.
 
@@ -43,8 +43,9 @@ Here is the sufficient set of rules.
    <space>   (   )   ,   "   \
 ```
 
-- It's sufficient then simply to write all special characters ordinarily within the enclosing double quotes except for each of the double quote character itself and the backslash character. These must be escaped. The double quote character is escaped by doubling it up. And the backslash character is escaped with an immediately preceding single backslash.
-- To specify that the value for a field is `null` , you must leave no whitespace between the pair of delimiters (Left parenthesis, comma, or right parenthesis) that surround its position. (This is the only choice.)
+- It's sufficient then to write all special characters ordinarily within the enclosing double quotes except for each of the double quote character itself and the backslash character. These must be escaped. The double quote character is escaped by doubling it up. And the backslash character is escaped with an immediately preceding single backslash.
+
+- To specify that the value for a field is `NULL` , you must leave no whitespace between the pair of delimiters (Left parenthesis, comma, or right parenthesis) that surround its position. (This is the only choice.)
 
 ## Always write array literals in canonical form
 
@@ -61,7 +62,7 @@ It will be sufficient to consider _"row"_ types with fields of just these data t
 
 Use the _"row"_ type constructor to create representative values of each kind and inspect its `::text` typecast.
 
-### _"Row"_ type with `int` fields
+### "Row" type with int fields
 
 This example demonstrates the principle:
 
@@ -73,7 +74,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The keyword `row` names the _"row"_ type constructor function. It is optional, but is used here for emphasis.
+The keyword `ROW` names the _"row"_ type constructor function. It is optional, but is used here for emphasis.
 
 The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in the section [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest). 
 
@@ -101,7 +102,7 @@ To use the text of the literal that was produced to create a value, you must enq
 ```
 '(1,2,3)'::row_t
 ```
-Next, use the canonical literal that you produced to update `t.v2` to confirm that the value that the row constructor created was recreated:
+Next, use the canonical literal that you produced to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
 ```postgresql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
@@ -114,7 +115,7 @@ It shows this:
 ```
 As promised, the canonical form of the _"row"_ type literal does indeed recreate the identical value that the _"row"_ type constructor created.
 
-### _"Row"_ type with `text` fields
+### "Row" type with text fields
 
 Use the [_"Row"_ type with `int` fields](./#row-type-with-text-fields) example as a template for this and the subsequent sections. The example sets array values each of which, apart from the single character `a`, needs some discussion. These are the characters (or, in one case, character sequence), listed here "bare" and with ten spaces between each:
 ```
@@ -131,7 +132,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-Here, the `row` keyword in the _"row"_ type constructor function is omitted to emphasize its optional status.
+Here, the `ROW` keyword in the _"row"_ type constructor function is omitted to emphasize its optional status.
 
 The `\echo` metacommand shows this:
 ```
@@ -151,7 +152,7 @@ In addition to the first two rules, you notice the following.
 - The single quote is _not_ surrounded with double quotes. Though it has syntactic significance in other parsing contexts, it is insignificant within the parentheses of a _"row"_ type literal. This holds, also, for all sorts of other punctuation characters like `;` and `:` and `[` and `]` and so on.
 - The double quote has been escaped by doubling it up and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the (one and only) quoting mechanism, within the parentheses of a _"row"_ type literal.
 - The backslash has also been escaped with another single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the escape character, within the parentheses of a _"row"_ type literal.
-- `null` is represented in a _"row"_ type literal simply by the absence of any characters between two successive delimiters: between the left parenthesis and the first comma, between two successive commas, or between the last comma and the right parenthesis.
+- `NULL` is represented in a _"row"_ type literal by the _absence_ of any characters between two successive delimiters: between the left parenthesis and the first comma, between two successive commas, or between the last comma and the right parenthesis.
 
 There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this easily with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the parentheses of a _"row"_ type literal with double quotes.
 
@@ -164,7 +165,7 @@ The `\echo` metacommand now shows this:
 ```
 $$(a,',"a b","()",",","""","\\",)$$::row_t
 ```
-Next, use the canonical literal that you produced to update `t.v2` to confirm that the value that the row constructor created was recreated:
+Next, use the canonical literal that you produced to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
 ```postgresql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
@@ -190,9 +191,9 @@ You understand this by realizing that the entire run of characters between a pai
 
 This rule is different from the rule for an array literal. It's also different from the rules for JSON documents. In these cases, the value is entirely _within_ the double quotes, and whitespace around punctuation characters outside of the double-quoted values is insignificant.
 
-**Note:** There is absolutely no need to take advantage of this understanding. Yugabyte recommends that you simply always use the "almost-canonical" form of the literal—in other words, you surround every single `text` value with double quotes, even when these are not needed, and you allow no whitespace between these double-quoted values and the delimiter at the start an end of each such value.
+**Note:** There is absolutely no need to take advantage of this understanding. Yugabyte recommends that you always use the "almost-canonical" form of the literal—in other words, you surround every single `text` value with double quotes, even when these are not needed, and you allow no whitespace between these double-quoted values and the delimiter at the start an end of each such value.
 
-### _"Row"_ type with `timestamp` fields
+### "Row" type with timestamp fields
 
 This example demonstrates the principle:
 
@@ -218,7 +219,7 @@ To use the text of the literal that was produced to create a value, you must enq
 ```
 '("2019-01-27 11:48:33","2020-03-30 14:19:21")'::row_t
 ```
-Next, use the canonical literal that you produced to update `t.v2` to confirm that you have recreated the value that the row constructor created:
+Next, use the canonical literal that you produced to update _"t.v2"_ to confirm that you have recreated the value that the row constructor created:
 ```postgresql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
@@ -231,7 +232,7 @@ It shows this:
 ```
 Once again, as promised, the canonical form of the array literal does indeed recreate the identical value that the _"row"_ type constructor created.
 
-### _"Row"_ type with `boolean` fields
+### "Row" type with boolean fields
 
 This example demonstrates the principle:
 
@@ -256,7 +257,7 @@ To use the text of the literal that was produced to create a value, you must enq
 ```
 '(t,f,)'::row_t
 ```
-Next, use the canonical literal that you produced to update `t.v2` to confirm that the value that the row constructor created was recreated:
+Next, use the canonical literal that you produced to update _"t.v2"_ to confirm that the value that the row constructor created was recreated:
 ```postgresql
 update t set v2 = :canonical_literal where k = 1;
 select (v1 = v2)::text as "v1 = v2" from t where k = 1;
@@ -277,9 +278,9 @@ There are other cases of interest like this:
 
 The rules for such cases can be determined by induction from the rules that this section has stated and illustrated.
 
-## _"Row"_ type literal versus _"row"_ type constructor
+## "Row" type literal versus "row" type constructor
 
-The two notions, _type constructor_ and _literal_, are functionally critically different. It's easy to demonstrate the difference using a `DO` block, because this lets you use a declared variable. It's harder to do this using a SQL statement because you'd have to use a scalar subquery in place of the PL/pgSQL variable. The `row` keyword is deliberately omitted here to emphasize its optional status.
+The two notions, _type constructor_ and _literal_, are functionally critically different. It's easy to demonstrate the difference using a `DO` block, because this lets you use a declared variable. It's harder to do this using a SQL statement because you'd have to use a scalar subquery in place of the PL/pgSQL variable. The `ROW` keyword is deliberately omitted here to emphasize its optional status.
 
 ```postgresql
 create type rt as (n numeric, s text, t timestamp, b boolean);

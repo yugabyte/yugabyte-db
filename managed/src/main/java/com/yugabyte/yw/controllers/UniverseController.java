@@ -34,7 +34,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.RollingRestartParams;
+import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -1217,18 +1217,19 @@ public class UniverseController extends AuthenticatedController {
               "to Customer UUID: %s", universeUUID, customerUUID));
     }
 
-    // Bind rolling restart params
-    RollingRestartParams taskParams;
+    // Bind upgrade params
+    UpgradeParams taskParams;
     ObjectNode formData = null;
     try {
       formData = (ObjectNode) request().body().asJson();
-      taskParams = (RollingRestartParams) bindFormDataToTaskParams(formData, true);
+      taskParams = (UpgradeParams) bindFormDataToTaskParams(formData, true);
 
       if (taskParams.taskType == null) {
         return ApiResponse.error(BAD_REQUEST, "task type is required");
       }
 
-      if (taskParams.rollingUpgrade && universe.nodesInTransit()) {
+      if (taskParams.upgradeOption == UpgradeParams.UpgradeOption.ROLLING_UPGRADE &&
+          universe.nodesInTransit()) {
         return ApiResponse.error(BAD_REQUEST, "Cannot perform rolling upgrade of universe " +
                                  universeUUID + " as it has nodes in one of " +
                                  NodeDetails.IN_TRANSIT_STATES + " states.");
@@ -1275,9 +1276,9 @@ public class UniverseController extends AuthenticatedController {
       }
 
       LOG.info("Got task type {}", customerTaskType.toString());
-
       taskParams.universeUUID = universe.universeUUID;
       taskParams.expectedUniverseVersion = universe.version;
+
       LOG.info("Found universe {} : name={} at version={}.",
         universe.universeUUID, universe.name, universe.version);
 
@@ -1540,12 +1541,13 @@ public class UniverseController extends AuthenticatedController {
     return bindFormDataToTaskParams(formData, false);
   }
 
-  private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData, boolean isRolling) throws Exception {
-    return bindFormDataToTaskParams(formData, isRolling, false);
+  private UniverseDefinitionTaskParams bindFormDataToTaskParams(
+          ObjectNode formData, boolean isUpgrade) throws Exception {
+    return bindFormDataToTaskParams(formData, isUpgrade, false);
   }
 
   private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData,
-                                                                boolean isRolling,
+                                                                boolean isUpgrade,
                                                                 boolean isDisk) throws Exception {
     ObjectMapper mapper = new ObjectMapper();
     ArrayNode nodeSetArray = null;
@@ -1558,6 +1560,7 @@ public class UniverseController extends AuthenticatedController {
     if (formData.get("expectedUniverseVersion") != null) {
       expectedUniverseVersion = formData.get("expectedUniverseVersion").asInt();
     }
+
     JsonNode config = formData.get("encryptionAtRestConfig");
     if (config != null) {
       formData.remove("encryptionAtRestConfig");
@@ -1573,8 +1576,8 @@ public class UniverseController extends AuthenticatedController {
     }
     UniverseDefinitionTaskParams taskParams = null;
     List<Cluster> clusters = mapClustersInParams(formData);
-    if (isRolling) {
-      taskParams = mapper.treeToValue(formData, RollingRestartParams.class);
+    if (isUpgrade) {
+      taskParams = mapper.treeToValue(formData, UpgradeParams.class);
     } else if (isDisk){
       taskParams = mapper.treeToValue(formData, DiskIncreaseFormData.class);
     } else {

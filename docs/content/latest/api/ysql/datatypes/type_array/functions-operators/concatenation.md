@@ -13,7 +13,7 @@ showAsideToc: false
 
 The `||` operator implements, by itself, all of the functionality that each of the `array_cat()`, `array_append()`, and `array_prepend()` functions individually implement. Yugabyte recommends that you use the `||` operator and avoid the functions. They are documented here for completeness—especially in case you find them in inherited code.
 
-## The `||` operator
+## The&#160;&#160;&#160;||&#160;&#160;&#160;operator
 
 **Purpose:** Return the concatenation of any number of compatible `anyarray` and `anyelement` values.
 
@@ -21,7 +21,7 @@ The `||` operator implements, by itself, all of the functionality that each of t
 
 ```
 LHS and RHS input value:  [anyarray | anyelement] [anyarray | anyelement]*
-return value:             anyarray`
+return value:             anyarray
 ```
 **Note:** "_Compatible"_ is used here to denote two requirements:
 
@@ -60,7 +60,7 @@ and then this:
 ```
 The example suffers from the problem that [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296) tracks. (This same issue also affects the `array_remove()` and the `array_replace()` functions.) If you run this example as presented, then the `UPDATE` statement causes a timeout error of such a severity that in order to continue, you must restart the crashed tserver.
 
-This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, simply by creating `table t` without a primary key constraint. But this violates proper practice. Here is a viable workaround. Simply use this `UPDATE` statement instead of the one shown above:
+This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, by creating _"table t"_ without a primary key constraint. But this violates proper practice. Here is a viable workaround. Use this `UPDATE` statement instead of the one shown above:
 ```postgresql
 with v as (
   select '{1, 2}'::int[]||arr||6::int as new_arr from t where k = 1)
@@ -75,7 +75,7 @@ where k = 1;
 **Signature**
 ```
 input value:              anyarray, anyarray
-return value:             anyarray`
+return value:             anyarray
 ```
 **Note:** The `DO` block shows that the `||` operator is able to implement the full functionality of the `array_cat()` function.
 
@@ -100,7 +100,7 @@ $body$;
 **Signature**
 ```
 input value:              anyarray, anyelement
-return value:             anyarray`
+return value:             anyarray
 ```
 **Note:** The `DO` block shows that the `||` operator is able to implement the full functionality of the `array_append()` function. The values must be compatible.
 
@@ -124,7 +124,7 @@ $body$;
 **Signature**
 ```
 input value:              anyelement, anyarray
-return value:             anyarray`
+return value:             anyarray
 ```
 **Note:** The `DO` block shows that the `||` operator is able to implement the full functionality of the `array_prepend()` function. The values must be compatible.
 

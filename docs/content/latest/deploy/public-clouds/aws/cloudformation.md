@@ -37,10 +37,11 @@ showAsideToc: true
 
 ## Prerequisites
 
-1. You need to have an IAM user who has `AWSCloudFormationFullAccess` privilege.
-2. Create an SSH key pair that you want to attach to the nodes.
-3. In the region you want to bring up the stack, make sure you can launch new VPCs.  
-4. Download the template file.
+1. You need to have an IAM user who has `AWSCloudFormationFullAccess`, `AmazonEC2FullAccess` and `ssm:GetParameters` privilege.
+2. If you are going to create the stack via AWS Console then make sure the user also has `s3:CreateBucket`, `s3:PutObject` and `s3:GetObject` policies.
+3. Create an SSH key pair that you want to attach to the nodes.
+4. In the region you want to bring up the stack, make sure you can launch new VPCs.  
+5. Download the template file.
 
 ```sh
 $ wget https://raw.githubusercontent.com/yugabyte/aws-cloudformation/master/yugabyte_cloudformation.yaml
@@ -59,13 +60,19 @@ that formats and mounts the nvme ssd automatically for each host and installs Yu
 Create CloudFormation template:
 
 ```sh
-$ aws --region <aws-region> cloudformation create-stack --stack-name <stack-name> --template-body file://yugabyte_cloudformation.yaml --parameters  ParameterKey=DBVersion,ParameterValue=2.0.6.0,ParameterKey=KeyName,ParameterValue=<ssh-key-name>
+$ aws cloudformation create-stack \
+  --stack-name <stack-name> \
+  --template-body file://yugabyte_cloudformation.yaml \
+  --parameters  ParameterKey=DBVersion,ParameterValue=2.1.6.0 ParameterKey=KeyName,ParameterValue=<ssh-key-name> \
+  --region <aws-region>
 ```
 
 Once resource creation completes, check that stack was created:
 
 ```sh
-$ aws --region <aws-region> cloudformation describe-stacks --stack-name <stack-name>
+$ aws cloudformation describe-stacks \
+  --stack-name <stack-name> \
+  --region <aws-region>
 ```
 
 From this output, you will be able to get the VPC id and YugabyteDB admin URL.

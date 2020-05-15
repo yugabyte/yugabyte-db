@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 #include <boost/algorithm/string/join.hpp>
 #include <boost/thread/locks.hpp>
@@ -161,8 +162,9 @@ void set_remaining(int pending_tasks, int* remaining_tasks) {
     LOG(WARNING) << "Pending tasks > max allowed tasks: " << pending_tasks << " > "
                  << *remaining_tasks;
     *remaining_tasks = 0;
+  } else {
+    *remaining_tasks -= pending_tasks;
   }
-  *remaining_tasks -= pending_tasks;
 }
 
 // Needed as we have a unique_ptr to the forward declared PerTableLoadState class.
@@ -220,7 +222,6 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
   // Loop over all tables to analyze the global and per-table load.
   for (const auto& table : GetTableMap()) {
-
     if (SkipLoadBalancing(*table.second)) {
       continue;
     }
@@ -248,6 +249,9 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
   for (const auto& table : GetTableMap()) {
     state_ = nullptr;
+    if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0) {
+      break;
+    }
     if (SkipLoadBalancing(*table.second)) {
       continue;
     }
@@ -258,6 +262,8 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       VLOG(1) << "Unable to find table state for table " << table.first
               << ". Skipping load balancing execution";
       continue;
+    } else {
+      VLOG(5) << "Load balancing table " << table.first;
     }
     state_ = it->second.get();
 
@@ -310,10 +316,6 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!*handle_leader) {
         break;
       }
-    }
-
-    if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0) {
-      break;
     }
   }
 
@@ -1053,8 +1055,12 @@ const BlacklistPB& ClusterLoadBalancer::GetLeaderBlacklist() const {
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
-  // Skip load-balancing of system tables. They are virtual tables not hosted by tservers.
-  return catalog_manager_->IsSystemTableUnlocked(table);
+  // Skip load-balancing of some tables:
+  // * system tables: they are virtual tables not hosted by tservers.
+  // * colocated user tables: they occupy the same tablet as their colocated parent table, so load
+  //   balancing just the colocated parent table is sufficient.
+  return (catalog_manager_->IsSystemTableUnlocked(table) ||
+          catalog_manager_->IsColocatedUserTable(table));
 }
 
 void ClusterLoadBalancer::CountPendingTasks(const TableId& table_uuid,

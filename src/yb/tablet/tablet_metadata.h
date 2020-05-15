@@ -404,6 +404,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
       const RaftGroupId& raft_group_id, const Partition& partition,
       const std::string& lower_bound_key, const std::string& upper_bound_key) const;
 
+  TableInfoPtr primary_table_info() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return primary_table_info_unlocked();
+  }
+
   bool colocated() const { return colocated_; }
 
   // Return standard "T xxx P yyy" log prefix.
@@ -460,11 +465,6 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     const auto itr = tables.find(primary_table_id_);
     CHECK(itr != tables.end());
     return itr->second;
-  }
-
-  const TableInfoPtr primary_table_info() const {
-    std::lock_guard<MutexType> lock(data_mutex_);
-    return primary_table_info_unlocked();
   }
 
   enum State {

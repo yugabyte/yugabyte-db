@@ -176,6 +176,12 @@ Specifies whether YugabyteDB requires clock synchronization between the nodes in
 
 Default: `false`
 
+##### --listen_ip
+
+Allows a 1-node RF1 cluster to listen on an address different than the default of `127.0.0.1`. For example, setting this to `0.0.0.0` enables the external access of the database APIs and admin UIs. This flag is not applicable to multi-node clusters.
+
+Default: `127.0.0.1`
+
 ##### --num_shards_per_tserver
 
 Number of shards (tablets) to start per tablet server for each table.
@@ -287,6 +293,18 @@ YB-TServer logs are added in the following location:
 yugabyte-data/node-#/disk-#/yb-data/tserver.out
 yugabyte-data/node-#/disk-#/yb-data/tserver/logs
 ```
+
+## Enable external access
+
+There are essentially two modes with yb-ctl.
+
+- 1-node RF1 cluster where the bind IP address for all ports can be bound to `0.0.0.0` using the `listen_ip` flag. This is the mode you use if you want to have external access for the database APIs and admin UIs.
+
+```sh
+$ ./bin/yb-ctl create --listen_ip=0.0.0.0
+```
+
+- Multi-node (say 3-node RF3) cluster where the bind IP addresses are the loopback IP addresses since binding to `0.0.0.0` is no longer possible. Hence, this mode is only meant for internal access.
 
 ## Check cluster status
 

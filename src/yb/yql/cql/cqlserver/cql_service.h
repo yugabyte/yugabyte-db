@@ -48,8 +48,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
                        public std::enable_shared_from_this<CQLServiceImpl> {
  public:
   // Constructor.
-  CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
-                 ql::TransactionPoolProvider transaction_pool_provider);
+  CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts);
   ~CQLServiceImpl();
 
   void CompleteInit();
@@ -91,11 +90,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Return the messenger.
   rpc::Messenger* messenger() { return messenger_; }
 
-  server::Clock* clock();
+  client::TransactionPool* TransactionPool();
 
-  const ql::TransactionPoolProvider& transaction_pool_provider() const {
-    return transaction_pool_provider_;
-  }
+  server::Clock* clock();
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
@@ -120,9 +117,6 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // CQLServer of this service.
   CQLServer* const server_;
-
-  // YBClient is to communicate with either master or tserver.
-  yb::client::AsyncClientInitialiser async_client_init_;
 
   // A cache to reduce opening tables or (user-defined) types again and again.
   mutable std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
@@ -159,8 +153,6 @@ class CQLServiceImpl : public CQLServerServiceIf,
   std::shared_ptr<CQLMetrics> cql_metrics_;
   // Used to requeue the cql_inbound call to handle the response callback(s).
   rpc::Messenger* messenger_ = nullptr;
-
-  ql::TransactionPoolProvider transaction_pool_provider_;
 };
 
 }  // namespace cqlserver

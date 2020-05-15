@@ -57,29 +57,37 @@ class EasyCurl {
 
   // Fetch the given URL into the provided buffer.
   // Any existing data in the buffer is replaced.
-  CHECKED_STATUS FetchURL(const std::string& url,
-                          faststring* dst);
+  CHECKED_STATUS FetchURL(
+      const std::string& url, faststring* dst, int64_t timeout_sec = kDefaultTimeoutSec);
 
   // Issue an HTTP POST to the given URL with the given data.
   // Returns results in 'dst' as above.
-  CHECKED_STATUS PostToURL(const std::string& url,
-                           const std::string& post_data,
-                           faststring* dst);
+  CHECKED_STATUS PostToURL(
+      const std::string& url,
+      const std::string& post_data,
+      faststring* dst,
+      int64_t timeout_sec = kDefaultTimeoutSec);
 
-  CHECKED_STATUS PostToURL(const std::string& url,
-                           const std::string& post_data,
-                           const std::string& content_type,
-                           faststring* dst);
+  CHECKED_STATUS PostToURL(
+      const std::string& url,
+      const std::string& post_data,
+      const std::string& content_type,
+      faststring* dst,
+      int64_t timeout_sec = kDefaultTimeoutSec);
 
   std::string EscapeString(const std::string& data);
+
+  static const int64_t kDefaultTimeoutSec = 600;
 
  private:
   // Do a request. If 'post_data' is non-NULL, does a POST.
   // Otherwise, does a GET.
-  CHECKED_STATUS DoRequest(const std::string& url,
-                           const boost::optional<const std::string>& post_data,
-                           const boost::optional<const std::string>& content_type,
-                           faststring* dst);
+  CHECKED_STATUS DoRequest(
+      const std::string& url,
+      const boost::optional<const std::string>& post_data,
+      const boost::optional<const std::string>& content_type,
+      int64_t timeout_sec,
+      faststring* dst);
 
   CURL* curl_;
   DISALLOW_COPY_AND_ASSIGN(EasyCurl);

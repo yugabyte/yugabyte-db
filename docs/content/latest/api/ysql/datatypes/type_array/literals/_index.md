@@ -15,7 +15,7 @@ showAsideToc: false
 
 This section introduces array literals informally with a few examples. Its subsections, listed below, explain formally how you construct syntactically correct array literals that establish the values that you intend.
 
-An array literal starts with a left curly brace. This is followed by some number of comma-separated literal representations for the array's values. Sometimes, the value representations need not be double-quoted—but _may_ be. And sometimes the value representations must be double-quoted. The array literal then ends with a right curly brace. Depending on the array's data type, its values might be scalar, or they might be composite. For example, they might be _"row"_ type values; or they might be arrays. The literal for a multidimensional array is written as an array of arrays of arrays... and so on. They might even be values of a user-defined `DOMAIN` which is based on an array data type. This somewhat exotic, but potentially very useful, notion is discussed in the dedicated [Using an array of `DOMAIN`s](../array-of-domains/) section.
+An array literal starts with a left curly brace. This is followed by some number of comma-separated literal representations for the array's values. Sometimes, the value representations need not be double-quoted—but _may_ be. And sometimes the value representations must be double-quoted. The array literal then ends with a right curly brace. Depending on the array's data type, its values might be scalar, or they might be composite. For example, they might be _"row"_ type values; or they might be arrays. The literal for a multidimensional array is written as an array of arrays of arrays... and so on. They might even be values of a user-defined `DOMAIN` which is based on an array data type. This powerful notion is discussed in the dedicated section [Using an array of `DOMAIN` values](../array-of-domains/).
 
 To use such a literal in SQL or in PL/pgSQL it must be enquoted in the same way as is an ordinary `text` literal. You can enquote an array literal using dollar quotes, if this suits your purpose, just as you can for a `text` literal. You sometimes need to follow the closing quote with a suitable typecast operator for the array data type that you intend. And sometimes the context of use uniquely determines the literal's data type. It's never wrong to write the typecast explicitly—and it's a good practice always to do this.
 
@@ -57,7 +57,7 @@ It produces this result:
 The fourth example defines an array whose values are instances of a _"row"_ type:
 
 ```postgresql
-create type rt as (a int, b text);
+create type rt as (f1 int, f2 text);
 
 select '
   {

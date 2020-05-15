@@ -123,6 +123,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // may time out before even sending an op). TODO: implement that
   void SetTimeout(MonoDelta timeout);
 
+  void SetSingleRpcTimeout(MonoDelta timeout);
+
   // Add a new operation to the batch. Requires that the batch has not yet been flushed.
   // TODO: in other flush modes, this may not be the case -- need to
   // update this when they're implemented.
@@ -294,6 +296,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   //
   // Set by SetTimeout.
   MonoDelta timeout_;
+
+  // Timeout for the rpc.
+  MonoDelta single_rpc_timeout_;
 
   // After flushing, the absolute deadline for all in-flight ops.
   CoarseTimePoint deadline_;

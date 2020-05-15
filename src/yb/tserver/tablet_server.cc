@@ -317,7 +317,6 @@ Status TabletServer::Start() {
 
   AutoInitServiceFlags();
 
-  RETURN_NOT_OK(tablet_manager_->Start());
   RETURN_NOT_OK(RegisterServices());
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
@@ -325,6 +324,8 @@ Status TabletServer::Start() {
   if (FLAGS_enable_direct_local_tablet_server_call) {
     proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
   }
+
+  RETURN_NOT_OK(tablet_manager_->Start());
 
   RETURN_NOT_OK(heartbeater_->Start());
 
@@ -471,6 +472,10 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version) {
 
 TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
   return tablet_manager_.get();
+}
+
+client::YBClient* TabletServer::client() {
+  return &tablet_manager_->client();
 }
 
 client::TransactionPool* TabletServer::TransactionPool() {

@@ -15,7 +15,7 @@ showAsideToc: false
 
 **Signature:**
 ```
-input value:       [lb-1:ub-1] ... [lb-N:ub-N]anyarray
+input value:       [lb_1:ub_1] ... [lb_N:ub_N]anyarray
 return value:      anyarray
 ```
 **Note:**

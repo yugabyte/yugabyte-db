@@ -693,7 +693,7 @@ class PerTableLoadState {
   // Set of ts_uuid sorted ascending by load. This is the actual raw data of TS load.
   vector<TabletServerId> sorted_load_;
 
-  // Set ot tablet ids that have been determined to have missing replicas. This can mean they are
+  // Set of tablet ids that have been determined to have missing replicas. This can mean they are
   // generically under-replicated (2 replicas active, but 3 configured), or missing replicas in
   // certain placements (3 replicas active out of 3 configured, but no replicas in one of the AZs
   // listed in the placement blocks).
