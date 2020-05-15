@@ -680,6 +680,8 @@ get_session_timezone(FunctionCallInfo fcinfo)
 #endif
 }
 
+#define TRUNC_DAY	tm->tm_hour = 0; tm->tm_min = 0; *redotz = true;
+
 /*
  * redotz is used only for timestamp with time zone
  */
@@ -704,21 +706,33 @@ tm_trunc(struct pg_tm *tm, text *fmt, bool *redotz)
 		j2date(_ora_date_trunc(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday), f)
 			   + POSTGRES_EPOCH_JDATE,
 		&tm->tm_year, &tm->tm_mon, &tm->tm_mday);
-		tm->tm_hour = 0;
-		tm->tm_min = 0;
-		*redotz = true;
+		TRUNC_DAY;
 		break;
+
 	CASE_fmt_YYYY
 		tm->tm_mon = 1;
+		tm->tm_mday = 1;
+		TRUNC_DAY;
+		break;
+
 	CASE_fmt_Q
 		tm->tm_mon = (3*((tm->tm_mon - 1)/3)) + 1;
+		tm->tm_mday = 1;
+		TRUNC_DAY;
+		break;
+
 	CASE_fmt_MON
 		tm->tm_mday = 1;
+		TRUNC_DAY;
+		break;
+
 	CASE_fmt_DDD
-		tm->tm_hour = 0;
-		*redotz = true; /* for all cases >= DAY */
+		TRUNC_DAY;
+		break;
+
 	CASE_fmt_HH
 		tm->tm_min = 0;
+		break;
 	}
 }
 
