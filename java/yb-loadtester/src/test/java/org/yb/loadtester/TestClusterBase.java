@@ -99,9 +99,9 @@ public class TestClusterBase extends BaseCQLTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flags = super.getMasterFlags();
     // Speed up the load balancer.
+    flags.put("load_balancer_max_concurrent_adds", "5");
     // TODO(bogdan): commented out until we figure out #4412.
     /*
-    flags.put("load_balancer_max_concurrent_adds", "5");
     flags.put("load_balancer_max_over_replicated_tablets", "5");
     flags.put("load_balancer_max_concurrent_removals", "5");
     flags.put("load_balancer_max_concurrent_moves", "5");
