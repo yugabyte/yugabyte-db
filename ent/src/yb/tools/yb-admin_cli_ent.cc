@@ -40,24 +40,25 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "list_snapshots", " [SHOW_DETAILS] [NOT_SHOW_RESTORED]",
       [client](const CLIArguments& args) -> Status {
         bool show_details = false;
-        bool not_show_restored = false;
+        bool show_restored = true;
+
         if (args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        for (int i=2; i<args.size(); ++i) {
+        for (int i = 2; i < args.size(); ++i) {
           string uppercase_flag;
           ToUpperCase(args[i], &uppercase_flag);
 
           if (uppercase_flag == "SHOW_DETAILS") {
             show_details = true;
           } else if (uppercase_flag == "NOT_SHOW_RESTORED") {
-            not_show_restored= true;
+            show_restored = false;
           } else {
             return ClusterAdminCli::kInvalidArguments;
           }
         }
 
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details, not_show_restored),
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details, show_restored),
                               "Unable to list snapshots");
         return Status::OK();
       });
