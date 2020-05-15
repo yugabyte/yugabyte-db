@@ -1,8 +1,8 @@
 ---
-title: Upgrade universes using YugaWare
+title: Upgrade universes using Yugabyte Platform
 headerTitle: Upgrade universe
 linkTitle: Upgrade universe
-description: Upgrade universes using YugaWare.
+description: Upgrade universes using Yugabyte Platform.
 aliases:
   - /manage/enterprise-edition/upgrade-universe/
 menu:

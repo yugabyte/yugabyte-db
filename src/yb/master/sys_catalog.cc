@@ -208,16 +208,16 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   RETURN_NOT_OK(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
 
   // Verify that the schema is the current one
-  if (!metadata->schema().Equals(schema_)) {
+  if (!metadata->schema()->Equals(schema_)) {
     // TODO: In this case we probably should execute the migration step.
-    return(STATUS(Corruption, "Unexpected schema", metadata->schema().ToString()));
+    return(STATUS(Corruption, "Unexpected schema", metadata->schema()->ToString()));
   }
 
   // Update partition schema of old SysCatalogTable. SysCatalogTable should be non-partitioned.
-  if (metadata->partition_schema().IsHashPartitioning()) {
+  if (metadata->partition_schema()->IsHashPartitioning()) {
     LOG(INFO) << "Updating partition schema of SysCatalogTable ...";
     PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), metadata->schema(),
+    RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), *metadata->schema(),
                                           &partition_schema));
     metadata->SetPartitionSchema(partition_schema);
     RETURN_NOT_OK(metadata->Flush());
@@ -753,9 +753,10 @@ Status SysCatalogTable::CopyPgsqlTables(
 
     const auto* tablet = tablet_peer()->tablet();
     const auto* meta = tablet->metadata();
-    const tablet::TableInfo* source_table_info = VERIFY_RESULT(meta->GetTableInfo(source_table_id));
-    const tablet::TableInfo* target_table_info = VERIFY_RESULT(meta->GetTableInfo(target_table_id));
-
+    const std::shared_ptr<tablet::TableInfo> source_table_info =
+        VERIFY_RESULT(meta->GetTableInfo(source_table_id));
+    const std::shared_ptr<tablet::TableInfo> target_table_info =
+        VERIFY_RESULT(meta->GetTableInfo(target_table_id));
     const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
     std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
         tablet->NewRowIterator(source_projection, boost::none, {}, source_table_id));

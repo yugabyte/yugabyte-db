@@ -1,8 +1,8 @@
 ---
-title: Delete a universe using YugaWare
+title: Delete a universe using Yugabyte Platform
 headerTitle: Delete universe
 linkTitle: Delete universe
-description: Delete a universe using YugaWare
+description: Delete a universe using Yugabyte Platform.
 aliases:
   - /manage/enterprise-edition/delete-universe/
 menu:

@@ -104,7 +104,7 @@ DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
 
-DEFINE_bool(enable_consensus_exponential_backoff, false,
+DEFINE_bool(enable_consensus_exponential_backoff, true,
             "Whether exponential backoff based on number of retransmissions at tablet leader "
             "for number of entries to replicate to lagging follower is enabled.");
 TAG_FLAG(enable_consensus_exponential_backoff, advanced);
@@ -478,7 +478,10 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // This is initialized to the queue's last appended op but gets set to the id of the
     // log entry preceding the first one in 'messages' if messages are found for the peer.
     preceding_id = queue_state_.last_appended;
+
+    // NOTE: committed_op_id may be overwritten later.
     *request->mutable_committed_op_id() = queue_state_.committed_op_id;
+
     request->set_caller_term(queue_state_.current_term);
     unreachable_time =
         MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time);
@@ -538,6 +541,19 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
       }
       return result.status();
+    }
+
+    if (!result->messages.empty()) {
+      // All entries committed at leader may not be available at lagging follower.
+      // `commited_op_id` in this request may make a lagging follower aware of the
+      // highest committed op index at the leader. We have a sanity check during tablet
+      // bootstrap, in TabletBootstrap::PlaySegments(), that this tablet did not lose a
+      // committed operation. Hence avoid sending a committed op id that is too large
+      // to such a lagging follower.
+      const auto& msg = result->messages.back();
+      if (msg->id().index() < request->mutable_committed_op_id()->index()) {
+        *request->mutable_committed_op_id() = msg->id();
+      }
     }
 
     result->preceding_op.ToPB(&preceding_id);

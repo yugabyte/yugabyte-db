@@ -161,7 +161,7 @@ The `SUPERUSER` status should be given only to a limited number of users. Applic
 To create a superuser `admin` with the `LOGIN` privilege, run the following command using a superuser account:
 
 ```postgresql
-yugabyte=# CREATE ROLE admin WITH LOGIN SUPERUSER PASSWORD = 'PasswdForAdmin';
+yugabyte=# CREATE ROLE admin WITH LOGIN SUPERUSER PASSWORD 'PasswdForAdmin';
 ```
 
 To verify the `admin` account just created, run the following query.

@@ -2,7 +2,7 @@
 title: Configure the YugaWare Admin Console
 headerTitle: Configure Admin Console
 linkTitle: 3. Configure Admin Console
-description: Configure YugaWare, the Admin Console, for your YugabyteDB clusters.
+description: Configure the YugabyteDB Admin Console.
 aliases:
   - deploy/enterprise-edition/configure-admin-console/
 menu:

@@ -581,8 +581,12 @@ class SubDocKey {
   //     Otherwise, we allow decoding an incomplete SubDocKey without a hybrid_time in the end. Note
   //     that we also allow input that has a few bytes in the end but not enough to represent a
   //     hybrid_time.
+  // @param allow_special
+  //     Whether it is allowed to have special value types in slice, that are used during seek.
+  //     If such value type is found, decoding is stopped w/o error.
   CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
-                            HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue);
+                            HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue,
+                            AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
@@ -795,6 +799,7 @@ class SubDocKey {
   template<class Callback>
   static Status DoDecode(rocksdb::Slice* slice,
                          HybridTimeRequired require_hybrid_time,
+                         AllowSpecial allow_special,
                          const Callback& callback);
 
   KeyBytes DoEncode(bool include_hybrid_time) const;

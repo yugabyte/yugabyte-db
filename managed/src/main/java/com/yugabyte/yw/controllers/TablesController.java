@@ -26,6 +26,7 @@ import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 import org.yb.master.Master.RelationType;
+import org.yb.Common.TableType;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -317,8 +318,8 @@ public class TablesController extends AuthenticatedController {
     taskParams.universeUUID = universeUUID;
     taskParams.customerUUID = customerUUID;
 
-    if (containsIndexTable(taskParams.tableUUIDList, universe)) {
-      String errMsg = "Invalid Table List.";
+    if (disableBackupOnTables(taskParams.tableUUIDList, universe)) {
+      String errMsg = "Invalid Table List, found index or YSQL table.";
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
     ObjectNode resultNode = Json.newObject();
@@ -361,8 +362,8 @@ public class TablesController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
-    if (containsIndexTable(Arrays.asList(tableUUID), universe)) {
-      String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index table.";
+    if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
+      String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
@@ -437,8 +438,8 @@ public class TablesController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
 
-      if (containsIndexTable(Arrays.asList(tableUUID), universe)) {
-        String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index table.";
+      if (disableBackupOnTables(Arrays.asList(tableUUID), universe)) {
+        String errMsg = "Invalid Table UUID: " + tableUUID + ". Cannot backup index or YSQL table.";
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
 
@@ -492,7 +493,7 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
-  public boolean containsIndexTable(List<UUID> tableUuids, Universe universe) {
+  public boolean disableBackupOnTables(List<UUID> tableUuids, Universe universe) {
     if (tableUuids.isEmpty()) {
       return false;
     }
@@ -505,15 +506,19 @@ public class TablesController extends AuthenticatedController {
     }
     String certificate = universe.getCertificate();
     YBClient client = null;
+
     try {
       client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
+      // Match if the table is an index or ysql table.
       return tableInfoList.stream().anyMatch(tableInfo ->
               tableUuids.contains(
                       getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", ""))) &&
-              tableInfo.hasRelationType() &&
-              tableInfo.getRelationType() == RelationType.INDEX_TABLE_RELATION);
+                      ((tableInfo.hasRelationType() && tableInfo.getRelationType() ==
+                              RelationType.INDEX_TABLE_RELATION) ||
+                      (tableInfo.hasTableType() && tableInfo.getTableType() ==
+                              TableType.PGSQL_TABLE_TYPE)));
     } catch (Exception e) {
       LOG.warn(e.toString());
       return false;

@@ -58,6 +58,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
     return nullptr;
   }
 
+  client::YBClient* client() override {
+    return nullptr;
+  }
+
  private:
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

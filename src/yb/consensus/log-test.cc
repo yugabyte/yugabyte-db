@@ -291,7 +291,7 @@ TEST_F(LogTest, TestFsyncDataSize) {
   opid.set_term(0);
   opid.set_index(1);
 
-  int size;
+  int size = 0;
   ASSERT_OK(AppendNoOps(&opid, 100 * 1024, &size));
   SleepFor(MonoDelta::FromMilliseconds(1));
   ASSERT_OK(AppendNoOp(&opid));

@@ -1239,7 +1239,7 @@ message GetLoadMovePercentResponsePB {
 message IsLoadBalancerIdleRequestPB {
 }
 
-// When no errors, load balancer is active.
+// When no errors, load balancer is idle.
 message IsLoadBalancerIdleResponsePB {
   optional MasterErrorPB error = 1;
 }

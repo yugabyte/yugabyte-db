@@ -72,14 +72,14 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
   }
 
   std::shared_ptr<ColumnIds> deleted_before_history_cutoff = std::make_shared<ColumnIds>();
-  for (const auto& deleted_col : metadata_.deleted_cols()) {
+  for (const auto& deleted_col : *metadata_.deleted_cols()) {
     if (deleted_col.ht < history_cutoff) {
       deleted_before_history_cutoff->insert(deleted_col.id);
     }
   }
 
   return {history_cutoff, std::move(deleted_before_history_cutoff),
-          TableTTL(metadata_.schema()),
+          TableTTL(*metadata_.schema()),
           docdb::ShouldRetainDeleteMarkersInMajorCompaction(
               ShouldRetainDeleteMarkersInMajorCompaction())};
 }
@@ -108,7 +108,7 @@ void TabletRetentionPolicy::UnregisterReaderTimestamp(HybridTime timestamp) {
 bool TabletRetentionPolicy::ShouldRetainDeleteMarkersInMajorCompaction() const {
   // If the index table is in the process of being backfilled, then we
   // want to retain delete markers until the backfill process is complete.
-  return metadata_.schema().table_properties().IsBackfilling();
+  return metadata_.schema()->table_properties().IsBackfilling();
 }
 
 HybridTime TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write_ht) {

@@ -1689,8 +1689,8 @@ struct IOMetrics {
       const ExternalMiniCluster& cluster, int ts_index,
       const MetricPrototype* metric_proto, int64_t* value) {
     const ExternalTabletServer& ts = *CHECK_NOTNULL(cluster.tablet_server(ts_index));
-    const auto result = ts.GetInt64CQLMetric(
-        &METRIC_ENTITY_server, "yb.cqlserver", CHECK_NOTNULL(metric_proto),
+    const auto result = ts.GetInt64Metric(
+        &METRIC_ENTITY_server, "yb.tabletserver", CHECK_NOTNULL(metric_proto),
         "total_count");
 
     if (!result.ok()) {

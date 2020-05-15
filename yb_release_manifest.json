@@ -24,14 +24,13 @@
       "bin/configure",
       "bin/log_cleanup.sh",
       "bin/yb-check-consistency.py",
-      "bin/yb-check-failed-tablets.sh",
-      "bin/yb-prof.py",
       "bin/yugabyted",
       "build-support/post_install.sh",
       "submodules/yugabyte-installation/bin/yb-ctl",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
-      "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
     "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
     "postgres": ["$BUILD_ROOT/postgres/*"],
@@ -39,6 +38,11 @@
     "share": [
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
       "sample/*.sql"
+    ],
+    "tools": [
+      "bin/yb-prof.py",
+      "bin/print_stacks.sh",
+      "bin/yb-check-failed-tablets.sh"
     ],
     "www": ["www/*"]
   },
@@ -52,7 +56,8 @@
       "build-support/post_install.sh",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
-      "thirdparty/installed/common/cqlsh/bin/cqlsh.py"
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh",
+      "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
     "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],

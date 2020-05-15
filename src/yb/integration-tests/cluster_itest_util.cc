@@ -313,7 +313,8 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
 Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
                                   const string& tablet_id,
                                   const vector<TServerDetails*>& replicas,
-                                  const MonoDelta& timeout) {
+                                  const MonoDelta& timeout,
+                                  int64_t* actual_minimum_index) {
   MonoTime start = MonoTime::Now();
   MonoDelta passed = MonoDelta::FromMilliseconds(0);
   while (true) {
@@ -321,8 +322,16 @@ Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
     Status s = GetLastOpIdForEachReplica(tablet_id, replicas, consensus::RECEIVED_OPID, timeout,
                                          &op_ids);
     if (s.ok()) {
+      if (actual_minimum_index != nullptr) {
+        *actual_minimum_index = std::numeric_limits<int64_t>::max();
+      }
+
       bool any_behind = false;
       for (const OpId& op_id : op_ids) {
+        if (actual_minimum_index != nullptr) {
+          *actual_minimum_index = std::min(*actual_minimum_index, op_id.index());
+        }
+
         if (op_id.index() < log_index) {
           any_behind = true;
           break;

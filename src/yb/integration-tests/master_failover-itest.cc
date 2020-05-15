@@ -194,7 +194,8 @@ class MasterFailoverTest : public YBTest {
   std::unique_ptr<YBClient> client_;
 };
 
-class MasterFailoverTestIndexCreation : public MasterFailoverTest {
+class MasterFailoverTestIndexCreation : public MasterFailoverTest,
+                                        public ::testing::WithParamInterface<int> {
  public:
   MasterFailoverTestIndexCreation() {
     opts_.extra_tserver_flags.push_back("--allow_index_table_read_write=true");
@@ -207,8 +208,16 @@ class MasterFailoverTestIndexCreation : public MasterFailoverTest {
     // We don't have to wait for that in the tests here.
     opts_.extra_master_flags.push_back("--catalog_manager_check_ts_count_for_create_table=false");
   }
+
+  // Master has to do 5 RPCs to TServers to create+backfill an index.
+  // 4 corresponding to set each of the 4 IndexPermissions, and 1 for GetSafeTime.
+  // We want to simulate a failure before and after each RPC, so total 10 stages.
+  static constexpr int kNumMaxStages = 10;
 };
 
+INSTANTIATE_TEST_CASE_P(
+    MasterFailoverTestIndexCreation, MasterFailoverTestIndexCreation,
+    ::testing::Range(1, MasterFailoverTestIndexCreation::kNumMaxStages));
 // Test that synchronous CreateTable (issue CreateTable call and then
 // wait until the table has been created) works even when the original
 // leader master has been paused.
@@ -267,7 +276,8 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
 
 // Orchestrate a master failover at various points of a backfill,
 // ensure that the backfill eventually completes.
-TEST_F(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
+TEST_P(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
+  const int kPauseAfterStage = GetParam();
   YBTableName table_name(YQL_DATABASE_CQL, "test", "testPauseAfterCreateTableIssued");
   LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
   FLAGS_yb_num_total_tablets = 5;
@@ -275,8 +285,9 @@ TEST_F(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
   LOG(INFO) << "CreateTable done for " << table_name.ToString();
 
   MonoDelta total_time_taken_for_one_iteration;
-  constexpr int kNumLoops = 10;
-  for (int i = 0; i < kNumLoops; i++) {
+  // In the first run, we estimate the total time taken for one create index to complete.
+  // The second run will pause the master at the desired point during create index.
+  for (int i = 0; i < 2; i++) {
     auto start = ToSteady(CoarseMonoClock::Now());
     int leader_idx = -1;
     ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
@@ -291,12 +302,12 @@ TEST_F(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
     LOG(INFO) << "Issuing CreateIndex for " << index_table_name.ToString();
     ASSERT_OK(CreateIndex(table_name, index_table_name, kNoWaitForCreate));
 
-    if (i > 0) {
+    if (i != 0) {
       // In the first run, we estimate how long it takes for an uninterrupted
       // backfill process to complete, then the remaining iterations kill the
       // master leader at various points to cause the  master failover during
       // the various stages of index backfill.
-      MonoDelta sleep_time = total_time_taken_for_one_iteration * i / kNumLoops;
+      MonoDelta sleep_time = total_time_taken_for_one_iteration * kPauseAfterStage / kNumMaxStages;
       LOG(INFO) << "Sleeping for " << sleep_time << ", before master pause";
       SleepFor(sleep_time);
 

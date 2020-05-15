@@ -22,7 +22,7 @@ from build_definitions import *
 class CQLShDependency(Dependency):
     def __init__(self):
         super(CQLShDependency, self).__init__(
-                'cqlsh', '3.10-yb-5', 'https://github.com/YugaByte/cqlsh/archive/v{0}.tar.gz',
+                'cqlsh', '3.10-yb-6', 'https://github.com/YugaByte/cqlsh/archive/v{0}.tar.gz',
                 BUILD_GROUP_COMMON)
         self.copy_sources = True
 

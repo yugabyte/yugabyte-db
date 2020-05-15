@@ -241,15 +241,15 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
   RaftGroupMetadataPtr meta;
   RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &meta));
 
-  const Schema& schema = meta->schema();
+  const SchemaPtr schema = meta->schema();
 
   std::cout << Indent(indent) << "Partition: "
-            << meta->partition_schema().PartitionDebugString(*meta->partition(), meta->schema())
+            << meta->partition_schema()->PartitionDebugString(*meta->partition(), *schema)
             << std::endl;
   std::cout << Indent(indent) << "Table name: " << meta->table_name()
             << " Table id: " << meta->table_id() << std::endl;
   std::cout << Indent(indent) << "Schema (version=" << meta->schema_version() << "): "
-            << schema.ToString() << std::endl;
+            << schema->ToString() << std::endl;
 
   tablet::RaftGroupReplicaSuperBlockPB pb;
   meta->ToSuperBlock(&pb);

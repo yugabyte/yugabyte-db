@@ -79,8 +79,8 @@ YugabyteDB explicitly manages a block cache, and doesn't need the entire data se
 - Mount settings  
       - XFS is the recommended filesystem.  
       - Use the `noatime` setting when mounting the data drives.  
-      - ZFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).
-      - NFS isn't currently supported. 
+      - ZFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).  
+      - NFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4388).  
 
 YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup. 
 It can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.

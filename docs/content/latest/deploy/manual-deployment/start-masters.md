@@ -39,7 +39,7 @@ Run the `yb-master` server on each of the three nodes as shown below. Note how m
 ```sh
 $ ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
-  --rpc_bind_addresses 172.151.17.130 \
+  --rpc_bind_addresses 172.151.17.130:7100 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   --placement_cloud aws \
   --placement_region us-west \
@@ -55,7 +55,7 @@ Alternatively, you can also create a `master.conf` file with the following flags
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
---rpc_bind_addresses=172.151.17.130
+--rpc_bind_addresses=172.151.17.130:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 --placement_cloud=aws 
 --placement_region=us-west 

@@ -695,12 +695,12 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  const IndexMap& index_map = tablet.peer->tablet_metadata()->index_map();
+  const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map();
   std::vector<IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
-    indexes_to_backfill.push_back(index_map.at(idx.table_id()));
-    index_ids.push_back(index_map.at(idx.table_id()).table_id());
+    indexes_to_backfill.push_back(index_map->at(idx.table_id()));
+    index_ids.push_back(index_map->at(idx.table_id()).table_id());
   }
 
   Result<string> resume_from = tablet.peer->tablet()->BackfillIndexes(
@@ -738,8 +738,9 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
     return;
   }
 
-  Schema tablet_schema = tablet.peer->tablet_metadata()->schema();
-  uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
+  auto table_info = tablet.peer->tablet_metadata()->primary_table_info();
+  const Schema& tablet_schema = table_info->schema;
+  uint32_t schema_version = table_info->schema_version;
   // Sanity check, to verify that the tablet should have the same schema
   // specified in the request.
   Schema req_schema;
@@ -1606,8 +1607,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // serialization anomaly tested by TestOneOrTwoAdmins
   // (https://github.com/YugaByte/yugabyte-db/issues/1572).
 
-  LongOperationTracker long_operation_tracker("Read", 1s);
-
   bool serializable_isolation = false;
   TabletPeerPtr tablet_peer;
   if (req->has_transaction()) {
@@ -2292,8 +2291,8 @@ void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();
     peer->GetTabletStatusPB(status->mutable_tablet_status());
-    SchemaToPB(peer->status_listener()->schema(), status->mutable_schema());
-    peer->tablet_metadata()->partition_schema().ToPB(status->mutable_partition_schema());
+    SchemaToPB(*peer->status_listener()->schema(), status->mutable_schema());
+    peer->tablet_metadata()->partition_schema()->ToPB(status->mutable_partition_schema());
   }
   context.RespondSuccess();
 }
@@ -2350,8 +2349,8 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 namespace {
 
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
-  const Schema& schema = tablet->metadata()->schema();
-  auto client_schema = schema.CopyWithoutColumnIds();
+  const shared_ptr<Schema> schema = tablet->metadata()->schema();
+  auto client_schema = schema->CopyWithoutColumnIds();
   auto iter = tablet->NewRowIterator(client_schema, boost::none, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
@@ -2360,7 +2359,7 @@ Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) 
 
   while (VERIFY_RESULT((**iter).HasNext())) {
     RETURN_NOT_OK((**iter).NextRow(&value_map));
-    collector.HandleRow(schema, value_map);
+    collector.HandleRow(*schema, value_map);
   }
 
   return collector.agg_checksum();

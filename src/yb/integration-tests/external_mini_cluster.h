@@ -149,7 +149,7 @@ struct ExternalMiniClusterOptions {
 
   bool enable_ysql = kDefaultEnableYsql;
 
-  // If true logs will be writen in both stderr and file
+  // If true logs will be written in both stderr and file
   bool log_to_file = false;
 
   // Use even IPs for cluster, like we have for MiniCluster.

@@ -617,7 +617,8 @@ class DecodeSubDocKeyCallback {
 
 Status SubDocKey::PartiallyDecode(Slice* slice, boost::container::small_vector_base<Slice>* out) {
   CHECK_NOTNULL(out);
-  return DoDecode(slice, HybridTimeRequired::kTrue, DecodeSubDocKeyCallback(out));
+  return DoDecode(slice, HybridTimeRequired::kTrue, AllowSpecial::kFalse,
+                  DecodeSubDocKeyCallback(out));
 }
 
 class SubDocKey::DecodeCallback {
@@ -643,9 +644,10 @@ class SubDocKey::DecodeCallback {
   SubDocKey* key_;
 };
 
-Status SubDocKey::DecodeFrom(Slice* slice, HybridTimeRequired require_hybrid_time) {
+Status SubDocKey::DecodeFrom(
+    Slice* slice, HybridTimeRequired require_hybrid_time, AllowSpecial allow_special) {
   Clear();
-  return DoDecode(slice, require_hybrid_time, DecodeCallback(this));
+  return DoDecode(slice, require_hybrid_time, allow_special, DecodeCallback(this));
 }
 
 Result<bool> SubDocKey::DecodeSubkey(Slice* slice) {
@@ -664,11 +666,21 @@ Result<bool> SubDocKey::DecodeSubkey(Slice* slice, const Callback& callback) {
 template<class Callback>
 Status SubDocKey::DoDecode(rocksdb::Slice* slice,
                            const HybridTimeRequired require_hybrid_time,
+                           AllowSpecial allow_special,
                            const Callback& callback) {
+  if (allow_special && require_hybrid_time) {
+    return STATUS(NotSupported,
+                  "Not supported to have both require_hybrid_time and allow_special");
+  }
   const rocksdb::Slice original_bytes(*slice);
 
   RETURN_NOT_OK(callback.DecodeDocKey(slice));
   for (;;) {
+    if (allow_special && !slice->empty() &&
+        IsSpecialValueType(static_cast<ValueType>(slice->cdata()[0]))) {
+      callback.doc_hybrid_time() = DocHybridTime::kInvalid;
+      return Status::OK();
+    }
     auto decode_result = DecodeSubkey(slice, callback);
     RETURN_NOT_OK_PREPEND(
         decode_result,
@@ -782,9 +794,12 @@ std::string SubDocKey::DebugSliceToString(Slice slice) {
 
 Result<std::string> SubDocKey::DebugSliceToStringAsResult(Slice slice) {
   SubDocKey key;
-  auto status = key.FullyDecodeFrom(slice, HybridTimeRequired::kFalse);
+  auto status = key.DecodeFrom(&slice, HybridTimeRequired::kFalse, AllowSpecial::kTrue);
   if (status.ok()) {
-    return key.ToString();
+    if (slice.empty()) {
+      return key.ToString();
+    }
+    return key.ToString() + "+" + slice.ToDebugHexString();
   }
   return status;
 }
@@ -895,7 +910,8 @@ int SubDocKey::CompareToIgnoreHt(const SubDocKey& other) const {
 string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
   rocksdb::Slice mutable_slice(key_bytes.AsSlice());
   SubDocKey subdoc_key;
-  Status decode_status = subdoc_key.DecodeFrom(&mutable_slice, HybridTimeRequired::kFalse);
+  Status decode_status = subdoc_key.DecodeFrom(
+      &mutable_slice, HybridTimeRequired::kFalse, AllowSpecial::kTrue);
   if (decode_status.ok()) {
     ostringstream ss;
     if (!subdoc_key.has_hybrid_time() && subdoc_key.num_subkeys() == 0) {
@@ -905,7 +921,7 @@ string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
       ss << subdoc_key.ToString();
     }
     if (mutable_slice.size() > 0) {
-      ss << " followed by raw bytes " << FormatSliceAsStr(mutable_slice);
+      ss << "+" << mutable_slice.ToDebugString();
       // Can append the above status of why we could not decode a SubDocKey, if needed.
     }
     return ss.str();

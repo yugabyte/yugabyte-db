@@ -46,6 +46,9 @@ namespace docdb {
     /* Old intent type had 6 different types of intents, one for each possible intent. */ \
     /* Intent type set has 4 different types of intents, but allow their combinations. */ \
     ((kObsoleteIntentType, 20)) \
+    /* Value type that is greater than any of intent types. */ \
+    /* It is NOT stored in DB, so should be updated if we add new intent value type */ \
+    ((kGreaterThanIntentType, 21)) \
     /* This indicates the end of the "hashed" or "range" group of components of the primary */ \
     /* key. This needs to sort before all other value types, so that a DocKey that has a prefix */ \
     /* of the sequence of components of another key sorts before the other key. kGroupEnd is */ \
@@ -218,7 +221,9 @@ constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
 }
 
 constexpr inline bool IsSpecialValueType(ValueType value_type) {
-  return value_type == ValueType::kLowest || value_type == ValueType::kHighest;
+  return value_type == ValueType::kLowest || value_type == ValueType::kHighest ||
+         value_type == ValueType::kMaxByte || value_type == ValueType::kIntentTypeSet ||
+         value_type == ValueType::kGreaterThanIntentType;
 }
 
 constexpr inline bool IsPrimitiveOrSpecialValueType(ValueType value_type) {

@@ -181,6 +181,13 @@ class DBIter: public Iterator {
   void SeekToFirst() override;
   void SeekToLast() override;
 
+  void RevalidateAfterUpperBoundChange() override {
+    if (iter_->Valid() && direction_ == kForward) {
+      valid_ = true;
+      FindNextUserEntry(/* skipping= */ false);
+    }
+  }
+
  private:
   void ReverseToBackward();
   void PrevInternal();
@@ -895,6 +902,10 @@ inline Status ArenaWrappedDBIter::ReleasePinnedData() {
 void ArenaWrappedDBIter::RegisterCleanup(CleanupFunction function, void* arg1,
                                          void* arg2) {
   db_iter_->RegisterCleanup(function, arg1, arg2);
+}
+
+void ArenaWrappedDBIter::RevalidateAfterUpperBoundChange() {
+  db_iter_->RevalidateAfterUpperBoundChange();
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(

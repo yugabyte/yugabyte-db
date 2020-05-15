@@ -33,7 +33,7 @@ If the processes are not running you can start them with:
 
 - `yb-ctl` when using a local cluster.
 
-- `bin/yb-tserver` and `bin/yb-master` binaries when using a multi-node cluster.
+- `bin/yb-tserver` and `bin/yb-master` servers when using a multi-node cluster.
 
 Once the processes are running, if they are not accessible from your client machine this may be a network issue (see below).
 

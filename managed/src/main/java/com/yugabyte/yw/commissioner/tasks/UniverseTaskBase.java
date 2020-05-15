@@ -53,6 +53,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
+
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -994,6 +996,41 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Add the task list to the task queue.
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
+  }
+
+  // Subtask to update gflags in memory.
+  public void createSetFlagInMemoryTasks(Collection<NodeDetails> nodes,
+                                         ServerType serverType,
+                                         boolean force,
+                                         Map<String, String> gflags,
+                                         boolean updateMasterAddrs) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("InMemoryGFlagUpdate", executor);
+    for (NodeDetails node : nodes) {
+      // Create the task params.
+      SetFlagInMemory.Params params = new SetFlagInMemory.Params();
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // The server type for the flag.
+      params.serverType = serverType;
+      // If the flags need to be force updated.
+      params.force = force;
+      // The flags to update.
+      params.gflags = gflags;
+      // If only master addresses need to be updated.
+      params.updateMasterAddrs = updateMasterAddrs;
+
+      // Create the task.
+      SetFlagInMemory setFlag = new SetFlagInMemory();
+      setFlag.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addTask(setFlag);
+    }
+    // Add the task list to the task queue.
+    subTaskGroupQueue.add(subTaskGroup);
+    // Configure the user facing subtask for this task list.
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 
   // Check if the node present in taskParams has a backing instance alive on the IaaS.

@@ -556,7 +556,7 @@ public class TablesControllerTest extends WithApplication {
   }
 
   @Test
-  public void testCreateBackupOnStandaloneIndexFails() throws Exception {
+  public void testCreateBackupOnDisabledTableFails() throws Exception {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
@@ -566,11 +566,11 @@ public class TablesControllerTest extends WithApplication {
 
     TablesController mockTablesController = spy(tablesController);
 
-    doReturn(true).when(mockTablesController).containsIndexTable(any(), any());
+    doReturn(true).when(mockTablesController).disableBackupOnTables(any(), any());
     UUID uuid = UUID.randomUUID();
     Result r = mockTablesController.createBackup(customer.uuid, universe.universeUUID, uuid);
 
-    assertBadRequest(r, "Invalid Table UUID: " + uuid + ". Cannot backup index table.");
+    assertBadRequest(r, "Invalid Table UUID: " + uuid + ". Cannot backup index or YSQL table.");
   }
 
   @Test
@@ -733,11 +733,12 @@ public class TablesControllerTest extends WithApplication {
   }
 
   @Test
-  public void testContainsIndexTable() throws Exception {
+  public void testDisallowBackup() throws Exception {
     List<TableInfo> tableInfoList = new ArrayList<TableInfo>();
     UUID table1Uuid = UUID.randomUUID();
     UUID table2Uuid = UUID.randomUUID();
     UUID indexUuid = UUID.randomUUID();
+    UUID ysqlUuid = UUID.randomUUID();
     TableInfo ti1 = TableInfo.newBuilder()
             .setName("Table1")
             .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
@@ -757,9 +758,18 @@ public class TablesControllerTest extends WithApplication {
             .setTableType(TableType.YQL_TABLE_TYPE)
             .setRelationType(RelationType.INDEX_TABLE_RELATION)
             .build();
+    TableInfo ti4 = TableInfo.newBuilder()
+            .setName("TableYsql")
+            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setId(ByteString.copyFromUtf8(ysqlUuid.toString()))
+            .setTableType(TableType.PGSQL_TABLE_TYPE)
+            .build();
+
+
     tableInfoList.add(ti1);
     tableInfoList.add(ti2);
     tableInfoList.add(ti3);
+    tableInfoList.add(ti4);
 
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
@@ -767,12 +777,21 @@ public class TablesControllerTest extends WithApplication {
     when(universe.getMasterAddresses(anyBoolean())).thenReturn("fake_address");
     when(universe.getCertificate()).thenReturn("fake_certificate");
 
+
+    // Disallow on Index Table.
     List<UUID> uuids = Arrays.asList(table1Uuid, table2Uuid, indexUuid);
-    assertTrue(tablesController.containsIndexTable(uuids, universe));
+    assertTrue(tablesController.disableBackupOnTables(uuids, universe));
 
+
+    // Disallow on YSQL table.
+    uuids = Arrays.asList(table1Uuid, table2Uuid, ysqlUuid);
+    assertTrue(tablesController.disableBackupOnTables(uuids, universe));
+
+
+    // Allow on YCQL tables and empty list.
     uuids = Arrays.asList(table1Uuid, table2Uuid);
-    assertFalse(tablesController.containsIndexTable(uuids, universe));
+    assertFalse(tablesController.disableBackupOnTables(uuids, universe));
 
-    assertFalse(tablesController.containsIndexTable(new ArrayList<UUID>(), universe));
+    assertFalse(tablesController.disableBackupOnTables(new ArrayList<UUID>(), universe));
   }
 }

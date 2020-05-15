@@ -38,6 +38,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.Set;
+import java.util.HashSet;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
@@ -356,14 +358,16 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--extra_gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
         } else if (configureParams.type == GFlags) {
-          if (!configureParams.gflags.isEmpty()) {
-            String processType = configureParams.getProperty("processType");
-            expectedCommand.add("--yb_process_type");
-            expectedCommand.add(processType.toLowerCase());
-            String gflagsJson =  Json.stringify(Json.toJson(gflags));
-            expectedCommand.add("--replace_gflags");
-            expectedCommand.add("--gflags");
-            expectedCommand.add(gflagsJson);
+          String processType = configureParams.getProperty("processType");
+          expectedCommand.add("--yb_process_type");
+          expectedCommand.add(processType.toLowerCase());
+          String gflagsJson =  Json.stringify(Json.toJson(gflags));
+          expectedCommand.add("--replace_gflags");
+          expectedCommand.add("--gflags");
+          expectedCommand.add(gflagsJson);
+          if (configureParams.gflagsToRemove != null && !configureParams.gflagsToRemove.isEmpty()) {
+            expectedCommand.add("--gflags_to_remove");
+            expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
           }
         } else {
           expectedCommand.add("--extra_gflags");
@@ -877,6 +881,30 @@ public class NodeManagerTest extends FakeDBApplication {
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(),
             is("Unable to fetch yugabyte release for version: 0.0.2")));
+      }
+    }
+  }
+
+  @Test
+  public void testGFlagRemove() {
+    for (TestData t : testData) {
+      for (String serverType : ImmutableList.of(MASTER.toString(), TSERVER.toString())) {
+        AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+        buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+                ApiUtils.mockUniverseUpdater(t.cloudType)));
+        Set<String> gflagsToRemove = new HashSet<>();
+        gflagsToRemove.add("flag1");
+        gflagsToRemove.add("flag2");
+        params.type = GFlags;
+        params.isMasterInShellMode = true;
+        params.gflagsToRemove = gflagsToRemove;
+        params.setProperty("processType", serverType);
+
+        List<String> expectedCommand = new ArrayList<>(t.baseCommand);
+        expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        verify(shellProcessHandler, times(1)).run(expectedCommand,
+                t.region.provider.getConfig());
       }
     }
   }

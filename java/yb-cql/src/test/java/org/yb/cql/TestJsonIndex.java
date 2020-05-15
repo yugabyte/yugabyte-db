@@ -86,7 +86,7 @@ public class TestJsonIndex extends BaseCQLTest {
     LOG.info(String.format("Full scan query: Elapsed time = %d msecs", elapsedTimeMillis_full));
 
     // Check that full-scan is slower than index-scan.
-    assertTrue((elapsedTimeMillis_full/3) > elapsedTimeMillis_index);
+    assertTrue((elapsedTimeMillis_full/3.0) > elapsedTimeMillis_index);
   }
 
   @Test

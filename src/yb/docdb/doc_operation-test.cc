@@ -655,7 +655,9 @@ class DocOperationScanTest : public DocOperationTest {
 
       ASSERT_OK(FlushRocksDbAndWait());
     }
-    LOG(INFO) << "Dump:\n" << DocDBDebugDumpToStr();
+
+    DumpRocksDBToLog(rocksdb(), StorageDbType::kRegular);
+    DumpRocksDBToLog(intents_db(), StorageDbType::kIntents);
   }
 
   void PerformScans(const bool is_forward_scan,
@@ -1022,7 +1024,8 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_GE(files.size(), 3);
 
-  auto handle_impl = down_cast<rocksdb::ColumnFamilyHandleImpl*>(rocksdb_->DefaultColumnFamily());
+  auto handle_impl = down_cast<rocksdb::ColumnFamilyHandleImpl*>(
+      regular_db_->DefaultColumnFamily());
   auto stats = handle_impl->cfd()->internal_stats();
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_NUM_FILES_TOTAL));
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_SLOWDOWN_TOTAL));

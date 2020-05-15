@@ -46,6 +46,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
   virtual client::TransactionPool* TransactionPool() = 0;
+
+  virtual client::YBClient* client() = 0;
 };
 
 } // namespace tserver

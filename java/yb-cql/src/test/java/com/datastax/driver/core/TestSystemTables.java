@@ -42,12 +42,14 @@ public class TestSystemTables extends BaseCQLTest {
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
     assertEquals(NUM_TABLET_SERVERS, contactPoints.size());
 
+    TranslatedAddressEndPoint translatedContactPointToConnect;
     // Chose one contact point to connect.
     for (InetSocketAddress contactPointToConnect : contactPoints) {
 
       // Initialize connection.
-      Host host = new Host(contactPointToConnect, cluster.manager.convictionPolicyFactory,
-        cluster.manager);
+      translatedContactPointToConnect = new TranslatedAddressEndPoint(contactPointToConnect);
+      Host host = new Host(translatedContactPointToConnect, cluster.manager.convictionPolicyFactory,
+            cluster.manager);
       Connection connection = cluster.manager.connectionFactory.open(host);
 
       // Run query and verify.

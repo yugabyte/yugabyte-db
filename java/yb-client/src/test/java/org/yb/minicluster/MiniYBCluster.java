@@ -615,14 +615,19 @@ public class MiniYBCluster implements AutoCloseable {
     return masterCmdLine;
   }
 
+  public HostAndPort startShellMaster() throws Exception {
+    return startShellMaster(new TreeMap<String, String>());
+  }
+
   /**
    * Start a new master server in 'shell' mode. Finds free web and RPC ports and then
    * starts the master on those ports, finally populates the 'masters' map.
+   * @param extraArgs extra flags to pass to the master process.
    *
    * @return the host and port for a newly created master.
    * @throws Exception if we are unable to start the master.
    */
-  public HostAndPort startShellMaster() throws Exception {
+  public HostAndPort startShellMaster(Map<String, String> extraArgs) throws Exception {
     final String baseDirPath = TestUtils.getBaseTmpDir();
     final String masterBindAddress = getMasterBindAddress();
     final int rpcPort = TestUtils.findFreePort(masterBindAddress);
@@ -634,6 +639,9 @@ public class MiniYBCluster implements AutoCloseable {
     final String flagsPath = TestUtils.getFlagsPath();
     List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
       masterBindAddress, rpcPort, webPort);
+    for (Map.Entry<String, String> entry : extraArgs.entrySet()) {
+      masterCmdLine.add("--" + entry.getKey() + "=" + entry.getValue());
+    }
 
     final MiniYBDaemon daemon = configureAndStartProcess(
         MiniYBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]),

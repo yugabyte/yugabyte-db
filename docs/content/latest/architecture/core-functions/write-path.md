@@ -2,7 +2,7 @@
 title: Write IO path
 headerTitle: Write IO path
 linkTitle: Write IO path
-description: Learn how YugabyteDB manages a single key write and replicates the data.
+description: Learn how YugabyteDB manages single-row write operations.
 menu:
   latest:
     identifier: write-path

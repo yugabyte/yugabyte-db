@@ -195,6 +195,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   client::TransactionPool* TransactionPool() override;
 
+  client::YBClient* client() override;
+
   const std::string& LogPrefix() const {
     return log_prefix_;
   }

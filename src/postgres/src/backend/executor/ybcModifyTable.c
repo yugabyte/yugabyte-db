@@ -532,6 +532,14 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 						  RelationGetNumberOfAttributes(index),
 						  ybctid, true /* ybctid_as_value */);
 
+	/*
+	 * For non-unique indexes the primary-key component (base tuple id) already
+	 * guarantees uniqueness, so no need to read and check it in DocDB.
+	 */
+	if (!index->rd_index->indisunique) {
+		HandleYBStatus(YBCPgInsertStmtSetUpsertMode(insert_stmt));
+	}
+
 	/* Execute the insert and clean up. */
 	YBCExecWriteStmt(insert_stmt, index, NULL /* rows_affected_count */);
 	HandleYBStatus(YBCPgDeleteStatement(insert_stmt));

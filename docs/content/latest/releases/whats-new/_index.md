@@ -1,7 +1,7 @@
 ---
-title: What's new in 2.1.5
-headerTitle: What's new in 2.1.5
-linkTitle: What's new in 2.1.5
+title: What's new in 2.1.6
+headerTitle: What's new in 2.1.6
+linkTitle: What's new in 2.1.6
 description: Enhancements, changes, and resolved issues in the latest YugabyteDB release.
 headcontent: Features, enhancements, and resolved issues in the latest release.
 image: /images/section_icons/quick_start/install.png
@@ -14,24 +14,23 @@ menu:
     weight: 2589 
 ---
 
-**Released:** April 27, 2020.
+**Released:** May 8, 2020 (2.1.6.0-b17).
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
 **Looking for earlier releases?** History of earlier releases is available [here](../earlier-releases/).  
 
-
 ## Downloads
 
 ### Binaries
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.5.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.6.0-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp; 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.5.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.1.6.0-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -41,58 +40,35 @@ menu:
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.1.5.0-b17
+docker pull yugabytedb/yugabyte:2.1.6.0-b17
 ```
 
 ## YSQL
 
-- [BETA] The `CREATE TABLE` statement now supports the [`SPLIT AT VALUES` clause](../../api/ysql/commands/ddl_create_table/#split-at-values). [#1486](https://github.com/yugabyte/yugabyte-db/issues/1486)
-- Read restart for `EXECUTE` statement if the prepared statement is `SELECT`. [#4205](https://github.com/yugabyte/yugabyte-db/issues/4205)
-- Find and list YSQL tables in `yb-admin` commands now use table ID instead of table names. [#1687](https://github.com/yugabyte/yugabyte-db/issues/1687)
-- The `DROP INDEX` statement now ignores index backfill.
-- The `DROP INDEX` statement now ignores DocDB `NotFound` errors when it doesn't have table metadata, but postgres does. [#4249](https://github.com/yugabyte/yugabyte-db/issues/4249)
-- Force single row update prepare statements to use a custom plan that requires `boundParams` to be sent for creation and execution. [#4219](https://github.com/yugabyte/yugabyte-db/issues/4219)
-- Improve performance of multi-column primary keys by generating `scanspec` for range partitioned tables using condition expression. [#4033](https://github.com/yugabyte/yugabyte-db/pull/4033)
+- Wait for `tserver` to finish creating the `transaction` table during the initial cluster startup (when the transaction table is first created) before before issuing requests that require it to exist. This was more likely an issue for CI/CD, where requests can be issued immediately. Most users would not encounter this issue. [#4056](https://github.com/yugabyte/yugabyte-db/issues/4056)
+- Avoid redundant read for non-unique index inserts. For non-unique indexes, the primary key of the main table is implicitly added to the DocDB key, guaranteeing uniqueness of the full DocDB key (indexed columns plus encoded base table primary key). This fix executes such inserts as upserts and avoid the read and uniqueness check. [#4363](https://github.com/yugabyte/yugabyte-db/issues/4363)
+- Enhance automatic query read restart to avoid recreating portal. Instead of recreating a portal, reset an existing one to the state which allows it to be re-executed. Eliminate memory overhead for storing potential big bind variable values (for example, long strings). [#4254](https://github.com/yugabyte/yugabyte-db/issues/4254)
+- For `CREATE DATABASE` statements, improves fault tolerance by making CREATE API requests asynchronously and adds a state machine on namespaces to be the authority for processing these modifications. [#3097](https://github.com/yugabyte/yugabyte-db/issues/3097)
+- Display current query runtime (`process_running_for_ms`), in milliseconds (ms), on `<tserver_ip>:13000/rpcz` endpoint. [#4382](https://github.com/yugabyte/yugabyte-db/issues/4382)
+
+## YCQL
+
+- Allow `system.peers_v2` table to be readable for `cassandra-driver-core:3.8.0-yb-2-RC1` so that expected errors are returned to the driver. [#4309](https://github.com/yugabyte/yugabyte-db/issues/4309)
 
 ## System improvements
 
-- Improve tablet splitting [#4169](https://github.com/yugabyte/yugabyte-db/issues/4169), including:
-  - Add support for transaction-enabled tables.
-  - Add WAL index flush before copying WAL during table splitting.
-- [colocation] Optimization that pushes index lookup down to DocDB. [#3609](https://github.com/yugabyte/yugabyte-db/issues/3609)
-- [colocation] Use range keys by default for colocated tables and indexes. [#3034](https://github.com/yugabyte/yugabyte-db/issues/3034)
-- [colocation] Avoid excessive RPC requests for drop and truncate [#3387](https://github.com/yugabyte/yugabyte-db/issues/3387)
-- On starting a new `yb-master` (in edit and add node), update master addresses correctly in `yb-master` and `yb-tserver` configuration files. [#3636](https://github.com/yugabyte/yugabyte-db/issues/3636), [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242), and [#4245](https://github.com/yugabyte/yugabyte-db/issues/4245)
-- Add backup-related code changes for snapshots [#3836](https://github.com/yugabyte/yugabyte-db/issues/3836), including:
-  - Change `yb-admin import_snapshot` to return an error if there are less new table names than backed up tables. For example, if you rename only two of three tables, an error will be generated.
-  - Change `yb-admin restore_snapshot` and `yb-admin list_snapshot` to output `restoration-id` (useful for verifying completed restorations).
-- Support `yb-admin import_snapshot` renaming only a few tables (but not all), but keeping the specified table name the same as the old table name. [#4280](https://github.com/yugabyte/yugabyte-db/issues/4280)
-- Deprecate `table_flush_timeout` in the `yb-admin create_snapshot` command.
-- Do not return error in output of `yb-admin get_is_load_balancer_idle` if load balancer is busy. [#3949]
-- Change `yb-tserver` `/utilz` endpoint page to display "Live Ops" instead of "RPCs" and add YSQL statements link [#4106](https://github.com/yugabyte/yugabyte-db/pull/4106)
-- Fix access to reset tablet peer during shutdown. [#3989](https://github.com/yugabyte/yugabyte-db/issues/3989)
-- GetSafeTime should wait instead of adding to safe time. [#3977](https://github.com/yugabyte/yugabyte-db/issues/3977)
-- Add retry logic to snapshot operations. [#1032](https://github.com/yugabyte/yugabyte-db/issues/1032)
-- Add TLS encryption support to `yb-ts-cli` (adds `--certs_dir_name` flag) for sending secure RPC requests to the servers. [#2877](https://github.com/yugabyte/yugabyte-db/issues/2877)
-- Fix `yb-ctl` failing when passing `vmodule` in `--master_flags` . [#4234](https://github.com/yugabyte/yugabyte-db/issues/4234)
-- The `yugabyte-client` package now includes a `share` folder (containing `.sql` files) for use by Yugabyte Cloud and other remote client users. [#4264](https://github.com/yugabyte/yugabyte-db/issues/4264)
+- [DocDB] Improve fault tolerance by enabling exponential backoff mechanics for the leader attempting to catch up the follower. If this causes any issues, you set the `--enable_consensus_exponential_backoff` flag (enabled by default) to `false`. [#4042](https://github.com/yugabyte/yugabyte-db/issues/4042)
+- [DocDB] Improve row scanning by using SeekForward for intents. In testing, performance of `SELECT COUNT(*)` has improved by 66%. [#4277](https://github.com/yugabyte/yugabyte-db/issues/4277)
+- [DocDB] Add asynchronous transaction status resolution to conflict detection. [#4058](https://github.com/yugabyte/yugabyte-db/issues/4058)
 
 ## Yugabyte Platform
 
-- When shrinking a universe, remove nodes in descending index order. [#3292](https://github.com/yugabyte/yugabyte-db/issues/3292)
-- Add back up and restore of Yugabyte Platform using `yb_platform_backup.sh` script. [#4208](https://github.com/yugabyte/yugabyte-db/issues/4208)
-- Change `yb_backup.py` to use the `yb-admin` changes for backup-related changes for snapshot (see [System improvements](#system-improvements) above).
-- Fix expected restoration state in the `yb_backup.py` script.
-- Allow users to select multiple single tables to backup in addition to specifying a full universe backup. [#3680](https://github.com/yugabyte/yugabyte-db/issues/3680)
-- Customize the SMTP server for sending alert messages using configuration entries for `smtpData` (`smtpServer`, `smtpPort`, `emailFrom`, `smtpUsername`, `smtpPassword`, `useSSL`, and `useTLS`). [#4201](https://github.com/yugabyte/yugabyte-db/issues/4201)
-- [YW] Add option to specify table keyspace when creating manual or scheduled backups. [#3342](https://github.com/yugabyte/yugabyte-db/issues/3342)
-- For Azure Storage blob backups, use SAS tokens instead of Service Principal client secrets.
-- Add create and restore backup support for Azure Blob Storage with SAS tokens. [#3721](https://github.com/yugabyte/yugabyte-db/issues/3721)
-- [YW] Add **IAM Role** toggle in provider storage configuration to use the IAM role instead of requiring an **Access Key** and **Secret**. [#4204](https://github.com/yugabyte/yugabyte-db/issues/4204)
-- [YW] When creating a universe and AWS provider is selected, display new **Use IAM Profile** toggle and **ARN String** text field. [#4199](https://github.com/yugabyte/yugabyte-db/issues/4199)
-- Use Raft configuration as a source for master addresses in `server.conf` for master. [#4089](https://github.com/yugabyte/yugabyte-db/issues/4089)
-- [YW] If a node appears as unreachable, it can be removed or released without generating errors. [#4171](https://github.com/yugabyte/yugabyte-db/issues/4171)
-- [YW] Create GCP providers with any combination of host credentials and host (or shared) VPC. [#4177](https://github.com/yugabyte/yugabyte-db/issues/4177)
+- When performing a full move or add node on a universe that has a yb-master, the `server.conf` file is now being updated with the new `master_addresses`. [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242)
+- In the **Backups** tab, individual YSQL tables can no longer be selected. Previously, attempting to back up a YSQL table would create a failed task. [#3848](https://github.com/yugabyte/yugabyte-db/issues/3848)
+- In the **Metrics** view, transactions have been added to the YSQL and YCQL operations charts. [#3827](https://github.com/yugabyte/yugabyte-db/issues/3827)
+- **Create Read Replica** and **Edit Read Replica** pages are no longer in beta. [#4313](https://github.com/yugabyte/yugabyte-db/issues/4313)
+- In the **Certificates** page, you can now download certificates. [#3985](https://github.com/yugabyte/yugabyte-db/issues/3985)
+- In the **Universes** overview page, add a button to toggle on metrics graph widgets to auto-refresh or to set refresh interval. [#2296](https://github.com/yugabyte/yugabyte-db/issues/2296)
 
 {{< note title="Note" >}}
 
