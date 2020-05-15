@@ -31,6 +31,8 @@ DECLARE_int32(num_connections_to_server);
 
 DECLARE_int32(delay_alter_sequence_sec);
 
+DECLARE_int32(client_read_write_timeout_ms);
+
 namespace yb {
 namespace pggate {
 
@@ -720,6 +722,19 @@ int32_t YBCGetOutputBufferSize() {
 
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
+}
+
+void YBCSetTimeout(int timeout_ms, void* extra) {
+  // We set the rpc timeouts as a min{STATEMENT_TIMEOUT, FLAGS_client_read_write_timeout_ms}.
+  if (timeout_ms <= 0) {
+    // The timeout is not valid. Use the default GFLAG value.
+    return;
+  }
+  timeout_ms = std::min(timeout_ms, FLAGS_client_read_write_timeout_ms);
+
+  // The statement timeout is lesser than FLAGS_client_read_write_timeout_ms, hence the rpcs would
+  // need to use a shorter timeout.
+  pgapi->SetTimeout(timeout_ms);
 }
 
 //------------------------------------------------------------------------------------------------
