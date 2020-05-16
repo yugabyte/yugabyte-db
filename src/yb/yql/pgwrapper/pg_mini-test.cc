@@ -49,6 +49,8 @@ DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
+DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
+DECLARE_bool(rocksdb_use_logging_iterator);
 
 namespace yb {
 namespace pgwrapper {
@@ -1071,6 +1073,105 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
 
   auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
   ASSERT_EQ(res, 0);
+}
+
+class PgMiniRocksDbIteratorLoggingTest : public PgMiniSingleTServerTest {
+ public:
+  struct IteratorLoggingTestConfig {
+    int num_non_pk_columns;
+    int num_rows;
+    int num_overwrites;
+    int first_row_to_scan;
+    int last_row_to_scan;
+  };
+
+  void RunIteratorLoggingTest(const IteratorLoggingTestConfig& config) {
+    auto conn = ASSERT_RESULT(Connect());
+
+    std::string non_pk_columns_schema;
+    std::string non_pk_column_names;
+    for (int i = 0; i < config.num_non_pk_columns; ++i) {
+      non_pk_columns_schema += Format(", $0 TEXT", GetNonPkColName(i));
+      non_pk_column_names += Format(", $0", GetNonPkColName(i));
+    }
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t (pk TEXT, PRIMARY KEY (pk ASC)$0)",
+                                 non_pk_columns_schema));
+    // Delete and overwrite every row multiple times.
+    for (int overwrite_index = 0; overwrite_index < config.num_overwrites; ++overwrite_index) {
+      for (int row_index = 0; row_index < config.num_rows; ++row_index) {
+        string non_pk_values;
+        for (int non_pk_col_index = 0;
+             non_pk_col_index < config.num_non_pk_columns;
+             ++non_pk_col_index) {
+          non_pk_values += Format(", '$0'", GetNonPkColValue(
+              non_pk_col_index, row_index, overwrite_index));
+        }
+
+        const auto pk_value = GetPkForRow(row_index);
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO t(pk$0) VALUES('$1'$2)", non_pk_column_names, pk_value, non_pk_values));
+        if (overwrite_index != config.num_overwrites - 1) {
+          ASSERT_OK(conn.ExecuteFormat("DELETE FROM t WHERE pk = '$0'", pk_value));
+        }
+      }
+    }
+    const auto first_pk_to_scan = GetPkForRow(config.first_row_to_scan);
+    const auto last_pk_to_scan = GetPkForRow(config.last_row_to_scan);
+    auto count_stmt_str = Format(
+        "SELECT COUNT(*) FROM t WHERE pk >= '$0' AND pk <= '$1'",
+        first_pk_to_scan,
+        last_pk_to_scan);
+    // Do the same scan twice, and only turn on iterator logging on the second scan.
+    // This way we won't be logging system table operations needed to fetch PostgreSQL metadata.
+    for (bool is_warmup : {true, false}) {
+      if (!is_warmup) {
+        SetAtomicFlag(true, &FLAGS_rocksdb_use_logging_iterator);
+      }
+      auto count_result = ASSERT_RESULT(conn.Fetch(count_stmt_str));
+      ASSERT_EQ(PQntuples(count_result.get()), 1);
+
+      auto actual_num_rows = ASSERT_RESULT(GetInt64(count_result.get(), 0, 0));
+      const int expected_num_rows = config.last_row_to_scan - config.first_row_to_scan + 1;
+      ASSERT_EQ(expected_num_rows, actual_num_rows);
+    }
+    SetAtomicFlag(false, &FLAGS_rocksdb_use_logging_iterator);
+  }
+
+ private:
+  std::string GetNonPkColName(int non_pk_col_index) {
+    return Format("non_pk_col$0", non_pk_col_index);
+  }
+
+  std::string GetPkForRow(int row_index) {
+    return Format("PrimaryKeyForRow$0", row_index);
+  }
+
+  std::string GetNonPkColValue(int non_pk_col_index, int row_index, int overwrite_index) {
+    return Format("NonPkCol$0ValueForRow$1Overwrite$2",
+                  non_pk_col_index, row_index, overwrite_index);
+  }
+};
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(IteratorLogPkOnly), PgMiniRocksDbIteratorLoggingTest) {
+  RunIteratorLoggingTest({
+    .num_non_pk_columns = 0,
+    .num_rows = 5,
+    .num_overwrites = 100,
+    .first_row_to_scan = 1,  // 0-based
+    .last_row_to_scan = 3,
+  });
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(IteratorLogTwoNonPkCols), PgMiniRocksDbIteratorLoggingTest) {
+  RunIteratorLoggingTest({
+    .num_non_pk_columns = 2,
+    .num_rows = 5,
+    .num_overwrites = 100,
+    .first_row_to_scan = 1,  // 0-based
+    .last_row_to_scan = 3,
+  });
 }
 
 } // namespace pgwrapper

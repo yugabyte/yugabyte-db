@@ -56,6 +56,7 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/atomic.h"
 
 #include "yb/rocksdb/db/auto_roll_logger.h"
 #include "yb/rocksdb/db/builder.h"
@@ -121,6 +122,7 @@
 #include "yb/rocksdb/util/thread_status_updater.h"
 #include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
+#include "yb/rocksdb/db/db_iterator_wrapper.h"
 
 #include "yb/util/stats/iostats_context_imp.h"
 
@@ -153,6 +155,9 @@ DEFINE_int32(compaction_priority_step_size, 5,
 
 DEFINE_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
+
+DEFINE_bool(rocksdb_use_logging_iterator, false,
+            "Wrap newly created RocksDB iterators in a logging wrapper");
 
 namespace rocksdb {
 
@@ -4640,6 +4645,9 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         NewInternalIterator(read_options, cfd, sv, db_iter->GetArena());
     db_iter->SetIterUnderDBIter(internal_iter);
 
+    if (yb::GetAtomicFlag(&FLAGS_rocksdb_use_logging_iterator)) {
+      return new TransitionLoggingIteratorWrapper(db_iter, LogPrefix());
+    }
     return db_iter;
   }
   // To stop compiler from complaining
