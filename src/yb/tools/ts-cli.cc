@@ -69,6 +69,8 @@ using yb::tserver::ListTabletsRequestPB;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::CountIntentsRequestPB;
 using yb::tserver::CountIntentsResponsePB;
+using yb::tserver::FlushTabletsRequestPB;
+using yb::tserver::FlushTabletsResponsePB;
 using yb::tserver::TabletServerAdminServiceProxy;
 using yb::tserver::TabletServerServiceProxy;
 using std::ostringstream;
@@ -84,6 +86,10 @@ const char* const kDeleteTabletOp = "delete_tablet";
 const char* const kCurrentHybridTime = "current_hybrid_time";
 const char* const kStatus = "status";
 const char* const kCountIntents = "count_intents";
+const char* const kFlushTabletOp = "flush_tablet";
+const char* const kFlushAllTabletsOp = "flush_all_tablets";
+const char* const kCompactTabletOp = "compact_tablet";
+const char* const kCompactAllTabletsOp = "compact_all_tablets";
 
 DEFINE_string(server_address, "localhost",
               "Address of server to run against");
@@ -169,6 +175,10 @@ class TsAdminClient {
 
   // Count write intents on all tablets.
   Status CountIntents(int64_t* num_intents);
+
+  // Flush or compact a given tablet on a given tablet server.
+  // If 'tablet_id' is empty string, flush or compact all tablets.
+  Status FlushTablets(const std::string& tablet_id, bool is_compaction);
 
  private:
   std::string addr_;
@@ -360,6 +370,33 @@ Status TsAdminClient::CountIntents(int64_t* num_intents) {
   return Status::OK();
 }
 
+Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compaction) {
+  ServerStatusPB status_pb;
+  RETURN_NOT_OK(GetStatus(&status_pb));
+
+  FlushTabletsRequestPB req;
+  FlushTabletsResponsePB resp;
+  RpcController rpc;
+
+  if (!tablet_id.empty()) {
+    req.add_tablet_ids(tablet_id);
+    req.set_all_tablets(false);
+  } else {
+    req.set_all_tablets(true);
+  }
+  req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
+  req.set_is_compaction(is_compaction);
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK_PREPEND(ts_admin_proxy_->FlushTablets(req, &resp, &rpc),
+                        "FlushTablets() failed");
+
+  if (resp.has_error()) {
+    return STATUS(IOError, "Failed to flush tablet: ",
+                           resp.error().ShortDebugString());
+  }
+  return Status::OK();
+}
+
 namespace {
 
 void SetUsage(const char* argv0) {
@@ -374,7 +411,11 @@ void SetUsage(const char* argv0) {
       << "  " << kDeleteTabletOp << " <tablet_id> <reason string>\n"
       << "  " << kCurrentHybridTime << "\n"
       << "  " << kStatus << "\n"
-      << "  " << kCountIntents << "\n";
+      << "  " << kCountIntents << "\n"
+      << "  " << kFlushTabletOp << " <tablet_id>\n"
+      << "  " << kFlushAllTabletsOp << "\n"
+      << "  " << kCompactTabletOp << " <tablet_id>\n"
+      << "  " << kCompactAllTabletsOp << "\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -497,6 +538,28 @@ static int TsCliMain(int argc, char** argv) {
                                     "Unable to count intents");
 
     std::cout << num_intents << std::endl;
+  } else if (op == kFlushTabletOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+
+    string tablet_id = argv[2];
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(tablet_id, false /* is_compaction */),
+                                    "Unable to flush tablet");
+  } else if (op == kFlushAllTabletsOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(std::string(), false /* is_compaction */),
+                                    "Unable to flush all tablets");
+  } else if (op == kCompactTabletOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+
+    string tablet_id = argv[2];
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(tablet_id, true /* is_compaction */),
+                                    "Unable to compact tablet");
+  } else if (op == kCompactAllTabletsOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(std::string(), true /* is_compaction */),
+                                    "Unable to compact all tablets");
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);

@@ -236,6 +236,9 @@ message FlushTabletsRequestPB {
 
   // Whether we want to compact the tablets instead of flushing them.
   optional bool is_compaction = 4;
+
+  // Whether we want to flush or compact all tablets in the server.
+  optional bool all_tablets = 5;
 }
 
 message FlushTabletsResponsePB {
