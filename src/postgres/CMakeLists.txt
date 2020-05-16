@@ -41,7 +41,8 @@ set(build_postgres_args
 # We add spaces before every "flags" parameter so that Python's argparse does not interpret them as
 # its own flags.
 add_custom_target(configure_postgres ALL COMMAND ${build_postgres_args} --step configure)
-add_custom_target(postgres ALL COMMAND ${build_postgres_args} --step make BYPRODUCTS "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend.dylib")
+add_custom_target(postgres ALL COMMAND ${build_postgres_args} --step make
+                           BYPRODUCTS "${YB_PGBACKEND_SHARED_LIB}")
 add_dependencies(postgres configure_postgres)
 
 # ------------------------------------------------------------------------------------------------
