@@ -1083,7 +1083,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     return;
   }
 
-  if (req->tablet_ids_size() == 0) {
+  if (!req->all_tablets() && req->tablet_ids_size() == 0) {
     const Status s = STATUS(InvalidArgument, "No tablet ids");
     SetupErrorAndRespond(
         resp->mutable_error(), s, TabletServerErrorPB_Code_UNKNOWN_ERROR, &context);
@@ -1099,20 +1099,23 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   VLOG(1) << "Full FlushTablets request: " << req->DebugString();
   TabletPeers tablet_peers;
 
-  for (const TabletId& id : req->tablet_ids()) {
-    resp->set_failed_tablet_id(id);
-
-    auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
-        server_->tablet_peer_lookup(), id, resp, &context));
-
+  if (req->all_tablets()) {
+    server_->tablet_manager()->GetTabletPeers(&tablet_peers);
+  } else {
+    for (const TabletId& id : req->tablet_ids()) {
+      auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+          server_->tablet_peer_lookup(), id, resp, &context));
+      tablet_peers.push_back(tablet_peer);
+    }
+  }
+  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
+    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
     auto tablet = tablet_peer->tablet();
     if (req->is_compaction()) {
       tablet->ForceRocksDBCompactInTest();
     } else {
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
     }
-
-    tablet_peers.push_back(tablet_peer);
     resp->clear_failed_tablet_id();
   }
 

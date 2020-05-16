@@ -1758,7 +1758,9 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
-  RETURN_NOT_OK(regular_db_->WaitForFlush());
+  if (regular_db_) {
+    RETURN_NOT_OK(regular_db_->WaitForFlush());
+  }
   if (intents_db_) {
     RETURN_NOT_OK(intents_db_->WaitForFlush());
   }
