@@ -1759,6 +1759,9 @@ endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
 
+set(YB_PGBACKEND_SHARED_LIB 
+    "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
+
 # -------------------------------------------------------------------------------------------------
 # Subdirectories
 # -------------------------------------------------------------------------------------------------
