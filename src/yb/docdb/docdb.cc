@@ -485,7 +485,7 @@ Status EnumerateWeakIntents(
   RETURN_NOT_OK(functor(
       IntentStrength::kWeak, kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
 
-  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::UP_TO_HASH));
+  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
 
   // Remove kGroupEnd that we just added to generate a weak intent.
   encoded_key_buffer->RemoveLastByte();
@@ -1129,7 +1129,7 @@ yb::Status GetSubDocument(
 
   SubDocKey found_subdoc_key;
   auto dockey_size =
-      VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::WHOLE_DOC_KEY));
+      VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::kWholeDocKey));
 
   Slice key_slice(data.subdocument_key.data(), dockey_size);
 
@@ -1149,7 +1149,7 @@ yb::Status GetSubDocument(
       // the result in data.table_tombstone_time to avoid double seeking for the lifetime of the
       // DocRowwiseIterator.
       DocKey empty_key;
-      RETURN_NOT_OK(empty_key.DecodeFrom(key_slice, DocKeyPart::UP_TO_ID));
+      RETURN_NOT_OK(empty_key.DecodeFrom(key_slice, DocKeyPart::kUpToId));
       db_iter->Seek(empty_key);
       Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
       RETURN_NOT_OK(FindLastWriteTime(
@@ -1279,7 +1279,7 @@ yb::Status GetTtl(const Slice& encoded_subdoc_key,
                   bool* doc_found,
                   Expiration* exp) {
   auto dockey_size =
-    VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, DocKeyPart::WHOLE_DOC_KEY));
+    VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, DocKeyPart::kWholeDocKey));
   Slice key_slice(encoded_subdoc_key.data(), dockey_size);
   iter->Seek(key_slice);
   if (!iter->valid())

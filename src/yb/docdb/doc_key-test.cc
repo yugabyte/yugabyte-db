@@ -406,7 +406,7 @@ std::string EncodeSimpleSubDocKeyWithDifferentNonHashPart(const std::string& has
 }
 
 TEST_F(DocKeyTest, TestKeyMatching) {
-  DocDbAwareFilterPolicy policy(rocksdb::FilterPolicy::kDefaultFixedSizeFilterBits, nullptr);
+  DocDbAwareV2FilterPolicy policy(rocksdb::FilterPolicy::kDefaultFixedSizeFilterBits, nullptr);
   std::string keys[] = { "foo", "bar", "test" };
   std::string absent_key = "fake";
 

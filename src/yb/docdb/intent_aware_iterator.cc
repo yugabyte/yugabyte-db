@@ -565,7 +565,7 @@ void IntentAwareIterator::SeekToLatestDocKeyInternal() {
   auto subdockey_slice = LatestSubDocKey();
 
   // Seek to the first key for row containing found subdockey.
-  auto dockey_size = DocKey::EncodedSize(subdockey_slice, DocKeyPart::WHOLE_DOC_KEY);
+  auto dockey_size = DocKey::EncodedSize(subdockey_slice, DocKeyPart::kWholeDocKey);
   if (!dockey_size.ok()) {
     status_ = dockey_size.status();
     return;
