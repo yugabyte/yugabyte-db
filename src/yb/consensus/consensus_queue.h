@@ -145,6 +145,9 @@ class PeerMessageQueue {
     // Number of ops starting from next_index_ to retransmit.
     int64_t last_num_messages_sent = -1;
 
+    // Number of retransmissions from same next_index_.
+    int64_t current_retransmissions = -1;
+
     // The last operation that we've sent to this peer and that it acked. Used for watermark
     // movement.
     OpId last_received;
@@ -399,6 +402,9 @@ class PeerMessageQueue {
     // The first operation that has been replicated to all currently tracked peers.
     OpId all_replicated_op_id = MinimumOpId();
 
+    // The first operation that has been replicated to all currently non-lagging tracked peers.
+    OpId all_nonlagging_replicated_op_id = MinimumOpId();
+
     // The index of the last operation replicated to a majority.  This is usually the same as
     // 'committed_op_id' but might not be if the terms changed.
     OpId majority_replicated_op_id = MinimumOpId();
@@ -477,6 +483,9 @@ class PeerMessageQueue {
 
   // Updates op id replicated on each node.
   void UpdateAllReplicatedOpId(OpId* result) REQUIRES(queue_lock_);
+
+  // Updates op id replicated on each non-lagging node.
+  void UpdateAllNonLaggingReplicatedOpId(int32_t threshold) REQUIRES(queue_lock_);
 
   // Policy is responsible for tuning of watermark calculation.
   // I.e. simple leader lease or hybrid time leader lease etc.
