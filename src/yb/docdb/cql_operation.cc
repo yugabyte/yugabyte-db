@@ -328,7 +328,7 @@ Status QLWriteOperation::GetDocPaths(
       buffer.AppendColumnId(column_id);
       RefCntBuffer path(doc_key.size() + buffer.size());
       memcpy(path.data(), doc_key.data(), doc_key.size());
-      memcpy(path.data() + doc_key.size(), buffer.data().c_str(), buffer.size());
+      buffer.AsSlice().CopyTo(path.data() + doc_key.size());
       paths->push_back(RefCntPrefix(path));
     }
   }
@@ -1379,7 +1379,7 @@ Status QLReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIterat
         QLPagingStatePB* paging_state = response_.mutable_paging_state();
         paging_state->set_next_partition_key(
             PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
-        paging_state->set_next_row_key(next_row_key.Encode().data());
+        paging_state->set_next_row_key(next_row_key.Encode().ToStringBuffer());
         paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
             num_rows_skipped);
       } else if (request_.has_offset()) {
@@ -1416,7 +1416,7 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
     pair->set_key(std::string(1, ValueTypeAsChar::kGroupEnd));
   } else {
     DocKey doc_key(request_.hash_code(), hashed_components);
-    pair->set_key(doc_key.Encode().data());
+    pair->set_key(doc_key.Encode().ToStringBuffer());
   }
   pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
   return Status::OK();

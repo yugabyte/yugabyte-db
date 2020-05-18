@@ -411,23 +411,7 @@ Result<boost::optional<DocKeyHash>> FetchDocKeyHash(const Slice& encoded_key) {
   return key.has_hash() ? key.hash() : boost::optional<DocKeyHash>();
 }
 
-struct IntentKeyComparator {
-  using is_transparent = void;
-
-  bool operator()(const std::string& lhs, const std::string& rhs) const {
-    return lhs < rhs;
-  }
-
-  bool operator()(const Slice& lhs, const std::string& rhs) const {
-    return lhs.compare(Slice(rhs)) < 0;
-  }
-
-  bool operator()(const std::string& lhs, const Slice& rhs) const {
-    return Slice(lhs).compare(rhs) < 0;
-  }
-};
-
-using IntentTypesContainer = std::map<std::string, IntentTypeSet, IntentKeyComparator>;
+using IntentTypesContainer = std::map<KeyBuffer, IntentTypeSet>;
 
 class IntentProcessor {
  public:
@@ -440,9 +424,9 @@ class IntentProcessor {
   void Process(IntentStrength strength, KeyBytes* intent_key) {
     const auto is_strong = strength == IntentStrength::kStrong;
     const auto& intent_type_set = is_strong ? strong_intent_types_ : weak_intent_types_;
-    auto i = container_.find(intent_key->AsSlice());
+    auto i = container_.find(intent_key->data());
     if (i == container_.end()) {
-      container_.insert({intent_key->AsStringRef(), intent_type_set});
+      container_.emplace(intent_key->data(), intent_type_set);
     } else {
       i->second |= intent_type_set;
     }
@@ -602,9 +586,9 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 
     for(const auto& i : container) {
       if (read_time_ != HybridTime::kMax && HasStrong(i.second)) {
-        RETURN_NOT_OK(checker.Check(i.first));
+        RETURN_NOT_OK(checker.Check(i.first.AsSlice()));
       }
-      buffer.Reset(i.first);
+      buffer.Reset(i.first.AsSlice());
       RETURN_NOT_OK(resolver->ReadIntentConflicts(i.second, &buffer));
     }
 

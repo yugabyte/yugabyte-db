@@ -30,6 +30,7 @@
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/docdb/intent.h"
 #include "yb/gutil/stringprintf.h"
+#include "yb/gutil/walltime.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/server/hybrid_clock.h"
@@ -38,6 +39,7 @@
 
 #include "yb/util/minmax.h"
 #include "yb/util/path_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
@@ -3437,6 +3439,87 @@ TEST_F(DocDBTest, SetHybridTimeFilter) {
     }
   }
 
+}
+
+void Append(const char* a, const char* b, std::string* out) {
+  out->append(a, b);
+}
+
+void PushBack(const std::string& value, std::vector<std::string>* out) {
+  out->push_back(value);
+}
+
+void Append(const char* a, const char* b, faststring* out) {
+  out->append(a, b - a);
+}
+
+void PushBack(const faststring& value, std::vector<std::string>* out) {
+  out->emplace_back(value.c_str(), value.size());
+}
+
+void Append(const char* a, const char* b, boost::container::small_vector_base<char>* out) {
+  out->insert(out->end(), a, b);
+}
+
+void PushBack(
+    const boost::container::small_vector_base<char>& value, std::vector<std::string>* out) {
+  out->emplace_back(value.begin(), value.end());
+}
+
+template <size_t SmallLen>
+void Append(const char* a, const char* b, ByteBuffer<SmallLen>* out) {
+  out->Append(a, b);
+}
+
+template <size_t SmallLen>
+void PushBack(const ByteBuffer<SmallLen>& value, std::vector<std::string>* out) {
+  out->push_back(value.ToString());
+}
+
+constexpr size_t kSourceLen = 32;
+const std::string kSource = RandomHumanReadableString(kSourceLen);
+
+template <class T>
+void TestKeyBytes(const char* title, std::vector<std::string>* out = nullptr) {
+#ifdef NDEBUG
+  constexpr size_t kIterations = 100000000;
+#else
+  constexpr size_t kIterations = RegularBuildVsSanitizers(10000000, 100000);
+#endif
+  const char* source_start = kSource.c_str();
+
+  auto start = GetThreadCpuTimeMicros();
+  T key_bytes;
+  for (size_t i = kIterations; i-- > 0;) {
+    key_bytes.clear();
+    const char* a = source_start + ((i * 102191ULL) & (kSourceLen - 1ULL));
+    const char* b = source_start + ((i * 99191ULL) & (kSourceLen - 1ULL));
+    Append(std::min(a, b), std::max(a, b) + 1, &key_bytes);
+    a = source_start + ((i * 88937ULL) & (kSourceLen - 1ULL));
+    b = source_start + ((i * 74231ULL) & (kSourceLen - 1ULL));
+    Append(std::min(a, b), std::max(a, b) + 1, &key_bytes);
+    a = source_start + ((i * 75983ULL) & (kSourceLen - 1ULL));
+    b = source_start + ((i * 72977ULL) & (kSourceLen - 1ULL));
+    Append(std::min(a, b), std::max(a, b) + 1, &key_bytes);
+    if (out) {
+      PushBack(key_bytes, out);
+    }
+  }
+  auto time = MonoDelta::FromMicroseconds(GetThreadCpuTimeMicros() - start);
+  LOG(INFO) << title << ": " << time;
+}
+
+TEST_F(DocDBTest, DISABLED_KeyBuffer) {
+  TestKeyBytes<std::string>("std::string");
+  TestKeyBytes<faststring>("faststring");
+  TestKeyBytes<boost::container::small_vector<char, 8>>("small_vector<char, 8>");
+  TestKeyBytes<boost::container::small_vector<char, 16>>("small_vector<char, 16>");
+  TestKeyBytes<boost::container::small_vector<char, 32>>("small_vector<char, 32>");
+  TestKeyBytes<boost::container::small_vector<char, 64>>("small_vector<char, 64>");
+  TestKeyBytes<ByteBuffer<8>>("ByteBuffer<8>");
+  TestKeyBytes<ByteBuffer<16>>("ByteBuffer<16>");
+  TestKeyBytes<ByteBuffer<32>>("ByteBuffer<32>");
+  TestKeyBytes<ByteBuffer<64>>("ByteBuffer<64>");
 }
 
 }  // namespace docdb

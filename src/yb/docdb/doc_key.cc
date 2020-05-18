@@ -227,7 +227,7 @@ RefCntPrefix DocKey::EncodeAsRefCntPrefix() const {
   }
   encode_buffer->Clear();
   AppendTo(encode_buffer);
-  return RefCntPrefix(encode_buffer->AsStringRef());
+  return RefCntPrefix(encode_buffer->AsSlice());
 }
 
 void DocKey::AppendTo(KeyBytes* out) const {
@@ -552,7 +552,7 @@ KeyBytes DocKey::EncodedFromRedisKey(uint16_t hash, const std::string &key) {
   result.AppendString(key);
   result.AppendValueType(ValueType::kGroupEnd);
   result.AppendValueType(ValueType::kGroupEnd);
-  DCHECK_EQ(result.data(), FromRedisKey(hash, key).Encode().data());
+  DCHECK_EQ(result, FromRedisKey(hash, key).Encode());
   return result;
 }
 
@@ -1180,9 +1180,9 @@ Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special) {
   }
   if (str.size() > prefix_size) {
     str[prefix_size] = ValueTypeAsChar::kGroupEnd;
-    str.resize(prefix_size + 1);
+    str.Truncate(prefix_size + 1);
   } else {
-    str.push_back(ValueTypeAsChar::kGroupEnd);
+    str.PushBack(ValueTypeAsChar::kGroupEnd);
   }
   return true;
 }

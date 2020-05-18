@@ -1634,7 +1634,7 @@ Status CatalogManager::DoSplitTablet(
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
   SendSplitTabletRequest(
-      source_tablet_info, new_tablet_ids, split_encoded_key.data(), split_partition_key);
+      source_tablet_info, new_tablet_ids, split_encoded_key.ToStringBuffer(), split_partition_key);
 
   return Status::OK();
 }

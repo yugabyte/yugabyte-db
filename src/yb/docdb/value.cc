@@ -158,7 +158,7 @@ void Value::EncodeAndAppend(std::string *value_bytes, const Slice* external_valu
   }
   if (!ttl_.Equals(kMaxTtl)) {
     value_bytes->push_back(ValueTypeAsChar::kTtl);
-    util::FastAppendSignedVarIntToStr(ttl_.ToMilliseconds(), value_bytes);
+    util::FastAppendSignedVarIntToBuffer(ttl_.ToMilliseconds(), value_bytes);
   }
   if (user_timestamp_ != kInvalidUserTimestamp) {
     value_bytes->push_back(ValueTypeAsChar::kUserTimestamp);

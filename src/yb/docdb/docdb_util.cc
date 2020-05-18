@@ -126,7 +126,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
         // HybridTime provided. Append a PrimitiveValue with the HybridTime to the key.
         const KeyBytes encoded_ht =
             PrimitiveValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
-        rocksdb_key = entry.first + encoded_ht.data();
+        rocksdb_key = entry.first + encoded_ht.ToStringBuffer();
       } else {
         // Useful when printing out a write batch that does not yet know the HybridTime it will be
         // committed with.

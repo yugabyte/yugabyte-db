@@ -350,6 +350,7 @@ ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
 ADD_YB_TEST(bloom_filter-test)
+ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark

@@ -74,7 +74,8 @@ class DocHybridTime {
   // Returns pointer to byte after last used byte.
   char* EncodedInDocDbFormat(char* dest) const;
 
-  void AppendEncodedInDocDbFormat(std::string* dest) const {
+  template <class Buffer>
+  void AppendEncodedInDocDbFormat(Buffer* dest) const {
     char buf[kMaxBytesPerEncodedHybridTime];
     dest->append(buf, EncodedInDocDbFormat(buf));
   }

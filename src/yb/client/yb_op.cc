@@ -537,8 +537,7 @@ Status GetRangePartitionKey(
       "Cannot get range partition key for hash partitioned table");
 
   RETURN_NOT_OK(GetRangeComponents(schema, range_cols, &range_components));
-  const auto& keybytes = docdb::DocKey(std::move(range_components)).Encode();
-  *key = std::move(keybytes.data());
+  *key = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
   return Status::OK();
 }
 
@@ -564,10 +563,8 @@ Status SetRangePartitionBounds(
     return Status::OK();
   }
 
-  const auto& keybytes = docdb::DocKey(std::move(range_components)).Encode();
-  *key = std::move(keybytes.data());
-  const auto& keybytes_upper_bound = docdb::DocKey(std::move(range_components_end)).Encode();
-  *key_upper_bound = std::move(keybytes_upper_bound.data());
+  *key = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
+  *key_upper_bound = docdb::DocKey(std::move(range_components_end)).Encode().ToStringBuffer();
   return Status::OK();
 }
 

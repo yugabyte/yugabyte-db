@@ -259,7 +259,7 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
                I\x80\x00\x00\x00\x00\x00\x07\xd0\
                !"
           )#"),
-      FormatBytesAsStr(DocKey(PrimitiveValues("val1", 1000, "val2", 2000)).Encode().data()));
+      FormatSliceAsStr(DocKey(PrimitiveValues("val1", 1000, "val2", 2000)).Encode().AsSlice()));
 
   InetAddress addr;
   ASSERT_OK(addr.FromString("1.2.3.4"));
@@ -279,7 +279,7 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
              E\xdd\x14\
              !"
           )#"),
-      FormatBytesAsStr(DocKey({
+      FormatSliceAsStr(DocKey({
           PrimitiveValue("val1", SortOrder::kDescending),
           PrimitiveValue(1000),
           PrimitiveValue(1000, SortOrder::kDescending),
@@ -290,7 +290,7 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
                                   SortOrder::kDescending),
           PrimitiveValue::Decimal(util::Decimal("0.001").EncodeToComparable(),
                                   SortOrder::kAscending),
-                              }).Encode().data()));
+                              }).Encode().AsSlice()));
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
@@ -304,10 +304,10 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
                Srange2\x00\x00\
                I\x80\x00\x00\x00\x00\x00\x07\xd0\
                !")#"),
-      FormatBytesAsStr(DocKey(
+      FormatSliceAsStr(DocKey(
           0xcafe,
           PrimitiveValues("hashed1", "hashed2"),
-          PrimitiveValues("range1", 1000, "range2", 2000)).Encode().data()));
+          PrimitiveValues("range1", 1000, "range2", 2000)).Encode().AsSlice()));
 }
 
 TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
@@ -332,7 +332,7 @@ TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   SubDocKey decoded_subdoc_key;
   ASSERT_OK(decoded_subdoc_key.FullyDecodeFrom(encoded_subdoc_key.AsSlice()));
   ASSERT_EQ(subdoc_key, decoded_subdoc_key);
-  Slice source = encoded_subdoc_key.data();
+  Slice source = encoded_subdoc_key.AsSlice();
   boost::container::small_vector<Slice, 20> slices;
   ASSERT_OK(SubDocKey::PartiallyDecode(&source, &slices));
   const DocKey& dockey = subdoc_key.doc_key();
@@ -393,8 +393,8 @@ TEST_F(DocKeyTest, TestSubDocKeyStartsWith) {
 std::string EncodeSubDocKey(const std::string& hash_key,
     const std::string& range_key, const std::string& sub_key, uint64_t time) {
   DocKey dk(DocKey(0, PrimitiveValues(hash_key), PrimitiveValues(range_key)));
-  return SubDocKey(dk, PrimitiveValue(sub_key),
-      HybridTime::FromMicros(time)).Encode().AsStringRef();
+  return SubDocKey(
+      dk, PrimitiveValue(sub_key), HybridTime::FromMicros(time)).Encode().ToStringBuffer();
 }
 
 std::string EncodeSimpleSubDocKey(const std::string& hash_key) {

@@ -374,7 +374,7 @@ class SnapshotState : public StateWithTablets {
         doc_key, docdb::PrimitiveValue(VERIFY_RESULT(context().MetadataColumnId())));
     auto encoded_key = sub_doc_key.Encode();
     auto pair = out->add_write_pairs();
-    pair->set_key(encoded_key.data());
+    pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
     faststring value;
     value.push_back(docdb::ValueTypeAsChar::kString);
     SysSnapshotEntryPB entry;
