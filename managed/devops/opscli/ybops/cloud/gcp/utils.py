@@ -114,17 +114,15 @@ class GcpMetadata():
 
     @staticmethod
     def project():
+        return GcpMetadata._query_endpoint("/project/project-id")
+
+    @staticmethod
+    def host_project():
         network_data = GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
         try:
             # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
-            project = network_data.split('/')[1]
+            return network_data.split('/')[1]
         except (IndexError, AttributeError):
-            return None
-
-        compute = discovery.build('compute', 'beta')
-        try:
-            return compute.projects().get(project=project).execute().get('name')
-        except HttpError:
             return None
 
     @staticmethod
@@ -530,11 +528,13 @@ class GoogleCloudAdmin():
     @staticmethod
     def get_current_host_info():
         network = GcpMetadata.network()
+        host_project = GcpMetadata.host_project()
         project = GcpMetadata.project()
         if network is None or project is None:
             raise YBOpsRuntimeError("Host not in GCP.")
         return {
             "network": network.split("/")[-1],
+            "host_project": host_project,
             "project": project
         }
 
@@ -678,9 +678,9 @@ class GoogleCloudAdmin():
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None):
-        # TODO: we need the network name during create instance and this way we can keep it in the
-        # provider config and set it as an env var.
         network_name = os.environ.get("CUSTOM_GCE_NETWORK", YB_NETWORK_NAME)
+        # Name of the project that target VPC network belongs to.
+        host_project = os.environ.get("GCE_HOST_PROJECT", self.project)
 
         boot_disk_json = {
             "autoDelete": True,
@@ -716,10 +716,8 @@ class GoogleCloudAdmin():
             "name": instance_name,
             "networkInterfaces": [{
                 "accessConfigs": accessConfigs,
-                "network": "projects/{}/global/networks/{}".format(
-                    self.project, network_name),
-                "subnetwork": "regions/{}/subnetworks/{}".format(
-                    region, cloud_subnet)
+                "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
+                    host_project, region, cloud_subnet)
             }],
             "tags": {
                 "items": get_firewall_tags()
