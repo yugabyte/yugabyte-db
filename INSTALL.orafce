@@ -24,4 +24,4 @@ CREATE EXTENSION orafce;
 Other administration tools that use this module may have different requirements,
 please consult the tool's documentation for further details.
 
-This package requires PostgreSQL 9.4 or later.
+This package requires PostgreSQL 9.5 or later.
