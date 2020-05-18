@@ -110,6 +110,12 @@ DEFINE_bool(enable_consensus_exponential_backoff, true,
 TAG_FLAG(enable_consensus_exponential_backoff, advanced);
 TAG_FLAG(enable_consensus_exponential_backoff, runtime);
 
+DEFINE_int32(consensus_lagging_follower_threshold, 10,
+             "Number of retransmissions at tablet leader to mark a follower as lagging. "
+             "-1 disables the feature.");
+TAG_FLAG(consensus_lagging_follower_threshold, advanced);
+TAG_FLAG(consensus_lagging_follower_threshold, runtime);
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
@@ -500,6 +506,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       to_index = 0;
     }
 
+    peer->current_retransmissions++;
+
     if (peer->member_type == RaftPeerPB::VOTER) {
       is_voter = true;
     }
@@ -742,6 +750,29 @@ void PeerMessageQueue::UpdateAllReplicatedOpId(OpId* result) {
 
   CHECK_NE(MaximumOpId().index(), new_op_id.index());
   *result = new_op_id;
+}
+
+void PeerMessageQueue::UpdateAllNonLaggingReplicatedOpId(int32_t threshold) {
+  OpId new_op_id = MaximumOpId();
+
+  for (const auto& peer : peers_map_) {
+    // Ignore lagging follower.
+    if (peer.second->current_retransmissions >= threshold) {
+      continue;
+    }
+    if (peer.second->last_received.index() < new_op_id.index()) {
+      new_op_id = peer.second->last_received;
+    }
+  }
+
+  if (new_op_id.index() == MaximumOpId().index()) {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Non lagging peer(s) not found.";
+    new_op_id = queue_state_.all_replicated_op_id;
+  }
+
+  if (queue_state_.all_nonlagging_replicated_op_id.index() < new_op_id.index()) {
+    queue_state_.all_nonlagging_replicated_op_id = new_op_id;
+  }
 }
 
 HAS_MEMBER_FUNCTION(InfiniteWatermarkForLocalPeer);
@@ -1021,6 +1052,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     // Reset so that next transmission is not considered a re-transmission.
     peer->last_num_messages_sent = -1;
+    peer->current_retransmissions = -1;
 
     if (response.has_status()) {
       const auto& status = response.status();
@@ -1137,9 +1169,17 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_op_id);
 
-    auto evict_op = std::min(
-        queue_state_.all_replicated_op_id.index(), GetCDCConsumerOpIdToEvict().index);
-    log_cache_.EvictThroughOp(evict_op);
+    auto evict_index = GetCDCConsumerOpIdToEvict().index;
+
+    int32_t lagging_follower_threshold = FLAGS_consensus_lagging_follower_threshold;
+    if (lagging_follower_threshold > 0) {
+      UpdateAllNonLaggingReplicatedOpId(lagging_follower_threshold);
+      evict_index = std::min(evict_index, queue_state_.all_nonlagging_replicated_op_id.index());
+    } else {
+      evict_index = std::min(evict_index, queue_state_.all_replicated_op_id.index());
+    }
+
+    log_cache_.EvictThroughOp(evict_index);
 
     UpdateMetrics();
   }
