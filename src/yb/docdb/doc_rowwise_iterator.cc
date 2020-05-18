@@ -177,8 +177,8 @@ Status DiscreteScanChoices::IncrementScanTargetAtColumn(size_t start_col) {
     RETURN_NOT_OK(decoder.DecodePrimitiveValue());
   }
 
-  current_scan_target_.mutable_data()->resize(
-      decoder.left_input().cdata() - current_scan_target_.data().data());
+  current_scan_target_.Truncate(
+      decoder.left_input().cdata() - current_scan_target_.AsSlice().cdata());
 
   for (size_t i = col_idx; i <= start_col; ++i) {
     current_scan_target_idxs_[i]->AppendToKey(&current_scan_target_);
@@ -674,8 +674,8 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       has_next_status_ = dockey_sizes.status();
       return has_next_status_;
     }
-    row_hash_key_ = Slice(iter_key_.data().data(), dockey_sizes->first);
-    row_key_ = Slice(iter_key_.data().data(), dockey_sizes->second);
+    row_hash_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->first);
+    row_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->second);
 
     if (!DocKeyBelongsTo(row_key_, schema_) ||
         (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0))) {

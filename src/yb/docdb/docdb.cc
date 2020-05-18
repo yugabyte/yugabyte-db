@@ -231,7 +231,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
         [&result](IntentStrength strength, Slice value, KeyBytes* key, LastKey) {
-          RefCntPrefix prefix(key->data());
+          RefCntPrefix prefix(key->AsSlice());
           auto intent_types = strength == IntentStrength::kStrong
               ? IntentTypeSet({IntentType::kStrongRead})
               : IntentTypeSet({IntentType::kWeakRead});
@@ -680,7 +680,7 @@ class PrepareTransactionWriteBatchHelper {
       }
     } else {
       // This is done in tests when deterministic DocDB state is required.
-      std::vector<std::pair<std::string, IntentTypeSet>> intents_and_types(
+      std::vector<std::pair<KeyBuffer, IntentTypeSet>> intents_and_types(
           weak_intents_.begin(), weak_intents_.end());
       sort(intents_and_types.begin(), intents_and_types.end());
       for (const auto& intent_and_types : intents_and_types) {
@@ -691,14 +691,14 @@ class PrepareTransactionWriteBatchHelper {
 
  private:
   void AddWeakIntent(
-      const std::pair<std::string, IntentTypeSet>& intent_and_types,
+      const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
       const std::array<Slice, 2>& value,
       DocHybridTimeBuffer* doc_ht_buffer) {
     char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
                             static_cast<char>(intent_and_types.second.ToUIntPtr()) };
     constexpr size_t kNumKeyParts = 3;
     std::array<Slice, kNumKeyParts> key = {{
-        Slice(intent_and_types.first),
+        intent_and_types.first.AsSlice(),
         Slice(intent_type, 2),
         doc_ht_buffer->EncodeWithValueType(hybrid_time_, write_id_++),
     }};
@@ -714,7 +714,7 @@ class PrepareTransactionWriteBatchHelper {
   const TransactionId& transaction_id_;
   Slice replicated_batches_state_;
   IntentTypeSet strong_intent_types_;
-  std::unordered_map<std::string, IntentTypeSet> weak_intents_;
+  std::unordered_map<KeyBuffer, IntentTypeSet, ByteBufferHash> weak_intents_;
   IntraTxnWriteId write_id_ = 0;
   IntraTxnWriteId* intra_txn_write_id_;
 };

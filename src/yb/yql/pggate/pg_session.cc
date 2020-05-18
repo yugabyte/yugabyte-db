@@ -347,11 +347,11 @@ RowIdentifier::RowIdentifier(const client::YBPgsqlWriteOp& op) :
                                  schema.num_hash_key_columns(),
                                  &range_components);
     if (hashed_components.empty()) {
-      ybctid_holder_ = docdb::DocKey(std::move(range_components)).Encode().data();
+      ybctid_holder_ = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
     } else {
       ybctid_holder_ = docdb::DocKey(request.hash_code(),
                                      std::move(hashed_components),
-                                     std::move(range_components)).Encode().data();
+                                     std::move(range_components)).Encode().ToStringBuffer();
     }
     ybctid_ = nullptr;
   }

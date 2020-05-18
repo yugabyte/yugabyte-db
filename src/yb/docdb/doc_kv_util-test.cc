@@ -24,8 +24,8 @@
 #include "yb/util/slice.h"
 #include "yb/rocksdb/util/random.h"
 
+using namespace std::literals;
 using std::string;
-using yb::FormatBytesAsStr;
 
 namespace yb {
 namespace docdb {
@@ -71,9 +71,9 @@ TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
 }
 
 TEST(DocKVUtilTest, AppendZeroEncodedStrToKey) {
-  string buf = "a";
+  KeyBuffer buf("a"s);
   AppendZeroEncodedStrToKey("bc", &buf);
-  ASSERT_EQ("abc", buf);
+  ASSERT_EQ("abc", buf.ToString());
   string str_with_embedded_zeros = "f";
   str_with_embedded_zeros.push_back('\x0');
   str_with_embedded_zeros.push_back('g');
@@ -86,7 +86,7 @@ TEST(DocKVUtilTest, AppendZeroEncodedStrToKey) {
 }
 
 TEST(DocKVUtilTest, TerminateZeroEncodedKeyStr) {
-  string buf = "a";
+  KeyBuffer buf("a"s);
   TerminateZeroEncodedKeyStr(&buf);
   ASSERT_EQ(3, buf.size());
   ASSERT_EQ('a', buf[0]);

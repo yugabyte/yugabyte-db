@@ -279,18 +279,14 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
 
       DCHECK(!value.has_user_timestamp());
 
-      // The document/subdocument that this subkey is supposed to live in does not exist, create it.
-      KeyBytes parent_key(key_prefix_);
-
       // Add the parent key to key/value batch before appending the encoded HybridTime to it.
       // (We replicate key/value pairs without the HybridTime and only add it before writing to
       // RocksDB.)
-      put_batch_.emplace_back(std::move(*parent_key.mutable_data()),
-                              string(1, ValueTypeAsChar::kObject));
+      put_batch_.emplace_back(key_prefix_.ToStringBuffer(), string(1, ValueTypeAsChar::kObject));
 
       // Update our local cache to record the fact that we're adding this subdocument, so that
       // future operations in this DocWriteBatch don't have to add it or look for it in RocksDB.
-      cache_.Put(KeyBytes(key_prefix_.AsSlice()), hybrid_time, ValueType::kObject);
+      cache_.Put(key_prefix_, hybrid_time, ValueType::kObject);
       subkey.AppendToKey(&key_prefix_);
     }
   }
@@ -300,7 +296,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
   RETURN_NOT_OK(should_apply);
   if (should_apply.get()) {
     // The key in the key/value batch does not have an encoded HybridTime.
-    put_batch_.emplace_back(key_prefix_.AsStringRef(), value.Encode());
+    put_batch_.emplace_back(key_prefix_.ToStringBuffer(), value.Encode());
 
     // The key we use in the DocWriteBatchCache does not have a final hybrid_time, because that's
     // the key we expect to look up.

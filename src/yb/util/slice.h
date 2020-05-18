@@ -39,7 +39,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <assert.h>
 
 #include <map>
 #include <string>
@@ -131,7 +130,7 @@ class Slice {
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
   uint8_t operator[](size_t n) const {
-    assert(n < size());
+    DCHECK_LT(n, size());
     return begin_[n];
   }
 
@@ -143,25 +142,47 @@ class Slice {
 
   // Drop the first "n" bytes from this slice.
   void remove_prefix(size_t n) {
-    assert(n <= size());
+    DCHECK_LE(n, size());
     begin_ += n;
+  }
+
+  Slice Prefix(size_t n) const {
+    DCHECK_LE(n, size());
+    return Slice(begin_, n);
   }
 
   // Drop the last "n" bytes from this slice.
   void remove_suffix(size_t n) {
-    assert(n <= size());
+    DCHECK_LE(n, size());
     end_ -= n;
+  }
+
+  Slice Suffix(size_t n) const {
+    DCHECK_LE(n, size());
+    return Slice(end_ - n, end_);
+  }
+
+  void CopyTo(void* buffer) const {
+    memcpy(buffer, begin_, size());
   }
 
   // Truncate the slice to "n" bytes
   void truncate(size_t n) {
-    assert(n <= size());
+    DCHECK_LE(n, size());
     end_ = begin_ + n;
   }
 
   char consume_byte() {
-    assert(end_ > begin_);
+    DCHECK_GT(end_, begin_);
     return *begin_++;
+  }
+
+  bool TryConsumeByte(char c) {
+    if (empty() || *begin_ != c) {
+      return false;
+    }
+    ++begin_;
+    return true;
   }
 
   MUST_USE_RESULT Status consume_byte(char c);

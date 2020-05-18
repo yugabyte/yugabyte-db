@@ -41,7 +41,7 @@ using yb::util::Decimal;
 using yb::util::VarInt;
 using yb::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
-using yb::util::FastAppendSignedVarIntToStr;
+using yb::util::FastAppendSignedVarIntToBuffer;
 using yb::util::FastDecodeSignedVarInt;
 using yb::util::kInt32SignBitFlipMask;
 using yb::util::AppendBigEndianUInt64;
@@ -501,7 +501,7 @@ string PrimitiveValue::ToValue() const {
       } else {
         key.AppendValueType(ValueType::kGroupEnd);
       }
-      return key.data();
+      return key.ToStringBuffer();
     }
 
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;

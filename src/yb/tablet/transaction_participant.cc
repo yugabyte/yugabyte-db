@@ -202,7 +202,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       // We use hybrid time only for backward compatibility, actually wall time is required.
       data_copy.set_metadata_write_time(GetCurrentTimeMicros());
       auto value = data.SerializeAsString();
-      write_batch->Put(key.data(), value);
+      write_batch->Put(key.AsSlice(), value);
     }
     return true;
   }

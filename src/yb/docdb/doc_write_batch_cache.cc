@@ -44,12 +44,12 @@ void DocWriteBatchCache::Put(const KeyBytes& key_bytes, const DocWriteBatchCache
       entry.doc_hybrid_time.ToString(),
       ToString(entry.value_type));
 
-  prefix_to_gen_ht_[key_bytes.AsStringRef()] = entry;
+  prefix_to_gen_ht_[key_bytes.data()] = entry;
 }
 
 boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
     const KeyBytes& encoded_key_prefix) {
-  auto iter = prefix_to_gen_ht_.find(encoded_key_prefix.AsStringRef());
+  auto iter = prefix_to_gen_ht_.find(encoded_key_prefix.data());
 #ifdef DOCDB_DEBUG
   if (iter == prefix_to_gen_ht_.end()) {
     DOCDB_DEBUG_LOG("DocWriteBatchCache contained no entry for $0",
@@ -63,13 +63,13 @@ boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
 }
 
 string DocWriteBatchCache::ToDebugString() {
-  vector<pair<string, Entry>> sorted_contents;
+  vector<pair<KeyBuffer, Entry>> sorted_contents;
   copy(prefix_to_gen_ht_.begin(), prefix_to_gen_ht_.end(), back_inserter(sorted_contents));
   sort(sorted_contents.begin(), sorted_contents.end());
   ostringstream ss;
   ss << "DocWriteBatchCache[" << endl;
   for (const auto& kv : sorted_contents) {
-    ss << "  " << BestEffortDocDBKeyToStr(KeyBytes(kv.first)) << " -> "
+    ss << "  " << BestEffortDocDBKeyToStr(kv.first.AsSlice()) << " -> "
        << EntryToStr(kv.second) << endl;
   }
   ss << "]";

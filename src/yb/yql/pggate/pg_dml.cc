@@ -423,16 +423,17 @@ Result<string> PgDml::BuildYBTupleId(const PgAttrValueDescriptor *attrs, int32_t
                     target_desc_->num_key_columns() - target_desc_->num_hash_key_columns(),
                     Corruption, "Number of range components does not match column description");
           if (hashed_values.empty()) {
-            return docdb::DocKey(move(range_components)).Encode().data();
+            return docdb::DocKey(move(range_components)).Encode().ToStringBuffer();
           }
           string partition_key;
           const PartitionSchema& partition_schema = target_desc_->table()->partition_schema();
           RETURN_NOT_OK(partition_schema.EncodeKey(hashed_values, &partition_key));
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 
-          return docdb::DocKey(hash,
+          return docdb::DocKey(
+              hash,
               move(hashed_components),
-              move(range_components)).Encode().data();
+              move(range_components)).Encode().ToStringBuffer();
         }
         break;
       }

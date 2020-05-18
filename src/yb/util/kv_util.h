@@ -17,9 +17,13 @@
 #include <string>
 
 #include "yb/gutil/endian.h"
+#include "yb/util/byte_buffer.h"
 #include "yb/util/slice.h"
 
 namespace yb {
+
+typedef ByteBuffer<64> KeyBuffer;
+
 namespace util {
 
 // We are flipping the sign bit of 64-bit integers appearing as object keys in a document so that
@@ -27,19 +31,22 @@ namespace util {
 constexpr uint64_t kInt64SignBitFlipMask = 0x8000000000000000L;
 constexpr uint32_t kInt32SignBitFlipMask = 0x80000000;
 
-inline void AppendInt32ToKey(int32_t val, std::string* dest) {
+template <class Buffer>
+void AppendInt32ToKey(int32_t val, Buffer* dest) {
   char buf[sizeof(int32_t)];
   BigEndian::Store32(buf, val ^ kInt32SignBitFlipMask);
   dest->append(buf, sizeof(buf));
 }
 
-inline void AppendBigEndianUInt32(uint32_t u, std::string* dest) {
+template <class Buffer>
+void AppendBigEndianUInt32(uint32_t u, Buffer* dest) {
   char buf[sizeof(uint32_t)];
   BigEndian::Store32(buf, u);
   dest->append(buf, sizeof(buf));
 }
 
-inline void AppendFloatToKey(float val, std::string* dest, bool descending = false) {
+template <class Buffer>
+void AppendFloatToKey(float val, Buffer* dest, bool descending = false) {
   char buf[sizeof(uint32_t)];
   uint32_t v = *(reinterpret_cast<uint32_t*>(&val));
   if (v >> 31) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
@@ -56,7 +63,8 @@ inline void AppendFloatToKey(float val, std::string* dest, bool descending = fal
   dest->append(buf, sizeof(buf));
 }
 
-inline void AppendDoubleToKey(double val, std::string* dest, bool descending = false) {
+template <class Buffer>
+void AppendDoubleToKey(double val, Buffer* dest, bool descending = false) {
   char buf[sizeof(uint64_t)];
   uint64_t v = *(reinterpret_cast<uint64_t*>(&val));
   if (v >> 63) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
@@ -116,7 +124,8 @@ inline float DecodeFloatFromKey(const rocksdb::Slice& slice, bool descending = f
 // Encode and append the given signed 64-bit integer to the destination string holding a RocksDB
 // key being constructed. We are flipping the sign bit so that negative numbers sort before positive
 // ones.
-inline void AppendInt64ToKey(int64_t val, std::string* dest) {
+template <class Buffer>
+inline void AppendInt64ToKey(int64_t val, Buffer* dest) {
   char buf[sizeof(uint64_t)];
   // Flip the sign bit so that negative values sort before positive ones when compared as
   // big-endian byte sequences.

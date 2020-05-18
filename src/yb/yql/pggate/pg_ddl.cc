@@ -239,10 +239,10 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
     const auto& keybytes = docdb::DocKey(std::move(range_components)).Encode();
 
     // Validate that there are no duplicate split rows.
-    if (rows.size() > 0 && keybytes.data() == rows.back()) {
+    if (rows.size() > 0 && keybytes.AsSlice() == Slice(rows.back())) {
       return STATUS(InvalidArgument, "Cannot have duplicate split rows");
     }
-    rows.push_back(std::move(keybytes.data()));
+    rows.push_back(keybytes.ToStringBuffer());
   }
   return rows;
 }

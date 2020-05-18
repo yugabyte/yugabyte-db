@@ -139,7 +139,7 @@ inline void AddKVToPB(int32_t key_val,
   auto add_kv_pair =
     [&](const SubDocKey &subdoc_key, const PrimitiveValue &primitive_value) {
         KeyValuePairPB *const kv = write_batch->add_write_pairs();
-        kv->set_key(subdoc_key.Encode().AsStringRef());
+        kv->set_key(subdoc_key.Encode().ToStringBuffer());
         kv->set_value(primitive_value.ToValue());
     };
 

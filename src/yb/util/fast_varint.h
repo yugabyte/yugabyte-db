@@ -31,7 +31,15 @@ int SignedPositiveVarIntLength(uint64_t v);
 
 void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, size_t *size);
 std::string FastEncodeSignedVarIntToStr(int64_t v);
-void FastAppendSignedVarIntToStr(int64_t, std::string* dest);
+
+template <class Buffer>
+void FastAppendSignedVarIntToBuffer(int64_t v, Buffer* dest) {
+  char buf[kMaxVarIntBufferSize];
+  size_t len = 0;
+  FastEncodeSignedVarInt(v, to_uchar_ptr(buf), &len);
+  DCHECK_LE(len, 10);
+  dest->append(buf, len);
+}
 
 // Consumes decoded part of the slice.
 Result<int64_t> FastDecodeSignedVarInt(Slice* slice);

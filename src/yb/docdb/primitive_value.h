@@ -109,6 +109,15 @@ class PrimitiveValue {
     return *this;
   }
 
+  explicit PrimitiveValue(const Slice& s, SortOrder sort_order = SortOrder::kAscending) {
+    if (sort_order == SortOrder::kDescending) {
+      type_ = ValueType::kStringDescending;
+    } else {
+      type_ = ValueType::kString;
+    }
+    new(&str_val_) std::string(s.cdata(), s.cend());
+  }
+
   explicit PrimitiveValue(const std::string& s, SortOrder sort_order = SortOrder::kAscending) {
     if (sort_order == SortOrder::kDescending) {
       type_ = ValueType::kStringDescending;
