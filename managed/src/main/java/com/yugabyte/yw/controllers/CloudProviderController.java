@@ -363,10 +363,13 @@ public class CloudProviderController extends AuthenticatedController {
   }
 
   private void updateGCPConfig(Provider provider, Map<String, String> config) {
+    // Remove the key to avoid generating a credentials file unnecessarily.
+    config.remove("GCE_HOST_PROJECT");
     // If we were not given a config file, then no need to do anything here.
     if (config.isEmpty()) {
       return;
     }
+
     String gcpCredentialsFile = null;
     try {
       gcpCredentialsFile = accessManager.createCredentialsFile(
@@ -645,13 +648,9 @@ public class CloudProviderController extends AuthenticatedController {
           config = Json.fromJson(contents, Map.class);
         }
 
-        // Default to not using host VPC.
-        boolean shouldUseHostVpc = configNode.has("use_host_vpc")
-                                     && configNode.get("use_host_vpc").asBoolean();
-        contents = configNode.get("project_id");
-        if (!config.isEmpty() && !shouldUseHostVpc && contents != null
-            && !contents.textValue().isEmpty()) {
-          config.put("project_id", contents.textValue());
+        contents = configNode.get("host_project_id");
+        if (contents != null && !contents.textValue().isEmpty()) {
+          config.put("GCE_HOST_PROJECT", contents.textValue());
         }
 
         contents = configNode.get("YB_FIREWALL_TAGS");
