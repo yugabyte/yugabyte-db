@@ -560,7 +560,7 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
   // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
   const bool is_fixed_point_get =
       !lower_doc_key.empty() &&
-      VERIFY_RESULT(HashedComponentsEqual(lower_doc_key, upper_doc_key));
+      VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(lower_doc_key, upper_doc_key));
   const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
                                        : BloomFilterMode::DONT_USE_BLOOM_FILTER;
 

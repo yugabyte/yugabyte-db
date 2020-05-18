@@ -248,7 +248,6 @@ using client::YBSession;
 using client::YBTransaction;
 using client::YBTablePtr;
 
-using docdb::DocDbAwareFilterPolicy;
 using docdb::DocKey;
 using docdb::DocPath;
 using docdb::DocRowwiseIterator;
@@ -1554,10 +1553,10 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
 
     docdb::DocKey partition_doc_key(*metadata_->schema());
     VERIFY_RESULT(partition_doc_key.DecodeFrom(
-        partition_key, docdb::DocKeyPart::WHOLE_DOC_KEY, docdb::AllowSpecial::kTrue));
+        partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
     docdb::DocKey max_partition_doc_key(*metadata_->schema());
     VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
-        pgsql_read_request.max_partition_key(), docdb::DocKeyPart::WHOLE_DOC_KEY,
+        pgsql_read_request.max_partition_key(), docdb::DocKeyPart::kWholeDocKey,
         docdb::AllowSpecial::kTrue));
 
     if (partition_doc_key.CompareTo(max_partition_doc_key) >= 0) {

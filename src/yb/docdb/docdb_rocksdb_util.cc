@@ -435,8 +435,14 @@ void InitRocksDBOptions(
 
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
-    table_options.filter_policy.reset(new DocDbAwareFilterPolicy(
-        table_options.filter_block_size * 8, options->info_log.get()));
+    const auto filter_block_size_bits = table_options.filter_block_size * 8;
+    table_options.filter_policy = std::make_unique<const DocDbAwareV2FilterPolicy>(
+        filter_block_size_bits, options->info_log.get());
+    table_options.supported_filter_policies =
+        std::make_shared<rocksdb::BlockBasedTableOptions::FilterPoliciesMap>();
+    const auto supported_policy = std::make_shared<const DocDbAwareHashedComponentsFilterPolicy>(
+            filter_block_size_bits, options->info_log.get());
+    table_options.supported_filter_policies->emplace(supported_policy->Name(), supported_policy);
   }
 
   if (FLAGS_use_multi_level_index) {

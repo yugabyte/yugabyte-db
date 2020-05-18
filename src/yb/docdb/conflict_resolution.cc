@@ -407,7 +407,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
 Result<boost::optional<DocKeyHash>> FetchDocKeyHash(const Slice& encoded_key) {
   DocKey key;
-  RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::UP_TO_HASH));
+  RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::kUpToHash));
   return key.has_hash() ? key.hash() : boost::optional<DocKeyHash>();
 }
 

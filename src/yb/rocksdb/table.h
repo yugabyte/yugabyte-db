@@ -162,10 +162,18 @@ struct BlockBasedTableOptions {
   // Default: true
   bool use_delta_encoding = true;
 
-  // If non-nullptr, use the specified filter policy to reduce disk reads.
+  // If non-nullptr, use the specified filter policy for new SST files to reduce disk reads.
   // Many applications will benefit from passing the result of
   // NewBloomFilterPolicy() here.
-  std::shared_ptr<const FilterPolicy> filter_policy = nullptr;
+  typedef std::shared_ptr<const FilterPolicy> FilterPolicyPtr;
+  FilterPolicyPtr filter_policy = nullptr;
+
+  // Other filter policies we support for backward compatibility to be able to use bloom filters
+  // for existing SST files.
+  // Note: wrapped into std::shared_ptr for options_helper to be compilable. Without wrapping there
+  // is an error: offset of on non-standard-layout type 'struct BlockBasedTableOptions'.
+  typedef std::unordered_map<std::string, FilterPolicyPtr> FilterPoliciesMap;
+  std::shared_ptr<FilterPoliciesMap> supported_filter_policies;
 
   // If true, place whole keys in the filter (not just prefixes).
   // This must generally be true for gets to be efficient.

@@ -284,7 +284,7 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
   for (const auto& write_pair : batch.write_pairs()) {
     Slice key = write_pair.key();
     const auto key_size = VERIFY_RESULT(
-        docdb::DocKey::EncodedSize(key, docdb::DocKeyPart::WHOLE_DOC_KEY));
+        docdb::DocKey::EncodedSize(key, docdb::DocKeyPart::kWholeDocKey));
 
     Slice value = write_pair.value();
     docdb::Value decoded_value;

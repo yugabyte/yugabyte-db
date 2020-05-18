@@ -89,6 +89,10 @@ uint64_t TestGetTickerCount(const Options& options, Tickers ticker_type) {
   return options.statistics->getTickerCount(ticker_type);
 }
 
+void TestResetTickerCount(const Options& options, Tickers ticker_type) {
+  return options.statistics->setTickerCount(ticker_type, 0);
+}
+
 class OnFileDeletionListener : public EventListener {
  public:
   OnFileDeletionListener() :
