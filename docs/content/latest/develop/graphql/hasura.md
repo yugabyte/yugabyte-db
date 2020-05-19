@@ -21,6 +21,8 @@ Follow the steps below to begin using Hasura with YugabyteDB. For details on usi
 
 You can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](../../../quick-start/).
 
+To use the Hasura GraphQL Engine with YugabyteDB, you need to set the `yb-tserver` option `--ysql_suppress_unsupported_error` to `true` so that errors on the use of unsupported SQL statements are suppressed and only raise warnings instead.
+
 If you're using `yb-ctl` to start your cluster, you can add the option like this:
 
 ```sh
@@ -45,10 +47,8 @@ docker run -d -p 8080:8080 \
 ```
 
 {{< note title="Note" >}}
-
 - v1.1.0 refers to the version of `hasura/graphql-engine` we are using, you can change it to a different version as per your needs.
 - `@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
-
 {{< /note >}}
 
 ## Create sample tables and relationships
