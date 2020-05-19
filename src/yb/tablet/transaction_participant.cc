@@ -961,6 +961,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       docdb::BoundedRocksDbIterator* iterator, ScopedRWOperation* scoped_pending_operation) {
     LOG_WITH_PREFIX(INFO) << __func__ << " start";
 
+    CDSAttacher attacher;
+
     size_t loaded_transactions = 0;
     {
       std::unique_ptr<ScopedRWOperation> scoped_pending_operation_holder(
