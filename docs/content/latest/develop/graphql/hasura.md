@@ -21,14 +21,6 @@ Follow the steps below to begin using Hasura with YugabyteDB. For details on usi
 
 You can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](../../../quick-start/).
 
-To use the Hasura GraphQL Engine with YugabyteDB, you need to set the `yb-tserver` option `--ysql_suppress_unsupported_error` to `true` so that errors on the use of unsupported SQL statements are suppressed and only raise warnings instead.
-
-If you're using `yb-ctl` to start your cluster, you can add the option like this:
-
-```sh
-$ ./bin/yb-ctl start --tserver_flags "ysql_suppress_unsupported_error=true"
-```
-
 PostgreSQL-compatible YSQL API is now available to serve application client requests at `localhost:5433`.
 
 ### Install and start Hasura
