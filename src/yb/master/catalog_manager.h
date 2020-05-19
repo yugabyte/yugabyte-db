@@ -405,6 +405,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   void SetLoadBalancerEnabled(bool is_enabled);
 
+  bool IsLoadBalancerEnabled();
+
   // Return the table info for the table with the specified UUID, if it exists.
   scoped_refptr<TableInfo> GetTableInfo(const TableId& table_id);
   scoped_refptr<TableInfo> GetTableInfoUnlocked(const TableId& table_id);

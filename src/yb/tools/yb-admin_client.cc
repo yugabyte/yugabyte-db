@@ -1069,7 +1069,7 @@ Status ClusterAdminClient::ListAllMasters() {
 
   cout << RightPadToUuidWidth("Master UUID") << kColumnSep
         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
-        << "State" << kColumnSep
+        << RightPadToWidth("State", kSmallColWidth) << kColumnSep
         << "Role" << endl;
 
   for (const auto& master : lresp.masters()) {
@@ -1295,6 +1295,67 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(bool is_enabled) {
       MasterServiceProxy proxy(proxy_cache_.get(), HostPortFromPB(hp_pb));
       RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeLoadBalancerState, &proxy, req));
     }
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetLoadBalancerState() {
+  const auto list_resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
+      master_proxy_.get(), ListMastersRequestPB()));
+
+  if (list_resp.has_error()) {
+    LOG(ERROR) << "Error: querying leader master for live master info : "
+               << list_resp.error().DebugString() << endl;
+    return STATUS(RemoteError, list_resp.error().DebugString());
+  }
+
+  cout << RightPadToUuidWidth("Master UUID") << kColumnSep
+       << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
+       << RightPadToWidth("State", kSmallColWidth) << kColumnSep
+       << RightPadToWidth("Role", kSmallColWidth) << kColumnSep
+       << "Load Balancer State" << endl;
+
+
+  master::GetLoadBalancerStateRequestPB req;
+  master::GetLoadBalancerStateResponsePB resp;
+  string error;
+  MasterServiceProxy* proxy;
+  for (const auto& master : list_resp.masters()) {
+    error.clear();
+    std::unique_ptr<MasterServiceProxy> follower_proxy;
+    if (master.role() == RaftPeerPB::LEADER) {
+      proxy = master_proxy_.get();
+    } else {
+      HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
+      follower_proxy = std::make_unique<MasterServiceProxy>(
+          proxy_cache_.get(), HostPortFromPB(hp_pb));
+      proxy = follower_proxy.get();
+    }
+    auto result = InvokeRpc(&MasterServiceProxy::GetLoadBalancerState, proxy, req);
+    if (!result) {
+      error = result.ToString();
+    } else {
+      resp = *result;
+      if (!resp.has_error()) {
+        error = resp.error().status().message();
+      }
+    }
+    const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
+    cout << (master.has_instance_id() ? master.instance_id().permanent_uuid()
+                                      : RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep;
+    cout << RightPadToWidth(
+        master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
+                   : "UNKNOWN", kHostPortColWidth)
+         << kColumnSep;
+    cout << RightPadToWidth((master.has_error() ?
+                             PBEnumToString(master.error().code()) : "ALIVE"), kSmallColWidth)
+         << kColumnSep;
+    cout << RightPadToWidth((master.has_role() ?
+                             PBEnumToString(master.role()) : "UNKNOWN"), kSmallColWidth)
+         << kColumnSep;
+    cout << (!error.empty() ? "Error: " + error : (resp.is_enabled() ? "ENABLED" : "DISABLED"))
+         << std::endl;
   }
 
   return Status::OK();

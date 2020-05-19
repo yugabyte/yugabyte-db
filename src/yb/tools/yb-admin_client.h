@@ -165,6 +165,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS SetLoadBalancerEnabled(bool is_enabled);
 
+  CHECKED_STATUS GetLoadBalancerState();
+
   CHECKED_STATUS GetLoadMoveCompletion();
 
   CHECKED_STATUS GetLeaderBlacklistCompletion();

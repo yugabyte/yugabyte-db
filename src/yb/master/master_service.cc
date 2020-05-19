@@ -648,6 +648,13 @@ void MasterServiceImpl::ChangeLoadBalancerState(
   rpc.RespondSuccess();
 }
 
+void MasterServiceImpl::GetLoadBalancerState(
+    const GetLoadBalancerStateRequestPB* req, GetLoadBalancerStateResponsePB* resp,
+    RpcContext rpc) {
+  resp->set_is_enabled(server_->catalog_manager()->IsLoadBalancerEnabled());
+  rpc.RespondSuccess();
+}
+
 void MasterServiceImpl::SetPreferredZones(
     const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp,
     RpcContext rpc) {

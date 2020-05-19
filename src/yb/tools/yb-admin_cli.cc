@@ -583,6 +583,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "get_load_balancer_state", "",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 2) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        RETURN_NOT_OK_PREPEND(client->GetLoadBalancerState(),
+                              "Unable to get the load balancer state");
+        return Status::OK();
+      });
+
+  Register(
       "get_load_move_completion", "",
       [client](const CLIArguments&) -> Status {
         RETURN_NOT_OK_PREPEND(client->GetLoadMoveCompletion(),
