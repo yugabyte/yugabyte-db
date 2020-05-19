@@ -1785,7 +1785,11 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
     read_context->context->ResetRpcSidecars();
     VLOG(1) << "Read time: " << read_context->read_time
             << ", safe: " << read_context->safe_ht_to_read;
-    auto result = DoRead(read_context);
+    Result<ReadHybridTime> result{ReadHybridTime()};
+    {
+      LongOperationTracker long_operation_tracker("Read", 1s);
+      result = DoRead(read_context);
+    }
     if (!result.ok()) {
       WARN_NOT_OK(result.status(), "DoRead");
       SetupErrorAndRespond(
