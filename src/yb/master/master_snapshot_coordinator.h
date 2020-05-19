@@ -56,7 +56,7 @@ class SnapshotCoordinatorContext {
       const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
       TabletSnapshotOperationCallback callback) = 0;
 
-  virtual Result<ColumnId> MetadataColumnId() = 0;
+  virtual const Schema& schema() = 0;
 
   virtual void Submit(std::unique_ptr<tablet::Operation> operation) = 0;
 
@@ -94,8 +94,13 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
       ListSnapshotRestorationsResponsePB* resp);
 
-  // Load snapshot data from system catalog RocksDB entry.
-  CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data);
+  // Load snapshots data from system catalog.
+  CHECKED_STATUS Load(tablet::Tablet* tablet) override;
+
+  // Check whether we have write request for snapshot while replaying write request during
+  // bootstrap. And upsert snapshot from it in this case.
+  // key and value are entry from the write batch.
+  CHECKED_STATUS BootstrapWritePair(const Slice& key, const Slice& value) override;
 
   void Start();
 

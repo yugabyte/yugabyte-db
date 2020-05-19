@@ -27,6 +27,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/rpc/poller.h"
@@ -56,6 +57,10 @@ using yb::tserver::TabletServerErrorPB;
 namespace {
 
 YB_STRONGLY_TYPED_BOOL(ForClient);
+
+Result<ColumnId> MetadataColumnId(SnapshotCoordinatorContext* context) {
+  return context->schema().ColumnIdByName(kSysCatalogTableColMetadata);
+}
 
 const std::initializer_list<std::pair<SysSnapshotEntryPB::State, SysSnapshotEntryPB::State>>
     kStateTransitions = {
@@ -376,7 +381,7 @@ class SnapshotState : public StateWithTablets {
     docdb::DocKey doc_key({ docdb::PrimitiveValue::Int32(SysRowEntry::SNAPSHOT),
                             docdb::PrimitiveValue(id_.AsSlice().ToBuffer()) });
     docdb::SubDocKey sub_doc_key(
-        doc_key, docdb::PrimitiveValue(VERIFY_RESULT(context().MetadataColumnId())));
+        doc_key, docdb::PrimitiveValue(VERIFY_RESULT(MetadataColumnId(&context()))));
     auto encoded_key = sub_doc_key.Encode();
     auto pair = out->add_write_pairs();
     pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
@@ -612,27 +617,48 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS Load(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data) {
-    VLOG(1) << __func__ << "(" << snapshot_id << ", " << data.ShortDebugString() << ")";
-
-    auto snapshot = std::make_unique<SnapshotState>(&context_, snapshot_id, data);
-
+  CHECKED_STATUS Load(tablet::Tablet* tablet) {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = snapshots_.find(snapshot_id);
-    if (it == snapshots_.end()) {
-      snapshots_.emplace(snapshot_id, std::move(snapshot));
-    } else {
-      // During sys catalog bootstrap we replay WAL, that could contain "create snapshot" operation.
-      // After that we load sys catalog, that contain those snapshots operations.
-      // So we could see that same snapshot operation from 2 sources.
-      //   1) Raft logs
-      //   2) Stored in system catalog
-      //
-      // We should use latter, because they could contain updates.
-      it->second = std::move(snapshot);
+    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT,
+        [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
+      return LoadSnapshot(id, data);
+    });
+  }
+
+  CHECKED_STATUS BootstrapWritePair(Slice key, const Slice& value) {
+    docdb::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+
+    if (sub_doc_key.doc_key().range_group().size() != 2) {
+      LOG(DFATAL) << "Unexpected size of range group in sys catalog entry (2 expected): "
+                  << AsString(sub_doc_key.doc_key().range_group());
+      return Status::OK();
     }
 
-    return Status::OK();
+    auto first_key = sub_doc_key.doc_key().range_group().front();
+    if (first_key.value_type() != docdb::ValueType::kInt32) {
+      LOG(DFATAL) << "Unexpected value type for the first range component of sys catalgo entry "
+                  << "(kInt32 expected): "
+                  << AsString(sub_doc_key.doc_key().range_group());;
+    }
+
+    if (first_key.GetInt32() != SysRowEntry::SNAPSHOT) {
+      return Status::OK();
+    }
+
+    docdb::Value decoded_value;
+    RETURN_NOT_OK(decoded_value.Decode(value));
+
+    if (decoded_value.primitive_value().value_type() != docdb::ValueType::kString) {
+      return STATUS_FORMAT(
+          Corruption,
+          "Bad value type: $0, expected kString while replaying write for sys catalog",
+          decoded_value.primitive_value().value_type());
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    return LoadSnapshot(sub_doc_key.doc_key().range_group()[1].GetString(),
+                        decoded_value.primitive_value().GetString());
   }
 
   CHECKED_STATUS ListSnapshots(const TxnSnapshotId& snapshot_id, ListSnapshotsResponsePB* resp) {
@@ -749,6 +775,35 @@ class MasterSnapshotCoordinator::Impl {
   }
 
  private:
+  CHECKED_STATUS LoadSnapshot(const Slice& id, const Slice& data) REQUIRES(mutex_) {
+    VLOG(2) << __func__ << "(" << id.ToDebugString() << ", " << data.ToDebugString() << ")";
+
+    auto snapshot_id = TryFullyDecodeTxnSnapshotId(id);
+    if (!snapshot_id) {
+      return Status::OK();
+    }
+    auto metadata = VERIFY_RESULT(pb_util::ParseFromSlice<SysSnapshotEntryPB>(data));
+    return LoadSnapshot(snapshot_id, metadata);
+  }
+
+  CHECKED_STATUS LoadSnapshot(const TxnSnapshotId& snapshot_id, const SysSnapshotEntryPB& data)
+      REQUIRES(mutex_) {
+    VLOG(1) << __func__ << "(" << snapshot_id << ", " << data.ShortDebugString() << ")";
+
+    auto snapshot = std::make_unique<SnapshotState>(&context_, snapshot_id, data);
+
+    auto it = snapshots_.find(snapshot_id);
+    if (it == snapshots_.end()) {
+      snapshots_.emplace(snapshot_id, std::move(snapshot));
+    } else {
+      // If we have several updates for single snapshot, they are loaded in chronological order.
+      // So latest update should be picked.
+      it->second = std::move(snapshot);
+    }
+
+    return Status::OK();
+  }
+
   Result<SnapshotState&> FindSnapshot(const TxnSnapshotId& snapshot_id) REQUIRES(mutex_) {
     auto it = snapshots_.find(snapshot_id);
     if (it == snapshots_.end()) {
@@ -870,8 +925,8 @@ Status MasterSnapshotCoordinator::ListRestorations(
   return impl_->ListRestorations(restoration_id, snapshot_id, resp);
 }
 
-Status MasterSnapshotCoordinator::Load(const TxnSnapshotId& id, const SysSnapshotEntryPB& data) {
-  return impl_->Load(id, data);
+Status MasterSnapshotCoordinator::Load(tablet::Tablet* tablet) {
+  return impl_->Load(tablet);
 }
 
 void MasterSnapshotCoordinator::Start() {
@@ -880,6 +935,10 @@ void MasterSnapshotCoordinator::Start() {
 
 void MasterSnapshotCoordinator::Shutdown() {
   impl_->Shutdown();
+}
+
+Status MasterSnapshotCoordinator::BootstrapWritePair(const Slice& key, const Slice& value) {
+  return impl_->BootstrapWritePair(key, value);
 }
 
 } // namespace master

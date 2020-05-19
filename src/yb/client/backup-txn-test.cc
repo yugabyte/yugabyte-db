@@ -20,6 +20,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/tablet_snapshots.h"
@@ -457,6 +458,29 @@ TEST_F(BackupTxnTest, Restart) {
   ASSERT_OK(StartAllMasters(cluster_.get()));
 
   ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
+}
+
+TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
+  ASSERT_NO_FATALS(WriteData());
+  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+
+  for (int i = 0; i != cluster_->num_masters(); ++i) {
+    auto sys_catalog = cluster_->mini_master(i)->master()->catalog_manager()->sys_catalog();
+    ASSERT_OK(sys_catalog->tablet_peer()->tablet()->Flush(tablet::FlushMode::kSync));
+  }
+
+  ShutdownAllTServers(cluster_.get());
+  ASSERT_OK(DeleteSnapshot(snapshot_id));
+
+  FLAGS_flush_rocksdb_on_shutdown = false;
+  ShutdownAllMasters(cluster_.get());
+
+  LOG(INFO) << "Start masters";
+
+  ASSERT_OK(StartAllMasters(cluster_.get()));
+  ASSERT_OK(StartAllTServers(cluster_.get()));
+
+  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::DELETED, 30s));
 }
 
 // Workload writes same value across all keys in a txn, using sevaral txns in concurrently.

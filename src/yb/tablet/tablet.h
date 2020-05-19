@@ -173,6 +173,8 @@ class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
   virtual ~TabletScopedIf() { }
 };
 
+YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
+
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
   class CompactionFaultHooks;
@@ -348,7 +350,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const boost::optional<TransactionId>& transaction_id,
       const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "",
-      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
+      CoarseTimePoint deadline = CoarseTimePoint::max(),
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
 
