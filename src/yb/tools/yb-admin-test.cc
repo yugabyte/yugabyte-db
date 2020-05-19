@@ -481,5 +481,34 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
       "wait for load balancer to become idle"));
 }
 
+TEST_F(AdminCliTest, TestLeaderStepdown) {
+  BuildAndStart();
+  std::string out;
+  auto call_admin = [
+      &out,
+      admin_path = GetAdminToolPath(),
+      master_address = ToString(cluster_->master()->bound_rpc_addr())] (
+      const std::initializer_list<std::string>& args) mutable {
+    auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
+    std::copy(args.begin(), args.end(), std::back_inserter(cmds));
+    return Subprocess::Call(cmds, &out);
+  };
+  auto regex_fetch_first = [&out](const std::string& exp) -> Result<std::string> {
+    std::smatch match;
+    if (!std::regex_search(out.cbegin(), out.cend(), match, std::regex(exp)) || match.size() != 2) {
+      return STATUS_FORMAT(NotFound, "No pattern in '$0'", out);
+    }
+    return match[1];
+  };
+
+  ASSERT_OK(call_admin({"list_tablets", kTableName.namespace_name(), kTableName.table_name()}));
+  const auto tablet_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+)"));
+  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
+  const auto tserver_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+FOLLOWER)"));
+  ASSERT_OK(call_admin({"leader_stepdown", tablet_id, tserver_id}));
+  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
+  ASSERT_EQ(tserver_id, ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+LEADER)")));
+}
+
 }  // namespace tools
 }  // namespace yb

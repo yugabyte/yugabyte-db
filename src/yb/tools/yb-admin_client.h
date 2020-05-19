@@ -211,9 +211,15 @@ class ClusterAdminClient {
       const std::string& tablet_id,
       const std::string& dest_ts_uuid);
 
+  CHECKED_STATUS MasterLeaderStepDown(
+      const std::string& leader_uuid,
+      const std::string& new_leader_uuid = std::string());
+
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
   Result<TableNameResolver> BuildTableNameResolver();
+
+  CHECKED_STATUS GetMasterLeaderInfo(std::string* leader_uuid);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -252,8 +258,6 @@ class ClusterAdminClient {
 
   CHECKED_STATUS StartElection(const std::string& tablet_id);
 
-  CHECKED_STATUS MasterLeaderStepDown(const std::string& leader_uuid);
-  CHECKED_STATUS GetMasterLeaderInfo(std::string* leader_uuid);
   CHECKED_STATUS WaitUntilMasterLeaderReady();
 
   std::string master_addr_list_;
