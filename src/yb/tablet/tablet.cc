@@ -2855,19 +2855,32 @@ Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext
 TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
     const boost::optional<TransactionId>& transaction_id,
     bool is_ysql_catalog_table) const {
-  if (!txns_enabled_)
+  if (!txns_enabled_) {
     return boost::none;
+  }
+
+  const TransactionId* txn_id = nullptr;
 
   if (transaction_id.is_initialized()) {
-    return TransactionOperationContext(transaction_id.get(), transaction_participant());
+    txn_id = transaction_id.get_ptr();
   } else if (metadata_->schema()->table_properties().is_transactional() || is_ysql_catalog_table) {
+    // deadbeef-dead-beef-dead-beef00000075
+    static const TransactionId kArbitraryTxnIdForNonTxnReads(
+        17275436393656397278ULL, 8430738506459819486ULL);
     // We still need context with transaction participant in order to resolve intents during
     // possible reads.
-    return TransactionOperationContext(
-        TransactionId::GenerateRandom(), transaction_participant());
+    txn_id = &kArbitraryTxnIdForNonTxnReads;
   } else {
     return boost::none;
   }
+
+  auto min_running_ht = transaction_participant()->MinRunningHybridTime();
+  if (min_running_ht == HybridTime::kMax) {
+    // No running transactions, so could avoid resolving intents.
+    return boost::none;
+  }
+
+  return TransactionOperationContext(*txn_id, transaction_participant());
 }
 
 Status Tablet::CreateReadIntents(

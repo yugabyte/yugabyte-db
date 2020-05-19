@@ -205,7 +205,7 @@ int DocHybridTime::GetEncodedSize(const Slice& encoded_key) {
   // We are not checking for errors here -- see CheckEncodedSize for that. We return something
   // even for a zero-size slice.
   return encoded_key.empty() ? 0
-      : static_cast<uint8_t>(encoded_key.data()[encoded_key.size() - 1]) & kHybridTimeSizeMask;
+      : static_cast<uint8_t>(encoded_key.end()[-1]) & kHybridTimeSizeMask;
 }
 
 CHECKED_STATUS DocHybridTime::CheckAndGetEncodedSize(
