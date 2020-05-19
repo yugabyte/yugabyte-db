@@ -21,9 +21,9 @@ input value:       jsonb
 return value:      SETOF (text, text)
 ```
 
-**Notes:** The result of `jsonb_each_text()` bears the same relationship to the result of `jsonb_each()` as does the result of the `->>` operator to that of the `->` operator. For that reason, `jsonb_each_text()` is useful when the results are primitive values.
+**Notes:** The result of `jsonb_each_text()` bears the same relationship to the result of [`jsonb_each()`](../jsonb-each) as does the result of the [`->>`](../subvalue-operators/) operator to that of the [`->`](../subvalue-operators/) operator. For that reason, `jsonb_each_text()` is useful when the results are primitive values.
 
-Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
+Use this `ysqlsh` script to create the required type _"t"_ and then to execute the `ASSERT`.
 
 ```postgresql
 create type t as (k text, v text);
@@ -61,4 +61,4 @@ end;
 $body$;
 ```
 
-Notice that even here, `17` and `true` are SQL `text` values and not, respectively, a SQL `numeric` value and a SQL `boolean` value. Notice too that the `::text` typecast of the underlying `jsonb` value `dog` is `"dog"` (as is produced by `jsonb_each`) while when it is read as a SQL `text` value by `jsonb_each_text` the result is `dog`.
+Notice that even here, `17` and `true` are SQL `text` values and not, respectively, a SQL `numeric` value and a SQL `boolean` value. Notice too that the `::text` typecast of the underlying `jsonb` value _dog_ is _"dog"_ (as is produced by [`jsonb_each()`](../jsonb-each)) while when it is read as a SQL `text` value by `jsonb_each_text` the result is _dog_.

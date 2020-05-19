@@ -8,8 +8,8 @@ menu:
     identifier: array-of-primitive-values
     parent: array-literals
     weight: 10
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 This section states a sufficient subset of the rules that allow you to write a syntactically correct array literal that expresses any set of values, for arrays of any scalar data type, that you could want to create. The full set of rules allows more flexibility than do just those that are stated here. But because these are sufficient, the full, and rather complex, set is not documented here. The explanations in this section will certainly allow you to interpret the `::text` typecast of any array value that you might see, for example in `ysqlsh`.
@@ -195,7 +195,7 @@ In addition to the first two rules, notice the following.
 - The double quote has been escaped with a single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the (one and only) quoting mechanism, within the curly braces of an array literal.
 - The backslash has also been escaped with another single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the escape character, within the curly braces of an array literal.
 
-There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this easily with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the curly braces for a `text[]` array literal with double quotes.
+There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the curly braces for a `text[]` array literal with double quotes.
 
 To use the text of the literal that was produced above to recreate the value, you must enquote it and typecast it. Do this, as you did for the `int[]` example above, with the `\set` metacommand. But you must use dollar quotes because the literal itself has an interior single quote.
 

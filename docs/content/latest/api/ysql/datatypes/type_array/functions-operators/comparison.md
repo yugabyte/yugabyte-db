@@ -7,8 +7,8 @@ menu:
   latest:
     identifier: array-comparison
     parent: array-functions-operators
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Comparison operators overview
@@ -73,7 +73,7 @@ The [Containment and overlap operators semantics](./#containment-and-overlap-ope
 
 ## Examples for each operator
 
-### The&#160;&#160;&#160;=&#160;&#160;&#160;and&#160;&#160;&#160;<>&#160;&#160;&#160;operators
+### The&#160; &#160;=&#160; &#160;and&#160; &#160;<>&#160; &#160;operators
 
 - The `=` operator returns `TRUE` if the LHS and RHS arrays are equal.
 - The `<>` operator is the natural complement: it returns `TRUE` if the LHS and RHS arrays are not equal.
@@ -112,7 +112,7 @@ This is the result:
  true
 ```
 
-### The&#160;&#160;&#160;>&#160;&#160;&#160;and&#160;&#160;&#160;>=&#160;&#160;&#160;and&#160;&#160;&#160;<=&#160;&#160;&#160;and&#160;&#160;&#160;<&#160;&#160;&#160;and&#160;&#160;&#160;<>&#160;&#160;&#160;operators
+### The&#160; &#160;>&#160; &#160;and&#160; &#160;>=&#160; &#160;and&#160; &#160;<=&#160; &#160;and&#160; &#160;<&#160; &#160;and&#160; &#160;<>&#160; &#160;operators
 
 These four operators implement the familiar inequality comparisons.
 - The `>` operator returns `TRUE` if the LHS array is greater than the RHS array.
@@ -141,7 +141,7 @@ This is the result:
  true                            | true
 ```
 
-### The&#160;&#160;&#160;@>&#160;&#160;&#160;and&#160;&#160;&#160;<@&#160;&#160;&#160;operators
+### The&#160; &#160;@>&#160; &#160;and&#160; &#160;<@&#160; &#160;operators
 
 - The `@>` operator returns `TRUE` if the LHS array contains the RHS array—that is, if every distinct value in the RHS array is found among the LHS array's distinct values.
 - The `<@` operator is the natural complement: it returns `TRUE` if every distinct value in the LHS array is found among the RHS array's distinct values.
@@ -165,7 +165,7 @@ This is the result:
  true                       | true
 ```
 
-### The&#160;&#160;&#160;&&&#160;&#160;&#160;operator
+### The&#160; &#160;&&&#160; &#160;operator
 
 The `&&` operator returns `TRUE` if the LHS and RHS arrays overlap—that is, if they have at least one value in common. The definition of this operator makes it insensitive to which of the two to-be-compared is used on the LHS and which is used on the RHS.
 
@@ -328,7 +328,7 @@ begin
       e[4] = f[3][3] and
       e[5] = f[3][4] and
       e[6] = f[3][5] ,
-    '"e-to-f eqality test, as far as feasible, assert failed';
+    '"e-to-f" eqality test, as far as feasible, assert failed';
 
     assert
       array_ndims(e) < array_ndims(f),
@@ -369,7 +369,7 @@ begin
       g[2][1] = h[5] and
       g[2][2] = h[6] and
       g[2][3] = h[7] ,
-    '"g-to-h eqality test assert failed';
+    '"g-to-h" eqality test assert failed';
 
     assert
       array_ndims(g) > array_ndims(h),
@@ -381,7 +381,7 @@ begin
 
     assert
       (g > h) ,
-    'g > h assert failed';
+    '"g > h" assert failed';
   end;
 
   ------------------------------------------------------------------------------
@@ -400,7 +400,7 @@ begin
       i[6][4] = j[4][6] and
       i[6][5] = j[4][7] and
       i[6][6] = j[4][8] ,
-    '"i-to-j eqality test assert failed';
+    '"i-to-j" eqality test assert failed';
 
     assert
       array_ndims(i) = array_ndims(j),
@@ -412,7 +412,7 @@ begin
 
     assert
       (i > j) ,
-    'i > j assert failed';
+    '"i > j" assert failed';
   end;
 
   ------------------------------------------------------------------------------

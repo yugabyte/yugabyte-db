@@ -26,7 +26,7 @@ input values:       jsonb <@ jsonb
 return value:       boolean
 ```
 
-**Notes:** these operators require that the inputs are presented as `jsonb` values. They don't have overloads for `json`.
+**Notes:** Each of these operators requires that the inputs are presented as `jsonb` values. There are no `json` overloads.
 
 ```postgresql
 do $body$

@@ -7,8 +7,8 @@ menu:
   latest:
     identifier: array-fill
     parent: array-functions-operators
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 **Signature:**
 ```
@@ -18,15 +18,15 @@ return value:      anyarray
 **Purpose:** Return a new "blank canvas" array of the specified shape with all cells set to the same specified value.
 
 - The first parameter determines the value and data type for every cell, and therefore the data type of the new array as a whole. It can be a value of a primitive data type, or, for example, a _"row"_ type value. It can also be written `NULL::some_type` if this suits your purpose. You would presumably set a `NOT NULL` value if, for example, you wanted to insert the array into a table column on which you have created a constraint, based upon a PL/pgSQL function, that explicitly tests the array's geometric properties and the `NOT NULL` status of each of its values. Try this:
-```postgresql
-select pg_typeof(array_fill(null::text, '{1}')) as "type of the new array";
-```
+  ```postgresql
+  select pg_typeof(array_fill(null::text, '{1}')) as "type of the new array";
+  ```
 &#160;&#160;&#160;&#160;This is the result:
-```
- type of the new array 
------------------------
- text[]
-```
+  ```
+   type of the new array 
+  -----------------------
+   text[]
+  ```
 - The second parameter is an `int[]` array. Each of its values specifies the value that `array_length(new_arr, n)` returns—where _"n"_ is the dimension number, starting with the major dimension. So the cardinality of the array that you supply here specifies the value returned by `array_ndims(new_arr)`.
 - The third parameter is optional. When supplied, it must be an `int[]` array with the same cardinality as the second parameter. Each of its values specifies the value that `array_lower(new_arr, n)` returns.
 

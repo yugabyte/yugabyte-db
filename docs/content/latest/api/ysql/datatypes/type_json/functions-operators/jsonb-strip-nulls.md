@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** Find all key-value pairs at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an _object_), and return a JSON value where each pair whose value is null has been removed.
+**Purpose:** Find all key-value pairs at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an _object_), and return a JSON value where each pair whose value is the JSON _null_ has been removed.
 
 **Signature** For the `jsonb` variant:
 

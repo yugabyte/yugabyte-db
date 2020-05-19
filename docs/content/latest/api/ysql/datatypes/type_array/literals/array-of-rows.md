@@ -8,8 +8,8 @@ menu:
     identifier: array-of-rows
     parent: array-literals
     weight: 40
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 You now combine the understanding of how to write the literal for an array of primitive values with that of how to write the literal for a _"row"_ type value.

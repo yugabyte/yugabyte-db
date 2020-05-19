@@ -7,8 +7,8 @@ menu:
   latest:
     identifier: array-properties
     parent: array-functions-operators
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 These functions return the various dimensional properties that jointly characterize an array. These three together completely specify the shape and size:
@@ -202,9 +202,9 @@ The procedure has some particular requirements:
 
 Briefly, _"row-major"_ order is the order in which the last subscript varies most rapidly.
 
-These requirements might seem to be arbitrary. They are implemented so that the procedure can deliver two bonus benefits. It demonstrates how to traverse array values in row-major order using the values returned by the functions that this section describes. In this way, it shows you what the term "row-major order" means. And it compares the values, pairwise, for equality. This comparison rule is the basis of the semantics of the comparison operations described in [Operators for comparing two arrays](../comparison).
+Meeting these requirements are allows the procedure to deliver two bonus benefits. _First_, it demonstrates how to traverse array values in row-major order using the values returned by the functions that this section describes, thereby demonstrating what the term "row-major order" means. _Second_. it compares the values, pairwise, for equality. This comparison rule is the basis of the semantics of the comparison operations described in [Operators for comparing two arrays](../comparison).
 
-**Note:** There are no built-in functions for computing, for example, the product of two matrices or the product of a vector and a matrix. (A vector is a one-dimensional array, and a matrix is a two-dimensional array.) But, as long as you know how to traverse the values in a matrix in row-major order, it's easy to implement the missing vector and matrix multiplication functionality for yourself.
+**Note:** There are no built-in functions for computing, for example, the product of two matrices or the product of a vector and a matrix. (A vector is a one-dimensional array, and a matrix is a two-dimensional array.) But, as long as you know how to traverse the values in a matrix in row-major order, you can implement the missing vector and matrix multiplication functionality for yourself.
 
 ```postgresql
 create procedure assert_semantics_and_traverse_values(

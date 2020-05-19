@@ -21,7 +21,7 @@ input value:       jsonb
 return value:      SETOF (text, jsonb)
 ```
 
-Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
+Use this `ysqlsh` script to create the required type _"t"_ and then to execute the `ASSERT`.
 
 ```postgresql
 create type t as (k text, v jsonb);

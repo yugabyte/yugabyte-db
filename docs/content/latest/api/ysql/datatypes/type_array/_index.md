@@ -10,8 +10,8 @@ menu:
     parent: api-ysql-datatypes
 aliases:
   - /latest/api/ysql/datatypes/type_array
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 **On this page**<br>
 &#160;&#160;&#160;&#160;[Synopsis](./#synopsis)<br>
@@ -28,13 +28,14 @@ A multidimensional array lets you store a large composite value in a single fiel
 
 You can see from the declarations below that every value in an array is non-negotiably of the same data type—either a primitive data type like `text` or `numeric`, or a user-defined scalar or composite data type (like a _"row"_ type).
 
-An array is, by definition, a rectilinear N-dimensional set of "cells". You can picture a one-dimensional array as a line of cells, a two-dimensional array as a rectangle of cells, and a three-dimensional array as a cuboid of cells. The terms "line", "rectangle", and "cuboid" are the only specific ones. The generic term "N-dimensional array" includes these and all others. The meaning of "rectilinear" is sometimes captured by saying that the shape as no ragged edges or surfaces. If you try to create an array value that is not rectilinear, then you get an error whose detail says _"Multidimensional arrays must have sub-arrays with matching dimensions"_. The number of dimensions that an array has is called its _dimensionality_.
+An array is, by definition, a rectilinear N-dimensional set of "cells". You can picture a one-dimensional array as a line of cells, a two-dimensional array as a rectangle of cells, and a three-dimensional array as a cuboid of cells. The terms "line", "rectangle", and "cuboid" are the only specific ones. The generic term "N-dimensional array" includes these and all others. The meaning of "rectilinear" is sometimes captured by saying that the shape has no ragged edges or surfaces. If you try to create an array value that is not rectilinear, then you get an error whose detail says _"Multidimensional arrays must have sub-arrays with matching dimensions"_. The number of dimensions that an array has is called its _dimensionality_.
 
-> **Note:** Sometimes, a ragged structure is useful. Here's an example:
->
-> - a one-dimensional array of "payload" one-dimensional arrays, each of which might have a different length
->
-> This structure is crucially different from a rectilinear two-dimensional array. It's easily created by using a `DOMAIN`. This lets you give the payload array data type a name. The section [Using an array of `DOMAIN` values](./array-of-domains/) shows how to do this.
+{{< note title="Ragged arrays" >}}
+Sometimes, a ragged structure is useful. Here's an example:
+- a one-dimensional array of "payload" one-dimensional arrays, each of which might have a different length
+
+This structure is crucially different from a rectilinear two-dimensional array. A `DOMAIN` lets you create such a structure by providing the means to give the payload array data type a name. The section [Using an array of `DOMAIN` values](./array-of-domains/) shows how to do this.
+{{< /note >}}
 
 A value within an array is specified by a tuple of _index_ values, like this (for a four-dimensional array):
 ```
@@ -129,7 +130,7 @@ Because _"v"_ has no constraint, it can be `NULL`, just like when its data type 
 update t set v = v||'{null}'::int[] where k = 2;
 select k, v, array_dims(v) as dims from t where k = 2;
 ```
-The `||` operator is explained in the section [Array concatenation functions and operators](./functions-operators/concatenation/#the-160-160-160-160-160-160-operator). The query shows this:
+The `||` operator is explained in the section [Array concatenation functions and operators](./functions-operators/concatenation/#the-160-160-160-160-operator). The query shows this:
 
 ```
  k |      v      | dims  
@@ -313,7 +314,7 @@ In this syntax, `[2:4]` says that the index runs from 2 through 4 on the first d
 ```
 Notice that if you access an element whose index values put it outside the ranges of the defined values, then, as mentioned, you silently get `NULL`.
 
-The values in an array are stored by laying out their internal representations consecutively in row-major order. This term is explained in the [Joint semantics](./functions-operators/properties/#joint-semantics)) section within the _"Functions for reporting the geometric properties of an array"_ section. Because every value has the same data type, this means that a value of interest can be addressed quickly, without index support, by calculating its offset. The value itself knows its dimensions. This explains how arrays of different dimensionality can be stored in a single table column. Even when the representations are of variable length (as is the case with `text` values), each knows its length, allowing the value boundaries easily to be calculated.
+The values in an array are stored by laying out their internal representations consecutively in row-major order. This term is explained in the [Joint semantics](./functions-operators/properties/#joint-semantics)) section within the _"Functions for reporting the geometric properties of an array"_ section. Because every value has the same data type, this means that a value of interest can be addressed quickly, without index support, by calculating its offset. The value itself knows its dimensions. This explains how arrays of different dimensionality can be stored in a single table column. Even when the representations are of variable length (as is the case with, for example, `text` values), each knows its length so that the value boundaries can be calculated.
 
 ## Uses of arrays
 
@@ -329,7 +330,7 @@ Some use cases call for a multidimensional _ragged_ array-like structure. Such a
 
 ## Example use case: GPS trip data
 
-Amateur cyclists like to record their trips using a GPS device and then to upload the recorded data to one of no end of Internet sites, dedicated to that purpose, so that they can review their trips, and those of others, whenever they want to into the indefinite future. It's easy to imagine that such a site will use a SQL database to store all these trips.
+Amateur cyclists like to record their trips using a GPS device and then to upload the recorded data to one of no end of Internet sites, dedicated to that purpose, so that they can review their trips, and those of others, whenever they want to into the indefinite future. Such a site might use a SQL database to store all these trips.
 
 The GPS device lets the cyclist split the trip into successive intervals, usually called laps, so that they can later focus their review attention on particular laps of interest like, for example, a notorious steep hill. So each trip has one or many laps. A lap is typically no more than about 100 km—and often more like 5-10 km. But it could be as large as, say, 300 km. The resolution of modern devices is typically just a few paces under good conditions—say 3m. So a lap could have as many as 100,000 GPS data points, each of which records the timestamp, position, and no end of other associated instantaneous values of facts like, for example, heart rate.
 
@@ -358,7 +359,7 @@ create table laps(
     references trips(trip_start_ts, userid)
     match full on delete cascade on update restrict);
 ```
-**Note:** In PostgreSQL, the maximum number of values that an array of any dimensionality can hold is `(2^27 - 1)` (about 137 million). If you exceed this limit, then you get a clear _"54000: array size exceeds the maximum allowed (134217727)"_ error. This maps to the PL/pgSQL exception _"program_limit_exceeded"_. In PostgreSQL, array values are stored out of line. However, in YugabyteDB's YSQL subsystem, they are stored in line, just like, for example, a `json` or `jsonb` value. As a consequence, the maximum number of values that a YSQL array can accommodate is smaller than PostgreSQL's limit. Moreover, the actual YSQL limit depends on circumstances—and when it's exceeded you get a "time out" error. Experiment shows that the limit is about 30 million values. You can easily test this for yourself using [`array_fill()`](./functions-operators/array-fill/)) function.
+**Note:** In PostgreSQL, the maximum number of values that an array of any dimensionality can hold is `(2^27 - 1)` (about 137 million). If you exceed this limit, then you get a clear _"54000: array size exceeds the maximum allowed (134217727)"_ error. This maps to the PL/pgSQL exception _"program_limit_exceeded"_. In PostgreSQL, array values are stored out of line. However, in YugabyteDB's YSQL subsystem, they are stored in line, just like, for example, a `json` or `jsonb` value. As a consequence, the maximum number of values that a YSQL array can accommodate is smaller than PostgreSQL's limit. Moreover, the actual YSQL limit depends on circumstances—and when it's exceeded you get a "time out" error. Experiment shows that the limit is about 30 million values. You can test this for yourself using [`array_fill()`](./functions-operators/array-fill/)) function.
 
 With about 100,000 GPS data points, a 300 km trip is easily accommodated.
 

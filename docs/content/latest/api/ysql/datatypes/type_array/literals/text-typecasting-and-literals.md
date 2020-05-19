@@ -8,8 +8,8 @@ menu:
     identifier: text-typecasting-and-literals
     parent: array-literals
     weight: 5
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 This section establishes some basic notions that have a much broader scope of applicability than just arrays. But, because using array literals rests on these notions, they are summarized here.

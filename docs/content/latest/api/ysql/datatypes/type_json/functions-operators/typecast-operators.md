@@ -1,8 +1,8 @@
 ---
-title: "::jsonb, ::json, and ::text (JSON typecast operators)"
-headerTitle: "::jsonb, ::json, and ::text (typecast operators)"
-linkTitle: "::jsonb, ::json, and ::text (typecast operators)"
-description: Typecast between any pair of text, json, and jsonb.
+title: "::jsonb and ::json and ::text (JSON typecast)"
+headerTitle: "::jsonb and ::json and ::text (typecast)"
+linkTitle: "::jsonb, ::json, ::text (typecast)"
+description: Typecast between any pair of text, json, and jsonb values.
 menu:
   latest:
     identifier: typecast-operators
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** Typecast between any pair out of `text`, `json`, and `jsonb` in both directions.
+**Purpose:** Typecast between any pair of `text`, `json`, and `jsonb` values in both directions.
 
 **Signature for the `jsonb` overload of `::text`:**
 
@@ -31,7 +31,7 @@ Consider this round trip:
 new_rfc_7159_text := (orig_rfc_7159_text::jsonb)::text
 ```
 
-The round trip is, in general, literally, but not semantically, lossy because `orig_rfc_7159_text` can contain arbitrary occurrences of whitespace characters but `new_rfc_7159_text` has conventionally defined whitespace use: there are no newlines; and single spaces are used according to a rule.
+The round trip is, in general, literally, but not semantically, lossy because _"orig_rfc_7159_text"_ can contain arbitrary occurrences of whitespace characters but _"new_rfc_7159_text"_ has conventionally defined whitespace use: there are no newlines; and single spaces are used according to a rule.
 
 ```postgresql
 do $body$
@@ -59,7 +59,7 @@ $body$;
 In contrast, this:
 
 ```
-new_rfc_7159_text := (orig_rfc_7159_text::jsonb)::text
+new_rfc_7159_text := (orig_rfc_7159_text::json)::text
 ```
 
 is literally non-lossy because `json` stores the actual Unicode text, as is, that defines the JSON value.
@@ -108,7 +108,7 @@ end;
 $body$;
 ```
 
-The `jsonb` representation is semantics-aware, and so it applies the "rightmost mention wins" rule to overwrite the first value establishment for the key `"a"` (the JSON _number 42_) with the second value establishment for that key (the JSON _number 92_). But the `json` representation is _not_ semantics-aware; it merely applies a syntax-check before accepting the content.
+The `jsonb` representation is semantics-aware, and so it applies the "rightmost mention wins" rule to overwrite the first value establishment for the key _"a"_ (the JSON _number 42_) with the second value establishment for that key (the JSON _number 92_). But the `json` representation is _not_ semantics-aware; it merely applies a syntax-check before accepting the content.
 
 This last example shows that the round trip:
 
@@ -137,5 +137,4 @@ begin
 end;
 $body$;
 ```
-
 The predicate for the assert has to use `::text` operator on both sides of the `=` operator because this has a `jsonb` overload but not a `json` overload.

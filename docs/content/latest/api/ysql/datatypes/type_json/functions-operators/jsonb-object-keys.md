@@ -21,7 +21,7 @@ input value:       jsonb
 return value:      SETOF text
 ```
 
-**Notes:** The functions in this pair require that the supplied JSON value is an _object_. The returned keys are ordered alphabetically.
+**Notes:** Each function in this pair requires that the supplied JSON value is an _object_. The returned keys are ordered alphabetically.
 
 ```postgresql
 do $body$

@@ -7,13 +7,13 @@ menu:
   latest:
     identifier: array-concatenation
     parent: array-functions-operators
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 The `||` operator implements, by itself, all of the functionality that each of the `array_cat()`, `array_append()`, and `array_prepend()` functions individually implement. Yugabyte recommends that you use the `||` operator and avoid the functions. They are documented here for completeness—especially in case you find them in inherited code.
 
-## The&#160;&#160;&#160;||&#160;&#160;&#160;operator
+## The&#160; &#160;||&#160; &#160;operator
 
 **Purpose:** Return the concatenation of any number of compatible `anyarray` and `anyelement` values.
 
@@ -58,16 +58,7 @@ and then this:
 ------------------
  {1,2,3,4,5,6}
 ```
-The example suffers from the problem that [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296) tracks. (This same issue also affects the `array_remove()` and the `array_replace()` functions.) If you run this example as presented, then the `UPDATE` statement causes a timeout error of such a severity that in order to continue, you must restart the crashed tserver.
 
-This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, by creating _"table t"_ without a primary key constraint. But this violates proper practice. Here is a viable workaround. Use this `UPDATE` statement instead of the one shown above:
-```postgresql
-with v as (
-  select '{1, 2}'::int[]||arr||6::int as new_arr from t where k = 1)
-update t
-set arr = (select new_arr from v)
-where k = 1;
-```
 ## array_cat()
 
 **Purpose:** Return the concatenation of two compatible `anyarray` values.
