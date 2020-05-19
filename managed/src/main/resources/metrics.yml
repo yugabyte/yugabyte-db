@@ -1543,7 +1543,7 @@ ysql_server_rpc_per_second:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions|AggregatePushdowns"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
   group_by: "service_method"
   layout:
     title: "Total YSQL Ops / Sec"
@@ -1566,7 +1566,7 @@ ysql_sql_latency:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions|AggregatePushdowns"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
   group_by: "service_method"
   layout:
     title: "YSQL Op Latency (Avg)"
@@ -1589,7 +1589,7 @@ ysql_server_rpc_p95:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions|AggregatePushdowns"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
     quantile: "p95"
   group_by: "service_method"
   layout:
@@ -1613,7 +1613,7 @@ ysql_server_rpc_p99:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
     service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions|AggregatePushdowns"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions"
     quantile: "p99"
   group_by: "service_method"
   layout:
