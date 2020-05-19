@@ -1676,10 +1676,12 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   // Disable callhome.
   argv.push_back("--callhome_enabled=false");
 
-  // Enable metrics logging.
+  // Disabled due to #4507.
+  // TODO: Enable metrics logging after #4507 is fixed.
+  //
   // Even though we set -logtostderr down below, metrics logs end up being written
   // based on -log_dir. So, we have to set that too.
-  argv.push_back("--metrics_log_interval_ms=1000");
+  argv.push_back("--metrics_log_interval_ms=0");
 
   // Force set log_dir to empty value, process will chose default destination inside fs_data_dir
   // In other case log_dir value will be extracted from TEST_TMPDIR env variable but it is
