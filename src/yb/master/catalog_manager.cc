@@ -7020,6 +7020,10 @@ void CatalogManager::SetLoadBalancerEnabled(bool is_enabled) {
   load_balance_policy_->SetLoadBalancerEnabled(is_enabled);
 }
 
+bool CatalogManager::IsLoadBalancerEnabled() {
+  return load_balance_policy_->IsLoadBalancerEnabled();
+}
+
 Status CatalogManager::GoIntoShellMode() {
   if (master_->IsShellMode()) {
     return STATUS(IllegalState, "Master is already in shell mode.");

@@ -510,5 +510,42 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
   ASSERT_EQ(tserver_id, ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+LEADER)")));
 }
 
+TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
+  std::string output;
+  std::vector<std::string> master_flags;
+  std::vector<std::string> ts_flags;
+  master_flags.push_back("--enable_load_balancing=true");
+  BuildAndStart(ts_flags, master_flags);
+
+  const std::string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder()
+                                  .add_master_server_addr(master_address)
+                                  .Build());
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+
+  ASSERT_NE(output.find("ENABLED"), std::string::npos);
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "set_load_balancer_enabled", "0"), &output));
+
+  ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+
+  ASSERT_NE(output.find("DISABLED"), std::string::npos);
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "set_load_balancer_enabled", "1"), &output));
+
+  ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
+
+  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
+      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+
+  ASSERT_NE(output.find("ENABLED"), std::string::npos);
+}
+
 }  // namespace tools
 }  // namespace yb

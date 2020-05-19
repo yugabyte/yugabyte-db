@@ -194,6 +194,10 @@ class MasterServiceImpl : public MasterServiceIf,
                                ChangeLoadBalancerStateResponsePB* resp,
                                rpc::RpcContext rpc) override;
 
+  void GetLoadBalancerState(const GetLoadBalancerStateRequestPB* req,
+                            GetLoadBalancerStateResponsePB* resp,
+                            rpc::RpcContext rpc) override;
+
   void RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
                            RemovedMasterUpdateResponsePB* resp,
                            rpc::RpcContext rpc) override;
