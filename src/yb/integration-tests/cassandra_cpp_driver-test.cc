@@ -176,6 +176,9 @@ class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
         "--yb_num_total_tablets=18",
         "--index_backfill_rpc_timeout_ms=6000",
         "--index_backfill_rpc_max_delay_ms=1000",
+        "--index_backfill_rpc_max_retries=10",
+        "--retrying_ts_rpc_max_delay_ms=1000",
+        "--unresponsive_ts_rpc_retry_limit=10",
         "--TEST_slowdown_backfill_alter_table_rpcs_ms=200"};
   }
 
@@ -898,9 +901,11 @@ void TestBackfillIndexTable(
   }
 
   for (auto& future : futures) {
-    if (!future.Wait().ok()) {
+    auto res = future.Wait();
+    if (!res.ok()) {
       num_failures++;
     }
+    WARN_NOT_OK(res, "Write batch failed: ")
   }
   if (num_failures > 0) {
     LOG(INFO) << num_failures << " write batches failed.";
