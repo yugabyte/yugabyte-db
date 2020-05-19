@@ -922,8 +922,9 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const boost::optional<TransactionId>& transaction_id,
     const ReadHybridTime read_hybrid_time,
     const TableId& table_id,
-    CoarseTimePoint deadline) const {
-  if (state_ != kOpen) {
+    CoarseTimePoint deadline,
+    AllowBootstrappingState allow_bootstrapping_state) const {
+  if (state_ != kOpen && (!allow_bootstrapping_state || state_ != kBootstrapping)) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
 

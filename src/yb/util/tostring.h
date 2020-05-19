@@ -175,7 +175,9 @@ typename std::enable_if<yb_tostring::HasFreeFunction_to_string<T>::value,
 }
 
 template <class T>
-typename std::enable_if<IsCollection<T>::value && !yb_tostring::HasFreeFunction_to_string<T>::value,
+typename std::enable_if<IsCollection<T>::value &&
+                            !yb_tostring::HasFreeFunction_to_string<T>::value &&
+                            !HasMemberFunction_ToString<T>::value,
                         std::string>::type ToString(const T& value) {
   return CollectionToString(value);
 }

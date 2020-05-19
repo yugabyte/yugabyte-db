@@ -58,6 +58,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/sys_catalog_writer.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet.h"
@@ -674,43 +675,22 @@ void SysCatalogTable::InitLocalRaftPeerPB() {
 Status SysCatalogTable::Visit(VisitorBase* visitor) {
   TRACE_EVENT0("master", "Visitor::VisitAll");
 
-  const int8_t tables_entry = visitor->entry_type();
-  const int type_col_idx = schema_.find_column(kSysCatalogTableColType);
-  const int entry_id_col_idx = schema_.find_column(kSysCatalogTableColId);
-  const int metadata_col_idx = schema_.find_column(kSysCatalogTableColMetadata);
-  CHECK(type_col_idx != Schema::kColumnNotFound);
-
   auto tablet = tablet_peer()->shared_tablet();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema_.CopyWithoutColumnIds(), boost::none));
 
-  auto doc_iter = dynamic_cast<yb::docdb::DocRowwiseIterator*>(iter.get());
-  CHECK(doc_iter != nullptr);
-  QLConditionPB cond;
-  cond.set_op(QL_OP_AND);
-  QLAddInt8Condition(&cond, schema_.column_id(type_col_idx), QL_OP_EQUAL, tables_entry);
-  yb::docdb::DocQLScanSpec spec(
-      schema_, boost::none /* hash_code */, boost::none /* max_hash_code */,
-      {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
-  RETURN_NOT_OK(doc_iter->Init(spec));
-
-  QLTableRow value_map;
-  QLValue entry_type, entry_id, metadata;
-  uint64_t count = 0;
   auto start = CoarseMonoClock::Now();
-  while (VERIFY_RESULT(iter->HasNext())) {
+
+  uint64_t count = 0;
+  RETURN_NOT_OK(EnumerateSysCatalog(tablet.get(), schema_, visitor->entry_type(),
+                                    [visitor, &count](const Slice& id, const Slice& data) {
     ++count;
-    RETURN_NOT_OK(iter->NextRow(&value_map));
-    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(type_col_idx), &entry_type));
-    CHECK_EQ(entry_type.int8_value(), tables_entry);
-    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(entry_id_col_idx), &entry_id));
-    RETURN_NOT_OK(value_map.GetValue(schema_.column_id(metadata_col_idx), &metadata));
-    RETURN_NOT_OK(visitor->Visit(entry_id.binary_value(), metadata.binary_value()));
-  }
+    return visitor->Visit(id, data);
+  }));
+
   auto duration = CoarseMonoClock::Now() - start;
-  string id = Format("num_entries_with_type_$0_loaded", std::to_string(tables_entry));
+  string id = Format("num_entries_with_type_$0_loaded", std::to_string(visitor->entry_type()));
   if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
     string description = id + " metric for SysCatalogTable::Visit";
     std::unique_ptr<GaugePrototype<uint64>> counter_gauge =
@@ -722,7 +702,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   }
   visitor_duration_metrics_[id]->IncrementBy(count);
 
-  id = Format("duration_ms_loading_entries_with_type_$0", std::to_string(tables_entry));
+  id = Format("duration_ms_loading_entries_with_type_$0", std::to_string(visitor->entry_type()));
   if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
     string description = id + " metric for SysCatalogTable::Visit";
     std::unique_ptr<GaugePrototype<uint64>> duration_gauge =
@@ -804,8 +784,8 @@ Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
   return Status::OK();
 }
 
-Result<ColumnId> SysCatalogTable::MetadataColumnId() {
-  return schema_.ColumnIdByName(kSysCatalogTableColMetadata);
+const Schema& SysCatalogTable::schema() {
+  return schema_;
 }
 
 } // namespace master

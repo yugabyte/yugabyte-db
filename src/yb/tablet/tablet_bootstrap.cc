@@ -38,6 +38,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/server/hybrid_clock.h"
+#include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -887,6 +888,12 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     flushed_op_id = DocDbOpIds();
   }
 
+  if (tablet_->snapshot_coordinator()) {
+    // We should load transaction aware snapshots before replaying logs, because we need them
+    // during this replay.
+    RETURN_NOT_OK(tablet_->snapshot_coordinator()->Load(tablet_.get()));
+  }
+
   consensus::OpId regular_op_id;
   regular_op_id.set_term(flushed_op_id.regular.term);
   regular_op_id.set_index(flushed_op_id.regular.index);
@@ -1093,9 +1100,18 @@ void TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg) {
   // Use committed OpId for mem store anchoring.
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
 
-  WARN_NOT_OK(tablet_->ApplyRowOperations(&operation_state), "ApplyRowOperations failed: ");
+  WARN_NOT_OK(tablet_->ApplyRowOperations(&operation_state), "ApplyRowOperations failed");
 
   tablet_->mvcc_manager()->Replicated(hybrid_time);
+
+  if (tablet_->snapshot_coordinator()) {
+    // We should load transaction aware snapshots duuring replaying logs, because we could replay
+    // snapshot operations that would refer them.
+    for (const auto& pair : write->write_batch().write_pairs()) {
+      WARN_NOT_OK(tablet_->snapshot_coordinator()->BootstrapWritePair(pair.key(), pair.value()),
+                  "BootstrapWritePair failed");
+    }
+  }
 }
 
 Status TabletBootstrap::PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {

@@ -129,10 +129,13 @@ TEST(ToStringTest, TestPointer) {
   CheckPointer(expected, shared_ptr);
 }
 
+const std::string kShortDebugString = "ShortDebugString";
+const std::string kToStringable = "ToStringable";
+
 class ToStringable : public RefCountedThreadSafe<ToStringable> {
  public:
   std::string ToString() const {
-    return std::string("ToStringable");
+    return kToStringable;
   }
 };
 
@@ -142,7 +145,7 @@ class ToStringableChild : public ToStringable {
 class WithShortDebugString {
  public:
   std::string ShortDebugString() const {
-    return std::string("ShortDebugString");
+    return kShortDebugString;
   }
 };
 
@@ -152,15 +155,17 @@ class WithShortDebugStringChild : public WithShortDebugString {
 TEST(ToStringTest, TestCustomIntrusive) {
   scoped_refptr<ToStringable> ptr(new ToStringable);
   scoped_refptr<ToStringableChild> child_ptr(new ToStringableChild);
-  ASSERT_EQ("ToStringable", ToString(*ptr));
-  CheckPointer("ToStringable", ptr);
-  CheckPointer("ToStringable", child_ptr);
-  ASSERT_EQ("ShortDebugString", ToString(WithShortDebugString()));
-  ASSERT_EQ("ShortDebugString", ToString(WithShortDebugStringChild()));
+  ASSERT_EQ(kToStringable, ToString(*ptr));
+  CheckPointer(kToStringable, ptr);
+  CheckPointer(kToStringable, child_ptr);
+  ASSERT_EQ(kShortDebugString, ToString(WithShortDebugString()));
+  ASSERT_EQ(kShortDebugString, ToString(WithShortDebugStringChild()));
 
   std::vector<scoped_refptr<ToStringable>> v(2);
   v[1] = ptr;
   ASSERT_EQ("[<NULL>, " + ToString(v[1]) + "]", ToString(v));
+
+  ASSERT_EQ(kToStringable, ToString(GStringPiece(kToStringable)));
 }
 
 class ToStringableNonIntrusive {

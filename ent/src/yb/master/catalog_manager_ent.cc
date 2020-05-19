@@ -100,9 +100,9 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
   explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
   CHECKED_STATUS Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
-    auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
-    if (txn_snapshot_id) {
-      return catalog_manager_->snapshot_coordinator_.Load(txn_snapshot_id, metadata);
+    if (TryFullyDecodeTxnSnapshotId(snapshot_id)) {
+      // Transaction aware snapshots should be already loaded.
+      return Status::OK();
     }
     return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
   }
@@ -1108,8 +1108,8 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   return Status::OK();
 }
 
-Result<ColumnId> CatalogManager::MetadataColumnId() {
-  return sys_catalog()->MetadataColumnId();
+const Schema& CatalogManager::schema() {
+  return sys_catalog()->schema();
 }
 
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
