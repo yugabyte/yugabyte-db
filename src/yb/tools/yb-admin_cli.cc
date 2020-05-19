@@ -83,6 +83,21 @@ CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
   return Status::OK();
 }
 
+CHECKED_STATUS MasterLeaderStepDown(
+    ClusterAdminClientClass* client,
+    const ClusterAdminCli::CLIArguments& args) {
+  if (args.size() < 3) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  string leader_uuid;
+  RETURN_NOT_OK_PREPEND(client->GetMasterLeaderInfo(
+        &leader_uuid), "Could not locate master leader!");
+  if (leader_uuid.empty()) {
+    return STATUS(ConfigurationError, "Could not locate master leader!");
+  }
+  return client->MasterLeaderStepDown(leader_uuid, args[2]);
+}
+
 CHECKED_STATUS LeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
@@ -632,7 +647,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       std::bind(&ChangeBlacklist, client, _1, true, "Unable to change leader blacklist"));
 
   Register(
-      "leader_stepdown", " tablet_id dest_ts_uuid",
+      "master_leader_stepdown"," <dest_uuid>",
+      std::bind(&MasterLeaderStepDown, client, _1));
+
+  Register(
+      "leader_stepdown", " <tablet_id> <dest_ts_uuid>",
       std::bind(&LeaderStepDown, client, _1));
 
   Register(
