@@ -16,7 +16,7 @@ showAsideToc: true
 
 **Notes:** Describing the behavior by using the term "remove" is a convenient shorthand. The actual effect of these operators is to create a _new_ `jsonb` value from the specified `jsonb` value according to the rule that the operator implements, parameterized by the SQL value on the right of the operator.
 
-### The `-` operator
+## The&#160; &#160;-&#160; &#160;operator
 
 **Purpose:** Remove key-value pairs from an _object_ or a single value from an _array_.
 
@@ -99,7 +99,7 @@ end;
 $body$;
 ```
 
-### The `#-` operator
+## The&#160; &#160;#-&#160; &#160;operator
 
 **Purpose:** Remove a single key-value pair from an _object_ or a single value from an _array_ at the specified path.
 
@@ -110,7 +110,7 @@ input values:       jsonb - text[]
 return value:       jsonb
 ```
 
-**Notes:** there is no `json` overload.
+**Notes:** There is no `json` overload.
 
 ```postgresql
 do $body$
@@ -126,5 +126,4 @@ end;
 $body$;
 ```
 
-Just as with the `#>` and `#>>` operators, array index values are presented as convertible `text` values. Notice that the address of each JSON array element along the path is specified JSON-style, where the index starts at zero.
-ss
+Just as with the [`#>` and `#>>` operators](../subvalue-operators/), array index values are presented as convertible `text` values. Notice that the address of each JSON array element along the path is specified JSON-style, where the index starts at zero.

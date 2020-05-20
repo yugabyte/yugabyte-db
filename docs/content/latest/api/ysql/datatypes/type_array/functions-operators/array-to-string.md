@@ -7,8 +7,8 @@ menu:
   latest:
     identifier: array-to-string
     parent: array-functions-operators
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 **Purpose:** Return a `text` value computed by representing each array value, traversing these in row-major order, by its `::text` typecast, using the supplied delimiter between each such representation. (The result, therefore, loses all information about the arrays geometric properties.) Optionally, represent `NULL` by the supplied `text` value. The term _"row-major order"_ is explained in the section [Joint semantics](../properties/#joint-semantics) within the section _"Functions for reporting the geometric properties of an array"_.

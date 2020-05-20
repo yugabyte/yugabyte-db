@@ -22,9 +22,9 @@ input value:       VARIADIC "any"
 return value:      jsonb
 ```
 
-**Notes:** These two functions take an arbitrary number of actual arguments of mixed SQL data types. The data type of each argument must have a direct JSON equivalent or allow implicit conversion to such an equivalent.
+**Notes:** Each function in this pair takes an arbitrary number of actual arguments of mixed SQL data types. The data type of each argument must have a direct JSON equivalent or allow implicit conversion to such an equivalent.
 
-Use this _ysqlsh_ script to create the required type `t` and then to execute the `assert`.
+Use this `ysqlsh` script to create the required type _"t"_ and then to execute the `ASSERT`.
 
 ```postgresql
 create type t as (a int, b text);
@@ -48,7 +48,7 @@ $body$;
 
 Using `jsonb_build_array()` is straightforward when you know the structure of your target JSON value statically, and just discover the values dynamically. However, it doesn't accommodate the case that you discover the desired structure dynamically.
 
-The following _ysqlsh_ script shows a feasible general workaround for this use case. The helper function `f()` generates the variadic argument list as the text representation of a comma-separated list of manifest constants of various data types. Then it invokes `jsonb_build_array()` dynamically. Obviously this brings a performance cost. But you might not have an alternative.
+The following `ysqlsh` script shows a feasible general workaround for this use case. The helper function _"f()"_ generates the variadic argument list as the text representation of a comma-separated list of SQL literals of various data types. Then it invokes `jsonb_build_array()` dynamically. Obviously this brings a performance cost. But you might not have an alternative.
 
 ```postgresql
 create function f(variadic_array_elements in text) returns jsonb

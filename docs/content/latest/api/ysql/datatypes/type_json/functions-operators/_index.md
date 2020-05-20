@@ -9,27 +9,24 @@ menu:
   latest:
     identifier: functions-operators
     parent: api-ysql-datatypes-json
-    weight: 30
+    weight: 50
 isTocNested: true
 showAsideToc: true
 ---
 
-The JSON functions and operators available in YugabyteDB are categorized by purpose (the goal you want to accomplish). Click one of the following goals to jump to a table that includes relevant JSON functions and operators.
+**On this page**<br>
+&#160;&#160;&#160;&#160;[Convert a SQL value to a JSON value](#convert-a-sql-value-to-a-json-value)<br>
+&#160;&#160;&#160;&#160;[Convert a JSON value to another JSON value](#convert-a-json-value-to-another-json-value)<br>
+&#160;&#160;&#160;&#160;[Convert a JSON value to a SQL value](#convert-a-json-value-to-a-sql-value)<br>
+&#160;&#160;&#160;&#160;[Get a property of a JSON value](#get-a-property-of-a-json-value)
 
-**What are you trying to do?**
-
-- [**Convert a SQL value to a JSON value**](#convert-a-sql-value-to-a-json-value)
-- [**Convert a JSON value to another JSON value**](#convert-a-json-value-to-another-json-value)
-- [**Convert a JSON value to a SQL value**](#convert-a-json-value-to-a-sql-value)
-- [**Get a property of a JSON value**](#get-a-property-of-a-json-value)
-
-**Note:** For an alphabetical listing of the JSON functions and operators, see the listing in the navigation bar.
+**Notes:** For an alphabetical listing of the JSON functions and operators, see the listing in the navigation bar.
 
 There are two trivial typecast operators for converting between a `text` value that conforms to [RFC 7159](https://tools.ietf.org/html/rfc7159) and a `jsonb` or `json` value, the ordinarily overloaded `=` operator, 12 dedicated JSON operators, and 23 dedicated JSON functions.
 
 Most of the operators are overloaded so that they can be used on both `json` and `jsonb` values. When such an operator reads a subvalue as a genuine JSON value, then the result has the same data type as the input. When such an operator reads a subvalue as a SQL `text` value that represents the JSON value, then the result is the same for a `json` input as for a `jsonb` input.
 
-Some of the functions have just a `jsonb` variant and a couple have just a `json` variant. Function names reflect this by starting with `jsonb_` or ending with `_jsonb` (and, correspondingly, for the `json` variants). The reason that this naming convention is used, rather than ordinary overloading, is that YSQL can distinguish between same-named functions when the specification of their formal parameters differ but not when their return types differ. Some of the JSON builtin functions for a specific purpose differ only by returning a `json` value or a `jsonb` value. This is why a single consistent naming convention — a `b` variant and a plain variant — is used throughout.
+Some of the functions have just a `jsonb` variant and a couple have just a `json` variant. Function names reflect this by starting with `jsonb_` or ending with `_jsonb`—and, correspondingly, for the `json` variants. The reason that this naming convention is used, rather than ordinary overloading, is that YSQL can distinguish between same-named functions when the specification of their formal parameters differ but not when their return types differ. Some of the JSON functions for a specific purpose differ only by returning a `json` value or a `jsonb` value. This is why a single consistent naming convention, a `b` variant and a plain variant, is used throughout.
 
 When an operator or function has both a JSON value input and a JSON value output, the `jsonb` variant takes a `jsonb` input and produces a `jsonb` output; and, correspondingly, the `json` variant takes a `json` input and produces a `json` output. You can use the `ysqlsh` [`\df`](../../../../../admin/ysqlsh/#df-antws-pattern) metacommand to show the signature (that is, the data types of the formal parameters and the return value) of any of the JSON functions; but you cannot do this for the operators.
 
@@ -44,10 +41,12 @@ To avoid clutter in the tables, only the `jsonb` variants of the function names 
 | [`::jsonb`](./typecast-operators/#) | yes | yes | `::jsonb` typecasts a SQL `text` value that conforms to RFC 7159 to a `jsonb` value. Use the appropriate one of  `::jsonb`, `::json`, or `::text` to typecast between any pair out of `text`, `json`, and `jsonb`, in the direction that you need. |
 | [`to_jsonb()`](./to-jsonb/) | yes | yes | Convert a single SQL value of any primitive or compound data type, that allows a JSON representation, to a sematically equivaent `jsonb`, or `json`, value. |
 | [`row_to_json()`](./row-to-json/) | | yes | Create a JSON _object_ from a SQL _record_. It has no practical advantage over `to_jsonb()`. |
-| [`array_to_json()`](./array-to-json/) | | yes | Create a JSON _array_ from a SQL _array_. It has no practical advantage over `to_jsonb()`. |
-| [`jsonb_build_array()`](./jsonb-build-array/) | yes | yes | Create a JSON _array_ from a variadic list of _array_ values of arbirary SQL data type. |
+| [`array_to_json()`](./array-to-json/) | | yes | Create a JSON _array_ from a SQL array value. It has no practical advantage over `to_jsonb()`. |
+| [`jsonb_build_array()`](./jsonb-build-array/) | yes | yes | Create a JSON _array_ from a variadic list of values of arbitrary SQL data type. |
 | [`jsonb_build_object()`](./jsonb-build-object/) | yes | yes | Create a JSON _object_ from a variadic list that specifies keys with values of arbitrary SQL data type. |
-| [`jsonb_object()`](./jsonb-object/) | yes | yes | create a JSON _object_ from SQL _array_(s) that specifiy keys with their values of SQL data type `text`. |
+| [`jsonb_object()`](./jsonb-object/) | yes | yes | Create a JSON _object_ from SQL array values that specifiy keys with their values of SQL data type `text`. |
+| [`jsonb_agg()`](./jsonb-agg/) | yes | yes | This is an aggregate function. (Aggregate functions compute a single result from a `SETOF` input SQL values.) It creates a JSON _array_ whose values are the JSON representations of the aggregated SQL values. |
+| [`jsonb_object_agg()`](./jsonb-object-agg/) | yes | yes | This is an aggregate function. (Aggregate functions compute a single result from a `SETOF` input values.) It creates a JSON _object_ whose values are the JSON representations of the aggregated SQL values. It is most useful when these to-be-aggregated values are _"row"_ type values with two fields. The first represesnts the _key_ and the second represents the _value_ of the intended JSON _object_'s _key-value_ pair. |
 
 ## Convert a JSON value to another JSON value
 
@@ -74,11 +73,11 @@ To avoid clutter in the tables, only the `jsonb` variants of the function names 
 | [`jsonb_populate_recordset()`](./jsonb-populate-recordset/) | yes | yes | Convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_. |
 | [`jsonb_to_record()`](./jsonb-to-record/) | yes | yes | Convert a JSON _object_ into the equivalent SQL `record`. Syntax variant of the functionality that  `jsonb_populate_record()` provides. It has some restrictions and brings no practical advantage over its less restricted equivalent. |
 | [`jsonb_to_recordset()`](./jsonb-to-recordset/) | yes | yes | Bears the same relationship to `jsonb_to_record()` as  `jsonb_populate_recordset()` bears to `jsonb_populate_record()`. Therefore, it brings no practical advantage over its restricted equivalent. |
-| [`jsonb_array_elements()`](./jsonb-array-elements/) | yes | yes | Transform the JSON values of JSON _array_ into a SQL table of (i.e. `setof`) `jsonb` values. |
-| [`jsonb_array_elements_text()`](./jsonb-array-elements-text/) | yes | yes | Transform the JSON values of JSON _array_ into a SQL table of (i.e. `setof`) `text` values. |
+| [`jsonb_array_elements()`](./jsonb-array-elements/) | yes | yes | Transform the JSON values of JSON _array_ into a SQL table of (i.e. `SETOF`) `jsonb` values. |
+| [`jsonb_array_elements_text()`](./jsonb-array-elements-text/) | yes | yes | Transform the JSON values of JSON _array_ into a SQL table of (i.e. `SETOF`) `text` values. |
 | [`jsonb_each()`](./jsonb-each/) | yes | yes | Create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `jsonb`) from a JSON _object_. |
 | [`jsonb_each_text()`](./jsonb-each-text/) | yes | yes | Create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `text`) from a JSON _object_. |
-| [`jsonb_pretty()`](./jsonb-pretty/) | yes | | Format the text representation of the JSON value that the input `jsonb` actual argument represents, using whitespace, to make it maximally easily human readable. |
+| [`jsonb_pretty()`](./jsonb-pretty/) | yes | | Format the text representation of the JSON value that the input `jsonb` actual argument represents, using whitespace, to make it maximally human readable. |
 
 ## Get a property of a JSON value
 

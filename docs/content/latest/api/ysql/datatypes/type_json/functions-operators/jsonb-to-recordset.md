@@ -21,11 +21,13 @@ input value:       jsonb
 return value:      SETOF record
 ```
 
-**Notes:** The function `jsonb_to_recordset()` bears the same relationship to `jsonb_to_record()` as  `jsonb_populate_recordset()` bears to `jsonb_populate_record()`.
+**Notes:** The function `jsonb_to_recordset()` bears the same relationship to [`jsonb_to_record()`](../jsonb-to-record) as [`jsonb_populate_recordset()`](../jsonb-populate-recordset) bears to [`jsonb_populate_record()`](../jsonb-populate-record).
 
-Therefore, the `DO` block that demonstrated `jsonb_populate_recordset()`'s functionality can be easily extended to demonstrate `jsonb_to_recordset()`'s functionality as well and to show that their results are identical. The `DO` block needs the same type `t` and function `same_as()` that the _ysqlsh_ script for `jsonb_populate_recordset()`defined.
+Therefore, the `DO` block that demonstrated the functionality of [`jsonb_populate_recordset()`](../jsonb-populate-recordset/) can be extended to demonstrate the functionality of `jsonb_to_recordset()` as well and to show that their results are identical. See the _"Record and array comparison"_ note in the account of `jsonb_populate_recordset()`.
 
 ```postgresql
+create type t as (a int, b int);
+
 do $body$
 declare
   array_of_objects constant jsonb :=
@@ -59,6 +61,7 @@ begin
     rows_1[n] := row;
   end loop;
 
+  n := 0;
   for row in (
     select a, b
     from jsonb_to_recordset(array_of_objects)
@@ -70,11 +73,11 @@ begin
   end loop;
 
   assert
-    same_as(rows_1, expected_rows) and
-    same_as(rows_2, expected_rows),
+    (rows_1 = expected_rows) and
+    (rows_2 = expected_rows),
   'unexpected';
 end;
 $body$;
 ```
 
-The same considerations apply here as do for `to jsonb_to_record()` if the target `record` data type has a non-primitive field. The `jsonb_to_recordset()` syntax variant therefore has no practical advantage over the `jsonb_populate_recordset()` variant.
+The same considerations apply here as do for [`to jsonb_to_record()`](../jsonb-to-record) if the target `record` data type has a non-primitive field. The `jsonb_to_recordset()` syntax variant therefore has no practical advantage over the [`jsonb_populate_recordset()`](../jsonb-populate-recordset) variant.

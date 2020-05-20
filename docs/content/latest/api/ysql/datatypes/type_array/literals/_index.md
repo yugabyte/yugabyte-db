@@ -9,8 +9,8 @@ menu:
     identifier: array-literals
     parent: api-ysql-datatypes-array
     weight: 20
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 This section introduces array literals informally with a few examples. Its subsections, listed below, explain formally how you construct syntactically correct array literals that establish the values that you intend.

@@ -21,37 +21,18 @@ input value:       anyelement, jsonb
 return value:      SETOF anyelement
 ```
 
-**Notes:** The functions in this pair and are a natural extension of the functionality of `jsonb_populate_record()`.
+**Notes:** The functions in this pair and are a natural extension of the functionality of [`jsonb_populate_record()`](../jsonb-populate-record).
 
-Each requires that the supplied JSON value is an _array_, each of whose values is an _object_ which is compatible with the specified SQL `record` which is defined as a `type` whose name is passed via the function's first formal parameter using the locution `null:type_identifier`. The JSON value is passed via the second formal parameter. The result is a set (i.e. a table) of `record`s of the specified type.
+Each requires that the supplied JSON value is an _array_, each of whose values is an _object_ which is compatible with the specified SQL `record` which is defined as a `type` whose name is passed via the function's first formal parameter using the locution `NULL:type_identifier`. The JSON value is passed via the second formal parameter. The result is a set (i.e. a table) of `record`s of the specified type.
 
-Use this _ysqlsh_ script to create the  type `t`, and then to execute the `assert`. Notice the because the result is a table, it must be materialized in a `cursor for loop`. Each selected row is accumulated in an array of type `t[]`. The expected result is also established in an array of type `t[]`. The input JSON _array_ has been contrived, by sometimes not having a key `"a"` or a key `"b"` so that the resulting records sometimes have `null` fields. The equility test in the `assert` has to accommodate this. Therefore a helper PL/pgSQL function, `same_as()` is created to encapsulate the logic.
+Use this `ysqlsh` script to create the  type _"t"_, and then to execute the `ASSERT`.
+
+{{< note title="Record and array comparison" >}}
+Notice the because the result is a table, it must be materialized in a `cursor for loop`. Each selected row is accumulated in an array of type `t[]`. The expected result is also established in an array of type `t[]`. The input JSON _array_ has been contrived, by sometimes not having a key `"a"` or a key `"b"` so that the resulting records sometimes have `NULL` fields. Record comparison, and array comparison, both use `IS NOT DISTINCT FROM` semantics—unlike is the case for scalar comparison. This means that the `ASSERT` can use a simple equality test to compare _"rows"_ and _"expected_rows"_. See the section [Operators for comparing two arrays](../../..//type_array/functions-operators/comparison/).
+{{< /note >}}
 
 ```postgresql
 create type t as (a int, b int);
-
-create function same_as(a1 t[], a2 t[]) returns boolean
-  immutable
-  language plpgsql
-as $body$
-declare
-  v1 t;
-  v2 t;
-  n int := 0;
-  result boolean := true;
-begin
-  foreach v1 in array a1 loop
-    n := n + 1;
-    v2 := a2[n];
-
-    result := result and
-      ((v1.a = v2.a) or (v1.a is null and v2.a is null))
-      and
-      ((v1.b = v2.b) or (v1.b is null and v2.b is null));
-  end loop;
-  return result;
-end;
-$body$;
 
 do $body$
 declare
@@ -86,7 +67,7 @@ begin
   end loop;
 
   assert
-    same_as(rows, expected_rows),
+    (rows = expected_rows),
   'unexpected';
 end;
 $body$;

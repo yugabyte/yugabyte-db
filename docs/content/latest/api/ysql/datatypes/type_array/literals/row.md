@@ -8,8 +8,8 @@ menu:
     identifier: row
     parent: array-literals
     weight: 30
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 The word "row" has two different uses; but these uses are really different sides of the same coin. A row in a schema-level table is actually an occurrence of a _"row"_ type—in other words, a _"row"_ type value. In this case, the schema-level _"row"_ type is created automatically as a side effect of executing the `CREATE TABLE` statement. It has the same name as the table. (This is allowed because tables and types are in different namespaces.) Further, a column in a schema-level table can have a user-defined _"row"_ type as its data type, and in this case the _"row"_ type need not be partnered with a table.
@@ -154,7 +154,7 @@ In addition to the first two rules, you notice the following.
 - The backslash has also been escaped with another single backslash and this has been then surrounded with double quotes. This is because it _does_ have syntactic significance, as the escape character, within the parentheses of a _"row"_ type literal.
 - `NULL` is represented in a _"row"_ type literal by the _absence_ of any characters between two successive delimiters: between the left parenthesis and the first comma, between two successive commas, or between the last comma and the right parenthesis.
 
-There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this easily with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the parentheses of a _"row"_ type literal with double quotes.
+There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the parentheses of a _"row"_ type literal with double quotes.
 
 To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this, as you did for the `int` example above, with the `\set` metacommand. But you must use dollar quotes because the literal itself has an interior single quote.
 ```postgresql
@@ -280,7 +280,7 @@ The rules for such cases can be determined by induction from the rules that this
 
 ## "Row" type literal versus "row" type constructor
 
-The two notions, _type constructor_ and _literal_, are functionally critically different. It's easy to demonstrate the difference using a `DO` block, because this lets you use a declared variable. It's harder to do this using a SQL statement because you'd have to use a scalar subquery in place of the PL/pgSQL variable. The `ROW` keyword is deliberately omitted here to emphasize its optional status.
+The two notions, _type constructor_ and _literal_, are functionally critically different. You can demonstrate the difference using a `DO` block, because this lets you use a declared variable. It's more effort to do this using a SQL statement because you'd have to use a scalar subquery in place of the PL/pgSQL variable. The `ROW` keyword is deliberately omitted here to emphasize its optional status.
 
 ```postgresql
 create type rt as (n numeric, s text, t timestamp, b boolean);
