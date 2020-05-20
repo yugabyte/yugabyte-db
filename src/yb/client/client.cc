@@ -580,6 +580,34 @@ Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBT
   return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
 }
 
+Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
+    const TableId& table_id,
+    const TableId& index_id,
+    const IndexPermissions& target_index_permissions) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->WaitUntilIndexPermissionsAtLeast(
+      this,
+      table_id,
+      index_id,
+      deadline,
+      target_index_permissions);
+}
+
+Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
+    const YBTableName& table_name,
+    const YBTableName& index_name,
+    const IndexPermissions& target_index_permissions) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  YBTableInfo table_info = VERIFY_RESULT(GetYBTableInfo(table_name));
+  YBTableInfo index_info = VERIFY_RESULT(GetYBTableInfo(index_name));
+  return data_->WaitUntilIndexPermissionsAtLeast(
+      this,
+      table_info.table_id,
+      index_info.table_id,
+      deadline,
+      target_index_permissions);
+}
+
 Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type,
                                  const std::string& creator_role_name,

@@ -314,6 +314,10 @@ class EnumBitSet {
     return impl_ == rhs.impl_;
   }
 
+  bool operator!=(const EnumBitSet<Enum>& rhs) const {
+    return impl_ != rhs.impl_;
+  }
+
   bool operator<(const EnumBitSet<Enum>& rhs) const {
     return impl_.to_ullong() < rhs.impl_.to_ullong();
   }

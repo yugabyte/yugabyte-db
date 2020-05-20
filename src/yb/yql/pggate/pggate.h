@@ -255,6 +255,11 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecDropIndex(PgStatement *handle);
 
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      const PgObjectId& table_id,
+      const PgObjectId& index_id,
+      const IndexPermissions& target_index_permissions);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);
