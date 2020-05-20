@@ -2722,9 +2722,7 @@ AbortTransaction(void)
 		pgstat_report_xact_timestamp(0);
 	}
 
-	if (YBTransactionsEnabled()) {
-		YBCPgAbortTransaction();
-	}
+	YBCAbortTransaction();
 
 	/*
 	 * State remains TRANS_ABORT until CleanupTransaction().
@@ -2787,9 +2785,6 @@ CleanupTransaction(void)
 void
 StartTransactionCommand(void)
 {
-	if (IsYugaByteEnabled())
-		YBResetOperationsBuffering();
-
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)

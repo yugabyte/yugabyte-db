@@ -694,12 +694,20 @@ void PgApiImpl::StartOperationsBuffering() {
   pg_session_->StartOperationsBuffering();
 }
 
-void PgApiImpl::ResetOperationsBuffering() {
-  pg_session_->ResetOperationsBuffering();
+Status PgApiImpl::StopOperationsBuffering() {
+  return pg_session_->StopOperationsBuffering();
+}
+
+Status PgApiImpl::ResetOperationsBuffering() {
+  return pg_session_->ResetOperationsBuffering();
 }
 
 Status PgApiImpl::FlushBufferedOperations() {
   return pg_session_->FlushBufferedOperations();
+}
+
+void PgApiImpl::DropBufferedOperations() {
+  pg_session_->DropBufferedOperations();
 }
 
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
@@ -996,10 +1004,19 @@ Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
 }
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
+  // Flush all buffered operations as ddl txn use its own transaction session.
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
 
 Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
+  // Flush all buffered operations as ddl txn use its own transaction session.
+  if (success) {
+    RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  } else {
+    pg_session_->DropBufferedOperations();
+  }
+
   return pg_txn_manager_->ExitSeparateDdlTxnMode(success);
 }
 

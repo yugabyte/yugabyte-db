@@ -181,13 +181,19 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
 
-  // Start operation buffering. It is possible that previous sql statment raised an error
-  // and collected operations has not been flushed. All ot them will be silently ignored.
+  // Start operation buffering. Buffering must not be in progress.
   void StartOperationsBuffering();
-  // Clean all previously buffered operations (from previous failed query).
-  void ResetOperationsBuffering();
-  // Flush all pending operations.
+  // Flush all pending buffered operation and stop further buffering.
+  // Buffering must be in progress.
+  CHECKED_STATUS StopOperationsBuffering();
+  // Stop further buffering. Buffering may be in any state,
+  // but pending buffered operations are not allowed.
+  CHECKED_STATUS ResetOperationsBuffering();
+
+  // Flush all pending buffered operations. Buffering mode remain unchanged.
   CHECKED_STATUS FlushBufferedOperations();
+  // Drop all pending buffered operations. Buffering mode remain unchanged.
+  void DropBufferedOperations();
 
   // Run (apply + flush) the given operation to read and write database content.
   // Template is used here to handle all kind of derived operations

@@ -754,23 +754,35 @@ void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
 }
 
 void PgSession::StartOperationsBuffering() {
+  DCHECK(!buffering_enabled_);
   DCHECK(buffered_keys_.empty());
   buffering_enabled_ = true;
 }
 
-void PgSession::ResetOperationsBuffering() {
-  VLOG_IF(1, !buffered_keys_.empty())
-          << "Dropping " << buffered_keys_.size() << " pending operations";
-  buffering_enabled_ = false;
-  buffered_keys_.clear();
-  buffered_ops_.clear();
-  buffered_txn_ops_.clear();
-}
-
-Status PgSession::FlushBufferedOperations() {
+Status PgSession::StopOperationsBuffering() {
   DCHECK(buffering_enabled_);
   buffering_enabled_ = false;
   return FlushBufferedOperationsImpl();
+}
+
+Status PgSession::ResetOperationsBuffering() {
+  SCHECK(buffered_keys_.empty(),
+         IllegalState,
+         Format("Pending operations are not expected, $0 found", buffered_keys_.size()));
+  buffering_enabled_ = false;
+  return Status::OK();
+}
+
+Status PgSession::FlushBufferedOperations() {
+  return FlushBufferedOperationsImpl();
+}
+
+void PgSession::DropBufferedOperations() {
+  VLOG_IF(1, !buffered_keys_.empty())
+          << "Dropping " << buffered_keys_.size() << " pending operations";
+  buffered_keys_.clear();
+  buffered_ops_.clear();
+  buffered_txn_ops_.clear();
 }
 
 Status PgSession::FlushBufferedOperationsImpl() {

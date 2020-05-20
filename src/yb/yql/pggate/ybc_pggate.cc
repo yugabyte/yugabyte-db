@@ -486,15 +486,23 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
 }
 
 void YBCPgStartOperationsBuffering() {
-  return pgapi->StartOperationsBuffering();
+  pgapi->StartOperationsBuffering();
 }
 
-void YBCPgResetOperationsBuffering() {
-  return pgapi->ResetOperationsBuffering();
+YBCStatus YBCPgStopOperationsBuffering() {
+  return ToYBCStatus(pgapi->StopOperationsBuffering());
+}
+
+YBCStatus YBCPgResetOperationsBuffering() {
+  return ToYBCStatus(pgapi->ResetOperationsBuffering());
 }
 
 YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
+}
+
+void YBCPgDropBufferedOperations() {
+  pgapi->DropBufferedOperations();
 }
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {

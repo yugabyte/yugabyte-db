@@ -183,6 +183,11 @@ extern void YBCRestartTransaction();
 extern bool YBCCommitTransaction();
 
 /*
+ * Aborts the current YugaByte-level transaction.
+ */
+extern void YBCAbortTransaction();
+
+/*
  * Handle a commit error if it happened during a previous call to
  * YBCCommitTransaction. We allow deferring this handling in order to be able
  * to make PostgreSQL transaction block state transitions before calling
