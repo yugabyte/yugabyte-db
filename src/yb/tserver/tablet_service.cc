@@ -182,6 +182,16 @@ DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 5000,
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, runtime);
 
+DEFINE_int32(index_backfill_wait_for_old_txns_ms, 10000,
+             "Index backfill needs to wait for transactions that started before the "
+             "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
+             "backfilling the index. This is the max time that the GetSafeTime call will "
+             "wait for, before it resorts to attempt aborting old transactions. This is "
+             "necessary to guard against the pathological active transaction that never "
+             "commits, from blocking the index backfill forever.");
+TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
+TAG_FLAG(index_backfill_wait_for_old_txns_ms, runtime);
+
 DEFINE_test_flag(int32, TEST_write_rejection_percentage, 0,
                  "Reject specified percentage of writes.");
 
@@ -561,36 +571,29 @@ void TabletServiceAdminImpl::GetSafeTime(
           FLAGS_index_backfill_additional_delay_before_backfilling_ms));
 
       auto txn_particpant = tablet.peer->tablet()->transaction_participant();
+      auto wait_until = CoarseMonoClock::Now() + FLAGS_index_backfill_wait_for_old_txns_ms * 1ms;
       HybridTime min_running_ht;
       for (;;) {
         min_running_ht = txn_particpant->MinRunningHybridTime();
-        if (min_running_ht && min_running_ht >= min_hybrid_time) {
+        if ((min_running_ht && min_running_ht >= min_hybrid_time) ||
+            CoarseMonoClock::Now() > wait_until) {
           break;
         }
         VLOG(2) << "MinRunningHybridTime is " << min_running_ht
                 << " need to wait for " << min_hybrid_time;
-        if (CoarseMonoClock::Now() > deadline) {
-          // A long running pending transaction that started before the index
-          // backfill can effectively block us from choosing a safe time to
-          // perform the backfill read.
-          // For now, we only wait for pending transactions; and can therefore
-          // block if a transaction does not complete in a timely manner.
-          // TODO(#3471): abort/restart such transactions so that the backfill process
-          // does not wait forever.
+        SleepFor(MonoDelta::FromMilliseconds(FLAGS_transaction_min_running_check_interval_ms));
+      }
+
+      VLOG(2) << "Finally MinRunningHybridTime is " << min_running_ht;
+      if (min_running_ht < min_hybrid_time) {
+        VLOG(2) << "Aborting Txns that started prior to " << min_hybrid_time;
+        auto s = txn_particpant->StopActiveTxnsPriorTo(min_hybrid_time, deadline);
+        if (!s.ok()) {
           SetupErrorAndRespond(
-              resp->mutable_error(),
-              STATUS_FORMAT(TimedOut,
-                            "TimedOut waiting on running transactions. "
-                                "Oldest started at $0 (before $1)",
-                            min_running_ht, min_hybrid_time),
-              TabletServerErrorPB::UNKNOWN_ERROR, &context);
+              resp->mutable_error(), s, TabletServerErrorPB::UNKNOWN_ERROR, &context);
           return;
         }
-        SleepFor(MonoDelta::FromMilliseconds(
-            FLAGS_transaction_min_running_check_interval_ms));
       }
-      VLOG(2) << "Finally MinRunningHybridTime is " << min_running_ht
-              << " waited for " << min_hybrid_time;
     }
   }
 

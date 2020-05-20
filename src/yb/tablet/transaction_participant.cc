@@ -760,6 +760,55 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return result;
   }
 
+  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
+    vector<TransactionId> ids_to_abort;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      for (const auto& txn : transactions_.get<StartTimeTag>()) {
+        if (txn->start_ht() > cutoff) {
+          break;
+        }
+        if (!txn->WasAborted()) {
+          ids_to_abort.push_back(txn->id());
+        }
+      }
+    }
+
+    if (ids_to_abort.empty()) {
+      return Status::OK();
+    }
+
+    // It is ok to attempt to abort txns that have committed. We don't care
+    // if our request succeeds or not.
+    CountDownLatch latch(ids_to_abort.size());
+    std::atomic<bool> failed{false};
+    Status return_status = Status::OK();
+    for (const auto& id : ids_to_abort) {
+      Abort(
+          id, [this, id, &failed, &return_status, &latch](Result<TransactionStatusResult> result) {
+            VLOG_WITH_PREFIX(2) << "Aborting " << id << " got " << result;
+            if (!result ||
+                (result->status != TransactionStatus::COMMITTED && result->status != ABORTED)) {
+              LOG(INFO) << "Could not abort " << id << " got " << result;
+
+              bool expected = false;
+              if (failed.compare_exchange_strong(expected, true)) {
+                if (!result) {
+                  return_status = result.status();
+                } else {
+                  return_status =
+                      STATUS_FORMAT(IllegalState, "Wrong status after abort: $0", result->status);
+                }
+              }
+            }
+            latch.CountDown();
+          });
+    }
+
+    return latch.WaitUntil(deadline) ? return_status
+                                     : STATUS(TimedOut, "TimedOut while aborting old transactions");
+  }
+
  private:
   class StartTimeTag;
 
@@ -1457,6 +1506,10 @@ void TransactionParticipant::CompleteShutdown() {
 
 std::string TransactionParticipant::DumpTransactions() const {
   return impl_->DumpTransactions();
+}
+
+Status TransactionParticipant::StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
+  return impl_->StopActiveTxnsPriorTo(cutoff, deadline);
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {
