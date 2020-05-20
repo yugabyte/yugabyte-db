@@ -136,6 +136,13 @@ typedef struct cypher_bool_const
     int location;
 } cypher_bool_const;
 
+typedef struct cypher_integer_const
+{
+    ExtensibleNode extensible;
+    int64 integer;
+    int location;
+} cypher_integer_const;
+
 typedef struct cypher_param
 {
     ExtensibleNode extensible;
@@ -184,6 +191,7 @@ typedef struct cypher_target_node
     cypher_rel_dir dir;
 } cypher_target_node;
 
+/* grammar node for typecasts */
 typedef struct cypher_typecast
 {
     ExtensibleNode extensible;
@@ -191,6 +199,16 @@ typedef struct cypher_typecast
     char *typecast;
     int location;
 } cypher_typecast;
+
+/* grammar node for functions (scalar, etc.) */
+typedef struct cypher_function
+{
+    ExtensibleNode extensible;
+    /* we take an expr_list */
+    List *exprs;
+    char *funcname;
+    int location;
+} cypher_function;
 
 /* clauses */
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);

@@ -1232,13 +1232,737 @@ SELECT agtype_typecast_path(null);
  
 (1 row)
 
+-- test functions
+-- create some vertices and edges
+SELECT * FROM cypher('expr', $$CREATE (:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('expr', $$CREATE (:v {i: 0})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('expr', $$CREATE (:v {i: 1})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('expr', $$
+    CREATE (:v1 {id:'initial'})-[:e1]->(:v1 {id:'middle'})-[:e1]->(:v1 {id:'end'})
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- show them
+SELECT * FROM cypher('expr', $$ MATCH (v) RETURN v $$) AS (expression agtype);
+                                    expression                                    
+----------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
+ {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+ {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+(6 rows)
+
+SELECT * FROM cypher('expr', $$ MATCH ()-[e]-() RETURN e $$) AS (expression agtype);
+                                                        expression                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+(2 rows)
+
+-- id()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN id(e)
+$$) AS (id agtype);
+        id        
+------------------
+ 1407374883553281
+ 1407374883553282
+(2 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN id(v)
+$$) AS (id agtype);
+        id        
+------------------
+ 844424930131969
+ 844424930131970
+ 844424930131971
+ 1125899906842625
+ 1125899906842626
+ 1125899906842627
+(6 rows)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN id(null)
+$$) AS (id agtype);
+ id 
+----
+ 
+(1 row)
+
+-- should error
+SELECT * FROM cypher('expr', $$
+    RETURN id()
+$$) AS (id agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- start_id()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN start_id(e)
+$$) AS (start_id agtype);
+     start_id     
+------------------
+ 1125899906842626
+ 1125899906842625
+(2 rows)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN start_id(null)
+$$) AS (start_id agtype);
+ start_id 
+----------
+ 
+(1 row)
+
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN start_id(v)
+$$) AS (start_id agtype);
+ERROR:  start_id() argument must be an edge or null
+SELECT * FROM cypher('expr', $$
+    RETURN start_id()
+$$) AS (start_id agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- end_id()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN end_id(e)
+$$) AS (end_id agtype);
+      end_id      
+------------------
+ 1125899906842627
+ 1125899906842626
+(2 rows)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN end_id(null)
+$$) AS (end_id agtype);
+ end_id 
+--------
+ 
+(1 row)
+
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN end_id(v)
+$$) AS (end_id agtype);
+ERROR:  end_id() argument must be an edge or null
+SELECT * FROM cypher('expr', $$
+    RETURN end_id()
+$$) AS (end_id agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- startNode()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN id(e), start_id(e), startNode(e)
+$$) AS (id agtype, start_id agtype, startNode agtype);
+        id        |     start_id     |                                    startnode                                     
+------------------+------------------+----------------------------------------------------------------------------------
+ 1407374883553281 | 1125899906842626 | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+ 1407374883553282 | 1125899906842625 | {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
+(2 rows)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN startNode(null)
+$$) AS (startNode agtype);
+ startnode 
+-----------
+ 
+(1 row)
+
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN startNode(v)
+$$) AS (startNode agtype);
+ERROR:  startNode() argument must be an edge or null
+SELECT * FROM cypher('expr', $$
+    RETURN startNode()
+$$) AS (startNode agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- endNode()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN id(e), end_id(e), endNode(e)
+$$) AS (id agtype, end_id agtype, endNode agtype);
+        id        |      end_id      |                                     endnode                                     
+------------------+------------------+---------------------------------------------------------------------------------
+ 1407374883553281 | 1125899906842627 | {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ 1407374883553282 | 1125899906842626 | {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex
+(2 rows)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN endNode(null)
+$$) AS (endNode agtype);
+ endnode 
+---------
+ 
+(1 row)
+
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN endNode(v)
+$$) AS (endNode agtype);
+ERROR:  endNode() argument must be an edge or null
+SELECT * FROM cypher('expr', $$
+    RETURN endNode()
+$$) AS (endNode agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- type()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN type(e)
+$$) AS (type agtype);
+ type 
+------
+ "e1"
+ "e1"
+(2 rows)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN type(null)
+$$) AS (type agtype);
+ type 
+------
+ 
+(1 row)
+
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN type(v)
+$$) AS (type agtype);
+ERROR:  type() argument must be an edge or null
+SELECT * FROM cypher('expr', $$
+    RETURN type()
+$$) AS (type agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- timestamp() can't be done as it will always have a different value
+-- size() of a string
+SELECT * FROM cypher('expr', $$
+    RETURN size('12345')
+$$) AS (size agtype);
+ size 
+------
+ 5
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN size("1234567890")
+$$) AS (size agtype);
+ size 
+------
+ 10
+(1 row)
+
+-- size() of an array
+SELECT * FROM cypher('expr', $$
+    RETURN size([1, 2, 3, 4, 5])
+$$) AS (size agtype);
+ size 
+------
+ 5
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN size([])
+$$) AS (size agtype);
+ size 
+------
+ 0
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN size(null)
+$$) AS (size agtype);
+ size 
+------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN size(1234567890)
+$$) AS (size agtype);
+ERROR:  size() unsupported argument
+SELECT * FROM cypher('expr', $$
+    RETURN size()
+$$) AS (size agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- head() of an array
+SELECT * FROM cypher('expr', $$
+    RETURN head([1, 2, 3, 4, 5])
+$$) AS (head agtype);
+ head 
+------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN head([1])
+$$) AS (head agtype);
+ head 
+------
+ 1
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN head([])
+$$) AS (head agtype);
+ head 
+------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN head(null)
+$$) AS (head agtype);
+ head 
+------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN head(1234567890)
+$$) AS (head agtype);
+ERROR:  head() argument must resolve to a list or null
+SELECT * FROM cypher('expr', $$
+    RETURN head()
+$$) AS (head agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- last()
+SELECT * FROM cypher('expr', $$
+    RETURN last([1, 2, 3, 4, 5])
+$$) AS (last agtype);
+ last 
+------
+ 5
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN last([1])
+$$) AS (last agtype);
+ last 
+------
+ 1
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN last([])
+$$) AS (last agtype);
+ last 
+------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN last(null)
+$$) AS (last agtype);
+ last 
+------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN last(1234567890)
+$$) AS (last agtype);
+ERROR:  last() argument must resolve to a list or null
+SELECT * FROM cypher('expr', $$
+    RETURN last()
+$$) AS (last agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- properties()
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN properties(v)
+$$) AS (properties agtype);
+    properties     
+-------------------
+ {}
+ {"i": 0}
+ {"i": 1}
+ {"id": "initial"}
+ {"id": "middle"}
+ {"id": "end"}
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN properties(e)
+$$) AS (properties agtype);
+ properties 
+------------
+ {}
+ {}
+(2 rows)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN properties(null)
+$$) AS (properties agtype);
+ properties 
+------------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN properties(1234)
+$$) AS (properties agtype);
+ERROR:  properties() argument must be a vertex, an edge or null
+SELECT * FROM cypher('expr', $$
+    RETURN properties()
+$$) AS (properties agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- coalesce
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, 1, null, null)
+$$) AS (coalesce agtype);
+ coalesce 
+----------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, -3.14, null, null)
+$$) AS (coalesce agtype);
+ coalesce 
+----------
+ -3.14
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, "string", null, null)
+$$) AS (coalesce agtype);
+ coalesce 
+----------
+ "string"
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, null, null, [])
+$$) AS (coalesce agtype);
+ coalesce 
+----------
+ []
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, null, null, {})
+$$) AS (coalesce agtype);
+ coalesce 
+----------
+ {}
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, id(null), null)
+$$) AS (coalesce agtype);
+ coalesce 
+----------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null)
+$$) AS (coalesce agtype);
+ coalesce 
+----------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce()
+$$) AS (coalesce agtype);
+ERROR:  syntax error at or near ")"
+LINE 2:     RETURN coalesce()
+                            ^
+-- toBoolean()
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(true)
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ true
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(false)
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ false
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean("true")
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ true
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean("false")
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ false
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean("falze")
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(null)
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(1)
+$$) AS (toBoolean agtype);
+ERROR:  toBoolean() unsuppoted argument agtype 3
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean()
+$$) AS (toBoolean agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- toFloat()
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat(1)
+$$) AS (toFloat agtype);
+ tofloat 
+---------
+ 1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat(1.2)
+$$) AS (toFloat agtype);
+ tofloat 
+---------
+ 1.2
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat("1")
+$$) AS (toFloat agtype);
+ tofloat 
+---------
+ 1.0
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat("1.2")
+$$) AS (toFloat agtype);
+ tofloat 
+---------
+ 1.2
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat("1.2"::numeric)
+$$) AS (toFloat agtype);
+ tofloat 
+---------
+ 1.2
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat("falze")
+$$) AS (toFloat agtype);
+ tofloat 
+---------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat(null)
+$$) AS (toFloat agtype);
+ tofloat 
+---------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat(true)
+$$) AS (toFloat agtype);
+ERROR:  toFloat() unsuppoted argument agtype 5
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat()
+$$) AS (toFloat agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- toInteger()
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger(1)
+$$) AS (toInteger agtype);
+ tointeger 
+-----------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger(1.2)
+$$) AS (toInteger agtype);
+ tointeger 
+-----------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger("1")
+$$) AS (toInteger agtype);
+ tointeger 
+-----------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger("1.2")
+$$) AS (toInteger agtype);
+ tointeger 
+-----------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger("1.2"::numeric)
+$$) AS (toInteger agtype);
+ tointeger 
+-----------
+ 1
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger("falze")
+$$) AS (toInteger agtype);
+ tointeger 
+-----------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger(null)
+$$) AS (toInteger agtype);
+ tointeger 
+-----------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger(true)
+$$) AS (toInteger agtype);
+ERROR:  toInteger() unsuppoted argument agtype 5
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger()
+$$) AS (toInteger agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
+-- length() of a path
+SELECT * FROM cypher('expr', $$
+    RETURN length([{id: 0, label: "vertex 0", properties: {}}::vertex, {id: 2, label: "edge 0", end_id: 1, start_id: 0, properties: {}}::edge, {id: 1, label: "vertex 1", properties: {}}::vertex]::path)
+$$) AS (length agtype);
+ length 
+--------
+ 1
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN length([{id: 0, label: "vertex 0", properties: {}}::vertex, {id: 2, label: "edge 0", end_id: 1, start_id: 0, properties: {}}::edge, {id: 1, label: "vertex 1", properties: {}}::vertex, {id: 2, label: "edge 0", end_id: 1, start_id: 0, properties: {}}::edge, {id: 1, label: "vertex 1", properties: {}}::vertex]::path)
+$$) AS (length agtype);
+ length 
+--------
+ 2
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN length(null)
+$$) AS (length agtype);
+ length 
+--------
+ 
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN length(true)
+$$) AS (length agtype);
+ERROR:  length() argument must resolve to a path or null
+SELECT * FROM cypher('expr', $$
+    RETURN length()
+$$) AS (length agtype);
+ERROR:  unrecognized or unsupported function
+LINE 1: SELECT * FROM cypher('expr', $$
+                                      ^
 --
 -- Cleanup
 --
 SELECT * FROM drop_graph('expr', true);
-NOTICE:  drop cascades to 2 other objects
+NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to table expr._ag_label_vertex
 drop cascades to table expr._ag_label_edge
+drop cascades to table expr.v
+drop cascades to table expr.v1
+drop cascades to table expr.e1
 NOTICE:  graph "expr" has been dropped
  drop_graph 
 ------------

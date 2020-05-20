@@ -36,6 +36,7 @@ const ScanKeyword cypher_keywords[] = {
     {"asc", ASC, RESERVED_KEYWORD},
     {"ascending", ASCENDING, RESERVED_KEYWORD},
     {"by", BY, RESERVED_KEYWORD},
+    {"coalesce", COALESCE, RESERVED_KEYWORD},
     {"contains", CONTAINS, RESERVED_KEYWORD},
     {"create", CREATE, RESERVED_KEYWORD},
     {"delete", DELETE, RESERVED_KEYWORD},

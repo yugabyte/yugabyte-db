@@ -76,7 +76,7 @@
 /* keywords in alphabetical order */
 %token <keyword> AND AS ASC ASCENDING
                  BY
-                 CONTAINS CREATE
+                 COALESCE CONTAINS CREATE
                  DELETE DESC DESCENDING DETACH DISTINCT
                  ENDS
                  FALSE_P
@@ -171,6 +171,10 @@ static Node *make_null_const(int location);
 
 // typecast
 static Node *make_typecast_expr(Node *expr, char *typecast, int location);
+
+// functions
+static Node *make_function_expr(char *funcname, List *exprs, int location);
+static Node *make_immediate_no_arg_function_expr(char *funcname, int location);
 %}
 
 %%
@@ -952,6 +956,21 @@ expr:
         {
             $$ = make_typecast_expr($1, $3, @2);
         }
+    | COALESCE '(' expr_list ')'
+        {
+            CoalesceExpr *c = makeNode(CoalesceExpr);
+            c->args = $3;
+            c->location = @1;
+            $$ = (Node *)c;
+        }
+    | symbolic_name '(' expr_list ')'
+        {
+            $$ = make_function_expr($1, $3, @2);
+        }
+    | symbolic_name '(' ')'
+        {
+            $$ = make_immediate_no_arg_function_expr($1, @1);
+        }
     | atom
     ;
 
@@ -1128,6 +1147,7 @@ reserved_keyword:
     | ASC
     | ASCENDING
     | BY
+    | COALESCE
     | CONTAINS
     | CREATE
     | DELETE
@@ -1342,3 +1362,43 @@ static Node *make_typecast_expr(Node *expr, char *typecast, int location)
     return (Node *)node;
 }
 
+/*
+ * functions
+ */
+static Node *make_function_expr(char *funcname, List *exprs, int location)
+{
+    cypher_function *node;
+
+    node = make_ag_node(cypher_function);
+    node->exprs = exprs;
+    node->funcname = funcname;
+    node->location = location;
+
+    return (Node *)node;
+}
+
+static Node *make_immediate_no_arg_function_expr(char *funcname, int location)
+{
+    if (pg_strcasecmp(funcname, "timestamp") == 0)
+    {
+        cypher_integer_const *node;
+        struct timespec ts;
+        long ms = 0;
+
+        /* get the system time and convert it to milliseconds */
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ms += (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+
+        /* build the node */
+        node = make_ag_node(cypher_integer_const);
+        node->integer = ms;
+        node->location = location;
+
+        return (Node *)node;
+    }
+    else
+        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                errmsg("unrecognized or unsupported function")));
+
+    return NULL;
+}

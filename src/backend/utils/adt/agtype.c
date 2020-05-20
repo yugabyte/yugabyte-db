@@ -22,18 +22,27 @@
 
 #include "postgres.h"
 
+#include <math.h>
+
 #include "access/htup_details.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "utils/typcache.h"
 
 #include "utils/agtype.h"
 #include "utils/agtype_parser.h"
+#include "utils/ag_float8_supp.h"
+#include "catalog/ag_graph.h"
+#include "catalog/ag_label.h"
 #include "utils/graphid.h"
 
 typedef struct agtype_in_state
@@ -110,7 +119,15 @@ static bool is_agtype_null(agtype *agt);
 static agtype_value *string_to_agtype_value(char *s);
 static uint64 get_edge_uniqueness_value(Datum d, Oid type, bool is_null,
                                         int index);
-static agtype *get_id_field_from_extended_agtype(agtype_value *v, char *name);
+static agtype_value *get_agtype_value_object_value(agtype_value *agtv_object,
+                                             char *key);
+/* graph entity retrieval */
+static Datum get_vertex(const char *graph, const char *vertex_label,
+                         int64 graphid);
+static Datum column_get_datum(TupleDesc tupdesc, HeapTuple tuple, int column,
+                        const char *attname, Oid typid, bool isnull);
+static char *get_label_name(const char *graph_name, int64 graph_id);
+
 PG_FUNCTION_INFO_V1(agtype_in);
 
 /*
@@ -3003,29 +3020,31 @@ Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
     return true;
 }
 
-static agtype *get_id_field_from_extended_agtype(agtype_value *v, char *name)
+/* helper function to retrieve a value, given a key, from an agtype_value */
+static agtype_value *get_agtype_value_object_value(agtype_value *agtv_object,
+                                             char *key)
 {
     int i;
+    int length;
 
-    if (v->type != AGTV_VERTEX && v->type != AGTV_EDGE)
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("not a valid extended agtype")));
+    Assert(agtv_object != NULL);
+    Assert(agtv_object->type != AGTV_OBJECT);
+    Assert(key != NULL);
 
-    for (i = 0; i < v->val.object.num_pairs; i++)
+    length = strlen(key);
+    for (i = 0; i < agtv_object->val.object.num_pairs; i++)
     {
-        agtype_pair pairs = v->val.object.pairs[i];
-        agtype_value *key = &pairs.key;
-        char subbuff[key->val.string.len + 1];
+        agtype_value *agtv_key = &agtv_object->val.object.pairs[i].key;
+        agtype_value *agtv_value = &agtv_object->val.object.pairs[i].value;
 
-        memcpy(subbuff, key->val.string.val, key->val.string.len);
-        subbuff[key->val.string.len] = '\0';
+        Assert(agtv_key != NULL);
+        Assert(agtv_key->type == AGTV_STRING);
 
-        if (!strcmp((char *)&subbuff, name))
-            return (agtype *)integer_to_agtype(pairs.value.val.int_value);
+        if (agtv_key->val.string.len == length &&
+            strncmp(agtv_key->val.string.val, key,
+                    agtv_key->val.string.len)== 0)
+            return agtv_value;
     }
-
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("could not find \"%s\" in extended agtype", name)));
 
     return NULL;
 }
@@ -3034,82 +3053,1056 @@ PG_FUNCTION_INFO_V1(id);
 
 Datum id(PG_FUNCTION_ARGS)
 {
-    agtype *object = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_object = NULL;
+    agtype_value *agtv_result = NULL;
 
+    /* check for null */
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
-    if (AGT_ROOT_IS_SCALAR(object))
-    {
-        agtype_value *v;
-        v = get_ith_agtype_value_from_container(&object->root, 0);
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for a scalar object */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("id() argument must resolve to a scalar value")));
 
-        if (v->type == AGTV_NULL)
+    /* get the object out of the array */
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* is it an agtype null? */
+    if (agtv_object->type == AGTV_NULL)
             PG_RETURN_NULL();
-        else if (v->type == AGTV_VERTEX || v->type == AGTV_EDGE)
-            AG_RETURN_AGTYPE_P(get_id_field_from_extended_agtype(v, "id"));
-    }
 
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("id only allows edge and vertex agtypes")));
+    /* check for proper agtype */
+    if (agtv_object->type != AGTV_VERTEX && agtv_object->type != AGTV_EDGE)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("id() argument must be a vertex, an edge or null")));
 
-    // keeps compiler silent
-    PG_RETURN_NULL();
-}
+    agtv_result = get_agtype_value_object_value(agtv_object, "id");
 
-PG_FUNCTION_INFO_V1(end_id);
+    Assert(agtv_result != NULL);
+    Assert(agtv_result->type = AGTV_INTEGER);
 
-Datum end_id(PG_FUNCTION_ARGS)
-{
-    agtype *object = AG_GET_ARG_AGTYPE_P(0);
-
-    if (PG_ARGISNULL(0))
-        PG_RETURN_NULL();
-
-    if (AGT_ROOT_IS_SCALAR(object))
-    {
-        agtype_value *v;
-        v = get_ith_agtype_value_from_container(&object->root, 0);
-
-        if (v->type == AGTV_NULL)
-            PG_RETURN_NULL();
-        else if (v->type == AGTV_EDGE)
-            AG_RETURN_AGTYPE_P(get_id_field_from_extended_agtype(v, "end_id"));
-    }
-
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("end_id only allows edge agtype")));
-
-    // keeps compiler silent
-    PG_RETURN_NULL();
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
+    AG_RETURN_GRAPHID(agtv_result->val.int_value);
 }
 
 PG_FUNCTION_INFO_V1(start_id);
 
 Datum start_id(PG_FUNCTION_ARGS)
 {
-    agtype *object = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_object = NULL;
+    agtype_value *agtv_result = NULL;
 
+    /* check for null */
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
-    if (AGT_ROOT_IS_SCALAR(object))
-    {
-        agtype_value *v;
-        v = get_ith_agtype_value_from_container(&object->root, 0);
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for a scalar object */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("start_id() argument must resolve to a scalar value")));
 
-        if (v->type == AGTV_NULL)
+    /* get the object out of the array */
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* is it an agtype null? */
+    if (agtv_object->type == AGTV_NULL)
             PG_RETURN_NULL();
-        else if (v->type == AGTV_EDGE)
-            AG_RETURN_AGTYPE_P(
-                get_id_field_from_extended_agtype(v, "start_id"));
+
+    /* check for proper agtype */
+    if (agtv_object->type != AGTV_EDGE)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("start_id() argument must be an edge or null")));
+
+    agtv_result = get_agtype_value_object_value(agtv_object, "start_id");
+
+    Assert(agtv_result != NULL);
+    Assert(agtv_result->type = AGTV_INTEGER);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(end_id);
+
+Datum end_id(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_object = NULL;
+    agtype_value *agtv_result = NULL;
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for a scalar object */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("end_id() argument must resolve to a scalar value")));
+
+    /* get the object out of the array */
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* is it an agtype null? */
+    if (agtv_object->type == AGTV_NULL)
+            PG_RETURN_NULL();
+
+    /* check for proper agtype */
+    if (agtv_object->type != AGTV_EDGE)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("end_id() argument must be an edge or null")));
+
+    agtv_result = get_agtype_value_object_value(agtv_object, "end_id");
+
+    Assert(agtv_result != NULL);
+    Assert(agtv_result->type = AGTV_INTEGER);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
+}
+
+/*
+ * Helper function to return the Datum value of a column (attribute) in a heap
+ * tuple (row) given the column number (starting from 0), attribute name, typid,
+ * and whether it can be null. The function is designed to extract and validate
+ * that the data (attribute) is what is expected. The function will error on any
+ * issues.
+ */
+static Datum column_get_datum(TupleDesc tupdesc, HeapTuple tuple, int column,
+                        const char *attname, Oid typid, bool isnull)
+{
+    Form_pg_attribute att;
+    HeapTupleHeader hth;
+    HeapTupleData tmptup, *htd;
+    Datum result;
+    bool _isnull = true;
+
+    /* build the heap tuple data */
+    hth = tuple->t_data;
+    tmptup.t_len = HeapTupleHeaderGetDatumLength(hth);
+    tmptup.t_data = hth;
+    htd = &tmptup;
+
+    /* get the description for the column from the tuple descriptor */
+    att = TupleDescAttr(tupdesc, column);
+    /* get the datum (attribute) for that column*/
+    result = heap_getattr(htd, column + 1, tupdesc, &_isnull);
+    /* verify that the attribute typid is as expected */
+    if (att->atttypid != typid)
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("Invalid attribute typid. Expected %d, found %d", typid,
+                        att->atttypid)));
+    /* verify that the attribute name is as expected */
+    if (strcmp(att->attname.data, attname) != 0)
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("Invalid attribute name. Expected %s, found %s",
+                        attname, att->attname.data)));
+    /* verify that if it is null, it is allowed to be null */
+    if (isnull == false && _isnull == true)
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("Attribute was found to be null when null is not allowed.")));
+
+    return result;
+}
+
+/*
+ * Function to retrieve a label name, given the graph name and graphid. The
+ * function returns a pointer to a duplicated string that needs to be freed
+ * when you are finished using it.
+ */
+static char *get_label_name(const char *graph_name, int64 graphid)
+{
+    ScanKeyData scan_keys[2];
+    Relation ag_label;
+    SysScanDesc scan_desc;
+    HeapTuple tuple;
+    TupleDesc tupdesc;
+    char *result = NULL;
+
+    Oid graphoid = get_graph_oid(graph_name);
+
+    /* scankey for first match in ag_label, column 2, graphoid, BTEQ, OidEQ */
+    ScanKeyInit(&scan_keys[0], Anum_ag_label_graph, BTEqualStrategyNumber,
+                F_OIDEQ, ObjectIdGetDatum(graphoid));
+    /* scankey for second match in ag_label, column 3, label id, BTEQ, Int4EQ */
+    ScanKeyInit(&scan_keys[1], Anum_ag_label_id, BTEqualStrategyNumber,
+                F_INT4EQ, Int32GetDatum(get_graphid_label_id(graphid)));
+
+    ag_label = heap_open(ag_relation_id("ag_label", "table"), RowExclusiveLock);
+    scan_desc = systable_beginscan(ag_label,
+                                   ag_relation_id("ag_label_graph_id_index",
+                                                  "index"), true, NULL, 2,
+                                   scan_keys);
+
+    tuple = systable_getnext(scan_desc);
+    if (!HeapTupleIsValid(tuple))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                 errmsg("graphid %lu does not exist", graphid)));
     }
 
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("start_id only allows edge agtype")));
+    /* get the tupdesc - we don't need to release this one */
+    tupdesc = RelationGetDescr(ag_label);
 
-    // keeps compiler silent
-    PG_RETURN_NULL();
+    /* bail if the number of columns differs */
+    if (tupdesc->natts != 5)
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("Invalid number of attributes for ag_catalog.ag_label")));
+
+    /* get the label name */
+    result = NameStr(*DatumGetName(column_get_datum(tupdesc, tuple, 0, "name",
+                                                    NAMEOID, true)));
+    /* duplicate it */
+    result = strdup(result);
+
+    /* end the scan and close the relation */
+    systable_endscan(scan_desc);
+    heap_close(ag_label, RowExclusiveLock);
+
+    return result;
+}
+
+static Datum get_vertex(const char *graph, const char *vertex_label,
+                         int64 graphid)
+{
+    ScanKeyData scan_keys[1];
+    Relation graph_vertex_label;
+    HeapScanDesc scan_desc;
+    HeapTuple tuple;
+    TupleDesc tupdesc;
+    Datum id, properties, result;
+
+    /* get the specific graph namespace (schema) */
+    Oid graph_namespace_oid = get_namespace_oid(graph, false);
+    /* get the specific vertex label table (schema.vertex_label) */
+    Oid vertex_label_table_oid = get_relname_relid(vertex_label,
+                                                 graph_namespace_oid);
+    /* get the active snapshot */
+    Snapshot snapshot = GetActiveSnapshot();
+
+    /* initialize the scan key */
+    ScanKeyInit(&scan_keys[0], 1, BTEqualStrategyNumber, F_OIDEQ,
+                Int64GetDatum(graphid));
+
+    /* open the relation (table), begin the scan, and get the tuple  */
+    graph_vertex_label = heap_open(vertex_label_table_oid, RowExclusiveLock);
+    scan_desc = heap_beginscan(graph_vertex_label, snapshot, 1, scan_keys);
+    tuple = heap_getnext(scan_desc, ForwardScanDirection);
+
+    /* bail if the tuple isn't valid */
+    if (!HeapTupleIsValid(tuple))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("graphid %lu does not exist", graphid)));
+    }
+
+    /* get the tupdesc - we don't need to release this one */
+    tupdesc = RelationGetDescr(graph_vertex_label);
+    /* bail if the number of columns differs */
+    if (tupdesc->natts != 2)
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("Invalid number of attributes for %s.%s", graph,
+                        vertex_label )));
+
+    /* get the id */
+    id = column_get_datum(tupdesc, tuple, 0, "id", GRAPHIDOID, true);
+    /* get the properties */
+    properties = column_get_datum(tupdesc, tuple, 1, "properties",
+                                  AGTYPEOID, true);
+    /* reconstruct the vertex */
+    result = DirectFunctionCall3(_agtype_build_vertex, id,
+                                 CStringGetDatum(vertex_label), properties);
+    /* end the scan and close the relation */
+    heap_endscan(scan_desc);
+    heap_close(graph_vertex_label, RowExclusiveLock);
+    /* return the vertex datum */
+    return result;
+}
+
+PG_FUNCTION_INFO_V1(startnode);
+
+Datum startnode(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_object = NULL;
+    agtype_value *agtv_value = NULL;
+    char *graph_name = NULL;
+    char *label_name = NULL;
+    graphid graph_id;
+    Datum result;
+
+    /* we need the graph name */
+    Assert(PG_ARGISNULL(0) == false);
+
+    /* check for null */
+    if (PG_ARGISNULL(1))
+        PG_RETURN_NULL();
+
+    /* get the graph name */
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* it must be a scalar and must be a string */
+    Assert(AGT_ROOT_IS_SCALAR(agt_arg));
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+    Assert(agtv_object->type == AGTV_STRING);
+    graph_name = strndup(agtv_object->val.string.val,
+                         agtv_object->val.string.len);
+
+    /* get the edge */
+    agt_arg = AG_GET_ARG_AGTYPE_P(1);
+    /* check for a scalar object */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("startNode() argument must resolve to a scalar value")));
+    /* get the object */
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* is it an agtype null, return null if it is */
+    if (agtv_object->type == AGTV_NULL)
+            PG_RETURN_NULL();
+
+    /* check for proper agtype */
+    if (agtv_object->type != AGTV_EDGE)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("startNode() argument must be an edge or null")));
+
+    /* get the graphid for start_id */
+    agtv_value = get_agtype_value_object_value(agtv_object, "start_id");
+    /* it must not be null and must be an integer */
+    Assert(agtv_value != NULL);
+    Assert(agtv_value->type = AGTV_INTEGER);
+    graph_id = agtv_value->val.int_value;
+
+    /* get the label */
+    label_name = get_label_name(graph_name, graph_id);
+    /* it must not be null and must be a string */
+    Assert(label_name != NULL);
+
+    result = get_vertex(graph_name, label_name, graph_id);
+
+    free(label_name);
+
+    return result;
+}
+
+PG_FUNCTION_INFO_V1(endnode);
+
+Datum endnode(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_object = NULL;
+    agtype_value *agtv_value = NULL;
+    char *graph_name = NULL;
+    char *label_name = NULL;
+    graphid graph_id;
+    Datum result;
+
+    /* we need the graph name */
+    Assert(PG_ARGISNULL(0) == false);
+
+    /* check for null */
+    if (PG_ARGISNULL(1))
+        PG_RETURN_NULL();
+
+    /* get the graph name */
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* it must be a scalar and must be a string */
+    Assert(AGT_ROOT_IS_SCALAR(agt_arg));
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+    Assert(agtv_object->type == AGTV_STRING);
+    graph_name = strndup(agtv_object->val.string.val,
+                         agtv_object->val.string.len);
+
+    /* get the edge */
+    agt_arg = AG_GET_ARG_AGTYPE_P(1);
+    /* check for a scalar object */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("endNode() argument must resolve to a scalar value")));
+    /* get the object */
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* is it an agtype null, return null if it is */
+    if (agtv_object->type == AGTV_NULL)
+            PG_RETURN_NULL();
+
+    /* check for proper agtype */
+    if (agtv_object->type != AGTV_EDGE)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("endNode() argument must be an edge or null")));
+
+    /* get the graphid for the end_id */
+    agtv_value = get_agtype_value_object_value(agtv_object, "end_id");
+    /* it must not be null and must be an integer */
+    Assert(agtv_value != NULL);
+    Assert(agtv_value->type = AGTV_INTEGER);
+    graph_id = agtv_value->val.int_value;
+
+    /* get the label */
+    label_name = get_label_name(graph_name, graph_id);
+    /* it must not be null and must be a string */
+    Assert(label_name != NULL);
+
+    result = get_vertex(graph_name, label_name, graph_id);
+
+    free(label_name);
+
+    return result;
+}
+
+PG_FUNCTION_INFO_V1(head);
+
+Datum head(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_result = NULL;
+    int count;
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for an array */
+    if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("head() argument must resolve to a list or null")));
+
+    count = AGT_ROOT_COUNT(agt_arg);
+
+    /* if we have an empty list, return a null */
+    if (count == 0)
+        PG_RETURN_NULL();
+
+    /* get the first element of the array */
+    agtv_result = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* if it is AGTV_NULL, return null */
+    if (agtv_result->type == AGTV_NULL)
+        PG_RETURN_NULL();
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(last);
+
+Datum last(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_result = NULL;
+    int count;
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for an array */
+    if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("last() argument must resolve to a list or null")));
+
+    count = AGT_ROOT_COUNT(agt_arg);
+
+    /* if we have an empty list, return null */
+    if (count == 0)
+        PG_RETURN_NULL();
+
+    /* get the last element of the array */
+    agtv_result = get_ith_agtype_value_from_container(&agt_arg->root, count -1);
+
+    /* if it is AGTV_NULL, return null */
+    if (agtv_result->type == AGTV_NULL)
+        PG_RETURN_NULL();
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(properties);
+
+Datum properties(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_object = NULL;
+    agtype_value *agtv_result = NULL;
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for a scalar object */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("properties() argument must resolve to a scalar value")));
+
+    /* get the object out of the array */
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* is it an agtype null? */
+    if (agtv_object->type == AGTV_NULL)
+            PG_RETURN_NULL();
+
+    /* check for proper agtype */
+    if (agtv_object->type != AGTV_VERTEX && agtv_object->type != AGTV_EDGE)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("properties() argument must be a vertex, an edge or null")));
+
+    agtv_result = get_agtype_value_object_value(agtv_object, "properties");
+
+    Assert(agtv_result != NULL);
+    Assert(agtv_result->type = AGTV_OBJECT);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(length);
+
+Datum length(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_path = NULL;
+    agtype_value agtv_result;
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for a scalar */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("length() argument must resolve to a scalar")));
+
+    /* get the path array */
+    agtv_path = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* if it is AGTV_NULL, return null */
+    if (agtv_path->type == AGTV_NULL)
+        PG_RETURN_NULL();
+
+    /* check for a path */
+    if (agtv_path ->type != AGTV_PATH)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("length() argument must resolve to a path or null")));
+
+    agtv_result.type = AGTV_INTEGER;
+    agtv_result.val.int_value = (agtv_path->val.array.num_elems - 1) /2;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(toboolean);
+
+Datum toboolean(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    Oid type;
+    agtype_value agtv_result;
+    char *string = NULL;
+    bool result = false;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("toBoolean() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * toBoolean() supports bool, text, cstring, or the agtype bool, and string
+     * input.
+     */
+    arg = args[0];
+    type = types[0];
+
+    if (type != AGTYPEOID)
+    {
+        if (type == BOOLOID)
+            result = DatumGetBool(arg);
+        else if (type == CSTRINGOID || type == TEXTOID)
+        {
+            if (type == CSTRINGOID)
+                string = DatumGetCString(arg);
+            else
+                string = text_to_cstring(DatumGetTextPP(arg));
+
+            if (pg_strcasecmp(string, "true") == 0)
+                result = true;
+            else if (pg_strcasecmp(string, "false") == 0)
+                result = false;
+            else
+                PG_RETURN_NULL();
+        }
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toBoolean() unsuppoted argument type %d",
+                                   type)));
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toBoolean() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        if (agtv_value->type == AGTV_BOOL)
+            result = agtv_value->val.boolean;
+        else if (agtv_value->type == AGTV_STRING)
+        {
+            int len = agtv_value->val.string.len;
+
+            string = agtv_value->val.string.val;
+
+            if (len == 4 && pg_strncasecmp(string, "true", len) == 0)
+                result = true;
+            else if (len == 5 && pg_strncasecmp(string, "false", len) == 0)
+                result = false;
+            else
+                PG_RETURN_NULL();
+        }
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toBoolean() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /* build the result */
+    agtv_result.type = AGTV_BOOL;
+    agtv_result.val.boolean = result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(tofloat);
+
+Datum tofloat(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    char *string = NULL;
+    bool is_valid = false;
+    Oid type;
+    float8 result;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("toFloat() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * toFloat() supports integer, float, numeric, text, cstring, or the
+     * agtype integer, float, numeric, and string input
+     */
+    arg = args[0];
+    type = types[0];
+
+    if (type != AGTYPEOID)
+    {
+        if (type == INT2OID)
+            result = (float8) DatumGetInt16(arg);
+        else if (type == INT4OID)
+            result = (float8) DatumGetInt32(arg);
+        else if (type == INT8OID)
+        {
+            /*
+             * Get the string representation of the integer because it could be
+             * too large to fit in a float. Let the float routine determine
+             * what to do with it.
+             */
+            string = DatumGetCString(DirectFunctionCall1(int8out, arg));
+            /* turn it into a float */
+            result = float8in_internal_null(string, NULL, "double precision",
+                                            string, &is_valid);
+            /* return null if it was not a invalid float */
+            if (!is_valid)
+                PG_RETURN_NULL();
+        }
+        else if (type == FLOAT4OID)
+            result = (float8) DatumGetFloat4(arg);
+        else if (type == FLOAT8OID)
+            result = DatumGetFloat8(arg);
+        else if (type == NUMERICOID)
+            result = DatumGetFloat8(DirectFunctionCall1(
+                numeric_float8_no_overflow, arg));
+        else if (type == CSTRINGOID || type == TEXTOID)
+        {
+            if (type == CSTRINGOID)
+                string = DatumGetCString(arg);
+            else
+                string = text_to_cstring(DatumGetTextPP(arg));
+
+            result = float8in_internal_null(string, NULL, "double precision",
+                                            string, &is_valid);
+            if (!is_valid)
+                PG_RETURN_NULL();
+        }
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toFloat() unsuppoted argument type %d",
+                                   type)));
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toFloat() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        if (agtv_value->type == AGTV_INTEGER)
+        {
+            /* get the string representation of the integer */
+            string = DatumGetCString(DirectFunctionCall1(int8out,
+                         Int64GetDatum(agtv_value->val.int_value)));
+            /* turn it into a float */
+            result = float8in_internal_null(string, NULL, "double precision",
+                                            string, &is_valid);
+            /* return null if it was an invalid float */
+            if (!is_valid)
+                PG_RETURN_NULL();
+        }
+        else if (agtv_value->type == AGTV_FLOAT)
+            result = agtv_value->val.float_value;
+        else if (agtv_value->type == AGTV_NUMERIC)
+            result = DatumGetFloat8(DirectFunctionCall1(
+                numeric_float8_no_overflow,
+                NumericGetDatum(agtv_value->val.numeric)));
+        else if (agtv_value->type == AGTV_STRING)
+        {
+            string = strndup(agtv_value->val.string.val,
+                             agtv_value->val.string.len);
+            result = float8in_internal_null(string, NULL, "double precision",
+                                            string, &is_valid);
+            free(string);
+            if (!is_valid)
+                PG_RETURN_NULL();
+        }
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toFloat() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /* build the result */
+    agtv_result.type = AGTV_FLOAT;
+    agtv_result.val.float_value = result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(tointeger);
+
+Datum tointeger(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    char *string = NULL;
+    bool is_valid = false;
+    Oid type;
+    int64 result;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("toInteger() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * toInteger() supports integer, float, numeric, text, cstring, or the
+     * agtype integer, float, numeric, and string input
+     */
+    arg = args[0];
+    type = types[0];
+
+    if (type != AGTYPEOID)
+    {
+        if (type == INT2OID)
+            result = (int64) DatumGetInt16(arg);
+        else if (type == INT4OID)
+            result = (int64) DatumGetInt32(arg);
+        else if (type == INT8OID)
+            result = (int64) DatumGetInt64(arg);
+        else if (type == FLOAT4OID)
+        {
+            float4 f = DatumGetFloat4(arg);
+
+            if (isnan(f) || isinf(f) ||
+                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                PG_RETURN_NULL();
+
+            result = (int64) f;
+        }
+        else if (type == FLOAT8OID)
+        {
+            float8 f = DatumGetFloat8(arg);
+
+            if (isnan(f) || isinf(f) ||
+                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                PG_RETURN_NULL();
+
+            result = (int64) f;
+        }
+        else if (type == NUMERICOID)
+        {
+            float8 f;
+
+            f = DatumGetFloat8(DirectFunctionCall1(
+                numeric_float8_no_overflow, arg));
+
+            if (isnan(f) || isinf(f) ||
+                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                PG_RETURN_NULL();
+
+            result = (int64) f;
+        }
+        else if (type == CSTRINGOID || type == TEXTOID)
+        {
+            if (type == CSTRINGOID)
+                string = DatumGetCString(arg);
+            else
+                string = text_to_cstring(DatumGetTextPP(arg));
+
+            /* convert it if it is a regular integer string */
+            is_valid = scanint8(string, true, &result);
+            /*
+             * If it isn't an integer string, try converting it as a float
+             * string.
+             */
+            if (!is_valid)
+            {
+                float f;
+
+                f = float8in_internal_null(string, NULL, "double precision",
+                                           string, &is_valid);
+                /*
+                 * If the conversions failed or it's a special float value,
+                 * return null.
+                 */
+                if (!is_valid || isnan(f) || isinf(f) ||
+                    f < PG_INT64_MIN || f > PG_INT64_MAX)
+                    PG_RETURN_NULL();
+
+                result = (int64) f;
+            }
+        }
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toInteger() unsuppoted argument type %d",
+                                   type)));
+    }
+    else
+    {
+        agtype *agt_arg;
+        agtype_value *agtv_value;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toInteger() only supports scalar arguments")));
+
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        if (agtv_value->type == AGTV_INTEGER)
+            result = agtv_value->val.int_value;
+        else if (agtv_value->type == AGTV_FLOAT)
+        {
+            float f = agtv_value->val.float_value;
+
+            if (isnan(f) || isinf(f) ||
+                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                PG_RETURN_NULL();
+
+            result = (int64) f;
+        }
+        else if (agtv_value->type == AGTV_NUMERIC)
+        {
+            float8 f;
+            Datum num = NumericGetDatum(agtv_value->val.numeric);
+
+            f = DatumGetFloat8(DirectFunctionCall1(
+                numeric_float8_no_overflow, num));
+
+            if (isnan(f) || isinf(f) ||
+                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                PG_RETURN_NULL();
+
+            result = (int64) f;
+        }
+        else if (agtv_value->type == AGTV_STRING)
+        {
+            /* we need a null terminated cstring */
+            string = strndup(agtv_value->val.string.val,
+                             agtv_value->val.string.len);
+            /* convert it if it is a regular integer string */
+            is_valid = scanint8(string, true, &result);
+            /*
+             * If it isn't an integer string, try converting it as a float
+             * string.
+             */
+            if (!is_valid)
+            {
+                float f;
+
+                f = float8in_internal_null(string, NULL, "double precision",
+                                           string, &is_valid);
+                free(string);
+                /*
+                 * If the conversions failed or it's a special float value,
+                 * return null.
+                 */
+                if (!is_valid || isnan(f) || isinf(f) ||
+                    f < PG_INT64_MIN || f > PG_INT64_MAX)
+                    PG_RETURN_NULL();
+
+                result = (int64) f;
+            }
+            else
+                free(string);
+        }
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("toInteger() unsuppoted argument agtype %d",
+                                   agtv_value->type)));
+    }
+
+    /* build the result */
+    agtv_result.type = AGTV_INTEGER;
+    agtv_result.val.int_value = result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+}
+
+PG_FUNCTION_INFO_V1(size);
+
+Datum size(PG_FUNCTION_ARGS)
+{
+    int nargs;
+    Datum *args;
+    Datum arg;
+    bool *nulls;
+    Oid *types;
+    agtype_value agtv_result;
+    char *string = NULL;
+    Oid type;
+    int64 result;
+
+    /* extract argument values */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* check number of args */
+    if (nargs > 1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("size() only supports one argument")));
+
+    /* check for null */
+    if (nargs < 0 || nulls[0])
+        PG_RETURN_NULL();
+
+    /*
+     * size() supports cstring, text, or the agtype string or list input
+     */
+    arg = args[0];
+    type = types[0];
+
+    if (type == CSTRINGOID)
+    {
+        string = DatumGetCString(arg);
+        result = strlen(string);
+    }
+    else if (type == TEXTOID)
+    {
+        string = text_to_cstring(DatumGetTextPP(arg));
+        result = strlen(string);
+    }
+    else if (type == AGTYPEOID)
+    {
+        agtype *agt_arg;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(arg);
+
+        if (AGT_ROOT_IS_SCALAR(agt_arg))
+        {
+            agtype_value *agtv_value;
+
+            agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+            if (agtv_value->type == AGTV_STRING)
+                result = agtv_value->val.string.len;
+            else
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                        errmsg("size() unsupported argument")));
+        }
+        else if (AGT_ROOT_IS_ARRAY(agt_arg))
+            result = AGT_ROOT_COUNT(agt_arg);
+        else
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("size() unsupported argument")));
+    }
+    else
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("size() unsupported argument")));
+
+    /* build the result */
+    agtv_result.type = AGTV_INTEGER;
+    agtv_result.val.int_value = result;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
 PG_FUNCTION_INFO_V1(graphid_to_agtype);
@@ -3117,4 +4110,42 @@ PG_FUNCTION_INFO_V1(graphid_to_agtype);
 Datum graphid_to_agtype(PG_FUNCTION_ARGS)
 {
     PG_RETURN_POINTER(integer_to_agtype(AG_GETARG_GRAPHID(0)));
+}
+
+PG_FUNCTION_INFO_V1(type);
+
+Datum type(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_object = NULL;
+    agtype_value *agtv_result = NULL;
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for a scalar object */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("type() argument must resolve to a scalar value")));
+
+    /* get the object out of the array */
+    agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* is it an agtype null? */
+    if (agtv_object->type == AGTV_NULL)
+            PG_RETURN_NULL();
+
+    /* check for proper agtype */
+    if (agtv_object->type != AGTV_EDGE)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("type() argument must be an edge or null")));
+
+    agtv_result = get_agtype_value_object_value(agtv_object, "label");
+
+    Assert(agtv_result != NULL);
+    Assert(agtv_result->type = AGTV_STRING);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }

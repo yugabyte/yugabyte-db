@@ -1331,9 +1331,9 @@ SELECT id(_agtype_build_path(
 			  $$label$$, agtype_build_map('id', 2)),
 	_agtype_build_vertex('3'::graphid, $$label$$, agtype_build_map('id', 2))
 ));
-ERROR:  id only allows edge and vertex agtypes
+ERROR:  id() argument must be a vertex, an edge or null
 SELECT id(agtype_in('1'));
-ERROR:  id only allows edge and vertex agtypes
+ERROR:  id() argument must be a vertex, an edge or null
 SELECT id(NULL);
  id 
 ----

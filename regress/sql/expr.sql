@@ -571,6 +571,326 @@ SELECT * FROM cypher('expr', $$ RETURN null::path $$) AS r(result agtype);
 SELECT agtype_typecast_path(agtype_in('null'));
 SELECT agtype_typecast_path(null);
 
+-- test functions
+-- create some vertices and edges
+SELECT * FROM cypher('expr', $$CREATE (:v)$$) AS (a agtype);
+SELECT * FROM cypher('expr', $$CREATE (:v {i: 0})$$) AS (a agtype);
+SELECT * FROM cypher('expr', $$CREATE (:v {i: 1})$$) AS (a agtype);
+SELECT * FROM cypher('expr', $$
+    CREATE (:v1 {id:'initial'})-[:e1]->(:v1 {id:'middle'})-[:e1]->(:v1 {id:'end'})
+$$) AS (a agtype);
+-- show them
+SELECT * FROM cypher('expr', $$ MATCH (v) RETURN v $$) AS (expression agtype);
+SELECT * FROM cypher('expr', $$ MATCH ()-[e]-() RETURN e $$) AS (expression agtype);
+-- id()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN id(e)
+$$) AS (id agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN id(v)
+$$) AS (id agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN id(null)
+$$) AS (id agtype);
+-- should error
+SELECT * FROM cypher('expr', $$
+    RETURN id()
+$$) AS (id agtype);
+-- start_id()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN start_id(e)
+$$) AS (start_id agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN start_id(null)
+$$) AS (start_id agtype);
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN start_id(v)
+$$) AS (start_id agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN start_id()
+$$) AS (start_id agtype);
+-- end_id()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN end_id(e)
+$$) AS (end_id agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN end_id(null)
+$$) AS (end_id agtype);
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN end_id(v)
+$$) AS (end_id agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN end_id()
+$$) AS (end_id agtype);
+-- startNode()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN id(e), start_id(e), startNode(e)
+$$) AS (id agtype, start_id agtype, startNode agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN startNode(null)
+$$) AS (startNode agtype);
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN startNode(v)
+$$) AS (startNode agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN startNode()
+$$) AS (startNode agtype);
+-- endNode()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN id(e), end_id(e), endNode(e)
+$$) AS (id agtype, end_id agtype, endNode agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN endNode(null)
+$$) AS (endNode agtype);
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN endNode(v)
+$$) AS (endNode agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN endNode()
+$$) AS (endNode agtype);
+-- type()
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN type(e)
+$$) AS (type agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN type(null)
+$$) AS (type agtype);
+-- should error
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN type(v)
+$$) AS (type agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN type()
+$$) AS (type agtype);
+-- timestamp() can't be done as it will always have a different value
+-- size() of a string
+SELECT * FROM cypher('expr', $$
+    RETURN size('12345')
+$$) AS (size agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN size("1234567890")
+$$) AS (size agtype);
+-- size() of an array
+SELECT * FROM cypher('expr', $$
+    RETURN size([1, 2, 3, 4, 5])
+$$) AS (size agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN size([])
+$$) AS (size agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN size(null)
+$$) AS (size agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN size(1234567890)
+$$) AS (size agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN size()
+$$) AS (size agtype);
+-- head() of an array
+SELECT * FROM cypher('expr', $$
+    RETURN head([1, 2, 3, 4, 5])
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN head([1])
+$$) AS (head agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN head([])
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN head(null)
+$$) AS (head agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN head(1234567890)
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN head()
+$$) AS (head agtype);
+-- last()
+SELECT * FROM cypher('expr', $$
+    RETURN last([1, 2, 3, 4, 5])
+$$) AS (last agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN last([1])
+$$) AS (last agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN last([])
+$$) AS (last agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN last(null)
+$$) AS (last agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN last(1234567890)
+$$) AS (last agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN last()
+$$) AS (last agtype);
+-- properties()
+SELECT * FROM cypher('expr', $$
+    MATCH (v) RETURN properties(v)
+$$) AS (properties agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[e]-() RETURN properties(e)
+$$) AS (properties agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN properties(null)
+$$) AS (properties agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN properties(1234)
+$$) AS (properties agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN properties()
+$$) AS (properties agtype);
+-- coalesce
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, 1, null, null)
+$$) AS (coalesce agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, -3.14, null, null)
+$$) AS (coalesce agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, "string", null, null)
+$$) AS (coalesce agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, null, null, [])
+$$) AS (coalesce agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, null, null, {})
+$$) AS (coalesce agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null, id(null), null)
+$$) AS (coalesce agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce(null)
+$$) AS (coalesce agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN coalesce()
+$$) AS (coalesce agtype);
+-- toBoolean()
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(true)
+$$) AS (toBoolean agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(false)
+$$) AS (toBoolean agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean("true")
+$$) AS (toBoolean agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean("false")
+$$) AS (toBoolean agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean("falze")
+$$) AS (toBoolean agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(null)
+$$) AS (toBoolean agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(1)
+$$) AS (toBoolean agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean()
+$$) AS (toBoolean agtype);
+-- toFloat()
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat(1)
+$$) AS (toFloat agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat(1.2)
+$$) AS (toFloat agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat("1")
+$$) AS (toFloat agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat("1.2")
+$$) AS (toFloat agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat("1.2"::numeric)
+$$) AS (toFloat agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat("falze")
+$$) AS (toFloat agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat(null)
+$$) AS (toFloat agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat(true)
+$$) AS (toFloat agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloat()
+$$) AS (toFloat agtype);
+-- toInteger()
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger(1)
+$$) AS (toInteger agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger(1.2)
+$$) AS (toInteger agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger("1")
+$$) AS (toInteger agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger("1.2")
+$$) AS (toInteger agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger("1.2"::numeric)
+$$) AS (toInteger agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger("falze")
+$$) AS (toInteger agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger(null)
+$$) AS (toInteger agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger(true)
+$$) AS (toInteger agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toInteger()
+$$) AS (toInteger agtype);
+-- length() of a path
+SELECT * FROM cypher('expr', $$
+    RETURN length([{id: 0, label: "vertex 0", properties: {}}::vertex, {id: 2, label: "edge 0", end_id: 1, start_id: 0, properties: {}}::edge, {id: 1, label: "vertex 1", properties: {}}::vertex]::path)
+$$) AS (length agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN length([{id: 0, label: "vertex 0", properties: {}}::vertex, {id: 2, label: "edge 0", end_id: 1, start_id: 0, properties: {}}::edge, {id: 1, label: "vertex 1", properties: {}}::vertex, {id: 2, label: "edge 0", end_id: 1, start_id: 0, properties: {}}::edge, {id: 1, label: "vertex 1", properties: {}}::vertex]::path)
+$$) AS (length agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN length(null)
+$$) AS (length agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN length(true)
+$$) AS (length agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN length()
+$$) AS (length agtype);
+
 --
 -- Cleanup
 --

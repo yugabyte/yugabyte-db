@@ -49,7 +49,10 @@ typedef enum ag_node_tag
     // string match
     cypher_string_match_t,
     // typecast
-    cypher_typecast_t
+    cypher_typecast_t,
+    // functions
+    cypher_function_t,
+    cypher_integer_const_t
 } ag_node_tag;
 
 void register_ag_nodes(void);

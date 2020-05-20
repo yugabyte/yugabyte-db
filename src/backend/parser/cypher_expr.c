@@ -38,6 +38,53 @@
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
 
+/* supported function definitions */
+#define FUNC_ENDNODE    {"endNode",    "endnode",    AGTYPEOID, AGTYPEOID, 0, AGTYPEOID, 1, 2, true}
+#define FUNC_HEAD       {"head",       "head",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_ID         {"id",         "id",         AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_STARTID    {"start_id",   "start_id",   AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_ENDID      {"end_id",     "end_id",     AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_LAST       {"last",       "last",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_LENGTH     {"length",     "length",     AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_PROPERTIES {"properties", "properties", AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_SIZE       {"size",       "size",       ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_STARTNODE  {"startNode",  "startnode",  AGTYPEOID, AGTYPEOID, 0, AGTYPEOID, 1, 2, true}
+#define FUNC_TOBOOLEAN  {"toBoolean",  "toboolean",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_TOFLOAT    {"toFloat",    "tofloat",    ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_TOINTEGER  {"toInteger",  "tointeger",  ANYOID,    0, 0, AGTYPEOID, 1, 1, false}
+#define FUNC_TYPE       {"type",       "type",       AGTYPEOID, 0, 0, AGTYPEOID, 1, 1, false}
+
+/* supported functions */
+#define SUPPORTED_FUNCTIONS {FUNC_TYPE, FUNC_ENDNODE, FUNC_HEAD, FUNC_ID, \
+                             FUNC_STARTID, FUNC_ENDID, FUNC_LAST, FUNC_LENGTH, \
+                             FUNC_PROPERTIES, FUNC_SIZE, FUNC_STARTNODE, \
+                             FUNC_TOINTEGER, FUNC_TOBOOLEAN, FUNC_TOFLOAT}
+
+/* structure for supported function signatures */
+typedef struct function_signature
+{
+    /* the name from the parser */
+    char *parsed_name;
+    /* the actual function name in the code */
+    char *actual_name;
+    /* input types, currently only up to 3 are supported */
+    Oid input1_oid;
+    Oid input2_oid;
+    Oid input3_oid;
+    /* output type */
+    Oid result_oid;
+    /* number of expressions (arguments) passed by the parser */
+    int nexprs;
+    /*
+     * The number of actual arguments to the function. This can differ from the
+     * number of expressions passed if the function requires additional
+     * information to be passed, such as the graph name.
+     */
+    int nargs;
+    /* needs graph name passed */
+    bool needs_graph_name;
+} function_signature;
+
 static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
                                            Node *expr);
 static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac);
@@ -48,6 +95,8 @@ static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a);
 static Node *transform_BoolExpr(cypher_parsestate *cpstate, BoolExpr *expr);
 static Node *transform_cypher_bool_const(cypher_parsestate *cpstate,
                                          cypher_bool_const *bc);
+static Node *transform_cypher_integer_const(cypher_parsestate *cpstate,
+                                            cypher_integer_const *ic);
 static Node *transform_AEXPR_IN(cypher_parsestate *cpstate, A_Expr *a);
 static Node *transform_cypher_param(cypher_parsestate *cpstate,
                                     cypher_param *cp);
@@ -58,6 +107,10 @@ static Node *transform_cypher_string_match(cypher_parsestate *cpstate,
                                            cypher_string_match *csm_node);
 static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
                                        cypher_typecast *ctypecast);
+static Node *transform_cypher_function(cypher_parsestate *cpstate,
+                                       cypher_function *cfunction);
+static Node *transform_CoalesceExpr(cypher_parsestate *cpstate,
+                                    CoalesceExpr *c);
 
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -122,10 +175,15 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
 
         return expr;
     }
+    case T_CoalesceExpr:
+        return transform_CoalesceExpr(cpstate, (CoalesceExpr *) expr);
     case T_ExtensibleNode:
         if (is_ag_node(expr, cypher_bool_const))
             return transform_cypher_bool_const(cpstate,
                                                (cypher_bool_const *)expr);
+        if (is_ag_node(expr, cypher_integer_const))
+            return transform_cypher_integer_const(cpstate,
+                                                  (cypher_integer_const *)expr);
         if (is_ag_node(expr, cypher_param))
             return transform_cypher_param(cpstate, (cypher_param *)expr);
         if (is_ag_node(expr, cypher_map))
@@ -138,6 +196,9 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
         if (is_ag_node(expr, cypher_typecast))
             return transform_cypher_typecast(cpstate,
                                              (cypher_typecast *)expr);
+        if (is_ag_node(expr, cypher_function))
+            return transform_cypher_function(cpstate,
+                                             (cypher_function *)expr);
 
         ereport(ERROR,
                 (errmsg_internal("unrecognized ExtensibleNode: %s",
@@ -307,6 +368,25 @@ static Node *transform_cypher_bool_const(cypher_parsestate *cpstate,
     // typtypmod, typcollation, typlen, and typbyval of agtype are hard-coded.
     c = makeConst(AGTYPEOID, -1, InvalidOid, -1, agt, false, false);
     c->location = bc->location;
+
+    return (Node *)c;
+}
+
+static Node *transform_cypher_integer_const(cypher_parsestate *cpstate,
+                                            cypher_integer_const *ic)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    ParseCallbackState pcbstate;
+    Datum agt;
+    Const *c;
+
+    setup_parser_errposition_callback(&pcbstate, pstate, ic->location);
+    agt = integer_to_agtype(ic->integer);
+    cancel_parser_errposition_callback(&pcbstate);
+
+    // typtypmod, typcollation, typlen, and typbyval of agtype are hard-coded.
+    c = makeConst(AGTYPEOID, -1, InvalidOid, -1, agt, false, false);
+    c->location = ic->location;
 
     return (Node *)c;
 }
@@ -587,37 +667,33 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     FuncExpr *func_expr;
     List *func_args = NIL;
     Oid func_agtype_typecast_operator_oid = InvalidOid;
-    int len;
 
     /* verify input parameter */
     Assert (cpstate != NULL);
     Assert (ctypecast != NULL);
 
     /* get the oid of the requested typecast function */
-    len = strlen(ctypecast->typecast);
-    if (len == 4 && pg_strncasecmp(ctypecast->typecast, "edge", len) == 0)
+    if (pg_strcasecmp(ctypecast->typecast, "edge") == 0)
     {
         func_agtype_typecast_operator_oid =
             get_ag_func_oid("agtype_typecast_edge", 1, AGTYPEOID);
     }
-    else if (len == 4 && pg_strncasecmp(ctypecast->typecast, "path", len) == 0)
+    else if (pg_strcasecmp(ctypecast->typecast, "path") == 0)
     {
         func_agtype_typecast_operator_oid =
             get_ag_func_oid("agtype_typecast_path", 1, AGTYPEOID);
     }
-    else if (len == 6 &&
-             pg_strncasecmp(ctypecast->typecast, "vertex", len) == 0)
+    else if (pg_strcasecmp(ctypecast->typecast, "vertex") == 0)
     {
         func_agtype_typecast_operator_oid =
             get_ag_func_oid("agtype_typecast_vertex", 1, AGTYPEOID);
     }
-    else if (len == 7 &&
-             pg_strncasecmp(ctypecast->typecast, "numeric", len) == 0)
+    else if (pg_strcasecmp(ctypecast->typecast, "numeric") == 0)
     {
         func_agtype_typecast_operator_oid =
             get_ag_func_oid("agtype_typecast_numeric", 1, AGTYPEOID);
     }
-    else if (len == 5 && pg_strncasecmp(ctypecast->typecast, "float", 5) == 0)
+    else if (pg_strcasecmp(ctypecast->typecast, "float") == 0)
     {
         func_agtype_typecast_operator_oid =
             get_ag_func_oid("agtype_typecast_float", 1, AGTYPEOID);
@@ -641,4 +717,130 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     func_expr->location = ctypecast->location;
 
     return (Node *)func_expr;
+}
+
+/*
+ * Function to create a function execute node
+ */
+static Node *transform_cypher_function(cypher_parsestate *cpstate,
+                                       cypher_function *cfunction)
+{
+    FuncExpr *func_expr = NULL;
+    char *funcname = NULL;
+    List *exprs = NIL;
+    List *texprs = NIL;
+    ListCell *lc = NULL;
+    int nexprs;
+    Oid func_operator_oid = InvalidOid;
+    char *graph_name = cpstate->graph_name;
+    int i;
+    /* load supported functions */
+    function_signature supported_functions[] = SUPPORTED_FUNCTIONS;
+    function_signature *fs = NULL;
+    int nfunctions = sizeof(supported_functions)/sizeof(function_signature);
+
+    /* verify input parameter */
+    Assert (cpstate != NULL);
+    Assert (cfunction != NULL);
+    Assert (nfunctions >= 0);
+
+    /* get the function name and expressions */
+    funcname = cfunction->funcname;
+    exprs = cfunction->exprs;
+    nexprs = list_length(exprs);
+
+    /* iterate through SUPPORTED_FUNCTIONS */
+    for (i = 0; i < nfunctions; i++)
+    {
+        fs = &supported_functions[i];
+        if (strcmp(funcname, fs->parsed_name) == 0)
+        {
+            func_operator_oid = get_ag_func_oid(fs->actual_name, fs->nargs,
+                                                fs->input1_oid, fs->input2_oid,
+                                                fs->input3_oid);
+            break;
+        }
+    }
+
+    /* we should have something at this point */
+    Assert(fs != NULL);
+    /* if none was found, error out */
+    if (func_operator_oid == InvalidOid)
+        ereport(ERROR, (errmsg_internal("function \'%s\' not supported",
+                                        cfunction->funcname)));
+    /* verify the number of passed arguments */
+    if (fs->nexprs != nexprs)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("invalid number of input parameters for %s()",
+                               funcname)));
+    /* does this function need the graph name passed in as the first arg? */
+    if (fs->needs_graph_name)
+    {
+        Datum d = string_to_agtype(graph_name);
+        Const *c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, false, false);
+
+        texprs = lappend(texprs, c);
+    }
+    /* transform expression arguments */
+    foreach(lc, exprs)
+    {
+        Node *expr = (Node *)lfirst(lc);
+
+        expr = transform_cypher_expr_recurse(cpstate, expr);
+        texprs = lappend(texprs, expr);
+    }
+    /* make function node */
+    func_expr = makeFuncExpr(func_operator_oid, fs->result_oid, texprs,
+                             InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+    func_expr->location = cfunction->location;
+
+    return (Node *)func_expr;
+}
+
+/*
+ * Code borrowed from PG's transformCoalesceExpr and updated for AGE
+ */
+static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr *c)
+{
+    ParseState *pstate = &cpstate->pstate;
+    CoalesceExpr *newc = makeNode(CoalesceExpr);
+    Node *last_srf = pstate->p_last_srf;
+    List *newargs = NIL;
+    List *newcoercedargs = NIL;
+    ListCell *args;
+
+    foreach(args, c->args)
+    {
+        Node *e = (Node *)lfirst(args);
+        Node *newe;
+
+        newe = transform_cypher_expr_recurse(cpstate, e);
+        newargs = lappend(newargs, newe);
+    }
+
+    newc->coalescetype = select_common_type(pstate, newargs, "COALESCE", NULL);
+    /* coalescecollid will be set by parse_collate.c */
+
+    /* Convert arguments if necessary */
+    foreach(args, newargs)
+    {
+        Node *e = (Node *)lfirst(args);
+        Node *newe;
+
+        newe = coerce_to_common_type(pstate, e, newc->coalescetype, "COALESCE");
+        newcoercedargs = lappend(newcoercedargs, newe);
+    }
+
+    /* if any subexpression contained a SRF, complain */
+    if (pstate->p_last_srf != last_srf)
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 /* translator: %s is name of a SQL construct, eg GROUP BY */
+                 errmsg("set-returning functions are not allowed in %s",
+                        "COALESCE"),
+                 parser_errposition(pstate, exprLocation(pstate->p_last_srf))));
+
+    newc->args = newcoercedargs;
+    newc->location = c->location;
+    return (Node *) newc;
 }

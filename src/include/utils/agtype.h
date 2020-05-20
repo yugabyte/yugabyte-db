@@ -460,5 +460,7 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
 #define AGTYPEARRAYOID \
     (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("_agtype"), \
                      ObjectIdGetDatum(ag_catalog_namespace_id())))
-
+#define GRAPHIDOID \
+    (GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("graphid"), \
+                     ObjectIdGetDatum(ag_catalog_namespace_id())))
 #endif
