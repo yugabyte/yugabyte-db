@@ -12,8 +12,6 @@ allowed_cloud_types:
   - gcp
   - onprem
 
-custom_ssh_port: 54422
-
 cloud_region: us-west-2
 
 ssh_port: 22

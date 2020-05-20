@@ -120,6 +120,9 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--ssh_user",
                                  required=False,
                                  help="The username for ssh")
+        self.parser.add_argument("--custom_ssh_port",
+                                 required=False,
+                                 help="The ssh port to connect to.")
         self.parser.add_argument("--instance_tags",
                                  required=False,
                                  help="Tags for instances being created.")
@@ -176,7 +179,7 @@ class AbstractInstancesMethod(AbstractMethod):
 
         self.extra_vars.update(updated_args)
 
-    def update_ansible_vars_with_host_info(self, host_info):
+    def update_ansible_vars_with_host_info(self, host_info, custom_ssh_port):
         """Hook for subclasses to update Ansible extra-vars with host specifics before calling out.
         """
         self.extra_vars.update({
@@ -188,7 +191,7 @@ class AbstractInstancesMethod(AbstractMethod):
             "instance_name": host_info["name"],
             "instance_type": host_info["instance_type"]
         })
-        self.extra_vars.update(get_ssh_host_port(host_info))
+        self.extra_vars.update(get_ssh_host_port(host_info, custom_ssh_port))
 
 
 class DestroyInstancesMethod(AbstractInstancesMethod):
@@ -294,7 +297,8 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             if not host_info:
                 host_info = self.cloud.get_host_info(args)
             if host_info:
-                self.extra_vars.update(get_ssh_host_port(host_info, default_port=default_port))
+                self.extra_vars.update(
+                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
                 if wait_for_ssh(self.extra_vars["ssh_host"],
                                 self.extra_vars["ssh_port"],
                                 self.SSH_USER,
@@ -325,6 +329,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.create_method = CreateInstancesMethod(self.base_command)
 
     def preprocess_args(self, args):
+        super(ProvisionInstancesMethod, self).preprocess_args(args)
         self.create_method.preprocess_args(args)
 
     def add_extra_args(self):
@@ -339,6 +344,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         # Actually call the Create method function for setting up extra options.
         self.create_method.add_extra_args()
         # Add extra options on top of the Create method ones.
+        self.parser.add_argument("--air_gap", action="store_true", help="Run airgapped install.")
         self.parser.add_argument("--reuse_host", action="store_true", default=False)
         self.parser.add_argument("--local_package_path",
                                  required=False,
@@ -358,9 +364,11 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.update_ansible_vars_with_args(args)
 
         if host_info:
-            self.extra_vars.update(get_ssh_host_port(host_info))
+            self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
+        if args.air_gap:
+            self.extra_vars.update({"air_gap": args.air_gap})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
@@ -415,7 +423,7 @@ class UpdateDiskMethod(AbstractInstancesMethod):
             "ssh_user": self.SSH_USER,
             "private_key_file": args.private_key_file
         }
-        ssh_options.update(get_ssh_host_port(host_info))
+        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, ssh_options)
 
 
@@ -535,7 +543,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                         .format(args.search_pattern,
                                                 host_info['server_type'],
                                                 args.type))
-            self.update_ansible_vars_with_host_info(host_info)
+            self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
             # If we have a package, then manually copy it over using scp instead of going over
             # ansible, so we do not have issues such as ENG-3424.
             # Python based paramiko seemed to have the same problems as ansible copy module!
@@ -566,7 +574,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             "ssh_user": self.get_ssh_user(),
             "private_key_file": args.private_key_file
         }
-        ssh_options.update(get_ssh_host_port(host_info))
+        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
         if args.rootCA_cert and args.rootCA_key is not None:
             logging.info("Creating and copying over client TLS certificate")
@@ -601,7 +609,7 @@ class InitYSQLMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Instance: {} does not exists, cannot call initysql".format(
                                     args.search_pattern))
-        ssh_options.update(get_ssh_host_port(host_info))
+        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         logging.info("Initializing YSQL on Instance: {}".format(args.search_pattern))
         self.cloud.initYSQL(args.master_addresses, ssh_options)
 

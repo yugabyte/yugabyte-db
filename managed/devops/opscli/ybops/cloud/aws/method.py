@@ -52,6 +52,7 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
         self.parser.add_argument("--iam_profile_arn", help="ARN string for IAM instance profile")
 
     def preprocess_args(self, args):
+        super(AwsCreateInstancesMethod, self).preprocess_args(args)
         if args.region is None:
             raise YBOpsRuntimeError("Must specify a region!")
         # TODO: better handling of this...
@@ -330,6 +331,7 @@ class AbstractDnsMethod(AbstractMethod):
                                  help="The CSV of the node IPs to associate to this DNS entry.")
 
     def preprocess_args(self, args):
+        super(AbstractDnsMethod, self).preprocess_args(args)
         if args.node_ips:
             self.ip_list = args.node_ips.split(',')
 

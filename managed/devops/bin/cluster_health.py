@@ -715,8 +715,6 @@ def main():
     parser = argparse.ArgumentParser(prog=sys.argv[0])
     parser.add_argument('--cluster_payload', type=str, default=None, required=True,
                         help='JSON serialized payload of cluster data: IPs, pem files, etc.')
-    parser.add_argument('--ssh_port', type=str, default='22',
-                        help='SSH server port number')
     parser.add_argument('--universe_name', type=str, default=None, required=True,
                         help='Universe name to use in the email report')
     parser.add_argument('--customer_tag', type=str, default=None,

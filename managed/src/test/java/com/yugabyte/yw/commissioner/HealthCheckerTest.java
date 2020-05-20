@@ -120,10 +120,12 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   private Universe setupUniverse(String name) {
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.sshPort = 3333;
     accessKey = AccessKey.create(
         defaultProvider.uuid,
         "key-" + name,
-        new AccessKey.KeyInfo());
+        keyInfo);
 
     universe = ModelFactory.createUniverse(name, defaultCustomer.getCustomerId());
     // Universe modifies customer, so we need to refresh our in-memory view of this reference.

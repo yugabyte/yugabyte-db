@@ -203,16 +203,3 @@
     when: install_backup_packages
 
   when: not air_gap
-
-- name: Register our custom SSH port "{{ custom_ssh_port }}" with SELinux
-  become: yes
-  become_method: sudo
-  seport:
-    ports: "{{ custom_ssh_port }}"
-    proto: tcp
-    setype: ssh_port_t
-    state: present
-  when: custom_ssh_port is defined and
-        ansible_port is defined and
-        custom_ssh_port == ansible_port and
-        ansible_os_family == "RedHat"

@@ -91,6 +91,7 @@ import static org.mockito.Mockito.when;
     testProvider = p;
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = pkPath;
+    keyInfo.sshPort = 3333;
     if (AccessKey.get(testProvider.uuid, keyCode) == null) {
       AccessKey.create(testProvider.uuid, keyCode, keyInfo);
     }
@@ -196,6 +197,8 @@ import static org.mockito.Mockito.when;
         cmd.add("--ssh_user");
         cmd.add(accessKey.getKeyInfo().sshUser);
       }
+      cmd.add("--ssh_port");
+      cmd.add(accessKey.getKeyInfo().sshPort.toString());
       cmd.add("--ssh_key_path");
       cmd.add(pkPath);
     }

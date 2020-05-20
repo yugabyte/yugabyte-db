@@ -136,6 +136,8 @@ class AbstractCloud(AbstractCommandParser):
             ansible.playbook_args["cloud_region"] = args.region
         if args.zone:
             ansible.playbook_args["cloud_zone"] = args.zone
+        if hasattr(args, "custom_ssh_port") and args.custom_ssh_port:
+            ansible.playbook_args["custom_ssh_port"] = args.custom_ssh_port
         return ansible
 
     def add_extra_args(self):
@@ -157,7 +159,7 @@ class AbstractCloud(AbstractCommandParser):
             "command": command
         }
         updated_vars.update(extra_vars)
-        updated_vars.update(get_ssh_host_port(host_info))
+        updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         if os.environ.get("YB_USE_FABRIC", False):
             remote_shell = RemoteShell(updated_vars)
             file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")

@@ -100,7 +100,9 @@ public class AccessManager extends DevopsBase {
 
   // This method would upload the provided key file to the provider key file path.
   public AccessKey uploadKeyFile(UUID regionUUID, File uploadedFile,
-                                 String keyCode, KeyType keyType, String sshUser) {
+                                 String keyCode, KeyType keyType,
+                                 String sshUser, Integer sshPort,
+                                 boolean airGapInstall) {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
@@ -141,17 +143,20 @@ public class AccessManager extends DevopsBase {
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
     keyInfo.sshUser = sshUser;
+    keyInfo.sshPort = sshPort;
+    keyInfo.airGapInstall = airGapInstall;
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
   // This method would create a public/private key file and upload that to
   // the provider cloud account. And store the credentials file in the keyFilePath
   // and return the file names. It will also create the vault file.
-  public AccessKey addKey(UUID regionUUID, String keyCode) {
-    return addKey(regionUUID, keyCode, null, null);
+  public AccessKey addKey(UUID regionUUID, String keyCode, Integer sshPort, boolean airGapInstall) {
+    return addKey(regionUUID, keyCode, null, null, sshPort, airGapInstall);
   }
 
-  public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser) {
+  public AccessKey addKey(UUID regionUUID, String keyCode, File privateKeyFile, String sshUser,
+      Integer sshPort, boolean airGapInstall) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -192,6 +197,8 @@ public class AccessManager extends DevopsBase {
       if (sshUser != null) {
         keyInfo.sshUser = sshUser;
       }
+      keyInfo.sshPort = sshPort;
+      keyInfo.airGapInstall = airGapInstall;
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
     return accessKey;

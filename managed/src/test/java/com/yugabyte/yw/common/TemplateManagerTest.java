@@ -57,6 +57,7 @@ public class TemplateManagerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = "/path/to/pk.pem";
     keyInfo.sshUser = "centos";
+    keyInfo.sshPort = 3333;
     keyInfo.vaultFile = "/path/to/vault";
     keyInfo.vaultPasswordFile = "/path/to/vaultpassword";
     keyInfo.privateKey = "/path/to/pemfile";
@@ -83,6 +84,8 @@ public class TemplateManagerTest extends FakeDBApplication {
     cmd.add(keyInfo.privateKey);
     cmd.add("--local_package_path");
     cmd.add(YB_THIRDPARTY_VALUE);
+    cmd.add("--custom_ssh_port");
+    cmd.add(keyInfo.sshPort.toString());
     return cmd;
   }
 
