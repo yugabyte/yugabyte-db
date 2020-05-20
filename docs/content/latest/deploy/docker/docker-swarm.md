@@ -167,7 +167,8 @@ $ docker service create \
 --publish 7000:7000 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
---master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
+--rpc_bind_addresses=0.0.0.0:7100 \
 --replication_factor=3
 ```
 
@@ -179,7 +180,8 @@ $ docker service create \
 --mount type=volume,source=yb-master2,target=/mnt/data0 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
---master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
+--rpc_bind_addresses=0.0.0.0:7100 \
 --replication_factor=3
 ```
 
@@ -191,7 +193,8 @@ $ docker service create \
 --mount type=volume,source=yb-master3,target=/mnt/data0 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --fs_data_dirs=/mnt/data0 \
---master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
+--master_addresses=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 \
+--rpc_bind_addresses=0.0.0.0:7100 \
 --replication_factor=3
 ```
 
@@ -227,7 +230,8 @@ $ docker service create \
 --publish 9000:9000 \
 yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-tserver \
 --fs_data_dirs=/mnt/data0 \
---tserver_master_addrs=yb-master1:7100,yb-master2:7100,yb-master3:7100
+--rpc_bind_addresses=0.0.0.0:9100 \
+--tserver_master_addrs=tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100
 ```
 
 {{< tip title="Tip" >}}
@@ -296,7 +300,7 @@ cqlsh>
 - Initialize the YEDIS API.
 
 ```sh
-$ docker exec -it <ybmaster_container_id> /home/yugabyte/bin/yb-admin -- --master_addresses yb-master1:7100,yb-master2:7100,yb-master3:7100 setup_redis_table
+$ docker exec -it <ybmaster_container_id> /home/yugabyte/bin/yb-admin --master_addresses tasks.yb-master1:7100,tasks.yb-master2:7100,tasks.yb-master3:7100 setup_redis_table
 ```
 
 ```sh
