@@ -8,8 +8,8 @@ menu:
     identifier: array-of-domains
     parent: api-ysql-datatypes-array
     weight: 10
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 An array of `DOMAIN` values lets you create, for example, a one-dimensional array whose values are themselves one-dimensional arrays of _different_ lengths. Stating this generally, it lets you implement a ragged multidimensional array, thereby overcoming the restriction that an array must normally be rectilinear. It meets other use cases too.
 
@@ -245,7 +245,7 @@ First, define the data type for the "payload" matrix. To make it interesting, as
 - The lower bound along each dimension must be `1`.
 - Each of the matrix's values must be `NOT NULL`.
 
-The motivating requirement for the `DOMAIN` type constructor is that it must allow arbitrary constraints to be defined on values of the constructed type. It's easily done like this:
+The motivating requirement for the `DOMAIN` type constructor is that it must allow arbitrary constraints to be defined on values of the constructed type, like this:
 ```postgresql
 create domain matrix_t as text[]
 check (

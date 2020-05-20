@@ -21,7 +21,7 @@ input values:       jsonb || jsonb
 return value:       jsonb
 ```
 
-**Notes:** this operator doesn't have an overload for `json`.
+**Notes:** There is no `json` overload.
 
 If both sides of the operator are primitive JSON values, then the result is an _array_ of these values:
 

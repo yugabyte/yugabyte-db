@@ -9,8 +9,8 @@ menu:
     identifier: array-functions-operators
     parent: api-ysql-datatypes-array
     weight: 30
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 **On this page**<br>
@@ -63,15 +63,15 @@ These operators require that the [LHS and RHS](https://en.wikipedia.org/wiki/Sid
 
 | Operator | 1-d only? | Description |
 | ---- | ---- | ---- |
-| [`=`](./comparison/#the-160-160-160-160-160-160-and-160-160-160-160-160-160-operators) | | Returns `TRUE` if the LHS and RHS arrays are equal. |
-| [`<>`](./comparison/#the-160-160-160-160-160-160-and-160-160-160-160-160-160-operators) | | Returns `TRUE` if the LHS and RHS arrays are not equal. |
-| [`>`](./comparison/#the-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-operators) | | Returns `TRUE` if the LHS array is greater than the RHS array. |
-| [`>=`](./comparison/#the-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-operators) | | Returns `TRUE` if the LHS array is greater than or equal to the RHS array. |
-| [`<=`](./comparison/#the-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-operators) | | Returns `TRUE` if the LHS array is less than or equal to the RHS array. |
-| [`<`](./comparison/#the-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-and-160-160-160-160-160-160-operators) | | Returns `TRUE` if the LHS array is less than the RHS array. |
-| [`@>`](./comparison/#the-160-160-160-160-160-160-and-160-160-160-160-160-160-operators-1) | | Returns `TRUE` if the LHS array contains the RHS array—that is, if every distinct value in the RHS array is found among the LHS array's distinct values. |
-| [`<@`](./comparison/#the-160-160-160-160-160-160-and-160-160-160-160-160-160-operators-1) | | Returns `TRUE` if the LHS array is contained by the RHS array—that is, if every distinct value in the LHS array is found among the RHS array's distinct values. |
-| [`&&`](./comparison/#the-160-160-160-160-160-160-operator) | | Returns `TRUE` if the LHS and RHS arrays overlap—that is, if they have at least one value in common. |
+| [`=`](./comparison/#the-160-160-160-160-and-160-160-160-160-operators) | | Returns `TRUE` if the LHS and RHS arrays are equal. |
+| [`<>`](./comparison/#the-160-160-160-160-and-160-160-160-160-operators) | | Returns `TRUE` if the LHS and RHS arrays are not equal. |
+| [`>`](./comparison/#the-160-160-160-160-and-160-160-160-160-and-160-160-160-160-and-160-160-160-160-and-160-160-160-160-operators) | | Returns `TRUE` if the LHS array is greater than the RHS array. |
+| [`>=`](./comparison/#the-160-160-160-160-and-160-160-160-160-and-160-160-160-160-and-160-160-160-160-and-160-160-160-160-operators) | | Returns `TRUE` if the LHS array is greater than or equal to the RHS array. |
+| [`<=`](./comparison/#the-160-160-160-160-and-160-160-160-160-and-160-160-160-160-and-160-160-160-160-and-160-160-160-160-operators) | | Returns `TRUE` if the LHS array is less than or equal to the RHS array. |
+| [`<`](./comparison/#the-160-160-160-160-and-160-160-160-160-and-160-160-160-160-and-160-160-160-160-and-160-160-160-160-operators) | | Returns `TRUE` if the LHS array is less than the RHS array. |
+| [`@>`](./comparison/#the-160-160-160-160-and-160-160-160-160-operators-1) | | Returns `TRUE` if the LHS array contains the RHS array—that is, if every distinct value in the RHS array is found among the LHS array's distinct values. |
+| [`<@`](./comparison/#the-160-160-160-160-and-160-160-160-160-operators-1) | | Returns `TRUE` if the LHS array is contained by the RHS array—that is, if every distinct value in the LHS array is found among the RHS array's distinct values. |
+| [`&&`](./comparison/#the-160-160-160-160-operator) | | Returns `TRUE` if the LHS and RHS arrays overlap—that is, if they have at least one value in common. |
 
 
 ## The slice operator
@@ -86,7 +86,7 @@ These functions require that the two arrays have the same data type and compatib
 
 | Function or operator | 1-d only? | Description |
 | ---- | ---- | ---- |
-| [`||`](./concatenation/#the-160-160-160-160-160-160-operator) | | Returns the concatenation of any number of compatible `anyarray` and `anyelement` values. |
+| [`||`](./concatenation/#the-160-160-160-160-operator) | | Returns the concatenation of any number of compatible `anyarray` and `anyelement` values. |
 | [`array_cat()`](./concatenation/#array-cat) | | Returns the concatenation of two compatible `anyarray` values. |
 | [`array_append()`](./concatenation/#array-append) | | Returns an array that results from appending a scalar value to (that is, _after_) an array value. |
 | [`array_prepend()`](./concatenation/#array-prepend) | | Returns an array that results from prepending a scalar value to (that is, _before_) an array value. |

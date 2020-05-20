@@ -7,14 +7,15 @@ menu:
   latest:
     identifier: create-indexes-check-constraints
     parent: api-ysql-datatypes-json
-    weight: 50
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
+The examples in this section rely on the [`->` and `->>` operators](../functions-operators/subvalue-operators/).
 
-Often, when  JSON documents are inserted into a table, the table will have just a self-populating surrogate primary key column and a value column, like `doc`, of datatype `jsonb`. Choosing `jsonb` allows the use of a broader range of operators and functions, and allows these to execute more efficiently, than does choosing `json`.
+Often, when  JSON documents are inserted into a table, the table will have just a self-populating surrogate primary key column and a value column, like `doc`, of data type `jsonb`. Choosing `jsonb` allows the use of a broader range of operators and functions, and allows these to execute more efficiently, than does choosing `json`.
 
-It's most likely that each document will be a JSON _object_ and that all will conform to the same structure definition. (The structure can be defined formally, and externally, by a so-called "[JSON schema](https://json-schema.org)".) In other words, each _object_ will have the same set of possible key names (but some might be missing) and the same JSON datatype for the value for each key. And when a datatype is compound, the same notion of common structure definition will apply, extending the notion recursively to arbitrary depth. Here is an example. To reduce clutter, the primary key is not defined to be self-populating. 
+It's most likely that each document will be a JSON _object_ and that all will conform to the same structure definition. (The structure can be defined formally, and externally, by a so-called "[JSON schema](https://json-schema.org)".) In other words, each _object_ will have the same set of possible key names (but some might be missing) and the same JSON data type for the value for each key. And when a data type is compound, the same notion of common structure definition will apply, extending the notion recursively to arbitrary depth. Here is an example. To reduce clutter, the primary key is not defined to be self-populating. 
 
 ```postgresql
 create table books(k int primary key, doc jsonb not null);
@@ -66,17 +67,17 @@ insert into books(k, doc) values
     "editors"  : ["Ruilin", "Aiping"]}');
 ```
 
-Some of the rows have some of the keys missing. But the row with `k = 6` has every key.
+Some of the rows have some of the keys missing. But the row with _"k=6"_ has every key.
 
 You will probably want at least to know if your corpus contains a non-conformant document and, in some cases, you will want to disallow non-conformant documents. You might want to insist that the ISBN is always defined and is a positive 13-digit number.
 
-You will almost certainly want to retrieve documents, not simply by providing the key, but rather by using predicates on their content—the primitive values that they contain. You will probably want, also, to project out values of interest.
+You will almost certainly want to retrieve documents, typically not by providing the key, but rather by using predicates on their content—in particular, the primitive values that they contain. You will probably want, also, to project out values of interest.
 
 For example, you might want to see the title and author of books whose publication year is later than 1850.
 
-Of course, then, you will want these queries to be supported by indexes. (The alternative – a table scan over a huge corpus where each document is analyzed on the fly to evaluate the selection predicates is simply unworkable.)
+Of course, then, you will want these queries to be supported by indexes. The alternative, a table scan over a huge corpus where each document is analyzed on the fly to evaluate the selection predicates, would probably perform too poorly.
 
-### Check constraints on _jsonb_ columns
+### Check constraints on jsonb columns
 
 Here's how to insist that each JSON document is an _object_:
 ```postgresql
@@ -98,7 +99,7 @@ check (
   length(((doc->>'ISBN')::bigint)::text) = 13
 );
 ```
-Notice that if the key _"ISBN"_ is missing altogether, then the expression `doc->'ISBN'` will yield a genuine SQL `null`. But the producer of the document might have decided to represent *"No information is available about this book's ISBN"* with the special JSON value _null_ for the key _"ISBN"_. (Recall that this special value has its own data type.) This is why it's insufficient to test just that `jsonb_typeof()`, (described [here](../functions-operators/jsonb-typeof/), yields _number_ (and therefore not _null_) for the key  _"ISBN"_ and why the separate `is not null` test is done as well.
+Notice that if the key _"ISBN"_ is missing altogether, then the expression `doc->'ISBN'` will yield a genuine SQL `NULL`. But the producer of the document might have decided to represent *"No information is available about this book's ISBN"* with the special JSON value _null_ for the key _"ISBN"_. (Recall that this special value has its own data type.) This is why it's insufficient to test just that [`jsonb_typeof()`](../functions-operators/jsonb-typeof/) yields _number_ (and therefore not _null_) for the key  _"ISBN"_ and why the separate `IS NOT NULL` test is done as well.
 
 The high-level point is that YSQL allows you to express a constraint using any expression that can be evaluated by referencing values from a single row. The expression can include a PL/pgSQL function. This allows a constraint to be implemented to insist that the keys in the JSON _object_ are from a known list:
 
@@ -132,11 +133,11 @@ add constraint books_doc_keys_OK
 check (top_level_keys_ok(doc));
 ```
 
-The `jsonb_object_keys()` function is described [here](http://localhost:1313/latest/api/ysql/datatypes/type_json/functions-operators/jsonb-object-keys/).
+See the account of the [`jsonb_object_keys()`](../functions-operators/jsonb-object-keys/).
 
-### Indexes on _jsonb_ columns
+### Indexes on jsonb columns
 
-Proper practice requires that when a table has a surrogate primary key, it must also have a unique, not null, business key. The obvious candidate for the `books` table is the value for the _"ISBN"_ key. The _"not null"_ rule is already enforced by the `books_isbn_is_positive_13_digit_number` constraint. Uniqueness is enforced in the obvious way:
+Proper practice requires that when a table has a surrogate primary key, it must also have a unique, `NOT NULL`, business key. The obvious candidate for the `books` table is the value for the _"ISBN"_ key. The `NOT NULL` rule is already enforced by the _"books_isbn_is_positive_13_digit_number"_ constraint. Uniqueness is enforced in the obvious way:
 
 
 ```postgresql

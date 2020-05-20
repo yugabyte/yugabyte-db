@@ -21,7 +21,7 @@ input values:       jsonb = jsonb
 return value:       boolean
 ```
 
-**Notes:** It doesn't have an overload for `json`. If you want to test that two `json` values are equal, express the predicate thus:
+**Notes:** There is no `json` overload. If you want to test that two `json` values are equal, express the predicate thus:
 
 ```
 lhs_json_value::text = rhs_json_value::text
@@ -49,7 +49,7 @@ Notice that the text definitions of the to-be-compared JSON values may differ in
 
 If you need to test two `json` values for equality, then you must `::text` typecast each.
 
-See the account of the `::text` operator when the input is a `json` value. The `json` representation preserves semantically insignificant whitespace and repeats occurrents of the same keys in an _object_. This implies that the equality comparison ow two `json` values will in general be unpredicatble and therefore meaningless. This is another reason to prefer consistently to choose to use `jsonb`.
+See the account of the `::text` operator when the input is a `json` value. The `json` representation preserves semantically insignificant whitespace and repeats occurrences of the same keys in an _object_. This implies that the equality comparison of two `json` values would in general be unpredictable and therefore meaningless. This is why the `=` operator doesn't have a `json` overload and is is another reason to prefer consistently to choose to use `jsonb`.
 
 ```postgresql 
 do $body$

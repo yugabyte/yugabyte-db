@@ -7,8 +7,8 @@ menu:
   latest:
     identifier: array-agg-unnest
     parent: array-functions-operators
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 For one-dimensional arrays, but _only for these_ (see [Multidimensional `array_agg()` and `unnest()`](./#multidimensional-array-and-and-unnest)), these two functions have mutually complementary effects in the following sense. After this sequence (the notation is informal):
@@ -22,6 +22,17 @@ For this reason, the two functions, `array_agg()` and `unnest()`, are described 
 
 ## array_agg()
 
+This function has two overloads.
+
+### array_agg() — first overload
+
+**Purpose:** Return a one-dimensional array from a SQL subquery. Its rows might be scalars (that is, the `SELECT` list might be a single column). But, in typical use, they are likely to be of _"row"_ type values.
+
+**Signature:**
+```
+input value:       SETOF anyelement
+return value:      anyarray
+```
 In normal use, `array_agg()` is applied to the `SELECT` list from a physical table, or maybe from a view that encapsulates the query. This is shown in the _"[Realistic use case](./#realistic-use-case)"_ example below. But first, you can demonstrate the functionality without creating and populating a table by using, instead, the `VALUES` statement. Try this:
 
 ```postgresql
@@ -63,10 +74,8 @@ Recall from the [`array[]` constructor](../../array-constructor/) section that t
 
 You can understand the effect of `array_agg()` thus:
 
-./functions-operators/concatenation/#the-160-160-160-160-160-160-operator
-
 - Treat each row as a _"rt[]"_ array with a single-value.
-- Concatenate (see the [`||` operator](../concatenation/#the-160-160-160-160-160-160-operator)) the values from all the rows in the specified order into a new _"rt[]"_ array.
+- Concatenate (see the [`||` operator](../concatenation/#the-160-160-160-160-operator)) the values from all the rows in the specified order into a new _"rt[]"_ array.
 
 This code illustrates this point:
 ```postgresql
@@ -104,9 +113,61 @@ The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 ```
 The text of the literal is now available for re-use, as was intended.
 
+Before considering `unnest()`, look at `array_agg()`'s second overload:
+
+### array_agg() — second overload
+
+**Purpose:** Return a (N+1)-dimensional array from a SQL subquery whose rows are N-dimensional arrays. The aggregated arrays must all have the same dimensionality.
+
+**Signature:**
+```
+input value:       SETOF anyarray
+return value:      anyarray
+```
+Here is a positive example:
+```postgresql
+with tab as (
+  values
+    ('{a, b, c}'::text[]),
+    ('{d, e, f}'::text[]))
+select array_agg((column1)::text[] order by column1) as arr
+from tab;
+```
+It produces this result:
+```
+        arr        
+-------------------
+ {{a,b,c},{d,e,f}}
+```
+And here is a negative example:
+```
+with tab as (
+  values
+    ('{a, b, c}'::text[]),
+    ('{d, e   }'::text[]))
+select array_agg((column1)::text[] order by column1) as arr
+from tab;
+```
+It causes this error:
+```
+2202E: cannot accumulate arrays of different dimensionality
+```
+
 ## unnest()
 
-As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of array_agg() set in the `ysqlsh` variable _"result&#95;arr"_ in a SQL statement, you must quote it and typecast it to _"rt[]"_. This is easily done with the \set metacommand, thus:
+This function has two overloads. The first is straightforward and has an obvious usefulness. The second is rather exotic.
+
+### unnest() — simple overload
+
+**Purpose:** Transform the values in a single array into a SQL table (that is, a `SETOF`) these values.
+
+**Signature:**
+```
+input value:       anyarray
+return value:      SETOF anyelement
+```
+
+As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of array_agg() set in the `ysqlsh` variable _"result&#95;arr"_ in a SQL statement, you must quote it and typecast it to _"rt[]"_. This can be done with the \set metacommand, thus:
 
 ```postgresql
 \set unnest_arg '\'':result_arr'\'::rt[]'
@@ -140,7 +201,42 @@ The parentheses around the column alias _"rec"_ are required to remove what the 
 
 As promised, the original `SETOF` tuples has been recovered.
 
-## Multidimensional array_agg() and unnest()
+### unnest() — exotic overload
+
+**Purpose:** Transform the values in a variadic list of arrays into a SQL table whose columns each are a `SETOF` the corresponding input array's values. This overload can be used only in the `FROM` clause of a subquery. Each input array might have a different type and a different cardinality. The input array with the greatest cardinality determines the number of output rows. The rows of those input arrays that have smaller cardinalities are filled at the end with `NULL`s. The optional `WITH ORDINALITY` clause adds a column that numbers the rows.
+
+**Signature:**
+```
+input value:       <variadic list of> anyarray
+return value:      many coordinated columns of SETOF anyelement
+```
+
+```postgresql
+create type rt as (a int, b text);
+
+\pset null '<is null>'
+select *
+from unnest(
+  array[1, 2],
+  array[10, 20, 30, 45, 50],
+  array['a', 'b', 'c', 'd'],
+  array[(1, 'p')::rt, (2, 'q')::rt, (3, 'r')::rt, (4, 's')::rt]
+)
+with ordinality
+as result(arr1, arr2, arr3, arr4_a, arr4_n, n);
+```
+It produces this result:
+```
+   arr1    | arr2 |   arr3    |  arr4_a   |  arr4_n   | n 
+-----------+------+-----------+-----------+-----------+---
+         1 |   10 | a         |         1 | p         | 1
+         2 |   20 | b         |         2 | q         | 2
+ <is null> |   30 | c         |         3 | r         | 3
+ <is null> |   45 | d         |         4 | s         | 4
+ <is null> |   50 | <is null> | <is null> | <is null> | 5
+```
+
+## Multidimensional array_agg() and unnest() — first overloads
 
 Start by aggregating three `int[]` array instances and by preparing the result as an `int[]` literal for the next step using the same `\gset` technique that was used above:
 ```postgresql
@@ -435,44 +531,44 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
 - You can enforce the mandatory one-to-many requirement declaratively and effortlessly.
 - Changing and querying the data will be faster because you use single table, single-row access rather than two-table, multi-row access.
 - You can trivially recapture the query functionality of the two-table approach by implementing a _"new&#95;data"_ unnesting view as has been shown. So you can still find, for example, rows in the _"masters&#95;with&#95;details"_ table where the _"details"_ array has the specified values like this:
-```postgresql
-with v as (
-  select master_pk, master_name, seq, detail_name
-  from new_data
-  where detail_name in ('rabbit', 'horse', 'duck', 'turkey'))
-select
-  master_pk,
-  master_name,
-  array_agg((seq, detail_name)::details_t order by seq) as agg
-from v
-group by master_pk, master_name
-order by 1;
-```
+  ```postgresql
+  with v as (
+    select master_pk, master_name, seq, detail_name
+    from new_data
+    where detail_name in ('rabbit', 'horse', 'duck', 'turkey'))
+  select
+    master_pk,
+    master_name,
+    array_agg((seq, detail_name)::details_t order by seq) as agg
+  from v
+  group by master_pk, master_name
+  order by 1;
+  ```
 &#160;&#160;&#160;&#160;This is the result:
-```
- master_pk | master_name |            agg             
------------+-------------+----------------------------
-         2 | Mary        | {"(1,rabbit)","(4,horse)"}
-         3 | Joze        | {"(2,duck)","(3,turkey)"}
-```
+  ```
+   master_pk | master_name |            agg             
+  -----------+-------------+----------------------------
+           2 | Mary        | {"(1,rabbit)","(4,horse)"}
+           3 | Joze        | {"(2,duck)","(3,turkey)"}
+  ```
 **Cons:**
 - Changing the data in the _"details"_ array is rather difficult. Try this (in the two-table regime):
-```postgresql
-update details
-set detail_name = 'bobcat'
-where master_pk = 2
-and detail_name = 'squirrel';
+  ```postgresql
+  update details
+  set detail_name = 'bobcat'
+  where master_pk = 2
+  and detail_name = 'squirrel';
 
-select
-  master_pk,
-  master_name,
-  seq,
-  detail_name
-from original_data
-where master_pk = 2
-order by
-master_pk, seq;
-```
+  select
+    master_pk,
+    master_name,
+    seq,
+    detail_name
+  from original_data
+  where master_pk = 2
+  order by
+  master_pk, seq;
+  ```
 &#160;&#160;&#160;&#160;This is the result:
 ```
  master_pk | master_name | seq | detail_name 
@@ -482,40 +578,27 @@ master_pk, seq;
          2 | Mary        |   3 | bobcat
          2 | Mary        |   4 | horse
 ```
-- Here's how you achieve the same effect, and check that it worked as intended, in the new regime. Notice that you need to know the value of _"seq"_ for the _"rt"_ object that has the _"detail&#95;name"_ value of interest. This is easy to do by implementing a dedicated PL/pgSQL function that encapsulates `array_replace()` or that replaces a value directly by addressing it using its index. But it's hard to do without that. (These methods are described in [`array_replace()` and setting an array value explicitly](../../functions-operators/replace-a-value/).)
+- Here's how you achieve the same effect, and check that it worked as intended, in the new regime. Notice that you need to know the value of _"seq"_ for the _"rt"_ object that has the _"detail&#95;name"_ value of interest. This can be done by implementing a dedicated PL/pgSQL function that encapsulates `array_replace()` or that replaces a value directly by addressing it using its index. But it's hard to do without that. (These methods are described in [`array_replace()` and setting an array value explicitly](../../functions-operators/replace-a-value/).)
 
-```postgresql
-with v as (
-  select array_replace(details, '(3,squirrel)', '(3,bobcat)')
-  as new_arr from masters_with_details where master_pk = 2)
-update masters_with_details
-set details = (select new_arr from v)
-where master_pk = 2;
+  ```postgresql
+  update masters_with_details
+  set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
+  where master_pk = 2;
 
-select
-  master_pk,
-  master_name,
-  seq,
-  detail_name
-from new_data
-where master_pk = 2
-order by
-master_pk, seq;
-```
+  select
+    master_pk,
+    master_name,
+    seq,
+    detail_name
+  from new_data
+  where master_pk = 2
+  order by
+  master_pk, seq;
+  ```
 &#160;&#160;&#160;&#160;The result is identical to the result shown for querying _"original&#95;data"_ above.
 
-**Note:** The `UPDATE` statement, using as it does a subquery from a view defined in a `WITH` clause as the actual argument for `array_replace()`, seems to be unnecessarily complex. You might expect to use this:
-
-```
-update masters_with_details
-set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
-where master_pk = 2;
-```
-
-The more complex, but semantically equivalent, locution is used as a workaround for [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296). For more information, see [`array_replace()`](../replace-a-value/#array-replace). The code above will be updated when that issue is fixed.
-
 - Implementing the requirement that the values of _"detail&#95;name"_ must be unique for a given _"masters"_ row is trivial in the old regime:
-```postgresql
-create unique index on details(master_pk, detail_name);
-```
+  ```postgresql
+  create unique index on details(master_pk, detail_name);
+  ```
 To achieve the effect in the new regime, you'd need to write a PL/pgSQL function, with return type `boolean` that scans the values in the _"details"_ array and returns `TRUE` when there are no duplicates among the values of the _"detail&#95;name"_ field and that otherwise returns `FALSE`. Then you'd use this function as the basis for a check constraint in the definition of the _"details&#95;with&#95;masters"_ table. This is a straightforward programming task, but it does take more effort than the declarative implementation of the business rule that the two-table regime allows.

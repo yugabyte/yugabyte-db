@@ -21,7 +21,7 @@ input value:       jsonb
 return value:      text
 ```
 
-**Notes:** Possible return values are _string_, _number_, _boolean_, _null_,  _object_, and _array_ — as follows.
+**Notes:** Possible return values are _string_, _number_, _boolean_, _null_,  _object_, and _array_, as follows.
 
 ```postgresql
 do $body$

@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-**Purpose:** Return the count of values (primitive or compound) in the array. You can use this to iterate over the elements of a JSON _array_ using the  `->` operator.
+**Purpose:** Return the count of values (primitive or compound) in the array. You can use this to iterate over the elements of a JSON _array_ using the [`->`](../subvalue-operators/) operator.
 
 **Signature** For the `jsonb` variant:
 
@@ -21,7 +21,7 @@ input value:       jsonb
 return value:      integer
 ```
 
-**Notes:** The functions in this pair require that the supplied JSON value is an _array_.
+**Notes:** Each function in this pair requires that the supplied JSON value is an _array_.
 
 ```postgresql
 do $body$
@@ -41,7 +41,7 @@ end;
 $body$;
 ```
 
-This example uses the `jsonb_typeof()` function.
+This example uses the [`jsonb_typeof()`](../jsonb-typeof) function.
 
 Reading the values themselves would need to use a `case` statement that tests the emergent JSON data type and that selects the leg whose assignment target has the right SQL data type. This is straightforward only for primitive JSON values. If a compound JSON value is encountered, then it must be decomposed, recursively, until the ultimate JSON primitive value leaves are reached.
 

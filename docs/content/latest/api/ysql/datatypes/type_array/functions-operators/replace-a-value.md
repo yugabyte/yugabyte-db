@@ -7,8 +7,8 @@ menu:
   latest:
     identifier: array-replace-a-value
     parent: array-functions-operators
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 Each of the approaches described in this section, using the `array_replace()` function and setting an addressed array value explicitly and in place, can be used to change values in an array. But the two approaches differ importantly:
 
@@ -51,18 +51,6 @@ This is the result of the two queries:
                   new value of arr                  
 ----------------------------------------------------
  {"(1,rabbit)","(2,hare)","(3,bobcat)","(4,horse)"}
-```
-The example suffers from the problem that [GitHub Issue #4296](https://github.com/yugabyte/yugabyte-db/issues/4296) tracks. (This same issue also affects the concatenation operator and the `array_remove()` function.) If you run this example as presented, then the `UPDATE` statement causes a timeout error of a severity that means that, to continue, you must restart the crashed tserver..
-
-This section will be updated when the issue is fixed. You can sidestep the problem, for demonstration purposes, by creating _"table t"_ without a primary key constraint. But this violates proper practice. Here is a viable workaround. Use this `UPDATE` statement instead of the one shown above:
-
-```postgresql
-with v as (
-  select array_replace(arr, '(3,squirrel)', '(3,bobcat)')
-  as new_arr from t where k = 1)
-update t
-set arr = (select new_arr from v)
-where k = 1;
 ```
 
 **Semantics:**
@@ -115,7 +103,7 @@ end;
 $body$;
 ```
 
-_Two-dimensional array of primitive scalar values_. This is sufficient to illustrate the semantics of the general multidimensional case. The function's signature (at the start of this section) shows that the to-be-replaced value and the replacement value are instances of `anyelement`. There is no overload where these two parameters accept instances of `anyarray`. This restriction is easily understood by picturing the internal representation as a linear ribbon of values, as was explained in the [Synopsis](../../#synopsis) section. The replacement works by scanning along the ribbon, finding each occurrence in turn of the to-be-replaced value, and replacing it.
+_Two-dimensional array of primitive scalar values_. This is sufficient to illustrate the semantics of the general multidimensional case. The function's signature (at the start of this section) shows that the to-be-replaced value and the replacement value are instances of `anyelement`. There is no overload where these two parameters accept instances of `anyarray`. This restriction is understood by picturing the internal representation as a linear ribbon of values, as was explained in the [Synopsis](../../#synopsis) section. The replacement works by scanning along the ribbon, finding each occurrence in turn of the to-be-replaced value, and replacing it.
 
 Here is a postive illustration:
 ```postgresql

@@ -7,8 +7,8 @@ menu:
   latest:
     identifier: array-slice-operator
     parent: array-functions-operators
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 
 **Purpose:** Return a new array whose length is defined by specifying the slice's lower and upper bound along each dimension.

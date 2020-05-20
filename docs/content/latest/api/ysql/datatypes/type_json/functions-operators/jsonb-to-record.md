@@ -21,9 +21,11 @@ input value:       jsonb
 return value:      record
 ```
 
-**Notes:** The `jsonb_to_record()` function is a syntax variant of the same functionality that [`jsonb_populate_record`](../jsonb-populate-record/) provides. It doesn't need a schema-level type but, rather, uses the special SQL locution `select... as on_the_fly(<record definition>)`.
-
-Use this _ysqlsh_ script to create the  type `t` that just `jsonb_populate_record()` requires, to convert the input `jsonb` into a SQL `record` using each of  `jsonb_populate_record()` and `jsonb_to_record`, and then to execute the `assert`. Notice that `on_the_fly` is a nonce name, made up for this example. Anything will suffice.
+**Notes:** The `jsonb_to_record()` function is a syntax variant of the same functionality that [`jsonb_populate_record()`](../jsonb-populate-record/) provides. It doesn't need a schema-level type but, rather, uses this special SQL locution:
+```
+select... as on_the_fly(<record definition>)
+```
+Use this `ysqlsh` script to create the type _"t"_ that just `jsonb_populate_record()` requires, to convert the input `jsonb` into a SQL `record` using each of  `jsonb_populate_record()` and `jsonb_to_record`, and then to execute the `ASSERT`. Notice that _"on_the_fly"_ is a nonce name, made up for this example. Anything will suffice.
 
 ```postgresql
 create type t as (a int, b text);
@@ -50,7 +52,7 @@ end;
 $body$;
 ```
 
-The nominal advantage of `jsonb_to_record()`, that it doesn't need a schema-level type, is lost when the input JSON _object_ has another _object_ as the value of one of its keys. Consider this _ysqlsh_ script:
+The nominal advantage of `jsonb_to_record()`, that it doesn't need a schema-level type, is lost when the input JSON _object_ has another _object_ as the value of one of its keys. Consider this `ysqlsh` script:
 
 ```postgresql
 create type t1 as ( d int, e text);
@@ -82,8 +84,8 @@ end;
 $body$;
 ```
 
-It does show that `jsonb_populate_record()` and `jsonb_to_record()` both produce the same result from the same input. But, here, the `on_the_fly` type definition in the `as` clause
+It does show that [`jsonb_populate_record()`](../jsonb-populate-record/) and `jsonb_to_record()` both produce the same result from the same input. But, here, the _"on_the_fly"_ type definition in the `AS` clause
 
-So the outer type `t2` can be defined on the fly in the `as` clause but it references the inner schema-level type `t1`. It isn't possible to absorb `t1`'s definition into the `as` clause. Moreover, the fact that `jsonb_to_record()` cannot be used in an ordinary assignment but requires a SQL `select ... into` statement is a serious drawback.
+So the outer type _"t2"_ can be defined on the fly in the `as` clause but it references the inner schema-level type _"t1"_. It isn't possible to absorb _"t1"_'s definition into the `as` clause. Moreover, the fact that `jsonb_to_record()` cannot be used in an ordinary assignment but requires a SQL `SELECT ... INTO` statement is a serious drawback.
 
-The `jsonb_to_record()` syntax variant therefore has no practical advantage over the `jsonb_populate_record()` variant.
+The `jsonb_to_record()` syntax variant therefore has no practical advantage over the [`jsonb_populate_record()`](../jsonb-populate-record/) variant.

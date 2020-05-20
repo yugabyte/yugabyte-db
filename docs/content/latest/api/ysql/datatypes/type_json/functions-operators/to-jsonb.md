@@ -20,7 +20,7 @@ input value:       anyelement
 return value:      jsonb
 ```
 
-Use this _ysqlsh_ script to create types `t1` and `t2` and then to execute the `do` block that asserts that the behavior is as expected. For an arbitrary nest of SQL `record` and SQL `array` values, readability is improved by building the compound value from the bottom up.
+Use this `ysqlsh` script to create types _"t1"_ and _"t2"_ and then to execute the `DO` block that asserts that the behavior is as expected. For an arbitrary nest of SQL `record` and SQL array values, readability is improved by building the compound value from the bottom up.
 
 ```postgresql
 create type t1 as(a int, b text);

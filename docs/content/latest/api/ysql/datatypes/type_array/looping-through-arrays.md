@@ -8,8 +8,8 @@ menu:
     identifier: looping-through-arrays
     parent: api-ysql-datatypes-array
     weight: 10
-isTocNested: false
-showAsideToc: false
+isTocNested: true
+showAsideToc: true
 ---
 The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the contents of an array.
 
@@ -114,7 +114,7 @@ It shows this (after manually stripping the _"INFO:"_ prompt):
 5
 ```
 
-The [`||`](../functions-operators/concatenation/#the-160-160-160-160-160-160-operator) operator is used only to emphasize that the iterand can be any expression whose data type is an array.
+The [`||`](../functions-operators/concatenation/#the-160-160-160-160-operator) operator is used only to emphasize that the iterand can be any expression whose data type is an array.
 
 The next loop shows these things of note:
 
