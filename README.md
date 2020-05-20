@@ -96,12 +96,14 @@ The following items are being planned as additions to the roadmap
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
-| LDAP authentication support | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) |  |
 | [`DEFERRED` constraints support in YSQL](https://github.com/yugabyte/yugabyte-db/issues/1124) | PLANNING  |   |  |  |
 | YSQL query optimizer improvements | PLANNING  |   |  |  |
-| Support advanced features with [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) | PLANNING  |   |  | Support the following in colocated tables: `ALTER` table, xCluster replication, transactional backups, 2DC replication |
+| Support advanced features with [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) | PLANNING  |   |  | Support the following in colocated tables: `ALTER` table, xCluster replication, transactional backups, 2DC replication, multiple colocation groups support |
+| Performance improvements for [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) | PLANNING  |   |  | Pushdown joins, geo-distributed perf by routing queries to colocated tablet leader, ability to pull out fast growing tables out of colocation groups |
 | Point in time restores | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/1820) |  |
 | Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PLANNING  |   |  |  |
+| IPV6 support for YugabyteDB | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/3644) |  |
+| LDAP authentication support | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) |  |
 
 ## Recently released features
 
