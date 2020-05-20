@@ -562,8 +562,11 @@ void TabletServiceAdminImpl::GetSafeTime(
 
       auto txn_particpant = tablet.peer->tablet()->transaction_participant();
       HybridTime min_running_ht;
-      while ((min_running_ht = txn_particpant->MinRunningHybridTime()) <
-             min_hybrid_time) {
+      for (;;) {
+        min_running_ht = txn_particpant->MinRunningHybridTime();
+        if (min_running_ht && min_running_ht >= min_hybrid_time) {
+          break;
+        }
         VLOG(2) << "MinRunningHybridTime is " << min_running_ht
                 << " need to wait for " << min_hybrid_time;
         if (CoarseMonoClock::Now() > deadline) {
@@ -574,17 +577,13 @@ void TabletServiceAdminImpl::GetSafeTime(
           // block if a transaction does not complete in a timely manner.
           // TODO(#3471): abort/restart such transactions so that the backfill process
           // does not wait forever.
-          SetupErrorAndRespond(resp->mutable_error(),
-                               STATUS_SUBSTITUTE(TimedOut,
-                                                 "TimedOut waiting on running "
-                                                 "transactions. Oldest started "
-                                                 "at $0 (before $1)",
-                                                 tablet.peer->tablet()
-                                                     ->transaction_participant()
-                                                     ->MinRunningHybridTime()
-                                                     .ToString(),
-                                                 min_hybrid_time.ToString()),
-                               TabletServerErrorPB::UNKNOWN_ERROR, &context);
+          SetupErrorAndRespond(
+              resp->mutable_error(),
+              STATUS_FORMAT(TimedOut,
+                            "TimedOut waiting on running transactions. "
+                                "Oldest started at $0 (before $1)",
+                            min_running_ht, min_hybrid_time),
+              TabletServerErrorPB::UNKNOWN_ERROR, &context);
           return;
         }
         SleepFor(MonoDelta::FromMilliseconds(
