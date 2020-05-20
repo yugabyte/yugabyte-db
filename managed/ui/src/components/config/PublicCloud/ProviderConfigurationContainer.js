@@ -40,6 +40,8 @@ const mapDispatchToProps = (dispatch) => {
           const params = {
             "hostVpcId": hostNetwork,
             "destVpcId": hostNetwork,
+            "airGapInstall": providerConfig["airGapInstall"],
+            "sshPort": providerConfig["sshPort"],
             "perRegionMetadata": perRegionMetadata
           };
           dispatch(bootstrapProvider(providerUUID, params)).then((boostrapResponse) => {

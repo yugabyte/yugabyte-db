@@ -183,6 +183,7 @@ class GcpAbstractNetworkMethod(AbstractMethod):
                                  help="A custom YML metadata override file.")
 
     def preprocess_args(self, args):
+        super(GcpAbstractNetworkMethod, self).preprocess_args(args)
         if args.metadata_override:
             self.cloud.update_metadata(args.metadata_override)
 

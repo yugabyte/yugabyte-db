@@ -2,7 +2,7 @@
 
 import React, { Component, Fragment } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBButton, YBAddRowButton } from '../../../common/forms/fields';
+import { YBButton, YBAddRowButton, YBToggle, YBNumericInput } from '../../../common/forms/fields';
 import { YBTextInputWithLabel, YBSelectWithLabel, YBDropZone, YBInputField } from '../../../common/forms/fields';
 import { change, Field } from 'redux-form';
 import { getPromiseState } from 'utils/PromiseUtils';
@@ -87,6 +87,8 @@ class GCPProviderInitView extends Component {
     if (isNonEmptyString(vals.firewall_tags)) {
       gcpCreateConfig["YB_FIREWALL_TAGS"] = vals.firewall_tags;
     }
+    gcpCreateConfig["airGapInstall"] = vals.airGapInstall;
+    gcpCreateConfig["sshPort"] = vals.sshPort;
     const providerName = vals.accountName;
     const configText = vals.gcpConfig;
     if (vals.credential_input === "local_service_account") {
@@ -244,6 +246,22 @@ class GCPProviderInitView extends Component {
                   </Col>
                 </Row>
                 {uploadConfigField}
+                <Row>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Air Gap Installation</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field name="airGapInstall" component={YBToggle}/>
+                  </Col>
+                </Row>
+                <Row>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">SSH Port</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field name="sshPort" component={YBNumericInput}/>
+                  </Col>
+                </Row>
                 <Row>
                   <Col lg={3}>
                     <div className="form-item-custom-label">VPC Setup</div>

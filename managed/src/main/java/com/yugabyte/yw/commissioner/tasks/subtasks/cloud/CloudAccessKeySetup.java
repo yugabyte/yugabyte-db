@@ -45,6 +45,8 @@ public class CloudAccessKeySetup extends CloudTaskBase {
       throw new RuntimeException("Region " +  regionCode + " not setup.");
     }
     AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);
+    boolean airGapInstall = taskParams().airGapInstall;
+    Integer sshPort = taskParams().sshPort;
     // TODO(bogdan): validation at higher level?
     // If no custom keypair / ssh data specified, then create new.
     if (taskParams().keyPairName == null || taskParams().keyPairName.isEmpty() ||
@@ -53,7 +55,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
       String sanitizedProviderName = getProvider().name.replaceAll("\\s+", "-").toLowerCase();
       String accessKeyCode = String.format(
           "yb-%s-%s-key", Customer.get(getProvider().customerUUID).code, sanitizedProviderName);
-      accessManager.addKey(region.uuid, accessKeyCode);
+      accessManager.addKey(region.uuid, accessKeyCode, sshPort, airGapInstall);
     } else {
       // Create temp file and fill with content.
       AccessManager.KeyType keyType = AccessManager.KeyType.PRIVATE;
@@ -61,7 +63,8 @@ public class CloudAccessKeySetup extends CloudTaskBase {
         Path tempFile = Files.createTempFile(taskParams().keyPairName, keyType.getExtension());
         Files.write(tempFile, taskParams().sshPrivateKeyContent.getBytes());
         accessManager.addKey(
-            region.uuid, taskParams().keyPairName, tempFile.toFile(), taskParams().sshUser);
+            region.uuid, taskParams().keyPairName, tempFile.toFile(), taskParams().sshUser,
+            taskParams().sshPort, airGapInstall);
       } catch (IOException ioe) {
         ioe.printStackTrace();
         throw new RuntimeException("Could not create AccessKey", ioe);

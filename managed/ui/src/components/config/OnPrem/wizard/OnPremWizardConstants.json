@@ -2,6 +2,7 @@
   "helpPlacement": "top",
   "nameHelpContent": "Enter a unique name for your On-Premises Datacenter that you will recognize any time you see it in YugaWare.",
   "userHelpContent": "Enter the name of the user that has SSH privileges on your instances.",
+  "portHelpContent": "Enter the SSH port to open on created instances.",
   "pkHelpContent": "Enter the full content of the private key that the SSH User can use to SSH into your instances.",
   "passwordlessSudoHelp": "If enabled, the SSH User specified above must have passwordless sudo access to all machines. If not enabled, you are responsible for pre-provisioning all machines before use.",
   "airGapInstallHelp": "If not enabled we would pre-provisiong the machines before creating universes. If enabled, you are responsible for pre-provisioning all machines before use.",

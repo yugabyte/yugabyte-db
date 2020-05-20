@@ -67,6 +67,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     taskParams.hostVpcRegion = hostVpcRegion;
     taskParams.hostVpcId = hostVpcId;
     taskParams.destVpcId = destVpcId;
+    taskParams.sshPort = 12345;
+    taskParams.airGapInstall = false;
     return taskParams;
   }
 
@@ -121,11 +123,13 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       if (customAccessKey) {
         // TODO: might need to add port here.
         verify(mockAccessManager, times(1)).addKey(
-            eq(r.uuid), eq(taskParams.keyPairName), any(), eq(taskParams.sshUser));
+            eq(r.uuid), eq(taskParams.keyPairName), any(), eq(taskParams.sshUser),
+            eq(taskParams.sshPort), eq(taskParams.airGapInstall));
       } else {
         String expectedAccessKeyCode = String.format(
             "yb-%s-%s-key", defaultCustomer.code, provider.name.toLowerCase());
-        verify(mockAccessManager, times(1)).addKey(r.uuid, expectedAccessKeyCode);
+        verify(mockAccessManager, times(1)).addKey(eq(r.uuid), eq(expectedAccessKeyCode),
+            eq(taskParams.sshPort), eq(taskParams.airGapInstall));
       }
       // Check AZ info.
       Set<AvailabilityZone> zones = r.zones;

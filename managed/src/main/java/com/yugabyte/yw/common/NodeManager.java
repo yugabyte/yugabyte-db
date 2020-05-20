@@ -144,9 +144,10 @@ public class NodeManager extends DevopsBase {
           }
         }
       }
+      subCommand.add("--custom_ssh_port");
+      subCommand.add(keyInfo.sshPort.toString());
 
       if (params instanceof AnsibleSetupServer.Params &&
-          userIntent.providerType.equals(Common.CloudType.onprem) &&
           accessKey.getKeyInfo().airGapInstall) {
         subCommand.add("--air_gap");
       }

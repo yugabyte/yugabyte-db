@@ -23,6 +23,7 @@ public class AccessKey extends Model {
     public String vaultPasswordFile;
     public String vaultFile;
     public String sshUser;
+    public Integer sshPort;
     public boolean airGapInstall = false;
     public boolean passwordlessSudoAccess = true;
     public String provisionInstanceScript = "";

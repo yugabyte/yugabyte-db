@@ -59,6 +59,8 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(keyInfo.privateKey);
     commandArgs.add("--local_package_path");
     commandArgs.add(appConfig.getString("yb.thirdparty.packagePath"));
+    commandArgs.add("--custom_ssh_port");
+    commandArgs.add(keyInfo.sshPort.toString());
     if (airGapInstall) {
       commandArgs.add("--air_gap");
     }

@@ -96,6 +96,8 @@ public class TableManager extends DevopsBase {
             commandArgs.add("--ssh_user");
             commandArgs.add(accessKey.getKeyInfo().sshUser);
           }
+          commandArgs.add("--ssh_port");
+          commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
           commandArgs.add("--ssh_key_path");
           commandArgs.add(accessKey.getKeyInfo().privateKey);
         }

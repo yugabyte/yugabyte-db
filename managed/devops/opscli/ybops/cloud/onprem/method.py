@@ -53,17 +53,9 @@ class OnPremProvisionInstancesMethod(ProvisionInstancesMethod):
         """
         self.create_method = OnPremCreateInstancesMethod(self.base_command)
 
-    def add_extra_args(self):
-        """Override to allow air-gapped OnPrem instances (isolated from public network)
-        """
-        super(OnPremProvisionInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--air_gap", action="store_true")
-
     def callback(self, args):
         # For onprem, we are always using pre-existing hosts!
         args.reuse_host = True
-        if args.air_gap:
-            self.extra_vars.update({"air_gap": args.air_gap})
         super(OnPremProvisionInstancesMethod, self).callback(args)
 
 
@@ -78,7 +70,8 @@ class OnPremValidateMethod(AbstractInstancesMethod):
     def callback(self, args):
         """args.search_pattern should be a private ip address for the device for OnPrem.
         """
-        self.extra_vars.update(get_ssh_host_port({"private_ip": args.search_pattern}))
+        self.extra_vars.update(
+            get_ssh_host_port({"private_ip": args.search_pattern}, args.custom_ssh_port))
         print validate_instance(self.extra_vars["ssh_host"],
                                 self.extra_vars["ssh_port"],
                                 self.SSH_USER,
