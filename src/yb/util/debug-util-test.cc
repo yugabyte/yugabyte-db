@@ -318,9 +318,11 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
 
   std::this_thread::sleep_for(kLongDuration);
 
-  ASSERT_EQ(log_sink.log_messages.size(), 2);
+  ASSERT_EQ(log_sink.log_messages.size(), 4);
   ASSERT_STR_CONTAINS(log_sink.log_messages[0], "Op2");
-  ASSERT_STR_CONTAINS(log_sink.log_messages[1], "Op4");
+  ASSERT_STR_CONTAINS(log_sink.log_messages[1], "Op2");
+  ASSERT_STR_CONTAINS(log_sink.log_messages[2], "Op4");
+  ASSERT_STR_CONTAINS(log_sink.log_messages[3], "Op4");
 }
 
 } // namespace yb
