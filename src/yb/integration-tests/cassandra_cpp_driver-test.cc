@@ -745,6 +745,8 @@ Result<IndexPermissions> GetIndexPermissions(
   return index_info_pb.index_permissions();
 }
 
+// TODO(jason): make Client::WaitUntilIndexPermissionsAtLeast compatible with this function
+// (particularly the exponential_backoff), and replace all instances of this function with that one.
 IndexPermissions WaitUntilIndexPermissionIsAtLeast(
     client::YBClient* client, const YBTableName& table_name, const YBTableName& index_table_name,
     IndexPermissions min_permission, bool exponential_backoff = true) {

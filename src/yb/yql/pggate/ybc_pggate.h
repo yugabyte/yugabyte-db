@@ -232,6 +232,13 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
 
 YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
 
+YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
+    const YBCPgOid database_oid,
+    const YBCPgOid table_oid,
+    const YBCPgOid index_oid,
+    const uint32_t target_index_permissions,
+    uint32_t *actual_index_permissions);
+
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
 //--------------------------------------------------------------------------------------------------

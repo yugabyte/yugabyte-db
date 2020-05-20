@@ -278,6 +278,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
+  Result<IndexPermissions> WaitUntilIndexPermissionsAtLeast(
+      const PgObjectId& table_id,
+      const PgObjectId& index_id,
+      const IndexPermissions& target_index_permissions);
+
  private:
   CHECKED_STATUS FlushBufferedOperationsImpl();
   CHECKED_STATUS FlushBufferedOperationsImpl(const PgsqlOpBuffer& ops, bool transactional);

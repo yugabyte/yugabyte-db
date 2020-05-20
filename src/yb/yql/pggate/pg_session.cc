@@ -935,5 +935,15 @@ void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetSingleRpcTimeout(MonoDelta::FromMilliseconds(timeout_ms));
 }
 
+Result<IndexPermissions> PgSession::WaitUntilIndexPermissionsAtLeast(
+    const PgObjectId& table_id,
+    const PgObjectId& index_id,
+    const IndexPermissions& target_index_permissions) {
+  return client_->WaitUntilIndexPermissionsAtLeast(
+      table_id.GetYBTableId(),
+      index_id.GetYBTableId(),
+      target_index_permissions);
+}
+
 }  // namespace pggate
 }  // namespace yb

@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <string>
+
 #include <cds/init.h>
 
 #include "yb/common/ybc-internal.h"
@@ -418,6 +420,28 @@ YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecDropIndex(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropIndex(handle));
+}
+
+YBCStatus YBCPgWaitUntilIndexPermissionsAtLeast(
+    const YBCPgOid database_oid,
+    const YBCPgOid table_oid,
+    const YBCPgOid index_oid,
+    const uint32_t target_index_permissions,
+    uint32_t *actual_index_permissions) {
+  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId index_id(database_oid, index_oid);
+  IndexPermissions returned_index_permissions = IndexPermissions::INDEX_PERM_DELETE_ONLY;
+  YBCStatus s = ExtractValueFromResult(pgapi->WaitUntilIndexPermissionsAtLeast(
+        table_id,
+        index_id,
+        static_cast<IndexPermissions>(target_index_permissions)),
+      &returned_index_permissions);
+  if (s) {
+    // Bad status.
+    return s;
+  }
+  *actual_index_permissions = static_cast<uint32_t>(returned_index_permissions);
+  return YBCStatusOK();
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -17,10 +17,12 @@
 #ifndef YB_COMMON_INDEX_H_
 #define YB_COMMON_INDEX_H_
 
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
 
@@ -65,6 +67,7 @@ class IndexInfo {
   const std::vector<ColumnId>& indexed_range_column_ids() const {
     return indexed_range_column_ids_;
   }
+  const IndexPermissions index_permissions() const { return index_permissions_; }
 
   // Return column ids that are primary key columns of the indexed table.
   std::vector<ColumnId> index_key_column_ids() const;

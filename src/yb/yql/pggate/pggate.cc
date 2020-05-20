@@ -631,6 +631,16 @@ Status PgApiImpl::ExecDropIndex(PgStatement *handle) {
   return down_cast<PgDropIndex*>(handle)->Exec();
 }
 
+Result<IndexPermissions> PgApiImpl::WaitUntilIndexPermissionsAtLeast(
+    const PgObjectId& table_id,
+    const PgObjectId& index_id,
+    const IndexPermissions& target_index_permissions) {
+  return pg_session_->WaitUntilIndexPermissionsAtLeast(
+      table_id,
+      index_id,
+      target_index_permissions);
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statment Support.
 //--------------------------------------------------------------------------------------------------
