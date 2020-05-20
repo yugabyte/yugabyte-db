@@ -226,6 +226,12 @@ class TransactionParticipant : public TransactionStatusManager {
   // - No transactions can be committed with commit time <= resolve_at from that point on..
   CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
 
+  // Attempts to abort all transactions that started prior to cutoff time.
+  // Waits until deadline, for txns to abort. If not, it returns a TimedOut.
+  // After this call, there should be no active (non-aborted/committed) txn that
+  // started before cutoff which is active on this tablet.
+  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline);
+
   std::string DumpTransactions() const;
 
   size_t TEST_GetNumRunningTransactions() const;

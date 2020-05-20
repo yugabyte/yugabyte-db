@@ -249,7 +249,7 @@ class TestTable {
   CHECKED_STATUS CreateTable(
       CassandraSession* session, const string& table, const StringVec& columns,
       const StringVec& keys, bool transactional = false,
-      const MonoDelta& timeout = MonoDelta::kZero) {
+      const MonoDelta& timeout = 60s) {
     table_name_ = table;
     column_names_ = columns;
     key_names_ = keys;
@@ -259,12 +259,15 @@ class TestTable {
     }
 
     auto deadline = CoarseMonoClock::now() + timeout;
+    CoarseBackoffWaiter waiter(deadline, 2500ms * kTimeMultiplier);
     for (;;) {
       const std::string query = create_table_str(table, columns, keys, transactional);
       auto result = session->ExecuteQuery(query);
       if (result.ok() || CoarseMonoClock::now() >= deadline) {
         return result;
       }
+      WARN_NOT_OK(result, "Create table failed");
+      waiter.Wait();
     }
   }
 
@@ -783,7 +786,7 @@ Result<IndexPermissions>
 TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex *test) {
   TestTable<cass_int32_t, string> table;
   RETURN_NOT_OK(table.CreateTable(&test->session_, "test.test_table",
-                                  {"k", "v"}, {"(k)"}, true, 60s));
+                                  {"k", "v"}, {"(k)"}, true));
 
   LOG(INFO) << "Inserting one row";
   RETURN_NOT_OK(test->session_.ExecuteQuery(
@@ -832,7 +835,7 @@ void TestBackfillIndexTable(
   MyTable table;
   ASSERT_OK(table.CreateTable(&test->session_, "test.key_value",
                               {"key1", "key2", "value"}, {"(key1, key2)"},
-                              !user_enforced, 60s));
+                              !user_enforced));
 
 
   LOG(INFO) << "Creating index";
@@ -977,7 +980,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateJsonbIndex,
           CppCassandraDriverTestIndex) {
   TestTable<cass_int32_t, CassandraJson> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
-                              true, 60s));
+                              true));
 
   LOG(INFO) << "Inserting three rows";
   ASSERT_OK(session_.ExecuteQuery(
@@ -1013,7 +1016,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPasses,
           CppCassandraDriverTestIndex) {
   TestTable<cass_int32_t, string> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
-                              true, 60s));
+                              true));
 
   LOG(INFO) << "Inserting three rows";
   ASSERT_OK(session_.ExecuteQuery(
@@ -1059,7 +1062,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent,
           CppCassandraDriverTestIndex) {
   TestTable<cass_int32_t, cass_int32_t> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
-                              true, 60s));
+                              true));
 
   constexpr int kNumRows = 10;
   LOG(INFO) << "Inserting " << kNumRows << " rows";
@@ -1136,7 +1139,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPassesManyWrites,
           CppCassandraDriverTestIndex) {
   TestTable<cass_int32_t, string> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
-                              true, 60s));
+                              true));
 
   constexpr int kNumRows = 100;
   LOG(INFO) << "Inserting " << kNumRows << " rows";
@@ -1215,7 +1218,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIdxTripleCollisionTest,
           CppCassandraDriverTestIndex) {
   TestTable<cass_int32_t, string> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
-                              true, 60s));
+                              true));
 
   ASSERT_OK(
       session_.ExecuteQuery("insert into test_table (k, v) values (1, 'a')"));
@@ -1267,7 +1270,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails,
           CppCassandraDriverTestIndex) {
   TestTable<cass_int32_t, string> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
-                              true, 60s));
+                              true));
 
   LOG(INFO) << "Inserting three rows";
   ASSERT_OK(session_.ExecuteQuery(
@@ -1332,7 +1335,7 @@ void DoTestCreateUniqueIndexWithOnlineWrites(CppCassandraDriverTestIndex* test,
 
   TestTable<cass_int32_t, string> table;
   ASSERT_OK(table.CreateTable(&test->session_, "test.test_table", {"k", "v"},
-                              {"(k)"}, true, 60s));
+                              {"(k)"}, true));
 
   LOG(INFO) << "Inserting three rows";
   ASSERT_OK(test->session_.ExecuteQuery(
@@ -1450,7 +1453,7 @@ TEST_F_EX(CppCassandraDriverTest, TestIndexUpdateConcurrentTxn, CppCassandraDriv
   YBTableInfo index_table_info;
 
   TestTable<cass_int32_t, string> table;
-  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true, 60s));
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
 
   LOG(INFO) << "Inserting rows";
   ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (1, 'one');"));
@@ -1492,7 +1495,7 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
   MyTable table;
   ASSERT_OK(table.CreateTable(&session_, "test.key_value",
                               {"key", "value"}, {"(key)"},
-                              true, 60s));
+                              true));
 
   LOG(INFO) << "Creating index";
   ASSERT_OK(session_.ExecuteQuery("create index index_by_value on test.key_value (value)"));
