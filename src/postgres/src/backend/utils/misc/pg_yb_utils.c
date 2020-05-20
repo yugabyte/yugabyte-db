@@ -427,7 +427,9 @@ YBCCommitTransaction()
 	if (!IsYugaByteEnabled())
 		return true;
 
-	YBCStatus status = YBCPgCommitTransaction();
+	YBCStatus status = YBCPgFlushBufferedOperations();
+	if (status == NULL)
+		status = YBCPgCommitTransaction();
 	if (status != NULL) {
 		YBCResetCommitStatus();
 		ybc_commit_status = status;
@@ -435,6 +437,18 @@ YBCCommitTransaction()
 	}
 
 	return true;
+}
+
+void
+YBCAbortTransaction()
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	YBCPgDropBufferedOperations();
+
+	if (YBTransactionsEnabled())
+		HandleYBStatus(YBCPgAbortTransaction());
 }
 
 void
@@ -959,7 +973,7 @@ void YBEndOperationsBuffering() {
 	// on starting new query and postgres calls standard_ExecutorFinish on non finished executor
 	// from previous failed query.
 	if (buffering_nesting_level && !--buffering_nesting_level) {
-		HandleYBStatus(YBCPgFlushBufferedOperations());
+		HandleYBStatus(YBCPgStopOperationsBuffering());
 	}
 }
 

@@ -2521,6 +2521,9 @@ start_xact_command(void)
 {
 	if (!xact_started)
 	{
+		if (IsYugaByteEnabled())
+			YBResetOperationsBuffering();
+
 		StartTransactionCommand();
 
 		xact_started = true;

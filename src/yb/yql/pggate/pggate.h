@@ -323,8 +323,10 @@ class PgApiImpl {
 
   // Buffer write operations.
   void StartOperationsBuffering();
-  void ResetOperationsBuffering();
+  CHECKED_STATUS StopOperationsBuffering();
+  CHECKED_STATUS ResetOperationsBuffering();
   CHECKED_STATUS FlushBufferedOperations();
+  void DropBufferedOperations();
 
   //------------------------------------------------------------------------------------------------
   // Insert.
