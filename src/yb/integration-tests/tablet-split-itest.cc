@@ -40,6 +40,7 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;  // NOLINT
@@ -47,16 +48,19 @@ using namespace std::literals;  // NOLINT
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(do_not_start_election_test_only);
+DECLARE_int32(TEST_apply_tablet_split_inject_delay_ms);
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(leader_lease_duration_ms);
+DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 
-class TabletSplitITest : public client::TransactionTestBase,
-                         public testing::WithParamInterface<IsolationLevel> {
+class TabletSplitITest : public client::TransactionTestBase {
  public:
   void SetUp() override {
     mini_cluster_opt_.num_tablet_servers = 3;
     create_table_ = false;
-    SetIsolationLevel(GetParam());
     client::TransactionTestBase::SetUp();
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
   }
@@ -77,10 +81,17 @@ class TabletSplitITest : public client::TransactionTestBase,
   // Returns a pair with min and max hash code written.
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRows(size_t num_rows);
 
+  Result<docdb::DocKeyHash> WriteRowsAndGetMiddleHashCode(size_t num_rows) {
+    auto min_max_hash_code = VERIFY_RESULT(WriteRows(num_rows));
+    const auto split_hash_code = (min_max_hash_code.first + min_max_hash_code.second) / 2;
+    LOG(INFO) << "Split hash code: " << split_hash_code;
+    return split_hash_code;
+  }
+
   Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
       const master::Master& leader_master);
 
-  CHECKED_STATUS WaitForTabletSplitCompletion();
+  void WaitForTabletSplitCompletion();
 
   // Checks all tablet replicas expect ones which have been split to have all rows from 1 to
   // `num_rows` and nothing else.
@@ -92,6 +103,15 @@ class TabletSplitITest : public client::TransactionTestBase,
 
  protected:
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+};
+
+class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
+                                           public testing::WithParamInterface<IsolationLevel> {
+ public:
+  void SetUp() override {
+    SetIsolationLevel(GetParam());
+    TabletSplitITest::SetUp();
+  }
 };
 
 namespace {
@@ -166,29 +186,24 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> TabletSplitITest::WriteR
   return std::make_pair(min_hash_code, max_hash_code);
 }
 
-Status TabletSplitITest::WaitForTabletSplitCompletion() {
+void TabletSplitITest::WaitForTabletSplitCompletion() {
   LOG(INFO) << "Waiting for tablet split to be completed...";
-  return WaitFor([this] {
-      auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  std::vector<tablet::TabletPeerPtr> peers;
+  auto s = WaitFor([this, &peers] {
+      peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
       size_t num_peers_running = 0;
       size_t num_peers_split = 0;
       size_t num_peers_leader_ready = 0;
       for (const auto& peer : peers) {
+        if (!peer->tablet()) {
+          break;
+        }
         if (peer->tablet()->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
           continue;
         }
-        if (!peer->tablet()) {
-          VLOG(1) << consensus::MakeTabletLogPrefix(peer->tablet_id(), peer->permanent_uuid())
-                  << "no tablet";
-          break;
-        }
         const auto raft_group_state = peer->state();
         const auto tablet_data_state = peer->tablet()->metadata()->tablet_data_state();
-        const auto leader_status = peer->consensus()->GetLeaderStatus();
-        VLOG(1) << consensus::MakeTabletLogPrefix(peer->tablet_id(), peer->permanent_uuid())
-                << "raft_group_state: " << AsString(raft_group_state)
-                << " tablet_data_state: " << AsString(tablet_data_state)
-                << " leader status: " << AsString(leader_status);
+        const auto leader_status = peer->consensus()->GetLeaderStatus(/* allow_stale =*/ true);
         if (raft_group_state == tablet::RaftGroupStatePB::RUNNING) {
           ++num_peers_running;
         } else {
@@ -207,7 +222,27 @@ Status TabletSplitITest::WaitForTabletSplitCompletion() {
       return num_peers_running == replication_factor * expected_num_tablets &&
              num_peers_split == replication_factor &&
              num_peers_leader_ready == expected_num_tablets;
-    }, 10s * kTimeMultiplier, "Wait for tablet split to be completed");
+    }, 20s * kTimeMultiplier, "Wait for tablet split to be completed");
+  if (!s.ok()) {
+    for (const auto& peer : peers) {
+      if (!peer->tablet()) {
+        LOG(INFO) << consensus::MakeTabletLogPrefix(peer->tablet_id(), peer->permanent_uuid())
+                  << "no tablet";
+        continue;
+      }
+      if (peer->tablet()->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+        continue;
+      }
+      LOG(INFO) << consensus::MakeTabletLogPrefix(peer->tablet_id(), peer->permanent_uuid())
+                << "raft_group_state: " << AsString(peer->state())
+                << " tablet_data_state: "
+                << AsString(peer->tablet()->metadata()->tablet_data_state())
+                << " leader status: "
+                << AsString(peer->consensus()->GetLeaderStatus(/* allow_stale =*/true));
+    }
+    LOG(INFO) << "Crashing test to avoid waiting on deadlock...";
+    raise(SIGSEGV);
+  }
 }
 
 void TabletSplitITest::CheckPostSplitTabletReplicasData(size_t num_rows) {
@@ -367,7 +402,7 @@ Result<size_t> SelectRowsCount(
 // - Restart cluster.
 // - ClusterVerifier will check cluster integrity at the end of the test.
 
-TEST_P(TabletSplitITest, SplitSingleTablet) {
+TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
   constexpr auto kNumRows = 500;
 
   SetNumTablets(1);
@@ -377,13 +412,10 @@ TEST_P(TabletSplitITest, SplitSingleTablet) {
   // TODO(tsplit): test split during read/write workload.
   // TODO(tsplit): test split during long-running transactions.
 
-  auto min_max_hash_code = ASSERT_RESULT(WriteRows(kNumRows));
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
 
   auto rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table_));
   ASSERT_EQ(rows_count, kNumRows);
-
-  const auto split_hash_code = (min_max_hash_code.first + min_max_hash_code.second) / 2;
-  LOG(INFO) << "Split hash code: " << split_hash_code;
 
   auto& leader_master = *ASSERT_NOTNULL(cluster_->leader_mini_master()->master());
 
@@ -394,7 +426,7 @@ TEST_P(TabletSplitITest, SplitSingleTablet) {
 
   ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
 
-  ASSERT_OK(WaitForTabletSplitCompletion());
+  ASSERT_NO_FATALS(WaitForTabletSplitCompletion());
 
   ASSERT_NO_FATALS(CheckPostSplitTabletReplicasData(kNumRows));
 
@@ -422,6 +454,39 @@ TEST_P(TabletSplitITest, SplitSingleTablet) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+// Test for https://github.com/yugabyte/yugabyte-db/issues/4312 reproducing a deadlock
+// between TSTabletManager::ApplyTabletSplit and Heartbeater::Thread::TryHeartbeat.
+TEST_F(TabletSplitITest, SlowSplitSingleTablet) {
+  const auto leader_failure_timeout = FLAGS_leader_failure_max_missed_heartbeat_periods *
+        FLAGS_raft_heartbeat_interval_ms;
+
+  FLAGS_TEST_apply_tablet_split_inject_delay_ms = 200 * kTimeMultiplier;
+  // We want heartbeater to be called during tablet split apply to reproduce deadlock bug.
+  FLAGS_heartbeat_interval_ms = FLAGS_TEST_apply_tablet_split_inject_delay_ms / 3;
+  // We reduce FLAGS_leader_lease_duration_ms for ReplicaState::GetLeaderState to avoid always
+  // reusing results from cache on heartbeat, otherwise it won't lock ReplicaState mutex.
+  FLAGS_leader_lease_duration_ms = FLAGS_TEST_apply_tablet_split_inject_delay_ms / 2;
+  // Reduce raft_heartbeat_interval_ms for leader lease to be reliably replicated.
+  FLAGS_raft_heartbeat_interval_ms = FLAGS_leader_lease_duration_ms / 2;
+  // Keep leader failure timeout the same to avoid flaky losses of leader with short heartbeats.
+  FLAGS_leader_failure_max_missed_heartbeat_periods =
+      leader_failure_timeout / FLAGS_raft_heartbeat_interval_ms;
+
+  constexpr auto kNumRows = 50;
+
+  SetNumTablets(1);
+  CreateTable();
+
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+
+  auto& leader_master = *ASSERT_NOTNULL(cluster_->leader_mini_master()->master());
+  auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(leader_master));
+  auto* catalog_mgr = leader_master.catalog_manager();
+  ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+
+  ASSERT_NO_FATALS(WaitForTabletSplitCompletion());
+}
+
 namespace {
 
 PB_ENUM_FORMATTERS(IsolationLevel);
@@ -433,8 +498,8 @@ std::string TestParamToString(const testing::TestParamInfo<IsolationLevel>& isol
 } // namespace
 
 INSTANTIATE_TEST_CASE_P(
-    IsolationLevel,
     TabletSplitITest,
+    TabletSplitITestWithIsolationLevel,
     ::testing::ValuesIn(GetAllPbEnumValues<IsolationLevel>()),
     TestParamToString);
 

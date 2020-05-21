@@ -96,7 +96,7 @@ class TsTabletManagerListener {
 using rocksdb::MemoryMonitor;
 
 // Map of tablet id -> transition reason string.
-typedef std::unordered_map<std::string, std::string> TransitionInProgressMap;
+typedef std::unordered_map<TabletId, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
 struct TabletCreationMetaData;
@@ -350,12 +350,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // transition by some other operation.
   // On success, returns OK and populates 'deleter' with an object that removes
   // the map entry on destruction.
-  CHECKED_STATUS StartTabletStateTransitionUnlocked(const TabletId& tablet_id,
-                                            const std::string& reason,
-                                            scoped_refptr<TransitionInProgressDeleter>* deleter);
+  CHECKED_STATUS StartTabletStateTransition(
+      const TabletId& tablet_id, const std::string& reason,
+      scoped_refptr<TransitionInProgressDeleter>* deleter);
 
   // Registers the start of a table state transition with "creating tablet" reason.
-  // See StartTabletStateTransitionUnlocked.
+  // See StartTabletStateTransition.
   Result<scoped_refptr<TransitionInProgressDeleter>> StartTabletStateTransitionForCreation(
       const TabletId& tablet_id);
 
@@ -428,11 +428,17 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   CHECKED_STATUS StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
 
+  // Creates tablet peer and schedules opening the tablet.
+  // See CreateAndRegisterTabletPeer and OpenTablet.
+  void CreatePeerAndOpenTablet(
+      const tablet::RaftGroupMetadataPtr& meta,
+      const scoped_refptr<TransitionInProgressDeleter>& deleter);
+
   // Return the tablet with oldest write still in its memstore
   std::shared_ptr<tablet::TabletPeer> TabletToFlush();
 
   TSTabletManagerStatePB state() const {
-    SharedLock<RWMutex> lock(lock_);
+    SharedLock<RWMutex> lock(mutex_);
     return state_;
   }
 
@@ -462,9 +468,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   typedef std::unordered_map<TabletId, std::shared_ptr<tablet::TabletPeer>> TabletMap;
 
-  // Lock protecting tablet_map_, dirty_tablets_, state_, transition_in_progress_, and
+  // Lock protecting tablet_map_, dirty_tablets_, state_, and
   // tablets_being_remote_bootstrapped_.
-  mutable RWMutex lock_;
+  mutable RWMutex mutex_;
 
   // Map from tablet ID to tablet
   TabletMap tablet_map_;
@@ -476,7 +482,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Map of tablet ids -> reason strings where the keys are tablets whose
   // bootstrap, creation, or deletion is in-progress
-  TransitionInProgressMap transition_in_progress_;
+  TransitionInProgressMap transition_in_progress_ GUARDED_BY(transition_in_progress_mutex_);
+  mutable std::mutex transition_in_progress_mutex_;
 
   // Tablets to include in the next incremental tablet report.
   // When a tablet is added/removed/added locally and needs to be
@@ -539,16 +546,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 // when tablet bootstrap, create, and delete operations complete.
 class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProgressDeleter> {
  public:
-  TransitionInProgressDeleter(TransitionInProgressMap* map, RWMutex* lock,
-                              string entry);
+  TransitionInProgressDeleter(TransitionInProgressMap* map, std::mutex* mutex,
+                              const TabletId& tablet_id);
 
  private:
   friend class RefCountedThreadSafe<TransitionInProgressDeleter>;
   ~TransitionInProgressDeleter();
 
   TransitionInProgressMap* const in_progress_;
-  RWMutex* const lock_;
-  const std::string entry_;
+  std::mutex* const mutex_;
+  const std::string tablet_id_;
 };
 
 // Print a log message using the given info and tombstone the specified tablet.
