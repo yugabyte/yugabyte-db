@@ -435,7 +435,7 @@ Tablet::Tablet(const TabletInitData& data)
 
   // Create index table metadata cache for secondary index update.
   if (has_index) {
-    metadata_cache_.emplace(client_future_.get(), false /* Update roles' permissions cache */);
+    CreateNewYBMetaDataCache();
   }
 
   // If this is a unique index tablet, set up the index primary key schema.
@@ -508,6 +508,21 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
   RETURN_NOT_OK(snapshots_->CreateDirectories(db_dir, fs));
 
   return Status::OK();
+}
+
+void Tablet::ResetYBMetaDataCache() {
+  std::atomic_store_explicit(&metadata_cache_, {}, std::memory_order_release);
+}
+
+void Tablet::CreateNewYBMetaDataCache() {
+  std::atomic_store_explicit(&metadata_cache_,
+      std::make_shared<client::YBMetaDataCache>(client_future_.get(),
+                                                false /* Update permissions cache */),
+      std::memory_order_release);
+}
+
+std::shared_ptr<client::YBMetaDataCache> Tablet::YBMetaDataCache() {
+  return std::atomic_load_explicit(&metadata_cache_, std::memory_order_acquire);
 }
 
 template <class F>
@@ -1399,7 +1414,8 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
     for (auto& pair : *write_op->index_requests()) {
       client::YBTablePtr index_table;
       bool cache_used_ignored = false;
-      if (!metadata_cache_) {
+      auto metadata_cache = YBMetaDataCache();
+      if (!metadata_cache) {
         WriteOperation::StartSynchronization(
             std::move(operation),
             STATUS(Corruption, "Table metadata cache is not present for index update"));
@@ -1407,8 +1423,8 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       }
       // TODO create async version of GetTable.
       // It is ok to have sync call here, because we use cache and it should not take too long.
-      auto status = metadata_cache_->GetTable(pair.first->table_id(), &index_table,
-                                              &cache_used_ignored);
+      auto status = metadata_cache->GetTable(pair.first->table_id(), &index_table,
+                                             &cache_used_ignored);
       if (!status.ok()) {
         WriteOperation::StartSynchronization(std::move(operation), status);
         return;
@@ -1930,7 +1946,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   }
 
   // Clear old index table metadata cache.
-  metadata_cache_ = boost::none;
+  ResetYBMetaDataCache();
 
   // Create transaction manager and index table metadata cache for secondary index update.
   auto table_info = metadata_->primary_table_info();
@@ -1940,7 +1956,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
                                    scoped_refptr<server::Clock>(clock_),
                                    local_tablet_filter_);
     }
-    metadata_cache_.emplace(client_future_.get(), false /* Update permissions cache */);
+    CreateNewYBMetaDataCache();
   }
 
   // Flush the updated schema metadata to disk.
@@ -2075,7 +2091,7 @@ Status Tablet::FlushIndexBatchIfRequired(
 
   if (!client_future_.valid()) {
     return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());
-  } else if (!metadata_cache_) {
+  } else if (!YBMetaDataCache()) {
     return STATUS(IllegalState, "Table metadata cache is not present for index update");
   }
 
@@ -2094,8 +2110,9 @@ Status Tablet::FlushIndexBatchIfRequired(
     // It is ok to have sync call here, because we use cache and it should not take too long.
     client::YBTablePtr index_table;
     bool cache_used_ignored = false;
+    auto metadata_cache = YBMetaDataCache();
     RETURN_NOT_OK(
-        metadata_cache_->GetTable(pair.first->table_id(), &index_table, &cache_used_ignored));
+        metadata_cache->GetTable(pair.first->table_id(), &index_table, &cache_used_ignored));
 
     shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
     index_op->mutable_request()->Swap(&pair.second);

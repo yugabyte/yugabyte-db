@@ -645,6 +645,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<bool> HasScanReachedMaxPartitionKey(
       const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const;
 
+  // Sets metadata_cache_ to nullptr. This is done atomically to avoid race conditions.
+  void ResetYBMetaDataCache();
+
+  // Creates a new client::YBMetaDataCache object and atomically assigns it to metadata_cache_.
+  void CreateNewYBMetaDataCache();
+
+  // Creates a new shared pointer of the object managed by metadata_cache_. This is done
+  // atomically to avoid race conditions.
+  std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
+
   // Lock protecting schema_ and key_schema_.
   //
   // Writers take this lock in shared mode before decoding and projecting
@@ -756,7 +766,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Created only when secondary indexes are present.
   boost::optional<client::TransactionManager> transaction_manager_;
-  boost::optional<client::YBMetaDataCache> metadata_cache_;
+
+  // This object should not be accessed directly to avoid race conditions.
+  // Use methods YBMetaDataCache, CreateNewYBMetaDataCache, and ResetYBMetaDataCache to read it
+  // and modify it.
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // Created only if it is a unique index tablet.
   boost::optional<Schema> unique_index_key_schema_;
