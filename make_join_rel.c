@@ -156,7 +156,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 				/*
 				 * If the rows_hint's target relids is not a subset of both of
 				 * component rels and is a subset of this joinrel, ths hint's
-				 * targets spread over both component rels. This menas that
+				 * targets spread over both component rels. This means that
 				 * this hint has been never applied so far and this joinrel is
 				 * the first (and only) chance to fire in current join tree.
 				 * Only the multiplication hint has the cumulative nature so we
@@ -170,7 +170,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 		{
 			/*
 			 * If a hint just for me is found, no other adjust method is
-			 * useles, but this cannot be more than twice becuase this joinrel
+			 * useless, but this cannot be more than twice becuase this joinrel
 			 * is already adjusted by this hint.
 			 */
 			if (justforme->base.state == HINT_STATE_NOTUSED)
