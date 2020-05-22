@@ -40,6 +40,8 @@ DECLARE_int32(replication_factor);
 
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
 
+DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table);
+
 DECLARE_int32(load_balancer_max_over_replicated_tablets);
 
 DECLARE_int32(load_balancer_max_concurrent_adds);
@@ -163,6 +165,11 @@ struct Options {
   // Max number of tablets being remote bootstrapped across the cluster, if we enable limiting
   // this.
   int kMaxTabletRemoteBootstraps = FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps;
+
+  // Max number of tablets being remote bootstrapped for a specific tabe, if we enable limiting
+  // this.
+  int kMaxTabletRemoteBootstrapsPerTable =
+      FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps_per_table;
 
   // Whether to limit the number of tablets that have more peers than configured at any given
   // time.
@@ -304,6 +311,8 @@ class PerTableLoadState {
 
       const tablet::RaftGroupStatePB& tablet_state = replica.second.state;
       const bool replica_is_stale = replica.second.IsStale();
+      VLOG(2) << "Tablet " << tablet_id << " for table " << table_id_
+                << " is in state " << RaftGroupStatePB_Name(tablet_state);
       if (tablet_state == tablet::RUNNING) {
         ts_meta_it->second.running_tablets.insert(tablet_id);
         ++tablet_meta.running;
@@ -314,6 +323,8 @@ class PerTableLoadState {
         ts_meta_it->second.starting_tablets.insert(tablet_id);
         ++tablet_meta.starting;
         ++total_starting_;
+        VLOG(1) << "Increased total_starting to "
+                   << total_starting_ << " for tablet " << tablet_id << " and table " << table_id_;
         ++global_state_->total_starting_tablets_;
       } else if (replica_is_stale) {
         VLOG(1) << "Replica is stale: " << replica.second.ToString();
@@ -579,9 +590,8 @@ class PerTableLoadState {
       --total_running_;
     }
     if (per_ts_meta_[from_ts].starting_tablets.count(tablet_id)) {
-      per_ts_meta_[from_ts].starting_tablets.erase(tablet_id);
-      --per_tablet_meta_[tablet_id].starting;
-      --total_starting_;
+      LOG(DFATAL) << "Invalid request: remove starting tablet " << tablet_id
+                  << " from ts " << from_ts;
     }
     if (per_tablet_meta_[tablet_id].leader_uuid == from_ts) {
       RETURN_NOT_OK(MoveLeader(tablet_id, from_ts));

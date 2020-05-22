@@ -48,6 +48,14 @@ DEFINE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps,
              10,
              "Maximum number of tablets being remote bootstrapped across the cluster.");
 
+DEFINE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table,
+             2,
+             "Maximum number of tablets being remote bootstrapped for any table. The maximum "
+             "number of remote bootstraps across the cluster is still limited by the flag "
+             "load_balancer_max_concurrent_tablet_remote_bootstraps. This flag is meant to prevent "
+             "a single table use all the available remote bootstrap sessions and starving other "
+             "tables");
+
 DEFINE_int32(load_balancer_max_over_replicated_tablets,
              1,
              "Maximum number of running tablet replicas that are allowed to be over the configured "
@@ -546,13 +554,17 @@ Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
 
 Result<bool> ClusterLoadBalancer::HandleAddReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
-  if (state_->options_->kAllowLimitStartingTablets &&
-      global_state_->total_starting_tablets_ >=
-          state_->options_->kMaxTabletRemoteBootstraps) {
-    return STATUS_SUBSTITUTE(TryAgain,
-        "Cannot add replicas. Currently remote bootstrapping $0 tablets, "
-        "when our max allowed is $1",
-        global_state_->total_starting_tablets_, state_->options_->kMaxTabletRemoteBootstraps);
+  if (state_->options_->kAllowLimitStartingTablets) {
+    if (global_state_->total_starting_tablets_ >= state_->options_->kMaxTabletRemoteBootstraps) {
+      return STATUS_SUBSTITUTE(TryAgain, "Cannot add replicas. Currently remote bootstrapping $0 "
+          "tablets, when our max allowed is $1",
+          global_state_->total_starting_tablets_, state_->options_->kMaxTabletRemoteBootstraps);
+    } else if (state_->total_starting_ >= state_->options_->kMaxTabletRemoteBootstrapsPerTable) {
+      return STATUS_SUBSTITUTE(TryAgain, "Cannot add replicas. Currently remote bootstrapping $0 "
+          "tablets for table $1, when our max allowed is $2 per table",
+          state_->total_starting_, state_->table_id_,
+          state_->options_->kMaxTabletRemoteBootstrapsPerTable);
+    }
   }
 
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
@@ -564,8 +576,12 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
         boost::algorithm::join(state_->tablets_over_replicated_, ", "));
   }
 
-  VLOG(1) << "Number of concurrent remote bootstrap is: " <<  global_state_->total_starting_tablets_
-          << " max allowed: " << state_->options_->kMaxTabletRemoteBootstraps;
+  VLOG(1) << "Number of global concurrent remote bootstrap sessions: "
+          <<  global_state_->total_starting_tablets_
+          << ", max allowed: " << state_->options_->kMaxTabletRemoteBootstraps
+          << ". Number of concurrent remote bootstrap sessions for table " << state_->table_id_
+          << ": " << state_->total_starting_
+          << ", max allowed: " << state_->options_->kMaxTabletRemoteBootstrapsPerTable;
 
   // Handle missing placements with highest priority, as it means we're potentially
   // under-replicated.
@@ -1077,6 +1093,11 @@ void ClusterLoadBalancer::CountPendingTasks(const TableId& table_uuid,
   *pending_stepdown_leader_tasks += state_->pending_stepdown_leader_tasks_[table_uuid].size();
   state_->total_starting_ += *pending_add_replica_tasks;
   global_state_->total_starting_tablets_ += *pending_add_replica_tasks;
+  for (auto e : state_->pending_add_replica_tasks_[table_uuid]) {
+    const auto& ts_uuid = e.second;
+    const auto& tablet_id = e.first;
+    state_->per_ts_meta_[ts_uuid].starting_tablets.insert(tablet_id);
+  }
 }
 
 void ClusterLoadBalancer::GetPendingTasks(const TableId& table_uuid,

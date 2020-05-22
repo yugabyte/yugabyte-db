@@ -760,19 +760,24 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
 }
 
 TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
-  constexpr int kMaxConcurrentTabletRemoteBootstrapSessions = 3;
+  constexpr int kMaxConcurrentTabletRemoteBootstrapSessions = 5;
+  constexpr int kMaxConcurrentTabletRemoteBootstrapSessionsPerTable = 2;
 
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--follower_unavailable_considered_failed_sec=10");
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--crash_if_remote_bootstrap_sessions_greater_than=" +
+  ts_flags.push_back("--TEST_crash_if_remote_bootstrap_sessions_greater_than=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions + 1));
+  ts_flags.push_back("--TEST_crash_if_remote_bootstrap_sessions_per_table_greater_than=" +
+      std::to_string(kMaxConcurrentTabletRemoteBootstrapSessionsPerTable + 1));
   ts_flags.push_back("--simulate_long_remote_bootstrap_sec=5");
   ts_flags.push_back("--heartbeat_interval_ms=100");
 
   master_flags.push_back("--load_balancer_handle_under_replicated_tablets_only=true");
   master_flags.push_back("--load_balancer_max_concurrent_tablet_remote_bootstraps=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions));
+  master_flags.push_back("--load_balancer_max_concurrent_tablet_remote_bootstraps_per_table=" +
+      std::to_string(kMaxConcurrentTabletRemoteBootstrapSessionsPerTable));
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
 
@@ -805,8 +810,8 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
 
   // Resume the tserver. The cluster balancer will ensure that all the tablets are added back to
   // this tserver, and it will cause the leader to start remote bootstrap sessions for all of the
-  // tablets. FLAGS_crash_if_remote_bootstrap_sessions_greater_than will make sure that we never
-  // have more than the expected number of concurrent remote bootstrap sessions.
+  // tablets. FLAGS_TEST_crash_if_remote_bootstrap_sessions_greater_than will make sure that we
+  // never have more than the expected number of concurrent remote bootstrap sessions.
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Resume());
 
   // Wait until the config for all the tablets have three voters. This means that the tserver that
