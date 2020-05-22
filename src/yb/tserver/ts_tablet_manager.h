@@ -185,26 +185,26 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // raft config change op has an opid_index equal to or less than the specified
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
-  CHECKED_STATUS DeleteTablet(const std::string& tablet_id,
+  CHECKED_STATUS DeleteTablet(const TabletId& tablet_id,
                       tablet::TabletDataState delete_type,
                       const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
                       boost::optional<TabletServerErrorPB::Code>* error_code);
 
   // Lookup the given tablet peer by its ID.
   // Returns true if the tablet is found successfully.
-  bool LookupTablet(const std::string& tablet_id,
+  bool LookupTablet(const TabletId& tablet_id,
                     std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;
 
   // Lookup the given tablet peer by its ID.
   // Returns NotFound error if the tablet is not found.
-  Result<std::shared_ptr<tablet::TabletPeer>> LookupTablet(const std::string& tablet_id) const;
+  Result<std::shared_ptr<tablet::TabletPeer>> LookupTablet(const TabletId& tablet_id) const;
 
   // Same as LookupTablet but doesn't acquired the shared lock.
-  bool LookupTabletUnlocked(const std::string& tablet_id,
+  bool LookupTabletUnlocked(const TabletId& tablet_id,
                             std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;
 
   CHECKED_STATUS GetTabletPeer(
-      const std::string& tablet_id,
+      const TabletId& tablet_id,
       std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
 
   const NodeInstancePB& NodeInstance() const override;
@@ -242,22 +242,22 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void GetTabletPeers(TabletPeers* tablet_peers) const;
   TabletPeers GetTabletPeers() const;
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const;
-  void PreserveLocalLeadersOnly(std::vector<const std::string*>* tablet_ids) const;
+  void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 
   // Callback used for state changes outside of the control of TsTabletManager, such as a consensus
   // role change. They are applied asynchronously internally.
-  void ApplyChange(const std::string& tablet_id,
+  void ApplyChange(const TabletId& tablet_id,
                    std::shared_ptr<consensus::StateChangeContext> context);
 
   // Marks tablet with 'tablet_id' dirty.
   // Used for state changes outside of the control of TsTabletManager, such as consensus role
   // changes.
-  void MarkTabletDirty(const std::string& tablet_id,
+  void MarkTabletDirty(const TabletId& tablet_id,
                        std::shared_ptr<consensus::StateChangeContext> context);
 
-  void MarkTabletBeingRemoteBootstrapped(const std::string& tablet_id);
+  void MarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
 
-  void UnmarkTabletBeingRemoteBootstrapped(const std::string& tablet_id);
+  void UnmarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
 
   // Returns the number of tablets in the "dirty" map, for use by unit tests.
   int GetNumDirtyTabletsForTests() const;
@@ -279,24 +279,24 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // for both data and wal directories.
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
-                                   const std::string& tablet_id,
+                                   const TabletId& tablet_id,
                                    std::string* data_root_dir,
                                    std::string* wal_root_dir);
   // Updates the map of table to the set of tablets assigned per table per disk
   // for both of the given data and wal directories.
   void RegisterDataAndWalDir(FsManager* fs_manager,
                             const std::string& table_id,
-                            const std::string& tablet_id,
+                            const TabletId& tablet_id,
                             const std::string& data_root_dir,
                             const std::string& wal_root_dir);
   // Removes the tablet id assigned to the table and disk pair for both the data and WAL directory
   // as pointed by the data and wal directory map.
   void UnregisterDataWalDir(const std::string& table_id,
-                            const std::string& tablet_id,
+                            const TabletId& tablet_id,
                             const std::string& data_root_dir,
                             const std::string& wal_root_dir);
 
-  bool IsTabletInTransition(const std::string& tablet_id) const;
+  bool IsTabletInTransition(const TabletId& tablet_id) const;
 
   TabletServer* server() { return server_; }
 
@@ -321,10 +321,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     REPLACEMENT_PEER
   };
 
-  typedef std::unordered_set<TabletId> TabletIdSet;
+  typedef std::unordered_set<TabletId> TabletIdUnorderedSet;
 
   // Maps directory to set of tablets (IDs) using that directory.
-  typedef std::unordered_map<std::string, TabletIdSet> TabletIdSetByDirectoryMap;
+  typedef std::unordered_map<std::string, TabletIdUnorderedSet> TabletIdSetByDirectoryMap;
 
   // This is a map that takes a table id and maps it to a map of directory and
   // set of tablets using that directory.
@@ -350,7 +350,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // transition by some other operation.
   // On success, returns OK and populates 'deleter' with an object that removes
   // the map entry on destruction.
-  CHECKED_STATUS StartTabletStateTransitionUnlocked(const std::string& tablet_id,
+  CHECKED_STATUS StartTabletStateTransitionUnlocked(const TabletId& tablet_id,
                                             const std::string& reason,
                                             scoped_refptr<TransitionInProgressDeleter>* deleter);
 
@@ -360,7 +360,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const TabletId& tablet_id);
 
   // Open a tablet meta from the local file system by loading its superblock.
-  CHECKED_STATUS OpenTabletMeta(const std::string& tablet_id,
+  CHECKED_STATUS OpenTabletMeta(const TabletId& tablet_id,
                         scoped_refptr<tablet::RaftGroupMetadata>* metadata);
 
   // Open a tablet whose metadata has already been loaded/created.
@@ -388,7 +388,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // registered, a FATAL message is logged, causing a process crash.
   // Calls to this method are expected to be externally synchronized, typically
   // using the transition_in_progress_ map.
-  CHECKED_STATUS RegisterTablet(const std::string& tablet_id,
+  CHECKED_STATUS RegisterTablet(const TabletId& tablet_id,
                                 const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                                 RegisterTabletPeerMode mode);
 
@@ -417,7 +417,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // account in the next report.
   //
   // NOTE: requires that the caller holds the lock.
-  void MarkDirtyUnlocked(const std::string& tablet_id,
+  void MarkDirtyUnlocked(const TabletId& tablet_id,
                          std::shared_ptr<consensus::StateChangeContext> context);
 
   // Handle the case on startup where we find a tablet that is not in ready state. Generally, we
@@ -446,7 +446,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::string LogPrefix() const;
 
-  std::string TabletLogPrefix(const std::string& tablet_id) const;
+  std::string TabletLogPrefix(const TabletId& tablet_id) const;
 
   void CleanupCheckpoints();
 
@@ -460,7 +460,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   consensus::RaftPeerPB local_peer_pb_;
 
-  typedef std::unordered_map<std::string, std::shared_ptr<tablet::TabletPeer>> TabletMap;
+  typedef std::unordered_map<TabletId, std::shared_ptr<tablet::TabletPeer>> TabletMap;
 
   // Lock protecting tablet_map_, dirty_tablets_, state_, transition_in_progress_, and
   // tablets_being_remote_bootstrapped_.
@@ -483,7 +483,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // reported to the master, an entry is added to this map.
   DirtyMap dirty_tablets_;
 
-  std::set<std::string> tablets_being_remote_bootstrapped_;
+  typedef std::set<TabletId> TabletIdSet;
+
+  TabletIdSet tablets_being_remote_bootstrapped_;
+
+  // Used to keep track of the number of concurrent remote bootstrap sessions per table.
+  std::unordered_map<TableId, TabletIdSet> tablets_being_remote_bootstrapped_per_table_;
 
   // Next tablet report seqno.
   int32_t next_report_seq_;
@@ -566,7 +571,7 @@ Status DeleteTabletData(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
 
 // Return Status::IllegalState if leader_term < last_logged_term.
 // Helper function for use with remote bootstrap.
-Status CheckLeaderTermNotLower(const std::string& tablet_id,
+Status CheckLeaderTermNotLower(const TabletId& tablet_id,
                                const std::string& uuid,
                                int64_t leader_term,
                                int64_t last_logged_term);
@@ -574,7 +579,7 @@ Status CheckLeaderTermNotLower(const std::string& tablet_id,
 // Helper function to replace a stale tablet found from earlier failed tries.
 Status HandleReplacingStaleTablet(scoped_refptr<tablet::RaftGroupMetadata> meta,
                                   std::shared_ptr<tablet::TabletPeer> old_tablet_peer,
-                                  const std::string& tablet_id,
+                                  const TabletId& tablet_id,
                                   const std::string& uuid,
                                   const int64_t& leader_term);
 
