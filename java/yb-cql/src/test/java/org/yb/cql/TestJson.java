@@ -12,8 +12,11 @@
 //
 package org.yb.cql;
 
+import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.schemabuilder.SchemaBuilder;
+
 import org.junit.Test;
 import org.json.*;
 
@@ -409,4 +412,35 @@ public class TestJson extends BaseCQLTest {
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'p' = " +
         "'\"100\"'").all().size());
   }
+
+
+  @Test
+  public void testSchemaBuilderWithJsonColumnType() throws Exception {
+
+
+    String json = "{ " + "\"b\" : 1," + "\"a2\" : {}," + "\"a3\" : \"\","
+                + "\"a1\" : [1, 2, 3.0, false, true, { \"k1\" : 1, \"k2\" : [100, 200, 300], "
+                + "\"k3\" : true}]," + "\"a\" :" + "{" + "\"d\" : true," + "\"q\" :"
+                + "{" + "\"p\" : 4294967295," + "\"r\" : -2147483648," + "\"s\" : 2147483647"
+                + "}," + "\"g\" : -100," + "\"c\" : false," + "\"f\" : \"hello\","
+                + "\"x\" : 2.0," + "\"y\" : 9223372036854775807," + "\"z\" : -9223372036854775808,"
+                + "\"u\" : 18446744073709551615," + "\"l\" : 2147483647.123123e+75,"
+                + "\"e\" : null" + "}" + "}";
+
+
+    session.execute(SchemaBuilder.createTable("test_json")
+      .addPartitionKey("c1", DataType.cint())
+      .addColumn("c2", DataType.json()));
+
+    session.execute(String.format("INSERT INTO test_json(c1, c2) values (1, '%s');", json));
+    session.execute("INSERT INTO test_json(c1, c2) values (2, '\"abc\"');");
+    session.execute("INSERT INTO test_json(c1, c2) values (3, '3');");
+    session.execute("INSERT INTO test_json(c1, c2) values (4, 'true');");
+    session.execute("INSERT INTO test_json(c1, c2) values (5, 'false');");
+    session.execute("INSERT INTO test_json(c1, c2) values (6, 'null');");
+    session.execute("INSERT INTO test_json(c1, c2) values (7, '2.0');");
+    session.execute("INSERT INTO test_json(c1, c2) values (8, '{\"b\" : 1}');");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c1 = 1"));
+  }
+
 }
