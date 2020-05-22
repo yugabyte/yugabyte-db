@@ -861,10 +861,14 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerRestart) {
 // Test that when a follower is shutdown so that it misses several writes, the
 // leader evicts almost all entries from log cache.
 TEST_F(RaftConsensusITest, TestLaggingFollowerLogCacheEviction) {
+  const auto kHeartBeatInterval = 1s;
+  const int32_t kConsensusLaggingFollowerThreshold = 10;
+
   vector<string> extra_flags = {
       "--consensus_inject_latency_ms_in_notifications=10"s,
       "--consensus_max_batch_size_bytes=1024"s,
-      "--consensus_lagging_follower_threshold=10"s
+      Format("--consensus_lagging_follower_threshold=$0", kConsensusLaggingFollowerThreshold),
+      Format("--raft_heartbeat_interval_ms=$0", ToMilliseconds(kHeartBeatInterval))
   };
   ASSERT_NO_FATALS(BuildAndStart(extra_flags));
 
@@ -894,6 +898,11 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerLogCacheEviction) {
   // Insert 3MB worth of data.
   const int kNumWrites = 1000;
   ASSERT_NO_FATALS(WriteOpsToLeader(kNumWrites, 3_KB));
+
+  // Allow for shutdown replica to be retransmitted to more than
+  // consensus_lagging_follower_threshold times so that it can be marked as lagging.
+  // Also use a multiplicative factor to reduce flakiness.
+  SleepFor(kHeartBeatInterval * kConsensusLaggingFollowerThreshold * 2);
 
   // Allow for shutdown replica to lag.
   auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
