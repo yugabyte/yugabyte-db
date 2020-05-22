@@ -100,9 +100,13 @@ static agtype *execute_array_access_operator(agtype *array, agtype *element);
 static agtype *execute_map_access_operator(agtype *map, agtype *key);
 /* typecast functions */
 static void agtype_typecast_object(agtype_in_state *state, char *annotation);
-static void agtype_typecast_array(agtype_value *agtv, char *annotation);
+static void agtype_typecast_array(agtype_in_state *state, char *annotation);
+/* validation functions */
 static bool is_object_vertex(agtype_value *agtv);
 static bool is_object_edge(agtype_value *agtv);
+static bool is_array_path(agtype_value *agtv);
+/* helper functions */
+static bool is_agtype_null(agtype *agt);
 static agtype_value *string_to_agtype_value(char *s);
 
 PG_FUNCTION_INFO_V1(agtype_in);
@@ -245,7 +249,7 @@ static void agtype_in_agtype_annotation(void *pstate, char *annotation)
         agtype_typecast_object(_state, annotation);
         break;
     case AGTV_ARRAY:
-        agtype_typecast_array(_state->res, annotation);
+        agtype_typecast_array(_state, annotation);
         break;
 
     /*
@@ -333,9 +337,58 @@ static void agtype_typecast_object(agtype_in_state *state, char *annotation)
 }
 
 /* function to handle array typecasts */
-static void agtype_typecast_array(agtype_value *agtv, char *annotation)
+static void agtype_typecast_array(agtype_in_state *state, char *annotation)
 {
-    elog(ERROR, "array typecasting is not supported yet");
+    agtype_value *agtv;
+    agtype_value *last_updated_value;
+    int len;
+    bool top = true;
+
+    /* verify that our required params are not null */
+    Assert(annotation != NULL);
+    Assert(state != NULL);
+
+    len = strlen(annotation);
+    agtv = state->res;
+
+    /*
+     * If the parse_state is not NULL, then we are not at the top level
+     * and the following must be valid for a nested array with a typecast
+     * at the end.
+     */
+    if (state->parse_state != NULL)
+    {
+        top = false;
+        last_updated_value = state->parse_state->last_updated_value;
+        /* make sure there is a value just copied in */
+        Assert(last_updated_value != NULL);
+        /* and that it is of type object */
+        Assert(last_updated_value->type == AGTV_ARRAY);
+    }
+
+    /* check for a cast to a path */
+    if (len == 4 && pg_strncasecmp(annotation, "path", len) == 0)
+    {
+        /* verify that the array conforms to a valid path */
+        if (is_array_path(agtv))
+        {
+            agtv->type = AGTV_PATH;
+            /* if it isn't the top, we need to adjust the copied value */
+            if (!top)
+                last_updated_value->type = AGTV_PATH;
+        }
+        else
+            ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("array is not a valid path")));
+
+    }
+    /* otherwise this isn't a supported typecast */
+    else
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("invalid annotation value for object")));
+
 }
 
 /* helper function to check if an object fits a vertex */
@@ -447,6 +500,41 @@ static bool is_object_edge(agtype_value *agtv)
     }
     return (has_id && has_label && has_properties &&
             has_start_id && has_end_id);
+}
+
+/* helper function to check if an array fits a path */
+static bool is_array_path(agtype_value *agtv)
+{
+    agtype_value *element = NULL;
+    int i;
+
+    /* we require a valid array */
+    Assert(agtv != NULL);
+    Assert(agtv->type == AGTV_ARRAY);
+
+    /* the array needs to have an odd number of elements greater than 2 */
+    if (agtv->val.array.num_elems < 3 ||
+        (agtv->val.array.num_elems - 1) % 2 != 0)
+        return false;
+
+    /* iterate through all elements */
+    for (i = 0; (i + 1) < agtv->val.array.num_elems; i+=2)
+    {
+        element = &agtv->val.array.elems[i];
+        if (element->type != AGTV_VERTEX)
+            return false;
+
+        element = &agtv->val.array.elems[i+1];
+        if (element->type != AGTV_EDGE)
+            return false;
+    }
+
+    /* check the last element */
+    element = &agtv->val.array.elems[i];
+    if (element->type != AGTV_VERTEX)
+        return false;
+
+    return true;
 }
 
 static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
@@ -594,8 +682,11 @@ static void agtype_in_scalar(void *pstate, char *token,
     agtype_value v;
     Datum numd;
 
-    /* process typecast annotations if present */
-    if (annotation != NULL)
+    /*
+     * Process the scalar typecast annotations, if present, but not if the
+     * argument is a null. Typecasting a null is a null.
+     */
+    if (annotation != NULL && tokentype != AGTYPE_TOKEN_NULL)
     {
         int len = strlen(annotation);
 
@@ -2418,6 +2509,21 @@ Datum agtype_string_match_contains(PG_FUNCTION_ARGS)
                     errmsg("agtype string values expected")));
 }
 
+static bool is_agtype_null(agtype *agt)
+{
+    if (AGT_ROOT_IS_ARRAY(agt) && AGT_ROOT_IS_SCALAR(agt))
+    {
+        agtype_value *agtv_element;
+
+        agtv_element = get_ith_agtype_value_from_container(&agt->root, 0);
+
+        if (agtv_element->type == AGTV_NULL)
+            return true;
+    }
+
+    return false;
+}
+
 PG_FUNCTION_INFO_V1(agtype_typecast_numeric);
 /*
  * Execute function to typecast an agtype to an agtype numeric
@@ -2582,12 +2688,17 @@ Datum agtype_typecast_vertex(PG_FUNCTION_ARGS)
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
-    /* A vertex is an object so the arg needs to be one too */
     arg_agt = AG_GET_ARG_AGTYPE_P(0);
+
+    /* Return null if arg is agtype null */
+    if (is_agtype_null(arg_agt))
+        PG_RETURN_NULL();
+
+    /* A vertex is an object so the arg needs to be one too */
     if (!AGT_ROOT_IS_OBJECT(arg_agt))
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast argument must resolve to an object")));
+                 errmsg("vertex typecast argument must resolve to an object")));
 
     /* A vertex object has 3 key/value pairs */
     count = AGTYPE_CONTAINER_SIZE(&arg_agt->root);
@@ -2608,7 +2719,7 @@ Datum agtype_typecast_vertex(PG_FUNCTION_ARGS)
     if (agtv_graphid == NULL || agtv_graphid->type != AGTV_INTEGER)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast object has invalid or missing id")));
+                 errmsg("vertex typecast object has invalid or missing id")));
 
     agtv_key.val.string.val = "label";
     agtv_key.val.string.len = 5;
@@ -2617,7 +2728,7 @@ Datum agtype_typecast_vertex(PG_FUNCTION_ARGS)
     if (agtv_label == NULL || agtv_label->type != AGTV_STRING)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast object has invalid or missing label")));
+                 errmsg("vertex typecast object has invalid or missing label")));
 
     agtv_key.val.string.val = "properties";
     agtv_key.val.string.len = 10;
@@ -2628,7 +2739,7 @@ Datum agtype_typecast_vertex(PG_FUNCTION_ARGS)
          agtv_properties->type != AGTV_BINARY))
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast object has invalid or missing properties")));
+                 errmsg("vertex typecast object has invalid or missing properties")));
 
     /* Hand it off to the build vertex routine */
     result = DirectFunctionCall3(_agtype_build_vertex,
@@ -2655,12 +2766,17 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
-    /* An edge is an object, so the arg needs to be one too */
     arg_agt = AG_GET_ARG_AGTYPE_P(0);
+
+    /* Return null if arg is agtype null */
+    if (is_agtype_null(arg_agt))
+        PG_RETURN_NULL();
+
+    /* An edge is an object, so the arg needs to be one too */
     if (!AGT_ROOT_IS_OBJECT(arg_agt))
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast argument must resolve to an object")));
+                 errmsg("edge typecast argument must resolve to an object")));
 
     /* An edge has 5 key/value pairs */
     count = AGTYPE_CONTAINER_SIZE(&arg_agt->root);
@@ -2673,7 +2789,6 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
      * The 5 key/value pairs need to each exist and their names need to match
      * the names used for an edge.
      */
-
     agtv_key.type = AGTV_STRING;
     agtv_key.val.string.val = "id";
     agtv_key.val.string.len = 2;
@@ -2682,7 +2797,7 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
     if (agtv_graphid == NULL || agtv_graphid->type != AGTV_INTEGER)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast object has an invalid or missing id")));
+                 errmsg("edge typecast object has an invalid or missing id")));
 
     agtv_key.val.string.val = "label";
     agtv_key.val.string.len = 5;
@@ -2691,7 +2806,7 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
     if (agtv_label == NULL || agtv_label->type != AGTV_STRING)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast object has an invalid or missing label")));
+                 errmsg("edge typecast object has an invalid or missing label")));
 
     agtv_key.val.string.val = "properties";
     agtv_key.val.string.len = 10;
@@ -2702,7 +2817,7 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
          agtv_properties->type != AGTV_BINARY))
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast object has invalid or missing properties")));
+                 errmsg("edge typecast object has invalid or missing properties")));
 
     agtv_key.val.string.val = "start_id";
     agtv_key.val.string.len = 8;
@@ -2711,7 +2826,7 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
     if (agtv_graphid == NULL || agtv_graphid->type != AGTV_INTEGER)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast object has an invalid or missing start_id")));
+                 errmsg("edge typecast object has an invalid or missing start_id")));
 
     agtv_key.val.string.val = "end_id";
     agtv_key.val.string.len = 6;
@@ -2720,7 +2835,7 @@ Datum agtype_typecast_edge(PG_FUNCTION_ARGS)
     if (agtv_graphid == NULL || agtv_graphid->type != AGTV_INTEGER)
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast object has an invalid or missing end_id")));
+                 errmsg("edge typecast object has an invalid or missing end_id")));
 
     /* Hand it off to the build edge routine */
     result = DirectFunctionCall5(_agtype_build_edge,
@@ -2738,20 +2853,77 @@ PG_FUNCTION_INFO_V1(agtype_typecast_path);
  */
 Datum agtype_typecast_path(PG_FUNCTION_ARGS)
 {
-    agtype *arg_agt;
+    agtype *arg_agt = NULL;
+    agtype_in_state path;
+    agtype_value *agtv_element = NULL;
+    int count = 0;
+    int i = 0;
 
     /* return null if arg is null */
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
     arg_agt = AG_GET_ARG_AGTYPE_P(0);
+
+    /* Return null if arg is agtype null */
+    if (is_agtype_null(arg_agt))
+        PG_RETURN_NULL();
+
+    /* path needs to be an array */
     if (!AGT_ROOT_IS_ARRAY(arg_agt))
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("typecast argument must resolve to an array")));
+                 errmsg("path typecast argument must resolve to an array")));
 
-    elog(ERROR, "typecasting to path is not yet supported");
-    PG_RETURN_NULL();
+    count = AGT_ROOT_COUNT(arg_agt);
+
+    /* quick check for valid path lengths */
+    if (count < 3 || (count-1) % 2 != 0)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("typecast argument is not a valid path")));
+
+    /* create an agtype array */
+    memset(&path, 0, sizeof(agtype_in_state));
+    path.res = push_agtype_value(&path.parse_state, WAGT_BEGIN_ARRAY, NULL);
+
+    /*
+     * Iterate through the provided list, check that each value conforms, and
+     * then add it if it does. Otherwise error out.
+     */
+    for (i = 0; i+1 < count; i+=2)
+    {
+        /* get a potential vertex, check it, then add it */
+        agtv_element = get_ith_agtype_value_from_container(&arg_agt->root, i);
+        if (agtv_element == NULL || agtv_element->type != AGTV_VERTEX)
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("typecast argument is not a valid path")));
+        push_agtype_value(&path.parse_state, WAGT_ELEM, agtv_element);
+
+        /* get a potential edge, check it, then add it */
+        agtv_element = get_ith_agtype_value_from_container(&arg_agt->root, i+1);
+        if (agtv_element == NULL || agtv_element->type != AGTV_EDGE)
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("typecast argument is not a valid path")));
+        push_agtype_value(&path.parse_state, WAGT_ELEM, agtv_element);
+    }
+
+    /* validate the last element is a vertex, add it if it is, fail otherwise */
+    agtv_element = get_ith_agtype_value_from_container(&arg_agt->root, i);
+    if (agtv_element == NULL || agtv_element->type != AGTV_VERTEX)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("typecast argument is not a valid path")));
+    push_agtype_value(&path.parse_state, WAGT_ELEM, agtv_element);
+
+    /* close the array */
+    path.res = push_agtype_value(&path.parse_state, WAGT_END_ARRAY, NULL);
+    /* set it to a path */
+    path.res->type = AGTV_PATH;
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(path.res));
 }
 
 PG_FUNCTION_INFO_V1(_ag_enforce_edge_uniqueness);
@@ -2872,4 +3044,3 @@ Datum end_id(PG_FUNCTION_ARGS)
     // keeps compiler silent
     PG_RETURN_NULL();
 }
-
