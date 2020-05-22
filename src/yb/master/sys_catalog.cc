@@ -55,6 +55,7 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/fs/fs_manager.h"
+#include "yb/gutil/strings/numbers.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
@@ -75,6 +76,7 @@
 #include "yb/util/threadpool.h"
 
 using namespace std::literals; // NOLINT
+using namespace yb::size_literals;
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -113,9 +115,8 @@ METRIC_DEFINE_counter(
 
 DECLARE_int32(master_discovery_timeout_ms);
 
-DEFINE_int32(copy_table_batch_size, -1, "Batch size for copy pg sql tables");
-
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
+DEFINE_int32(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
 
 namespace yb {
 namespace master {
@@ -749,33 +750,41 @@ Status SysCatalogTable::CopyPgsqlTables(
           source_table_info->schema, source_row, target_table_id, target_table_info->schema,
           target_table_info->schema_version, true /* is_upsert */));
 
-      if (FLAGS_copy_table_batch_size > 0 &&
-          writer->req().pgsql_write_batch_size() >= FLAGS_copy_table_batch_size) {
-        RETURN_NOT_OK(SyncWrite(writer.get()));
+      ++total_count;
+      if (FLAGS_copy_tables_batch_bytes > 0 && 0 == (total_count % 128)) {
+          // Break up the write into batches of roughly the same serialized size
+          // in order to avoid uncontrolled large network writes.
+          // ByteSizeLong is an expensive calculation so do not perform it each time
 
-        total_bytes += writer->req().SpaceUsedLong();
-        total_count += writer->req().pgsql_write_batch_size();
-        ++batch_count;
-        LOG(INFO) << Format("CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes",
-          batch_count, writer->req().pgsql_write_batch_size(), writer->req().SpaceUsedLong());
+        size_t batch_bytes = writer->req().ByteSizeLong();
+        if (batch_bytes > FLAGS_copy_tables_batch_bytes) {
+          RETURN_NOT_OK(SyncWrite(writer.get()));
 
-        writer = NewWriter(leader_term);
+          total_bytes += batch_bytes;
+          ++batch_count;
+          LOG(INFO) << Format(
+              "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
+              writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
+
+          writer = NewWriter(leader_term);
+        }
       }
     }
   }
 
   if (writer->req().pgsql_write_batch_size() > 0) {
     RETURN_NOT_OK(SyncWrite(writer.get()));
-
-    total_bytes += writer->req().SpaceUsedLong();
-    total_count += writer->req().pgsql_write_batch_size();
+    size_t batch_bytes = writer->req().ByteSizeLong();
+    total_bytes += batch_bytes;
     ++batch_count;
-    LOG(INFO) << Format("CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes",
-      batch_count, writer->req().pgsql_write_batch_size(), writer->req().SpaceUsedLong());
+    LOG(INFO) << Format(
+        "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
+        writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
   }
 
-  LOG(INFO) << Format("CopyPgsqlTables: Copied total $0 rows, total $1 bytes in $2 batches",
-    total_count, total_bytes, batch_count);
+  LOG(INFO) << Format(
+      "CopyPgsqlTables: Copied total $0 rows, total $1 bytes in $2 batches", total_count,
+      HumanizeBytes(total_bytes), batch_count);
   return Status::OK();
 }
 
