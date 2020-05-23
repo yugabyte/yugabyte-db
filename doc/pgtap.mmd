@@ -3517,6 +3517,20 @@ incorrect, the diagnostics will look more like this:
     #       have: "idx_baz" ON public.sometab(lower(name))
     #       want: "idx_baz" ON public.sometab(lower(lname))
 
+Note that unlike most other column parameter arguments in pgTAP, mixed-case
+column mames crated with double-quotes must be double-quoted when passed
+to `has_index()`, like so:
+
+    SELECT has_index(
+        'myschema',
+        'sometable',
+        'myindex',
+        ARRAY[ 'id', '"Name"', 'lower("foo-bar")' ]
+    );
+
+This caveat applies only to column names, not to table and schema names,
+which should omit double-quoting.
+
 ### `hasnt_index()` ###
 
     SELECT hasnt_index( schema, table, index, description );
@@ -5091,6 +5105,15 @@ Checks that the specified columns or expressions are contained in a single
 index on the named table. Effectively like `has_index()` except that it
 doesn't require an index name and does require one or more column names or
 expressions in the defined for the index.
+
+Note that unlike most other column parameter arguments in pgTAP, mixed-case
+column mames crated with double-quotes must be double-quoted when passed
+to `is_indexed()`, like so:
+
+    SELECT is_indexed( 'widgets', '"Name"' );
+
+This caveat applies only to column names, not to table and schema names,
+which should omit double-quoting.
 
 ### `index_is_type()` ###
 

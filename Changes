@@ -8,6 +8,12 @@ Revision history for pgTAP
 * Added support for the date and time keywords `CURRENT_DATE`, `CURRENT_TIME`,
   `CURRENT_TIMESTAMP`, `LOCALTIME`, and `LOCALTIMESTAMP` to `col_default_is()`.
   Thanks to Kevin Brannen for the report (#244)!
+* Fixed failure to run tests on Postgres 13. Thanks to Christoph Berg for the
+  report (#248).
+* Documented that mixed-case column names created with double quotes
+  must be double-quoted when passed to `has_index()` or `is_indexed()`,
+  sadly unlike other column arguments in pgTAP. Thanks to Keith Fiske for
+  the report (#247).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
