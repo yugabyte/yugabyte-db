@@ -204,10 +204,12 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
 
   auto overwrite_ht = isTtlRow ? prev_overwrite_ht : max(prev_overwrite_ht, ht);
 
-  ValueType value_type;
-  MonoDelta ttl;
-  RETURN_NOT_OK(Value::DecodePrimitiveValueType(existing_value, &value_type, nullptr, &ttl));
-  const Expiration curr_exp(ht.hybrid_time(), ttl);
+  Value value;
+  Slice value_slice = existing_value;
+  RETURN_NOT_OK(value.DecodeControlFields(&value_slice));
+  const auto value_type = static_cast<ValueType>(
+      value_slice.FirstByteOr(ValueTypeAsChar::kInvalid));
+  const Expiration curr_exp(ht.hybrid_time(), value.ttl());
 
   // If within the merge block.
   //     If the row is a TTL row, delete it.
@@ -266,9 +268,6 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     *new_value = Value::EncodedTombstone();
   } else if (within_merge_block_) {
     *value_changed = true;
-    Value value;
-    Slice value_slice = existing_value;
-    RETURN_NOT_OK(value.DecodeControlFields(&value_slice));
 
     if (expiration.ttl != Value::kMaxTtl) {
       expiration.ttl += MonoDelta::FromMicroseconds(
@@ -282,6 +281,15 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     // We are reusing the existing encoded value without decoding/encoding it.
     value.EncodeAndAppend(new_value, &value_slice);
     within_merge_block_ = false;
+  } else if (value.intent_doc_ht().is_valid() && ht.hybrid_time() < history_cutoff) {
+    // Cleanup intent doc hybrid time when we don't need it anymore.
+    // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
+    value.ClearIntentDocHt();
+
+    new_value->clear();
+
+    // We are reusing the existing encoded value without decoding/encoding it.
+    value.EncodeAndAppend(new_value, &value_slice);
   }
 
   // If we are backfilling an index table, we want to preserve the delete markers in the table

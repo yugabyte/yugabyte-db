@@ -43,7 +43,9 @@ DECLARE_bool(ysql_enable_manual_sys_table_txn_ctl);
 DECLARE_double(respond_write_failed_probability);
 DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
@@ -1002,7 +1004,7 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     PgMiniTest::SetUp();
   }
 
-  void Run(int rows, int block_size, int reads) {
+  void Run(int rows, int block_size, int reads, bool compact = false) {
     auto conn = ASSERT_RESULT(Connect());
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
@@ -1020,6 +1022,13 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
       if (tp) {
         LOG(INFO) << peer->LogPrefix() << "Intents: " << tp->TEST_CountIntents().first;
       }
+    }
+
+    if (compact) {
+      FLAGS_timestamp_history_retention_interval_sec = 0;
+      FLAGS_history_cutoff_propagation_interval_ms = 1;
+      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+      ASSERT_OK(cluster_->CompactTablets());
     }
 
     LOG(INFO) << "Perform read";
@@ -1043,9 +1052,17 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefetchTest) {
   constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
   constexpr int kBlockSize = 1000;
-  constexpr int kReads = 1;
+  constexpr int kReads = 3;
 
   Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigReadWithCompaction), PgMiniBigPrefetchTest) {
+  constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
+  constexpr int kBlockSize = 1000;
+  constexpr int kReads = 3;
+
+  Run(kRows, kBlockSize, kReads, /* compact= */ true);
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest) {
