@@ -36,12 +36,18 @@ set -euo pipefail
 # build issues.
 readonly GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
 readonly SCRIPT_NAME="compiler-wrapper.sh"
+
+# Note: it is very important that every line in the following pattern ends with a backslash, except
+# the last line that only contains a closing double quote. Otherwise, unexpected grep behavior is
+# possible, such as matching arbitrary input.
 readonly COMPILATION_FAILURE_STDERR_PATTERNS="\
 : Stale file handle\
 |file not recognized: file truncated\
 |/usr/bin/env: bash: Input/output error\
 |: No such file or directory\
 |[.]Po[:][0-9]+:.*missing separator[.] *Stop[.]\
+|Compiler does not exist or is not executable at the path\
+|EOFError: EOF read where object expected\
 "
 
 readonly DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC=0.5
@@ -638,6 +644,12 @@ case "$cc_or_cxx" in
          "found: $cc_or_cxx" >&2
     exit 1
 esac
+
+if [[ ! -x $compiler_executable ]]; then
+  log_diagnostics_about_local_thirdparty
+  fatal "[Host $(hostname)] Compiler executable does not exist or is not executable:" \
+        "$compiler_executable"
+fi
 
 # We use ccache if it is available and YB_NO_CCACHE is not set.
 if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; then

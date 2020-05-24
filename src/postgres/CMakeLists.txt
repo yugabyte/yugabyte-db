@@ -33,6 +33,7 @@ set(build_postgres_args
       --ldflags_ex          " ${CMAKE_EXE_LINKER_FLAGS}"
       --openssl_include_dir "${OPENSSL_INCLUDE_DIR}"
       --openssl_lib_dir     "${OPENSSL_LIB_DIR}"
+      --thirdparty-dir      "${YB_THIRDPARTY_DIR}"
     )
 
 # Invoke our PostgreSQL build script in two steps: "configure" and "make". The "configure" step

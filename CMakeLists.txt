@@ -1308,9 +1308,7 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
 endfunction()
 
 # Look in thirdparty prefix paths before anywhere else for system dependencies.
-# TODO: get rid of unnecessary variables.
-set(THIRDPARTY_PREFIX ${YB_PREFIX_COMMON})
-set(CMAKE_PREFIX_PATH ${THIRDPARTY_PREFIX} ${CMAKE_PREFIX_PATH})
+set(CMAKE_PREFIX_PATH ${YB_PREFIX_COMMON} ${CMAKE_PREFIX_PATH})
 
 set(YB_THIRDPARTY_INSTALLED_DEPS_DIR
     "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}")
@@ -1417,12 +1415,7 @@ if (NOT APPLE)
     STATIC_LIB "${UNWIND_STATIC_ARCH_LIB}"
     SHARED_LIB "${UNWIND_SHARED_ARCH_LIB}")
   list(APPEND YB_BASE_LIBS unwind)
-endif()
 
-# libuuid
-# We only need it on macOS and on Linux when using Linuxbrew. When building on Ubuntu 17.10+ without
-# Linuxbrew, libuuid is found in default include/library paths.
-if (USING_LINUXBREW)
   find_package(LibUuid REQUIRED)
   include_directories(SYSTEM ${LIBUUID_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(libuuid
