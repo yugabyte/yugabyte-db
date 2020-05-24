@@ -867,6 +867,18 @@ remove_ccache_dir_from_path() {
   remove_path_entry /usr/lib64/ccache
 }
 
+log_diagnostics_about_local_thirdparty() {
+  if [[ $YB_THIRDPARTY_DIR == /opt/yb-build/* ]]; then
+    log "[Host $(hostname)]" \
+        "See diagnostic information below about subdirectories of /opt/yb-build:"
+    (
+      set -x +e
+      ls -l /opt/yb-build/brew >&2
+      ls -l /opt/yb-build/thirdparty >&2
+    )
+  fi
+}
+
 # Given a compiler type, e.g. gcc or clang, find the actual compiler executable (not a wrapper
 # provided by ccache).  Takes into account YB_GCC_PREFIX and YB_CLANG_PREFIX variables that allow to
 # use custom gcc and clang installations. Sets cc_executable and cxx_executable variables. This is
@@ -976,7 +988,10 @@ find_compiler_by_type() {
       fi
 
       if [[ ! -x $compiler_path ]]; then
-        fatal "Compiler executable does not exist at the path we set $compiler_var_name to" \
+        log_diagnostics_about_local_thirdparty
+        fatal "[Host $(hostname)]" \
+              "Compiler does not exist or is not executable at the path we set" \
+              "$compiler_var_name to" \
               "(possibly applying 'which' expansion): $compiler_path" \
               "(trying to use compiler type '$compiler_type')."
       fi

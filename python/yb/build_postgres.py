@@ -172,6 +172,9 @@ class PostgresBuilder:
         parser.add_argument('--step',
                             choices=BUILD_STEPS,
                             help='Run a specific step of the build process')
+        parser.add_argument('--thirdparty-dir',
+                            required=True,
+                            help='Yugabyte third-party dependencies directory')
 
         self.args = parser.parse_args()
         if not self.args.build_root:
@@ -197,6 +200,8 @@ class PostgresBuilder:
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
         self.should_configure = self.args.step is None or self.args.step == 'configure'
         self.should_make = self.args.step is None or self.args.step == 'make'
+        self.thirdparty_dir = self.args.thirdparty_dir
+        self.original_path = os.getenv('PATH').split(':')
 
     def adjust_cflags_in_makefile(self):
         makefile_global_path = os.path.join(self.pg_build_root, 'src/Makefile.global')
@@ -336,7 +341,13 @@ class PostgresBuilder:
         # Do not try to make rpaths relative during the configure step, as that may slow it down.
         self.set_env_var('YB_DISABLE_RELATIVE_RPATH', '1' if step == 'configure' else '0')
         if self.build_type == 'compilecmds':
-            os.environ['YB_SKIP_LINKING'] = '1'
+            self.set_env_var('YB_SKIP_LINKING', '1')
+
+        # We need to add this directory to PATH so Postgres build could find Bison.
+        thirdparty_installed_common_bin_path = os.path.join(
+            self.thirdparty_dir, 'installed', 'common', 'bin')
+        new_path_str = ':'.join([thirdparty_installed_common_bin_path] + self.original_path)
+        self.set_env_var('PATH', new_path_str)
 
     def sync_postgres_source(self):
         logging.info("Syncing postgres source code")
