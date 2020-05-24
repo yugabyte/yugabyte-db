@@ -185,6 +185,10 @@ class Slice {
     return true;
   }
 
+  char FirstByteOr(char def) {
+    return !empty() ? *begin_ : def;
+  }
+
   MUST_USE_RESULT Status consume_byte(char c);
 
   // Checks that this slice has size() = 'expected_size' and returns
