@@ -29,7 +29,7 @@ jobs:
         include:
           - name: "CentOS 7"
             os: ubuntu-latest
-            docker_image: yugabyteci/yb_build_infra_centos7:v2020-03-28T07_29_17
+            docker_image: yugabyteci/yb_build_infra_centos7:v2020-05-24T22_16_17
 
     if: >
       (github.event_name == 'push' &&
