@@ -122,6 +122,17 @@ static char *get_safe_path(text *location, text *filename);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 
+#ifdef _MSC_VER
+
+#define		DISABLE_UTL_FILE_FOR_MSC \
+	elog(ERROR, "utl_file package is not supported on Microsoft Windows")
+
+#else
+
+#define		DISABLE_UTL_FILE_FOR_MSC
+
+#endif
+
 /*
  * get_descriptor(FILE *file) find any free slot for FILE pointer.
  * If isn't realloc array slots and add 32 new free slots.
@@ -216,12 +227,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	char	   *fullname;
 	int			d;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
-
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -303,11 +309,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 Datum
 utl_file_is_open(PG_FUNCTION_ARGS)
 {
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	if (!PG_ARGISNULL(0))
 	{
@@ -432,11 +434,7 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 	text   *result;
 	bool	iseof;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
@@ -480,11 +478,7 @@ utl_file_get_nextline(PG_FUNCTION_ARGS)
 	text   *result;
 	bool	iseof;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
@@ -585,11 +579,7 @@ do_put(PG_FUNCTION_ARGS)
 Datum
 utl_file_put(PG_FUNCTION_ARGS)
 {
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	do_put(fcinfo);
 	PG_RETURN_BOOL(true);
@@ -617,11 +607,7 @@ utl_file_put_line(PG_FUNCTION_ARGS)
 	FILE   *f;
 	bool	autoflush;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	f = do_put(fcinfo);
 
@@ -641,11 +627,7 @@ utl_file_new_line(PG_FUNCTION_ARGS)
 	FILE   *f;
 	int		lines;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), NULL, NULL);
@@ -683,11 +665,7 @@ utl_file_putf(PG_FUNCTION_ARGS)
 	int		cur_par = 0;
 	size_t	cur_len = 0;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
@@ -753,11 +731,7 @@ utl_file_fflush(PG_FUNCTION_ARGS)
 {
 	FILE *f;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), NULL, NULL);
@@ -785,11 +759,7 @@ utl_file_fclose(PG_FUNCTION_ARGS)
 	int i;
 	int	d = PG_GETARG_INT32(0);
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
@@ -826,11 +796,7 @@ utl_file_fclose_all(PG_FUNCTION_ARGS)
 {
 	int i;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
@@ -1034,11 +1000,7 @@ utl_file_fremove(PG_FUNCTION_ARGS)
 {
 	char	   *fullname;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -1066,11 +1028,7 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	char	   *dstpath;
 	bool		overwrite;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -1116,11 +1074,7 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 	FILE	   *srcfile;
 	FILE	   *dstfile;
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -1226,11 +1180,7 @@ utl_file_fgetattr(PG_FUNCTION_ARGS)
 	Datum		values[3];
 	bool		nulls[3] = { 0 };
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -1283,11 +1233,7 @@ utl_file_tmpdir(PG_FUNCTION_ARGS)
 	canonicalize_path(tmpdir);
 #endif
 
-#ifdef _MSC_VER
-
-	elog(ERROR, "utl_file package is not supported on Microsoft Windows");
-
-#endif
+	DISABLE_UTL_FILE_FOR_MSC;
 
 	PG_RETURN_TEXT_P(cstring_to_text(tmpdir));
 }

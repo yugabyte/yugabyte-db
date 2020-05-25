@@ -10,6 +10,9 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
+#include "orafce.h"
+#include "builtins.h"
+
 PG_FUNCTION_INFO_V1(orafce_replace_empty_strings);
 PG_FUNCTION_INFO_V1(orafce_replace_null_strings);
 
