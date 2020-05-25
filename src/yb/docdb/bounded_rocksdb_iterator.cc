@@ -38,7 +38,16 @@ void BoundedRocksDbIterator::SeekToFirst() {
 
 void BoundedRocksDbIterator::SeekToLast() {
   if (!key_bounds_->upper.empty()) {
+    // TODO(tsplit): this code path is only used for post-split tablets, particularly during
+    // reverse scan for range-partitioned tables.
+    // Need to add unit-test for this scenario when adding unit-tests for tablet splitting of
+    // range-partitioned tables.
     iterator_->Seek(key_bounds_->upper);
+    if (iterator_->Valid()) {
+      iterator_->Prev();
+    } else {
+      iterator_->SeekToLast();
+    }
   } else {
     iterator_->SeekToLast();
   }
