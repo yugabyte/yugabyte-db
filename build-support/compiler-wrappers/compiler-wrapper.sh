@@ -48,7 +48,7 @@ readonly COMPILATION_FAILURE_STDERR_PATTERNS="\
 |[.]Po[:][0-9]+:.*missing separator[.] *Stop[.]\
 |Compiler does not exist or is not executable at the path\
 |EOFError: EOF read where object expected\
-|ValueError: bad marshal data [(]string size out of range[)]\
+|ValueError: bad marshal data\
 "
 
 readonly DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC=0.5
