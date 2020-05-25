@@ -61,6 +61,18 @@
 #define MAX_REL_LEN			255
 #define MAX_BUCKETS			10
 #define MAX_OBJECT_CACHE	100
+#define TEXT_LEN			255
+
+typedef struct GucVariables
+{
+	int		guc_variable;
+	char	guc_name[TEXT_LEN];
+	char	guc_desc[TEXT_LEN];
+	int		guc_default;
+	int		guc_min;
+	int		guc_max;
+	bool 	guc_restart;
+} GucVariable;
 
 /*
  * Type of aggregate keys
@@ -300,37 +312,38 @@ typedef struct pgssJumbleState
 
 typedef enum
 {
-	pgsm_track_NONE,			/* track no statements */
-	pgsm_track_TOP,				/* only top level statements */
-	pgsm_track_ALL				/* all statements, including nested ones */
-} PGSSTrackLevel;
+	PGSM_TRACK_NONE,			/* track no statements */
+	PGSM_TRACK_TOP,				/* only top level statements */
+	PGSM_TRACK_ALL				/* all statements, including nested ones */
+} PGSSTRACKlEVEL;
 
 static const struct config_enum_entry track_options[] =
 {
-	{"none", pgsm_track_NONE, false},
-	{"top", pgsm_track_TOP, false},
-	{"all", pgsm_track_ALL, false},
+	{"none", PGSM_TRACK_NONE, false},
+	{"top", PGSM_TRACK_TOP, false},
+	{"all", PGSM_TRACK_ALL, false},
 	{NULL, 0, false}
 };
 
-#define pgss_enabled() \
-	(pgsm_track == pgsm_track_ALL || \
-	(pgsm_track == pgsm_track_TOP && nested_level == 0))
-
-#endif
+#define PGSS_ENABLED() \
+	(PGSM_TRACK == PGSM_TRACK_ALL || \
+	(PGSM_TRACK == PGSM_TRACK_TOP && nested_level == 0))
 
 /* guc.c */
 void init_guc(void);
 
 /*---- GUC variables ----*/
-int  pgsm_max;				/* max # statements to track */
-int  pgsm_track;             /* tracking level */
-bool pgsm_track_utility;     /* whether to track utility commands */
-int  pgsm_bucket_time;       /* bucket maximum time */
-int  pgsm_max_buckets;       /* total number of buckets */
-int  pgsm_object_cache;      /* total number of objects cache */
-bool pgsm_normalized_query;  /* save normaized query or not */
-int  pgsm_query_max_len;     /* max query length */
-int  pgsm_query_buf_size;    /* maximum size of the query */
-double pgsm_respose_time_lower_bound;
-double pgsm_respose_time_step;
+#define PGSM_MAX conf[0].guc_variable
+#define PGSM_QUERY_MAX_LEN conf[1].guc_variable
+#define PGSM_TRACK conf[2].guc_variable
+#define PGSM_TRACK_UTILITY conf[3].guc_variable
+#define PGSM_NORMALIZED_QUERY conf[4].guc_variable
+#define PGSM_MAX_BUCKETS conf[5].guc_variable
+#define PGSM_BUCKET_TIME conf[6].guc_variable
+#define PGSM_QUERY_BUF_SIZE conf[7].guc_variable
+#define PGSM_OBJECT_CACHE conf[8].guc_variable
+#define PGSM_RESPOSE_TIME_LOWER_BOUND conf[9].guc_variable
+#define PGSM_RESPOSE_TIME_STEP conf[10].guc_variable
+
+GucVariable conf[11];
+#endif

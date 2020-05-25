@@ -10,7 +10,7 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C PARALLEL SAFE;
 
 CREATE FUNCTION pg_stat_monitor(IN showtext boolean,
-    OUT bucket oid,
+    OUT bucket int,
     OUT userid oid,
     OUT dbid oid,
 
@@ -55,6 +55,29 @@ CREATE FUNCTION pg_stat_wait_events(
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_wait_events'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
+
+CREATE FUNCTION pg_stat_monitor_settings(
+    OUT name  text,
+    OUT value INTEGER,
+    OUT default_value INTEGER,
+    OUT description  text,
+    OUT minimum INTEGER,
+    OUT maximum INTEGER,
+    OUT restart INTEGER
+)
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'pg_stat_monitor_settings'
+LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
+
+CREATE VIEW pg_stat_monitor_settings AS SELECT
+    name,
+    value,
+    default_value,
+    description,
+    minimum,
+    maximum,
+    restart
+FROM pg_stat_monitor_settings();
 
 CREATE FUNCTION pg_stat_agg(
   OUT queryid text, 
@@ -181,6 +204,7 @@ ON agg.queryid = ss.queryid AND agg.type = 2 AND id = host;
 GRANT SELECT ON pg_stat_agg_user TO PUBLIC;
 GRANT SELECT ON pg_stat_agg_ip TO PUBLIC;
 GRANT SELECT ON pg_stat_agg_database TO PUBLIC;
+GRANT SELECT ON pg_stat_monitor_settings TO PUBLIC;
 
 -- Don't want this to be available to non-superusers.
 REVOKE ALL ON FUNCTION pg_stat_monitor_reset() FROM PUBLIC;

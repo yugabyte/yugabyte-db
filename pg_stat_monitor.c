@@ -67,6 +67,7 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor_1_2);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_1_3);
 PG_FUNCTION_INFO_V1(pg_stat_monitor);
 PG_FUNCTION_INFO_V1(pg_stat_wait_events);
+PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
 
 /* Extended version function prototypes */
 PG_FUNCTION_INFO_V1(pg_stat_agg);
@@ -231,8 +232,8 @@ pgss_shmem_startup(void)
 	bool		found = false;
 	int32		i;
 
-	elog(DEBUG2, "pg_stat_monitor: %s()", __FUNCTION__);
-	
+	elog(WARNING, "pg_stat_monitor: %s()", __FUNCTION__);
+
 	Assert(IsHashInitialize());
 	
 	if (prev_shmem_startup_hook)
@@ -260,19 +261,19 @@ pgss_shmem_startup(void)
 		ResetSharedState(pgss);
 	}
 
-	query_buf_size_bucket = pgsm_query_buf_size / pgsm_max_buckets;
-	for (i = 0; i < pgsm_max_buckets; i++)
+	query_buf_size_bucket = PGSM_QUERY_BUF_SIZE / PGSM_MAX_BUCKETS;
+	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
 		pgss_qbuf[i] = (unsigned char *) ShmemAlloc(query_buf_size_bucket);
 
 	pgss_hash = CreateHash("pg_stat_monitor: Queries hashtable",
 							sizeof(pgssHashKey),
 							sizeof(pgssEntry),
-							pgsm_max);
+							PGSM_MAX);
 
 	pgss_buckethash = CreateHash("pg_stat_monitor: Bucket hashtable",
 							sizeof(pgssBucketHashKey),
 							sizeof(pgssBucketEntry),
-							pgsm_max_buckets);
+							PGSM_MAX_BUCKETS);
 
 	pgss_waiteventshash = CreateHash("pg_stat_monitor: Wait Event hashtable",
 							sizeof(pgssWaitEventKey),
@@ -282,12 +283,12 @@ pgss_shmem_startup(void)
 	pgss_object_hash = CreateHash("pg_stat_monitor: Object hashtable",
 							sizeof(pgssObjectHashKey),
 							sizeof(pgssObjectEntry),
-							pgsm_object_cache);
+							PGSM_OBJECT_CACHE);
 
 	pgss_agghash = CreateHash("pg_stat_monitor: Aggregate hashtable",
 							sizeof(pgssAggHashKey),
 							sizeof(pgssAggEntry),
-							pgsm_max * 3);
+							PGSM_MAX * 3);
 
 	Assert(!IsHashInitialize());
 
@@ -307,8 +308,8 @@ pgss_shmem_startup(void)
 		}
 	}
 
-	pgssBucketEntries = malloc(sizeof (pgssBucketEntry) * pgsm_max_buckets);
-	for (i = 0; i < pgsm_max_buckets; i++)
+	pgssBucketEntries = malloc(sizeof (pgssBucketEntry) * PGSM_MAX_BUCKETS);
+	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
 	{
 		pgssBucketHashKey	key;
 		pgssBucketEntry		*entry = NULL;
@@ -463,7 +464,7 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * counting of optimizable statements that are directly contained in
 	 * utility statements.
 	 */
-	if (pgss_enabled() && queryDesc->plannedstmt->queryId != UINT64CONST(0))
+	if (PGSS_ENABLED() && queryDesc->plannedstmt->queryId != UINT64CONST(0))
 	{
 		/*
 		 * Set up to track total elapsed time in ExecutorRun.  Make sure the
@@ -538,7 +539,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 	float	utime;
 	float	stime;
 
-	if (queryId != UINT64CONST(0) && queryDesc->totaltime && pgss_enabled())
+	if (queryId != UINT64CONST(0) && queryDesc->totaltime && PGSS_ENABLED())
 	{
 		/*
 		 * Make sure stats accumulation is done.  (Note: it's okay if several
@@ -597,7 +598,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	 *
 	 * Likewise, we don't track execution of DEALLOCATE.
 	 */
-	if (pgsm_track_utility && pgss_enabled() &&
+	if (PGSM_TRACK_UTILITY && PGSS_ENABLED() &&
 		!IsA(parsetree, ExecuteStmt) &&
 		!IsA(parsetree, PrepareStmt) &&
 		!IsA(parsetree, DeallocateStmt))
@@ -889,7 +890,7 @@ pgss_store(const char *query, uint64 queryId,
 			goto exit;
 	}
 
-	if (pgsm_normalized_query)
+	if (PGSM_NORMALIZED_QUERY)
 		store_query(queryId, norm_query ? norm_query : query, query_len);
 	else
 		store_query(queryId, query, query_len);
@@ -949,13 +950,13 @@ pgss_store(const char *query, uint64 queryId,
 
 		for (i = 0; i < MAX_RESPONSE_BUCKET - 1; i++)
 		{
-			if (total_time < pgsm_respose_time_lower_bound + (pgsm_respose_time_step * i))
+			if (total_time < PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * i))
 			{
 				pgssBucketEntries[entry->key.bucket_id]->counters.resp_calls[i]++;
 				break;
 			}
 		}
-		if (total_time > pgsm_respose_time_lower_bound + (pgsm_respose_time_step * MAX_RESPONSE_BUCKET))
+		if (total_time > PGSM_RESPOSE_TIME_LOWER_BOUND + (PGSM_RESPOSE_TIME_STEP * MAX_RESPONSE_BUCKET))
 			pgssBucketEntries[entry->key.bucket_id]->counters.resp_calls[MAX_RESPONSE_BUCKET - 1]++;
 
 		e->counters.calls.rows += rows;
@@ -1006,14 +1007,6 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS         31  /* maximum of above */
 
 Datum
-pg_stat_monitor(PG_FUNCTION_ARGS)
-{
-	/* If it's really API 1.1, we'll figure that out below */
-	pg_stat_monitor_internal(fcinfo, true);
-	return (Datum) 0;
-}
-
-Datum
 pg_stat_wait_events(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo	*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -1025,7 +1018,7 @@ pg_stat_wait_events(PG_FUNCTION_ARGS)
 	pgssWaitEventEntry		*entry;
 	char			*query_txt;
 	char			queryid_txt[64];
-	query_txt = (char*) malloc(pgsm_query_max_len);
+	query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
 
 	/* hash table must exist already */
 	if (!pgss || !pgss_hash || !pgss_object_hash)
@@ -1107,6 +1100,15 @@ pg_stat_wait_events(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
+
+Datum
+pg_stat_monitor(PG_FUNCTION_ARGS)
+{
+	/* If it's really API 1.1, we'll figure that out below */
+	pg_stat_monitor_internal(fcinfo, true);
+	return (Datum) 0;
+}
+
 /* Common code for all versions of pg_stat_statements() */
 static void
 pg_stat_monitor_internal(FunctionCallInfo fcinfo,
@@ -1123,7 +1125,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	pgssEntry		*entry;
 	char			*query_txt;
 	char			queryid_txt[64];
-	query_txt = (char*) malloc(pgsm_query_max_len);
+	query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
 
 	/* Superusers or members of pg_read_all_stats members are allowed */
 	is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
@@ -1282,7 +1284,7 @@ pgss_memsize(void)
 	Size	size;
 
 	size = MAXALIGN(sizeof(pgssSharedState));
-	size = add_size(size, hash_estimate_size(pgsm_max, sizeof(pgssEntry)));
+	size = add_size(size, hash_estimate_size(PGSM_MAX, sizeof(pgssEntry)));
 
 	return size;
 }
@@ -1311,13 +1313,13 @@ entry_alloc(pgssSharedState *pgss, pgssHashKey *key, Size query_offset, int quer
 	pgssEntry	*entry = NULL;
 	bool		found = false;
 
-	if (pgss->bucket_entry[pgss->current_wbucket] >= (pgsm_max / pgsm_max_buckets))
+	if (pgss->bucket_entry[pgss->current_wbucket] >= (PGSM_MAX / PGSM_MAX_BUCKETS))
 	{
 		pgss->bucket_overflow[pgss->current_wbucket]++;
 		return NULL;
 	}
 
-	if (hash_get_num_entries(pgss_hash)  >= pgsm_max)
+	if (hash_get_num_entries(pgss_hash)  >= PGSM_MAX)
 		return NULL;
 
 	/* Find or create an entry with desired hash code */
@@ -1349,10 +1351,10 @@ get_next_wbucket(pgssSharedState *pgss)
 	gettimeofday(&tv,NULL);
 	current_usec = tv.tv_sec;
 
-	if ((current_usec - pgss->prev_bucket_usec) > pgsm_bucket_time)
+	if ((current_usec - pgss->prev_bucket_usec) > PGSM_BUCKET_TIME)
 	{
 		bucket_id = pgss->current_wbucket + 1;
-		if (bucket_id == pgsm_max_buckets)
+		if (bucket_id == PGSM_MAX_BUCKETS)
 			bucket_id = 0;
 
 		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
@@ -2578,8 +2580,8 @@ store_query(uint64 queryid, const char *query, uint64 query_len)
     int 	next;
 	int 	offset = 0;
 
-	if (query_len > pgsm_query_max_len)
-		query_len = pgsm_query_max_len;
+	if (query_len > PGSM_QUERY_MAX_LEN)
+		query_len = PGSM_QUERY_MAX_LEN;
 
 	/* Already have query in the shared buffer, there
 	 * is no need to add that again.
@@ -2719,3 +2721,57 @@ get_query_id(pgssJumbleState *jstate, Query *query)
 	return queryid;
 }
 
+Datum
+pg_stat_monitor_settings(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo		*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc			tupdesc;
+	Tuplestorestate		*tupstore;
+	MemoryContext		per_query_ctx;
+	MemoryContext		oldcontext;
+	int					i;
+
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("pg_stat_monitor: set-valued function called in context that cannot accept a set")));
+
+	/* Switch into long-lived context to construct returned data structures */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "pg_stat_monitor: return type must be a row type");
+
+	if (tupdesc->natts != 7)
+		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	for(i = 0; i < 11; i++)
+	{
+		Datum		values[7];
+		bool		nulls[7];
+		int			j = 0;
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		values[j++] = CStringGetTextDatum(conf[i].guc_name);
+		values[j++] = Int64GetDatumFast(conf[i].guc_variable);
+		values[j++] = Int64GetDatumFast(conf[i].guc_default);
+		values[j++] = CStringGetTextDatum(conf[i].guc_desc);
+		values[j++] = Int64GetDatumFast(conf[i].guc_min);
+		values[j++] = Int64GetDatumFast(conf[i].guc_max);
+		values[j++] = Int64GetDatumFast(conf[i].guc_restart);
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+	return (Datum)0;
+}
