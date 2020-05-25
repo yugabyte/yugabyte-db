@@ -20,7 +20,7 @@ set -euo pipefail
 . "${BASH_SOURCE%/*}"/../build-support/common-build-env.sh
 
 cd "$YB_SRC_ROOT"
-for submodule_dir in submodules/*; do
+for submodule_dir in submodules/* thirdparty; do
   submodule_commit_in_master=$(
     git ls-tree HEAD "$submodule_dir" | awk '{print $3}'
   )
