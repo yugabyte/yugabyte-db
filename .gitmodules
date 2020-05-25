@@ -4,3 +4,6 @@
 [submodule "submodules/yugabyte-bash-common"]
 	path = submodules/yugabyte-bash-common
 	url = https://github.com/yugabyte/yugabyte-bash-common.git
+[submodule "thirdparty"]
+	path = thirdparty
+	url = https://github.com/yugabyte/yugabyte-db-thirdparty.git

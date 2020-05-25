@@ -32,7 +32,7 @@ fi
 readonly YB_COMMON_BUILD_ENV_SOURCED=1
 
 # -------------------------------------------------------------------------------------------------
-# Load yugabyte-bash-common
+# Initialize submodules and load yugabyte-bash-common
 # -------------------------------------------------------------------------------------------------
 
 set_yb_src_root() {
@@ -54,7 +54,13 @@ if [[ $YB_SRC_ROOT == */ ]]; then
 fi
 
 YB_BASH_COMMON_DIR=$YB_SRC_ROOT/submodules/yugabyte-bash-common
-if [[ ! -d $YB_BASH_COMMON_DIR || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ]] &&
+
+# Initialize submodules. Only do this when the source directory is a git directory.
+#
+# The "thirdparty" subdirectory of the source directory is a submodule with a special location
+# (outside of the "submodules" subdirectory).
+if [[ ! -d $YB_BASH_COMMON_DIR     || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ||
+      ! -d $YB_SRC_ROOT/thirdparty || -z "$( ls -A "$YB_SRC_ROOT/thirdparty" )" ]] &&
    [[ -d $YB_SRC_ROOT/.git ]]; then
   ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
 fi
