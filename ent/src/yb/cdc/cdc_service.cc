@@ -311,7 +311,6 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   s = tablet_manager_->GetTabletPeer(req->tablet_id(), &tablet_peer);
-  auto original_leader_term = tablet_peer->LeaderTerm();
 
   // If we we can't serve this tablet...
   if (s.IsNotFound() || tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
@@ -335,6 +334,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     return;
   }
 
+  auto original_leader_term = tablet_peer->LeaderTerm();
   auto session = async_client_init_->client()->NewSession();
   OpId op_id;
 
