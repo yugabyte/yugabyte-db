@@ -353,13 +353,9 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
           << ": PB=" << snapshot->mutable_metadata()->mutable_dirty()->pb.DebugString();
 
   // Write the snapshot data descriptor to the system catalog (in "creating" state).
-  Status s = sys_catalog_->AddItem(snapshot.get(), leader_ready_term_);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute("An error occurred while inserting to sys-tablets: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s;
-    return CheckIfNoLongerLeader(s);
-  }
+  RETURN_NOT_OK(CheckLeaderStatus(
+      sys_catalog_->AddItem(snapshot.get(), leader_ready_term_),
+      "inserting snapshot into sys-catalog"));
   TRACE("Wrote snapshot to system catalog");
 
   // Commit in memory snapshot data descriptor.
@@ -527,13 +523,10 @@ Status CatalogManager::RestoreNonTransactionAwareSnapshot(const string& snapshot
   SetTabletSnapshotsState(SysSnapshotEntryPB::RESTORING, &snapshot_pb);
 
   // Update sys-catalog with the updated snapshot state.
-  Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
-  if (!s.ok()) {
-    // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend("An error occurred while updating sys tables");
-    LOG(WARNING) << s;
-    return CheckIfNoLongerLeader(s);
-  }
+  // The mutation will be aborted when 'l' exits the scope on early return.
+  RETURN_NOT_OK(CheckLeaderStatus(
+      sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_),
+      "updating snapshot in sys-catalog"));
 
   // CataloManager lock 'lock_' is still locked here.
   current_snapshot_id_ = snapshot_id;
@@ -653,14 +646,10 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snaps
   SetTabletSnapshotsState(SysSnapshotEntryPB::DELETING, &snapshot_pb);
 
   // Update sys-catalog with the updated snapshot state.
-  Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
-  if (!s.ok()) {
-    // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s;
-    return s;
-  }
+  // The mutation will be aborted when 'l' exits the scope on early return.
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_),
+      "updating snapshot in sys-catalog"));
 
   // Send DeleteSnapshot requests to all TServers (one tablet - one request).
   for (const SysRowEntry& entry : snapshot_pb.entries()) {
@@ -873,7 +862,9 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
   RETURN_NOT_OK(encryption_manager_->ChangeEncryptionInfo(req, encryption_info));
 
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
-  RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_),
+      "updating cluster config in sys-catalog"));
   l->Commit();
 
   std::lock_guard<simple_spinlock> lock(should_send_universe_key_registry_mutex_);
@@ -1245,8 +1236,7 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
 
   const Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
   if (!s.ok()) {
-    LOG(WARNING) << "An error occurred while updating sys-tables: " << s;
-    return;
+    return (void)CheckStatus(s, "updating snapshot in sys-catalog");
   }
 
   l->Commit();
@@ -1322,8 +1312,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
 
   const Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
   if (!s.ok()) {
-    LOG(WARNING) << "An error occurred while updating sys-tables: " << s;
-    return;
+    return (void)CheckStatus(s, "updating snapshot in sys-catalog");
   }
 
   l->Commit();
@@ -1371,13 +1360,12 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     }
   }
 
-  Status s;
   if (num_tablets_complete == tablet_snapshots->size()) {
     // Delete the snapshot.
     l->mutable_data()->pb.set_state(SysSnapshotEntryPB::DELETED);
     LOG(INFO) << "Deleted snapshot " << snapshot->id();
 
-    s = sys_catalog_->DeleteItem(snapshot.get(), leader_ready_term_);
+    const Status s = sys_catalog_->DeleteItem(snapshot.get(), leader_ready_term_);
 
     std::lock_guard<LockType> manager_l(lock_);
     TRACE("Acquired catalog manager lock");
@@ -1391,16 +1379,18 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     if (non_txn_snapshot_ids_map_.erase(snapshot_id) < 1) {
       LOG(WARNING) << "Could not remove snapshot " << snapshot_id << " from map";
     }
+
+    if (!s.ok()) {
+      return (void)CheckStatus(s, "deleting snapshot from sys-catalog");
+    }
   } else if (error) {
     l->mutable_data()->pb.set_state(SysSnapshotEntryPB::FAILED);
     LOG(WARNING) << "Failed snapshot " << snapshot->id() << " deletion on tablet " << tablet->id();
 
-    s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
-  }
-
-  if (!s.ok()) {
-    LOG(WARNING) << "An error occurred while updating sys-tables: " << s;
-    return;
+    const Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
+    if (!s.ok()) {
+      return (void)CheckStatus(s, "updating snapshot in sys-catalog");
+    }
   }
 
   l->Commit();
@@ -1677,17 +1667,15 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
   scoped_refptr<TableInfo> table;
   RETURN_NOT_OK(FindTable(table_identifier, &table));
   if (table == nullptr) {
-    const Status s = STATUS(NotFound, "Table not found", req->table_id(),
-                            MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(NotFound, "Table not found", req->table_id(),
+                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
   {
     auto l = table->LockForRead();
     if (l->data().started_deleting()) {
-      const Status s = STATUS(NotFound, "Table does not exist", req->table_id(),
-                              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(NotFound, "Table does not exist", req->table_id(),
+                    MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
   }
 
@@ -1697,11 +1685,9 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
   AlterTableResponsePB alter_table_resp;
   Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc);
   if (!s.ok()) {
-    const Status s = STATUS(InternalError,
-                            Format("Unable to change the WAL retention time for table $0",
-                                req->table_id()),
-                            MasterError(MasterErrorPB::INTERNAL_ERROR));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InternalError,
+                  "Unable to change the WAL retention time for table", req->table_id(),
+                  MasterError(MasterErrorPB::INTERNAL_ERROR));
   }
 
   scoped_refptr<CDCStreamInfo> stream;
@@ -1726,13 +1712,9 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
   TRACE("Inserted new CDC stream into CatalogManager maps");
 
   // Update the on-disk system catalog.
-  s = sys_catalog_->AddItem(stream.get(), leader_ready_term_);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute(
-        "An error occurred while inserting CDC stream into sys-catalog: $0", s.ToString()));
-    LOG(WARNING) << s;
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
-  }
+  RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
+      sys_catalog_->AddItem(stream.get(), leader_ready_term_),
+      "inserting CDC stream into sys-catalog", resp));
   TRACE("Wrote CDC stream to sys-catalog");
 
   // Commit the in-memory state.
@@ -1752,9 +1734,8 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
   RETURN_NOT_OK(CheckOnline());
 
   if (req->stream_id_size() < 1) {
-    const Status s = STATUS(InvalidArgument, "No CDC Stream ID given", req->DebugString(),
-                            MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "No CDC Stream ID given", req->ShortDebugString(),
+                  MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
@@ -1764,9 +1745,8 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
       auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
 
       if (stream == nullptr || stream->LockForRead()->data().is_deleting()) {
-        const Status s = STATUS(NotFound, "CDC stream does not exist", req->DebugString(),
-                                MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-        return SetupError(resp->mutable_error(), s);
+        return STATUS(NotFound, "CDC stream does not exist", req->ShortDebugString(),
+                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
       streams.push_back(stream);
     }
@@ -1799,14 +1779,10 @@ Status CatalogManager::MarkCDCStreamsAsDeleting(
     locks.push_back(std::move(l));
     streams_to_mark.push_back(stream.get());
   }
-  Status s = sys_catalog_->UpdateItems(streams_to_mark, leader_ready_term_);
-  if (!s.ok()) {
-    // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s;
-    return s;
-  }
+  // The mutation will be aborted when 'l' exits the scope on early return.
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->UpdateItems(streams_to_mark, leader_ready_term_),
+      "updating CDC streams in sys-catalog"));
   LOG(INFO) << "Successfully marked streams " << JoinStreamsCSVLine(streams_to_mark)
             << " as DELETING in sys catalog";
   for (auto& lock : locks) {
@@ -1939,14 +1915,10 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     }
   }
 
-  s = sys_catalog_->DeleteItems(streams_to_delete, leader_ready_term_);
-  if (!s.ok()) {
-    // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s;
-    return s;
-  }
+  // The mutation will be aborted when 'l' exits the scope on early return.
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->DeleteItems(streams_to_delete, leader_ready_term_),
+      "deleting CDC streams from sys-catalog"));
   LOG(INFO) << "Successfully deleted streams " << JoinStreamsCSVLine(streams_to_delete)
             << " from sys catalog";
 
@@ -1978,9 +1950,8 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
 
 
   if (!req->has_stream_id()) {
-    const Status s = STATUS(InvalidArgument, "CDC Stream ID must be provided", req->DebugString(),
-                            MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "CDC Stream ID must be provided", req->ShortDebugString(),
+                  MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   scoped_refptr<CDCStreamInfo> stream;
@@ -1990,9 +1961,8 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
   }
 
   if (stream == nullptr || stream->LockForRead()->data().is_deleting()) {
-    const Status s = STATUS(NotFound, "Could not find CDC stream", req->DebugString(),
-                            MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(NotFound, "Could not find CDC stream", req->ShortDebugString(),
+                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
   auto stream_lock = stream->LockForRead();
@@ -2020,9 +1990,8 @@ Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
 
     RETURN_NOT_OK(FindTable(table_identifier, &table));
     if (table == nullptr) {
-      const Status s = STATUS(NotFound, "Table not found", req->table_id(),
-                              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(NotFound, "Table not found", req->table_id(),
+                    MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
   }
 
@@ -2069,23 +2038,19 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   RETURN_NOT_OK(CheckOnline());
 
   if (!req->has_producer_id()) {
-    const Status s = STATUS(InvalidArgument, "Producer universe ID must be provided",
-                            req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Producer universe ID must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   if (req->producer_master_addresses_size() <= 0) {
-    const Status s = STATUS(InvalidArgument, "Producer master address must be provided",
-                            req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Producer master address must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   if (req->producer_bootstrap_ids().size() > 0 &&
       req->producer_bootstrap_ids().size() != req->producer_table_ids().size()) {
-    const Status s = STATUS(InvalidArgument, "Number of bootstrap ids must be equal to number of "
-                            "tables", req->DebugString(),
-                            MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Number of bootstrap ids must be equal to number of tables",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;
@@ -2099,10 +2064,9 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   // We assume that the list of table ids is unique.
   if (req->producer_bootstrap_ids().size() > 0 &&
       req->producer_table_ids().size() != table_id_to_bootstrap_id.size()) {
-    const Status s = STATUS(InvalidArgument, "When providing bootstrap ids, "
-                            "the list of tables must be unique", req->DebugString(),
-                            MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "When providing bootstrap ids, "
+                  "the list of tables must be unique", req->ShortDebugString(),
+                  MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   scoped_refptr<UniverseReplicationInfo> ri;
@@ -2111,9 +2075,8 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
     std::shared_lock<LockType> l(lock_);
 
     if (FindPtrOrNull(universe_replication_map_, req->producer_id()) != nullptr) {
-      const Status s = STATUS(InvalidArgument, "Producer already present", req->producer_id(),
-                              MasterError(MasterErrorPB::INVALID_REQUEST));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(InvalidArgument, "Producer already present", req->producer_id(),
+                    MasterError(MasterErrorPB::INVALID_REQUEST));
     }
   }
 
@@ -2126,14 +2089,9 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   metadata->mutable_tables()->CopyFrom(req->producer_table_ids());
   metadata->set_state(SysUniverseReplicationEntryPB::INITIALIZING);
 
-  Status s = sys_catalog_->AddItem(ri.get(), leader_ready_term_);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute(
-        "An error occurred while inserting universe replication info into sys-catalog: $0",
-        s.ToString()));
-    LOG(WARNING) << s;
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
-  }
+  RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
+      sys_catalog_->AddItem(ri.get(), leader_ready_term_),
+      "inserting universe replication info into sys-catalog", resp));
   TRACE("Wrote universe replication info to sys-catalog");
 
   // Commit the in-memory state now that it's added to the persistent catalog.
@@ -2149,7 +2107,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   auto result = ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
   if (!result.ok()) {
     MarkUniverseReplicationFailed(ri);
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, result.status());
+    return result.status().CloneAndAddErrorCode(MasterError(MasterErrorPB::INVALID_REQUEST));
   }
   std::shared_ptr<CDCRpcTasks> cdc_rpc = *result;
 
@@ -2158,7 +2116,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
     auto table_info = std::make_shared<client::YBTableInfo>();
 
     // SETUP CONTINUES after this async call.
-    s = cdc_rpc->client()->GetTableSchemaById(
+    const Status s = cdc_rpc->client()->GetTableSchemaById(
         req->producer_table_ids(i), table_info,
         Bind(&enterprise::CatalogManager::GetTableSchemaCallback, Unretained(this),
              ri->id(), table_info, table_id_to_bootstrap_id));
@@ -2182,13 +2140,9 @@ void CatalogManager::MarkUniverseReplicationFailed(
   }
 
   // Update sys_catalog.
-  Status status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
-  if (!status.ok()) {
-    status = status.CloneAndPrepend(
-        Substitute("An error occurred while updating sys-catalog universe replication entry: $0",
-                   status.ToString()));
-    LOG(WARNING) << status;
-    return;
+  const Status s = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
+  if (!s.ok()) {
+    return (void)CheckStatus(s, "updating universe replication info in sys-catalog");
   }
   l->Commit();
 }
@@ -2280,13 +2234,9 @@ void CatalogManager::GetTableSchemaCallback(
     LOG(ERROR) << "Error while setting up client for producer " << universe->id();
     l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
 
-    Status status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
-    if (!status.ok()) {
-      status = status.CloneAndPrepend(
-          Substitute("An error occurred while updating sys-catalog universe replication entry: $0",
-                     status.ToString()));
-      LOG(WARNING) << status;
-      return;
+    const Status s = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
+    if (!s.ok()) {
+      return (void)CheckStatus(s, "updating universe replication info in sys-catalog");
     }
     l->Commit();
     return;
@@ -2315,11 +2265,7 @@ void CatalogManager::GetTableSchemaCallback(
   // Update sys_catalog.
   status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
   if (!status.ok()) {
-    status = status.CloneAndPrepend(
-        Substitute("An error occurred while updating sys-catalog universe replication entry: $0",
-                   status.ToString()));
-    LOG(WARNING) << status;
-    return;
+    return (void)CheckStatus(status, "updating universe replication info in sys-catalog");
   }
   l->Commit();
 
@@ -2365,11 +2311,10 @@ void CatalogManager::GetCDCStreamCallback(
     AddCDCStreamToUniverseAndInitConsumer(universe_id, table, s);
   } else {
     if (*table_id != table) {
-      std::string error_msg = Substitute(
-          "Invalid bootstrap id for table $0. Bootstrap id $1 belongs to table $2",
+      const Status invalid_bootstrap_id_status = STATUS_FORMAT(
+          InvalidArgument, "Invalid bootstrap id for table $0. Bootstrap id $1 belongs to table $2",
           table, bootstrap_id, *table_id);
-      LOG(ERROR) << error_msg;
-      auto invalid_bootstrap_id_status = STATUS(InvalidArgument, error_msg);
+      LOG(ERROR) << invalid_bootstrap_id_status;
       AddCDCStreamToUniverseAndInitConsumer(universe_id, table, invalid_bootstrap_id_status);
     }
     // todo check options
@@ -2447,11 +2392,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     // Update sys_catalog with new producer table id info.
     Status status = sys_catalog_->UpdateItem(universe.get(), leader_ready_term_);
     if (!status.ok()) {
-      status = status.CloneAndPrepend(
-          Substitute("An error occurred while updating sys-catalog universe replication entry: $0",
-              status.ToString()));
-      LOG(WARNING) << status;
-      return;
+      return (void)CheckStatus(status, "updating universe replication info in sys-catalog");
     }
     l->Commit();
   }
@@ -2509,7 +2450,9 @@ Status CatalogManager::InitCDCConsumer(
   // TServers will use the ClusterConfig to create CDC Consumers for applicable local tablets.
   (*producer_map)[producer_universe_uuid] = std::move(producer_entry);
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
-  RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_),
+      "updating cluster config in sys-catalog"));
   l->Commit();
 
   return Status::OK();
@@ -2552,13 +2495,9 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       LOG(WARNING) << "Could not find both universes in Cluster Config: " << universe->id();
     }
     cl->mutable_data()->pb.set_version(cl->mutable_data()->pb.version() + 1);
-    auto status = sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_);
-    if (!status.ok()) {
-      status = status.CloneAndPrepend(
-          Substitute("An error occurred while merging sys-catalog cluster config: $0",
-              status.ToString()));
-      LOG(WARNING) << status;
-      return;
+    const Status s = sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_);
+    if (!s.ok()) {
+      return (void)CheckStatus(s, "updating cluster config in sys-catalog");
     }
     cl->Commit();
   }
@@ -2579,11 +2518,9 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
     alter_lock->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
     vector<UniverseReplicationInfo*> universes{original_universe.get(), universe.get()};
-    auto status = sys_catalog_->UpdateItems(universes, leader_ready_term_);
-    if (!status.ok()) {
-      LOG(WARNING) << status.CloneAndPrepend(
-          "An error occurred while merging sys-catalog universe replication entry:").ToString();
-      return;
+    const Status s = sys_catalog_->UpdateItems(universes, leader_ready_term_);
+    if (!s.ok()) {
+      return (void)CheckStatus(s, "updating universe replication entries in sys-catalog");
     }
     alter_lock->Commit();
     original_lock->Commit();
@@ -2602,9 +2539,8 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
   RETURN_NOT_OK(CheckOnline());
 
   if (!req->has_producer_id()) {
-    const Status s = STATUS(InvalidArgument, "Producer universe ID required", req->DebugString(),
-                            MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Producer universe ID required", req->ShortDebugString(),
+                  MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   scoped_refptr<UniverseReplicationInfo> ri;
@@ -2614,9 +2550,8 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
 
     ri = FindPtrOrNull(universe_replication_map_, req->producer_id());
     if (ri == nullptr) {
-      const Status s = STATUS(NotFound, "Universe replication info does not exist",
-                              req->DebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(NotFound, "Universe replication info does not exist",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
   }
 
@@ -2632,7 +2567,9 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
     if (it != producer_map->end()) {
       producer_map->erase(it);
       cl->mutable_data()->pb.set_version(cl->mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+      RETURN_NOT_OK(CheckStatus(
+          sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_),
+          "updating cluster config in sys-catalog"));
       cl->Commit();
     }
   }
@@ -2693,14 +2630,12 @@ Status CatalogManager::SetUniverseReplicationEnabled(
   RETURN_NOT_OK(CheckOnline());
 
   if (!req->has_producer_id()) {
-    const Status s = STATUS(InvalidArgument, "Producer universe ID must be provided",
-                            req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Producer universe ID must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
   if (!req->has_is_enabled()) {
-    const Status s = STATUS(InvalidArgument, "Must explicitly set whether to enable",
-                            req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Must explicitly set whether to enable",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   scoped_refptr<UniverseReplicationInfo> universe;
@@ -2709,9 +2644,8 @@ Status CatalogManager::SetUniverseReplicationEnabled(
 
     universe = FindPtrOrNull(universe_replication_map_, req->producer_id());
     if (universe == nullptr) {
-      const Status s = STATUS(NotFound, "Could not find CDC producer universe", req->DebugString(),
-                              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(NotFound, "Could not find CDC producer universe",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
   }
 
@@ -2720,20 +2654,21 @@ Status CatalogManager::SetUniverseReplicationEnabled(
     auto l = universe->LockForWrite();
     if (l->data().pb.state() != SysUniverseReplicationEntryPB::DISABLED &&
         l->data().pb.state() != SysUniverseReplicationEntryPB::ACTIVE) {
-      const Status s = STATUS(
+      return STATUS(
           InvalidArgument,
           Format("Universe Replication in invalid state: $0.  Retry or Delete.",
               SysUniverseReplicationEntryPB::State_Name(l->data().pb.state())),
-          req->DebugString(),
+          req->ShortDebugString(),
           MasterError(MasterErrorPB::INVALID_REQUEST));
-      return SetupError(resp->mutable_error(), s);
     }
     if (req->is_enabled()) {
         l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
     } else { // DISABLE.
         l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DISABLED);
     }
-    RETURN_NOT_OK(sys_catalog_->UpdateItem(universe.get(), leader_ready_term_));
+    RETURN_NOT_OK(CheckStatus(
+        sys_catalog_->UpdateItem(universe.get(), leader_ready_term_),
+        "updating universe replication info in sys-catalog"));
     l->Commit();
   }
 
@@ -2744,13 +2679,14 @@ Status CatalogManager::SetUniverseReplicationEnabled(
     auto it = producer_map->find(req->producer_id());
     if (it == producer_map->end()) {
       LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << req->producer_id();
-      const Status s = STATUS(NotFound, "Could not find CDC producer universe", req->DebugString(),
-                              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(NotFound, "Could not find CDC producer universe",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
     (*it).second.set_disable_stream(!req->is_enabled());
     l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
-    RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+    RETURN_NOT_OK(CheckStatus(
+        sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_),
+        "updating cluster config in sys-catalog"));
     l->Commit();
   }
 
@@ -2767,9 +2703,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
   RETURN_NOT_OK(CheckOnline());
 
   if (!req->has_producer_id()) {
-    const Status s = STATUS(InvalidArgument, "Producer universe ID must be provided",
-                            req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Producer universe ID must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   // Verify that there is an existing Universe config
@@ -2779,9 +2714,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
 
     original_ri = FindPtrOrNull(universe_replication_map_, req->producer_id());
     if (original_ri == nullptr) {
-      const Status s = STATUS(NotFound, "Could not find CDC producer universe", req->DebugString(),
-                              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(NotFound, "Could not find CDC producer universe",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
   }
 
@@ -2790,10 +2724,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
                      (req->producer_table_ids_to_remove_size() > 0 ? 1 : 0) +
                      (req->producer_table_ids_to_add_size() > 0 ? 1 : 0);
   if (config_count != 1) {
-    const Status s = STATUS(InvalidArgument, "Only 1 Alter operation per request currently "
-                            "supported", req->DebugString(),
-                            MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Only 1 Alter operation per request currently supported",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   // Config logic...
@@ -2806,7 +2738,9 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       auto l = original_ri->LockForWrite();
       l->mutable_data()->pb.mutable_producer_master_addresses()->CopyFrom(
           req->producer_master_addresses());
-      RETURN_NOT_OK(sys_catalog_->UpdateItem(original_ri.get(), leader_ready_term_));
+      RETURN_NOT_OK(CheckStatus(
+          sys_catalog_->UpdateItem(original_ri.get(), leader_ready_term_),
+          "updating universe replication info in sys-catalog"));
       l->Commit();
     }
     // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
@@ -2816,20 +2750,21 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       auto it = producer_map->find(req->producer_id());
       if (it == producer_map->end()) {
         LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << req->producer_id();
-        const Status s = STATUS(NotFound, "Could not find CDC producer universe",
-                                req->DebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-        return SetupError(resp->mutable_error(), s);
+        return STATUS(NotFound, "Could not find CDC producer universe",
+                      req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
       (*it).second.mutable_master_addrs()->CopyFrom(req->producer_master_addresses());
       l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+      RETURN_NOT_OK(CheckStatus(
+          sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_),
+          "updating cluster config in sys-catalog"));
       l->Commit();
     }
     // 2. Memory Update: Change cdc_rpc_tasks (Master cache)
     {
       auto result = original_ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
       if (!result.ok()) {
-        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
+        return result.status().CloneAndAddErrorCode(MasterError(MasterErrorPB::INTERNAL_ERROR));
       }
     }
   } else if (req->producer_table_ids_to_remove_size() > 0) {
@@ -2864,23 +2799,23 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         if (streams_to_remove.size() == stream_map->size()) {
           // If this ends with an empty Map, disallow and force user to delete.
           LOG(WARNING) << "CDC 'remove_table' tried to remove all tables." << req->producer_id();
-          const Status s = STATUS(
+          return STATUS(
               InvalidArgument,
               "Cannot remove all tables with alter. Use delete_universe_replication instead.",
-              req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-          return SetupError(resp->mutable_error(), s);
+              req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
         } else if (streams_to_remove.empty()) {
           // If this doesn't delete anything, notify the user.
-          const Status s = STATUS(InvalidArgument, "Removal matched no entries.",
-                                  req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-          return SetupError(resp->mutable_error(), s);
+          return STATUS(InvalidArgument, "Removal matched no entries.",
+                        req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
         }
         for (auto& key : streams_to_remove) {
           stream_map->erase(stream_map->find(key));
         }
       }
       cl->mutable_data()->pb.set_version(cl->mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+      RETURN_NOT_OK(CheckStatus(
+          sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_),
+          "updating cluster config in sys-catalog"));
       cl->Commit();
     }
     // 2. Remove from Master Configs on Producer and Consumer.
@@ -2914,7 +2849,9 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
           }
         }
       }
-      RETURN_NOT_OK(sys_catalog_->UpdateItem(original_ri.get(), leader_ready_term_));
+      RETURN_NOT_OK(CheckStatus(
+          sys_catalog_->UpdateItem(original_ri.get(), leader_ready_term_),
+          "updating universe replication info in sys-catalog"));
       l->Commit();
     }
   } else if (req->producer_table_ids_to_add_size() > 0) {
@@ -2941,9 +2878,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
             return s;
           }
         } else {
-          const Status s = STATUS(InvalidArgument, "Alter for CDC producer currently running",
-                                  req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-          return SetupError(resp->mutable_error(), s);
+          return STATUS(InvalidArgument, "Alter for CDC producer currently running",
+                        req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
         }
       }
     }
@@ -2960,10 +2896,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       }
     }
     if (new_tables.empty()) {
-      const Status s = STATUS(InvalidArgument, "CDC producer already contains all requested "
-                              "tables", req->DebugString(),
-                              MasterError(MasterErrorPB::INVALID_REQUEST));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(InvalidArgument, "CDC producer already contains all requested tables",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
     // 1. create an ALTER table request that mirrors the original 'setup_replication'.
@@ -2995,11 +2929,9 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
             << ": " << req->DebugString();
   RETURN_NOT_OK(CheckOnline());
 
-
   if (!req->has_producer_id()) {
-    const Status s = STATUS(InvalidArgument, "Producer universe ID must be provided",
-                            req->DebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    return SetupError(resp->mutable_error(), s);
+    return STATUS(InvalidArgument, "Producer universe ID must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   scoped_refptr<UniverseReplicationInfo> universe;
@@ -3008,9 +2940,8 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
 
     universe = FindPtrOrNull(universe_replication_map_, req->producer_id());
     if (universe == nullptr) {
-      const Status s = STATUS(NotFound, "Could not find CDC producer universe", req->DebugString(),
-                              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      return SetupError(resp->mutable_error(), s);
+      return STATUS(NotFound, "Could not find CDC producer universe",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
   }
 
