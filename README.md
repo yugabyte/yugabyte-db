@@ -84,12 +84,15 @@ You need to set up at least two parameters at postgresql.conf:
 
 ```
 wal_level = logical
+#
+# these parameters only need to set in versions 9.4, 9.5 and 9.6
+# default values are ok in version 10 or later
+#
 max_replication_slots = 10
+max_wal_senders = 10
 ```
 
 After changing these parameters, a restart is needed.
-
-By default, PostgreSQL 10 or later doesn't need to adjust parameters.
 
 Parameters
 ----------
