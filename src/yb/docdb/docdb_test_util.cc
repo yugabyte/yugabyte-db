@@ -101,6 +101,10 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
+  HybridTime MinRunningHybridTime() const override {
+    return HybridTime::kMax;
+  }
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";

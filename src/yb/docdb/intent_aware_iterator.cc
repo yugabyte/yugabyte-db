@@ -202,7 +202,7 @@ std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult&
 // For current transaction returns intent record hybrid time as value_time.
 // Consumes intent from value_slice leaving only value itself.
 Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
-    TransactionOperationContext txn_op_context, rocksdb::Iterator* intent_iter,
+    const TransactionOperationContext& txn_op_context, rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache) {
   DecodeStrongWriteIntentResult result;
   auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(intent_iter->key()));
@@ -278,7 +278,8 @@ IntentAwareIterator::IntentAwareIterator(
   VLOG(4) << "IntentAwareIterator, read_time: " << read_time
           << ", txn_op_context: " << txn_op_context_;
 
-  if (txn_op_context.is_initialized()) {
+  if (txn_op_context &&
+      txn_op_context->txn_status_manager.MinRunningHybridTime() != HybridTime::kMax) {
     intent_iter_ = docdb::CreateRocksDBIterator(doc_db.intents,
                                                 doc_db.key_bounds,
                                                 docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,

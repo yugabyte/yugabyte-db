@@ -210,7 +210,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   TransactionParticipantContext* context() const;
 
-  HybridTime MinRunningHybridTime() const;
+  HybridTime MinRunningHybridTime() const override;
 
   // When minimal start hybrid time of running transaction will be at least `ht` applier
   // method `MinRunningHybridTimeSatisfied` will be invoked.
