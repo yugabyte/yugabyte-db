@@ -558,6 +558,17 @@ CREATE OPERATOR >= (
 );
 
 --
+-- graph id conversion function
+--
+CREATE FUNCTION graphid_to_agtype(graphid)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
 -- agtype - path
 --
 CREATE FUNCTION _agtype_build_path(VARIADIC "any")
@@ -758,7 +769,7 @@ AS 'MODULE_PATHNAME';
 -- Scalar Functions
 --
 CREATE FUNCTION id(agtype)
-RETURNS graphid
+RETURNS agtype
 LANGUAGE c
 STABLE
 RETURNS NULL ON NULL INPUT
@@ -766,7 +777,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION start_id(agtype)
-RETURNS graphid
+RETURNS agtype
 LANGUAGE c
 STABLE
 RETURNS NULL ON NULL INPUT
@@ -775,7 +786,7 @@ AS 'MODULE_PATHNAME';
 
 
 CREATE FUNCTION end_id(agtype)
-RETURNS graphid
+RETURNS agtype
 LANGUAGE c
 STABLE
 RETURNS NULL ON NULL INPUT

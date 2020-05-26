@@ -127,18 +127,18 @@ static Node *make_vertex_expr(cypher_parsestate *cpstate, RangeTblEntry *rte,
                               char *label);
 static Node *make_edge_expr(cypher_parsestate *cpstate, RangeTblEntry *rte,
                             char *label);
-static Node *make_qual(cypher_parsestate *cpstate, transform_entity *entity,
-                       char *name);
+static FuncCall *make_qual(cypher_parsestate *cpstate,
+                           transform_entity *entity, char *name);
 static TargetEntry *
 transform_match_create_path_variable(cypher_parsestate *cpstate,
                                      cypher_path *path, List *entities);
 static List *make_path_join_quals(cypher_parsestate *cpstate, List *entities);
 static List *make_directed_edge_join_conditions(
     cypher_parsestate *cpstate, transform_entity *prev_entity,
-    transform_entity *next_entity, Node *prev_qual, Node *next_qual,
+    transform_entity *next_entity, FuncCall *prev_qual, FuncCall *next_qual,
     char *prev_node_label, char *next_node_label);
 static List *join_to_entity(cypher_parsestate *cpstate,
-                            transform_entity *entity, Node *qual,
+                            transform_entity *entity, FuncCall *qual,
                             enum transform_entity_join_side side);
 static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
                                           transform_entity *prev_edge,
@@ -150,7 +150,7 @@ static List *make_edge_quals(cypher_parsestate *cpstate,
                              transform_entity *edge,
                              enum transform_entity_join_side side);
 static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
-                                           Node *field, char *label);
+                                           FuncCall *id_field, char *label);
 static transform_entity *make_transform_entity(cypher_parsestate *cpstate,
                                                enum transform_entity_type type,
                                                Node *node, Expr *expr);
@@ -520,7 +520,7 @@ static FuncCall *prevent_duplicate_edges(cypher_parsestate *cpstate,
     foreach (lc, entities)
     {
         transform_entity *entity = lfirst(lc);
-        Node *edge;
+        FuncCall *edge;
 
         // skip vertices
         if (entity->type != ENT_EDGE)
@@ -542,7 +542,7 @@ static FuncCall *prevent_duplicate_edges(cypher_parsestate *cpstate,
  */
 static List *make_directed_edge_join_conditions(
     cypher_parsestate *cpstate, transform_entity *prev_entity,
-    transform_entity *next_entity, Node *prev_qual, Node *next_qual,
+    transform_entity *next_entity, FuncCall *prev_qual, FuncCall *next_qual,
     char *prev_node_filter, char *next_node_filter)
 {
     List *quals = NIL;
@@ -638,8 +638,10 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
     {
     case CYPHER_REL_DIR_RIGHT:
     {
-        Node *prev_qual = make_qual(cpstate, entity, AG_EDGE_COLNAME_START_ID);
-        Node *next_qual = make_qual(cpstate, entity, AG_EDGE_COLNAME_END_ID);
+        FuncCall *prev_qual = make_qual(cpstate, entity,
+                                        AG_EDGE_COLNAME_START_ID);
+        FuncCall *next_qual = make_qual(cpstate, entity,
+                                        AG_EDGE_COLNAME_END_ID);
 
         return make_directed_edge_join_conditions(
             cpstate, prev_entity, next_node, prev_qual, next_qual,
@@ -647,8 +649,10 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
     }
     case CYPHER_REL_DIR_LEFT:
     {
-        Node *prev_qual = make_qual(cpstate, entity, AG_EDGE_COLNAME_END_ID);
-        Node *next_qual = make_qual(cpstate, entity, AG_EDGE_COLNAME_START_ID);
+        FuncCall *prev_qual = make_qual(cpstate, entity,
+                                        AG_EDGE_COLNAME_END_ID);
+        FuncCall *next_qual = make_qual(cpstate, entity,
+                                        AG_EDGE_COLNAME_START_ID);
 
         return make_directed_edge_join_conditions(
             cpstate, prev_entity, next_node, prev_qual, next_qual,
@@ -660,9 +664,10 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
          * For undirected relationships, we can use the left directed
          * relationship OR'd by the right directed relationship.
          */
-        Node *start_id_expr = make_qual(cpstate, entity,
-                                        AG_EDGE_COLNAME_START_ID);
-        Node *end_id_expr = make_qual(cpstate, entity, AG_EDGE_COLNAME_END_ID);
+        FuncCall *start_id_expr = make_qual(cpstate, entity,
+                                            AG_EDGE_COLNAME_START_ID);
+        FuncCall *end_id_expr = make_qual(cpstate, entity,
+                                          AG_EDGE_COLNAME_END_ID);
         List *first_join_quals = NIL, *second_join_quals = NIL;
         Expr *first_qual, *second_qual;
         Expr *or_qual;
@@ -695,7 +700,7 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
  * passed entity is a directed edge.
  */
 static List *join_to_entity(cypher_parsestate *cpstate,
-                            transform_entity *entity, Node *qual,
+                            transform_entity *entity, FuncCall *qual,
                             enum transform_entity_join_side side)
 {
     A_Expr *expr;
@@ -703,9 +708,10 @@ static List *join_to_entity(cypher_parsestate *cpstate,
 
     if (entity->type == ENT_VERTEX)
     {
-        Node *id_qual = (Node *)make_qual(cpstate, entity, AG_EDGE_COLNAME_ID);
+        FuncCall *id_qual = make_qual(cpstate, entity, AG_EDGE_COLNAME_ID);
 
-        expr = makeSimpleA_Expr(AEXPR_OP, "=", qual, id_qual, -1);
+        expr = makeSimpleA_Expr(AEXPR_OP, "=", (Node *)qual, (Node *)id_qual,
+                                -1);
 
         quals = lappend(quals, expr);
     }
@@ -714,11 +720,11 @@ static List *join_to_entity(cypher_parsestate *cpstate,
         List *edge_quals = make_edge_quals(cpstate, entity, side);
 
         if (list_length(edge_quals) > 1)
-            expr = makeSimpleA_Expr(AEXPR_IN, "=", qual, (Node *)edge_quals,
-                                    -1);
+            expr = makeSimpleA_Expr(AEXPR_IN, "=", (Node *)qual,
+                                    (Node *)edge_quals, -1);
         else
-            expr = makeSimpleA_Expr(AEXPR_OP, "=", qual, linitial(edge_quals),
-                                    -1);
+            expr = makeSimpleA_Expr(AEXPR_OP, "=", (Node *)qual,
+                                    linitial(edge_quals), -1);
 
         quals = lappend(quals, expr);
     }
@@ -796,7 +802,7 @@ static List *make_edge_quals(cypher_parsestate *cpstate,
  * that removes all labels that do not have the same label_id
  */
 static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
-                                           Node *field, char *label)
+                                           FuncCall *id_field, char *label)
 {
     label_cache_data *lcd = search_label_name_graph_cache(label,
                                                           cpstate->graph_oid);
@@ -814,7 +820,7 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
     extract_label_id = makeString("_extract_label_id");
 
     fc = makeFuncCall(list_make2(ag_catalog, extract_label_id),
-                      list_make1(field), -1);
+                      list_make1(id_field), -1);
 
     return makeSimpleA_Expr(AEXPR_OP, "=", (Node *)fc, (Node *)n, -1);
 }
@@ -1099,13 +1105,13 @@ static char *get_accessor_function_name(enum transform_entity_type type,
  * For the given entity and column name, construct an expression that will access
  * the column or get the access function if the entity is a variable.
  */
-static Node *make_qual(cypher_parsestate *cpstate, transform_entity *entity,
-                       char *col_name)
+static FuncCall *make_qual(cypher_parsestate *cpstate,
+                           transform_entity *entity, char *col_name)
 {
+    List *qualified_name, *args;
+
     if (IsA(entity->expr, Var))
     {
-        List *qualified_name;
-        FuncCall *fc;
         char *function_name;
 
         function_name = get_accessor_function_name(entity->type, col_name);
@@ -1113,14 +1119,16 @@ static Node *make_qual(cypher_parsestate *cpstate, transform_entity *entity,
         qualified_name = list_make2(makeString("ag_catalog"),
                                     makeString(function_name));
 
-        fc = makeFuncCall(qualified_name, list_make1(entity->expr), -1);
-
-        return (Node *)fc;
+        args = list_make1(entity->expr);
     }
     else
     {
         char *entity_name;
         ColumnRef *cr = makeNode(ColumnRef);
+
+        // cast graphid to agtype
+        qualified_name = list_make2(makeString("ag_catalog"),
+                                    makeString("graphid_to_agtype"));
 
         if (entity->type == ENT_EDGE)
             entity_name = entity->entity.node->name;
@@ -1132,8 +1140,10 @@ static Node *make_qual(cypher_parsestate *cpstate, transform_entity *entity,
 
         cr->fields = list_make2(makeString(entity_name), makeString(col_name));
 
-        return (Node *)cr;
+        args = list_make1(cr);
     }
+
+    return makeFuncCall(qualified_name, args, -1);
 }
 
 static Expr *transform_cypher_edge(cypher_parsestate *cpstate,

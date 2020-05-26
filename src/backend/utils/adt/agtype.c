@@ -108,7 +108,9 @@ static bool is_array_path(agtype_value *agtv);
 /* helper functions */
 static bool is_agtype_null(agtype *agt);
 static agtype_value *string_to_agtype_value(char *s);
-
+static uint64 get_edge_uniqueness_value(Datum d, Oid type, bool is_null,
+                                        int index);
+static agtype *get_id_field_from_extended_agtype(agtype_value *v, char *name);
 PG_FUNCTION_INFO_V1(agtype_in);
 
 /*
@@ -2926,6 +2928,51 @@ Datum agtype_typecast_path(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(path.res));
 }
 
+static uint64 get_edge_uniqueness_value(Datum d, Oid type, bool is_null,
+                                        int index)
+{
+    agtype *agt;
+    agtype_value *v;
+
+    if (is_null)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg(
+                 "parameter %i in _ag_enforce_edge_uniqueness must not be null",
+                 index)));
+
+    if (type != AGTYPEOID)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg(
+                 "parameter %i in _ag_enforce_edge_uniqueness must be an agtype",
+                 index)));
+
+    agt = DATUM_GET_AGTYPE_P(d);
+
+    if (!AGT_ROOT_IS_SCALAR(agt))
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg(
+                 "agtype parameter %i in _ag_enforce_edge_uniqueness must resolve to an integer",
+                 index)));
+
+    v = get_ith_agtype_value_from_container(&agt->root, 0);
+
+    if (v->type != AGTV_INTEGER)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg(
+                 "agtype parameter %i in _ag_enforce_edge_uniqueness must resolve to an integer",
+                 index)));
+
+    return v->val.int_value;
+}
+
 PG_FUNCTION_INFO_V1(_ag_enforce_edge_uniqueness);
 
 Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
@@ -2940,21 +2987,13 @@ Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
 
     for (i = 0; i < nargs; i++)
     {
-        graphid id_1 = (graphid)args[i];
+        uint64 id_1 = get_edge_uniqueness_value(args[i], types[i],
+                                                nulls[i], i);
 
         for (j = i + 1; j < nargs; j++)
         {
-            graphid id_2;
-
-            if (types[i] != GRAPHIDOID || types[j] != GRAPHIDOID)
-                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("all parameters for _ag_enforce_edge_uniqueness must be graphids")));
-
-            if (nulls[i] || nulls[j])
-                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("all parameters for _ag_enforce_edge_uniqueness must not be null")));
-
-            id_2 = (graphid)args[j];
+            uint64 id_2 = get_edge_uniqueness_value(args[j], types[j],
+                                                    nulls[j], j);
 
             if (id_1 == id_2)
                 return false;
@@ -2962,6 +3001,33 @@ Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
     }
 
     return true;
+}
+
+static agtype *get_id_field_from_extended_agtype(agtype_value *v, char *name)
+{
+    int i;
+
+    if (v->type != AGTV_VERTEX && v->type != AGTV_EDGE)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("not a valid extended agtype")));
+
+    for (i = 0; i < v->val.object.num_pairs; i++)
+    {
+        agtype_pair pairs = v->val.object.pairs[i];
+        agtype_value *key = &pairs.key;
+        char subbuff[key->val.string.len + 1];
+
+        memcpy(subbuff, key->val.string.val, key->val.string.len);
+        subbuff[key->val.string.len] = '\0';
+
+        if (!strcmp((char *)&subbuff, name))
+            return (agtype *)integer_to_agtype(pairs.value.val.int_value);
+    }
+
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("could not find \"%s\" in extended agtype", name)));
+
+    return NULL;
 }
 
 PG_FUNCTION_INFO_V1(id);
@@ -2981,7 +3047,7 @@ Datum id(PG_FUNCTION_ARGS)
         if (v->type == AGTV_NULL)
             PG_RETURN_NULL();
         else if (v->type == AGTV_VERTEX || v->type == AGTV_EDGE)
-            AG_RETURN_GRAPHID(v->val.object.pairs[0].value.val.int_value);
+            AG_RETURN_AGTYPE_P(get_id_field_from_extended_agtype(v, "id"));
     }
 
     ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -2991,56 +3057,64 @@ Datum id(PG_FUNCTION_ARGS)
     PG_RETURN_NULL();
 }
 
-PG_FUNCTION_INFO_V1(start_id);
+PG_FUNCTION_INFO_V1(end_id);
 
-Datum start_id(PG_FUNCTION_ARGS)
+Datum end_id(PG_FUNCTION_ARGS)
 {
-    agtype *object;
+    agtype *object = AG_GET_ARG_AGTYPE_P(0);
 
     if (PG_ARGISNULL(0))
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("start_id arguement cannot be NULL")));
+        PG_RETURN_NULL();
 
-    object = AG_GET_ARG_AGTYPE_P(0);
     if (AGT_ROOT_IS_SCALAR(object))
     {
         agtype_value *v;
         v = get_ith_agtype_value_from_container(&object->root, 0);
 
-        if (v->type == AGTV_EDGE)
-            AG_RETURN_GRAPHID(v->val.object.pairs[2].value.val.int_value);
+        if (v->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        else if (v->type == AGTV_EDGE)
+            AG_RETURN_AGTYPE_P(get_id_field_from_extended_agtype(v, "end_id"));
     }
 
     ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("start_id only allows edge agtypes")));
+                    errmsg("end_id only allows edge agtype")));
 
     // keeps compiler silent
     PG_RETURN_NULL();
 }
 
-PG_FUNCTION_INFO_V1(end_id);
+PG_FUNCTION_INFO_V1(start_id);
 
-Datum end_id(PG_FUNCTION_ARGS)
+Datum start_id(PG_FUNCTION_ARGS)
 {
-    agtype *object;
+    agtype *object = AG_GET_ARG_AGTYPE_P(0);
 
     if (PG_ARGISNULL(0))
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("end_id arguement cannot be NULL")));
+        PG_RETURN_NULL();
 
-    object = AG_GET_ARG_AGTYPE_P(0);
     if (AGT_ROOT_IS_SCALAR(object))
     {
         agtype_value *v;
         v = get_ith_agtype_value_from_container(&object->root, 0);
 
-        if (v->type == AGTV_EDGE)
-            AG_RETURN_GRAPHID(v->val.object.pairs[3].value.val.int_value);
+        if (v->type == AGTV_NULL)
+            PG_RETURN_NULL();
+        else if (v->type == AGTV_EDGE)
+            AG_RETURN_AGTYPE_P(
+                get_id_field_from_extended_agtype(v, "start_id"));
     }
 
     ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("end_id only allows edge agtypes")));
+                    errmsg("start_id only allows edge agtype")));
 
     // keeps compiler silent
     PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(graphid_to_agtype);
+
+Datum graphid_to_agtype(PG_FUNCTION_ARGS)
+{
+    PG_RETURN_POINTER(integer_to_agtype(AG_GETARG_GRAPHID(0)));
 }

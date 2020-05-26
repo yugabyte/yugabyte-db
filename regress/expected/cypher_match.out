@@ -85,8 +85,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                         a                                         
 ----------------------------------------------------------------------------------
- {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
  {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
 (2 rows)
 
 SELECT * FROM cypher('cypher_match', $$
