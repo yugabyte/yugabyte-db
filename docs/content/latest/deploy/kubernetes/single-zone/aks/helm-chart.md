@@ -34,15 +34,9 @@ showAsideToc: true
   </li>
 </ul>
 
-Configure and use Helm in a Kubernetes cluster on Azure Kubernetes Service (AKS) by following the steps below.
+Deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS) by following the steps below.
 
 Microsoft's [Azure Kubernetes Service](https://azure.microsoft.com/en-au/services/kubernetes-service/) offers a highly available, secure, and fully-managed Kubernetes service for developers looking to host their applications on containers in the cloud. AKS features elastic provisioning, an integrated developer experience for rapid application development, enterprise security features, and the most available regions of any cloud provider.
-
-**GRAPHIC: YugabyteDB + Microsoft Azure Kubernetes Service **
-
-YugabyteDB is a natural fit for AKS as It was designed to support cloud-native environments since its initial design.
-
-In this blog, we’ll show you just how easy it is to get started with YugabyteDB on AKS in just a few minutes. As a bonus, we’ll also show you how to deploy the familiar Northwind sample database.
 
 ## Prerequisites
 
@@ -155,7 +149,7 @@ Finished service principal creation[###################]  100.0000%
 
 You should now see ”yugabytedbAKSCluster” in the UI.
 
-![yugabytedbRG](images/deploy/kubernetes/aks-resource-group-cluster.png)
+![yugabytedbRG](/images/deploy/kubernetes/aks/aks-resource-group-cluster.png)
 
 To create the cluster and use your own SSH keys, run the following command:
 
@@ -201,7 +195,7 @@ $ kubectl get nodes
 
 You should see output similar to:
 
-![alt_text](images/deploy/kubernetes/aks/aks-kubectl-get-nodes.png)
+![alt_text](/images/deploy/kubernetes/aks/aks-kubectl-get-nodes.png)
 
 You can also view the details of the cluster in the Kubernetes Dashboard by running the following commands:
 
@@ -219,7 +213,7 @@ $ az aks browse --resource-group yugabytedbRG --name yugabytedbAKSCluster
 
 A browser window appears where you can view the Kubernetes Dashboard:
 
-![Kubernetes Dashboard](images/deploy/kubernetes/aks/aks-kubernetes-dashboard.png)
+![Kubernetes Dashboard](/images/deploy/kubernetes/aks/aks-kubernetes-dashboard.png)
 
 ### Step 4: Install YugabyteDB using Helm Chart
 
@@ -296,7 +290,7 @@ After you see a `success` message, you can verify that the YugabyteDB pods are r
 $ kubectl get pods --namespace yb-demo
 ```
 
-![Verify pods are running](images/deploy/kubernetes/aks/verify-pods-running.png)
+![Verify pods are running](/images/deploy/kubernetes/aks/aks-verify-pods-running.png)
 
 To access the YugabyteDB Admin UI, run the following command to locate the **External IP** entry associated with `yb-master-ui` and port `7000`.
 
@@ -306,6 +300,6 @@ $ kubectl get services --namespace yb-demo
 
 Now, go to `http://<EXTERNAL_IP>:7000` (replacing `<EXTERNAL_IP>` with your external IP address). You should see the following:
 
-![YugabyteDB Admin UI](images/deploy/kubernetes/aks/aks-admin-ui.png)
+![YugabyteDB Admin UI](/images/deploy/kubernetes/aks/aks-admin-ui.png)
 
 You have successfully deployed YugabyteDB on an Azure Kubernetes cluster.
