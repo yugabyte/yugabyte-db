@@ -96,7 +96,7 @@ YSQL java tests are in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.  They can be
 ```
 Some of those tests, `TestPgRegress*` use the postgres regress test framework: `src/postgres/src/test/regress`.  
 They should each correspond to a schedule (e.g. `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`) 
-that is run by our modified version of pg_regress.
+that is run by our modified version of `pg_regress`.
 
 Each schedule has a serial order of files to run.  For example, the `yb_arrays_schedule` will first run `build/latest/postgres_build/src/test/regress/sql/yb_pg_int8.sql` 
 and output to `build/latest/postgres_build/src/test/regress/results/yb_pg_int8.out`.  This will be compared with `build/latest/postgres_build/src/test/regress/expected/yb_pg_int8.out for pass/fail`.  
