@@ -2890,12 +2890,6 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
     return boost::none;
   }
 
-  auto min_running_ht = transaction_participant()->MinRunningHybridTime();
-  if (min_running_ht == HybridTime::kMax) {
-    // No running transactions, so could avoid resolving intents.
-    return boost::none;
-  }
-
   return TransactionOperationContext(*txn_id, transaction_participant());
 }
 

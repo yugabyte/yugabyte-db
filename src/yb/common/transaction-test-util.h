@@ -57,6 +57,10 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {}
 
+  HybridTime MinRunningHybridTime() const override {
+    return HybridTime::kMin;
+  }
+
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };
