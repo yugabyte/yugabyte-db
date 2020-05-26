@@ -107,7 +107,7 @@ If a build fails to pick up the changes and fails to copy them, you can remove `
 {{< tip title="Tips" >}}
 
    - If you want to quickly run specific sql files, you can create a dummy java file and dummy schedule with that one test in it.
-   - We have a naming convention (some older files haven't adopted it yet but should):
+   - Use the naming convention (some older files haven't adopted it yet, but should):
      - `src/postgres/src/test/regress/sql/foo.sql`: unchanged from original postgres code
      - `src/postgres/src/test/regress/sql/yb_foo.sql`: completely new file (for example, with new features)
      - `src/postgres/src/test/regress/sql/yb_pg_foo.sql`: modified version of original postgres foo.sql (e.g. for compatibility edits) 
