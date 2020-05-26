@@ -1249,7 +1249,7 @@ detect_linuxbrew() {
     return
   fi
 
-  local version_file=$YB_SRC_ROOT/thirdparty/linuxbrew_version.txt
+  local version_file=$YB_SRC_ROOT/build-support/linuxbrew_version.txt
   if [[ ! -f $version_file ]]; then
     fatal "'$version_file' does not exist"
   fi
@@ -1328,7 +1328,7 @@ detect_custom_homebrew() {
     "$HOME/.homebrew-yb-build"
   )
 
-  local version_for_jenkins_file=$YB_SRC_ROOT/thirdparty/homebrew_version_for_jenkins.txt
+  local version_for_jenkins_file=$YB_SRC_ROOT/build-support/homebrew_version_for_jenkins.txt
   if [[ -f $version_for_jenkins_file ]]; then
     local version_for_jenkins
     version_for_jenkins=$( read_file_and_trim "$version_for_jenkins_file" )
