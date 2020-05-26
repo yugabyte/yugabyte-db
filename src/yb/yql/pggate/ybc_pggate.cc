@@ -12,7 +12,7 @@
 
 #include <string>
 
-#include <cds/init.h>
+#include <cds/init.h> // NOLINT
 
 #include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
@@ -99,6 +99,18 @@ YBCStatus YBCPgInitSession(const YBCPgEnv pg_env,
                            const char *database_name) {
   const string db_name(database_name ? database_name : "");
   return ToYBCStatus(pgapi->InitSession(pg_env, db_name));
+}
+
+YBCPgMemctx YBCPgCreateMemctx() {
+  return pgapi->CreateMemctx();
+}
+
+void YBCPgDestroyMemctx(YBCPgMemctx memctx) {
+  return pgapi->DestroyMemctx(memctx);
+}
+
+void YBCPgResetMemctx(YBCPgMemctx memctx) {
+  return pgapi->ResetMemctx(memctx);
 }
 
 YBCStatus YBCPgInvalidateCache() {
@@ -190,7 +202,8 @@ YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
 // Statement Operations ----------------------------------------------------------------------------
 
 YBCStatus YBCPgDeleteStatement(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->DeleteStatement(handle));
+  return ToYBCStatus(Status::OK());
+  // return ToYBCStatus(pgapi->DeleteStatement(handle));
 }
 
 YBCStatus YBCPgClearBinds(YBCPgStatement handle) {
@@ -329,10 +342,6 @@ YBCStatus YBCPgGetTableDesc(const YBCPgOid database_oid,
                             YBCPgTableDesc *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->GetTableDesc(table_id, handle));
-}
-
-YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle) {
-  return ToYBCStatus(pgapi->DeleteTableDesc(handle));
 }
 
 YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,

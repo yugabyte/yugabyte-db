@@ -1154,9 +1154,8 @@ RenameDatabase(const char *oldname, const char *newname)
 	if (IsYugaByteEnabled()) {
 		YBCPgStatement handle = NULL;
 		HandleYBStatus(YBCPgNewAlterDatabase(oldname, db_id, &handle));
-		HandleYBStmtStatus(YBCPgAlterDatabaseRenameDatabase(handle, newname), handle);
-		HandleYBStmtStatus(YBCPgExecAlterDatabase(handle), handle);
-		HandleYBStatus(YBCPgDeleteStatement(handle));
+		HandleYBStatus(YBCPgAlterDatabaseRenameDatabase(handle, newname));
+		HandleYBStatus(YBCPgExecAlterDatabase(handle));
 	}
 
 	InvokeObjectPostAlterHook(DatabaseRelationId, db_id, 0);

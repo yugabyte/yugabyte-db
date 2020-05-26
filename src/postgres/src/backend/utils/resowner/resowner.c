@@ -686,8 +686,6 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 				if (isCommit)
 					PrintYugaByteStmtLeakWarning(res);
 
-				HandleYBStatus(YBCPgDeleteStatement(res));
-
 				ResourceOwnerForgetYugaByteStmt(owner, res);
 			}
 		}

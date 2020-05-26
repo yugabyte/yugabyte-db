@@ -129,26 +129,12 @@ extern void	HandleYBStatus(YBCStatus status);
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
 
 /*
- * Same as HandleYBStatusIgnoreNotFound but deletes the statement first if the
- * status is not ok.
- */
-extern void HandleYBStmtStatusIgnoreNotFound(YBCStatus status,
-                                             YBCPgStatement ybc_stmt,
-                                             bool *not_found);
-
-/*
- * Same as HandleYBStatus but delete the statement first if the status is
- * not ok.
- */
-extern void	HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt);
-
-/*
- * Same as HandleYBStmtStatus but also ask the given resource owner to forget
+ * Same as HandleYBStatus but also ask the given resource owner to forget
  * the given YugaByte statement.
  */
-extern void HandleYBStmtStatusWithOwner(YBCStatus status,
-                                        YBCPgStatement ybc_stmt,
-                                        ResourceOwner owner);
+extern void HandleYBStatusWithOwner(YBCStatus status,
+																		YBCPgStatement ybc_stmt,
+																		ResourceOwner owner);
 
 /*
  * Same as HandleYBStatus but delete the table description first if the

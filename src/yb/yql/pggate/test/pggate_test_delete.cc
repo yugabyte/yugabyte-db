@@ -49,7 +49,6 @@ TEST_F(PggateTestDelete, TestDelete) {
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "job", ++col_count,
                                              DataType::STRING, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   CommitTransaction();
   pg_stmt = nullptr;
 
@@ -104,7 +103,6 @@ TEST_F(PggateTestDelete, TestDelete) {
     YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false);
   }
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   CommitTransaction();
   pg_stmt = nullptr;
 
@@ -137,7 +135,6 @@ TEST_F(PggateTestDelete, TestDelete) {
     YBCPgUpdateConstInt4(expr_id, seed, false);
   }
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   CommitTransaction();
   pg_stmt = nullptr;
 
@@ -202,7 +199,6 @@ TEST_F(PggateTestDelete, TestDelete) {
   }
   CHECK_EQ(select_row_count, insert_row_count - delete_row_count) << "Unexpected row count";
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 }
 

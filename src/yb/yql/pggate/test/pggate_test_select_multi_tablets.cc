@@ -49,7 +49,6 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "job", ++col_count,
                                              DataType::STRING, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
   // SELECT: Empty Table ---------------------------------------------------------------------------
@@ -85,7 +84,6 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   }
 
   // Deallocate statement.
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------
@@ -138,7 +136,6 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
     YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false);
   }
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------
@@ -211,7 +208,6 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   }
   CHECK_EQ(select_row_count, 1) << "Unexpected row count";
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------
@@ -269,7 +265,6 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
     CHECK_EQ(selected_job_name, expected_job_name);
   }
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 }
 

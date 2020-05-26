@@ -18,6 +18,7 @@
 
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_ddl.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_update.h"
@@ -201,6 +202,61 @@ Status PgApiImpl::InvalidateCache() {
 
 //--------------------------------------------------------------------------------------------------
 
+PgMemctx *PgApiImpl::CreateMemctx() {
+  // Postgres will create YB Memctx when it first use the Memctx to allocate YugaByte object.
+  auto memctx = make_scoped_refptr<PgMemctx>();
+  return memctx.detach();
+}
+
+void PgApiImpl::DestroyMemctx(PgMemctx *memctx) {
+  // Postgres will destroy YB Memctx by releasing the pointer.
+  if (memctx) {
+    memctx->Release();
+  }
+}
+
+void PgApiImpl::ResetMemctx(PgMemctx *memctx) {
+  // Postgres reset YB Memctx when clearing a context content without clearing its nested context.
+  if (memctx) {
+    memctx->Reset();
+  }
+}
+
+// TODO(neil) Use Arena in the future.
+// - PgStatement should have been declared as derived class of "MCBase".
+// - All objects of PgStatement's derived class should be allocated by YbPgMemctx::Arena.
+// - We cannot use Arena yet because quite a large number of YugaByte objects are being referenced
+//   from other layers.  Those added code violated the original design as they assume ScopedPtr
+//   instead of memory pool is being used. This mess should be cleaned up later.
+//
+// For now, statements is allocated as ScopedPtr and cached in the memory context. The statements
+// would then be destructed when the context is destroyed and all other references are also cleared.
+Status PgApiImpl::AddToCurrentPgMemctx(const PgStatement::ScopedRefPtr &stmt,
+                                       PgStatement **handle) {
+  pg_callbacks_.GetCurrentYbMemctx()->Cache(stmt);
+  *handle = stmt.get();
+  return Status::OK();
+}
+
+// TODO(neil) Most like we don't need table_desc. If we do need it, use Arena here.
+// - PgTableDesc should have been declared as derived class of "MCBase".
+// - PgTableDesc objects should be allocated by YbPgMemctx::Arena.
+//
+// For now, table_desc is allocated as ScopedPtr and cached in the memory context. The table_desc
+// would then be destructed when the context is destroyed.
+Status PgApiImpl::AddToCurrentPgMemctx(size_t table_desc_id,
+                                       const PgTableDesc::ScopedRefPtr &table_desc) {
+  pg_callbacks_.GetCurrentYbMemctx()->Cache(table_desc_id, table_desc);
+  return Status::OK();
+}
+
+Status PgApiImpl::GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle) {
+  pg_callbacks_.GetCurrentYbMemctx()->GetCache(table_desc_id, handle);
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Status PgApiImpl::CreateSequencesDataTable() {
   return pg_session_->CreateSequencesDataTable();
 }
@@ -253,13 +309,6 @@ Status PgApiImpl::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::DeleteStatement(PgStatement *handle) {
-  if (handle) {
-    handle->Release();
-  }
-  return Status::OK();
-}
-
 Status PgApiImpl::ClearBinds(PgStatement *handle) {
   return handle->ClearBinds();
 }
@@ -282,7 +331,7 @@ Status PgApiImpl::NewCreateDatabase(const char *database_name,
                                     PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgCreateDatabase>(pg_session_, database_name, database_oid,
                                                    source_database_oid, next_oid, colocated);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -299,7 +348,7 @@ Status PgApiImpl::NewDropDatabase(const char *database_name,
                                   PgOid database_oid,
                                   PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgDropDatabase>(pg_session_, database_name, database_oid);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -315,7 +364,7 @@ Status PgApiImpl::NewAlterDatabase(const char *database_name,
                                   PgOid database_oid,
                                   PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgAlterDatabase>(pg_session_, database_name, database_oid);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -365,7 +414,7 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
   auto stmt = make_scoped_refptr<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, colocated);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -409,7 +458,7 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
                                 PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgAlterTable>(pg_session_, table_id);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -470,7 +519,7 @@ Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
                                bool if_exist,
                                PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgDropTable>(pg_session_, table_id, if_exist);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -485,7 +534,7 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
 Status PgApiImpl::NewTruncateTable(const PgObjectId& table_id,
                                    PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgTruncateTable>(pg_session_, table_id);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -499,17 +548,19 @@ Status PgApiImpl::ExecTruncateTable(PgStatement *handle) {
 
 Status PgApiImpl::GetTableDesc(const PgObjectId& table_id,
                                PgTableDesc **handle) {
-  PgTableDesc::ScopedRefPtr table;
-  auto result = pg_session_->LoadTable(table_id);
-  RETURN_NOT_OK(result);
-  *handle = (*result).detach();
-  return Status::OK();
-}
+  // First read from memory context.
+  size_t hash_id = hash_value(table_id);
+  RETURN_NOT_OK(GetTabledescFromCurrentPgMemctx(hash_id, handle));
 
-Status PgApiImpl::DeleteTableDesc(PgTableDesc *handle) {
-  if (handle) {
-    handle->Release();
+  // Read from environment.
+  if (*handle == nullptr) {
+    auto result = pg_session_->LoadTable(table_id);
+    RETURN_NOT_OK(result);
+    RETURN_NOT_OK(AddToCurrentPgMemctx(hash_id, *result));
+
+    *handle = result->get();
   }
+
   return Status::OK();
 }
 
@@ -590,7 +641,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
   auto stmt = make_scoped_refptr<PgCreateIndex>(
       pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
       is_shared_index, is_unique_index, if_not_exist);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -619,7 +670,7 @@ Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
                                bool if_exist,
                                PgStatement **handle) {
   auto stmt = make_scoped_refptr<PgDropIndex>(pg_session_, index_id, if_exist);
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -738,7 +789,7 @@ Status PgApiImpl::NewInsert(const PgObjectId& table_id,
   *handle = nullptr;
   auto stmt = make_scoped_refptr<PgInsert>(pg_session_, table_id, is_single_row_txn);
   RETURN_NOT_OK(stmt->Prepare());
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -769,7 +820,7 @@ Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
   *handle = nullptr;
   auto stmt = make_scoped_refptr<PgUpdate>(pg_session_, table_id, is_single_row_txn);
   RETURN_NOT_OK(stmt->Prepare());
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -789,7 +840,7 @@ Status PgApiImpl::NewDelete(const PgObjectId& table_id,
   *handle = nullptr;
   auto stmt = make_scoped_refptr<PgDelete>(pg_session_, table_id, is_single_row_txn);
   RETURN_NOT_OK(stmt->Prepare());
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -809,7 +860,7 @@ Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
   *handle = nullptr;
   auto stmt = make_scoped_refptr<PgTruncateColocated>(pg_session_, table_id, is_single_row_txn);
   RETURN_NOT_OK(stmt->Prepare());
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 
@@ -846,7 +897,7 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
   }
 
   RETURN_NOT_OK(stmt->Prepare());
-  *handle = stmt.detach();
+  RETURN_NOT_OK(AddToCurrentPgMemctx(stmt, handle));
   return Status::OK();
 }
 

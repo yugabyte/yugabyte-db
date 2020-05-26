@@ -266,54 +266,19 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 		return;
 	}
 	*not_found = false;
-
 	HandleYBStatus(status);
 }
 
 void
-HandleYBStmtStatusIgnoreNotFound(YBCStatus status, YBCPgStatement ybc_stmt, bool *not_found)
-{
-	if (!status) {
-		return;
-	}
-	if (YBCStatusIsNotFound(status)) {
-		*not_found = true;
-		YBCFreeStatus(status);
-		return;
-	}
-	*not_found = false;
-
-	if (ybc_stmt)
-	{
-		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
-	}
-	HandleYBStatus(status);
-}
-
-void
-HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt)
+HandleYBStatusWithOwner(YBCStatus status,
+												YBCPgStatement ybc_stmt,
+												ResourceOwner owner)
 {
 	if (!status)
 		return;
 
 	if (ybc_stmt)
 	{
-		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
-	}
-	HandleYBStatus(status);
-}
-
-void
-HandleYBStmtStatusWithOwner(YBCStatus status,
-                            YBCPgStatement ybc_stmt,
-                            ResourceOwner owner)
-{
-	if (!status)
-		return;
-
-	if (ybc_stmt)
-	{
-		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 		if (owner != NULL)
 		{
 			ResourceOwnerForgetYugaByteStmt(owner, ybc_stmt);
@@ -328,10 +293,6 @@ HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 	if (!status)
 		return;
 
-	if (table)
-	{
-		HandleYBStatus(YBCPgDeleteTableDesc(table));
-	}
 	HandleYBStatus(status);
 }
 
@@ -384,6 +345,7 @@ YBInitPostgresBackend(
 		YBCGetTypeTable(&type_table, &count);
 		YBCPgCallbacks callbacks;
 		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
+		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 

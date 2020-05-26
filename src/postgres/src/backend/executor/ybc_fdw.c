@@ -283,10 +283,10 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->is_exec_done = false;
 
 	/* Set the current syscatalog version (will check that we are up to date) */
-	HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
-	                                                        yb_catalog_cache_version),
-	                            ybc_state->handle,
-	                            ybc_state->stmt_owner);
+	HandleYBStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
+																											yb_catalog_cache_version),
+													ybc_state->handle,
+													ybc_state->stmt_owner);
 }
 
 /*
@@ -338,10 +338,10 @@ ybcSetupScanTargets(ForeignScanState *node)
 														target->resno,
 														attr_typid,
 														&type_attrs);
-			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-															 expr),
-										ybc_state->handle,
-										ybc_state->stmt_owner);
+			HandleYBStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+																									 expr),
+															ybc_state->handle,
+															ybc_state->stmt_owner);
 			has_targets = true;
 		}
 
@@ -365,7 +365,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 															i + 1,
 															TupleDescAttr(tupdesc, i)->atttypid,
 															&type_attrs);
-				HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+				HandleYBStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
 																 expr),
 											ybc_state->handle,
 											ybc_state->stmt_owner);
@@ -388,7 +388,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 			type_entity = YBCPgFindTypeEntity(aggref->aggtranstype);
 
 			/* Create operator. */
-			HandleYBStmtStatusWithOwner(YBCPgNewOperator(ybc_state->handle,
+			HandleYBStatusWithOwner(YBCPgNewOperator(ybc_state->handle,
 														 func_name,
 														 type_entity,
 														 &op_handle),
@@ -407,7 +407,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 								 0 /* datum */,
 								 true /* is_null */,
 								 &const_handle);
-				HandleYBStmtStatusWithOwner(YBCPgOperatorAppendArg(op_handle,
+				HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle,
 																   const_handle),
 											ybc_state->handle,
 											ybc_state->stmt_owner);
@@ -428,14 +428,14 @@ ybcSetupScanTargets(ForeignScanState *node)
 													attno,
 													attr->atttypid,
 													&type_attrs);
-					HandleYBStmtStatusWithOwner(YBCPgOperatorAppendArg(op_handle, arg),
+					HandleYBStatusWithOwner(YBCPgOperatorAppendArg(op_handle, arg),
 												ybc_state->handle,
 												ybc_state->stmt_owner);
 				}
 			}
 
 			/* Add aggregate operator as scan target. */
-			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+			HandleYBStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
 															 op_handle),
 										ybc_state->handle,
 										ybc_state->stmt_owner);
@@ -473,7 +473,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 */
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
-		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params),
+		HandleYBStatusWithOwner(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params),
 									ybc_state->handle,
 									ybc_state->stmt_owner);
 		ybc_state->is_exec_done = true;
@@ -489,7 +489,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	YBCPgSysColumns syscols;
 
 	/* Fetch one row. */
-	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybc_state->handle,
+	HandleYBStatusWithOwner(YBCPgDmlFetch(ybc_state->handle,
 	                                          tupdesc->natts,
 	                                          (uint64_t *) values,
 	                                          isnull,
@@ -534,7 +534,6 @@ ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)
 	/* If yb_fdw_exec_state is NULL, we are in EXPLAIN; nothing to do */
 	if (yb_fdw_exec_state != NULL && yb_fdw_exec_state->handle != NULL)
 	{
-		HandleYBStatus(YBCPgDeleteStatement(yb_fdw_exec_state->handle));
 		ResourceOwnerForgetYugaByteStmt(yb_fdw_exec_state->stmt_owner,
 										yb_fdw_exec_state->handle);
 		yb_fdw_exec_state->handle = NULL;

@@ -2377,7 +2377,6 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 													   attrno,
 													   &is_primary,
 													   &is_hash), ybc_tabledesc);
-			HandleYBStatus(YBCPgDeleteTableDesc(ybc_tabledesc));
 			ybc_tabledesc = NULL;
 
 			if (is_hash || is_primary)
