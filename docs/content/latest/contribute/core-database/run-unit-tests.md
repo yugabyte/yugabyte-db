@@ -101,7 +101,7 @@ that is run by our modified version of `pg_regress`.
 Each schedule has a serial order of files to run.  For example, the `yb_arrays_schedule` will first run `build/latest/postgres_build/src/test/regress/sql/yb_pg_int8.sql` 
 and output to `build/latest/postgres_build/src/test/regress/results/yb_pg_int8.out`.  This will be compared with `build/latest/postgres_build/src/test/regress/expected/yb_pg_int8.out for pass/fail`.  
 Note the `build/latest/postgres_build` prefix.  The source files (`src/postgres/src/test/regress/sql/foo.sql`) get copied there (`build/latest/postgres_build/src/test/regress/src/foo.sql`).  
-If build somehow doesn't pick up the changes and doesn't copy, you can remove `build/latest/postgres_build` to force recopy or copy them manually yourself.
+If a build fails to pick up the changes and fails to copy them, you can remove `build/latest/postgres_build` to force a recopy or copy them yourself manually.
 
 
 {{< tip title="Tips" >}}
