@@ -152,6 +152,8 @@ public class CertificateHelper {
   public static JsonNode createClientCertificate(UUID rootCA, String storagePath, String username,
                                                  Date certStart, Date certExpiry) {
     try {
+      // Add the security provider in case createRootCA was never called.
+      Security.addProvider(new BouncyCastleProvider());
       KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
       keypairGen.initialize(2048);
 
