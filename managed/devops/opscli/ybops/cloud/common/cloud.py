@@ -233,6 +233,8 @@ class AbstractCloud(AbstractCommandParser):
         # Copy files over to node
         remote_shell = RemoteShell(ssh_options)
         remote_shell.run_command('mkdir -p ' + certs_node_dir)
+        # Give write permission in case file exists. If the command fails, ignore.
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_node_dir))
         remote_shell.put_file(os.path.join(common_path, key_file),
                               os.path.join(certs_node_dir, key_file))
         remote_shell.put_file(os.path.join(common_path, cert_file),
@@ -244,6 +246,8 @@ class AbstractCloud(AbstractCommandParser):
             client_cert_path = extra_vars["client_cert"]
             client_key_path = extra_vars["client_key"]
             remote_shell.run_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
+            # Give write permission in case file exists. If the command fails, ignore.
+            remote_shell.run_command('chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
             remote_shell.put_file(root_cert_path, os.path.join(self.YSQLSH_CERT_DIR, 'root.crt'))
             remote_shell.put_file(client_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
                                                                  'yugabytedb.crt'))

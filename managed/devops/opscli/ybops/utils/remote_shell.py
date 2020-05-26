@@ -44,3 +44,9 @@ class RemoteShell(object):
 
     def put_file(self, local_path, remote_path):
         return self.ssh_conn.put(local_path, remote_path)
+
+    # Checks if the file exists on the remote, and if not, it puts it there.
+    def put_file_if_not_exists(self, local_path, remote_path, file_name):
+        result = self.run_command('ls ' + remote_path)
+        if file_name not in result.stdout:
+            self.put_file(local_path, os.path.join(remote_path, file_name))
