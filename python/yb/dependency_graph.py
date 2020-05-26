@@ -1,12 +1,9 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 """
 Build a dependency graph of sources, object files, libraries, and binaries.  Compute the set of
 tests that might be affected by changes to the given set of source files.
 """
-
-from __future__ import print_function
-from six import iteritems
 
 import argparse
 import fnmatch
@@ -455,7 +452,7 @@ class CMakeDepGraph:
                         continue
                     cmake_dep_set.add(cmake_dep)
 
-        for cmake_target, cmake_target_deps in iteritems(self.cmake_deps):
+        for cmake_target, cmake_target_deps in self.cmake_deps.items():
             adding_targets = [cmake_target] + list(cmake_target_deps)
             self.cmake_targets.update(set(adding_targets))
         logging.info("Found {} CMake targets in '{}'".format(
@@ -604,7 +601,7 @@ class DependencyGraphBuilder:
 
         # We're not adding nodes into our graph for CMake targets. Instead, we're finding files
         # that correspond to CMake targets, and add dependencies to those files.
-        for cmake_target, cmake_target_deps in iteritems(cmake_dep_graph.cmake_deps):
+        for cmake_target, cmake_target_deps in cmake_dep_graph.cmake_deps.items():
             if cmake_target in unmatched_cmake_targets:
                 continue
             node = self.cmake_target_to_node[cmake_target]
@@ -714,7 +711,7 @@ class DependencyGraphBuilder:
         if is_abs_path(rel_path):
             return self.find_node(rel_path, must_exist=True)
         candidates = []
-        for path, node in iteritems(self.node_by_path):
+        for path, node in self.node_by_path.items():
             if path.endswith('/' + rel_path):
                 candidates.append(node)
         if not candidates:
@@ -891,7 +888,7 @@ class DependencyGraph:
             node_id = node_json['id']
             id_to_node[node_id] = self.find_or_create_node(node_json['path'])
             id_to_dep_ids[node_id] = node_json['deps']
-        for node_id, dep_ids in iteritems(id_to_dep_ids):
+        for node_id, dep_ids in id_to_dep_ids.items():
             node = id_to_node[node_id]
             for dep_id in dep_ids:
                 node.add_dependency(id_to_node[dep_id])
@@ -963,7 +960,7 @@ class DependencyGraph:
                 return node_id
 
             is_first = True
-            for node_path, node in iteritems(self.node_by_path):
+            for node_path, node in self.node_by_path.items():
                 node_json = dict(
                     id=get_node_id(node),
                     path=node_path,
@@ -1400,7 +1397,7 @@ def main():
         old_working_dir = os.getcwd()
         with WorkDirContext(conf.yb_src_root):
             git_diff_output = subprocess.check_output(
-                    ['git', 'diff', args.git_diff, '--name-only'])
+                    ['git', 'diff', args.git_diff, '--name-only']).decode('utf-8')
 
             initial_nodes = set()
             file_paths = set()

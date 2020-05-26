@@ -117,20 +117,20 @@ def build_emr_cluster(emr_client, universe, instance_count, s3logs, subnet_id, s
     )
     cluster_id = job_flow_resp['JobFlowId']
 
-    print "EMR Job Flow response:"
-    print json.dumps(job_flow_resp, indent=4, sort_keys=True)
+    print("EMR Job Flow response:")
+    print(json.dumps(job_flow_resp, indent=4, sort_keys=True))
 
     # Wait for the cluster to come up.
-    print "Waiting for cluster %s" % (cluster_id)
+    print("Waiting for cluster %s" % (cluster_id))
     waiter = emr_client.get_waiter('cluster_running')
     waiter.wait(ClusterId=cluster_id)
-    print "Cluster %s is ready!" % (cluster_id)
+    print("Cluster %s is ready!" % (cluster_id))
     return cluster_id
 
 
 def provision_emr_machines(emr_client, cluster_id, key_path, release_path, instance_count):
 
-    print "Waiting for all instances to be in the running state"
+    print("Waiting for all instances to be in the running state")
     instances_running = 0
     instances = None
     # Wait for all instances to be up.
@@ -148,12 +148,12 @@ def provision_emr_machines(emr_client, cluster_id, key_path, release_path, insta
         instances_running = len(instances['Instances'])
         time.sleep(10)
 
-    print "All instances are running!"
+    print("All instances are running!")
 
     # Provision software on all machines.
     for instance in instances['Instances']:
         private_ip = instance['PrivateIpAddress']
-        print 'Provisioning instance: %s' % (private_ip)
+        print('Provisioning instance: %s' % (private_ip))
         # Create appropriate directories.
         subprocess.check_call(hadoop_master_ssh_cmd(key_path, private_ip,
                                                     'sudo mkdir -p %s' % (YB_DIR)))
@@ -237,8 +237,8 @@ def run_bulk_load_step(emr_client, key_file, masters, table, keyspace, universe,
     )
     step_id = step_response['StepIds'][0]
 
-    print "Submitted bulk load step %s to cluster" % (step_id)
-    print "Waiting for bulk load step to finish..."
+    print("Submitted bulk load step %s to cluster" % (step_id))
+    print("Waiting for bulk load step to finish...")
 
     # Wait for the step to complete.
     step_completed = False
@@ -251,7 +251,7 @@ def run_bulk_load_step(emr_client, key_file, masters, table, keyspace, universe,
             raise Exception("Step %s failed with state: %s" % (step_id, step_state))
         time.sleep(60)
 
-    print "Completed bulk load step %s" % (step_id)
+    print("Completed bulk load step %s" % (step_id))
 
 
 def run_bulk_load(universe, instance_count, key_path, release_path, masters, table, keyspace,
@@ -261,11 +261,11 @@ def run_bulk_load(universe, instance_count, key_path, release_path, masters, tab
     s3logs = os.path.join(s3bucket, "logs")
 
     # Process ssh key file to get key file and key name.
-    print "SSH key path: %s" % (key_path)
+    print("SSH key path: %s" % (key_path))
     path, extension = os.path.splitext(key_path)
     key_file = os.path.basename(key_path)
     key_name = os.path.basename(path)
-    print "SSH key name: %s" % (key_name)
+    print("SSH key name: %s" % (key_name))
 
     # Get an emr_client.
     emr_client = boto3.client('emr')
@@ -303,7 +303,7 @@ def run_bulk_load(universe, instance_count, key_path, release_path, masters, tab
         ]
     )
 
-    print 'Terminated cluster %s' % (cluster_id)
+    print('Terminated cluster %s' % (cluster_id))
 
 
 def hadoop_master_ssh_cmd(key_path, master_host, cmd):
@@ -320,7 +320,7 @@ if __name__ == '__main__':
     run_step_only = args['--run_step_only']
     cluster_id = args['--cluster_id']
     if run_step_only and not cluster_id:
-        print "Need to specify --cluster_id with --run_step_only"
+        print("Need to specify --cluster_id with --run_step_only")
         sys.exit(1)
 
     run_bulk_load(

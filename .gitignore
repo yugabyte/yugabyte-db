@@ -38,6 +38,7 @@ www/tracing.*
 # Python
 *.py[ocd]
 python_virtual_env/
+venv/
 
 # Backup files
 *.bak
@@ -68,6 +69,7 @@ core*
 cscope.out
 
 build/python_virtual_env
+build/venv
 *.versionsBackup
 
 # We can use this for marking the thirdparty directory inside a working directory as "unusable" so

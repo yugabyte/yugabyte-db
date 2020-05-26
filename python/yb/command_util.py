@@ -36,6 +36,8 @@ ProgramResult = namedtuple('ProgramResult',
 
 
 def trim_output(output, max_lines):
+    if isinstance(output, bytes):
+        output = output.decode('utf-8')
     lines = output.split("\n")
     if len(lines) <= max_lines:
         return output
@@ -73,8 +75,8 @@ def run_program(args, error_ok=False, max_error_lines=100, cwd=None):
     return ProgramResult(cmd_line=args,
                          program_path=os.path.realpath(args[0]),
                          returncode=program_subprocess.returncode,
-                         stdout=program_stdout.strip(),
-                         stderr=program_stderr.strip(),
+                         stdout=program_stdout.strip().decode('utf-8'),
+                         stderr=program_stderr.strip().decode('utf-8'),
                          error_msg=error_msg)
 
 
@@ -87,7 +89,7 @@ def mkdir_p(d):
         return
     try:
         os.makedirs(d)
-    except OSError, e:
+    except OSError as e:
         if os.path.isdir(d):
             return
         raise e

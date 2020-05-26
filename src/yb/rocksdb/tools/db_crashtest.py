@@ -70,6 +70,7 @@ def get_dbname(test_name):
         shutil.rmtree(dbname, True)
     return dbname
 
+
 blackbox_default_params = {
     # total time for this script to test db_stress
     "duration": 6000,
@@ -319,7 +320,7 @@ def whitebox_crash_main(args):
         cmd = gen_cmd(dict(cmd_params.items() + additional_opts.items()
                            + {'db': dbname}.items()))
 
-        print "Running:" + cmd + "\n"
+        print("Running:" + cmd + "\n")
 
         popen = subprocess.Popen([cmd], stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT,
@@ -328,8 +329,8 @@ def whitebox_crash_main(args):
         retncode = popen.returncode
         msg = ("check_mode={0}, kill option={1}, exitcode={2}\n".format(
                check_mode, additional_opts['kill_random_test'], retncode))
-        print msg
-        print stdoutdata
+        print(msg)
+        print(stdoutdata)
 
         expected = False
         if additional_opts['kill_random_test'] is None and (retncode == 0):
@@ -340,19 +341,19 @@ def whitebox_crash_main(args):
             expected = True
 
         if not expected:
-            print "TEST FAILED. See kill option and exit code above!!!\n"
+            print("TEST FAILED. See kill option and exit code above!!!\n")
             sys.exit(1)
 
         stdoutdata = stdoutdata.lower()
         errorcount = (stdoutdata.count('error') -
                       stdoutdata.count('got errors 0 times'))
-        print "#times error occurred in output is " + str(errorcount) + "\n"
+        print("#times error occurred in output is " + str(errorcount) + "\n")
 
         if (errorcount > 0):
-            print "TEST FAILED. Output has 'error'!!!\n"
+            print("TEST FAILED. Output has 'error'!!!\n")
             sys.exit(2)
         if (stdoutdata.find('fail') >= 0):
-            print "TEST FAILED. Output has 'fail'!!!\n"
+            print("TEST FAILED. Output has 'fail'!!!\n")
             sys.exit(2)
 
         # First half of the duration, keep doing kill test. For the next half,
@@ -387,6 +388,7 @@ def main():
         blackbox_crash_main(args)
     if args.test_type == 'whitebox':
         whitebox_crash_main(args)
+
 
 if __name__ == '__main__':
     main()

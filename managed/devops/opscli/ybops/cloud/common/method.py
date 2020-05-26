@@ -398,9 +398,9 @@ class ListInstancesMethod(AbstractInstancesMethod):
             del host_info['server_type']
 
         if args.as_json:
-            print json.dumps(host_info)
+            print(json.dumps(host_info))
         else:
-            print '\n'.join(["{}={}".format(k, v) for k, v in host_info.iteritems()])
+            print('\n'.join(["{}={}".format(k, v) for k, v in host_info.iteritems()]))
 
 
 class UpdateDiskMethod(AbstractInstancesMethod):
@@ -695,7 +695,7 @@ class AccessCreateVaultMethod(AbstractMethod):
 
         vault = Vault(vault_password)
         vault.dump(vault_data, open(args.vault_file, 'w'))
-        print json.dumps({"vault_file": args.vault_file, "vault_password": args.vault_password})
+        print(json.dumps({"vault_file": args.vault_file, "vault_password": args.vault_password}))
 
 
 class AbstractAccessMethod(AbstractMethod):

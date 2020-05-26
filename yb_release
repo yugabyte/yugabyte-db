@@ -17,4 +17,4 @@ set -euo pipefail
 
 activate_virtualenv
 export PYTHONPATH=$YB_SRC_ROOT/python:${PYTHONPATH:-}
-"$YB_SRC_ROOT"/build-support/yb_release.py "$@"
+python3 "$YB_SRC_ROOT"/build-support/yb_release.py "$@"

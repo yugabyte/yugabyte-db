@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 #
 # Copyright (c) YugaByte, Inc.
@@ -128,7 +128,7 @@ class YBProf:
     def print_records(self, sort_metric, filename):
         max_call_stacks = 1000
         idx = 0
-        print "Writing output to " + filename
+        print("Writing output to " + filename)
         fhd = open(filename, "w")
         fhd.write("<html>\n")
         fhd.write("<title>Top Call Stacks By: " + sort_metric + "</title>\n")

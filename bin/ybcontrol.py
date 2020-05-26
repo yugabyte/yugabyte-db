@@ -13,7 +13,6 @@
 # under the License.
 #
 import argparse
-import exceptions
 import os
 import pipes
 import platform

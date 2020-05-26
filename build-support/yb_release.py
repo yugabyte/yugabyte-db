@@ -1,4 +1,5 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
+
 # Copyright (c) YugaByte, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -243,6 +244,7 @@ def main():
     # ---------------------------------------------------------------------------------------------
 
     if args.yw:
+        os.environ['YB_MANAGED_DEVOPS_USE_PYTHON3'] = '1'
         managed_dir = os.path.join(YB_SRC_ROOT, "managed")
         yw_dir = os.path.join(build_target, "ui")
         if not os.path.exists(yw_dir):
