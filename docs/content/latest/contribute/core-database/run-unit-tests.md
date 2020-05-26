@@ -111,6 +111,6 @@ If build somehow doesn't pick up the changes and doesn't copy, you can remove `b
      - `src/postgres/src/test/regress/sql/foo.sql`: unchanged from original postgres code
      - `src/postgres/src/test/regress/sql/yb_foo.sql`: completely new file (for example, with new features)
      - `src/postgres/src/test/regress/sql/yb_pg_foo.sql`: modified version of original postgres foo.sql (e.g. for compatibility edits) 
-     - the aim here is to reduce diff between `foo.sql` and `yb_pg_foo.sql` when possible
+     - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
 
 {{< /tip >}}
