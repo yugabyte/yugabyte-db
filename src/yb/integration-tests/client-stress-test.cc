@@ -440,7 +440,11 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
 
     opts.extra_tserver_flags = {
         Format("--memory_limit_hard_bytes=$0", kHardLimitBytes),
-        Format("--consensus_max_batch_size_bytes=$0", kConsensusMaxBatchSizeBytes)
+        Format("--consensus_max_batch_size_bytes=$0", kConsensusMaxBatchSizeBytes),
+        // Turn off exponential backoff and lagging follower threshold in order to hit soft memory
+        // limit and check throttling.
+        "--enable_consensus_exponential_backoff=false",
+        "--consensus_lagging_follower_threshold=-1"
     };
 
     opts.num_tablet_servers = 3;
