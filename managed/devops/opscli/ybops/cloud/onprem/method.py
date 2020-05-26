@@ -124,7 +124,7 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help='The user who can SSH into the instance.')
         # Allow for ssh_port to not be mandatory so already created template scripts just default
         # to 22, without breaking...
-        self.parser.add_argument('--ssh_port', required=False, default=22,
+        self.parser.add_argument('--custom_ssh_port', required=False, default=22,
                                  help='The port on which to SSH into the instance.')
         self.parser.add_argument('--vars_file', required=True,
                                  help='The vault file containing needed vars.')
