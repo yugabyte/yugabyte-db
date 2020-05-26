@@ -5,8 +5,11 @@
 # Other than the dependencies, the tests in this schedule are not ported from PostgreSQL original
 # tests.
 ####################################################################################################
-test: yb_aggregates
-test: yb_compound_key
-test: yb_schema
-test: yb_select
-test: yb_guc
+# Chain of dependencies for `yb_create_index`
+test: yb_pg_create_function_1
+test: yb_pg_create_type
+test: yb_pg_create_table
+
+test: yb_create_index
+test: yb_index_scan
+test: yb_secondary_index_scan
