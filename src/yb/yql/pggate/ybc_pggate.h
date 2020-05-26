@@ -39,11 +39,19 @@ YBCStatus YBCPgDestroyEnv(YBCPgEnv pg_env);
 // Initialize a session to process statements that come from the same client connection.
 YBCStatus YBCPgInitSession(const YBCPgEnv pg_env, const char *database_name);
 
+// Initialize YBCPgMemCtx.
+// - Postgres uses memory context to hold all of its allocated space. Once all associated operations
+//   are done, the context is destroyed.
+// - There YugaByte objects are bound to Postgres operations. All of these objects' allocated
+//   memory will be held by YBCPgMemCtx, whose handle belongs to Postgres MemoryContext. Once all
+//   Postgres operations are done, associated YugaByte memory context (YBCPgMemCtx) will be
+//   destroyed toghether with Postgres memory context.
+YBCPgMemctx YBCPgCreateMemctx();
+void YBCPgDestroyMemctx(YBCPgMemctx memctx);
+void YBCPgResetMemctx(YBCPgMemctx memctx);
+
 // Invalidate the sessions table cache.
 YBCStatus YBCPgInvalidateCache();
-
-// Delete statement given its handle.
-YBCStatus YBCPgDeleteStatement(YBCPgStatement handle);
 
 // Clear all values and expressions that were bound to the given statement.
 YBCStatus YBCPgClearBinds(YBCPgStatement handle);
@@ -186,8 +194,6 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle);
 YBCStatus YBCPgGetTableDesc(YBCPgOid database_oid,
                             YBCPgOid table_oid,
                             YBCPgTableDesc *handle);
-
-YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle);
 
 YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,

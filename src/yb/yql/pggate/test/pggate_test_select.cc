@@ -52,7 +52,6 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                                DataType::INT32, false, false));
   ++col_count;
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   CommitTransaction();
   pg_stmt = nullptr;
 
@@ -110,7 +109,6 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     YBCPgUpdateConstInt4(expr_oid, seed, false);
   }
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------
@@ -191,7 +189,6 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   }
   CHECK_EQ(select_row_count, 1) << "Unexpected row count";
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------
@@ -259,7 +256,6 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_EQ(oid, id) << "Unexpected result for OID column";
   }
 
-  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 }
 

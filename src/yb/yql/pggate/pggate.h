@@ -75,6 +75,23 @@ class PgApiImpl {
   // If database_name is empty, a session is created without connecting to any database.
   CHECKED_STATUS InitSession(const PgEnv *pg_env, const string& database_name);
 
+  // YB Memctx: Create, Destroy, and Reset must be "static" because a few contexts are created
+  //            before YugaByte environments including PgGate are created and initialized.
+  // Create YB Memctx. Each memctx will be associated with a Postgres's MemoryContext.
+  static PgMemctx *CreateMemctx();
+  // Destroy YB Memctx.
+  static void DestroyMemctx(PgMemctx *memctx);
+  // Reset YB Memctx.
+  static void ResetMemctx(PgMemctx *memctx);
+  // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
+  CHECKED_STATUS AddToCurrentPgMemctx(const PgStatement::ScopedRefPtr &stmt,
+                                      PgStatement **handle);
+  // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
+  CHECKED_STATUS AddToCurrentPgMemctx(size_t table_desc_id,
+                                      const PgTableDesc::ScopedRefPtr &table_desc);
+  // Read table descriptor that was cached in YB Memctx.
+  CHECKED_STATUS GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle);
+
   // Invalidate the sessions table cache.
   CHECKED_STATUS InvalidateCache();
 
@@ -114,9 +131,6 @@ class PgApiImpl {
                                    bool *is_called);
 
   CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
-
-  // Delete statement.
-  CHECKED_STATUS DeleteStatement(PgStatement *handle);
 
   // Remove all values and expressions that were bound to the given statement.
   CHECKED_STATUS ClearBinds(PgStatement *handle);
@@ -217,8 +231,6 @@ class PgApiImpl {
 
   CHECKED_STATUS GetTableDesc(const PgObjectId& table_id,
                               PgTableDesc **handle);
-
-  CHECKED_STATUS DeleteTableDesc(PgTableDesc *handle);
 
   CHECKED_STATUS GetColumnInfo(YBCPgTableDesc table_desc,
                                int16_t attr_number,

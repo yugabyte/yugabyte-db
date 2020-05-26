@@ -534,7 +534,6 @@ bool YBCAllPrimaryKeysProvided(Oid relid, Bitmapset *attrs)
 			primary_key_attrs = bms_add_member(primary_key_attrs, attnum);
 		}
 	}
-	HandleYBStatus(YBCPgDeleteTableDesc(ybc_tabledesc));
 
 	RelationClose(rel);
 
