@@ -2,7 +2,7 @@
 title: Deploy on Azure Kubernetes Service (AKS) using Helm Chart
 headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
-description: Use Helm Chart to deploy a single-zone Kubernetes cluster on Azure Kubernetes Service (AKS).
+description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
 menu:
   latest:
     parent: deploy-kubernetes-sz
@@ -48,8 +48,6 @@ In this blog, we’ll show you just how easy it is to get started with YugabyteD
 
 Before you can deploy YugabyteDB on AKS, you need to verify that the following are installed and configured:
 
-- YugabyteDB - v2.1.4 or later
-  - (https://docs.yugabyte.com/latest/deploy/kubernetes/single-zone/oss/helm-chart/)
 - `kubectl`
   - For more information, see [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
   - [Kubernetes API v1.18.0](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/)
@@ -126,7 +124,7 @@ You should now be able to view showing the “yugabytedbRG” resource group in 
 
 ![Resource Groups at Microsoft Azure Portal](images/deploy/kubernetes/aks/aks-resource-groups.png)
 
-### Step 3: Create the Kubernetes Cluster**
+### Step 3: Create the Kubernetes cluster
 
 You can now create a Kubernetes cluster by running the following command. 
 
@@ -223,13 +221,11 @@ A browser window appears where you can view the Kubernetes Dashboard:
 
 ![Kubernetes Dashboard](images/deploy/kubernetes/aks/aks-kubernetes-dashboard.png)
 
-### Step 4: Install YugabyteDB using Helm Chart**
+### Step 4: Install YugabyteDB using Helm Chart
 
-Now that we have our Kubernetes cluster up and running, we'll need to perform the following steps to get YugabyteDB deployed: \
+Now that we have our Kubernetes cluster up and running, we'll need to perform the following steps to get YugabyteDB deployed using Helm Chart:
 
-1. Add the YugabyteDB Helm repo
-2. Create a namespace
-3. Install YugabyteDB using Helm
+#### Add the Yugabyte charts repository
 
 Let’s first add the YugabyteDB `charts` repository by running the following commands:
 
@@ -259,7 +255,9 @@ NAME               	CHART VERSION	APP VERSION	DESCRIPTION
 yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...
 ```
 
-Create the `yb-demo` namespace.
+#### Create the namespace
+
+To create the `yb-demo` namespace, run the following command.
 
 ```sh
 $ kubectl create namespace yb-demo
@@ -270,6 +268,8 @@ The following message should appear:
 ```
 namespace/yb-demo created
 ```
+
+#### Install YugabyteDB
 
 Next, install YugabyteDB in the `yb-demo` namespace by running the following commands to specify settings for resource constrained environments.
 
