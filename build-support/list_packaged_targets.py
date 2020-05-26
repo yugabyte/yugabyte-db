@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Copyright (c) YugaByte, Inc.
 
@@ -20,7 +20,7 @@ def main():
     for bin_path in release_manifest['bin']:
         match = LATEST_BINARY_RE.match(bin_path)
         if match:
-            print match.group(1)
+            print(match.group(1))
             found_matches = True
 
     if not found_matches:

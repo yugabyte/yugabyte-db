@@ -12,7 +12,6 @@
 #
 
 import collections
-import command_util
 import copy
 import logging
 import os
@@ -25,7 +24,9 @@ import sys
 import tempfile
 import atexit
 
+from functools import total_ordering
 
+from yb import command_util
 from yb.common_util import get_build_type_from_build_root, \
                            get_compiler_type_from_build_root, \
                            is_macos  # nopep8
@@ -50,6 +51,7 @@ CLOCK_SYNC_WAIT_LOGGING_INTERVAL_SEC = 10
 MAX_TIME_TO_WAIT_FOR_CLOCK_SYNC_SEC = 60
 
 
+@total_ordering
 class TestDescriptor:
     """
     A "test descriptor" identifies a particular test we could run on a distributed test worker.
@@ -139,6 +141,15 @@ class TestDescriptor:
             self.attempt_index
             ]
 
+    def __eq__(self, other):
+        return self.descriptor_str == other.descriptor_str
+
+    def __ne__(self, other):
+        return not (self == other)
+
+    def __lt__(self, other):
+        return self.descriptor_str < other.descriptor_str
+
     def with_attempt_index(self, attempt_index):
         assert attempt_index >= 1
         copied = copy.copy(self)
@@ -178,7 +189,7 @@ class GlobalTestConfig:
         os.environ['YB_COMPILER_TYPE'] = self.compiler_type
         # This is how we tell run-test.sh what set of C++ binaries to use for mini-clusters in Java
         # tests.
-        for env_var_name, env_var_value in propagated_env_vars.iteritems():
+        for env_var_name, env_var_value in propagated_env_vars.items():
             os.environ[env_var_name] = env_var_value
 
 
@@ -285,9 +296,10 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
     'version.txt',
     'www',
     'yb_build.sh',
-    'build/python_virtual_env',
-    'python_requirements_frozen.txt',
+    'build/venv',
     'thirdparty/homebrew_version_for_jenkins.txt',
+    'requirements.txt',
+    'requirements_frozen.txt',
 ]
 
 
@@ -401,7 +413,7 @@ def compute_sha256sum(file_path):
     else:
         raise ValueError("Don't know how to compute SHA256 checksum on platform %s" % sys.platform)
 
-    checksum_str = subprocess.check_output(cmd_line).strip().split()[0]
+    checksum_str = subprocess.check_output(cmd_line).strip().split()[0].decode('utf-8')
     validate_sha256sum(checksum_str)
     return checksum_str
 

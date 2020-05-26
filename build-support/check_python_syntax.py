@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -21,14 +21,15 @@ import traceback
 
 
 def horizontal_line():
-    print >>sys.stderr, "-" * 80
+    sys.stderr.write("-" * 80 + "\n")
 
 
 if __name__ == '__main__':
     filename = sys.argv[1]
     if not os.path.exists(filename):
-        print >>sys.stderr, "Python file does not exist, cannot check syntax: %s" % filename
-        print >>sys.stderr, "This file might have been deleted as part of the latest commit."
+        sys.stderr.write(
+            "Python file does not exist, cannot check syntax: %s" % filename + "\n")
+        sys.stderr.write("This file might have been deleted as part of the latest commit.\n")
         # Don't consider this an error.
         sys.exit(0)
 
@@ -37,7 +38,7 @@ if __name__ == '__main__':
         compile(source, filename, 'exec')
     except:  # noqa
         horizontal_line()
-        print >>sys.stderr, "Syntax error in {}:\n".format(filename)
+        sys.stderr.write("Syntax error in {}:\n\n".format(filename))
         traceback.print_exc()
         horizontal_line()
         sys.exit(1)

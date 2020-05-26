@@ -835,9 +835,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     --remote)
       export YB_REMOTE_COMPILATION=1
-      if [[ ! -f "$YB_BUILD_WORKERS_FILE" ]]; then
-        fatal "--remote specified but $YB_BUILD_WORKERS_FILE not found"
-      fi
+      get_build_worker_list
     ;;
     --no-remote)
       export YB_REMOTE_COMPILATION=0

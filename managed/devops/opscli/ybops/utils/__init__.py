@@ -37,7 +37,9 @@ from enum import Enum
 
 from ybops.common.colors import Colors
 from ybops.common.exceptions import YBOpsRuntimeError
-from replicated import Replicated
+
+if sys.version_info[0] == 2:
+    from replicated import Replicated
 
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]

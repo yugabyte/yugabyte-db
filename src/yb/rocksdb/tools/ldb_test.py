@@ -21,37 +21,20 @@ import unittest
 import tempfile
 import re
 
-def my_check_output(*popenargs, **kwargs):
-    """
-    If we had python 2.7, we should simply use subprocess.check_output.
-    This is a stop-gap solution for python 2.6
-    """
-    if 'stdout' in kwargs:
-        raise ValueError('stdout argument not allowed, it will be overridden.')
-    process = subprocess.Popen(stderr=subprocess.PIPE, stdout=subprocess.PIPE,
-                               *popenargs, **kwargs)
-    output, unused_err = process.communicate()
-    retcode = process.poll()
-    if retcode:
-        cmd = kwargs.get("args")
-        if cmd is None:
-            cmd = popenargs[0]
-        raise Exception("Exit code is not 0.  It is %d.  Command: %s" %
-                (retcode, cmd))
-    return output
 
 def run_err_null(cmd):
     return os.system(cmd + " 2>/dev/null ")
 
+
 class LDBTestCase(unittest.TestCase):
     def setUp(self):
-        self.TMP_DIR  = tempfile.mkdtemp(prefix="ldb_test_")
+        self.TMP_DIR = tempfile.mkdtemp(prefix="ldb_test_")
         self.DB_NAME = "testdb"
 
     def tearDown(self):
         assert(self.TMP_DIR.strip() != "/"
-                and self.TMP_DIR.strip() != "/tmp"
-                and self.TMP_DIR.strip() != "/tmp/") #Just some paranoia
+               and self.TMP_DIR.strip() != "/tmp"
+               and self.TMP_DIR.strip() != "/tmp/")  # Just some paranoia
 
         shutil.rmtree(self.TMP_DIR)
 
@@ -66,8 +49,9 @@ class LDBTestCase(unittest.TestCase):
 
         """
 
-        output = my_check_output("./ldb %s |grep -v \"Created bg thread\"" %
-                            params, shell=True)
+        output = subprocess.check_output(
+                "./ldb %s |grep -v \"Created bg thread\"" %
+                params, shell=True)
         if not unexpected:
             if isPattern:
                 self.assertNotEqual(expectedOutput.search(output.strip()),
@@ -87,10 +71,9 @@ class LDBTestCase(unittest.TestCase):
 
         """
         try:
-
-            my_check_output("./ldb %s >/dev/null 2>&1 |grep -v \"Created bg \
+            subprocess.check_output("./ldb %s >/dev/null 2>&1 |grep -v \"Created bg \
                 thread\"" % params, shell=True)
-        except Exception, e:
+        except Exception as e:
             return
         self.fail(
             "Exception should have been raised for command with params: %s" %
@@ -111,7 +94,7 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunFAILFull("%s %s" % (self.dbParam(self.DB_NAME), params))
 
     def testSimpleStringPutGet(self):
-        print "Running testSimpleStringPutGet..."
+        print("Running testSimpleStringPutGet...")
         self.assertRunFAIL("put x1 y1")
         self.assertRunOK("put --create_if_missing x1 y1", "OK")
         self.assertRunOK("get x1", "y1")
@@ -132,15 +115,15 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunOK("scan --to=x2", "x1 : y1")
         self.assertRunOK("scan --from=x1 --to=z --max_keys=1", "x1 : y1")
         self.assertRunOK("scan --from=x1 --to=z --max_keys=2",
-                "x1 : y1\nx2 : y2")
+                         "x1 : y1\nx2 : y2")
 
         self.assertRunOK("scan --from=x1 --to=z --max_keys=3",
-                "x1 : y1\nx2 : y2\nx3 : y3")
+                         "x1 : y1\nx2 : y2\nx3 : y3")
         self.assertRunOK("scan --from=x1 --to=z --max_keys=4",
-                "x1 : y1\nx2 : y2\nx3 : y3")
+                         "x1 : y1\nx2 : y2\nx3 : y3")
         self.assertRunOK("scan --from=x1 --to=x2", "x1 : y1")
         self.assertRunOK("scan --from=x2 --to=x4", "x2 : y2\nx3 : y3")
-        self.assertRunFAIL("scan --from=x4 --to=z") # No results => FAIL
+        self.assertRunFAIL("scan --from=x4 --to=z")  # No results => FAIL
         self.assertRunFAIL("scan --from=x1 --to=z --max_keys=foo")
 
         self.assertRunOK("scan", "x1 : y1\nx2 : y2\nx3 : y3")
@@ -161,7 +144,7 @@ class LDBTestCase(unittest.TestCase):
         return 0 == run_err_null("cat %s | ./ldb load %s" % (dumpFile, params))
 
     def testStringBatchPut(self):
-        print "Running testStringBatchPut..."
+        print("Running testStringBatchPut...")
         self.assertRunOK("batchput x1 y1 --create_if_missing", "OK")
         self.assertRunOK("scan", "x1 : y1")
         self.assertRunOK("batchput x2 y2 x3 y3 \"x4 abc\" \"y4 xyz\"", "OK")
@@ -171,25 +154,34 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunFAIL("batchput k1 v1 k2")
 
     def testCountDelimDump(self):
-        print "Running testCountDelimDump..."
+        print("Running testCountDelimDump...")
         self.assertRunOK("batchput x.1 x1 --create_if_missing", "OK")
         self.assertRunOK("batchput y.abc abc y.2 2 z.13c pqr", "OK")
-        self.assertRunOK("dump --count_delim", "x => count:1\tsize:5\ny => count:2\tsize:12\nz => count:1\tsize:8")
-        self.assertRunOK("dump --count_delim=\".\"", "x => count:1\tsize:5\ny => count:2\tsize:12\nz => count:1\tsize:8")
+        self.assertRunOK(
+                "dump --count_delim", "x => count:1\tsize:5\ny => count:2\tsize:12\n"
+                "z => count:1\tsize:8")
+        self.assertRunOK("dump --count_delim=\".\"", "x => count:1\tsize:5\n"
+                         "y => count:2\tsize:12\nz => count:1\tsize:8")
         self.assertRunOK("batchput x,2 x2 x,abc xabc", "OK")
-        self.assertRunOK("dump --count_delim=\",\"", "x => count:2\tsize:14\nx.1 => count:1\tsize:5\ny.2 => count:1\tsize:4\ny.abc => count:1\tsize:8\nz.13c => count:1\tsize:8")
+        self.assertRunOK("dump --count_delim=\",\"", "x => count:2\tsize:14\n"
+                         "x.1 => count:1\tsize:5\ny.2 => count:1\tsize:4\n"
+                         "y.abc => count:1\tsize:8\nz.13c => count:1\tsize:8")
 
     def testCountDelimIDump(self):
-        print "Running testCountDelimIDump..."
+        print("Running testCountDelimIDump...")
         self.assertRunOK("batchput x.1 x1 --create_if_missing", "OK")
         self.assertRunOK("batchput y.abc abc y.2 2 z.13c pqr", "OK")
-        self.assertRunOK("dump --count_delim", "x => count:1\tsize:5\ny => count:2\tsize:12\nz => count:1\tsize:8")
-        self.assertRunOK("dump --count_delim=\".\"", "x => count:1\tsize:5\ny => count:2\tsize:12\nz => count:1\tsize:8")
+        self.assertRunOK("dump --count_delim", "x => count:1\tsize:5\ny => count:2\tsize:12\n"
+                         "z => count:1\tsize:8")
+        self.assertRunOK("dump --count_delim=\".\"", "x => count:1\tsize:5\n"
+                         "y => count:2\tsize:12\nz => count:1\tsize:8")
         self.assertRunOK("batchput x,2 x2 x,abc xabc", "OK")
-        self.assertRunOK("dump --count_delim=\",\"", "x => count:2\tsize:14\nx.1 => count:1\tsize:5\ny.2 => count:1\tsize:4\ny.abc => count:1\tsize:8\nz.13c => count:1\tsize:8")
+        self.assertRunOK("dump --count_delim=\",\"", "x => count:2\tsize:14\n"
+                         "x.1 => count:1\tsize:5\ny.2 => count:1\tsize:4\n"
+                         "y.abc => count:1\tsize:8\nz.13c => count:1\tsize:8")
 
     def testInvalidCmdLines(self):
-        print "Running testInvalidCmdLines..."
+        print("Running testInvalidCmdLines...")
         # db not specified
         self.assertRunFAILFull("put 0x6133 0x6233 --hex --create_if_missing")
         # No param called he
@@ -199,7 +191,7 @@ class LDBTestCase(unittest.TestCase):
         # hex has invalid boolean value
 
     def testHexPutGet(self):
-        print "Running testHexPutGet..."
+        print("Running testHexPutGet...")
         self.assertRunOK("put a1 b1 --create_if_missing", "OK")
         self.assertRunOK("scan", "a1 : b1")
         self.assertRunOK("scan --hex", "0x6131 : 0x6231")
@@ -215,11 +207,11 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunOK("get --key_hex --value_hex 0x6132", "0x6232")
         self.assertRunOK("get --value_hex a2", "0x6232")
         self.assertRunOK("scan --key_hex --value_hex",
-                "0x6131 : 0x6231\n0x6132 : 0x6232")
+                         "0x6131 : 0x6231\n0x6132 : 0x6232")
         self.assertRunOK("scan --hex --from=0x6131 --to=0x6133",
-                "0x6131 : 0x6231\n0x6132 : 0x6232")
+                         "0x6131 : 0x6231\n0x6132 : 0x6232")
         self.assertRunOK("scan --hex --from=0x6131 --to=0x6132",
-                "0x6131 : 0x6231")
+                         "0x6131 : 0x6231")
         self.assertRunOK("scan --key_hex", "0x6131 : b1\n0x6132 : b2")
         self.assertRunOK("scan --value_hex", "a1 : 0x6231\na2 : 0x6232")
         self.assertRunOK("batchput --hex 0x6133 0x6233 0x6134 0x6234", "OK")
@@ -229,7 +221,7 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunOK("checkconsistency", "OK")
 
     def testTtlPutGet(self):
-        print "Running testTtlPutGet..."
+        print("Running testTtlPutGet...")
         self.assertRunOK("put a1 b1 --ttl --create_if_missing", "OK")
         self.assertRunOK("scan --hex", "0x6131 : 0x6231", True)
         self.assertRunOK("dump --ttl ", "a1 ==> b1", True)
@@ -244,7 +236,7 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunOK("checkconsistency", "OK")
 
     def testInvalidCmdLines(self):
-        print "Running testInvalidCmdLines..."
+        print("Running testInvalidCmdLines...")
         # db not specified
         self.assertRunFAILFull("put 0x6133 0x6233 --hex --create_if_missing")
         # No param called he
@@ -255,9 +247,9 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunFAIL("put 0x6133 0x6233 --hex=Boo --create_if_missing")
 
     def testDumpLoad(self):
-        print "Running testDumpLoad..."
+        print("Running testDumpLoad...")
         self.assertRunOK("batchput --create_if_missing x1 y1 x2 y2 x3 y3 x4 y4",
-                "OK")
+                         "OK")
         self.assertRunOK("scan", "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
         origDbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
 
@@ -268,7 +260,7 @@ class LDBTestCase(unittest.TestCase):
         self.assertTrue(self.loadDb(
             "--db=%s --create_if_missing" % loadedDbPath, dumpFilePath))
         self.assertRunOKFull("scan --db=%s" % loadedDbPath,
-                "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
+                             "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
 
         # Dump and load in hex
         dumpFilePath = os.path.join(self.TMP_DIR, "dump2")
@@ -277,7 +269,7 @@ class LDBTestCase(unittest.TestCase):
         self.assertTrue(self.loadDb(
             "--db=%s --hex --create_if_missing" % loadedDbPath, dumpFilePath))
         self.assertRunOKFull("scan --db=%s" % loadedDbPath,
-                "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
+                             "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
 
         # Dump only a portion of the key range
         dumpFilePath = os.path.join(self.TMP_DIR, "dump3")
@@ -296,13 +288,13 @@ class LDBTestCase(unittest.TestCase):
         self.assertTrue(self.loadDb(
             "--db=%s --create_if_missing" % loadedDbPath, dumpFilePath))
         self.assertRunOKFull("scan --db=%s" % loadedDbPath,
-                "x1 : y1\nx2 : y2\nx3 : y3")
+                             "x1 : y1\nx2 : y2\nx3 : y3")
 
         # Load into an existing db, create_if_missing is not specified
         self.assertTrue(self.dumpDb("--db=%s" % origDbPath, dumpFilePath))
         self.assertTrue(self.loadDb("--db=%s" % loadedDbPath, dumpFilePath))
         self.assertRunOKFull("scan --db=%s" % loadedDbPath,
-                "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
+                             "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
 
         # Dump and load with WAL disabled
         dumpFilePath = os.path.join(self.TMP_DIR, "dump5")
@@ -312,7 +304,7 @@ class LDBTestCase(unittest.TestCase):
             "--db=%s --disable_wal --create_if_missing" % loadedDbPath,
             dumpFilePath))
         self.assertRunOKFull("scan --db=%s" % loadedDbPath,
-                "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
+                             "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
 
         # Dump and load with lots of extra params specified
         extraParams = " ".join(["--bloom_bits=14", "--block_size=1024",
@@ -327,7 +319,7 @@ class LDBTestCase(unittest.TestCase):
             "--db=%s %s --create_if_missing" % (loadedDbPath, extraParams),
             dumpFilePath))
         self.assertRunOKFull("scan --db=%s" % loadedDbPath,
-                "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
+                             "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
 
         # Dump with count_only
         dumpFilePath = os.path.join(self.TMP_DIR, "dump7")
@@ -346,11 +338,11 @@ class LDBTestCase(unittest.TestCase):
             "--db=%s --create_if_missing" % origDbPath, dumpFilePath))
 
     def testMiscAdminTask(self):
-        print "Running testMiscAdminTask..."
+        print("Running testMiscAdminTask...")
         # These tests need to be improved; for example with asserts about
         # whether compaction or level reduction actually took place.
         self.assertRunOK("batchput --create_if_missing x1 y1 x2 y2 x3 y3 x4 y4",
-                "OK")
+                         "OK")
         self.assertRunOK("scan", "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
         origDbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
 
@@ -375,14 +367,14 @@ class LDBTestCase(unittest.TestCase):
             % origDbPath))
         self.assertRunOK("scan", "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
 
-        #TODO(dilip): Not sure what should be passed to WAL.Currently corrupted.
+        # TODO(dilip): Not sure what should be passed to WAL.Currently corrupted.
         self.assertTrue(0 == run_err_null(
             "./ldb dump_wal --db=%s --walfile=%s --header" % (
                 origDbPath, os.path.join(origDbPath, "LOG"))))
         self.assertRunOK("scan", "x1 : y1\nx2 : y2\nx3 : y3\nx4 : y4")
 
     def testCheckConsistency(self):
-        print "Running testCheckConsistency..."
+        print("Running testCheckConsistency...")
 
         dbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
         self.assertRunOK("put x1 y1 --create_if_missing", "OK")
@@ -390,23 +382,23 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunOK("get x1", "y1")
         self.assertRunOK("checkconsistency", "OK")
 
-        sstFilePath = my_check_output("ls %s" % os.path.join(dbPath, "*.sst"),
-                                      shell=True)
+        sstFilePath = subprocess.check_output(
+                "ls %s" % os.path.join(dbPath, "*.sst"),
+                shell=True)
 
         # Modify the file
-        my_check_output("echo 'evil' > %s" % sstFilePath, shell=True)
+        subprocess.check_output("echo 'evil' > %s" % sstFilePath, shell=True)
         self.assertRunFAIL("checkconsistency")
 
         # Delete the file
-        my_check_output("rm -f %s" % sstFilePath, shell=True)
+        subprocess.check_output("rm -f %s" % sstFilePath, shell=True)
         self.assertRunFAIL("checkconsistency")
 
     def dumpLiveFiles(self, params, dumpFile):
-        return 0 == run_err_null("./ldb dump_live_files %s > %s" % (
-            params, dumpFile))
+        return 0 == run_err_null("./ldb dump_live_files %s > %s" % (params, dumpFile))
 
     def testDumpLiveFiles(self):
-        print "Running testDumpLiveFiles..."
+        print("Running testDumpLiveFiles...")
 
         dbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
         self.assertRunOK("put x1 y1 --create_if_missing", "OK")
@@ -431,7 +423,7 @@ class LDBTestCase(unittest.TestCase):
         return 0 == run_err_null("cp " + src + " " + dest)
 
     def testManifestDump(self):
-        print "Running testManifestDump..."
+        print("Running testManifestDump...")
         dbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
         self.assertRunOK("put 1 1 --create_if_missing", "OK")
         self.assertRunOK("put 2 2", "OK")
@@ -467,7 +459,7 @@ class LDBTestCase(unittest.TestCase):
                              isPattern=True)
 
     def testSSTDump(self):
-        print "Running testSSTDump..."
+        print("Running testSSTDump...")
 
         dbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
         self.assertRunOK("put sst1 sst1_val --create_if_missing", "OK")
@@ -487,7 +479,7 @@ class LDBTestCase(unittest.TestCase):
                              isPattern=True)
 
     def testWALDump(self):
-        print "Running testWALDump..."
+        print("Running testWALDump...")
 
         dbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
         self.assertRunOK("put wal1 wal1_val --create_if_missing", "OK")
@@ -507,7 +499,7 @@ class LDBTestCase(unittest.TestCase):
                              isPattern=True)
 
     def testListColumnFamilies(self):
-        print "Running testListColumnFamilies..."
+        print("Running testListColumnFamilies...")
         dbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
         self.assertRunOK("put x1 y1 --create_if_missing", "OK")
         cmd = "list_column_families %s | grep -v \"Column families\""
@@ -517,7 +509,7 @@ class LDBTestCase(unittest.TestCase):
         self.assertRunFAILFull(cmd % "")
 
     def testColumnFamilies(self):
-        print "Running testColumnFamilies..."
+        print("Running testColumnFamilies...")
         dbPath = os.path.join(self.TMP_DIR, self.DB_NAME)
         self.assertRunOK("put cf1_1 1 --create_if_missing", "OK")
         self.assertRunOK("put cf1_2 2 --create_if_missing", "OK")
@@ -546,6 +538,7 @@ class LDBTestCase(unittest.TestCase):
                          "3")
         # non-existing column family.
         self.assertRunFAIL("get cf3_1 --column_family=four")
+
 
 if __name__ == "__main__":
     unittest.main()

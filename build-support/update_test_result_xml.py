@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -65,7 +65,6 @@ def parse_args():
     parser.add_argument(
         "--result-xml",
         help="The test result XML file (in the JUnit XML format) to update",
-        type=unicode,
         dest="result_xml",
         metavar="RESULT_XML_PATH",
         required=True)
@@ -77,14 +76,12 @@ def parse_args():
              "from a test result page such as https://jenkins.dev.yugabyte.com/job/"
              "yugabyte-ubuntu-phabricator/131/testReport/junit/(root)/ClientTest"
              "/TestInvalidPredicates/.",
-        type=unicode,
         dest="log_url",
         metavar="LOG_URL")
 
     parser.add_argument(
         "--extra-message",
         help="An extra message to add to the test result.",
-        type=unicode,
         metavar="EXTRA_MESSAGE")
 
     parser.add_argument(

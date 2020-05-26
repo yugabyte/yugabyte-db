@@ -40,7 +40,7 @@ mkdir -p $COVERAGE_DIR
 GCNO_FILES=`find $ROOT -name "*.gcno"`
 $GCOV --preserve-paths --relative-only --no-output $GCNO_FILES 2>/dev/null |
   # Parse the raw gcov report to more human readable form.
-  python $ROOT/coverage/parse_gcov_output.py |
+  python3 "$ROOT/coverage/parse_gcov_output.py" |
   # Write the output to both stdout and report file.
   tee $COVERAGE_DIR/coverage_report_all.txt &&
 echo -e "Generated coverage report for all files: $COVERAGE_DIR/coverage_report_all.txt\n"

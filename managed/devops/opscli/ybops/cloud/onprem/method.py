@@ -72,11 +72,11 @@ class OnPremValidateMethod(AbstractInstancesMethod):
         """
         self.extra_vars.update(
             get_ssh_host_port({"private_ip": args.search_pattern}, args.custom_ssh_port))
-        print validate_instance(self.extra_vars["ssh_host"],
+        print(validate_instance(self.extra_vars["ssh_host"],
                                 self.extra_vars["ssh_port"],
                                 self.SSH_USER,
                                 args.private_key_file,
-                                self.mount_points.split(','))
+                                self.mount_points.split(',')))
 
 
 class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
@@ -150,7 +150,7 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
             with open(os.path.join(args.destination, args.name), 'w') as f:
                 f.write(template.render(config))
             os.chmod(f.name, stat.S_IRWXU)
-            print json.dumps({'script_path': f.name})
+            print(json.dumps({'script_path': f.name}))
         except Exception as e:
             logging.error(e)
-            print json.dumps({"error": "Unable to create script: {}".format(e.message)})
+            print(json.dumps({"error": "Unable to create script: {}".format(e.message)}))

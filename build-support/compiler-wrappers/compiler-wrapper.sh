@@ -51,8 +51,6 @@ readonly COMPILATION_FAILURE_STDERR_PATTERNS="\
 |ValueError: bad marshal data\
 "
 
-readonly DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC=0.5
-
 declare -i -r MAX_INPUT_FILES_TO_SHOW=20
 
 # User is allowed to set YB_REMOTE_COMPILATION_MAX_ATTEMPTS.
@@ -367,74 +365,17 @@ if [[ $local_build_only == "false" &&
 
   trap remote_build_exit_handler EXIT
 
-  cached_build_workers_file=/tmp/cached_build_workers_$USER
-  declare -i num_missing_build_workers_file_retries=0
-
   declare -i attempt=0
-  declare -i no_worker_count=0
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
   while true; do
     (( attempt+=1 ))
     if [[ $attempt -gt $YB_REMOTE_COMPILATION_MAX_ATTEMPTS ]]; then
       fatal "Failed after $YB_REMOTE_COMPILATION_MAX_ATTEMPTS attempts: $*"
     fi
-    if [[ -n ${YB_BUILD_WORKERS_LIST_URL:-} ]]; then
-      # Note: ignoring bad exit codes and HTTP status codes here. We only look at the output and
-      # if it is of the right format ("build-worker-..."), we consider it valid.
-      build_worker_name=$( curl -s "$YB_BUILD_WORKERS_LIST_URL" | shuf -n 1 )
-      if [[ $build_worker_name != build-worker* ]]; then
-        log "Got an invalid build worker name from $YB_BUILD_WORKERS_LIST_URL:" \
-            "'$build_worker_name', expected to get a name starting with 'build-worker', waiting" \
-            "for $DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC sec"
-        sleep "$DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC"
-        continue
-      fi
-    else
-      effective_build_workers_file=$YB_BUILD_WORKERS_FILE
-      if [[ ! -f $YB_BUILD_WORKERS_FILE ]]; then
-        if [[ $num_missing_build_workers_file_retries -ge 5 && -f $cached_build_workers_file ]]
-        then
-          log "The build worker list file ('$YB_BUILD_WORKERS_FILE') has been missing for" \
-              "$num_missing_build_workers_file_retries attempts. Will use cached build worker" \
-              "list file."
-          effective_build_workers_file=$cached_build_workers_file
-        else
-          log "The build worker list file ('$YB_BUILD_WORKERS_FILE') does not exist. Will retry".
-          set +e
-          # Listing the directory containing the file might clear NFS's cached knowledge of the file
-          # non-existence.
-          ( cd "${YB_BUILD_WORKERS_FILE%/*}" && ls &>/dev/null )
-          set -e
-          sleep 0.5
-          (( num_missing_build_workers_file_retries+=1 ))
-          continue
-        fi
-      fi
-      set +e
-      if ! build_worker_name=$( shuf -n 1 "$effective_build_workers_file" ); then
-        set -e
-        log "shuf failed, trying again in a moment"
-        sleep 0.5
-        continue
-      fi
-      set -e
-      if [[ -f $YB_BUILD_WORKERS_FILE ]]; then
-        if ! cp "$YB_BUILD_WORKERS_FILE" "$cached_build_workers_file"; then
-          log "Failed copying $YB_BUILD_WORKERS_FILE even though it just existed!"
-        fi
-        num_missing_build_workers_file_retries=0
-      fi
-    fi
-    if [[ -z $build_worker_name ]]; then
-      (( no_worker_count+=1 ))
-      if [[ $no_worker_count -ge 100 ]]; then
-        fatal "Found no live workers in $YB_BUILD_WORKERS_FILE in $no_worker_count attempts"
-      fi
-      log "Waiting for one second while no live workers are present in $YB_BUILD_WORKERS_FILE"
-      sleep 1
-      continue
-    fi
-    build_host=$build_worker_name.c.yugabyte.internal
+
+    get_build_worker_list
+    build_worker_name=${build_workers[ $RANDOM % ${#build_workers[@]} ]}
+    build_host="$build_worker_name$YB_BUILD_WORKER_DOMAIN"
     set +e
     run_remote_cmd "$build_host" "$0" "${compiler_args[@]}" 2>"$stderr_path"
     exit_code=$?

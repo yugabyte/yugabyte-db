@@ -35,7 +35,7 @@ def main():
                         (json.dumps(details_json), uuid))
             con.commit()
 
-        print "Changed ssh port to {} for {} rows.".format(args.ssh_port, len(uuid_to_json))
+        print("Changed ssh port to {} for {} rows.".format(args.ssh_port, len(uuid_to_json)))
 
         # Final sanity checking.
         cur.execute("SELECT node_uuid, node_details_json FROM node_instance")
@@ -47,11 +47,11 @@ def main():
                 raise RuntimeError("Row with uuid='{}' not fixed, it is still '{}'."
                                    .format(row[0], row[1]))
 
-    except psycopg2.DatabaseError, e:
+    except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
 
-        print 'Error %s' % e
+        print('Error %s' % e)
         sys.exit(1)
 
     finally:

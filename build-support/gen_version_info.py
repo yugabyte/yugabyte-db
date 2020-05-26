@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -39,11 +39,11 @@ import logging
 import argparse
 import os
 import re
-import sha
 import subprocess
 import sys
 import time
 import pipes
+import socket
 from time import strftime, localtime
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'python'))
@@ -66,12 +66,14 @@ def boolean_to_json_str(bool_flag):
 def get_git_sha1(git_repo_dir):
     try:
         sha1 = subprocess.check_output(
-            'cd {} && git rev-parse HEAD'.format(pipes.quote(git_repo_dir)), shell=True).strip()
+            'cd {} && git rev-parse HEAD'.format(pipes.quote(git_repo_dir)), shell=True
+        ).decode('utf-8').strip()
+
         if re.match(r'^[0-9a-f]{40}$', sha1):
             return sha1
         logging.warning("Invalid git SHA1 in directory '%s': %s", git_repo_dir, sha1)
 
-    except Exception, e:
+    except Exception as e:
         logging.warning("Failed to get git SHA1 in directory: %s", git_repo_dir)
 
 
@@ -88,7 +90,7 @@ def main():
 
     output_path = args.output_path
 
-    hostname = subprocess.check_output(["hostname", "-f"]).strip()
+    hostname = socket.gethostname()
     build_time = "%s %s" % (strftime("%d %b %Y %H:%M:%S", localtime()), time.tzname[0])
     username = os.getenv("USER")
 
@@ -107,7 +109,8 @@ def main():
 
     path_to_version_file = os.path.join(
         os.path.dirname(os.path.realpath(__file__)), "..", "version.txt")
-    version_string = file(path_to_version_file).read().strip()
+    with open(path_to_version_file) as version_file:
+        version_string = version_file.read().strip()
     match = re.match("(\d+\.\d+\.\d+\.\d+)", version_string)
     if not match:
         parser.error("Invalid version specified: {}".format(version_string))
@@ -147,10 +150,10 @@ def main():
     attempts_left = 10
     while attempts_left > 0:
         try:
-            with file(output_path, "w") as f:
-                print >>f, content
+            with open(output_path, "w") as f:
+                f.write(content)
             break
-        except IOError, ex:
+        except IOError as ex:
             if attempts_left == 0:
                 raise ex
             if 'Resource temporarily unavailable' in ex.message:

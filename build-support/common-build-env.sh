@@ -92,10 +92,6 @@ readonly SHARED_CUSTOM_HOMEBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/homebrew"
 readonly LOCAL_THIRDPARTY_DIRS="/opt/yb-build/thirdparty"
 readonly LOCAL_LINUXBREW_DIRS="/opt/yb-build/brew"
 
-# We look for the list of distributed build worker nodes in this file. This gets populated by
-# a cronjob on buildmaster running under the jenkins user (as of 06/20/2017).
-YB_BUILD_WORKERS_FILE=${YB_BUILD_WORKERS_FILE:-$YB_JENKINS_NFS_HOME_DIR/run/build-workers}
-
 # The assumed number of cores per build worker. This is used in the default make parallelism level
 # calculation in yb_build.sh. This does not have to be the exact number of cores per worker, but
 # will affect whether or not we force the auto-scaling group of workers to expand.
@@ -112,9 +108,6 @@ readonly MVN_OUTPUT_FILTER_REGEX
 # or Google Storage: just use a pre-existing third-party build from NFS. This has to be maintained
 # outside of main (non-thirdparty) YB codebase's build pipeline.
 readonly NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY="$YB_JENKINS_NFS_HOME_DIR/thirdparty"
-
-# We create a Python Virtual Environment inside this directory in the build directory.
-readonly YB_VIRTUALENV_BASENAME=python_virtual_env
 
 readonly YB_LINUXBREW_LOCAL_ROOT=$HOME/.linuxbrew-yb-build
 
@@ -203,6 +196,12 @@ if is_mac; then
 else
   readonly FLOCK="/usr/bin/flock"
 fi
+
+readonly DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC=0.5
+declare -i -r MAX_ATTEMPTS_TO_GET_BUILD_WORKER=10
+
+readonly YB_VIRTUALENV_BASENAME=venv
+
 # -------------------------------------------------------------------------------------------------
 # Global variables
 # -------------------------------------------------------------------------------------------------
@@ -1506,12 +1505,54 @@ detect_num_cpus() {
   fi
 }
 
+# Gets a random build worker host name. Output variable: build_workers (array).
+get_build_worker_list() {
+  expect_num_args 0 "$@"
+  declare -i num_attempts=1
+
+  if [[ -z ${YB_BUILD_WORKERS_LIST_URL:-} ]]; then
+    fatal "YB_BUILD_WORKERS_LIST_URL not set"
+  fi
+
+  declare -i attempt
+  for (( attempt=1; attempt <= $MAX_ATTEMPTS_TO_GET_BUILD_WORKER; attempt++ )); do
+    # Note: ignoring bad exit codes and HTTP status codes here. We only look at the output and
+    # if each build worker name is of the right format ("build-worker-..."), we consider it valid.
+    build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+    if [[ ${#build_workers[@]} -eq 0 ]]; then
+      log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
+          "waiting for $DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC sec."
+    else
+      local build_worker_name
+      local all_worker_names_valid=true
+      for build_worker_name in "${build_workers[@]}"; do
+        if [[ $build_worker_name != build-worker* ]]; then
+          log "Got an invalid build worker name from $YB_BUILD_WORKERS_LIST_URL:" \
+              "'$build_worker_name', expected all build worker names to start with" \
+              "'build-worker', waiting for $DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC sec."
+          all_worker_names_valid=false
+          break
+        fi
+      done
+      if "$all_worker_names_valid"; then
+        return
+      fi
+    fi
+    sleep "$DELAY_ON_BUILD_WORKERS_LIST_HTTP_ERROR_SEC"
+  done
+
+  fatal "Could not get a build worker name from $YB_BUILD_WORKERS_LIST_URL in" \
+        "$MAX_ATTEMPTS_TO_GET_BUILD_WORKER attempts. Last output from curl: '$build_workers'"
+}
+
 detect_num_cpus_and_set_make_parallelism() {
   detect_num_cpus
   if [[ -z ${YB_MAKE_PARALLELISM:-} ]]; then
     if [[ ${YB_REMOTE_COMPILATION:-} == "1" ]]; then
       declare -i num_build_workers
-      num_build_workers=$( wc -l "$YB_BUILD_WORKERS_FILE" | awk '{print $1}' )
+      declare -a build_workers  # This is set by the get_build_worker_list function.
+      get_build_worker_list
+      num_build_workers=${#build_workers[@]}
       # Add one to the number of workers so that we cause the auto-scaling group to scale up a bit
       # by stressing the CPU on each worker a bit more.
       declare -i effective_num_build_workers
@@ -2014,10 +2055,7 @@ check_python_script_syntax() {
 activate_virtualenv() {
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
-  if [[ ! $virtualenv_dir = */$YB_VIRTUALENV_BASENAME ]]; then
-    fatal "Internal error: virtualenv_dir ('$virtualenv_dir') must end" \
-          "with YB_VIRTUALENV_BASENAME ('$YB_VIRTUALENV_BASENAME')"
-  fi
+
   if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]] && \
      ! "$yb_readonly_virtualenv"; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
@@ -2045,10 +2083,9 @@ activate_virtualenv() {
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     (
       set -x
-      pip2 install "virtualenv<20" --user
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
-      python2.7 -m virtualenv "$YB_VIRTUALENV_BASENAME"
+      python3 -m venv "$YB_VIRTUALENV_BASENAME"
     )
   fi
 
@@ -2061,11 +2098,12 @@ activate_virtualenv() {
     pip_no_cache="--no-cache-dir"
   fi
 
+  local pip_executable=pip3
   if ! "$yb_readonly_virtualenv"; then
-    local requirements_file_path="$YB_SRC_ROOT/python_requirements_frozen.txt"
+    local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
-      run_with_retries 10 0.5 pip2 install -r "$requirements_file_path" \
+      run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
     fi
     # To avoid re-running pip install, save the requirements that we've installed in the virtualenv.

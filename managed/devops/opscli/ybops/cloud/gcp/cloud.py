@@ -144,7 +144,7 @@ class GcpCloud(AbstractCloud):
                 price_per_hour = pricing_map[name_key][region]
             else:
                 price_per_hour = pricing_map[name_key][region[:-1]]
-        except Exception, e:
+        except Exception as e:
             raise YBOpsRuntimeError(e)
         return price_per_hour
 

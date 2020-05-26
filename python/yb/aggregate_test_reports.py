@@ -150,7 +150,7 @@ def aggregate_test_reports(args):
         try:
             with open(file_path) as input_file:
                 report = json.load(input_file)
-        except IOError, ex:
+        except IOError as ex:
             errors.append("Failed reading file %s: %s" % (file_path, ex))
         # Catch other cases such as a readable, but empty file.
         except JSONDecodeError:

@@ -34,7 +34,7 @@ def generate_runtimes(total_runtime):
 
 def main(args):
     runtimes = generate_runtimes(int(args.runtime_sec))
-    print "Going to execute write stress for " + str(runtimes)
+    print("Going to execute write stress for " + str(runtimes))
     first_time = True
 
     for runtime in runtimes:
@@ -57,8 +57,9 @@ def main(args):
             cmd = cmd + ' --low_open_files_mode=true'
 
         print("Running write_stress for %d seconds (%s): %s" %
-              (runtime, ("kill-mode" if kill else "clean-shutdown-mode"),
-              cmd))
+              (runtime,
+               ("kill-mode" if kill else "clean-shutdown-mode"),
+               cmd))
 
         child = subprocess.Popen([cmd], shell=True)
         killtime = time.time() + runtime
@@ -75,6 +76,7 @@ def main(args):
             child.kill()
         # breathe
         time.sleep(3)
+
 
 if __name__ == '__main__':
     random.seed(time.time())

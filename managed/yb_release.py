@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (c) YugaByte, Inc.
 
 import argparse
@@ -37,30 +37,37 @@ try:
     _, err = Popen(["sbt", "clean", "-batch"], stderr=PIPE).communicate()
     if err:
         raise RuntimeError(err)
+
     log_message(logging.INFO, "Kick off SBT universal packaging")
     # Ignore any error output from packaging as npm is expected to have some warnings.
     os.system("df -h; sbt universal:packageZipTarball -batch")
     log_message(logging.INFO, "Finished running SBT universal packaging.")
 
-    packaged_files = glob.glob(os.path.join(script_dir, "target", "universal", "yugaware*.tgz"))
+    yugaware_tar_gz_glob = os.path.join(script_dir, "target", "universal", "yugaware*.tgz")
+    packaged_files = glob.glob(yugaware_tar_gz_glob)
+    if not packaged_files:
+        raise IOError("No archives found matching the pattern '%s'" % yugaware_tar_gz_glob)
+    if len(packaged_files) > 1:
+        raise IOError(
+            "Too many archives found matching the pattern '%s', expected one: %s" %
+            (yugaware_tar_gz_glob, packaged_files))
+    packaged_file = packaged_files[0]
     if args.unarchived:
-        package_tar = packaged_files[0]
+        package_tar = packaged_file
         tar = tarfile.open(package_tar)
         tar.extractall(args.destination) if args.destination else tar.extractall()
     else:
         log_message(logging.INFO, "Get a release file name based on the current commit sha")
         release_file = get_release_file(script_dir, "yugaware")
-        if len(packaged_files) == 0:
-            raise YBOpsRuntimeError("Yugaware packaging failed")
         log_message(logging.INFO, "Rename the release file to have current commit sha")
-        shutil.copyfile(packaged_files[0], release_file)
+        shutil.copyfile(packaged_file, release_file)
         if args.destination:
             if not os.path.exists(args.destination):
                 raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
             shutil.copy(release_file, args.destination)
 except CalledProcessError as e:
-    log_message(logging.error, e)
-    log_message(logging.error, e.output)
+    log_message(logging.ERROR, e)
+    log_message(logging.ERROR, e.output.decode('utf-8'))
 except (OSError, RuntimeError, TypeError, NameError) as e:
     log_message(logging.ERROR, e)
     raise e

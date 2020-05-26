@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 # Copyright (c) YugaByte, Inc.
 #
@@ -469,7 +469,8 @@ class PostgresBuilder:
             ])
 
         if include_env_vars:
-            build_stamp += "\nenv_vars_sha256=%s" % hashlib.sha256(env_vars_str).hexdigest()
+            build_stamp += "\nenv_vars_sha256=%s" % hashlib.sha256(
+                env_vars_str.encode('utf-8')).hexdigest()
 
         return build_stamp.strip()
 

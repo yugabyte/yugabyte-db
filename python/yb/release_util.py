@@ -12,6 +12,7 @@ import platform
 import shutil
 import sys
 import re
+import distro
 
 from subprocess import call, check_output
 from xml.dom import minidom
@@ -85,12 +86,12 @@ class ReleaseUtil(object):
         """
         Rewrite the release manifest expanding values using expand_value function.
         """
-        for key, values in self.release_manifest.iteritems():
+        for key, values in self.release_manifest.items():
             if isinstance(values, dict):
-                for k, v in values.iteritems():
+                for k, v in values.items():
                     values[k] = self.expand_value(v)
             else:
-                for i in xrange(len(values)):
+                for i in range(len(values)):
                     values[i] = self.expand_value(values[i])
 
     def repo_expand_path(self, path):
@@ -109,7 +110,7 @@ class ReleaseUtil(object):
         """
         for dir_from_manifest in self.release_manifest:
             if dir_from_manifest == '%symlinks%':
-                for dst, target in self.release_manifest[dir_from_manifest].iteritems():
+                for dst, target in self.release_manifest[dir_from_manifest].items():
                     dst = os.path.join(distribution_dir, dst)
                     logging.debug("Creating symlink {} -> {}".format(dst, target))
                     mkdir_p(os.path.dirname(dst))
@@ -162,7 +163,7 @@ class ReleaseUtil(object):
 
         system = platform.system().lower()
         if system == "linux":
-            system = platform.linux_distribution(full_distribution_name=False)[0].lower()
+            system = distro.linux_distribution(full_distribution_name=False)[0].lower()
 
         release_file_name = "yugabyte-{}-{}-{}.tar.gz".format(
             release_name, system, platform.machine().lower())
@@ -208,6 +209,6 @@ def check_for_local_changes():
         is_dirty = True
 
     if is_dirty:
-        prompt_input = raw_input("Continue [Y/n]: ").strip().lower()
+        prompt_input = input("Continue [Y/n]: ").strip().lower()
         if prompt_input not in ['y', 'yes', '']:
             sys.exit(1)
