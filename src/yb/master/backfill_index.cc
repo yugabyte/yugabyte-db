@@ -135,7 +135,7 @@ DEFINE_int32(index_backfill_wait_for_alter_table_completion_ms, 100,
 TAG_FLAG(index_backfill_wait_for_alter_table_completion_ms, advanced);
 TAG_FLAG(index_backfill_wait_for_alter_table_completion_ms, runtime);
 
-DEFINE_test_flag(int32, TEST_slowdown_backfill_alter_table_rpcs_ms, 0,
+DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
     "Slows down the send alter table rpc's so that the master may be stopped between "
     "different phases.");
 

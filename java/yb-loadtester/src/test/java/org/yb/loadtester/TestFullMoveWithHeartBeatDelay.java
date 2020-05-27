@@ -53,7 +53,7 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
     addMaster(newMaster);
 
     // Prevent this master from becoming leader.
-    boolean status = client.setFlag(newMaster, "do_not_start_election_test_only", "true");
+    boolean status = client.setFlag(newMaster, "TEST_do_not_start_election_test_only", "true");
     assertTrue(status);
 
     // Disable heartbeats for all tservers.

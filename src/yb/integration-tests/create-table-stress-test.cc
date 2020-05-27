@@ -78,7 +78,7 @@ using yb::rpc::RpcController;
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(log_preallocate_segments);
-DECLARE_bool(enable_remote_bootstrap);
+DECLARE_bool(TEST_enable_remote_bootstrap);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(max_create_tablets_per_ts);
 
@@ -121,7 +121,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Workaround KUDU-941: without this, it's likely that while shutting
     // down tablets, they'll get resuscitated by their existing leaders.
-    FLAGS_enable_remote_bootstrap = false;
+    FLAGS_TEST_enable_remote_bootstrap = false;
 
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;

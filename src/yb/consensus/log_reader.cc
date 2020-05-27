@@ -80,11 +80,11 @@ METRIC_DEFINE_histogram(tablet, log_reader_read_batch_latency, "Log Read Latency
                         "Microseconds spent reading log entry batches",
                         60000000LU, 2);
 
-DEFINE_test_flag(bool, TEST_record_segments_violate_max_time_policy, false,
+DEFINE_test_flag(bool, record_segments_violate_max_time_policy, false,
     "If set, everytime GetSegmentPrefixNotIncluding runs, segments that violate the max time "
     "policy will be appended to LogReader::segments_violate_max_time_policy_.");
 
-DEFINE_test_flag(bool, TEST_record_segments_violate_min_space_policy, false,
+DEFINE_test_flag(bool, record_segments_violate_min_space_policy, false,
     "If set, everytime GetSegmentPrefixNotIncluding runs, segments that violate the max time "
     "policy will be appended to LogReader::segments_violate_min_space_policy_.");
 

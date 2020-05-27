@@ -48,12 +48,12 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
-DECLARE_double(respond_write_failed_probability);
+DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_bool(enable_ondisk_compression);
 DECLARE_int32(raft_heartbeat_interval_ms);
-DECLARE_bool(combine_batcher_errors);
+DECLARE_bool(TEST_combine_batcher_errors);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(retryable_request_range_time_limit_secs);
@@ -298,7 +298,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   // Used only when table is transactional.
   const double kTransactionalWriteProbability = 0.5;
 
-  SetAtomicFlag(0.25, &FLAGS_respond_write_failed_probability);
+  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   const bool transactional = table_.table()->schema().table_properties().is_transactional();
   boost::optional<TransactionManager> txn_manager;
@@ -645,7 +645,7 @@ TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
 // Restore connectivity.
 // Check that old leader was able to catch up after the partition is healed.
 TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingleTablet) {
-  FLAGS_combine_batcher_errors = true;
+  FLAGS_TEST_combine_batcher_errors = true;
 
   tablet::TabletPeer* leader_peer = nullptr;
   std::atomic<int> key(0);

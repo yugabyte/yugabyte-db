@@ -44,7 +44,7 @@ using namespace std::literals;
 
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
-DECLARE_bool(tablet_verify_flushed_frontier_after_modifying);
+DECLARE_bool(TEST_tablet_verify_flushed_frontier_after_modifying);
 DECLARE_bool(enable_ysql);
 
 namespace yb {
@@ -101,7 +101,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
 
     FLAGS_log_min_seconds_to_retain = 5;
-    FLAGS_tablet_verify_flushed_frontier_after_modifying = true;
+    FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying = true;
     FLAGS_enable_ysql = false;
 
     MiniClusterOptions opts;

@@ -292,7 +292,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   // Delay tablet applies in order to delay COMMIT messages to trigger KUDU-1233.
   // Then insert another row.
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server_by_uuid(leader_ts->uuid()),
-                              "tablet_inject_latency_on_apply_write_txn_ms", "5000"));
+                              "TEST_tablet_inject_latency_on_apply_write_txn_ms", "5000"));
 
   // Kick off an async insert, which will be delayed for 5 seconds. This is
   // normally enough time to evict a replica, tombstone it, add it back, and

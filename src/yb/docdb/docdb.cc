@@ -79,7 +79,7 @@ DEFINE_test_flag(bool, docdb_sort_weak_intents_in_tests, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
-DEFINE_test_flag(bool, TEST_fail_on_replicated_batch_idx_set_in_txn_record, false,
+DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
 
 namespace yb {
@@ -674,7 +674,7 @@ class PrepareTransactionWriteBatchHelper {
         transaction_id_.AsSlice(),
     }};
 
-    if (PREDICT_TRUE(!FLAGS_docdb_sort_weak_intents_in_tests)) {
+    if (PREDICT_TRUE(!FLAGS_TEST_docdb_sort_weak_intents_in_tests)) {
       for (const auto& intent_and_types : weak_intents_) {
         AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
       }

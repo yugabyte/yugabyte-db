@@ -1515,10 +1515,10 @@ bool YBClient::IsMultiMaster() const {
 }
 
 Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
-  if (FLAGS_yb_num_total_tablets > 0) {
-    VLOG(1) << "num_tablets=" << FLAGS_yb_num_total_tablets
-            << ": --yb_num_total_tablets is specified.";
-    return FLAGS_yb_num_total_tablets;
+  if (FLAGS_TEST_yb_num_total_tablets > 0) {
+    VLOG(1) << "num_tablets=" << FLAGS_TEST_yb_num_total_tablets
+            << ": --TEST_yb_num_total_tablets is specified.";
+    return FLAGS_TEST_yb_num_total_tablets;
   } else {
     int tserver_count = 0;
     RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */));

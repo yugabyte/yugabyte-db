@@ -556,7 +556,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false",
-        "--process_info_dir=" + getProcessInfoDir());
+        "--TEST_process_info_dir=" + getProcessInfoDir());
     addFlagsFromEnv(tsCmdLine, "YB_EXTRA_TSERVER_FLAGS");
 
     if (startPgSqlProxy) {
@@ -610,7 +610,7 @@ public class MiniYBCluster implements AutoCloseable {
       "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
       "--webserver_port=" + masterWebPort,
       "--callhome_enabled=false",
-      "--process_info_dir=" + getProcessInfoDir());
+      "--TEST_process_info_dir=" + getProcessInfoDir());
     addFlagsFromEnv(masterCmdLine, "YB_EXTRA_MASTER_FLAGS");
     return masterCmdLine;
   }

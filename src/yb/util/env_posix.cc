@@ -121,10 +121,10 @@ DEFINE_int32(o_direct_block_alignment_bytes, 4096,
              "Alignment (in bytes) for blocks used for O_DIRECT operations.");
 TAG_FLAG(o_direct_block_alignment_bytes, advanced);
 
-DEFINE_test_flag(bool, TEST_simulate_fs_without_fallocate, false,
+DEFINE_test_flag(bool, simulate_fs_without_fallocate, false,
     "If true, the system simulates a file system that doesn't support fallocate.");
 
-DEFINE_test_flag(int64, TEST_simulate_free_space_bytes, -1,
+DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
     "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
 
 using base::subtle::Atomic64;

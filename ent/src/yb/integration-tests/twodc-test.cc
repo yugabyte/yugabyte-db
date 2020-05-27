@@ -71,7 +71,7 @@ DECLARE_bool(TEST_twodc_write_hybrid_time);
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_int32(replication_failure_delay_exponent);
-DECLARE_double(respond_write_failed_probability);
+DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 
 namespace yb {
@@ -1283,7 +1283,7 @@ TEST_P(TwoDCTest, TestProducerUniverseExpansion) {
 }
 
 TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
-  SetAtomicFlag(0.25, &FLAGS_respond_write_failed_probability);
+  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));

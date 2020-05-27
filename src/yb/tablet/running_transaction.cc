@@ -203,7 +203,7 @@ void RunningTransaction::StatusReceived(
     const tserver::GetTransactionStatusResponsePB& response,
     int64_t serial_no,
     const RunningTransactionPtr& shared_self) {
-  auto delay_usec = FLAGS_transaction_delay_status_reply_usec_in_tests;
+  auto delay_usec = FLAGS_TEST_transaction_delay_status_reply_usec_in_tests;
   if (delay_usec > 0) {
     context_.delayer().Delay(
         MonoTime::Now() + MonoDelta::FromMicroseconds(delay_usec),

@@ -37,8 +37,8 @@ using namespace std::literals;
 
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int32(inject_load_transaction_delay_ms);
-DECLARE_int32(inject_status_resolver_delay_ms);
+DECLARE_int32(TEST_inject_load_transaction_delay_ms);
+DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(max_transactions_in_status_request);
 
@@ -579,7 +579,7 @@ struct KeyToCheck {
 TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
   constexpr int kNumWritesPerKey = 10;
 
-  FLAGS_inject_load_transaction_delay_ms = 25;
+  FLAGS_TEST_inject_load_transaction_delay_ms = 25;
 
   TestThreadHolder thread_holder;
 
@@ -752,7 +752,7 @@ TEST_F_EX(SnapshotTxnTest, RemoteBootstrapOnStart, RemoteBootstrapOnStartBase) {
 }
 
 TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
-  FLAGS_inject_load_transaction_delay_ms = 50;
+  FLAGS_TEST_inject_load_transaction_delay_ms = 50;
 
   constexpr int kTransactionsCount = RegularBuildVsSanitizers(20, 5);
   FLAGS_log_min_seconds_to_retain = 1;
@@ -841,7 +841,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
 TEST_F(SnapshotTxnTest, DeleteOnLoad) {
   constexpr int kTransactions = 400;
 
-  FLAGS_inject_status_resolver_delay_ms = 150 * kTimeMultiplier;
+  FLAGS_TEST_inject_status_resolver_delay_ms = 150 * kTimeMultiplier;
 
   DisableApplyingIntents();
 

@@ -24,9 +24,8 @@
 
 using namespace std::chrono_literals;
 
-DEFINE_test_flag(
-    bool, TEST_pause_calculator_echo_request, false,
-    "Pause calculator echo request execution until flag is set back to false.");
+DEFINE_test_flag(bool, pause_calculator_echo_request, false,
+                 "Pause calculator echo request execution until flag is set back to false.");
 
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
