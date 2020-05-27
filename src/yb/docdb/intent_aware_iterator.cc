@@ -759,7 +759,7 @@ void IntentAwareIterator::SeekForwardToSuitableIntent() {
 
 template<Direction direction>
 void IntentAwareIterator::SeekToSuitableIntent() {
-  DOCDB_DEBUG_SCOPE_LOG("", std::bind(&IntentAwareIterator::DebugDump, this));
+  DOCDB_DEBUG_SCOPE_LOG(/* msg */ "", std::bind(&IntentAwareIterator::DebugDump, this));
   resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   resolved_intent_txn_dht_ = DocHybridTime::kMin;
   intent_dht_from_same_txn_ = DocHybridTime::kMin;

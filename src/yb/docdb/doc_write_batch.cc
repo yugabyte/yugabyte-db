@@ -619,8 +619,7 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
         storage_db_type_(storage_db_type) {}
  protected:
   std::string FormatKey(const Slice& key) override {
-    KeyType key_type;
-    auto key_result = DocDBKeyToDebugStr(key, storage_db_type_, &key_type);
+    const auto key_result = DocDBKeyToDebugStr(key, storage_db_type_);
     if (key_result.ok()) {
       return *key_result;
     }

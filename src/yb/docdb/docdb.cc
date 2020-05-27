@@ -1302,12 +1302,12 @@ template <class DumpStringFunc>
 void ProcessDumpEntry(
     Slice key, Slice value, IncludeBinary include_binary, StorageDbType db_type,
     DumpStringFunc func) {
-  KeyType key_type;
-  Result<std::string> key_str = DocDBKeyToDebugStr(key, db_type, &key_type);
+  const auto key_str = DocDBKeyToDebugStr(key, db_type);
   if (!key_str.ok()) {
     func(key_str.status().ToString());
     return;
   }
+  const KeyType key_type = GetKeyType(key, db_type);
   Result<std::string> value_str = DocDBValueToDebugStr(key_type, *key_str, value);
   if (!value_str.ok()) {
     func(value_str.status().CloneAndAppend(Substitute(". Key: $0", *key_str)).ToString());
@@ -1519,15 +1519,17 @@ Status PrepareApplyIntentsBatch(
   txn_reverse_index_prefix.AppendValueType(ValueType::kMaxByte);
   Slice key_prefix = txn_reverse_index_prefix.AsSlice();
   key_prefix.remove_suffix(1);
-  Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
+  const Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
 
   auto reverse_index_iter = CreateRocksDBIterator(
       intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
       rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
 
   BoundedRocksDbIterator intent_iter;
-  // If we don't have regular_batch, it means that we just removing intents.
-  // We don't need intent iterator, since reverse index iterator is enough in this case.
+
+  // If we don't have regular_batch, it means that we are just removing intents, i.e. when a
+  // transaction has been aborted. We don't need the intent iterator in that case, because the
+  // reverse index iterator is sufficient.
   if (regular_batch) {
     intent_iter = CreateRocksDBIterator(
         intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,

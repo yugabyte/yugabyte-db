@@ -26,10 +26,10 @@
 namespace yb {
 namespace docdb {
 
-Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type, KeyType* key_type) {
-  *key_type = GetKeyType(key_slice, db_type);
+Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
+  auto key_type = GetKeyType(key_slice, db_type);
   SubDocKey subdoc_key;
-  switch (*key_type) {
+  switch (key_type) {
     case KeyType::kIntentKey:
     {
       auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(key_slice));
@@ -82,7 +82,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type, K
           FormatSliceAsStr(key_slice));
       return subdoc_key.ToString();
   }
-  return STATUS_FORMAT(Corruption, "Corrupted KeyType: $0", yb::ToString(*key_type));
+  return STATUS_FORMAT(Corruption, "Corrupted KeyType: $0", yb::ToString(key_type));
 }
 
 Result<std::string> DocDBValueToDebugStr(Slice value_slice, const KeyType& key_type) {
@@ -123,10 +123,8 @@ Result<std::string> DocDBValueToDebugStr(
       }
       return ToString(VERIFY_RESULT(TransactionMetadata::FromPB(metadata_pb)));
     }
-    case KeyType::kReverseTxnKey: {
-      KeyType ignore_key_type;
-      return DocDBKeyToDebugStr(value, StorageDbType::kIntents, &ignore_key_type);
-    }
+    case KeyType::kReverseTxnKey:
+      return DocDBKeyToDebugStr(value, StorageDbType::kIntents);
     case KeyType::kEmpty: FALLTHROUGH_INTENDED;
     case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
     case KeyType::kValueKey:
