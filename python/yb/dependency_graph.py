@@ -562,7 +562,7 @@ class DependencyGraphBuilder:
         for root, dirs, files in os.walk(src_yb_root):
             for file_name in files:
                 if file_name.endswith('.y') or file_name.endswith('.l'):
-                    rel_path = os.path.relpath(root,self.conf.yb_src_root)
+                    rel_path = os.path.relpath(root, self.conf.yb_src_root)
                     assert not rel_path.startswith('../')
                     dependent_file = os.path.join(self.conf.build_root,
                                                   rel_path,
