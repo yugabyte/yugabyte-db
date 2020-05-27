@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** May 26, 2020 (2.1.7.0-b19). ???
+**Released:** May 27, 2020 (2.1.7.0-b19). ???
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
@@ -45,25 +45,35 @@ docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
 
 ## YSQL
 
+- Resolve timeout frequently encountered whe batch-loading data in YSQL by using client-specified timeouts for RPCs instead of hardcoded values. [#4045]
+- Fix incorrect cross-component dependency in DocDB found in builds using `ninja`. [#4474](https://github.com/yugabyte/yugabyte-db/issues/4474)
 
 ## YCQL
 
 - Update Cassandra Java driver version to `3.8.0-yb-4` and adds support for [`guava`](https://github.com/google/guava) 26 or later. The latest release of the driver is available in the [Yugabyte `cassandra-java-driver` repository](https://github.com/yugabyte/cassandra-java-driver/releases). [#3897](https://github.com/yugabyte/yugabyte-db/issues/3897)
+- YB-TServers should not crash when attempting to log in using YCQL authentication without a password. [#4459](https://github.com/yugabyte/yugabyte-db/issues/4459)
+- Performance degradation in `CassandraSecondaryIndex` workload resolved. [#4401](https://github.com/yugabyte/yugabyte-db/issues/4401)
+
+## YEDIS
+
+- Do not start `redis` server by default in `yugabyted`. Resolves port conflict during startup. [#4057](https://github.com/yugabyte/yugabyte-db/issues/4057)
 
 ## System improvements
 
+- New `yb-ts-cli` commands, [`flush_all_tablets`](../admin/yb-ts-cli/#flush-all-tablets) and [`flush_tablet <tablet_id>`](../admin/yb-ts-cli/#flush-tablet), to flush tablets and improve rolling restarts by flushing all YB-TServer tablets.
 - Improve load balancing by creating a global count of tablets starting across all tables before issuing AddReplica requests to prevent exceeding the maximum number of tablets being remote bootstrapped. [#4053](https://github.com/yugabyte/yugabyte-db/issues/4053)
 - [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
 - Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
 - Avoid race in `change_metadata_operation`. Use atomic<P*> to avoid race between
 `Finish()` and `ToString` from updating or accessing request. [#3912](https://github.com/yugabyte/yugabyte-db/issues/3912)
-- Refactor `RaftGroupMetadata` to avoid keeping unnecessary `TableInfo` objects in memory.
+- Refactor `RaftGroupMetadata` to avoid keeping unnecessary `TableInfo` objects in memory. [#4354](https://github.com/yugabyte/yugabyte-db/issues/4354)
 
 ## Yugabyte Platform
 
 - Improve latency tracking by splitting overall operation metrics into individual rows for each API. [#3825](https://github.com/yugabyte/yugabyte-db/issues/3825)
   - YCQL and YEDIS metrics include `ops`, `avg latency`, and `P99 latency`.
   - YSQL metrics include only `ops` and `avg latency`.
+- When configuration flags are edited in the YugabyteDB Admin Console, 
 - When configuration flags are deleted using the YugabyteDB Admin Console, they are also removed from `server.conf` file and the server restarts. [#4341](https://github.com/yugabyte/yugabyte-db/issues/4341)
 
 {{< note title="Note" >}}

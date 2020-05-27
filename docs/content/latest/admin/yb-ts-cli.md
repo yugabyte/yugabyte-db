@@ -43,10 +43,35 @@ If all tablets are running, returns "All tablets are running".
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
+$ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 ```
 
 - *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+##### compact_all_tablets
+
+Compact all tablets on the tablet server.
+
+**Syntax**
+
+```sh
+yb-tsi-cli [ --server_address=<host>:<port> ] compact_all_tablets
+```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+##### compact_tablet
+
+Compact the specified tablet on the tablet server.
+
+**Syntax**
+
+```sh
+yb-tsi-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
+```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+- *tablet_id*: The identifier of the tablet to compact.
 
 ##### count_intents
 
@@ -55,7 +80,7 @@ Print the count of uncommitted intents (or [provisional records](../../../archit
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] count_intents
+yb-ts-cli  [ --server_address=<host>:<port> ] count_intents
 ```
 
 - *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -98,6 +123,34 @@ yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet_id>
 
 - *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 - *tablet_id*: The identifier (ID) for the tablet.
+
+##### flush_all_tablets
+
+Flush all tablets on the tablet server.
+
+**Syntax**
+
+```sh
+yb-tsi-cli [ --server_address=<host>:<port> ] flush_all_tablets
+```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+##### flush_tablet
+
+Flush the specified tablet on the tablet server.
+
+**Syntax**
+
+```sh
+yb-tsi-cli [ --server_address=<host>:<port> ] flush_tablet <tablet_id>
+```
+
+- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+- *tablet_id*: The identifier of the tablet to compact.
+
+
+
 
 ##### list_tablets
 
