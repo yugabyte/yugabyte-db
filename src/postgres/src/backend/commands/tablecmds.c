@@ -9398,6 +9398,14 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 			heap_close(frel, NoLock);
 		}
 
+		if (IsYugaByteEnabled() &&
+			contype == CONSTRAINT_PRIMARY)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("dropping a primary key constraint is not yet supported")));
+		}
+
 		/*
 		 * Perform the actual constraint deletion
 		 */
