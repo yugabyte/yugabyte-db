@@ -92,7 +92,7 @@ The YB logs are contained in the output file now.
 
 YSQL java tests are in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.  They can be run as:
 ```bash
-./yb_build.sh --java-test TestPgTruncate
+./yb_build.sh --java-test org.yb.pgsql.TestPgTruncate
 ```
 Some of those tests, `TestPgRegress*`, use the postgres regress test framework: `src/postgres/src/test/regress`.  
 They should each correspond to a schedule (e.g. `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`) 
