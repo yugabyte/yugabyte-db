@@ -20,6 +20,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/master/catalog_manager.h"
 
 using namespace std::literals;
@@ -1081,16 +1082,15 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
   auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t FOR UPDATE"));
   ASSERT_EQ(PQntuples(res.get()), 1);
 
-  ASSERT_OK(conn2.Execute("DELETE FROM t WHERE a = 1"));
-
-  auto status = conn1.CommitTransaction();
+  auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
   ASSERT_FALSE(status.ok());
-  ASSERT_STR_CONTAINS(status.ToString(), "Operation expired");
+  ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Conflicts with higher priority transaction");
+
+  ASSERT_OK(conn1.CommitTransaction());
 
   // Ensure that reads to separate tables in a colocated database do not conflict.
   ASSERT_OK(conn1.Execute("CREATE TABLE t2 (a INT, PRIMARY KEY (a ASC))"));
-
-  ASSERT_OK(conn1.Execute("INSERT INTO t(a) VALUES(1)"));
   ASSERT_OK(conn1.Execute("INSERT INTO t2(a) VALUES(1)"));
 
   ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
