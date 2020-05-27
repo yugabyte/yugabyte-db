@@ -75,7 +75,7 @@ DEFINE_int64(avoid_abort_after_sealing_ms, 20,
              "If transaction was only sealed, we will try to abort it not earlier than this "
                  "period in milliseconds.");
 
-DEFINE_test_flag(uint64, TEST_inject_txn_get_status_delay_ms, 0,
+DEFINE_test_flag(uint64, inject_txn_get_status_delay_ms, 0,
                  "Inject specified delay to transaction get status requests.");
 
 using namespace std::literals;

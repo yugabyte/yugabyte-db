@@ -101,7 +101,7 @@ class TransactionStatusResolver::Impl {
       req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
     }
 
-    auto injected_delay = FLAGS_inject_status_resolver_delay_ms;
+    auto injected_delay = FLAGS_TEST_inject_status_resolver_delay_ms;
     if (injected_delay > 0) {
       std::this_thread::sleep_for(1ms * injected_delay);
     }

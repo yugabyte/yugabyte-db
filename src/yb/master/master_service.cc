@@ -221,7 +221,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
   if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
-  if (PREDICT_FALSE(FLAGS_master_inject_latency_on_transactional_tablet_lookups_ms > 0)) {
+  if (PREDICT_FALSE(FLAGS_TEST_master_inject_latency_on_transactional_tablet_lookups_ms > 0)) {
     std::vector<scoped_refptr<TableInfo>> tables;
     server_->catalog_manager()->GetAllTables(&tables);
     const auto& tablet_id = req->tablet_ids(0);
@@ -233,7 +233,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
           auto lock = table->LockForRead();
           if (table->metadata().state().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
             SleepFor(MonoDelta::FromMilliseconds(
-                FLAGS_master_inject_latency_on_transactional_tablet_lookups_ms));
+                FLAGS_TEST_master_inject_latency_on_transactional_tablet_lookups_ms));
           }
           break;
         }

@@ -28,7 +28,7 @@ public class TestMasterLatency extends BaseCQLTest {
     builder.addMasterArgs("--catalog_manager_inject_latency_in_delete_table_ms=6000");
 
     // Set latency in yb::master::CatalogManager::CreateTable().
-    builder.addMasterArgs("--simulate_slow_table_create_secs=6");
+    builder.addMasterArgs("--TEST_simulate_slow_table_create_secs=6");
   }
 
   @Test

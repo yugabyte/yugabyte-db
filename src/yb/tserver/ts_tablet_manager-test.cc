@@ -57,7 +57,7 @@
 #define ASSERT_MONOTONIC_REPORT_SEQNO(report_seqno, tablet_report) \
   ASSERT_NO_FATALS(AssertMonotonicReportSeqno(report_seqno, tablet_report))
 
-DECLARE_bool(pretend_memory_exceeded_enforce_flush);
+DECLARE_bool(TEST_pretend_memory_exceeded_enforce_flush);
 
 namespace yb {
 namespace tserver {
@@ -257,7 +257,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
 
 TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
   FlagSaver flag_saver;
-  FLAGS_pretend_memory_exceeded_enforce_flush = true;
+  FLAGS_TEST_pretend_memory_exceeded_enforce_flush = true;
 
   const int kNumTablets = 2;
   const int kNumRestarts = 3;

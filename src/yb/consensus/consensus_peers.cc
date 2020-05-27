@@ -89,7 +89,7 @@ DEFINE_test_flag(double, fault_crash_on_leader_request_fraction, 0.0,
                  "Fraction of the time when the leader will crash just before sending an "
                  "UpdateConsensus RPC.");
 
-DEFINE_test_flag(int32, TEST_delay_removing_peer_with_failed_tablet_secs, 0,
+DEFINE_test_flag(int32, delay_removing_peer_with_failed_tablet_secs, 0,
                  "If greater than 0, Peer::ProcessResponse will sleep after receiving a response "
                  "indicating that a tablet is in the FAILED state, and before marking this peer "
                  "as failed.");
@@ -101,7 +101,7 @@ DEFINE_test_flag(bool, enable_remote_bootstrap, true,
                  "detects that a follower is out of date or does not have a tablet "
                  "replica.");
 
-DECLARE_int32(log_change_config_every_n);
+DECLARE_int32(TEST_log_change_config_every_n);
 
 namespace yb {
 namespace consensus {
@@ -225,7 +225,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
 
   if (PREDICT_FALSE(needs_remote_bootstrap)) {
     Status status;
-    if (!FLAGS_enable_remote_bootstrap) {
+    if (!FLAGS_TEST_enable_remote_bootstrap) {
       failed_attempts_++;
       status = STATUS(NotSupported, "remote bootstrap is disabled");
     } else {
@@ -265,11 +265,11 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       boost::optional<tserver::TabletServerErrorPB::Code> error_code;
 
       // If another ChangeConfig is being processed, our request will be rejected.
-      YB_LOG_EVERY_N(INFO, FLAGS_log_change_config_every_n)
+      YB_LOG_EVERY_N(INFO, FLAGS_TEST_log_change_config_every_n)
           << "Sending ChangeConfig request to promote peer";
       auto status = consensus_->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       if (PREDICT_FALSE(!status.ok())) {
-        YB_LOG_EVERY_N(INFO, FLAGS_log_change_config_every_n)
+        YB_LOG_EVERY_N(INFO, FLAGS_TEST_log_change_config_every_n)
             << "Unable to change role for peer " << uuid << ": " << status;
         // Since we released the semaphore, we need to call SignalRequest again to send a message
         status = SignalRequest(RequestTriggerMode::kAlwaysSend);
@@ -301,7 +301,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     heartbeater_->Snooze();
   }
 
-  MAYBE_FAULT(FLAGS_fault_crash_on_leader_request_fraction);
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_on_leader_request_fraction);
 
   processing_lock.unlock();
   performing_lock.release();

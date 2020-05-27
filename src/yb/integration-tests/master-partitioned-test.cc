@@ -53,12 +53,12 @@ using yb::rpc::RpcController;
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(log_preallocate_segments);
-DECLARE_bool(log_consider_all_ops_safe);
-DECLARE_bool(enable_remote_bootstrap);
+DECLARE_bool(TEST_log_consider_all_ops_safe);
+DECLARE_bool(TEST_enable_remote_bootstrap);
 DECLARE_int32(leader_failure_exp_backoff_max_delta_ms);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(raft_heartbeat_interval_ms);
-DECLARE_int32(slowdown_master_async_rpc_tasks_by_ms);
+DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
 DECLARE_string(vmodule);
 
@@ -83,10 +83,10 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_unresponsive_ts_rpc_timeout_ms = 10000;  // 10 sec.
 
     FLAGS_leader_failure_exp_backoff_max_delta_ms = 5000;
-    FLAGS_slowdown_master_async_rpc_tasks_by_ms = 100;
+    FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms = 100;
     FLAGS_vmodule = "catalog_manager=2,async_rpc_tasks=2";
 
-    FLAGS_log_consider_all_ops_safe = true;
+    FLAGS_TEST_log_consider_all_ops_safe = true;
 
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
@@ -133,7 +133,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void DoTearDown() override {
     client_.reset();
-    SetAtomicFlag(0, &FLAGS_slowdown_master_async_rpc_tasks_by_ms);
+    SetAtomicFlag(0, &FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(1000));
     cluster_->Shutdown();
   }

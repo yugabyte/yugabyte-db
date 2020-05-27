@@ -642,7 +642,7 @@ Status TabletBootstrap::HandleEntry(
     default:
       return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
   }
-  MAYBE_FAULT(FLAGS_fault_crash_during_log_replay);
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_during_log_replay);
   return Status::OK();
 }
 

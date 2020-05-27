@@ -793,7 +793,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       return Status::OK();
     }
 
-    TEST_PAUSE_IF_FLAG(pause_write_apply_after_if);
+    TEST_PAUSE_IF_FLAG(TEST_pause_write_apply_after_if);
   } else if (RequireReadForExpressions(request_) || request_.returns_status()) {
     RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &existing_row));
     if (request_.returns_status()) {

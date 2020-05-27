@@ -51,7 +51,7 @@
 
 using namespace std::literals;
 
-DEFINE_test_flag(int32, TEST_delay_execute_async_ms, 0,
+DEFINE_test_flag(int32, delay_execute_async_ms, 0,
                  "Delay execution of ExecuteAsync for specified amount of milliseconds during "
                      "tests");
 

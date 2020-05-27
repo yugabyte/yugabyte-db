@@ -21,7 +21,7 @@
 
 using namespace std::literals;
 
-DEFINE_test_flag(bool, test_tserver_timeout, false,
+DEFINE_test_flag(bool, tserver_timeout, false,
                  "Sleep past the deadline to test tserver query expiration");
 
 namespace yb {
@@ -35,7 +35,7 @@ bool DeadlineInfo::CheckAndSetDeadlinePassed() {
   if (deadline_passed_) {
     return true;
   }
-  if ((PREDICT_FALSE(FLAGS_test_tserver_timeout) || (++counter_ & 1023) == 0)
+  if ((PREDICT_FALSE(FLAGS_TEST_tserver_timeout) || (++counter_ & 1023) == 0)
       && CoarseMonoClock::now() > deadline_) {
     deadline_passed_ = true;
   }
@@ -48,7 +48,7 @@ std::string DeadlineInfo::ToString() const {
 }
 
 void SimulateTimeoutIfTesting(CoarseTimePoint* deadline) {
-  if (PREDICT_FALSE(FLAGS_test_tserver_timeout)) {
+  if (PREDICT_FALSE(FLAGS_TEST_tserver_timeout)) {
     *deadline = CoarseMonoClock::now() - 100ms;
   }
 }

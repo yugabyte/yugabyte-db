@@ -265,7 +265,7 @@ TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
   vector<string> tserver_flags, master_flags;
   master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=5000");
   // Disable tablet delete operations.
-  tserver_flags.push_back("--rpc_delete_tablet_fail=true");
+  tserver_flags.push_back("--TEST_rpc_delete_tablet_fail=true");
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 3));
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
@@ -544,7 +544,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
 
   // Enable a fault crash when remote bootstrap occurs on TS 0.
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
-  const string& kFaultFlag = "fault_crash_after_rb_files_fetched";
+  const string& kFaultFlag = "TEST_fault_crash_after_rb_files_fetched";
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kTsIndex), kFaultFlag, "1.0"));
 
   // Figure out the tablet id to remote bootstrap.
@@ -628,7 +628,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   workload.StopAndJoin();
 
   // Cause the leader to crash when a follower tries to remotely bootstrap from it.
-  const string& fault_flag = "fault_crash_on_handle_rb_fetch_data";
+  const string& fault_flag = "TEST_fault_crash_on_handle_rb_fetch_data";
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(leader_index), fault_flag, "1.0"));
 
   // Add our TS 0 to the config and wait for the leader to crash.
@@ -1101,9 +1101,9 @@ TEST_P(DeleteTableDeletedParamTest, TestRollForwardDelete) {
 }
 
 // Faults appropriate for the TABLET_DATA_DELETED case.
-const char* deleted_faults[] = {"fault_crash_after_blocks_deleted",
-                                "fault_crash_after_wal_deleted",
-                                "fault_crash_after_cmeta_deleted"};
+const char* deleted_faults[] = {"TEST_fault_crash_after_blocks_deleted",
+                                "TEST_fault_crash_after_wal_deleted",
+                                "TEST_fault_crash_after_cmeta_deleted"};
 
 INSTANTIATE_TEST_CASE_P(FaultFlags, DeleteTableDeletedParamTest,
                         ::testing::ValuesIn(deleted_faults));
@@ -1246,8 +1246,8 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
 
 // Faults appropriate for the TABLET_DATA_TOMBSTONED case.
 // Tombstoning a tablet does not delete the consensus metadata.
-const char* tombstoned_faults[] = {"fault_crash_after_blocks_deleted",
-                                   "fault_crash_after_wal_deleted"};
+const char* tombstoned_faults[] = {"TEST_fault_crash_after_blocks_deleted",
+                                   "TEST_fault_crash_after_wal_deleted"};
 
 INSTANTIATE_TEST_CASE_P(FaultFlags, DeleteTableTombstonedParamTest,
                         ::testing::ValuesIn(tombstoned_faults));

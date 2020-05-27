@@ -241,7 +241,7 @@ class CppCassandraDriverTestIndexNonResponsiveTServers : public CppCassandraDriv
     return {
         "--disable_index_backfill=false",
         "--enable_load_balancing=false",
-        "--yb_num_total_tablets=18",
+        "--TEST_yb_num_total_tablets=18",
         // Really aggressive timeouts.
         "--index_backfill_rpc_max_retries=1",
         "--index_backfill_rpc_timeout_ms=1",

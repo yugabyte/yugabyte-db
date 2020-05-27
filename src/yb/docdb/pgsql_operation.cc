@@ -37,7 +37,7 @@ DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
               "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
 
-DEFINE_test_flag(int32, TEST_slowdown_pgsql_aggregate_read_ms, 0,
+DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 namespace yb {

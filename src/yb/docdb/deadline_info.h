@@ -31,7 +31,7 @@ class DeadlineInfo {
   bool deadline_passed_ = false;
 };
 
-// If test_tserver_timeout is true, set the deadline to now and sleep for 100ms to simulate a
+// If TEST_tserver_timeout is true, set the deadline to now and sleep for 100ms to simulate a
 // tserver timeout.
 void SimulateTimeoutIfTesting(CoarseTimePoint* deadline);
 

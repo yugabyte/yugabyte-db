@@ -48,7 +48,7 @@ DEFINE_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechani
 
 DEFINE_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
 
-DEFINE_test_flag(int32, TEST_yb_inbound_big_calls_parse_delay_ms, false,
+DEFINE_test_flag(int32, yb_inbound_big_calls_parse_delay_ms, false,
     "Test flag for simulating slow parsing of inbound calls larger than "
     "rpc_throttle_threshold_bytes");
 

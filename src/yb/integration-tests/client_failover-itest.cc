@@ -68,7 +68,7 @@ class ClientFailoverITest : public ExternalMiniClusterITestBase {
 TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
 
-  vector<string> ts_flags = { "--enable_remote_bootstrap=false" };
+  vector<string> ts_flags = { "--TEST_enable_remote_bootstrap=false" };
   vector<string> master_flags = {"--catalog_manager_wait_for_new_tablets_to_elect_leader=false"};
 
   // Start up with 4 tablet servers.

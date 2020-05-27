@@ -29,7 +29,7 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-DECLARE_bool(encryption_use_openssl_compatible_counter_overflow);
+DECLARE_bool(TEST_encryption_use_openssl_compatible_counter_overflow);
 
 namespace yb {
 namespace enterprise {
@@ -41,7 +41,7 @@ class TestCipherStream : public YBTest {
  public:
   Status TestOverFlowWithKeyType(bool use_openssl_compatible_counter_overflow) {
     // Create a cipher stream on an iv about to overflow.
-    FLAGS_encryption_use_openssl_compatible_counter_overflow =
+    FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow =
         use_openssl_compatible_counter_overflow;
     auto params = EncryptionParams::NewEncryptionParams();
     // Initialize the nonce to be about to overflow for each position.
