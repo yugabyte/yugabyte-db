@@ -112,5 +112,7 @@ If a build fails to pick up the changes and fails to copy them, you can remove `
      - `src/postgres/src/test/regress/sql/yb_foo.sql`: completely new file (for example, with new features)
      - `src/postgres/src/test/regress/sql/yb_pg_foo.sql`: modified version of original postgres foo.sql (e.g. for compatibility edits) 
      - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
+   - When creating new `yb_pg_foo.{out,sql}` files and adding them to one of our schedules, sort them into the schedule using `src/postgres/src/test/regress/serial_schedule` as reference. 
+     Schedules `parallel_schedule` and `serial_schedule` should be untouched as they are from original postgres code.
 
 {{< /tip >}}
