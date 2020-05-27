@@ -131,6 +131,8 @@ class Iterator : public Cleanable {
   virtual Status GetProperty(std::string prop_name, std::string* prop);
 
   // Upper bound was updated and iterator should revalidate its state, since it could change.
+  // This only affects forward iteration. A previously invalid forward iterator can become valid
+  // if the upper bound has increased.
   virtual void RevalidateAfterUpperBoundChange() {}
 };
 

@@ -156,6 +156,13 @@ class PgMiniTest : public YBMiniClusterTestBase<MiniCluster> {
   HostPort pg_host_port_;
 };
 
+class PgMiniSingleTServerTest : public PgMiniTest {
+ public:
+  int NumTabletServers() override {
+    return 1;
+  }
+};
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
 
@@ -964,13 +971,6 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
   ASSERT_EQ(res, kRows);
 }
 
-class PgMiniSingleTServerTest : public PgMiniTest {
- public:
-  int NumTabletServers() override {
-    return 1;
-  }
-};
-
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert), PgMiniSingleTServerTest) {
   constexpr int kRows = 100000;
   auto conn = ASSERT_RESULT(Connect());
@@ -1189,6 +1189,84 @@ TEST_F_EX(PgMiniTest,
     .first_row_to_scan = 1,  // 0-based
     .last_row_to_scan = 3,
   });
+}
+
+// ------------------------------------------------------------------------------------------------
+// Backward scan on an index
+// ------------------------------------------------------------------------------------------------
+
+class PgMiniBackwardIndexScanTest : public PgMiniSingleTServerTest {
+ protected:
+  void BackwardIndexScanTest(bool uncommitted_intents) {
+    auto conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(conn.Execute(R"#(
+        create table events_backwardscan (
+
+          log       text not null,
+          src       text not null,
+          inserted  timestamp(3) without time zone not null,
+          created   timestamp(3) without time zone not null,
+          data      jsonb not null,
+
+          primary key (log, src, created)
+        );
+      )#"));
+    ASSERT_OK(conn.Execute("create index on events_backwardscan (inserted asc);"));
+
+    ASSERT_OK(conn.Execute(R"#(
+        insert into events_backwardscan
+
+        select
+          'log',
+          'src',
+          t,
+          t,
+          '{}'
+
+        from generate_series(
+          timestamp '2020-01-01',
+          timestamp '2020-02-01',
+          interval  '1 minute'
+        )
+
+        as t(day);
+    )#"));
+
+    boost::optional<PGConn> uncommitted_intents_conn;
+    if (uncommitted_intents) {
+      uncommitted_intents_conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(uncommitted_intents_conn->Execute("BEGIN"));
+      auto ts = "1970-01-01 00:00:00";
+      ASSERT_OK(uncommitted_intents_conn->ExecuteFormat(
+          "insert into events_backwardscan values ('log', 'src', '$0', '$0', '{}')", ts, ts));
+    }
+
+    auto count = ASSERT_RESULT(
+        conn.FetchValue<int64_t>("SELECT COUNT(*) FROM events_backwardscan"));
+    LOG(INFO) << "Total rows inserted: " << count;
+
+    auto select_result = ASSERT_RESULT(conn.Fetch(
+        "select * from events_backwardscan order by inserted desc limit 100"
+    ));
+    ASSERT_EQ(PQntuples(select_result.get()), 100);
+
+    if (uncommitted_intents) {
+      ASSERT_OK(uncommitted_intents_conn->Execute("ROLLBACK"));
+    }
+  }
+};
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(BackwardIndexScanNoIntents),
+          PgMiniBackwardIndexScanTest) {
+  BackwardIndexScanTest(/* uncommitted_intents */ false);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(BackwardIndexScanWithIntents),
+          PgMiniBackwardIndexScanTest) {
+  BackwardIndexScanTest(/* uncommitted_intents */ true);
 }
 
 } // namespace pgwrapper

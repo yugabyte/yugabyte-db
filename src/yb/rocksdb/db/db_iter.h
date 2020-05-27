@@ -51,7 +51,7 @@ extern Iterator* NewDBIterator(
 
 // A wrapper iterator which wraps DB Iterator and the arena, with which the DB
 // iterator is supposed be allocated. This class is used as an entry point of
-// a iterator hierarchy whose memory can be allocated inline. In that way,
+// an iterator hierarchy whose memory can be allocated inline. In that way,
 // accessing the iterator tree can be more cache friendly. It is also faster
 // to allocate.
 class ArenaWrappedDBIter : public Iterator {
