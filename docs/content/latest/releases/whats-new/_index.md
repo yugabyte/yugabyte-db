@@ -14,7 +14,7 @@ menu:
     weight: 2589 
 ---
 
-**Released:** May 8, 2020 (2.1.7.0-b17). ???
+**Released:** May 26, 2020 (2.1.7.0-b19). ???
 
 **New to YugabyteDB?** Follow [Quick start](../../quick-start/) to get started and running in less than five minutes.
 
@@ -45,30 +45,26 @@ docker pull yugabytedb/yugabyte:2.1.7.0-b17 ???
 
 ## YSQL
 
-- Wait for `tserver` to finish creating the `transaction` table during the initial cluster startup (when the transaction table is first created) before before issuing requests that require it to exist. This was more likely an issue for CI/CD, where requests can be issued immediately. Most users would not encounter this issue. [#4056](https://github.com/yugabyte/yugabyte-db/issues/4056)
-- Avoid redundant read for non-unique index inserts. For non-unique indexes, the primary key of the main table is implicitly added to the DocDB key, guaranteeing uniqueness of the full DocDB key (indexed columns plus encoded base table primary key). This fix executes such inserts as upserts and avoid the read and uniqueness check. [#4363](https://github.com/yugabyte/yugabyte-db/issues/4363)
-- Enhance automatic query read restart to avoid recreating portal. Instead of recreating a portal, reset an existing one to the state which allows it to be re-executed. Eliminate memory overhead for storing potential big bind variable values (for example, long strings). [#4254](https://github.com/yugabyte/yugabyte-db/issues/4254)
-- For `CREATE DATABASE` statements, improves fault tolerance by making CREATE API requests asynchronously and adds a state machine on namespaces to be the authority for processing these modifications. [#3097](https://github.com/yugabyte/yugabyte-db/issues/3097)
-- Display current query runtime (`process_running_for_ms`), in milliseconds (ms), on `<tserver_ip>:13000/rpcz` endpoint. [#4382](https://github.com/yugabyte/yugabyte-db/issues/4382)
 
 ## YCQL
 
-- Allow `system.peers_v2` table to be readable for `cassandra-driver-core:3.8.0-yb-2-RC1` so that expected errors are returned to the driver. [#4309](https://github.com/yugabyte/yugabyte-db/issues/4309)
+- Update Cassandra Java driver version to `3.8.0-yb-4` and adds support for [`guava`](https://github.com/google/guava) 26 or later. The latest release of the driver is available in the [Yugabyte `cassandra-java-driver` repository](https://github.com/yugabyte/cassandra-java-driver/releases). [#3897](https://github.com/yugabyte/yugabyte-db/issues/3897)
 
 ## System improvements
 
-- [DocDB] Improve fault tolerance by enabling exponential backoff mechanics for the leader attempting to catch up the follower. If this causes any issues, you set the `--enable_consensus_exponential_backoff` flag (enabled by default) to `false`. [#4042](https://github.com/yugabyte/yugabyte-db/issues/4042)
-- [DocDB] Improve row scanning by using SeekForward for intents. In testing, performance of `SELECT COUNT(*)` has improved by 66%. [#4277](https://github.com/yugabyte/yugabyte-db/issues/4277)
-- [DocDB] Add asynchronous transaction status resolution to conflict detection. [#4058](https://github.com/yugabyte/yugabyte-db/issues/4058)
+- Improve load balancing by creating a global count of tablets starting across all tables before issuing AddReplica requests to prevent exceeding the maximum number of tablets being remote bootstrapped. [#4053](https://github.com/yugabyte/yugabyte-db/issues/4053)
+- [Colocation] During load balancing operations, load balance each colocated tablet once. This fix removes unnecessary load balancing for every user table sharing that table and the parent table.
+- Redirect the master UI to the master leader UI without failing when one master is down. [#4442](https://github.com/yugabyte/yugabyte-db/issues/4442) and [#3869](https://github.com/yugabyte/yugabyte-db/issues/3869)
+- Avoid race in `change_metadata_operation`. Use atomic<P*> to avoid race between
+`Finish()` and `ToString` from updating or accessing request. [#3912](https://github.com/yugabyte/yugabyte-db/issues/3912)
+- Refactor `RaftGroupMetadata` to avoid keeping unnecessary `TableInfo` objects in memory.
 
 ## Yugabyte Platform
 
-- When performing a full move or add node on a universe that has a yb-master, the `server.conf` file is now being updated with the new `master_addresses`. [#4242](https://github.com/yugabyte/yugabyte-db/issues/4242)
-- In the **Backups** tab, individual YSQL tables can no longer be selected. Previously, attempting to back up a YSQL table would create a failed task. [#3848](https://github.com/yugabyte/yugabyte-db/issues/3848)
-- In the **Metrics** view, transactions have been added to the YSQL and YCQL operations charts. [#3827](https://github.com/yugabyte/yugabyte-db/issues/3827)
-- **Create Read Replica** and **Edit Read Replica** pages are no longer in beta. [#4313](https://github.com/yugabyte/yugabyte-db/issues/4313)
-- In the **Certificates** page, you can now download certificates. [#3985](https://github.com/yugabyte/yugabyte-db/issues/3985)
-- In the **Universes** overview page, add a button to toggle on metrics graph widgets to auto-refresh or to set refresh interval. [#2296](https://github.com/yugabyte/yugabyte-db/issues/2296)
+- Improve latency tracking by splitting overall operation metrics into individual rows for each API. [#3825](https://github.com/yugabyte/yugabyte-db/issues/3825)
+  - YCQL and YEDIS metrics include `ops`, `avg latency`, and `P99 latency`.
+  - YSQL metrics include only `ops` and `avg latency`.
+- When configuration flags are deleted using the YugabyteDB Admin Console, they are also removed from `server.conf` file and the server restarts. [#4341](https://github.com/yugabyte/yugabyte-db/issues/4341)
 
 {{< note title="Note" >}}
 
