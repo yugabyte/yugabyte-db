@@ -1428,7 +1428,6 @@ run_java_test() {
     fatal "Running Java tests requires that BUILD_ROOT be set"
   fi
   set_mvn_parameters
-  copy_artifacts_to_non_shared_mvn_repo
 
   set_sanitizer_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"

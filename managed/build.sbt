@@ -48,7 +48,7 @@ resolvers += {
   }
 }
 
-lazy val groupId = Option(System.getenv("YB_TMP_GROUP_ID")).getOrElse("org.yb")
+lazy val groupId = "org.yb"
 libraryDependencies += groupId % "yb-client" % "0.8.0-SNAPSHOT"
 
 
