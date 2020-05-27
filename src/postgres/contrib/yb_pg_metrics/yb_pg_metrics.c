@@ -115,15 +115,15 @@ set_metric_names(void)
 }
 
 /*
- * Function to calculate milliseconds elapsed since start_time.
+ * Function to calculate milliseconds elapsed from start_time to stop_time.
  */
-static long
-getElapsedMs(TimestampTz start_time) 
+int64
+getElapsedMs(TimestampTz start_time, TimestampTz stop_time) 
 {
   long secs;
   int microsecs;
 
-  TimestampDifference(start_time, GetCurrentTimestamp(), &secs, &microsecs);
+  TimestampDifference(start_time, stop_time, &secs, &microsecs);
 
   long millisecs = (secs * 1000) + (microsecs / 1000);
   return millisecs;
@@ -180,35 +180,9 @@ pullRpczEntries(void)
       rpcz[i].db_name = (char *) palloc(NAMEDATALEN);
       strcpy(rpcz[i].db_name, beentry->st_databasename);
 
-      rpcz[i].process_start_timestamp = (char *) palloc(MAXDATELEN + 1);
-      strcpy(rpcz[i].process_start_timestamp, timestamptz_to_str(beentry->st_proc_start_timestamp));
-      rpcz[i].process_running_for_ms = getElapsedMs(beentry->st_proc_start_timestamp);
-
-      if (beentry->st_xact_start_timestamp)
-      {
-        rpcz[i].transaction_start_timestamp = (char *) palloc(MAXDATELEN + 1);
-        strcpy(rpcz[i].transaction_start_timestamp,
-               timestamptz_to_str(beentry->st_xact_start_timestamp));
-        rpcz[i].transaction_running_for_ms = getElapsedMs(beentry->st_xact_start_timestamp);
-      }
-      else
-      {
-        rpcz[i].transaction_start_timestamp = NULL;
-        rpcz[i].transaction_running_for_ms = 0;
-      }
-
-      if (beentry->st_activity_start_timestamp)
-      {
-        rpcz[i].query_start_timestamp = (char *) palloc(MAXDATELEN + 1);
-        strcpy(rpcz[i].query_start_timestamp,
-               timestamptz_to_str(beentry->st_activity_start_timestamp));
-        rpcz[i].query_running_for_ms = getElapsedMs(beentry->st_activity_start_timestamp);
-      }
-      else
-      {
-        rpcz[i].query_start_timestamp = NULL;
-        rpcz[i].query_running_for_ms = 0;
-      }
+      rpcz[i].process_start_timestamp = beentry->st_proc_start_timestamp;
+      rpcz[i].transaction_start_timestamp = beentry->st_xact_start_timestamp;
+      rpcz[i].query_start_timestamp = beentry->st_activity_start_timestamp; 
 
       rpcz[i].backend_type = (char *) palloc(40);
       strcpy(rpcz[i].backend_type, pgstat_get_backend_desc(beentry->st_backendType));
@@ -301,7 +275,14 @@ webserver_worker_main(Datum unused)
 
   RegisterMetrics(ybpgm_table, num_entries, metric_node_name);
 
-  RegisterRpczEntries(&pullRpczEntries, &freeRpczEntries, &num_backends, &rpcz);
+  postgresCallbacks callbacks;
+  callbacks.pullRpczEntries      = pullRpczEntries;
+  callbacks.freeRpczEntries      = freeRpczEntries;
+  callbacks.getTimestampTz       = GetCurrentTimestamp;
+  callbacks.getTimestampTzDiffMs = getElapsedMs;
+  callbacks.getTimestampTzToStr  = timestamptz_to_str;
+
+  RegisterRpczEntries(&callbacks, &num_backends, &rpcz);
 
   HandleYBStatus(StartWebserver(webserver));
 

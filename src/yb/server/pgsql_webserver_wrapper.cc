@@ -30,11 +30,11 @@ static ybpgmEntry *ybpgm_table;
 static int ybpgm_num_entries;
 static int *num_backends;
 yb::MetricEntity::AttributeMap prometheus_attr;
-static void (*pullRpczEntries)();
 static void (*pullYsqlStatementStats)(void *);
 static void (*resetYsqlStatementStats)();
-static void (*freeRpczEntries)();
 static rpczEntry **rpczResultPointer;
+
+static postgresCallbacks pgCallbacks;
 
 static void PgMetricsHandler(const Webserver::WebRequest& req, std::stringstream* output) {
   JsonWriter::Mode json_mode;
@@ -139,8 +139,18 @@ static void PgStatStatementsResetHandler(const Webserver::WebRequest& req,
   writer.EndObject();
 }
 
+static void WriteAsJsonTimestampAndRunningForMs(JsonWriter *writer, const std::string& prefix,
+                                                int64 start_timestamp, int64 snapshot_timestamp) {
+  writer->String(prefix + "_start_time");
+  writer->String(pgCallbacks.getTimestampTzToStr(start_timestamp));
+
+  writer->String(prefix + "_running_for_ms");
+  writer->Int64(pgCallbacks.getTimestampTzDiffMs(start_timestamp, snapshot_timestamp));
+}
+
 static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* output) {
-  pullRpczEntries();
+  pgCallbacks.pullRpczEntries();
+  int64 snapshot_timestamp = pgCallbacks.getTimestampTz();
 
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
@@ -167,26 +177,20 @@ static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* o
         writer.String(rpczResult[i].query);
       }
 
-      writer.String("process_start_time");
-      writer.String(rpczResult[i].process_start_timestamp);
+      WriteAsJsonTimestampAndRunningForMs(&writer, "process",
+                                          rpczResult[i].process_start_timestamp,
+                                          snapshot_timestamp);
 
-      writer.String("process_running_for_ms");
-      writer.Int64(rpczResult[i].process_running_for_ms);
-
-      if (rpczResult[i].transaction_start_timestamp) {
-        writer.String("transaction_start_time");
-        writer.String(rpczResult[i].transaction_start_timestamp);
-
-        writer.String("transaction_running_for_ms");
-        writer.Int64(rpczResult[i].transaction_running_for_ms);
+      if (rpczResult[i].transaction_start_timestamp > 0) {
+        WriteAsJsonTimestampAndRunningForMs(&writer, "transaction",
+                                            rpczResult[i].transaction_start_timestamp,
+                                            snapshot_timestamp);
       }
 
-      if (rpczResult[i].query_start_timestamp) {
-        writer.String("query_start_time");
-        writer.String(rpczResult[i].query_start_timestamp);
-
-        writer.String("query_running_for_ms");
-        writer.Int64(rpczResult[i].query_running_for_ms);
+      if (rpczResult[i].query_start_timestamp > 0) {
+        WriteAsJsonTimestampAndRunningForMs(&writer, "query",
+                                            rpczResult[i].query_start_timestamp,
+                                            snapshot_timestamp);
       }
 
       writer.String("application_name");
@@ -211,7 +215,7 @@ static void PgRpczHandler(const Webserver::WebRequest& req, std::stringstream* o
   }
   writer.EndArray();
   writer.EndObject();
-  freeRpczEntries();
+  pgCallbacks.freeRpczEntries();
 }
 
 static void PgPrometheusMetricsHandler(const Webserver::WebRequest& req,
@@ -269,12 +273,11 @@ extern "C" {
     resetYsqlStatementStats = fn;
   }
 
-  void RegisterRpczEntries(void (*rpczFunction)(), void (*freerpczFunction)(),
-                           int *num_backends_ptr, rpczEntry **rpczEntriesPointer) {
-    rpczResultPointer = rpczEntriesPointer;
-    pullRpczEntries = rpczFunction;
-    freeRpczEntries = freerpczFunction;
+  void RegisterRpczEntries(postgresCallbacks *callbacks, int *num_backends_ptr,
+                           rpczEntry **rpczEntriesPointer) {
+    pgCallbacks = *callbacks;
     num_backends = num_backends_ptr;
+    rpczResultPointer = rpczEntriesPointer;
   }
 
   YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {

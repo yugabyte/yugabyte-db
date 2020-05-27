@@ -40,12 +40,9 @@ typedef struct rpczEntry {
     int proc_id;
     unsigned int db_oid;
     char *db_name;
-    char *process_start_timestamp;
-    int64 process_running_for_ms;
-    char *transaction_start_timestamp;
-    int64 transaction_running_for_ms;
-    char *query_start_timestamp;
-    int64 query_running_for_ms;
+    int64 process_start_timestamp;
+    int64 transaction_start_timestamp;
+    int64 query_start_timestamp;
     char *backend_type;
     char *backend_status;
     char *host;
@@ -66,9 +63,17 @@ typedef struct YsqlStatementStat {
   int64  rows;         /* total # of retrieved or affected rows */
 } YsqlStatementStat;
 
+typedef struct {
+  void (*pullRpczEntries)();
+  void (*freeRpczEntries)();
+  int64 (*getTimestampTz)();
+  int64 (*getTimestampTzDiffMs)(int64, int64);
+  const char *(*getTimestampTzToStr)(int64);
+} postgresCallbacks;
+
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
-void RegisterRpczEntries(void (*rpczFunction)(), void (*freerpczFunction)(), int *num_backends_ptr,
+void RegisterRpczEntries(postgresCallbacks *callbacks, int *num_backends_ptr,
                          rpczEntry **rpczEntriesPointer);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
