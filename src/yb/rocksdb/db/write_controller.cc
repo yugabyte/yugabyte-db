@@ -28,7 +28,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 
-DEFINE_test_flag(bool, TEST_allow_stop_writes, true,
+DEFINE_test_flag(bool, allow_stop_writes, true,
                  "Whether it is allowed to stop writes in tests.");
 
 namespace rocksdb {

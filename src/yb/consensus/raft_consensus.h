@@ -686,7 +686,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   scoped_refptr<Histogram> update_raft_config_dns_latency_;
 
-  // Used only when follower_reject_update_consensus_requests_seconds is greater than 0.
+  // Used only when TEST_follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.
   MonoTime withold_replica_updates_until_ = MonoTime::kUninitialized;
 

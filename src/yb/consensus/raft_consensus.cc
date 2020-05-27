@@ -104,7 +104,7 @@ TAG_FLAG(enable_leader_failure_detection, unsafe);
 
 DEFINE_test_flag(bool, do_not_start_election_test_only, false,
                  "Do not start election even if leader failure is detected. ");
-TAG_FLAG(do_not_start_election_test_only, runtime);
+TAG_FLAG(TEST_do_not_start_election_test_only, runtime);
 
 DEFINE_bool(evict_failed_followers, true,
             "Whether to evict followers from the Raft config that have fallen "
@@ -118,8 +118,8 @@ DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
 
 DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "Whether a follower will return an error for all UpdateConsensus() requests for "
-                 "the first follower_reject_update_consensus_requests_seconds seconds after the "
-                 "Consensus objet is created.");
+                 "the first TEST_follower_reject_update_consensus_requests_seconds seconds after "
+                 "the Consensus objet is created.");
 
 DEFINE_test_flag(bool, follower_fail_all_prepare, false,
                  "Whether a follower will fail preparing all operations.");
@@ -188,7 +188,8 @@ DEFINE_test_flag(bool, pause_update_replica, false,
 DEFINE_test_flag(bool, pause_update_majority_replicated, false,
                  "Pause RaftConsensus::UpdateMajorityReplicated.");
 
-DEFINE_test_flag(int32, log_change_config_every_n, 1, "How often to log change config information. "
+DEFINE_test_flag(int32, log_change_config_every_n, 1,
+                 "How often to log change config information. "
                  "Used to reduce the number of lines being printed for change config requests "
                  "when a test simulates a failure that would generate a log of these requests.");
 
@@ -316,9 +317,9 @@ RaftConsensus::RaftConsensus(
           METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(metric_entity)) {
   DCHECK_NOTNULL(log_.get());
 
-  if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests_seconds > 0)) {
+  if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests_seconds > 0)) {
     withold_replica_updates_until_ = MonoTime::Now() +
-        MonoDelta::FromSeconds(FLAGS_follower_reject_update_consensus_requests_seconds);
+        MonoDelta::FromSeconds(FLAGS_TEST_follower_reject_update_consensus_requests_seconds);
   }
 
   state_ = std::make_unique<ReplicaState>(
@@ -439,8 +440,9 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
   TRACE_EVENT2("consensus", "RaftConsensus::StartElection",
                "peer", peer_uuid(),
                "tablet", tablet_id());
-  if (FLAGS_do_not_start_election_test_only) {
-    LOG(INFO) << "Election start skipped as do_not_start_election_test_only flag is set to true.";
+  if (FLAGS_TEST_do_not_start_election_test_only) {
+    LOG(INFO) << "Election start skipped as TEST_do_not_start_election_test_only flag "
+                 "is set to true.";
     return Status::OK();
   }
 
@@ -1022,7 +1024,7 @@ void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data,
     OpId* committed_op_id) {
-  TEST_PAUSE_IF_FLAG(pause_update_majority_replicated);
+  TEST_PAUSE_IF_FLAG(TEST_pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
   if (PREDICT_FALSE(!s.ok())) {
@@ -1166,8 +1168,8 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 Status RaftConsensus::Update(ConsensusRequestPB* request,
                              ConsensusResponsePB* response,
                              CoarseTimePoint deadline) {
-  if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests)) {
-    return STATUS(IllegalState, "Rejected: --follower_reject_update_consensus_requests "
+  if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests)) {
+    return STATUS(IllegalState, "Rejected: --TEST_follower_reject_update_consensus_requests "
                                 "is set to true.");
   }
 
@@ -1183,13 +1185,13 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
     LOG_WITH_PREFIX(INFO) << "Accepted: " << request->ShortDebugString();
   }
 
-  if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests_seconds > 0)) {
+  if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests_seconds > 0)) {
     if (MonoTime::Now() < withold_replica_updates_until_) {
       LOG(INFO) << "Rejecting Update for tablet: " << tablet_id()
                 << " tserver uuid: " << peer_uuid();
       return STATUS_SUBSTITUTE(IllegalState,
-          "Rejected: --follower_reject_update_consensus_requests_seconds is set to $0",
-          FLAGS_follower_reject_update_consensus_requests_seconds);
+          "Rejected: --TEST_follower_reject_update_consensus_requests_seconds is set to $0",
+          FLAGS_TEST_follower_reject_update_consensus_requests_seconds);
     }
   }
 
@@ -1256,8 +1258,8 @@ Status RaftConsensus::StartReplicaOperationUnlocked(
     return StartConsensusOnlyRoundUnlocked(msg);
   }
 
-  if (PREDICT_FALSE(FLAGS_follower_fail_all_prepare)) {
-    return STATUS(IllegalState, "Rejected: --follower_fail_all_prepare "
+  if (PREDICT_FALSE(FLAGS_TEST_follower_fail_all_prepare)) {
+    return STATUS(IllegalState, "Rejected: --TEST_follower_fail_all_prepare "
                                 "is set to true.");
   }
 
@@ -1615,7 +1617,7 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
     return UpdateReplicaResult();
   }
 
-  TEST_PAUSE_IF_FLAG(pause_update_replica);
+  TEST_PAUSE_IF_FLAG(TEST_pause_update_replica);
 
   // Snooze the failure detector as soon as we decide to accept the message.
   // We are guaranteed to be acting as a FOLLOWER at this point by the above
@@ -2050,7 +2052,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     return STATUS(InvalidArgument, "Must specify 'server' argument to ChangeConfig()",
                                    req.ShortDebugString());
   }
-  YB_LOG_EVERY_N(INFO, FLAGS_log_change_config_every_n)
+  YB_LOG_EVERY_N(INFO, FLAGS_TEST_log_change_config_every_n)
       << "Received ChangeConfig request " << req.ShortDebugString();
   ChangeConfigType type = req.type();
   bool use_hostport = req.has_use_host() && req.use_host();
@@ -2060,10 +2062,10 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                              "only allowed with REMOVE_SERVER.", type);
   }
 
-  if (PREDICT_FALSE(FLAGS_return_error_on_change_config != 0.0 && type == CHANGE_ROLE)) {
-    DCHECK(FLAGS_return_error_on_change_config >= 0.0 &&
-           FLAGS_return_error_on_change_config <= 1.0);
-    if (clock_->Now().ToUint64() % 100 < 100 * FLAGS_return_error_on_change_config) {
+  if (PREDICT_FALSE(FLAGS_TEST_return_error_on_change_config != 0.0 && type == CHANGE_ROLE)) {
+    DCHECK(FLAGS_TEST_return_error_on_change_config >= 0.0 &&
+           FLAGS_TEST_return_error_on_change_config <= 1.0);
+    if (clock_->Now().ToUint64() % 100 < 100 * FLAGS_TEST_return_error_on_change_config) {
       return STATUS(IllegalState, "Returning error for unit test");
     }
   }
@@ -2086,7 +2088,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     const string& server_uuid = server.has_permanent_uuid() ? server.permanent_uuid() : "";
     s = IsLeaderReadyForChangeConfigUnlocked(type, server_uuid);
     if (!s.ok()) {
-      YB_LOG_EVERY_N(INFO, FLAGS_log_change_config_every_n)
+      YB_LOG_EVERY_N(INFO, FLAGS_TEST_log_change_config_every_n)
           << "Returning not ready for " << ChangeConfigType_Name(type)
           << " due to error " << s.ToString();
       *error_code = TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG;
@@ -2542,10 +2544,11 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
 
   RETURN_NOT_OK(state_->SetPendingConfigUnlocked(new_config));
 
-  if (type == CHANGE_ROLE && PREDICT_FALSE(FLAGS_inject_delay_leader_change_role_append_secs)) {
+  if (type == CHANGE_ROLE &&
+      PREDICT_FALSE(FLAGS_TEST_inject_delay_leader_change_role_append_secs)) {
     LOG(INFO) << "Adding change role sleep for "
-              << FLAGS_inject_delay_leader_change_role_append_secs << " secs.";
-    SleepFor(MonoDelta::FromSeconds(FLAGS_inject_delay_leader_change_role_append_secs));
+              << FLAGS_TEST_inject_delay_leader_change_role_append_secs << " secs.";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_delay_leader_change_role_append_secs));
   }
 
   // Set as pending.

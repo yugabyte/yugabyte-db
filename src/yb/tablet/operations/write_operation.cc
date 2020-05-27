@@ -60,8 +60,8 @@ DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
                  "How much latency to inject when a write operation is applied.");
 DEFINE_test_flag(bool, tablet_pause_apply_write_ops, false,
                  "Pause applying of write operations.");
-TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
-TAG_FLAG(tablet_pause_apply_write_ops, runtime);
+TAG_FLAG(TEST_tablet_inject_latency_on_apply_write_txn_ms, runtime);
+TAG_FLAG(TEST_tablet_pause_apply_write_ops, runtime);
 
 namespace yb {
 namespace tablet {
@@ -115,13 +115,13 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
   TRACE_EVENT0("txn", "WriteOperation::Complete");
   TRACE("APPLY: Starting");
 
-  auto injected_latency = GetAtomicFlag(&FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
+  auto injected_latency = GetAtomicFlag(&FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms);
   if (PREDICT_FALSE(injected_latency) > 0) {
-      TRACE("Injecting $0ms of latency due to --tablet_inject_latency_on_apply_write_txn_ms",
+      TRACE("Injecting $0ms of latency due to --TEST_tablet_inject_latency_on_apply_write_txn_ms",
             injected_latency);
       SleepFor(MonoDelta::FromMilliseconds(injected_latency));
   } else {
-    TEST_PAUSE_IF_FLAG(tablet_pause_apply_write_ops);
+    TEST_PAUSE_IF_FLAG(TEST_tablet_pause_apply_write_ops);
   }
 
   *complete_status = state()->tablet()->ApplyRowOperations(state());

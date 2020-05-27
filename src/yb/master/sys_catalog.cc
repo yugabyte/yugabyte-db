@@ -120,7 +120,7 @@ DECLARE_int32(master_discovery_timeout_ms);
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 DEFINE_int32(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
 
-DEFINE_test_flag(int32, TEST_sys_catalog_write_rejection_percentage, 0,
+DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
 
 namespace yb {

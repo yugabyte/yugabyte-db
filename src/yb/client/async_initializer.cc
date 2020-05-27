@@ -20,7 +20,7 @@
 
 using namespace std::literals;
 
-DEFINE_test_flag(bool, TEST_force_master_leader_resolution, false,
+DEFINE_test_flag(bool, force_master_leader_resolution, false,
                  "Force master leader resolution even only one master is set.");
 
 namespace yb {

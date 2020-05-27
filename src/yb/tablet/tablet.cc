@@ -190,21 +190,18 @@ TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
 DEFINE_bool(cleanup_intents_sst_files, true,
             "Cleanup intents files that are no more relevant to any running transaction.");
 
-DEFINE_test_flag(int32, TEST_slowdown_backfill_by_ms, 0,
+DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
-DEFINE_test_flag(
-    int32, TEST_backfill_paging_size, 0,
-    "If set > 0, returns early after processing this number of rows.");
+DEFINE_test_flag(int32, backfill_paging_size, 0,
+                 "If set > 0, returns early after processing this number of rows.");
 
-DEFINE_test_flag(
-    bool, tablet_verify_flushed_frontier_after_modifying, false,
-    "After modifying the flushed frontier in RocksDB, verify that the restored value of it "
-    "is as expected. Used for testing.");
+DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
+                 "After modifying the flushed frontier in RocksDB, verify that the restored value "
+                 "of it is as expected. Used for testing.");
 
-DEFINE_test_flag(
-    bool, docdb_log_write_batches, false,
-    "Dump write batches being written to RocksDB");
+DEFINE_test_flag(bool, docdb_log_write_batches, false,
+                 "Dump write batches being written to RocksDB");
 
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -1111,7 +1108,7 @@ void Tablet::WriteToRocksDB(
                            << " operations into RocksDB: " << rocksdb_write_status;
   }
 
-  if (FLAGS_docdb_log_write_batches) {
+  if (FLAGS_TEST_docdb_log_write_batches) {
     LOG_WITH_PREFIX(INFO)
         << "Wrote " << write_batch->Count() << " key/value pairs to " << storage_db_type
         << " RocksDB:\n" << docdb::WriteBatchToString(
@@ -2238,7 +2235,7 @@ Status Tablet::ModifyFlushedFrontier(
     DCHECK_EQ(frontier.hybrid_time(), consensus_flushed_frontier.hybrid_time());
   }
 
-  if (FLAGS_tablet_verify_flushed_frontier_after_modifying &&
+  if (FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying &&
       mode == rocksdb::FrontierModificationMode::kForce) {
     LOG(INFO) << "Verifying that flushed frontier was force-set successfully";
     string test_data_dir = VERIFY_RESULT(Env::Default()->GetTestDirectory());

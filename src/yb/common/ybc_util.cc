@@ -35,9 +35,7 @@
 #include "yb/gutil/stringprintf.h"
 
 using std::string;
-DEFINE_test_flag(string,
-                 process_info_dir,
-                 string(),
+DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
 
 namespace yb {
@@ -227,8 +225,8 @@ YBCStatus YBCInit(const char* argv0,
   YBCSetPAllocFn(palloc_fn);
   YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
   auto status = yb::InitInternal(argv0);
-  if (status.ok() && !FLAGS_process_info_dir.empty()) {
-    WriteCurrentProcessInfo(FLAGS_process_info_dir);
+  if (status.ok() && !FLAGS_TEST_process_info_dir.empty()) {
+    WriteCurrentProcessInfo(FLAGS_TEST_process_info_dir);
   }
   return ToYBCStatus(status);
 }

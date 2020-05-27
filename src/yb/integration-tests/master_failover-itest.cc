@@ -53,7 +53,7 @@
 
 using namespace std::literals;
 
-DECLARE_int32(yb_num_total_tablets);
+DECLARE_int32(TEST_yb_num_total_tablets);
 
 namespace yb {
 
@@ -280,7 +280,7 @@ TEST_P(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
   const int kPauseAfterStage = GetParam();
   YBTableName table_name(YQL_DATABASE_CQL, "test", "testPauseAfterCreateTableIssued");
   LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
-  FLAGS_yb_num_total_tablets = 5;
+  FLAGS_TEST_yb_num_total_tablets = 5;
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
   LOG(INFO) << "CreateTable done for " << table_name.ToString();
 

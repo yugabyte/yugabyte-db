@@ -48,7 +48,7 @@ DEFINE_bool(transaction_disable_proactive_cleanup_in_tests, false,
             "Disable cleanup of intents in abort path.");
 DECLARE_uint64(max_clock_skew_usec);
 
-DEFINE_test_flag(int32, TEST_transaction_inject_flushed_delay_ms, 0,
+DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
                  "Inject delay before processing flushed operations by transaction.");
 
 namespace yb {

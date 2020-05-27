@@ -293,7 +293,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
         break;
       }
     }
-    if (PREDICT_FALSE(FLAGS_load_balancer_handle_under_replicated_tablets_only)) {
+    if (PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
       LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
       continue;
     }

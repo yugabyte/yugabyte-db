@@ -51,8 +51,8 @@ DECLARE_uint64(redis_max_queued_bytes);
 DECLARE_int64(redis_rpc_block_size);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
-DECLARE_bool(test_tserver_timeout);
-DECLARE_bool(enable_backpressure_mode_for_testing);
+DECLARE_bool(TEST_tserver_timeout);
+DECLARE_bool(TEST_enable_backpressure_mode_for_testing);
 DECLARE_bool(yedis_enable_flush);
 DECLARE_int32(redis_service_yb_client_timeout_millis);
 DECLARE_int32(redis_max_value_size);
@@ -1116,7 +1116,7 @@ TEST_F(TestRedisService, BatchedCommandsInline) {
 
 TEST_F(TestRedisService, TestTimedoutInQueue) {
   FLAGS_redis_max_batch = 1;
-  SetAtomicFlag(true, &FLAGS_enable_backpressure_mode_for_testing);
+  SetAtomicFlag(true, &FLAGS_TEST_enable_backpressure_mode_for_testing);
 
   DoRedisTestOk(__LINE__, {"SET", "foo", "value"});
   DoRedisTestBulkString(__LINE__, {"GET", "foo"}, "value");
@@ -5216,11 +5216,11 @@ TEST_F(TestRedisService, RangeScanTimeout) {
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"}, {"v1"});
   SyncClient();
 
-  FLAGS_test_tserver_timeout = true;
+  FLAGS_TEST_tserver_timeout = true;
   DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"},
                          "Deadline for query passed.");
   SyncClient();
-  FLAGS_test_tserver_timeout = false;
+  FLAGS_TEST_tserver_timeout = false;
 
   // Test TimeSeries.
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "1", "v1"});
@@ -5228,11 +5228,11 @@ TEST_F(TestRedisService, RangeScanTimeout) {
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME", "ts_key", "-inf", "+inf"}, {"1", "v1"});
   SyncClient();
 
-  FLAGS_test_tserver_timeout = true;
+  FLAGS_TEST_tserver_timeout = true;
   DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME", "ts_key", "-inf", "+inf"},
                          "Deadline for query passed.");
   SyncClient();
-  FLAGS_test_tserver_timeout = false;
+  FLAGS_TEST_tserver_timeout = false;
 
   // Test a point read doesn't time out.
   DoRedisTestOk(__LINE__, {"SET", "k", "v"});
@@ -5240,7 +5240,7 @@ TEST_F(TestRedisService, RangeScanTimeout) {
   DoRedisTestBulkString(__LINE__, {"GET", "k"}, "v");
   SyncClient();
 
-  FLAGS_test_tserver_timeout = true;
+  FLAGS_TEST_tserver_timeout = true;
   DoRedisTestBulkString(__LINE__, {"GET", "k"}, "v");
 
   SyncClient();
@@ -5250,11 +5250,11 @@ TEST_F(TestRedisService, RangeScanTimeout) {
 TEST_F(TestRedisService, KeysTimeout) {
   DoRedisTestInt(__LINE__, {"ZADD", "z_key", "1.0", "v1"}, 1);
   SyncClient();
-  FLAGS_test_tserver_timeout = true;
+  FLAGS_TEST_tserver_timeout = true;
   DoRedisTestExpectError(__LINE__, {"KEYS", "*"},
                          "Errors occured while reaching out to the tablet servers");
   SyncClient();
-  FLAGS_test_tserver_timeout = false;
+  FLAGS_TEST_tserver_timeout = false;
   DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"z_key"});
   SyncClient();
   VerifyCallbacks();

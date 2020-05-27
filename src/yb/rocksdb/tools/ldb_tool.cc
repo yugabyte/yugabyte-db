@@ -23,7 +23,7 @@
 
 #include "yb/util/flag_tags.h"
 
-DEFINE_test_flag(bool, TEST_exit_on_finish, true, "Exit the process on finishing.");
+DEFINE_test_flag(bool, exit_on_finish, true, "Exit the process on finishing.");
 
 namespace rocksdb {
 

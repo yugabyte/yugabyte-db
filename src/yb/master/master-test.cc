@@ -61,10 +61,10 @@ DECLARE_string(callhome_collection_level);
 DECLARE_string(callhome_tag);
 DECLARE_string(callhome_url);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
-DECLARE_int32(simulate_slow_table_create_secs);
-DECLARE_bool(return_error_if_namespace_not_found);
+DECLARE_int32(TEST_simulate_slow_table_create_secs);
+DECLARE_bool(TEST_return_error_if_namespace_not_found);
 DECLARE_bool(TEST_hang_on_namespace_transition);
-DECLARE_bool(simulate_crash_after_table_marked_deleting);
+DECLARE_bool(TEST_simulate_crash_after_table_marked_deleting);
 DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
 
 namespace yb {
@@ -274,7 +274,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 }
 
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
-  FLAGS_simulate_slow_table_create_secs = 10;
+  FLAGS_TEST_simulate_slow_table_create_secs = 10;
 
   const char *kNamespaceName = "testnamespace";
   CreateNamespaceResponsePB resp;
@@ -286,7 +286,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     shared_ptr<RpcController> controller;
     // Set an RPC timeout for the controllers.
     controller = make_shared<RpcController>();
-    controller->set_timeout(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs * 2));
+    controller->set_timeout(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_table_create_secs * 2));
 
     CreateTableRequestPB req;
     CreateTableResponsePB resp;
@@ -306,7 +306,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   // Delete the namespace (by NAME).
   {
     // Give the CreateTable request some time to start and find the namespace.
-    SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs / 2));
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_table_create_secs / 2));
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_name(kNamespaceName);
@@ -318,7 +318,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   t.join();
 
   {
-    FLAGS_return_error_if_namespace_not_found = true;
+    FLAGS_TEST_return_error_if_namespace_not_found = true;
     ListTablesRequestPB req;
     ListTablesResponsePB resp;
     ASSERT_OK(proxy_->ListTables(req, &resp, ResetAndGetController()));
@@ -328,7 +328,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     ASSERT_TRUE(msg.find("Keyspace identifier not found") != string::npos);
 
     // After turning off this flag, ListTables should skip the table with the error.
-    FLAGS_return_error_if_namespace_not_found = false;
+    FLAGS_TEST_return_error_if_namespace_not_found = false;
     ASSERT_OK(proxy_->ListTables(req, &resp, ResetAndGetController()));
     LOG(INFO) << "Finished second ListTables request";
     ASSERT_FALSE(resp.has_error());
@@ -484,7 +484,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
 }
 
 TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
-  FLAGS_simulate_crash_after_table_marked_deleting = true;
+  FLAGS_TEST_simulate_crash_after_table_marked_deleting = true;
   const char *kTableName = "testtb";
   const Schema kTableSchema({ ColumnSchema("key", INT32)},
                             1);

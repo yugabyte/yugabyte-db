@@ -116,7 +116,7 @@ EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
   }
   encryption_params->key_size = kDefaultKeySize;
   encryption_params->openssl_compatible_counter_overflow =
-      FLAGS_encryption_use_openssl_compatible_counter_overflow;
+      FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow;
   return encryption_params;
 }
 

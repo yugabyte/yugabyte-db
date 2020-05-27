@@ -47,7 +47,7 @@ using namespace std::literals;  // NOLINT
 
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
-DECLARE_bool(do_not_start_election_test_only);
+DECLARE_bool(TEST_do_not_start_election_test_only);
 DECLARE_int32(TEST_apply_tablet_split_inject_delay_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(leader_lease_duration_ms);
@@ -285,7 +285,7 @@ void TabletSplitITest::CheckPostSplitTabletReplicasData(size_t num_rows) {
 void TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tablet_id) {
   LOG(INFO) << "Checking source tablet behavior after split...";
   google::FlagSaver saver;
-  FLAGS_do_not_start_election_test_only = true;
+  FLAGS_TEST_do_not_start_election_test_only = true;
 
   size_t tablet_split_insert_error_count = 0;
   size_t not_the_leader_insert_error_count = 0;

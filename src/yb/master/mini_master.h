@@ -64,7 +64,7 @@ class MiniMaster {
   // Start a master running on the loopback interface and
   // an ephemeral port. To determine the address that the server
   // bound to, call MiniMaster::bound_addr()
-  CHECKED_STATUS Start(bool simulate_fs_create_failure = false);
+  CHECKED_STATUS Start(bool TEST_simulate_fs_create_failure = false);
 
   void set_pass_master_addresses(bool value) {
     pass_master_addresses_ = value;

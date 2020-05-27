@@ -12,7 +12,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 
-DECLARE_bool(test_tserver_timeout);
+DECLARE_bool(TEST_tserver_timeout);
 
 using std::string;
 using std::unique_ptr;
@@ -1402,7 +1402,7 @@ TEST_F(QLTestSelectedExpr, TestTserverTimeout) {
   // Make sure a select statement works.
   CHECK_VALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
   // Set a flag to simulate tserver timeout and now check that select produces an error.
-  FLAGS_test_tserver_timeout = true;
+  FLAGS_TEST_tserver_timeout = true;
   CHECK_INVALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
 }
 

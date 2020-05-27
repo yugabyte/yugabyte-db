@@ -47,7 +47,7 @@ public class TestMasterLeaderDecommission extends TestClusterBase {
     HostAndPort leaderMasterHp = client.getLeaderMasterHostAndPort();
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
       if (!hp.equals(leaderMasterHp)) {
-        assertTrue(client.setFlag(hp, "do_not_start_election_test_only", "true"));
+        assertTrue(client.setFlag(hp, "TEST_do_not_start_election_test_only", "true"));
       }
     }
 

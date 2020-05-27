@@ -82,8 +82,9 @@ DEFINE_test_flag(bool, assert_local_tablet_server_selected, false, "Verify that 
                  "selected the local tablet server. Also verify that ReplicaSelection is equal "
                  "to CLOSEST_REPLICA");
 
-DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "", "Verify that SelectTServer "
-                 "selected a talet server in the AZ specified by this flag.");
+DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
+                 "Verify that SelectTServer selected a talet server in the AZ specified by this "
+                 "flag.");
 
 DECLARE_string(flagfile);
 
@@ -324,8 +325,8 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
                                                   vector<RemoteTabletServer*>* candidates) {
   RemoteTabletServer* ret = nullptr;
   candidates->clear();
-  if (PREDICT_FALSE(FLAGS_assert_local_tablet_server_selected ||
-                    !FLAGS_assert_tablet_server_select_is_in_zone.empty()) &&
+  if (PREDICT_FALSE(FLAGS_TEST_assert_local_tablet_server_selected ||
+                    !FLAGS_TEST_assert_tablet_server_select_is_in_zone.empty()) &&
       selection != CLOSEST_REPLICA) {
     LOG(FATAL) << "Invalid ReplicaSelection " << selection;
   }
@@ -343,7 +344,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
     }
     case CLOSEST_REPLICA:
     case FIRST_REPLICA: {
-      if (PREDICT_TRUE(FLAGS_assert_tablet_server_select_is_in_zone.empty())) {
+      if (PREDICT_TRUE(FLAGS_TEST_assert_tablet_server_select_is_in_zone.empty())) {
         rt->GetRemoteTabletServers(candidates);
       } else {
         rt->GetRemoteTabletServers(candidates, internal::IncludeFailedReplicas::kTrue);
@@ -398,11 +399,11 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
     default:
       FATAL_INVALID_ENUM_VALUE(ReplicaSelection, selection);
   }
-  if (PREDICT_FALSE(FLAGS_assert_local_tablet_server_selected) && !IsTabletServerLocal(*ret)) {
+  if (PREDICT_FALSE(FLAGS_TEST_assert_local_tablet_server_selected) && !IsTabletServerLocal(*ret)) {
     LOG(FATAL) << "Selected replica is not the local tablet server";
   }
-  if (PREDICT_FALSE(!FLAGS_assert_tablet_server_select_is_in_zone.empty())) {
-    if (ret->cloud_info().placement_zone() != FLAGS_assert_tablet_server_select_is_in_zone) {
+  if (PREDICT_FALSE(!FLAGS_TEST_assert_tablet_server_select_is_in_zone.empty())) {
+    if (ret->cloud_info().placement_zone() != FLAGS_TEST_assert_tablet_server_select_is_in_zone) {
       string msg = Substitute("\nZone placement:\nNumber of candidates: $0\n", candidates->size());
       for (RemoteTabletServer* rts : *candidates) {
         msg += Substitute("Replica: $0 in zone $1\n",
@@ -411,7 +412,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
       LOG(FATAL) << "Selected replica " << ret->ToString()
                  << " is in zone " << ret->cloud_info().placement_zone()
                  << " instead of the expected zone "
-                 << FLAGS_assert_tablet_server_select_is_in_zone
+                 << FLAGS_TEST_assert_tablet_server_select_is_in_zone
                  << " Cloud info: " << cloud_info_pb_.ShortDebugString()
                  << " for selection policy " << selection
                  << msg;

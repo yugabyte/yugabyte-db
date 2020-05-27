@@ -47,9 +47,8 @@ DEFINE_int32(retrying_ts_rpc_max_delay_ms, 60 * 1000,
              "Maximum delay between successive attempts to contact an unresponsive tablet server");
 TAG_FLAG(retrying_ts_rpc_max_delay_ms, advanced);
 
-DEFINE_test_flag(
-    int32, slowdown_master_async_rpc_tasks_by_ms, 0,
-    "For testing purposes, slow down the run method to take longer.");
+DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
+                 "For testing purposes, slow down the run method to take longer.");
 
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
@@ -172,7 +171,7 @@ Status RetryingTSRpcTask::Run() {
       return STATUS_FORMAT(IllegalState, "Task in invalid state $0", state());
     }
   }
-  auto slowdown_flag_val = GetAtomicFlag(&FLAGS_slowdown_master_async_rpc_tasks_by_ms);
+  auto slowdown_flag_val = GetAtomicFlag(&FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms);
   if (PREDICT_FALSE(slowdown_flag_val> 0)) {
     VLOG_WITH_PREFIX(1) << "Slowing down by " << slowdown_flag_val << " ms.";
     bool old_thread_restriction = ThreadRestrictions::SetWaitAllowed(true);

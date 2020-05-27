@@ -274,7 +274,7 @@ DEFINE_test_flag(int32, simulate_slow_system_tablet_bootstrap_secs, 0,
 DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
     "Return an error from ListTables if a namespace id is not found in the map");
 
-DEFINE_test_flag(bool, TEST_hang_on_namespace_transition, false,
+DEFINE_test_flag(bool, hang_on_namespace_transition, false,
     "Used in tests to simulate a lapse between issuing a namespace op and final processing.");
 
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
@@ -546,9 +546,9 @@ Status CatalogManager::Init(bool is_first_run) {
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(is_first_run),
                         "Failed to initialize sys tables async");
 
-  if (PREDICT_FALSE(FLAGS_simulate_slow_system_tablet_bootstrap_secs > 0)) {
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_system_tablet_bootstrap_secs > 0)) {
     LOG(INFO) << "Simulating slow system tablet bootstrap";
-    SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_system_tablet_bootstrap_secs));
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_system_tablet_bootstrap_secs));
   }
 
   // WaitUntilRunning() must run outside of the lock as to prevent
@@ -1158,7 +1158,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
 
   DCHECK_EQ(1, tablets.size());
   // We use LOG_ASSERT here since this is expected to crash in some unit tests.
-  LOG_ASSERT(!FLAGS_catalog_manager_simulate_system_table_create_failure);
+  LOG_ASSERT(!FLAGS_TEST_catalog_manager_simulate_system_table_create_failure);
 
   // Write Tablets to sys-tablets (in "running" state since we don't want the loadbalancer to
   // assign these tablets since this table is virtual).
@@ -2241,9 +2241,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  if (PREDICT_FALSE(FLAGS_simulate_slow_table_create_secs > 0)) {
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0)) {
     LOG(INFO) << "Simulating slow table creation";
-    SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs));
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_table_create_secs));
   }
 
   // NOTE: the table and tablets are already locked for write at this point,
@@ -3231,7 +3231,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   // Update sys-catalog with the removed table state.
   Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term());
 
-  if (PREDICT_FALSE(FLAGS_simulate_crash_after_table_marked_deleting)) {
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_crash_after_table_marked_deleting)) {
     return Status::OK();
   }
 
@@ -3915,7 +3915,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     ns_identifier.set_id(ltm->data().namespace_id());
     auto s = FindNamespaceUnlocked(ns_identifier, &ns);
     if (ns.get() == nullptr || ns->state() != SysNamespaceEntryPB::RUNNING) {
-      if (PREDICT_FALSE(FLAGS_return_error_if_namespace_not_found)) {
+      if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
         RETURN_NAMESPACE_NOT_FOUND(s, resp);
       }
       LOG(ERROR) << "Unable to find namespace with id " << ltm->data().namespace_id()
@@ -5933,10 +5933,10 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   // And the SetupTablet below to perform "local bootstrap" cannot be done until the remote fetch
   // has succeeded. So keeping them seperate for now.
   sys_catalog_->SetupTabletPeer(meta);
-  if (PREDICT_FALSE(FLAGS_inject_latency_during_remote_bootstrap_secs)) {
-    LOG(INFO) << "Injecting " << FLAGS_inject_latency_during_remote_bootstrap_secs
+  if (PREDICT_FALSE(FLAGS_TEST_inject_latency_during_remote_bootstrap_secs)) {
+    LOG(INFO) << "Injecting " << FLAGS_TEST_inject_latency_during_remote_bootstrap_secs
               << " seconds of latency for test";
-    SleepFor(MonoDelta::FromSeconds(FLAGS_inject_latency_during_remote_bootstrap_secs));
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_latency_during_remote_bootstrap_secs));
   }
 
   // From this point onward, the superblock is persisted in TABLET_DATA_COPYING

@@ -244,7 +244,7 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
 
   session->EnsureRateLimiterIsInitialized();
 
-  MAYBE_FAULT(FLAGS_fault_crash_on_handle_rb_fetch_data);
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_on_handle_rb_fetch_data);
 
   int64_t rate_limit = session->rate_limiter().GetMaxSizeForNextTransmission();
   VLOG(3) << " rate limiter max len: " << rate_limit;
@@ -373,18 +373,18 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
   if (session_succeeded || session->Succeeded()) {
     session->SetSuccess();
 
-    if (PREDICT_FALSE(FLAGS_inject_latency_before_change_role_secs)) {
+    if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_change_role_secs)) {
       LOG(INFO) << "Injecting latency for test";
-      SleepFor(MonoDelta::FromSeconds(FLAGS_inject_latency_before_change_role_secs));
+      SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_latency_before_change_role_secs));
     }
 
-    if (PREDICT_FALSE(FLAGS_skip_change_role)) {
+    if (PREDICT_FALSE(FLAGS_TEST_skip_change_role)) {
       LOG(INFO) << "Not changing role for " << session->requestor_uuid()
-                << " because flag FLAGS_skip_change_role is set";
+                << " because flag FLAGS_TEST_skip_change_role is set";
       return Status::OK();
     }
 
-    MAYBE_FAULT(FLAGS_fault_crash_leader_before_changing_role);
+    MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_before_changing_role);
 
     MonoTime deadline =
         MonoTime::Now() +
@@ -393,7 +393,7 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
       Status status = session->ChangeRole();
       if (status.ok()) {
         LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
-        MAYBE_FAULT(FLAGS_fault_crash_leader_after_changing_role);
+        MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_after_changing_role);
         break;
       }
       LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id

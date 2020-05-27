@@ -70,7 +70,7 @@ DECLARE_int32(memstore_size_mb);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_bool(TEST_allow_stop_writes);
 DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_int32(tablet_inject_latency_on_apply_write_txn_ms);
+DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
 DECLARE_bool(TEST_log_cache_skip_eviction);
 DECLARE_uint64(sst_files_hard_limit);
 DECLARE_uint64(sst_files_soft_limit);
@@ -965,7 +965,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, CalcNumTablets(3), client_.get(), &builder));
 
-  FLAGS_tablet_inject_latency_on_apply_write_txn_ms = 1000;
+  FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms = 1000;
 
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
